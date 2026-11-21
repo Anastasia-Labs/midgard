@@ -12,13 +12,15 @@ export const progressObservation = (input: {
   headers?: readonly { header: Header; headerHash: string }[];
   revision?: number;
   blockTimeMs?: bigint;
+  /** The observed block, in place of one the revision names. */
+  at?: Readonly<{ slot: string; blockHash: string; blockNo: string }>;
 }) => {
   const revision = input.revision ?? 1;
   const point = {
-    blockHash: revision.toString(16).padStart(64, "0"),
+    blockHash: input.at?.blockHash ?? revision.toString(16).padStart(64, "0"),
     parentBlockHash: null,
-    slot: (4242 + revision).toString(),
-    blockNo: (9000 + revision).toString(),
+    slot: input.at?.slot ?? (4242 + revision).toString(),
+    blockNo: input.at?.blockNo ?? (9000 + revision).toString(),
     chainPointId: (revision + 100).toString(16).padStart(64, "0"),
     finalityDepth: "30",
   };

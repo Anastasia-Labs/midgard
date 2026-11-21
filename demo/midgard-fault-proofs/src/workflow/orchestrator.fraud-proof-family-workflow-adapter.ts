@@ -4,10 +4,9 @@ import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import { type FraudProofEvidence } from "../evidence/fraud-proof-evidence.js";
 import { type CanonicalBlockClassification } from "./classification.js";
 import { type CompleteCanonicalReplayContext } from "./complete-replay.js";
-import type { WorkflowFundingShortfallError } from "./funding-reservation-permit.workflow-funding-shortfall.js";
+import type { InFlightTransaction } from "./in-flight.js";
 import {
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
   type JournalJsonObject,
 } from "./journal.js";
@@ -17,6 +16,7 @@ import {
   type SignedTransactionRecoveryObservation,
   type SignedWorkflowTransaction,
 } from "./signed-transaction-reconciliation.js";
+import type { WorkflowFundingShortfallError } from "./workflow-funding-shortfall.js";
 
 export const FRAUD_PROOF_WORKFLOW_ADAPTER =
   "midgard-fraud-proof-workflow-adapter-v1" as const;
@@ -51,12 +51,6 @@ export type FraudProofWorkflowPreflight = {
   };
   readonly referenceScripts: readonly FraudProofWorkflowReferenceScript[];
   /**
-   * Public, journal-safe coordinator state needed to recover this exact
-   * action after process loss. It is copied into the durable intent before
-   * any network submission.
-   */
-  readonly durableRecovery?: JournalJsonObject;
-  /**
    * Set only by the field-carriage prerequisite, on the field-preimage
    * carriage publication it builds: the one transaction spending only wallet
    * coins that carries no upper validity bound (`wallet-only-validity.ts`).
@@ -74,6 +68,13 @@ export type FraudProofWorkflowObservation =
   | {
       readonly kind: "action_required";
       readonly action: FraudProofWorkflowAction;
+      /**
+       * The addresses this requirement was read from finding no output at
+       * (no run, so bind one; no certificate, so open one; no thread, so
+       * init one). While a transaction of ours that may still land stands
+       * at one of them, the run waits on it instead (`in-flight-absence.ts`).
+       */
+      readonly absentAt?: readonly string[];
     }
   | {
       readonly kind: "completed";
@@ -93,48 +94,21 @@ export type FraudProofWorkflowSubmitResult =
       readonly detail: string;
     };
 
-export type FraudProofWorkflowReconcileResult =
-  | {
-      readonly kind: "confirmed";
-      readonly txHash: string;
-      readonly retirement?: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
-    }
-  | {
-      readonly kind: "pending";
-      readonly txHash?: string;
-      readonly retirement?: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
-    }
-  | {
-      readonly kind: "not_found";
-      readonly retirement?: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
-      /** The exact attempt landed failing phase 2: the chain took its
-       * collateral. */
-      readonly landedInvalid?: true;
-    }
-  | {
-      readonly kind: "unknown";
-      readonly reason: string;
-      /** The exact attempt is absent from the canonical chain; only what
-       * becomes of it is unknown. */
-      readonly absent?: true;
-    }
-  | { readonly kind: "conflict"; readonly reason: string };
-
 export const FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER =
   "midgard-authenticated-l1-workflow-terminal-verifier-v1" as const;
 
 /**
- * Independent chain-state authority for terminal closure and for reading a
- * superseded attempt and its action's result. It must inspect authenticated
- * Cardano L1 state; a family adapter's own observation is deliberately
- * insufficient to mark a workflow complete or to say an attempt is gone.
+ * Independent chain-state authority for terminal closure and for following
+ * an in-flight transaction. It must inspect authenticated Cardano L1 state; a
+ * family adapter's own observation is deliberately insufficient to mark a
+ * workflow complete or to say a transaction is gone.
  */
 export interface FraudProofWorkflowTerminalVerifier {
   readonly verifierVersion: typeof FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER;
   /**
    * Where the exact signed transaction stands on the canonical chain. The
-   * workflow reads every superseded attempt, and the recorded result of the
-   * action it belongs to, by this alone, whatever the family.
+   * workflow follows every transaction it has in flight by this alone,
+   * whatever the family.
    */
   observeSignedTransaction(
     input: SignedWorkflowTransaction,
@@ -150,7 +124,6 @@ export interface FraudProofWorkflowTerminalVerifier {
     readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
     readonly candidate: FraudProofWorkflowTerminal;
     readonly artifact: JournalJsonObject;
-    readonly entries: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<FraudProofWorkflowTerminal>;
 }
 
@@ -166,18 +139,35 @@ export type WorkflowRawFamilyEvidence = Extract<
 >;
 
 export type FraudProofWorkflowAdapterContext = {
-  /** Set from the admitted journal authority; never grants submission authority. */
+  /** Set from the admitted authority; never grants submission authority. */
   readonly reconciliationOnly?: boolean;
   readonly identity: FraudProofWorkflowIdentity;
   readonly workflowId: string;
   readonly artifact: JournalJsonObject;
-  readonly entries: readonly FraudProofWorkflowJournalEntry[];
   /**
-   * The actions this run already skipped because they did not build: an
-   * observation ranks the moves after them instead, and waits rather than
-   * reporting the family settled while one of them stands.
+   * The actions this run already skipped because they did not build, or
+   * because the restart wait holds them: an observation ranks the moves
+   * after them instead, and waits rather than reporting the family settled
+   * while one of them stands.
    */
   readonly unbuiltActionIds?: ReadonlySet<string>;
+  /**
+   * The objective's transactions this process sent that may still land, as
+   * the process's in-flight set holds them, oldest first. Absent outside a
+   * run, where nothing is in flight.
+   */
+  readonly inFlight?: () => readonly InFlightTransaction[];
+  /**
+   * How many transactions of an action this process sent for the objective
+   * since the action last landed final. Absent outside a run, where none
+   * were sent.
+   */
+  readonly attempts?: (actionId: string) => number;
+  /**
+   * Whether this process saw a transaction of an action land final for the
+   * objective. Absent outside a run, where none landed.
+   */
+  readonly landed?: (actionId: string) => boolean;
 };
 
 /**
@@ -223,8 +213,8 @@ export interface FraudProofFamilyWorkflowAdapter {
     },
   ): Promise<FraudProofWorkflowPreflight>;
   /**
-   * The error `action` pauses on when the prover wallet cannot fund its
-   * reservation, before the action is built: `shortfall`, or the alarm the
+   * The error `action` pauses on when the prover wallet cannot fund it,
+   * before the action is built: `shortfall`, or the alarm the
    * action's own build names when the wallet is short, such as a dispute
    * move's, naming what must land and by when. Without it, `shortfall`.
    */
@@ -234,29 +224,13 @@ export interface FraudProofFamilyWorkflowAdapter {
       readonly shortfall: WorkflowFundingShortfallError;
     },
   ): Promise<WorkflowFundingShortfallError>;
-  /** Called only after a durable `submission_intent` journal entry exists. */
+  /** Called only after the process in-flight set records the signed transaction. */
   submit(
     context: FraudProofWorkflowAdapterContext & {
       readonly action: FraudProofWorkflowAction;
       readonly preflight: FraudProofWorkflowPreflight;
     },
   ): Promise<FraudProofWorkflowSubmitResult>;
-  /**
-   * Must inspect authenticated L1 state. It is called before every retry when
-   * an intent/submission has an uncertain or merely submitted outcome.
-   */
-  reconcile(
-    context: FraudProofWorkflowAdapterContext & {
-      readonly action: FraudProofWorkflowAction;
-      readonly txHash?: string;
-      readonly durableRecovery?: JournalJsonObject;
-      readonly signedTransactionCborHex?: string;
-      readonly authorizeResubmission?: (input: {
-        readonly transactionHash: string;
-        readonly signedTransactionCborHex: string;
-      }) => Promise<void>;
-    },
-  ): Promise<FraudProofWorkflowReconcileResult>;
   /**
    * Our computation threads on the header as authenticated L1 shows them.
    * The orchestrator never resolves a run by another record while one of
@@ -283,7 +257,6 @@ export const freezeWorkflowAdapter = (
   const observe = adapter.observe;
   const preflight = adapter.preflight;
   const submit = adapter.submit;
-  const reconcile = adapter.reconcile;
   const observeOwnThreads = adapter.observeOwnThreads;
   const unfunded = adapter.unfunded;
   return Object.freeze({
@@ -324,9 +297,6 @@ export const freezeWorkflowAdapter = (
     ),
     submit: Object.freeze((input: Parameters<typeof submit>[0]) =>
       submit(input),
-    ),
-    reconcile: Object.freeze((input: Parameters<typeof reconcile>[0]) =>
-      reconcile(input),
     ),
     ...(observeOwnThreads === undefined
       ? {}

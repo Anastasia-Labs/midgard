@@ -5,12 +5,14 @@ import {
   type MidgardFieldPublication,
 } from "@al-ft/midgard-core/codec/native-tx-carriage";
 import { MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import {
   CML,
   Data,
   type LucidEvolution,
   type ProtocolParameters,
   type TxSignBuilder,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -52,6 +54,17 @@ import { Effect } from "effect";
  */
 
 const MIN_ADA_STABILIZATION_LIMIT = 8;
+
+/** Most lovelace first; equal coins by out-ref. */
+const byLovelaceDescending = (left: UTxO, right: UTxO): number => {
+  const difference =
+    (right.assets.lovelace ?? 0n) - (left.assets.lovelace ?? 0n);
+  return difference === 0n
+    ? compareOutRefs(left, right)
+    : difference > 0n
+      ? 1
+      : -1;
+};
 
 export const resolveProtocolParameters = async (
   lucid: LucidEvolution,
@@ -283,25 +296,35 @@ export const buildUnsignedFieldPreimagePublicationProgram = (
           utxo.scriptRef == null &&
           Object.keys(utxo.assets).every((unit) => unit === "lovelace"),
       );
-      if (fundingInputs.length === 0)
+      const [largest] = [...fundingInputs].sort(byLovelaceDescending);
+      if (largest === undefined)
         throw new Error(
           "Field-preimage publication requires plain-Ada funding",
         );
       const protocolParameters = await resolveProtocolParameters(lucid);
-      return await lucid
-        .newTx()
-        .pay.ToAddressWithData(
-          publisherAddress,
-          { kind: "inline", value: publication.datumCbor },
-          {
-            lovelace: minimumLovelaceForFieldPreimagePublication({
-              publisherAddress,
-              output: publication,
-              coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,
-            }),
-          },
-        )
-        .complete({ localUPLCEval: true, presetWalletInputs: fundingInputs });
+      const build = async (presetWalletInputs: UTxO[]) =>
+        await lucid
+          .newTx()
+          .pay.ToAddressWithData(
+            publisherAddress,
+            { kind: "inline", value: publication.datumCbor },
+            {
+              lovelace: minimumLovelaceForFieldPreimagePublication({
+                publisherAddress,
+                output: publication,
+                coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,
+              }),
+            },
+          )
+          .complete({ localUPLCEval: true, presetWalletInputs });
+      // Funded from one coin, the largest, so a rebuild over an unchanged
+      // wallet spends the same coin and at most one copy lands; every plain
+      // coin when that one does not cover the publication.
+      try {
+        return await build([largest]);
+      } catch {
+        return await build(fundingInputs);
+      }
     },
     catch: (cause) =>
       new Error(

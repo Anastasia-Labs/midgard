@@ -4,13 +4,13 @@ import "./actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 export {
   assertWorkflowActuationPermitIdentity,
-  assertWorkflowJournalActuation,
-  bindWorkflowActuationJournal,
+  assertWorkflowRunActuation,
   bindWorkflowActuationRecoveryIdentity,
+  bindWorkflowRunActuation,
   workflowActuationAuthorizingDecisionDigest,
   workflowActuationDecisionDigest,
   workflowActuationPermitIsReconciliationOnly,
-  workflowJournalIsReconciliationOnly,
+  workflowRunIsReconciliationOnly,
 } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 export {
   createWorkflowActuationPermitController,

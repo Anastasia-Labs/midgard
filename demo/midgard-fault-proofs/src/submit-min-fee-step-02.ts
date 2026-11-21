@@ -62,7 +62,7 @@ import {
 } from "./workflow/own-outputs.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 const STEP_LABEL = minFeeStepLabel(1);
@@ -145,7 +145,8 @@ export type MinFeeStep02Build = {
   readonly outputIndex: number;
 };
 
-export type SubmitMinFeeStep02Result = UnjournaledSubmission<MinFeeStep02Build>;
+export type SubmitMinFeeStep02Result =
+  OutsideWorkflowSubmission<MinFeeStep02Build>;
 
 export const buildMinFeeStep02 = async ({
   lucid,

@@ -1,9 +1,6 @@
 import { vi } from "vitest";
 
-import {
-  type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEntry,
-} from "../src/workflow/journal.js";
+import { type FraudProofWorkflowIdentity } from "../src/workflow/journal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -55,7 +52,6 @@ export const context = {
   identity,
   workflowId: "88".repeat(32),
   artifact: { proofCbor: "proof-from-public-da" },
-  entries: [],
 } as const;
 
 /** The test prover's signer, its proof materials at their own address. */
@@ -66,22 +62,6 @@ export const proofSigner = {
   paymentKeyHash: "12".repeat(28),
   selectWallet: () => undefined,
 };
-
-/** A journal entry confirming `confirmedTxHash` as one of the workflow's. */
-export const confirmedEntry = (
-  confirmedTxHash: string,
-): FraudProofWorkflowJournalEntry => ({
-  schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
-  workflowId: context.workflowId,
-  identity,
-  sequence: 0,
-  recordedAt: "2026-09-13T00:00:00.000Z",
-  event: {
-    kind: "confirmed",
-    actionId: `chain:${confirmedTxHash}`,
-    txHash: confirmedTxHash,
-  },
-});
 
 const signed = (): LocallyEvaluatedTransaction["signed"] =>
   ({
@@ -139,18 +119,12 @@ export const base = ({
     kind: "submitted" as const,
     txHash: "99".repeat(32),
   })),
-  reconcile: vi.fn(async () => ({
-    kind: "confirmed" as const,
-    txHash: "99".repeat(32),
-  })),
 });
 
 export const prerequisite = ({
   satisfied = false,
-  reconcile = async () => ({ kind: "confirmed" as const, txHash }),
 }: {
   readonly satisfied?: boolean;
-  readonly reconcile?: ProofChunkPrerequisitePort<"invalidRange">["reconcile"];
 } = {}): ProofChunkPrerequisitePort<"invalidRange"> => ({
   portVersion: PROOF_CHUNK_PREREQUISITE,
   category: "invalidRange",
@@ -168,25 +142,13 @@ export const prerequisite = ({
       errorSha256: "77".repeat(32),
     };
   }),
+  need: vi.fn(async () => undefined),
   inspect: vi.fn(async () =>
     satisfied
-      ? { kind: "satisfied" as const }
+      ? { kind: "satisfied" as const, chunks: [] }
       : { kind: "required" as const, action: publicationAction },
   ),
   capture: vi.fn(async () => ({
     transaction: transaction(),
-    durableRecovery: {
-      proofChunkPublication: {
-        schemaVersion: "midgard-production-proof-chunk-publication-recovery-v1",
-        proofCborSha256: "55".repeat(32),
-        outputs: [
-          {
-            outRef: `${txHash}#0`,
-            datumCbor: "d87980",
-          },
-        ],
-      },
-    },
   })),
-  reconcile,
 });

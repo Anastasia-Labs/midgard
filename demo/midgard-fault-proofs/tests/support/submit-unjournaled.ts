@@ -32,8 +32,8 @@ import {
 import type { OwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   type LocallyEvaluatedTransaction,
-  submitUnjournaled,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
+  submitOutsideWorkflow,
 } from "../../src/workflow/transaction-boundary.js";
 import { expectWalletOnlyValidity } from "./wallet-only-validity.js";
 
@@ -43,7 +43,7 @@ import { expectWalletOnlyValidity } from "./wallet-only-validity.js";
  */
 export type SubmittedStep<
   Build extends (...args: never[]) => Promise<unknown>,
-> = UnjournaledSubmission<
+> = OutsideWorkflowSubmission<
   Exclude<
     Awaited<ReturnType<Build>>,
     PrerequisiteTurn | ContinuationTurn<unknown>
@@ -81,7 +81,7 @@ export const buildAndSubmitUnjournaled = async <
 >(
   build: (args: Args) => Promise<Built>,
   { awaitConfirmation = true, beforeSubmit, ...args }: Args & SubmitOptions,
-): Promise<UnjournaledSubmission<Built>> => {
+): Promise<OutsideWorkflowSubmission<Built>> => {
   const built = await build(args as unknown as Args);
   if (isPrerequisiteTurn(built) || isContinuationTurn(built))
     throw new Error(
@@ -89,7 +89,7 @@ export const buildAndSubmitUnjournaled = async <
     );
   const { transaction, ...fields } = built;
   await beforeSubmit?.(transaction);
-  const txHash = await submitUnjournaled(
+  const txHash = await submitOutsideWorkflow(
     lucidOf(args as unknown as Submitter),
     transaction,
     {
@@ -101,7 +101,7 @@ export const buildAndSubmitUnjournaled = async <
     txHash,
     ...fields,
     awaitedConfirmation: awaitConfirmation,
-  } as unknown as UnjournaledSubmission<Built>;
+  } as unknown as OutsideWorkflowSubmission<Built>;
 };
 
 /**
@@ -114,7 +114,7 @@ export type UnjournaledSubmitter<
   ) => Promise<{ readonly transaction: LocallyEvaluatedTransaction }>,
 > = (
   args: Parameters<Build>[0] & SubmitOptions,
-) => Promise<UnjournaledSubmission<Awaited<ReturnType<Build>>>>;
+) => Promise<OutsideWorkflowSubmission<Awaited<ReturnType<Build>>>>;
 
 /**
  * `build` bound into a function that builds its step and submits it, as
@@ -127,7 +127,9 @@ export const unjournaled =
   >(
     build: (args: Args) => Promise<Built>,
   ) =>
-  async (args: Args & SubmitOptions): Promise<UnjournaledSubmission<Built>> =>
+  async (
+    args: Args & SubmitOptions,
+  ): Promise<OutsideWorkflowSubmission<Built>> =>
     await buildAndSubmitUnjournaled(build, args);
 
 /**
@@ -142,7 +144,7 @@ export const buildAndSubmitTransactionUnjournaled = async <
 ): Promise<string> => {
   const transaction = await build(args as unknown as Args);
   await beforeSubmit?.(transaction);
-  return await submitUnjournaled(
+  return await submitOutsideWorkflow(
     lucidOf(args as unknown as Submitter),
     transaction,
     { label: build.name, awaitConfirmation },
@@ -182,7 +184,7 @@ export const submitTurnsUnjournaled = async <
     ...args
   }: NoInfer<Args> & SubmitOptions,
 ): Promise<
-  UnjournaledSubmission<
+  OutsideWorkflowSubmission<
     Exclude<Step, PrerequisiteTurn | ContinuationTurn<unknown>>
   >
 > => {
@@ -190,7 +192,7 @@ export const submitTurnsUnjournaled = async <
     return (await submitFaultProofTurns(build, args as unknown as Args, {
       label: build.name,
       awaitConfirmation,
-    })) as UnjournaledSubmission<
+    })) as OutsideWorkflowSubmission<
       Exclude<Step, PrerequisiteTurn | ContinuationTurn<unknown>>
     >;
   const { transaction, ...fields } = await settleFaultProofTurns(
@@ -198,7 +200,7 @@ export const submitTurnsUnjournaled = async <
     args as unknown as Args,
   );
   await beforeSubmit(transaction);
-  const txHash = await submitUnjournaled(
+  const txHash = await submitOutsideWorkflow(
     (args as unknown as Args).lucid,
     transaction,
     { label: build.name, awaitConfirmation },
@@ -207,7 +209,7 @@ export const submitTurnsUnjournaled = async <
     txHash,
     ...fields,
     awaitedConfirmation: awaitConfirmation,
-  } as unknown as UnjournaledSubmission<
+  } as unknown as OutsideWorkflowSubmission<
     Exclude<Step, PrerequisiteTurn | ContinuationTurn<unknown>>
   >;
 };
@@ -231,7 +233,7 @@ export const unjournaledTurns =
   async (
     args: NoInfer<Args> & SubmitOptions,
   ): Promise<
-    UnjournaledSubmission<
+    OutsideWorkflowSubmission<
       Exclude<Step, PrerequisiteTurn | ContinuationTurn<unknown>>
     >
   > =>
@@ -249,14 +251,14 @@ export const submitBoundUnjournaled = async <
   label: string,
   build: () => Promise<FaultProofTurn<Step>>,
   options: SubmitOptions = {},
-): Promise<UnjournaledSubmission<Step>> => {
+): Promise<OutsideWorkflowSubmission<Step>> => {
   const named = {
     [label]: async (_: { readonly lucid: LucidEvolution }) => await build(),
   }[label]!;
   return (await submitTurnsUnjournaled(named, {
     lucid,
     ...options,
-  })) as UnjournaledSubmission<Step>;
+  })) as OutsideWorkflowSubmission<Step>;
 };
 
 /**
@@ -321,7 +323,7 @@ export const publishProofChunks = async ({
 }): Promise<PublishedProof> => {
   const { transaction } = await buildProofChunkPublication(args);
   await beforeSubmit?.(transaction);
-  const txHash = await submitUnjournaled(args.lucid, transaction, {
+  const txHash = await submitOutsideWorkflow(args.lucid, transaction, {
     label: "publish-proof-chunks",
     awaitConfirmation: true,
   });

@@ -2,30 +2,30 @@ import { createHash } from "node:crypto";
 
 import {
   driveProvenCorrectionRemoval,
-  excludeReservedFunding,
+  excludeHeldWalletCoins,
 } from "@al-ft/midgard-fault-proofs/proven-correction-removal";
 
 import type { WatcherConfig } from "../runtime/config.js";
-import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import {
   bindWatcherDeploymentAuthority,
   readSecret,
 } from "./fault-proof-application.bind-watcher-deployment-authority.js";
-import {
-  type WatcherFaultProofApplication,
-  type WatcherFaultProofApplicationDependencies,
-  type WatcherFaultProofInfrastructureAuthority,
-  type WatcherFaultProofL1,
+import type {
+  WatcherFaultProofApplication,
+  WatcherFaultProofApplicationDependencies,
+  WatcherFaultProofInfrastructureAuthority,
+  WatcherFaultProofL1,
 } from "./fault-proof-application.production-dependencies.js";
 
 /**
  * The application's removal of a proven correction's header, started from
  * an Idle lock or finished from a Locked one. Its only authority is the
  * verified deployment and what L1 holds: the lock, the queue and the
- * record. It is paid from the prover wallet's coins no funding reservation
- * leases and no other removal holds, so it never takes another action's
- * inputs, and it holds the coins it spends until it confirms, so no
- * reservation takes them; a shortfall fails the attempt and the next pass
+ * record. It is paid from the prover wallet's coins no transaction in
+ * flight holds, so it never takes another action's inputs, and it holds the
+ * coins it spends until it confirms, so no other action takes them; a
+ * shortfall fails the attempt and the next pass
  * tries again. An application that only observes starts nothing and says so.
  */
 export const driveProvenCorrectionFrom =
@@ -73,12 +73,12 @@ export const driveProvenCorrectionFrom =
       // Builders take the verified release, as every family workflow does.
       deploymentInfo: binding.manifest,
       network: watcherConfig.targetNetwork,
-      signer: excludeReservedFunding({
+      signer: excludeHeldWalletCoins({
         signer: dependencies.resolveSigner({
           network: watcherConfig.targetNetwork,
           secret,
         }),
-        reservedOutRefs: async () => await walletLeases.readReservedOutRefs({}),
+        heldOutRefs: walletLeases.heldOutRefs,
       }),
       stateQueueMutationLeaseCoordinator: dependencies.createLeaseCoordinator(),
       correction,

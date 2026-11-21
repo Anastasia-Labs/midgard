@@ -27,7 +27,6 @@ export const GATES = {
       [
         "tests/workflow-terminal-recovery.test.ts",
         "tests/central-family-recovery.test.ts",
-        "tests/mint-item-terminal-identity-recovery.test.ts",
       ],
     ],
     [
@@ -41,7 +40,6 @@ export const GATES = {
     [
       "midgard-watcher",
       [
-        "tests/funding/prover-funding-recovery.test.ts",
         "tests/l1-follower/decision-driver-fork-sim.test.ts",
       ],
     ],

@@ -11,6 +11,7 @@ import {
   type WatcherProofRetention,
   type WatcherProofUnitHoldResult,
 } from "../../src/l1-follower/proof-retention.js";
+import { createWatcherProofRosterRetention } from "../../src/l1-follower/proof-roster-retention.js";
 import {
   D,
   fixture,
@@ -100,6 +101,8 @@ describe("fault-proof L1 source: unit hold results", () => {
     const retention = createWatcherProofRetention(fx.store, {
       unitHistoryPolicies: watcherUnitHistoryPolicies(D),
       stateQueuePolicyId: D.stateQueueMint,
+      roster: createWatcherProofRosterRetention(),
+      fraudProofSpend: D.fraudProofSpend,
     });
     const source = createWatcherFaultProofL1Source({
       store: fx.store,
@@ -129,6 +132,8 @@ describe("fault-proof L1 source: unit hold results", () => {
     const retention = createWatcherProofRetention(fx.store, {
       unitHistoryPolicies: watcherUnitHistoryPolicies(D),
       stateQueuePolicyId: D.stateQueueMint,
+      roster: createWatcherProofRosterRetention(),
+      fraudProofSpend: D.fraudProofSpend,
     });
     expect(await retention.blockDepth(fx.points.p5)).toBe(1);
     expect(await retention.blockDepth(fx.points.p4)).toBe(2);
@@ -144,6 +149,8 @@ describe("fault-proof L1 source: unit hold results", () => {
     const retention = createWatcherProofRetention(fx.store, {
       unitHistoryPolicies: watcherUnitHistoryPolicies(D),
       stateQueuePolicyId: D.stateQueueMint,
+      roster: createWatcherProofRosterRetention(),
+      fraudProofSpend: D.fraudProofSpend,
     });
     expect(
       await retention.pin({ category: "doubleSpend", headerHash: fx.header }),
@@ -176,6 +183,8 @@ describe("fault-proof L1 source: unit hold results", () => {
     const retention = createWatcherProofRetention(fx.store, {
       unitHistoryPolicies: watcherUnitHistoryPolicies(D),
       stateQueuePolicyId: D.stateQueueMint,
+      roster: createWatcherProofRosterRetention(),
+      fraudProofSpend: D.fraudProofSpend,
     });
     await pruneFixture(fx);
     const source = createWatcherFaultProofL1Source({

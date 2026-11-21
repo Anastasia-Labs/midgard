@@ -1,7 +1,4 @@
-import type {
-  WatcherProofExecution,
-  WatcherProofObjective,
-} from "./fault-proof-objective-journal.js";
+import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import type { WatcherFaultProofJob } from "./fault-proof-supervisor.validate-job.js";
 import {
   type WatcherDecisionHold,
@@ -17,31 +14,35 @@ import {
  *   The latest safe start is a design margin (worst-case proof time before
  *   maturity), not the last moment a removal lands: the state queue accepts
  *   a completed fraud-proof removal until maturity. So the run keeps every
- *   right an on-time run has, signed or not: a fresh submission for each
- *   later step, and a new attempt for a signed step whose validity lapsed.
- *   It is marked late for the execution's alert.
- * - `reconcile`: at or past maturity with a signed attempt; that attempt is
- *   only reconciled.
- *
- * At or past maturity no removal can land, so an objective with nothing
- * signed is held by name (`fault_proof_start_deadline_passed`) until its
- * header leaves the queue; that throws.
+ *   right an on-time run has: a fresh submission for each later step, and a
+ *   new attempt for a step whose transaction expired. It is marked late for
+ *   the execution's alert.
+ * - `reconcile`: at or past maturity while a transaction this process sent
+ *   for the objective can still land (`sending`); the run only continues
+ *   what is in flight.
+ * - `observe`: at or past maturity with nothing in flight, as after a
+ *   restart. No removal of ours can land any more, but one may have landed
+ *   already: the chain is asked first. A landed removal completes the
+ *   objective; otherwise it is held by name (`watcherProofStartDeadlinePassed`).
  */
 export const watcherProofStartTiming = (
   job: WatcherFaultProofJob,
-  execution: WatcherProofExecution | undefined,
+  sending: boolean,
   nowMs: bigint,
-): "on_time" | "reconcile" | "late" => {
+): "on_time" | "late" | "reconcile" | "observe" => {
   if (job.deadline === null || nowMs < BigInt(job.deadline.latestSafeStartAtMs))
     return "on_time";
   if (nowMs < BigInt(job.deadline.maturityAtMs)) return "late";
-  if (
-    execution?.entries.some(
-      ({ event }) => event.kind === "submission_intent",
-    ) === true
-  )
-    return "reconcile";
-  throw new WatcherProofDecisionMissingError({
+  return sending ? "reconcile" : "observe";
+};
+
+/** The hold of an objective at or past its header's maturity whose removal
+ * has not landed: `fault_proof_start_deadline_passed` until its header
+ * leaves the queue. */
+export const watcherProofStartDeadlinePassed = (
+  job: WatcherFaultProofJob,
+): WatcherProofDecisionMissingError =>
+  new WatcherProofDecisionMissingError({
     kind: "objective",
     category: job.category,
     headerHash: job.headerHash,
@@ -49,7 +50,6 @@ export const watcherProofStartTiming = (
     detail: `${job.category}/${job.headerHash}`,
     readiness: "fault_proof_start_deadline_passed",
   });
-};
 
 /** Run outcomes after which a header's deadline no longer binds its
  * objective: its correction is included, or another record resolved it. */
@@ -94,10 +94,6 @@ export const createWatcherOpenProofDeadlines = () => {
       )
         open.delete(keyOf(objective));
     },
-    /** Its header merged or left the queue: the race against maturity is
-     * over. True the first time, when it was still open. */
-    departed: (objective: WatcherProofObjective): boolean =>
-      open.delete(keyOf(objective)),
     jobs: (): readonly WatcherFaultProofJob[] => [...open.values()],
   });
 };

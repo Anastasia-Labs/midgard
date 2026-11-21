@@ -61,7 +61,7 @@ export const readCursor = async (
 };
 
 /** Postgres allows 65,535 parameters per statement and SQLite 32,766. */
-const MAX_PARAMETERS = 30_000;
+export const MAX_PARAMETERS = 30_000;
 
 /** Multi-row `INSERT`, chunked under the parameter limit of both backends. */
 export const insertRows = async (

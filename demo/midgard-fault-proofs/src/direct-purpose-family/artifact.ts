@@ -1,4 +1,4 @@
-/** The journaled direct purpose workflow artifact: the retained payload, the
+/** The direct purpose workflow artifact: the retained payload, the
  * predecessor ledger and the coordinate, re-planned on every admission; and
  * the admitted artifact's whole custody plan, kept per family, artifact,
  * deployment and prover. */

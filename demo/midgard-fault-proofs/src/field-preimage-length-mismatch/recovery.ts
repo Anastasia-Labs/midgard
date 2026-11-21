@@ -19,6 +19,7 @@ import {
   journalJsonDigest,
   type JournalJsonObject,
 } from "../workflow/journal.fraud-proof-workflow-terminal.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
@@ -117,7 +118,7 @@ export const createFieldPreimageLengthRecoveryPorts = (
         throw new Error(`${CATEGORY} raw evidence changed family`);
       admit(routed.evidence, artifact);
     },
-    capture: async ({ action, artifact, entries }) => {
+    capture: async ({ action, artifact, holder }) => {
       const input = cursorFamilyActionInput({ category: CATEGORY, action });
       if (input.stage === "remove")
         return await captureCursorRemoval({
@@ -196,7 +197,11 @@ export const createFieldPreimageLengthRecoveryPorts = (
                 evidence: carried,
                 ownOutputs: workflowFieldCarriageOwnOutputs({
                   category: CATEGORY,
-                  entries,
+                  materials: proofMaterialsAccess({
+                    signer: config.signer,
+                    lucid: config.lucid,
+                    holder,
+                  }),
                 }),
               })
             : undefined;

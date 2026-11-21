@@ -147,12 +147,14 @@ describe("validation-trace dispute runner: a defender wins a thread of our case"
     let runs = 0;
     const result = await continuePendingWorkflow({
       invocation: {
-        mode: "run",
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         category: "validationTraceDispute",
         headerHash: scene.failing.evidence.headerHash,
       },
-      journal: runner.journal,
+      run: runner.process.run({
+        category: "validationTraceDispute",
+        headerHash: scene.failing.evidence.headerHash,
+      }),
       execute: async () => {
         runs += 1;
         return validationTraceRunState(await runner.runOnce(scene.failing));

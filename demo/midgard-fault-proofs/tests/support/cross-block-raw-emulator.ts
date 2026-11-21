@@ -88,7 +88,10 @@ export const recordCrossBlockRawEmulator = (
       unixTimeMs: number;
     }>
   >();
-  const recorded: { emulator?: Emulator } = {};
+  // A recorder bound to its emulator captures at that emulator's tip before
+  // anything it records has landed, as a follower captures at its applied
+  // tip; one on the prototype knows its emulator from the first submission.
+  const recorded: { emulator?: Emulator } = { emulator: options.emulator };
   // Layers, not vi.spyOn: a caller may stack its own observer on submitTx
   // (see @al-ft/midgard-test-support/method-layer), and both must see every
   // real submission.
@@ -239,9 +242,9 @@ export const recordCrossBlockRawEmulator = (
             : last,
         undefined,
       );
-      if (latest === undefined)
+      if (latest === undefined && options.emulator === undefined)
         throw new Error("no confirmed emulator transactions captured");
-      const boundary = latest.inclusionPoint;
+      const boundary = latest?.inclusionPoint ?? tip;
       const touches = (row: FraudProofRawL1Transaction, unit: string) =>
         decodedOf(row).units.has(unit);
       const transactions = all.filter((row) =>
@@ -282,7 +285,7 @@ export const recordCrossBlockRawEmulator = (
         cursor: {
           point: boundary,
           tip,
-          confirmationDepth: latest.confirmationDepth,
+          confirmationDepth: latest?.confirmationDepth ?? 1,
           rollbackCursor: computeFraudProofRawL1RollbackCursor({
             ...request,
             sourceId,

@@ -2,8 +2,9 @@ import {
   assertWorkflowActuationPermitIdentity,
   type WorkflowActuationPermit,
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/journal";
 
-import type { WatcherProofExecution } from "./fault-proof-objective-journal.js";
+import type { WatcherProofVerifiedCompletion } from "./fault-proof-objective-table.js";
 import type {
   SupervisorDependencies,
   WatcherFaultProofJob,
@@ -15,25 +16,46 @@ export const runnerOutcomeKind = (outcome: unknown): unknown =>
     ? outcome.kind
     : undefined;
 
-/** A fresh runner result uses the same canonical terminal door as recovery. */
+/** The workflow and terminal a completed run reports
+ * (`{ kind: "completed", result: { workflowId, terminal } }`). */
+const completedRun = (
+  outcome: unknown,
+): Readonly<{ workflowId: string; terminal: FraudProofWorkflowTerminal }> => {
+  const result =
+    typeof outcome === "object" && outcome !== null && "result" in outcome
+      ? (outcome.result as {
+          readonly kind?: unknown;
+          readonly workflowId?: unknown;
+          readonly terminal?: unknown;
+        } | null)
+      : null;
+  if (
+    result?.kind !== "completed" ||
+    typeof result.workflowId !== "string" ||
+    typeof result.terminal !== "object" ||
+    result.terminal === null
+  )
+    throw new Error("proof runner reported completion without its terminal");
+  return {
+    workflowId: result.workflowId,
+    terminal: result.terminal as FraudProofWorkflowTerminal,
+  };
+};
+
+/**
+ * A fresh runner completion is checked against the chain before it counts:
+ * the terminal the run reports must be the one raw L1 shows.
+ */
 export const admitWatcherProofRunnerCompletion = async (input: {
   readonly job: WatcherFaultProofJob;
-  readonly execution: WatcherProofExecution | undefined;
   readonly actuationPermit: WorkflowActuationPermit | null;
   readonly verifyCompleted: SupervisorDependencies["verifyCompleted"];
   readonly outcome: unknown;
   readonly onApplicable: (
-    verified: Readonly<{
-      execution: WatcherProofExecution;
-      confirmationDepth: number;
-    }>,
+    verified: WatcherProofVerifiedCompletion,
   ) => Promise<void>;
 }): Promise<unknown> => {
-  const execution = input.execution;
-  if (execution?.entries.at(-1)?.event.kind !== "completed")
-    throw new Error(
-      "proof runner reported completion without a completed journal",
-    );
+  const { workflowId, terminal } = completedRun(input.outcome);
   const assertPermit = () => {
     if (input.actuationPermit !== null)
       assertWorkflowActuationPermitIdentity({
@@ -45,13 +67,14 @@ export const admitWatcherProofRunnerCompletion = async (input: {
   assertPermit();
   const verification = await input.verifyCompleted({
     job: input.job,
-    execution,
     actuationPermit: input.actuationPermit,
+    terminal,
   });
   assertPermit();
   if (verification.kind === "applicable") {
     await input.onApplicable({
-      execution,
+      workflowId,
+      terminalTxHash: verification.terminalTxHash,
       confirmationDepth: verification.confirmationDepth,
     });
     return input.outcome;

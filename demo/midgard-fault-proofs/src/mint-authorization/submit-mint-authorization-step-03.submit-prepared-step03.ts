@@ -28,7 +28,7 @@ import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.j
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
 import {
@@ -56,7 +56,7 @@ export type MintAuthorizationStep03Build = {
 };
 
 export type SubmitMintAuthorizationStep03Result =
-  UnjournaledSubmission<MintAuthorizationStep03Build>;
+  OutsideWorkflowSubmission<MintAuthorizationStep03Build>;
 
 export type Step03Shared = {
   readonly lucid: LucidEvolution;

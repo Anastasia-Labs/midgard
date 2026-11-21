@@ -4,13 +4,12 @@
  * own carriage goes to.
  *
  * The field is wide enough to need publications and a field certificate.
- * The application reads each publication and its certificate by the
- * out-refs its own signed transactions gave them, never by what an output
- * at the address holds: unrelated outputs with the same datums, confirmed
- * before its own or landing beside them and sorting first, outputs with the
- * same datums that carry a token, another party's certificate of the same
- * field, and a token-bearing coin at the prover address leave its
- * transactions and their fees as they are.
+ * The application finds its carriage by content: it adopts another party's
+ * exact copy of a publication (an inline datum, no datum hash, no reference
+ * script, no token) or another party's certificate of the same field, and
+ * never takes a copy that carries a token. Copies confirmed before its own or
+ * landing beside them and sorting first, and a token-bearing coin at the
+ * prover address, leave its transactions and their fees as they are.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -58,7 +57,7 @@ import {
   runWith,
 } from "./support/witness-field-carriage-installed-run.js";
 
-describe("witness field carriage found by the out-refs it published, in the installed watcher application", () => {
+describe("witness field carriage found by content, in the installed watcher application", () => {
   let baseline: Awaited<ReturnType<typeof runWith>>["cost"];
 
   it("publishes and certifies the field with nothing else at its addresses: the cost every other row matches", async () => {
@@ -85,7 +84,7 @@ describe("witness field carriage found by the out-refs it published, in the inst
       when: "sorting first in its block",
     },
   ] as const)(
-    "reads its own $kind past another party's outputs for it $when",
+    "reads its own $kind or an exact copy of it past another party's outputs for it $when",
     async ({ kind, confirmed }) => {
       const beside = placeBeside(kind, { confirmed });
       const { run, watch, harness, cost } = await runWith(hooks, () => [], {

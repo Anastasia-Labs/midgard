@@ -25,7 +25,7 @@ import { outRefLabel, type ResolvedProverSigner } from "../runtime.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 
 export type Step04Build = {
@@ -59,7 +59,7 @@ export type Step04Build = {
   readonly fraudProofMintRedeemerIndex: number;
 };
 
-export type SubmitStep04Result = UnjournaledSubmission<Step04Build>;
+export type SubmitStep04Result = OutsideWorkflowSubmission<Step04Build>;
 
 type Step04DatumWithState = DoubleSpendStep04Datum & {
   readonly data: NonNullable<DoubleSpendStep04Datum["data"]>;

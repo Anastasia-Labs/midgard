@@ -29,7 +29,7 @@ import {
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.publish-fault-proof-field-carriage.js";
-import { type ResolvedProverSigner } from "../runtime.js";
+import type { ResolvedProverSigner } from "../runtime.js";
 import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
@@ -38,7 +38,7 @@ import {
 } from "../workflow/own-outputs.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import {
@@ -68,7 +68,7 @@ export type WithdrawnInputStep02Build = {
 };
 
 export type SubmitWithdrawnInputStep02Result =
-  UnjournaledSubmission<WithdrawnInputStep02Build>;
+  OutsideWorkflowSubmission<WithdrawnInputStep02Build>;
 
 export const buildWithdrawnInputStep02 = async ({
   lucid,

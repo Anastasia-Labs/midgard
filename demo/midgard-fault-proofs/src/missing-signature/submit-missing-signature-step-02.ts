@@ -42,7 +42,7 @@ import {
   publishFaultProofFieldCarriage,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
-import { type ResolvedProverSigner } from "../runtime.js";
+import type { ResolvedProverSigner } from "../runtime.js";
 import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
@@ -51,7 +51,7 @@ import {
 } from "../workflow/own-outputs.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import type { MissingSignatureContracts } from "./contracts.js";
@@ -83,7 +83,7 @@ export type MissingSignatureStep02Build = {
 };
 
 export type SubmitMissingSignatureStep02Result =
-  UnjournaledSubmission<MissingSignatureStep02Build>;
+  OutsideWorkflowSubmission<MissingSignatureStep02Build>;
 
 export const buildMissingSignatureStep02 = async ({
   lucid,

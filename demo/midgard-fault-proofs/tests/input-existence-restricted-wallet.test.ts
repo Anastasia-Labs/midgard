@@ -1,7 +1,7 @@
 /** The non-existent-input route with every step built under the watcher's
  * restricted prover wallet. That wallet offers coin selection and collateral
- * its reserved plain coins alone, so every step must spend and post as
- * collateral reserved coins only. */
+ * only the plain coins no other action of the process holds, so every step
+ * must spend and post as collateral those coins alone. */
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
@@ -21,14 +21,14 @@ import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
-  fundReservedCoin,
-  restrictedProverFunding,
-} from "./support/restricted-prover-funding.js";
+  fundProverCoin,
+  restrictedProverWallet,
+} from "./support/restricted-prover-wallet.js";
 import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("non-existent-input steps under the watcher's restricted wallet", () => {
-  it("funds every step and posts its collateral from the reserved pool and convicts", async () => {
+  it("funds every step and posts its collateral from the coins no other action holds and convicts", async () => {
     const h = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realNonExistentInput: true,
@@ -84,7 +84,7 @@ describe("non-existent-input steps under the watcher's restricted wallet", () =>
       }),
       owner: h.proverSigner.paymentKeyHash,
     });
-    await fundReservedCoin({
+    const held = await fundProverCoin({
       emulator: h.emulator,
       funderLucid: h.funderLucid,
       signer: h.proverSigner,
@@ -95,11 +95,13 @@ describe("non-existent-input steps under the watcher's restricted wallet", () =>
       field: 0,
       prepared,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-      // A fresh reservation per step, as the watcher begins each action.
+      // A fresh restricted wallet per step, as the watcher builds each
+      // action, with another action of the process holding one coin.
       submitStep: async (args) => {
-        const funding = await restrictedProverFunding({
+        const funding = restrictedProverWallet({
           emulator: h.emulator,
           signer: args.signer,
+          held: [held],
         });
         const result = await buildAndSubmitUnjournaled(
           buildInputExistenceStep,

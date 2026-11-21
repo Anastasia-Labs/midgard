@@ -1,11 +1,13 @@
-import { assertWorkflowJournalActuation } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
-import { workflowJournalIsReconciliationOnly } from "./actuation-permit.js";
+import {
+  assertWorkflowRunActuation,
+  workflowRunIsReconciliationOnly,
+} from "./actuation-permit.js";
 import type { WorkflowAdapterRunnerInput } from "./adapters.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "./orchestrator.fraud-proof-workflow-run-result.js";
+import type { WorkflowRun } from "./workflow-run.js";
 
 /**
- * Longest a session may poll without journaled progress before it hands its
+ * Longest a session may poll without progress before it hands its
  * turn back. An honest script-decode pending resolves within its validity
  * window (15 min) plus provider grace (10 min); this leaves 5 min over that.
  */
@@ -16,60 +18,19 @@ export const WORKFLOW_CONTINUATION_QUIET_BOUND_POLLS = 1_800;
 
 const POLL_MS = 1_000;
 
-type JournalEvent = Readonly<Record<string, unknown>>;
-
-const eventOf = (entry: unknown): JournalEvent | undefined =>
-  typeof entry === "object" &&
-  entry !== null &&
-  "event" in entry &&
-  typeof entry.event === "object" &&
-  entry.event !== null
-    ? (entry.event as JournalEvent)
+/**
+ * The progress a pending result shows: the action whose transaction, sent by
+ * this process, it awaits. A new one is progress; awaiting the same action
+ * again, however often its transaction is rebuilt, is not.
+ */
+const awaitedAction = (result: object): string | undefined =>
+  "awaitingActionId" in result && typeof result.awaitingActionId === "string"
+    ? result.awaitingActionId
     : undefined;
 
 /**
- * Journaled progress of a result: the number of distinct milestones its
- * entries reach. Every confirmation is one, and so is every entry that names
- * no action, such as a terminal one. Everything else an action journals (its
- * preflight, intents, submissions, pending or missing reconciliations and
- * re-observations) counts once for that action however often it repeats, and
- * a retired attempt counts for nothing: resubmitting an action whose last
- * attempt never landed is not progress. A `stalled` diagnostic counts only
- * when its reason is new since the last of those milestones, so a loop that
- * journals the same diagnostic between resubmissions of the same action is
- * not progress either. Absent entries are none.
- */
-export const journaledProgress = (result: object): number => {
-  if (!("entries" in result) || !Array.isArray(result.entries)) return -1;
-  const milestones = new Set<string>();
-  let stallsSinceProgress = new Set<unknown>();
-  result.entries.forEach((entry: unknown, index) => {
-    const event = eventOf(entry);
-    const kind = event?.kind;
-    if (kind === "signed_attempt_retired") return;
-    if (kind === "stalled") {
-      if (stallsSinceProgress.has(event?.reason)) return;
-      stallsSinceProgress.add(event?.reason);
-      milestones.add(`entry:${index.toString()}`);
-      return;
-    }
-    const confirmed =
-      kind === "confirmed" ||
-      (kind === "reconciled" && event?.outcome === "confirmed");
-    const milestone =
-      typeof event?.actionId === "string" && !confirmed
-        ? `action:${event.actionId}`
-        : `entry:${index.toString()}`;
-    if (milestones.has(milestone)) return;
-    milestones.add(milestone);
-    stallsSinceProgress = new Set();
-  });
-  return milestones.size;
-};
-
-/**
- * Keep one admitted runner session alive while its durable intent is pending.
- * A session that journals no progress within the quiet bound returns its last
+ * Keep one admitted runner session alive while a transaction it sent is
+ * pending. A session that awaits no new action within the quiet bound returns its last
  * pending result to resume on the next observation, with a reason naming
  * `FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED`, so the caller can run other
  * work and raise an alarm; its later progress is reported through
@@ -80,50 +41,49 @@ export const journaledProgress = (result: object): number => {
  */
 export const continuePendingWorkflow = async <Result>({
   invocation,
-  journal,
+  run,
   execute,
 }: {
   readonly invocation: Pick<
     WorkflowAdapterRunnerInput,
-    "mode" | "deploymentFingerprint" | "category" | "headerHash" | "onProgress"
+    "deploymentFingerprint" | "category" | "headerHash" | "onProgress"
   >;
-  readonly journal: FraudProofWorkflowJournalStore;
-  readonly execute: (mode: "run" | "resume") => Promise<Result>;
+  readonly run: WorkflowRun;
+  readonly execute: () => Promise<Result>;
 }): Promise<Result> => {
-  let mode = invocation.mode;
-  let progress = -1;
+  const awaited = new Set<string>();
   let quietSinceMs = Date.now();
   let quietPolls = 0;
   while (true) {
-    assertWorkflowJournalActuation({
-      journal,
+    assertWorkflowRunActuation({
+      run,
       deploymentFingerprint: invocation.deploymentFingerprint,
       category: invocation.category,
       headerHash: invocation.headerHash,
       checkpoint: "workflow_resume",
     });
-    const result = await execute(mode);
+    const result = await execute();
     if (
       typeof result !== "object" ||
       result === null ||
       !("kind" in result) ||
       result.kind !== "pending" ||
-      workflowJournalIsReconciliationOnly(journal) ||
+      workflowRunIsReconciliationOnly(run) ||
       ("resumeOnObservation" in result && result.resumeOnObservation === true)
     ) {
       return result;
     }
-    const journaled = journaledProgress(result);
-    if (journaled > progress) {
-      // The first poll only sets the session's baseline.
-      if (progress >= 0) {
+    const action = awaitedAction(result);
+    if (action !== undefined && !awaited.has(action)) {
+      // The first awaited action only sets the session's baseline.
+      if (awaited.size > 0) {
         try {
           invocation.onProgress?.();
         } catch {
           // A failing callback must not end the session.
         }
       }
-      progress = journaled;
+      awaited.add(action);
       quietSinceMs = Date.now();
       quietPolls = 0;
     } else quietPolls += 1;
@@ -139,12 +99,10 @@ export const continuePendingWorkflow = async <Result>({
       return {
         ...result,
         resumeOnObservation: true,
-        reason: `${FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED}: no journaled progress for ${quietMs.toString()} ms over ${quietPolls.toString()} polls; last pending: ${last}`,
+        reason: `${FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED}: no progress for ${quietMs.toString()} ms over ${quietPolls.toString()} polls; last pending: ${last}`,
       } as Result;
     }
-    // Reuse the same bound journal and permits. A fresh top-level invocation
-    // would rebind funding authority and may try to resolve spent inputs.
-    mode = "resume";
+    // Reuse the same bound run and permit.
     await new Promise<void>((resolve) => setTimeout(resolve, POLL_MS));
   }
 };

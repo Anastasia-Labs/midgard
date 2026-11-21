@@ -2,28 +2,23 @@
  * The validation-trace dispute through the watcher's installed application,
  * over the Open scene's emulator deployment: the watcher's classifier reads
  * the committed header through the authenticated raw L1 port and the
- * retained payload, and each turn mints the funding permit from the real
- * watcher prover-funding authority, then runs the registry's admitted
- * runner (`WORKFLOW_RUNNER_FACTORIES`), which resolves the family's roster,
- * binds its config and constructs its workflow from the deployment the
- * loader hands it.
+ * retained payload, and each turn runs the registry's admitted runner
+ * (`WORKFLOW_RUNNER_FACTORIES`) over one watcher process's in-flight set;
+ * the runner resolves the family's roster, binds its config and constructs
+ * its workflow from the deployment the loader hands it.
  *
  * The deployment is the scene's, described by a finalized manifest the
  * watcher's signed identity binds (`installedSceneSignedDeployment`), so the
- * convicted block's removal and its bond-backed slash are funded as the
- * deployment's own. The calling test mocks the dispute's deployment binding
+ * convicted block's removal and its bond-backed slash are the deployment's
+ * own. The calling test mocks the dispute's deployment binding
  * with `bindingFor` and the L1 observation port with the recorded raw
  * authority. The roster is the installed scene's.
  */
-import { homedir } from "node:os";
-
 import { Lucid } from "@lucid-evolution/lucid";
 import {
   watcherDeploymentReleaseEconomicsAuthority,
   watcherDeploymentReleaseFinalityAuthority,
-  watcherValidationDisputeFundingTerms,
 } from "midgard-watcher";
-import { recordWatcherFaultDecision } from "midgard-watcher/tests/support/installed-prover-funding-recovery";
 
 import { validationTraceComputationSteps } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceAwaitingCounterparty } from "../../src/validation-trace-dispute/waiting.js";
@@ -33,13 +28,13 @@ import { applyFamilyApplicationRecord } from "../../src/workflow/family-applicat
 import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-application-registry.family-application-registry.js";
 import type { VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD } from "../../src/workflow/family-application-registry.validation-trace-dispute-family-application-record.js";
 import { createFraudProofFamilyRawL1ObservationPort } from "../../src/workflow/family-l1-observation.js";
-import { restrictWorkflowFundingSigner } from "../../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
 import { authenticatedStateQueueObservationDigest } from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import { classifyHeader } from "../../src/workflow/header-classifier.classify-header.js";
 import {
   createHeaderClassifier,
   headerDecisionReplayContext,
 } from "../../src/workflow/header-classifier.create-header-classifier.js";
+import type { InFlightTransaction } from "../../src/workflow/in-flight.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   WORKFLOW_RUNNER_FACTORIES,
@@ -48,29 +43,21 @@ import {
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { network } from "./emulator/blueprints.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
-import { scratchDirectory } from "./scratch-directory.js";
-import {
-  emulatorProtocolParameterAuthority,
-  openInstalledProverFunding,
-} from "./script-decode-installed-funding.js";
+import { emulatorManifestProtocolParameters } from "./emulator-protocol-parameters.js";
 import {
   fixtureLeaseCoordinator,
   FixtureRetainedDaSource,
 } from "./script-decode-installed-host.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
-import {
-  referenceUtxos,
-  scriptHashes,
-} from "./validation-trace-dispute-funded-roster.js";
 import { installedSceneSignedDeployment } from "./validation-trace-dispute-installed-manifest.js";
 import {
   type InstalledScene,
   sceneRoster,
   scriptHashOf,
 } from "./validation-trace-dispute-installed-scene.js";
-import { oneStepDeployment } from "./validation-trace-dispute-one-step.js";
 import type { Block } from "./validation-trace-dispute-open-scene.js";
 import { walletOnlySendAlwaysOpenOn } from "./wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./workflow-process.js";
 
 const CATEGORY = "validationTraceDispute" as const;
 const RUNTIME_CONFIG_PATH = "/installed/validation-trace-runtime.json";
@@ -90,7 +77,7 @@ export const installValidationTraceApplication = async ({
   readonly installed: InstalledScene;
   readonly recorder: Recorder;
 }) => {
-  const { scene, oneStep, removal } = installed;
+  const { scene, removal } = installed;
   const { h, chain } = scene;
   const signed = installedSceneSignedDeployment(
     installed,
@@ -108,10 +95,6 @@ export const installValidationTraceApplication = async ({
   const releaseEconomics = await watcherDeploymentReleaseEconomicsAuthority(
     identity,
   ).verifyForWorkflow({ deploymentFingerprint: fingerprint });
-  const protocolParameters = await emulatorProtocolParameterAuthority(
-    identity,
-    h.proverLucid,
-  );
   const category = h.catalogue.categories[CATEGORY]!;
   // The finalized manifest the identity binds.
   const deploymentInfo = signed.signedIdentity.manifest as Readonly<{
@@ -153,7 +136,7 @@ export const installValidationTraceApplication = async ({
     contractEntries: deploymentInfo.contracts,
     releaseFinality,
     releaseEconomics,
-    cardanoProtocolParameters: protocolParameters.snapshot,
+    cardanoProtocolParameters: emulatorManifestProtocolParameters(h.emulator),
     catalogue: {
       policyId: h.contracts.fraudProofCatalogue.policyId,
       spendingScriptAddress:
@@ -239,38 +222,20 @@ export const installValidationTraceApplication = async ({
   const slotConfig = h.proverLucid.config().slotConfig;
   const stateQueueMutationLeaseCoordinator = fixtureLeaseCoordinator();
   const signer = h.proverSigner;
-  // The watcher's journal root, under home as its SQLite stores refuse /tmp.
-  const scratch = await scratchDirectory(
-    "validation-trace-installed-",
-    homedir(),
-  );
-  const directory = scratch.path;
-  await recordWatcherFaultDecision(directory, decision);
 
   /** The watcher's loader body (`buildCommonInfrastructure`) for one
    * invocation over `headerHash`, with `decisionDigest` when admitted. */
   const load = async ({
     headerHash: loaded,
     decisionDigest,
-    fundingReservationPermit,
     replayContext,
   }: {
     readonly headerHash: string;
     readonly decisionDigest?: string;
-    readonly fundingReservationPermit?: Parameters<
-      typeof restrictWorkflowFundingSigner
-    >[0]["permit"];
     readonly replayContext: ReturnType<typeof headerDecisionReplayContext>;
   }) => {
     const lucid = await Lucid(h.emulator, "Custom", { slotConfig });
-    const restricted =
-      fundingReservationPermit === undefined
-        ? signer
-        : restrictWorkflowFundingSigner({
-            signer,
-            permit: fundingReservationPermit,
-          });
-    restricted.selectWallet(lucid);
+    signer.selectWallet(lucid);
     return {
       schemaVersion: WORKFLOW_RUNTIME_CONFIG,
       infrastructure: {
@@ -280,7 +245,7 @@ export const installValidationTraceApplication = async ({
         headerHash: loaded,
         ...(decisionDigest === undefined ? {} : { decisionDigest }),
         lucid,
-        signer: restricted,
+        signer,
         // The case history reads the recorded raw L1.
         l1Source: { snapshotAuthority: () => recorder.authority },
         stateQueueMutationLeaseCoordinator,
@@ -310,68 +275,26 @@ export const installValidationTraceApplication = async ({
       ...(execution.decisionDigest === undefined
         ? {}
         : { decisionDigest: execution.decisionDigest }),
-      ...(execution.fundingReservationPermit === undefined
-        ? {}
-        : { fundingReservationPermit: execution.fundingReservationPermit }),
       replayContext: headerDecisionReplayContext(decision),
     })) as never;
   });
-  const deployment = oneStepDeployment(scene, oneStep, fingerprint);
-  const funding = await openInstalledProverFunding({
-    emulator: h.emulator,
-    identity,
-    category: CATEGORY,
-    runner,
-    economics: releaseEconomics,
-    protocolParameters,
-    fundingPaymentKeyHash: signer.paymentKeyHash,
-    walletAddress: signer.address,
-    // The deployment's contracts the funding governs: the dispute's, and
-    // the protocol state the block's removal spends.
-    scriptHashes: {
-      ...scriptHashes(scene, deployment),
-      ...Object.fromEntries(
-        Object.entries(removal.published).map(([name, utxo]) => [
-          name,
-          scriptHashOf(utxo),
-        ]),
-      ),
-    },
-    referenceUtxos: [
-      ...referenceUtxos(scene, deployment),
-      ...roster.values(),
-      ...Object.values(removal.published),
-    ],
-    directory,
-    journalRoot: directory,
-    validationDispute: watcherValidationDisputeFundingTerms(identity, CATEGORY)
-      .validationDispute,
-  });
-  let turns = 0;
+  const objective = { category: CATEGORY, headerHash } as const;
+  /** The watcher process the turns run in; `restart` replaces it. */
+  let process = createTestWorkflowProcess();
+  /** What earlier processes sent, oldest first. */
+  const before: InFlightTransaction[] = [];
   /** One watcher application turn for the objective. */
-  const turn = async () => {
-    const fundingReservationPermit = await funding.mintPermit({
-      actuationPermit: permit,
-      decisionDigest: decision.decisionDigest,
-    });
-    const mode = turns === 0 ? "run" : "resume";
-    turns += 1;
-    return (await runner.runOrResume({
-      mode,
+  const turn = async () =>
+    (await runner.runOrResume({
       category: CATEGORY,
       deploymentFingerprint: fingerprint,
       headerHash,
       decisionDigest: decision.decisionDigest,
       actuationPermit: permit,
-      fundingReservationPermit,
-      journal: funding.workflowJournal.forObjective({
-        category: CATEGORY,
-        headerHash,
-      }),
+      sends: process.sends(objective),
       runtimeConfigPath: RUNTIME_CONFIG_PATH,
       walletOnlySend: walletOnlySendAlwaysOpenOn(h.proverLucid),
     })) as FraudProofWorkflowRunResult | ValidationTraceAwaitingCounterparty;
-  };
   /** The registry's installed record for the dispute. */
   const record = FAMILY_APPLICATION_REGISTRY[
     CATEGORY
@@ -406,10 +329,15 @@ export const installValidationTraceApplication = async ({
     apply,
     sources,
     turn,
-    close: async () => {
-      funding.close();
-      await scratch.remove();
+    /** A watcher restart: the next turn runs in a fresh process. */
+    restart: () => {
+      before.push(...process.sent());
+      process = createTestWorkflowProcess();
     },
+    /** Every transaction the watcher sent for the objective, across
+     * restarts, oldest first. */
+    sent: () => Object.freeze([...before, ...process.sent()]),
+    close: async () => undefined,
   } as const;
 };
 

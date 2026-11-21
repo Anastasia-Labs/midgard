@@ -6,18 +6,15 @@ import { performance } from "node:perf_hooks";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as pause } from "node:timers/promises";
 
-import {
-  LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
-  LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
-} from "@al-ft/midgard-fault-proofs/remove-fraudulent-block";
 import { resolveProverSigner } from "@al-ft/midgard-fault-proofs/runtime";
 import { recordCrossBlockRawEmulator } from "@al-ft/midgard-fault-proofs/test-support/cross-block-raw-emulator";
-import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
+  CML,
+  coreToTxOutput,
   Data,
   generateEmulatorAccount,
   Kupmios,
@@ -31,6 +28,7 @@ import { expect, it, vi } from "vitest";
 
 import { readWatcherFaultDecisionEvidence } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
+import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";
 import {
   closeWatcherJournalDatabase,
   WATCHER_JOURNAL_DATABASE_FILE,
@@ -49,7 +47,6 @@ import { createPublishedWatcherDeploymentAuthority } from "../support/published-
 import { stagePublishedDepositTrace } from "../support/published-deposit-trace.stage-published-deposit-trace.js";
 import { createTerminalRelease } from "../support/terminal-release.js";
 import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.js";
-import { assertPublishedFundingCustodyRoles } from "./watcher-installed-journey.funding-policy-fixture.js";
 
 /** The fields of an operations response these probes read. */
 type ProbeBody = {
@@ -61,21 +58,12 @@ type ProbeBody = {
 
 const transport = vi.hoisted(() => ({
   provider: undefined as Provider | undefined,
-  fundingContracts: [] as Parameters<
-    typeof assertPublishedFundingCustodyRoles
-  >[0],
 }));
 vi.mock("@al-ft/midgard-fault-proofs", async (loadOriginal) => {
   const actual =
     await loadOriginal<typeof import("@al-ft/midgard-fault-proofs")>();
   return {
     ...actual,
-    createWorkflowRuntimeFundingPolicy: (
-      input: Parameters<typeof actual.createWorkflowRuntimeFundingPolicy>[0],
-    ) => {
-      transport.fundingContracts = [...input.contracts];
-      return actual.createWorkflowRuntimeFundingPolicy(input);
-    },
     makeLucidForSubmit: async (
       config: Parameters<typeof actual.makeLucidForSubmit>[0],
     ) => {
@@ -513,107 +501,66 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         await pause(50);
       }
     });
-    // The running watcher's workflow rows, read over a second connection.
-    const readWorkflow = async (): Promise<
-      readonly FraudProofWorkflowJournalEntry[]
-    > => {
-      if (!existsSync(watcherConfig.storage.path)) return [];
-      const store = new DatabaseSync(watcherConfig.storage.path);
-      try {
-        const rows = store
-          .prepare(
-            "SELECT workflow_id, body FROM watcher_workflow_journal_v1 WHERE category = 'transitionTrace' AND header_hash = ? ORDER BY workflow_id, sequence",
+    // The target's state-queue node while the fault stands: the removal is
+    // the transaction that spends it and continues none.
+    const targetUnit = toUnit(
+      deployment.contracts.stateQueue.policyId,
+      SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + staged.current.headerHash,
+    );
+    expect(
+      await deployment.emulator.getUtxosWithUnit(
+        deployment.contracts.stateQueue.spendingScriptAddress,
+        targetUnit,
+      ),
+    ).toHaveLength(1);
+    /** The prover's accepted submissions, in order: each carries the
+     * prover's key witness. */
+    const proverTransactions = () =>
+      recorder.rows.filter(({ witnessSetCbor }) => {
+        const keys =
+          CML.TransactionWitnessSet.from_cbor_hex(
+            witnessSetCbor,
+          ).vkeywitnesses();
+        for (let index = 0; index < (keys?.len() ?? 0); index++)
+          if (
+            keys!.get(index).vkey().hash().to_hex() === prover!.paymentKeyHash
           )
-          .all(staged.current.headerHash) as {
-          workflow_id: string;
-          body: string;
-        }[];
-        expect(
-          new Set(rows.map(({ workflow_id }) => workflow_id)).size,
-        ).toBeLessThanOrEqual(1);
-        return rows.map(
-          ({ body }) => JSON.parse(body) as FraudProofWorkflowJournalEntry,
-        );
-      } catch (cause) {
-        if (cause instanceof Error && cause.message.includes("no such table"))
-          return [];
-        throw cause;
-      } finally {
-        store.close();
-      }
-    };
-    let reportedWorkflowSequence = -1;
+            return true;
+        return false;
+      });
+    let reportedSubmissions = 0;
     const terminalRelease = createTerminalRelease(chain);
-    const completion = await stage(
+    await stage(
       "confirmed proof and correction",
       async () => {
         for (;;) {
-          const entries = await readWorkflow();
-          for (const { sequence, event } of entries) {
-            if (sequence <= reportedWorkflowSequence) continue;
-            if (event.kind === "submitted" || event.kind === "confirmed") {
-              console.info(
-                `watcher proof: ${event.kind} ${event.actionId.split(":")[0]}`,
-              );
-            }
-            reportedWorkflowSequence = sequence;
-          }
-          const lastEvent = entries.at(-1)?.event;
-          await terminalRelease.observe(entries);
-          if (lastEvent?.kind === "stalled") {
-            throw new Error(`Workflow stalled: ${lastEvent.reason}`);
-          }
-          const intents = entries.flatMap(({ event }) =>
-            event.kind === "submission_intent" ? [event] : [],
-          );
-          const submitted = entries.flatMap(({ event }) =>
-            event.kind === "submitted" ? [event] : [],
-          );
-          const confirmed = entries.flatMap(({ event }) =>
-            event.kind === "confirmed" ? [event] : [],
-          );
-          for (const event of submitted) {
-            expect(
-              recorder.rows.filter(({ txHash }) => txHash === event.txHash),
-            ).toHaveLength(1);
-            expect(recorder.signedCbors.has(event.txHash)).toBe(true);
-            expect(
-              (await deployment.emulator.getTransactionStatus(event.txHash))
-                .status,
-            ).toBe("confirmed");
-          }
-          const terminal = entries
-            .filter(({ event }) => event.kind === "completed")
-            .at(-1)?.event;
-          if (terminal?.kind === "completed") {
-            terminalRelease.assertCompleted(terminal.terminal);
-            expect(submitted.map(({ txHash }) => txHash)).toEqual(
-              intents.map(({ txHash }) => txHash),
+          const submissions = proverTransactions();
+          for (const { txHash } of submissions.slice(reportedSubmissions))
+            console.info(`watcher proof: submitted ${txHash}`);
+          reportedSubmissions = submissions.length;
+          const quarantined = watcher!.operations.api
+            .status()
+            .l1Readiness.filter(
+              ({ reason }) => reason === WATCHER_FAULT_PROOF_QUARANTINED,
             );
-            expect(
-              confirmed.map(({ actionId, txHash }) => ({ actionId, txHash })),
-            ).toEqual(
-              intents.map(({ actionId, txHash }) => ({ actionId, txHash })),
+          if (quarantined.length > 0)
+            throw new Error(
+              `Workflow quarantined: ${quarantined.map(({ detail }) => detail).join("; ")}`,
             );
-            expect(confirmed.length).toBeGreaterThan(2);
-            expect(terminal.terminal).toMatchObject({
-              category: "transitionTrace",
-              headerHash: staged.current.headerHash,
-              correction: { fraudulentHeaderAbsent: true },
-              proofToken: { retainedAtFinalState: true },
-            });
-            expect(
-              terminal.terminal.observedAt.confirmationDepth,
-            ).toBeGreaterThanOrEqual(native.watcherConfig.l1.finality.depth);
-            return terminal.terminal;
+          // The latest proof step: `confirmed` once the removal is included,
+          // `completed` once it is final.
+          const steps = watcher!.operations.api.metrics().proofSteps;
+          await terminalRelease.observe(steps);
+          if (steps.completed !== "0") {
+            terminalRelease.assertCompleted();
+            return;
           }
-          const next = intents[confirmed.length];
           activeStage =
-            next === undefined
+            submissions.length === 0
               ? "watcher proof construction"
-              : `confirmation of ${String(next.actionInput.stage ?? next.actionId)}`;
-          if (confirmed.length > 0)
-            completedStage = `confirmed proof transaction ${confirmed.length}`;
+              : `confirmation of prover transaction ${submissions.length}`;
+          if (submissions.length > 0)
+            completedStage = `accepted prover transaction ${submissions.length}`;
           requireLiveRuntime();
           await pause(50);
         }
@@ -621,16 +568,31 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       // Each proof checkpoint must independently reach finality depth.
       720_000,
     );
+    // Once the chain alone completed it, its one sweep-only run spends what
+    // is left at our proof-materials address back to our wallet.
+    const addressOf = (outputCbor: string) =>
+      coreToTxOutput(CML.TransactionOutput.from_cbor_hex(outputCbor)).address;
+    const isSweep = ({ resolvedInputs }: (typeof recorder.rows)[number]) =>
+      resolvedInputs.length > 0 &&
+      resolvedInputs.every(
+        ({ outputCbor }) =>
+          addressOf(outputCbor) === prover!.proofMaterialsAddress,
+      );
+    await stage("proof-materials sweep", async () => {
+      for (;;) {
+        const [sweep] = proverTransactions().filter(isSweep);
+        if (
+          sweep !== undefined &&
+          (await deployment.emulator.getTransactionStatus(sweep.txHash))
+            .status === "confirmed"
+        )
+          return;
+        requireLiveRuntime();
+        await pause(50);
+      }
+    });
     await stage("corrected on-chain state", async () => {
-      assertPublishedFundingCustodyRoles(
-        transport.fundingContracts,
-        deployment.manifest,
-      );
       const { contracts, emulator } = deployment;
-      const targetUnit = toUnit(
-        contracts.stateQueue.policyId,
-        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + staged.current.headerHash,
-      );
       expect(
         await emulator.getUtxosWithUnit(
           contracts.stateQueue.spendingScriptAddress,
@@ -653,14 +615,15 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
           )
         ).next,
       ).toBe("Empty");
-      const proofs = await emulator.getUtxosWithUnit(
-        contracts.fraudProof.spendingScriptAddress,
-        completion.proofToken.unit,
+      // Exactly one proof token stands, created by the prover.
+      const proofs = (
+        await emulator.getUtxos(contracts.fraudProof.spendingScriptAddress)
+      ).filter(({ assets }) =>
+        Object.keys(assets).some((unit) =>
+          unit.startsWith(contracts.fraudProof.policyId),
+        ),
       );
       expect(proofs).toHaveLength(1);
-      expect(`${proofs[0]!.txHash}#${proofs[0]!.outputIndex}`).toBe(
-        completion.proofToken.outRef,
-      );
       expect(
         Data.from(proofs[0]!.datum!, SDKFraudProof.FraudProofTokenDatum)
           .fraud_prover,
@@ -698,41 +661,62 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       );
       expect(locks).toHaveLength(1);
       expect(Data.from(locks[0]!.datum!, SDK.CorrectionLockDatum)).toBe("Idle");
-      const intents = (await readWorkflow()).flatMap(({ event }) =>
-        event.kind === "submission_intent" ? [event] : [],
+      // Each prover transaction was accepted once and is confirmed; one
+      // created the proof token that stands, and a later one removed the
+      // target's node citing that token.
+      const rows = proverTransactions();
+      const submissions = rows.map(({ txHash }) => txHash);
+      expect(new Set(submissions).size).toBe(submissions.length);
+      expect(submissions.length).toBeGreaterThan(2);
+      for (const txHash of submissions)
+        expect((await emulator.getTransactionStatus(txHash)).status).toBe(
+          "confirmed",
+        );
+      const carries = (outputCbor: string, unit: string) =>
+        (coreToTxOutput(CML.TransactionOutput.from_cbor_hex(outputCbor)).assets[
+          unit
+        ] ?? 0n) > 0n;
+      const outputsOf = ({ bodyCbor }: (typeof rows)[number]) => {
+        const outputs = CML.TransactionBody.from_cbor_hex(bodyCbor).outputs();
+        return Array.from({ length: outputs.len() }, (_, index) =>
+          outputs.get(index).to_cbor_hex(),
+        );
+      };
+      const proofUnit = Object.keys(proofs[0]!.assets).find((unit) =>
+        unit.startsWith(contracts.fraudProof.policyId),
+      )!;
+      const creation = rows.findIndex((row) =>
+        outputsOf(row).some((output) => carries(output, proofUnit)),
       );
-      const coordinated = intents.filter(
-        (intent) =>
-          intent.durableRecovery?.stateQueueMutationLease !== undefined,
-      );
-      expect(coordinated).toHaveLength(1);
-      const checkpoint = coordinated[0]!;
-      expect(checkpoint.actionInput).toMatchObject({
-        category: "transitionTrace",
-        stage: "step_07",
-        ordinal: 7,
-        requiresMutationLease: true,
-      });
-      expect(checkpoint.txHash).toBe(completion.proofToken.createdByTxHash);
-      // Local durable retry identity does not fence another node's workers.
-      expect(checkpoint.durableRecovery).toEqual({
-        stateQueueMutationLease: {
-          source: LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
-          token: LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
-        },
-      });
-      const removals = intents.filter(
-        ({ actionInput }) => actionInput.stage === "remove",
+      expect(creation).toBeGreaterThanOrEqual(0);
+      expect(proofs[0]!.txHash).toBe(submissions[creation]);
+      const removals = rows.filter(
+        (row) =>
+          row.resolvedInputs.some(({ outputCbor }) =>
+            carries(outputCbor, targetUnit),
+          ) && !outputsOf(row).some((output) => carries(output, targetUnit)),
       );
       expect(removals).toHaveLength(1);
-      expect(removals[0]!.actionInput.requiresMutationLease).toBe(false);
-      expect(removals[0]!.txHash).toBe(completion.correction.removalTxHash);
+      expect(removals[0]!.txHash).not.toBe(submissions[creation]);
+      expect(submissions.indexOf(removals[0]!.txHash)).toBeGreaterThan(
+        creation,
+      );
       expect(
-        removals.flatMap(
-          ({ durableRecovery }) =>
-            durableRecovery?.stateQueueMutationLease ?? [],
-        ),
-      ).toEqual([]);
+        removals[0]!.resolvedReferenceInputs.map(({ outRef }) => outRef),
+      ).toContain(`${proofs[0]!.txHash}#${proofs[0]!.outputIndex}`);
+      // Sixteen in all, the last the proof-materials sweep after the
+      // removal: one plain output to our wallet.
+      expect(rows).toHaveLength(16);
+      expect(rows.filter(isSweep).map(({ txHash }) => txHash)).toEqual([
+        submissions.at(-1),
+      ]);
+      expect(submissions.indexOf(removals[0]!.txHash)).toBe(14);
+      const swept = outputsOf(rows.at(-1)!).map((output) =>
+        coreToTxOutput(CML.TransactionOutput.from_cbor_hex(output)),
+      );
+      expect(swept).toHaveLength(1);
+      expect(swept[0]!.address).toBe(prover!.address);
+      expect(Object.keys(swept[0]!.assets)).toEqual(["lovelace"]);
     });
     requireLiveRuntime();
     const successor = await stage("new honest commitment", () =>
@@ -784,10 +768,11 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
             manifest: deployment.manifest,
             protocolParameters:
               deployment.operatorLucid.config().protocolParameters,
-            completion,
             honestSuccessorHeaderHash: successor.headerHash,
             decisions: await readDecisions(),
-            workflow: await readWorkflow(),
+            proverTransactions: proverTransactions().map(
+              ({ txHash }) => txHash,
+            ),
             acceptedTransactions: [...recorder.signedCbors].map(
               ([txHash, signedCbor]) => ({ txHash, signedCbor }),
             ),
@@ -901,7 +886,6 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     for (const close of cleanup.reverse()) await close();
     vi.restoreAllMocks();
     transport.provider = undefined;
-    transport.fundingContracts = [];
     vi.unstubAllEnvs();
     recorder.restore();
     if (succeeded) await rm(directory, { recursive: true, force: true });

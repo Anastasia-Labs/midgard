@@ -1,12 +1,5 @@
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
-import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
-import {
-  CML,
-  coreToTxOutput,
-  Data,
-  type UTxO,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+import { Data, type UTxO, validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import { buildInit } from "../submit-init.submit-init.js";
@@ -38,13 +31,14 @@ import {
   withProofChunkPrerequisite,
 } from "../workflow/proof-chunk-prerequisite.js";
 import { resolveDirectFirstProofChunks } from "../workflow/proof-chunk-prerequisite.route-action-identity.js";
+import { workflowProofMaterialsHolder } from "../workflow/proof-materials-view.holder.js";
 import {
   deriveFraudProofRawL1FamilyStage,
   fraudProofRawL1SnapshotRequestForFamily,
 } from "../workflow/raw-l1-family-derivation.js";
 import type { FraudProofRawL1ComputationStepRole } from "../workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import { admitFraudProofRawL1Snapshot } from "../workflow/raw-l1-snapshot.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import { createValueConservationAdapter } from "./adapter.js";
 import { admitValueConservationArtifact } from "./artifact.js";
 import {
@@ -250,7 +244,6 @@ export const createManifestBoundValueConservationWorkflow = async (
     signer: config.signer,
     publications: l1.publications,
     maximumTransactionBytes: binding.cardanoProtocolParameters.maxTxSize,
-    transactionConfirmed: (input) => l1.transactionConfirmed(input),
     proofCborForAction: async ({ action, artifact }) => {
       if (action.input.stage !== "fold") return null;
       const { admitted, selected } = await actionAt(action, artifact);
@@ -338,9 +331,6 @@ export const createManifestBoundValueConservationWorkflow = async (
     };
   };
   let adapter = createValueConservationAdapter({
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
-    signedRecovery: l1,
     prepare: async ({ evidence, replayContext, classification }) => {
       const forced =
         classification.selected.violationId ===
@@ -399,7 +389,7 @@ export const createManifestBoundValueConservationWorkflow = async (
         });
       return {
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await (async () => {
               if (context.action.input.stage === "init") {
                 return await buildInit({
@@ -439,7 +429,6 @@ export const createManifestBoundValueConservationWorkflow = async (
                 const publishedProofChunks =
                   await resolveDirectFirstProofChunks({
                     action: context.action,
-                    lucid: config.lucid,
                     address: config.signer.proofMaterialsAddress,
                     proofCbor: admitted.artifact.acceptedProofCbor!,
                   });
@@ -474,9 +463,9 @@ export const createManifestBoundValueConservationWorkflow = async (
               const resolvedField =
                 await fieldPrerequisite.resolveAuthenticated({
                   headerHash: config.headerHash,
+                  holder: workflowProofMaterialsHolder(context),
                   action: context.action,
                   artifact: context.artifact,
-                  entries: context.entries,
                 });
               const field =
                 fieldIndex === undefined
@@ -522,103 +511,6 @@ export const createManifestBoundValueConservationWorkflow = async (
           )
         ).transaction,
       };
-    },
-    confirmed: async (context) => {
-      const admitted = await admit(context.artifact);
-      const transaction = (await snapshot()).transactions.find(
-        (tx) => tx.txHash === context.txHash,
-      );
-      if (transaction === undefined) return false;
-      const outputs = CML.TransactionBody.from_cbor_hex(
-        transaction.bodyCbor,
-      ).outputs();
-      const lucidOutputs = Array.from({ length: outputs.len() }, (_, index) =>
-        coreToTxOutput(outputs.get(index)),
-      );
-      const threadUnit =
-        contracts.computationThread.policyId +
-        binding.definition.categoryId +
-        config.headerHash;
-      const proofUnit =
-        contracts.fraudProof.policyId +
-        binding.definition.categoryId +
-        config.headerHash;
-      if (context.action.input.stage === "remove") {
-        if (
-          !transaction.resolvedInputs.some(
-            (input) => input.outRef === context.action.input.nextRemovalOutRef,
-          ) ||
-          !transaction.resolvedReferenceInputs.some(
-            (input) => input.outRef === context.action.input.fraudProofOutRef,
-          )
-        )
-          throw new Error(
-            "value conservation: confirmed removal changed exact inputs",
-          );
-        return true;
-      }
-      if (context.action.input.stage === "init") {
-        if (
-          !lucidOutputs.some(
-            (output) =>
-              output.address === contracts.steps[0].spendingScriptAddress &&
-              output.assets[threadUnit] === 1n &&
-              output.datum != null &&
-              Data.to(Data.from(output.datum)) ===
-                conservationDatum(config.signer.paymentKeyHash, null),
-          )
-        )
-          throw new Error(
-            "value conservation: confirmed initialization differs",
-          );
-        return true;
-      }
-      const { selected } = await actionAt(context.action, context.artifact);
-      const input = transaction.resolvedInputs.find(
-        (input) => input.outRef === context.action.input.threadOutRef,
-      );
-      if (
-        input === undefined ||
-        fromRaw(input).address !==
-          conservationStep(contracts, selected.position)
-            .spendingScriptAddress ||
-        fromRaw(input).assets[threadUnit] !== 1n ||
-        Data.to(Data.from(fromRaw(input).datum!)) !==
-          conservationDatum(config.signer.paymentKeyHash, selected.inputState)
-      )
-        throw new Error(
-          "value conservation: confirmed input checkpoint differs",
-        );
-      const terminal = selected.nextPosition === null;
-      const expectedAddress = terminal
-        ? contracts.fraudProof.spendingScriptAddress
-        : contracts[selected.nextPosition!].spendingScriptAddress;
-      if (
-        !lucidOutputs.some(
-          (output) =>
-            output.address === expectedAddress &&
-            output.assets[terminal ? proofUnit : threadUnit] === 1n &&
-            output.datum != null &&
-            Data.to(Data.from(output.datum)) ===
-              (terminal
-                ? Data.to(
-                    { fraud_prover: config.signer.paymentKeyHash },
-                    FraudProofTokenDatum,
-                  )
-                : conservationDatum(
-                    config.signer.paymentKeyHash,
-                    selected.outputState,
-                  )),
-        )
-      )
-        throw new Error(
-          "value conservation: confirmed output checkpoint differs",
-        );
-      if (admitted.headerHash !== config.headerHash)
-        throw new Error(
-          "value conservation: confirmed artifact targets another header",
-        );
-      return true;
     },
   });
   adapter = withFieldCarriagePrerequisite({

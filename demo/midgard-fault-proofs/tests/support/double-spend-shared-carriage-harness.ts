@@ -34,7 +34,6 @@ import {
   h32,
   outRefCbor,
 } from "../helpers/canonical-block-evidence-fixture.js";
-import { confirmedCarriageEntries } from "./confirmed-carriage-entries.js";
 
 const POLICY_ID = "91".repeat(28);
 const HEADER_HASH = h28(0x71);
@@ -64,7 +63,7 @@ export const withOtherAsset = (utxo: UTxO, txHash: string): UTxO => ({
   assets: { ...utxo.assets, [OTHER_UNIT]: 1n },
 });
 const CONTENT_IDENTITY_REFUSAL =
-  "authenticated publication output differs from its journaled content identity";
+  "authenticated publication output differs from its expected content identity";
 
 export const outRef = (utxo: UTxO) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
@@ -126,24 +125,21 @@ export const certifiedOpening = (
 
 /**
  * The adapter over a chain that holds exactly `walletUtxos` and
- * `certificateUtxos`, each an output of a transaction the workflow's journal
- * confirmed unless `foreignTxHashes` names it. The authenticated observer finds an output only by its exact
- * out-ref at the address and, like the production observer, refuses one
- * whose content differs from the expected datum and value shape.
+ * `certificateUtxos`; carriage is found on it by content. The authenticated
+ * observer finds an output only by its exact out-ref at the address and,
+ * like the production observer, refuses one whose content differs from the
+ * expected datum and value shape.
  */
 export const doubleSpendHarness = ({
   artifact,
   stage,
   walletUtxos,
   certificateUtxos,
-  foreignTxHashes = [],
 }: {
   readonly artifact: JournalJsonObject;
   readonly stage: DoubleSpendWorkflowStage;
   readonly walletUtxos: readonly UTxO[];
   readonly certificateUtxos: readonly UTxO[];
-  /** Transactions on the chain that another workflow made. */
-  readonly foreignTxHashes?: readonly string[];
 }) => {
   const at = (address: string) =>
     address === SIGNER.proofMaterialsAddress
@@ -159,17 +155,11 @@ export const doubleSpendHarness = ({
     target: { kind: "state_queue_header", headerHash: HEADER_HASH },
   } as const;
   const workflowId = h32(0x51);
-  // Every other transaction on this chain is one the journal confirmed.
-  const entries = () =>
-    confirmedCarriageEntries({
-      utxos: [...walletUtxos, ...certificateUtxos],
-      foreignTxHashes,
-      workflowId,
-      identity,
-    });
   const config = {
     lucid: {
       utxosAt: async (address: string) => [...at(address)],
+      utxosAtWithUnit: async (address: string, unit: string) =>
+        at(address).filter((utxo) => (utxo.assets[unit] ?? 0n) > 0n),
       utxosByOutRef: async (
         refs: readonly { txHash: string; outputIndex: number }[],
       ) =>
@@ -256,27 +246,16 @@ export const doubleSpendHarness = ({
       identity,
       workflowId,
       artifact,
-      entries: entries(),
     });
     if (observed.kind !== "action_required")
       throw new Error(`expected an action, observed ${observed.kind}`);
     return observed.action;
   };
-  const reconcile = async (action: FraudProofWorkflowAction, txHash: string) =>
-    await adapter.reconcile({
-      identity,
-      workflowId,
-      artifact,
-      entries: entries(),
-      action,
-      txHash,
-    });
   const preflight = async (action: FraudProofWorkflowAction) =>
     await adapter.preflight({
       identity,
       workflowId,
       artifact,
-      entries: entries(),
       action,
     });
   /** Runs preflight and returns the out-refs it authenticated. */
@@ -289,5 +268,5 @@ export const doubleSpendHarness = ({
     );
     return [...authenticated];
   };
-  return { next, reconcile, preflight, authenticatedBy };
+  return { next, preflight, authenticatedBy };
 };

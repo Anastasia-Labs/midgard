@@ -6,16 +6,15 @@
  * opens our case; the scene's operator defends it with a trace agreeing with
  * ours up to the state before the selection, and reveals from it; the
  * watcher bisects the thread and resolves it through the CEK resolver to the
- * selection resolver, every move and record under the funding permit it
- * mints each turn. With fees risen until the selection's hop is priced over
- * the per-move cap, a wallet holding exactly the terms' wallet-move reserve
+ * selection resolver. With fees risen until the selection's hop is priced
+ * over the per-move cap, a wallet holding exactly the wallet-move reserve
  * pays it whole, and its successor keeps all of the thread's lovelace; with
  * fees back, the awarded thread closes into our case.
  *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE } from "../src/validation-trace-dispute/move-fee.js";
@@ -108,7 +107,7 @@ const recordOrder: AdapterWrap = (adapter) => ({
   },
 });
 
-describe("validation-trace dispute one-step resolution through a CEK script selection under the prover funding permit", () => {
+describe("validation-trace dispute one-step resolution through a CEK script selection under the watcher's prover funding", () => {
   beforeAll(async () => {
     // Published before the scene's blocks, so the publications take none of
     // the source verification's window from the failing block's end, and
@@ -128,7 +127,7 @@ describe("validation-trace dispute one-step resolution through a CEK script sele
     });
     if (opened.result.kind !== "pending")
       throw new Error(`the case did not open: ${opened.history.join("\n")}`);
-    const { caseOutput } = await caseAndBond(scene, opened.result);
+    const { caseOutput } = await caseAndBond(scene, dispute);
     const defender = sceneOperator(scene);
     const trace = scriptedTrace(
       await failingMaterial(scene),
@@ -146,11 +145,7 @@ describe("validation-trace dispute one-step resolution through a CEK script sele
     side = { defender, trace, unit: threadUnitOf(scene, thread!) };
   }, 1_800_000);
 
-  afterAll(async () => {
-    await dispute?.close();
-  });
-
-  it("records the decode of the script our trace selects under the funding permit before Init", () => {
+  it("records the decode of the script our trace selects before Init", () => {
     const finish = order.indexOf("script_decode_finish");
     expect(order[0]).toBe("script_decode_stage");
     expect(finish).toBeGreaterThan(0);
@@ -169,14 +164,12 @@ describe("validation-trace dispute one-step resolution through a CEK script sele
         limit: 60,
       });
       const before = (await place())!.utxo;
-      // Fees rise until the selection's hop is priced over the per-move cap,
-      // and stay under the funding permit's ceiling at the fees the watcher
-      // read when it started.
+      // Fees rise until the selection's hop is priced over the per-move cap.
       const parameters = h.emulator.protocolParameters;
       h.emulator.protocolParameters = { ...parameters, minFeeA: 50 };
       try {
         await topUpProver(h as never, 100n * ADA);
-        await drainProver(h as never, await dispute.walletMoveReserve());
+        await drainProver(h as never, dispute.walletMoveReserve());
         // Until the hop lands, before any later move is built at these fees.
         await playThreads({
           scene,
@@ -190,20 +183,18 @@ describe("validation-trace dispute one-step resolution through a CEK script sele
       }
       // Fees back: the awarded thread closes into our case.
       await topUpProver(h as never, 100n * ADA);
-      const { result, history } = await playThreads({
+      const { history } = await playThreads({
         scene,
         runner: turns(),
         sides: [side],
-        until: async (run) =>
-          "entries" in run &&
-          confirmedOneStepMoves(run.entries).some(
+        until: async () =>
+          confirmedOneStepMoves(await dispute.confirmed()).some(
             ({ stage }) => stage === "close_awarded",
           ),
         limit: 20,
       });
       expect(await place(), history.join("\n")).toBeUndefined();
-      if (!("entries" in result)) throw new Error("no workflow journal");
-      const landed = confirmedOneStepMoves(result.entries);
+      const landed = confirmedOneStepMoves(await dispute.confirmed());
       expect(landed.at(-1)?.stage).toBe("close_awarded");
       const hops = landed.filter(
         ({ consumes }) => consumes === outRefOf(before),
@@ -232,7 +223,7 @@ describe("validation-trace dispute one-step resolution through a CEK script sele
         reportFit(
           `funded selection ${kind}`,
           moves
-            .filter(({ authority }) => authority.kind === kind)
+            .filter((move) => move.kind === kind)
             .map(({ signed }) => signed.toCBOR()),
         );
     },

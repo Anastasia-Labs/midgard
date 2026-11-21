@@ -39,14 +39,8 @@ import { resolveRegisteredOperatorRemovalWitness } from "../remove-fraudulent-bl
 import { buildSlashingInputs } from "../remove-fraudulent-block.resolve-state-queue-slashing-approach.js";
 import { requireSingletonUtxo, type ResolvedProverSigner } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import {
-  grantLostDefenseSlashFundingAuthority,
-  LOST_DEFENSE_SLASH_STAGE,
-} from "../workflow/funding-reservation-permit.lost-defense-slash-authority.js";
-import { isWorkflowFundingShortfall } from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
-import { computeFraudProofReleaseEconomicsPolicyDigest } from "../workflow/release-economics-policy.js";
 import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
-import { validationTraceRecovery } from "./actions.js";
+import { isWorkflowFundingShortfall } from "../workflow/workflow-funding-shortfall.js";
 import {
   type Directory,
   receiptOf,
@@ -77,8 +71,6 @@ type SlashInput = Readonly<{
   signer: ResolvedProverSigner;
   deployment: ValidationTraceDisputeDeployment;
   removal: ValidationTraceRemovalConfig;
-  /** The challenged block, which the funding authority names. */
-  headerHash: string;
   receiptOutRef: string;
   /** The slash's deadline, which a shortfall's alarm names. */
   deadlineMs?: () => Promise<number | undefined>;
@@ -89,7 +81,6 @@ const buildSlash = async ({
   signer,
   deployment,
   removal,
-  headerHash,
   receiptOutRef,
 }: SlashInput): Promise<CapturedValidationTraceStage> => {
   const { chain, references, network } = deployment;
@@ -262,29 +253,6 @@ const buildSlash = async ({
   );
   if (inputs.length !== inputOutRefs.length)
     throw new Error("signed lost-defense slash could not resolve its inputs");
-  grantLostDefenseSlashFundingAuthority({
-    signed,
-    inputs,
-    deploymentFingerprint: deployment.deploymentFingerprint,
-    economicsPolicyDigest: computeFraudProofReleaseEconomicsPolicyDigest({
-      profile: economics.profile,
-      requiredBondLovelace: economics.requiredBondLovelace.toString(),
-      slashingPenaltyLovelace: economics.slashingPenaltyLovelace.toString(),
-      fraudProverRewardLovelace: economics.fraudProverRewardLovelace.toString(),
-      inactivitySlashingPenaltyLovelace:
-        economics.inactivitySlashingPenaltyLovelace.toString(),
-      proverCollateralFloorLovelace:
-        economics.proverCollateralFloorLovelace.toString(),
-    }),
-    headerHash,
-    receiptOutRef,
-    receiptUnit,
-    operatorOutRef: outRefOf(bond),
-    operatorBondLovelace: (bond.assets.lovelace ?? 0n).toString(),
-    exactFeeLovelace: slashEconomics.exactFeeLovelace.toString(),
-    rewardLovelace: slashEconomics.fraudProverRewardLovelace.toString(),
-    rewardAddress,
-  });
   const transaction = captured(signed, [
     { role: "validation-trace-award", utxo: references.award },
     ...(active
@@ -320,19 +288,13 @@ const buildSlash = async ({
   ]);
   return {
     transaction,
-    durableRecovery: validationTraceRecovery({
-      stage: LOST_DEFENSE_SLASH_STAGE,
-      transaction,
-      slots: [],
-    }),
   };
 };
 
 /**
  * The operator's alarm on the slash by the receipt at `receiptOutRef` that
  * our wallet cannot fund, `cause` being why, naming the defender and the
- * slash's deadline: before the slash is built, when its reservation cannot
- * be funded, as when its build is short.
+ * slash's deadline, when its build is short.
  */
 export const validationTraceLostDefenseSlashUnfunded = async (
   input: Pick<SlashInput, "lucid" | "receiptOutRef" | "deadlineMs"> & {
@@ -351,7 +313,7 @@ export const validationTraceLostDefenseSlashUnfunded = async (
 
 /**
  * The slash of the defender the receipt at `receiptOutRef` names, signed
- * and evaluated, with its funding authority. A wallet short of the
+ * and evaluated. A wallet short of the
  * collateral is the operator's alarm, naming the slash's deadline.
  */
 export const captureValidationTraceLostDefenseSlash = async (

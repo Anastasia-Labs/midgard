@@ -48,7 +48,7 @@ import {
 import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
@@ -206,7 +206,7 @@ export const createBoundTransactionPort = ({
   category: "committedFieldShape",
   prepare: async ({ evidence, classification }) =>
     await prepareArtifactFromEvidence({ evidence, classification }),
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const admitted = await admitCommittedFieldShapeArtifact(artifact);
     if (admitted.artifact.headerHash !== config.headerHash) {
       throw new Error(
@@ -216,7 +216,7 @@ export const createBoundTransactionPort = ({
     const input = requiredAction(action);
     if (input.stage === "init") {
       const transaction = (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await builders.init({
             lucid: config.lucid,
             blueprint: config.blueprint,
@@ -237,9 +237,9 @@ export const createBoundTransactionPort = ({
     if (input.stage === "step_01") {
       const field = await config.fieldCarriage.resolveAuthenticated({
         headerHash: config.headerHash,
+        holder,
         action,
         artifact,
-        entries,
       });
       if (field.requirement === null) {
         throw new Error(
@@ -247,7 +247,7 @@ export const createBoundTransactionPort = ({
         );
       }
       const transaction = (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await builders.step01({
             lucid: config.lucid,
             blueprint: config.blueprint,
@@ -273,7 +273,7 @@ export const createBoundTransactionPort = ({
     }
     if (input.stage === "step_02") {
       const transaction = (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await builders.step02({
             lucid: config.lucid,
             contracts: config.contracts,

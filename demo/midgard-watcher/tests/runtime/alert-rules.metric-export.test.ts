@@ -14,11 +14,14 @@ import { WATCHER_PROVER_FUNDING_UNAVAILABLE } from "../../src/fault-proofs/fault
 import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";
 import { WATCHER_FAULT_PROOF_RESUBMISSION_REQUIRED } from "../../src/fault-proofs/fault-proof-resubmission-hold.js";
 import {
+  FAULT_PROOF_OWN_THREAD_UNCANCELLABLE,
+  FAULT_PROOF_OWN_THREAD_UNRECLAIMED,
+} from "../../src/fault-proofs/own-thread-sweep.js";
+import {
   createWatcherReplayRefusals,
   WATCHER_REPLAY_REFUSAL_KINDS,
   WATCHER_REPLAY_REFUSAL_PHASES,
 } from "../../src/fault-proofs/replay-refusals.js";
-import { WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION } from "../../src/funding/prover-funding-recovery.orphaned-reservation.js";
 import {
   L1_EVENT_REFUSALS_UNREADABLE,
   L1_USER_EVENT_REFUSED,
@@ -57,7 +60,6 @@ const NAMED: Readonly<
   midgard_watcher_readiness_reason: {
     reason: [
       ...WATCHER_OPERATIONS_READINESS_REASONS,
-      WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION,
       ...PROOF_HOLD_REASONS,
       PROOF_L1_REFUSED,
       ...L1_REASONS,
@@ -67,7 +69,12 @@ const NAMED: Readonly<
     reason: [...PROOF_HOLD_REASONS, PROOF_L1_REFUSED, ...L1_REASONS],
   },
   midgard_watcher_l1_degradation: {
-    reason: [L1_USER_EVENT_REFUSED, L1_EVENT_REFUSALS_UNREADABLE],
+    reason: [
+      L1_USER_EVENT_REFUSED,
+      L1_EVENT_REFUSALS_UNREADABLE,
+      FAULT_PROOF_OWN_THREAD_UNRECLAIMED,
+      FAULT_PROOF_OWN_THREAD_UNCANCELLABLE,
+    ],
   },
 };
 
@@ -140,7 +147,6 @@ describe("the watcher's alert rules", () => {
       ...PROOF_HOLD_REASONS.filter(
         (hold) => hold !== WATCHER_PROVER_FUNDING_UNAVAILABLE,
       ),
-      WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION,
       `${WATCHER_FAULT_PROOF_L1_REFUSED}:${refusal}`,
     ])
       expect(reason, `MidgardWatcherProofHeld pages ${reason}`).toMatch(pages);

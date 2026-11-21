@@ -20,27 +20,28 @@ import {
 } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
-import { LOST_DEFENSE_SLASH_STAGE } from "../workflow/funding-reservation-permit.lost-defense-slash-authority.js";
-import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
-import { WorkflowFundingShortfallError } from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import type { FraudProofWorkflowObservation } from "../workflow/orchestrator.js";
+import { WorkflowFundingShortfallError } from "../workflow/workflow-funding-shortfall.js";
+import { validationTraceAction, validationTraceActionId } from "./actions.js";
 import {
-  type ConfirmedValidationTraceStage,
-  isClaimedOutput,
-  validationTraceAction,
-  validationTraceActionId,
-} from "./actions.js";
-import type { ValidationTraceCaseHistory } from "./case-history.js";
+  type ValidationTraceCaseHistory,
+  validationTraceThreadTokenName,
+} from "./case-history.js";
 import {
   validationTraceCaseBondUnlockMs,
   validationTraceCaseStartedAt,
 } from "./case-origin.js";
+import type { ValidationTraceOwnReceipt } from "./own-view.js";
 import { VALIDATION_TRACE_MOVE_UNBUILT } from "./threads.js";
 import {
   hubOracleUtxo,
   ours,
   type ValidationTraceDisputeDeployment,
 } from "./transactions.js";
+import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "./wallet-move-unfunded-alarm.js";
+
+/** The stage of the slash of a defender who lost a thread of ours. */
+export const LOST_DEFENSE_SLASH_STAGE = "slash_lost_defense" as const;
 
 export type Directory = SDKDa.SlashingDirectory;
 
@@ -150,11 +151,18 @@ export const validationTraceLostDefenseSlashDeadlines = ({
   ): Promise<number | undefined> => {
     try {
       const caseUnit = deployment.chain.case.policyId + receipt.case_id;
+      // The receipt's history is held with the case's: a close that is no
+      // conviction burns the case token while the receipt stays live, and
+      // this read of the case's closed history must stand until the slash.
+      const receiptUnit =
+        deployment.chain.award.policyId +
+        validationTraceThreadTokenName(receipt.case_id, receipt.defender_vkh);
       return validationTraceCaseBondUnlockMs(
         validationTraceCaseStartedAt({
           transactions: await caseHistory.transactions({
             headerHash,
             caseUnit,
+            alongside: [receiptUnit],
           }),
           caseUnit,
         }),
@@ -223,7 +231,9 @@ export type ValidationTraceLostDefenseSlashDeadlines = ReturnType<
  * operator set, whose slash this run has not confirmed, before its
  * deadline. One this run skipped because it did not build is `held` until
  * its deadline, so the run that would otherwise end retries it at its next
- * observation.
+ * observation. The receipts are the own view's; the confirmed `stages` of
+ * a workflow's record and the outputs `live` shows of them are a test's
+ * path only, which no runner takes.
  */
 export const dueValidationTraceLostDefenseSlash = async ({
   lucid,
@@ -231,43 +241,27 @@ export const dueValidationTraceLostDefenseSlash = async ({
   deployment,
   headerHash,
   deadlines,
-  stages,
-  live,
   skipped,
   now,
+  receipts,
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
   readonly deployment: ValidationTraceDisputeDeployment;
   readonly headerHash: string;
   readonly deadlines: ValidationTraceLostDefenseSlashDeadlines;
-  readonly stages: readonly ConfirmedValidationTraceStage[];
-  readonly live: ReadonlyMap<string, UTxO>;
   /** The action ids this run skipped because they did not build. */
   readonly skipped?: ReadonlySet<string> | undefined;
   readonly now: number;
+  readonly receipts: readonly ValidationTraceOwnReceipt[];
 }): Promise<
   | Readonly<{ kind: "due"; observation: FraudProofWorkflowObservation }>
   | Readonly<{ kind: "held"; reason: string }>
   | undefined
 > => {
   let held: Readonly<{ kind: "held"; reason: string }> | undefined;
-  for (const { action, outputs } of stages) {
-    if (action.stage !== "close_thread" && action.stage !== "close_awarded")
-      continue;
-    const claim = outputs.find(({ role }) => role === "receipt");
-    const utxo = claim === undefined ? undefined : live.get(claim.outRef);
-    if (claim === undefined || utxo === undefined) continue;
-    if (!isClaimedOutput(claim, utxo)) continue;
-    const slash = { stage: LOST_DEFENSE_SLASH_STAGE, consumes: claim.outRef };
-    if (
-      stages.some(
-        (confirmed) =>
-          confirmed.action.stage === slash.stage &&
-          confirmed.action.consumes === slash.consumes,
-      )
-    )
-      continue;
+  for (const { outRef, utxo } of receipts) {
+    const slash = { stage: LOST_DEFENSE_SLASH_STAGE, consumes: outRef };
     const receipt = receiptOf(utxo);
     if (
       receipt.outcome === "NeitherClaimValid" ||
@@ -279,7 +273,7 @@ export const dueValidationTraceLostDefenseSlash = async ({
     const deadlineMs = await deadlines.ofNode(
       headerHash,
       receipt,
-      claim.outRef,
+      outRef,
       node,
     );
     // Past its deadline, or with none to tell, the slash is not due.
@@ -295,7 +289,7 @@ export const dueValidationTraceLostDefenseSlash = async ({
       };
     held ??= {
       kind: "held",
-      reason: `${VALIDATION_TRACE_MOVE_UNBUILT}: ${actionId} slashing defender ${receipt.defender_vkh} by receipt ${claim.outRef} did not build; it must land before its deadline ${deadlineMs.toString()}, the defender's bond unlock`,
+      reason: `${VALIDATION_TRACE_MOVE_UNBUILT}: ${actionId} slashing defender ${receipt.defender_vkh} by receipt ${outRef} did not build; it must land before its deadline ${deadlineMs.toString()}, the defender's bond unlock`,
     };
   }
   return held;

@@ -1,9 +1,7 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import { CML } from "@lucid-evolution/lucid";
-import { expect, vi } from "vitest";
+import { vi } from "vitest";
 
-import { bindWorkflowActuationJournal } from "../../src/workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
 import { createWorkflowReconciliationPermitController } from "../../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import { COMPLETE_CANONICAL_REPLAY } from "../../src/workflow/complete-replay.replay-context-identity.js";
 import { CURSOR_FAMILY_TRANSACTION_PORT } from "../../src/workflow/cursor-family-adapter.admit-reference-scripts.js";
@@ -16,25 +14,19 @@ import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
 } from "../../src/workflow/family-l1-observation.js";
-import * as funding from "../../src/workflow/funding-reservation-permit.js";
 import {
   HEADER_CLASSIFIER,
   HEADER_DECISION,
   type HeaderFaultDecision,
 } from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import type { InstalledFraudProofCategory } from "../../src/workflow/installed-categories.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEvent } from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowTerminal,
   journalJsonDigest,
   normalizeJournalJson,
 } from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
-import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.js";
-import { type FraudProofRawL1FamilyStage } from "../../src/workflow/raw-l1-family-derivation.js";
+import type { FraudProofRawL1FamilyStage } from "../../src/workflow/raw-l1-family-derivation.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
@@ -47,8 +39,7 @@ import { noSignedRead } from "./terminal-verifier.js";
 const hash = (byte: string) => byte.repeat(32);
 const headerHash = "11".repeat(28),
   deploymentFingerprint = hash("22"),
-  queueOutRef = `${hash("33")}#0`,
-  proofOutRef = `${hash("44")}#0`;
+  queueOutRef = `${hash("33")}#0`;
 const provenance = {
   trustClass: "authenticated_cardano_l1",
   sourceId: "local-transport-test",
@@ -112,53 +103,15 @@ const signedTransaction = () => {
     ],
   };
 };
-const terminal = (
-  category: FraudProofCatalogueCategoryName,
-  txHash: string,
-  confirmationDepth: number,
-): FraudProofWorkflowTerminal => ({
-  schemaVersion: "midgard-fraud-proof-workflow-terminal-v1",
-  category,
-  headerHash,
-  proofToken: {
-    unit: "88".repeat(28),
-    outRef: proofOutRef,
-    createdByTxHash: hash("44"),
-    retainedAtFinalState: true,
-  },
-  correction: {
-    removalTxHash: txHash,
-    removedStateQueueOutRef: queueOutRef,
-    fraudulentHeaderAbsent: true,
-    referencedProofTokenOutRef: proofOutRef,
-  },
-  economics: {
-    operatorCredential: "99".repeat(28),
-    proverCredential: "aa".repeat(28),
-    operatorBondInputOutRef: `${hash("bb")}#0`,
-    operatorBondInputLovelace: "10000000",
-    slashedLovelace: "10000000",
-    proverRewardOutputOutRef: `${txHash}#0`,
-    proverRewardLovelace: "5000000",
-    removalFeeLovelace: "200000",
-    duplicateRewardAbsent: true,
-  },
-  observedAt: { slot: "1234", blockHash: hash("cc"), confirmationDepth },
-});
 export const customWorkflowRecoveryFixture = async (
   spec: CursorFamilySpec<InstalledFraudProofCategory>,
-  removed = false,
 ) => {
   const category = spec.category,
     built = signedTransaction();
-  const initial: FraudProofRawL1FamilyStage = removed
-    ? {
-        kind: "proof_token",
-        stateQueueBlockOutRef: queueOutRef,
-        nextRemovalOutRef: queueOutRef,
-        fraudProofOutRef: proofOutRef,
-      }
-    : { kind: "not_started", stateQueueBlockOutRef: queueOutRef };
+  const initial: FraudProofRawL1FamilyStage = {
+    kind: "not_started",
+    stateQueueBlockOutRef: queueOutRef,
+  };
   const observed = cursorFamilyObservation({
     spec,
     headerHash,
@@ -192,7 +145,6 @@ export const customWorkflowRecoveryFixture = async (
   const adapter = createCursorFamilyWorkflowAdapter({
     spec,
     l1,
-    stateQueueMutationLeaseCoordinator: lease,
     transactions: {
       portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
       category,
@@ -231,96 +183,10 @@ export const customWorkflowRecoveryFixture = async (
     decisionDigest: decision.decisionDigest,
   } as const;
   const workflowId = computeFraudProofWorkflowId(identity);
-  const artifact = {
-    evidenceBinding: {
-      route: "canonical_block",
-      headerHash,
-      payloadEnvelopeSha256: decision.payloadEnvelopeSha256,
-      payloadSha256: decision.payloadSha256,
-      l1BlockHash: hash("18"),
-      l1Slot: "1",
-    },
-    releaseFinality,
-    familyArtifact: { local: true },
-  };
-  const events: FraudProofWorkflowJournalEvent[] = [
-    { kind: "started" },
-    { kind: "prepared", artifact, artifactDigest: journalJsonDigest(artifact) },
-    {
-      kind: "preflight_passed",
-      actionId: action.actionId,
-      txHash: built.txHash,
-      localEvaluator: "lucid-evolution-local-uplc-v1",
-      referenceScripts: built.referenceScripts,
-    },
-    {
-      kind: "submission_intent",
-      actionId: action.actionId,
-      actionInput: action.input,
-      attempt: 1,
-      txHash: built.txHash,
-    },
-  ];
-  if (removed) {
-    const proofAction = {
-      actionId: `step_${String(spec.stepCount).padStart(2, "0")}:proof-thread`,
-      input: {
-        category,
-        stage: `step_${String(spec.stepCount).padStart(2, "0")}`,
-      },
-    };
-    events.splice(
-      2,
-      0,
-      {
-        kind: "preflight_passed",
-        actionId: proofAction.actionId,
-        txHash: hash("44"),
-        localEvaluator: "lucid-evolution-local-uplc-v1",
-        referenceScripts: built.referenceScripts,
-      },
-      {
-        kind: "submission_intent",
-        actionId: proofAction.actionId,
-        actionInput: proofAction.input,
-        attempt: 1,
-        txHash: hash("44"),
-      },
-      {
-        kind: "reconciled",
-        actionId: proofAction.actionId,
-        outcome: "confirmed",
-        txHash: hash("44"),
-      },
-      { kind: "confirmed", actionId: proofAction.actionId, txHash: hash("44") },
-    );
-  }
-  const store = new MemoryFraudProofWorkflowJournalStore();
-  for (const [sequence, event] of events.entries())
-    await store.append(
-      {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-        workflowId,
-        identity,
-        sequence,
-        recordedAt: "2026-09-11T00:00:00.000Z",
-        event,
-      },
-      sequence,
-    );
   const controller = createWorkflowReconciliationPermitController({
     decision,
     deploymentFingerprint,
     rollbackGeneration: "0",
-    entries: await store.load(workflowId),
-  });
-  const journal = bindWorkflowActuationJournal({
-    journal: store,
-    permit: controller.permit,
-    decisionDigest: decision.decisionDigest,
-    deploymentFingerprint,
-    category,
-    headerHash,
   });
   const workflow = {
     binding: {
@@ -338,31 +204,21 @@ export const customWorkflowRecoveryFixture = async (
       verifyForWorkflow: async () => releaseFinality,
     },
   };
-  const removalBlockNo = 71n;
-  const advance = (canonicalTipBlockNo = 100n) => {
-    const confirmationDepth = Number(canonicalTipBlockNo - removalBlockNo + 1n);
-    stage.value = removed
-      ? {
-          kind: "removed",
-          terminal: terminal(category, built.txHash, confirmationDepth),
-        }
-      : {
-          kind: "step",
-          step: 1,
-          threadOutRef: `${built.txHash}#0`,
-          stateQueueBlockOutRef: queueOutRef,
-        };
+  const advance = () => {
+    stage.value = {
+      kind: "step",
+      step: 1,
+      threadOutRef: `${built.txHash}#0`,
+      stateQueueBlockOutRef: queueOutRef,
+    };
   };
   return {
     workflow,
-    journal,
-    store,
     decision,
     controller,
     workflowId,
     built,
     stage,
-    removalBlockNo,
     advance,
     forbidden,
     observeHeader,
@@ -370,50 +226,6 @@ export const customWorkflowRecoveryFixture = async (
     adapter,
     action,
     identity,
-    artifact: artifact.familyArtifact,
+    artifact: { local: true },
   };
-};
-
-/** Scripted canonical observations check the completion kind; no physical funding store is bound here. */
-export const verifyTerminalRecoveryFinality = async (
-  fixture: Awaited<ReturnType<typeof customWorkflowRecoveryFixture>>,
-  run: (
-    input: Awaited<ReturnType<typeof customWorkflowRecoveryFixture>>,
-  ) => Promise<FraudProofWorkflowRunResult>,
-) => {
-  const release = vi.spyOn(funding, "releaseWorkflowFundingReservation");
-  try {
-    const originalIntents = (
-      await fixture.journal.load(fixture.workflowId)
-    ).filter(({ event }) => event.kind === "submission_intent");
-    for (const [tipBlockNo, depth] of [
-      [100n, 30],
-      [2231n, 2161],
-    ] as const) {
-      expect(tipBlockNo - fixture.removalBlockNo + 1n).toBe(BigInt(depth));
-      fixture.advance(tipBlockNo);
-      expect((await run(fixture)).kind).toBe("terminal_included");
-      const entries = await fixture.journal.load(fixture.workflowId);
-      expect(entries.some(({ event }) => event.kind === "completed")).toBe(
-        false,
-      );
-      expect(
-        entries.filter(({ event }) => event.kind === "submission_intent"),
-      ).toEqual(originalIntents);
-      expect(
-        release.mock.calls.every(
-          ([input]) => input.event.kind === "terminal_included",
-        ),
-      ).toBe(true);
-    }
-    fixture.advance(2232n);
-    expect((await run(fixture)).kind).toBe("completed");
-    expect(release.mock.calls.at(-1)?.[0].event.kind).toBe("completed");
-    expect(
-      (await fixture.journal.load(fixture.workflowId)).at(-1)?.event.kind,
-    ).toBe("completed");
-    expect(fixture.observeHeader).not.toHaveBeenCalled();
-  } finally {
-    release.mockRestore();
-  }
 };

@@ -1,26 +1,12 @@
-import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowTerminal,
-  journalJsonDigest,
-} from "@al-ft/midgard-fault-proofs/workflow/journal";
-import { openWatcherWorkflowStoreForTest } from "midgard-watcher/tests/support/watcher-workflow-store";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { state } from "./journey-mocks.js";
 import { runAutonomousWatcherJourney } from "./journey-runner.js";
-import {
-  captureJourneyWorkflowBaseline,
-  openJourneySession,
-} from "./journey-session.js";
+import { openJourneySession } from "./journey-session.js";
 
 // A devnet session stages with its own committee; it reads no stack shift.
 const stackShiftCoverMs = () => {
@@ -157,7 +143,7 @@ it("gates operations on the restarted listener, reading a refused connection thr
   }
 });
 
-it("launches from a newly retained healthy predecessor after baseline capture and before remaining staging", async () => {
+it("launches from a newly retained healthy predecessor before remaining staging", async () => {
   const session = await openJourneySession(state.runDirectory);
   await expect(
     runAutonomousWatcherJourney(
@@ -167,14 +153,6 @@ it("launches from a newly retained healthy predecessor after baseline capture an
         stackShiftCoverMs,
         stage: async (input) => {
           expect(state.launches).toEqual([]);
-          expect(
-            JSON.parse(
-              await readFile(
-                join(input.directory, "workflow-baseline.json"),
-                "utf8",
-              ),
-            ).prefixes,
-          ).toEqual([]);
           // The process has not opened its listener yet. Staging must still
           // continue after binding/launch rather than waiting for catch-up.
           const refusal = new TypeError("fetch failed", {
@@ -248,169 +226,6 @@ it("starts against the retained head before staging and closes after fixture fai
   await expect(session.assertHealthy()).rejects.toThrow("closed");
 });
 
-it("captures real 56-hex header / 64-hex workflow journal prefixes before staging", async () => {
-  const storePath = join(state.runDirectory, "watcher.sqlite");
-  const workflows = openWatcherWorkflowStoreForTest(storePath);
-  const headerHash = "12".repeat(28);
-  const identity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: "ab".repeat(32),
-    category: "doubleSpend" as const,
-    target: { kind: "state_queue_header" as const, headerHash },
-  };
-  const workflowId = computeFraudProofWorkflowId(identity);
-  const store = workflows.forObjective({ category: "doubleSpend", headerHash });
-  const entry: FraudProofWorkflowJournalEntry = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-    workflowId,
-    identity,
-    sequence: 0,
-    recordedAt: "2026-09-14T00:00:00.000Z",
-    event: { kind: "started" },
-  };
-  await store.append(entry, 0);
-  const baseline = await captureJourneyWorkflowBaseline(
-    storePath,
-    "doubleSpend",
-  );
-  expect(workflowId).toHaveLength(64);
-  expect(baseline.get(headerHash)).toEqual([entry]);
-  await store.append(
-    {
-      ...entry,
-      sequence: 1,
-      event: {
-        kind: "prepared",
-        artifact: {},
-        artifactDigest: createHash("sha256").update("{}").digest("hex"),
-      },
-    },
-    1,
-  );
-  expect(baseline.get(headerHash)).toHaveLength(1);
-  expect(
-    (await captureJourneyWorkflowBaseline(storePath, "doubleSpend")).get(
-      headerHash,
-    ),
-  ).toHaveLength(2);
-  expect(baseline.get("34".repeat(28)) ?? []).toEqual([]);
-  workflows.close();
-});
-
-it("distinguishes an old completed proof from a target completed during staging", async () => {
-  const storePath = join(state.runDirectory, "watcher.sqlite");
-  const workflows = openWatcherWorkflowStoreForTest(storePath);
-  const complete = async (headerHash: string) => {
-    const identity = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-      deploymentFingerprint: "ab".repeat(32),
-      category: "doubleSpend" as const,
-      target: { kind: "state_queue_header" as const, headerHash },
-    };
-    const workflowId = computeFraudProofWorkflowId(identity);
-    const store = workflows.forObjective({
-      category: "doubleSpend",
-      headerHash,
-    });
-    const terminal: FraudProofWorkflowTerminal = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
-      category: "doubleSpend",
-      headerHash,
-      proofToken: {
-        unit: "ab".repeat(28),
-        outRef: "cd".repeat(32) + "#0",
-        createdByTxHash: "cd".repeat(32),
-        retainedAtFinalState: true,
-      },
-      correction: {
-        removalTxHash: "ef".repeat(32),
-        removedStateQueueOutRef: "12".repeat(32) + "#0",
-        fraudulentHeaderAbsent: true,
-        referencedProofTokenOutRef: "cd".repeat(32) + "#0",
-      },
-      economics: {
-        operatorCredential: "12".repeat(28),
-        proverCredential: "34".repeat(28),
-        operatorBondInputOutRef: null,
-        operatorBondInputLovelace: "0",
-        slashedLovelace: "0",
-        proverRewardOutputOutRef: null,
-        proverRewardLovelace: "0",
-        removalFeeLovelace: "200000",
-        duplicateRewardAbsent: true,
-      },
-      observedAt: {
-        slot: "1234",
-        blockHash: "56".repeat(32),
-        confirmationDepth: 30,
-      },
-    };
-    const events: FraudProofWorkflowJournalEntry["event"][] = [
-      { kind: "started" },
-      { kind: "prepared", artifact: {}, artifactDigest: journalJsonDigest({}) },
-    ];
-    for (const [actionId, txHash] of [
-      ["prove", terminal.proofToken.createdByTxHash],
-      ["remove", terminal.correction.removalTxHash],
-    ] as const) {
-      events.push(
-        {
-          kind: "preflight_passed",
-          actionId,
-          txHash,
-          localEvaluator: "Scalus",
-          referenceScripts: [],
-        },
-        {
-          kind: "submission_intent",
-          actionId,
-          txHash,
-          actionInput: {},
-          attempt: 1,
-        },
-        { kind: "submitted", actionId, txHash, attempt: 1 },
-        { kind: "reconciled", actionId, txHash, outcome: "confirmed" },
-        { kind: "confirmed", actionId, txHash },
-      );
-    }
-    events.push({
-      kind: "completed",
-      terminal,
-      terminalDigest: journalJsonDigest(terminal),
-    });
-    for (const [sequence, event] of events.entries())
-      await store.append(
-        {
-          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-          workflowId,
-          identity,
-          sequence,
-          recordedAt: "2026-09-14T00:00:00.000Z",
-          event,
-        },
-        sequence,
-      );
-  };
-  const oldHeader = "12".repeat(28),
-    newHeader = "34".repeat(28);
-  await complete(oldHeader);
-  const baseline = await captureJourneyWorkflowBaseline(
-    storePath,
-    "doubleSpend",
-  );
-  await complete(newHeader);
-  expect(
-    baseline.get(oldHeader)?.some(({ event }) => event.kind === "completed"),
-  ).toBe(true);
-  expect(baseline.get(newHeader) ?? []).toEqual([]);
-  expect(
-    (await captureJourneyWorkflowBaseline(storePath, "doubleSpend"))
-      .get(newHeader)
-      ?.at(-1)?.event.kind,
-  ).toBe("completed");
-  workflows.close();
-});
-
 it("closes the remaining services even when one service fails to close", async () => {
   const session = await openJourneySession(state.runDirectory);
   await session.ensureWatcher();
@@ -446,12 +261,12 @@ it("rejects a foreign run directory before restarting its failed watcher", async
 
 it.each([
   "journey-session.ts",
-  "journey-session.capture-baseline.ts",
+  "journey-session.open-journey-session.ts",
   "journey-runner.run.ts",
 ])("refuses reuse after pinned module part %s changes", async (changed) => {
   state.sessionSources = [
     "journey-session.ts",
-    "journey-session.capture-baseline.ts",
+    "journey-session.open-journey-session.ts",
     "journey-runner.run.ts",
   ].map((name) => join(state.runDirectory, name));
   for (const path of state.sessionSources)

@@ -5,9 +5,9 @@
  * build with its thread paying the cap is paid entirely from our plain-ADA
  * wallet: its other inputs leave the thread no allowance, so its successor
  * keeps all of the thread's lovelace.
- * The minimum is that of its signed transaction, by the formula the funding
- * permit checks a funded transaction's fee with, over the current protocol
- * parameters. Only a wallet-paid move whose fee passes the funding permit's
+ * The minimum is that of its signed transaction, by the protocol's fee
+ * formula (`workflowRuntimeFundingMinimumFee`), over the current protocol
+ * parameters. Only a wallet-paid move whose fee passes the protocol's
  * per-transaction fee ceiling is refused, with a typed alarm. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
@@ -31,14 +31,14 @@ export const VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE = BigInt(
   SELECTED_DEPLOYMENT_PROFILE.limits.max_dispute_move_fee_lovelace,
 );
 
-/** A wallet-paid move whose fee would pass the funding permit's
- * per-transaction fee ceiling: no funding can pay it. */
+/** A wallet-paid move whose fee would pass the protocol's per-transaction
+ * fee ceiling: no funding can pay it. */
 export const VALIDATION_TRACE_MOVE_FEE_OVER_CAP =
   "validation-trace-move-fee-over-cap";
 
 /**
  * A move refused because the fee our wallet would pay for it passes the
- * funding permit's per-transaction fee ceiling. The run resumes on the next
+ * protocol's per-transaction fee ceiling. The run resumes on the next
  * observation and moves once the fee is back under the ceiling; until then
  * it raises the alarm named by its reason.
  */
@@ -49,7 +49,7 @@ export class ValidationTraceMoveFeeOverCapError extends WorkflowActionChangedErr
     readonly ceilingLovelace: bigint,
   ) {
     super(
-      `${VALIDATION_TRACE_MOVE_FEE_OVER_CAP}: the ${stage} move's fee ${feeLovelace.toString()} passes the funding permit's per-transaction fee ceiling ${ceilingLovelace.toString()}`,
+      `${VALIDATION_TRACE_MOVE_FEE_OVER_CAP}: the ${stage} move's fee ${feeLovelace.toString()} passes the protocol's per-transaction fee ceiling ${ceilingLovelace.toString()}`,
     );
     this.name = "ValidationTraceMoveFeeOverCapError";
   }
@@ -138,8 +138,8 @@ export const validationTraceMoveMinimumFee = ({
   });
 };
 
-/** The funding permit's per-transaction fee ceiling at `lucid`'s protocol
- * parameters, by the rule the permit derives it with. */
+/** The protocol's per-transaction fee ceiling at `lucid`'s
+ * protocol parameters. */
 export const validationTraceMoveFeeCeiling = (
   lucid: LucidEvolution,
 ): bigint => {
@@ -227,7 +227,7 @@ const FEE_ROUNDS = 8;
  * the cap build is short of its fee, however near the ledger minimum is to
  * the cap, the move is built with the thread paying nothing and our wallet's
  * coin selection paying the whole fee (`build(0n)`): that is the move, unless
- * its fee passes the funding permit's per-transaction fee ceiling, which
+ * its fee passes the protocol's per-transaction fee ceiling, which
  * refuses it with `ValidationTraceMoveFeeOverCapError`. A wallet that cannot
  * pay throws its own build's error, which the runner pauses on until a top-up.
  * A cap build that fails for any other reason keeps its own error, which the
@@ -236,8 +236,7 @@ const FEE_ROUNDS = 8;
  * With `ownWallet`, an operator moves on its own turn: the collateral
  * (`VALIDATION_TRACE_MOVE_COLLATERAL_LOVELACE`, with its return), and a fee
  * the thread does not pay, come from its `inputs` alone, any change returns
- * to its `changeAddress`, and no funding permit stands behind the move, so
- * no fee ceiling refuses it.
+ * to its `changeAddress`, and no fee ceiling refuses it.
  */
 export const completeValidationTraceMove = async ({
   lucid,

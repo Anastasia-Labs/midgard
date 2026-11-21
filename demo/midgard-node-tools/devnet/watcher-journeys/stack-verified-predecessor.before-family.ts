@@ -4,8 +4,7 @@ import { join } from "node:path";
 
 /**
  * What a family writes into its directory before it fixes its predecessor
- * or publishes anything on L1: its workflow baseline and timing plan, its
- * stage timings, a failure record, the confirmed L1 transactions it read,
+ * or publishes anything on L1: its timing plan, its stage timings, a failure record, the confirmed L1 transactions it read,
  * the fault commit's planned late-shift window, a transfer it did not hand
  * over, and checkpoints staging set aside and no longer resumes.
  *
@@ -23,7 +22,6 @@ import { join } from "node:path";
  * An unknown entry counts as progress too.
  */
 const BEFORE_FAULT_WORK = new Set([
-  "workflow-baseline.json",
   "timing-plan.json",
   "timings.ndjson",
   "failure.json",

@@ -36,7 +36,7 @@ import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { MissingSignatureContracts } from "./contracts.js";
 import {
@@ -65,7 +65,7 @@ export type MissingSignatureStep03Build = {
 };
 
 export type SubmitMissingSignatureStep03Result =
-  UnjournaledSubmission<MissingSignatureStep03Build>;
+  OutsideWorkflowSubmission<MissingSignatureStep03Build>;
 
 export const buildMissingSignatureStep03 = async ({
   lucid,

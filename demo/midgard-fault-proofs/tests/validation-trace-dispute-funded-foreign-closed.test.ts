@@ -1,5 +1,5 @@
-/** Our case closed by another party, under the prover funding permit, on
- * the emulator. Our funded watcher opens our claim and its process stops
+/** Our case closed by another party, under the watcher's prover funding,
+ * on the emulator. Our funded watcher opens our claim and its process stops
  * before broadcasting our VerifySource; another party verifies our pending
  * claim first, nobody defends, and once the defense deadline has passed that
  * party closes the case before our runner does. The record names us, the
@@ -39,8 +39,7 @@ describe("validation-trace dispute case of ours closed by another party", () => 
     journey = await openForeignVerifiedCase();
   }, TIMEOUT);
 
-  afterAll(async () => {
-    await journey?.dispute.close();
+  afterAll(() => {
     journey?.recorder.restore();
   });
 
@@ -99,10 +98,9 @@ describe("validation-trace dispute case of ours closed by another party", () => 
         { limit: 12, wrap: capture },
       );
       expect(result.kind, history.join("\n")).toBe("pending");
-      expect(confirmedMoves(result).map(({ stage }) => stage)).toStrictEqual([
-        "init",
-        "open",
-      ]);
+      expect(
+        (await confirmedMoves(dispute)).map(({ stage }) => stage),
+      ).toStrictEqual(["init", "open"]);
       expect(closes).toHaveLength(0);
     },
     TIMEOUT,

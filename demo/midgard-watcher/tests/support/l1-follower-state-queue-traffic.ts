@@ -231,6 +231,13 @@ export const queueState = (
   };
 };
 
+/** The header a CommitBlockHeader append on top of `state` commits. */
+export const commitHeader = (state: QueueState): SDK.Header => ({
+  ...createSyntheticStateQueueHeader(),
+  blockSlot: BigInt(state.length),
+  prevHeaderHash: state.tailHeaderHash ?? h28("00"),
+});
+
 /**
  * The CommitBlockHeader append on top of `state`: continued tail (0), new
  * node (1); `funding` adds an operator input (an untracked UTxO).
@@ -240,11 +247,7 @@ export const commitTx = (
   deployment: WatcherProjectionDeployment = SIM_WATCHER_DEPLOYMENT,
   funding?: OutRef,
 ): SimTx => {
-  const header: SDK.Header = {
-    ...createSyntheticStateQueueHeader(),
-    blockSlot: BigInt(state.length),
-    prevHeaderHash: state.tailHeaderHash ?? h28("00"),
-  };
+  const header = commitHeader(state);
   const headerHash = computeHash28(
     Buffer.from(Data.to(header, SDK.Header), "hex"),
   ).toString("hex");

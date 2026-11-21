@@ -161,7 +161,7 @@ export const detectUnusedScriptWitnessReplay = async ({
   });
 };
 
-/** The journaled `unusedScriptWitness` workflow artifact: the retained payload,
+/** The `unusedScriptWitness` workflow artifact: the retained payload,
  * the predecessor ledger and the coordinate, re-planned on every admission. */
 export const UNUSED_SCRIPT_WITNESS_ARTIFACT_FAMILY =
   directPurposeArtifactFamily({

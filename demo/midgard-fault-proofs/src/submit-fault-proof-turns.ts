@@ -21,8 +21,8 @@ import {
 } from "./workflow/own-outputs.js";
 import {
   type LocallyEvaluatedTransaction,
-  submitUnjournaled,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
+  submitOutsideWorkflow,
 } from "./workflow/transaction-boundary.js";
 
 /**
@@ -33,7 +33,7 @@ export const submitPrerequisiteTurn = async (
   lucid: LucidEvolution,
   turn: PrerequisiteTurn,
 ): Promise<UTxO> => {
-  await submitUnjournaled(lucid, turn.transaction, {
+  await submitOutsideWorkflow(lucid, turn.transaction, {
     label: turn.label,
     awaitConfirmation: true,
   });
@@ -86,7 +86,7 @@ export const settleFaultProofTurns = async <
       continue;
     }
     if (isContinuationTurn(built)) {
-      await submitUnjournaled(args.lucid, built.transaction, {
+      await submitOutsideWorkflow(args.lucid, built.transaction, {
         label: built.label,
         awaitConfirmation: true,
       });
@@ -117,9 +117,11 @@ export const submitFaultProofTurns = async <
     label,
     awaitConfirmation,
   }: { readonly label: string; readonly awaitConfirmation: boolean },
-): Promise<UnjournaledSubmission<Exclude<Step, ContinuationTurn<unknown>>>> => {
+): Promise<
+  OutsideWorkflowSubmission<Exclude<Step, ContinuationTurn<unknown>>>
+> => {
   const { transaction, ...fields } = await settleFaultProofTurns(build, args);
-  const txHash = await submitUnjournaled(args.lucid, transaction, {
+  const txHash = await submitOutsideWorkflow(args.lucid, transaction, {
     label,
     awaitConfirmation,
   });
@@ -127,7 +129,7 @@ export const submitFaultProofTurns = async <
     txHash,
     ...fields,
     awaitedConfirmation: awaitConfirmation,
-  } as unknown as UnjournaledSubmission<
+  } as unknown as OutsideWorkflowSubmission<
     Exclude<Step, ContinuationTurn<unknown>>
   >;
 };

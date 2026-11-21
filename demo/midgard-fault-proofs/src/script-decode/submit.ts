@@ -7,8 +7,8 @@
  * Coin selection spends only plain coins from the funding address
  * (`isPlainFundingOutput`); a staged chunk sits at the proof-materials address
  * (read by Bind and Walk) and so stays put. Each `build*Tx` signs without
- * submitting, so a journaled caller can record the exact transaction before
- * it is sent. Stage and Bind spend only wallet coins and always carry the
+ * submitting, so a workflow can hold the exact transaction in its in-flight
+ * set before it is sent. Stage and Bind spend only wallet coins and always carry the
  * wallet-only validity window (`walletOnlyValidTo`); for Walk and Finish,
  * which spend the run, an optional `validTo` (POSIX ms) makes a transaction
  * the ledger never takes expire instead of staying pending.

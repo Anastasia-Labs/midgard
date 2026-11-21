@@ -9,12 +9,11 @@
  * our run is let on. Our case then closes, and our run reads the block as
  * removed against another record.
  *
- * With `ourKey`, the other case is another run's on our key, with a journal
- * of its own: our run then reads the removal as a terminal on our key whose
- * record its journal never created, not as another prover's. With
- * `sibling`, another run on our key has Inited a thread of its own on the
- * block and stopped short of its Open, so a thread of ours stands at the
- * opener when the block is removed. */
+ * With `sibling`, an Init of ours that an earlier process of ours sent and
+ * never followed lands once our case is open (a process of ours that sends
+ * that Init and stops short of its Open stands in for it), so a thread on
+ * our key stands at the opener when the block is removed: our run, its case
+ * open, opens no second case from it. */
 import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CML,
@@ -22,34 +21,34 @@ import {
   Data,
   generateEmulatorAccount,
   Lucid,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { expect, vi } from "vitest";
 
 import { resolveProverSigner } from "../../src/runtime.resolve-prover-signer.js";
-import {
-  type ConfirmedValidationTraceStage,
-  confirmedValidationTraceStages,
-} from "../../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
+import {
+  encodeValidationTraceDisputeArtifact,
+  parseValidationTraceDisputeArtifact,
+} from "../../src/validation-trace-dispute/artifact.js";
 import { VALIDATION_TRACE_STAGING_RECLAIM } from "../../src/validation-trace-dispute/one-step-staging-journal.js";
+import {
+  captureValidationTraceInit,
+  validationTraceThreadUnit,
+} from "../../src/validation-trace-dispute/transactions.js";
 import { validationTraceDefenseDeadlineMs } from "../../src/validation-trace-dispute/waiting.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEntry } from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.js";
 import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { RELEASE_FINALITY_POLICY } from "../workflow.make-adapter.js";
 import { network } from "./emulator/blueprints.js";
-import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
+import type { ConfirmedValidationTraceStage } from "./validation-trace-confirmed-stages.js";
 import {
   awaitLastSlotAtOrBefore,
   liveCase,
   threadClosed,
 } from "./validation-trace-dispute-one-step-case.js";
-import {
-  entriesOf,
-  stagedDrive,
-} from "./validation-trace-dispute-one-step-staged-drive.js";
+import { stagedDrive } from "./validation-trace-dispute-one-step-staged-drive.js";
 import { onLedger } from "./validation-trace-dispute-one-step-staging-ledger.js";
 import { recordedRemoval } from "./validation-trace-dispute-removal-l1.js";
 import {
@@ -57,6 +56,7 @@ import {
   type Runner,
   runUntil,
 } from "./validation-trace-dispute-runner.js";
+import { expectSpentBackAgainAfterRollback } from "./validation-trace-dispute-staging-left-for-sweep.js";
 
 /** How many blocks under the tip a transaction of ours is final. */
 export const RELEASE_DEPTH = 4;
@@ -69,17 +69,17 @@ const SPEND_BACKS_HELD = "spend backs held by the test";
 /** How many runs past our cancel's landing the chain waits on our spend
  * backs before it is let past the cancel's rollback recovery. */
 const AFTER_CANCEL = 3 * RELEASE_DEPTH;
-const SIBLING_OPEN_HELD = "the other run's Open is held by the test";
+const RECLAIM_PREFIX = "validation-trace-reclaim-staging:";
 
 const describeRun = (result: FraudProofWorkflowRunResult) =>
   "reason" in result ? `${result.kind}: ${result.reason}` : result.kind;
 
-/** The first output of the confirmed `stage` in `result`'s journal. */
-const stageOutRef = (
-  result: FraudProofWorkflowRunResult,
+/** The first output of the confirmed `stage` among `runner`'s sends. */
+const stageOutRef = async (
+  runner: Runner,
   stage: ConfirmedValidationTraceStage["action"]["stage"],
-): string => {
-  const found = confirmedValidationTraceStages(entriesOf(result)).find(
+): Promise<string> => {
+  const found = (await runner.confirmed()).find(
     ({ action }) => action.stage === stage,
   );
   if (found === undefined) throw new Error(`no ${stage} is confirmed`);
@@ -103,12 +103,12 @@ export type OurRun = Readonly<{
 
 export const stagedOtherRecord = ({
   sibling = false,
-  ourKey = false,
-}: { readonly sibling?: boolean; readonly ourKey?: boolean } = {}) => {
+}: { readonly sibling?: boolean } = {}) => {
   const drive = stagedDrive({ releaseDepth: RELEASE_DEPTH, withRemoval: true });
   let theirs: Runner;
   let theirCase: string;
   let siblingThread: string | undefined;
+  let stagedOutputs: readonly UTxO[] = [];
   let clock: { readonly mockRestore: () => void } | undefined;
 
   /** Holds each spend back our workflow would take, as a wait, until our
@@ -120,10 +120,11 @@ export const stagedOtherRecord = ({
     observe: async (context) => {
       const observed = await adapter.observe(context);
       return observed.kind === "action_required" &&
-        !confirmedValidationTraceStages(context.entries).some(
+        observed.action.input.schemaVersion ===
+          VALIDATION_TRACE_STAGING_RECLAIM &&
+        !(await drive.confirmed()).some(
           ({ action }) => action.stage === "close",
-        ) &&
-        observed.action.input.schemaVersion === VALIDATION_TRACE_STAGING_RECLAIM
+        )
         ? { kind: "pending", reason: SPEND_BACKS_HELD }
         : observed;
     },
@@ -142,6 +143,9 @@ export const stagedOtherRecord = ({
       network,
       walletSeedPhrase: generateEmulatorAccount({ lovelace: 0n }).seedPhrase,
     });
+    // Our runs leave the shared Lucid on the wallet a run restricts to its
+    // plain unheld coins; the funding pays from the whole wallet.
+    h.proverSigner.selectWallet(h.proverLucid);
     const funding = await h.proverLucid
       .newTx()
       .pay.ToAddress(signer.address, { lovelace: 15_000_000_000n })
@@ -165,57 +169,43 @@ export const stagedOtherRecord = ({
   };
 
   /** Our case set up, our spend backs held; the other prover's case open;
-   * with `sibling`, the other run on our key Inited. */
+   * with `sibling`, the Init of ours an earlier process sent landed. */
   const setUp = async () => {
     await drive.setUp();
     drive.restart({ wrap: holding });
     const { h, failing } = scene();
-    const { deployment, removal, recorder } = drive.dispute();
+    const { deployment, recorder } = drive.dispute();
     const { headerHash } = failing.evidence;
-    theirs = ourKey
-      ? // Another run on our key, with a journal of its own.
-        makeRunner(scene(), {
-          deployment,
-          journal: new MemoryFraudProofWorkflowJournalStore(),
-          signedRecovery: emulatorSignedTransactionRecovery(
-            h.emulator,
-            RELEASE_DEPTH,
-          ),
-          removal: removal!.removal,
-          terminalVerifier: removal!.terminalVerifier(headerHash),
-        })
-      : await anotherProver(recorder!, headerHash);
-    theirCase = stageOutRef(
-      (await runUntil(theirs, failing, VALIDATION_TRACE_CASE_OPEN)).result,
-      "verify_source",
-    );
+    theirs = await anotherProver(recorder!, headerHash);
+    await runUntil(theirs, failing, VALIDATION_TRACE_CASE_OPEN);
+    theirCase = await stageOutRef(theirs, "verify_source");
     if (!sibling) return;
-    // Another run on our key, with a journal of its own, Inits and stops
-    // short of its Open.
-    const other = makeRunner(scene(), {
-      deployment,
-      journal: new MemoryFraudProofWorkflowJournalStore(),
-      signedRecovery: emulatorSignedTransactionRecovery(
-        h.emulator,
-        RELEASE_DEPTH,
-      ),
-      removal: removal!.removal,
-      terminalVerifier: removal!.terminalVerifier(headerHash),
-      wrap: (adapter) => ({
-        ...adapter,
-        observe: async (context) => {
-          const observed = await adapter.observe(context);
-          return observed.kind === "action_required" &&
-            observed.action.input.stage === "open"
-            ? { kind: "pending", reason: SIBLING_OPEN_HELD }
-            : observed;
-        },
+    // An earlier process of ours signed and sent an Init and stopped short
+    // of its Open: its Init lands once our case is open. This process holds
+    // nothing of it.
+    const artifact = parseValidationTraceDisputeArtifact(
+      encodeValidationTraceDisputeArtifact({
+        headerHash,
+        material: drive.dispute().material,
       }),
-    });
-    siblingThread = stageOutRef(
-      (await runUntil(other, failing, SIBLING_OPEN_HELD)).result,
-      "init",
     );
+    h.proverSigner.selectWallet(h.proverLucid);
+    const { transaction } = await captureValidationTraceInit({
+      lucid: h.proverLucid,
+      signer: h.proverSigner,
+      deployment,
+      artifact,
+    });
+    const initHash = await transaction.signed.submit();
+    h.emulator.awaitBlock(1);
+    const unit = validationTraceThreadUnit(deployment, headerHash);
+    const outputs = transaction.signed.toTransaction().body().outputs();
+    const index = Array.from({ length: outputs.len() }, (_, at) => at).find(
+      (at) => (coreToTxOutput(outputs.get(at)).assets[unit] ?? 0n) > 0n,
+    );
+    if (index === undefined) throw new Error("the Init minted no thread");
+    siblingThread = `${initHash}#${index.toString()}`;
+    expect(onLedger(scene(), parseOwnOutRef(siblingThread))).toBe(true);
   };
 
   /** Plays both threads of our case to their award and close, our spend
@@ -232,9 +222,30 @@ export const stagedOtherRecord = ({
     expect(stagings.length).toBeGreaterThan(1);
     for (const outRef of stagings)
       expect(onLedger(scene(), parseOwnOutRef(outRef)), outRef).toBe(true);
+    stagedOutputs = await scene().h.proverLucid.utxosByOutRef(
+      stagings.map(parseOwnOutRef),
+    );
+    expect(stagedOutputs).toHaveLength(stagings.length);
     return stagings;
   };
 
+  /** After our run's ending, each staging output back in our wallet: once
+   * each spend back rolls back, our next runs spend each output back again,
+   * the same signed bytes for a spend back the process still follows and
+   * nothing new signed for it, or, for one that stood past release depth
+   * when it rolled back, which the process had seen land final, at most one
+   * new spend back; and they end resolved by their record again
+   * (validation-trace-dispute-staging-left-for-sweep.ts). */
+  const spentBackAgainAfterRollback = async () =>
+    await expectSpentBackAgainAfterRollback({
+      scene: scene(),
+      outputs: stagedOutputs,
+      runOnce: async () =>
+        await drive.dispute().runner.runOnce(scene().failing),
+      describe: describeRun,
+      ended: (result) => result.kind === "resolved_by_another_record",
+      releaseDepth: RELEASE_DEPTH,
+    });
   /** Past both cases' deadlines, the other prover convicts its case and
    * removes the block against its record, and the removal goes past
    * rollback recovery; that record. */
@@ -337,24 +348,15 @@ export const stagedOtherRecord = ({
     return spent;
   };
 
-  /** Our spend backs the journal `entries` shows submitted, by what each
-   * spends. */
-  const spendBackIntents = (
-    entries: readonly FraudProofWorkflowJournalEntry[],
-  ) => {
-    const intents = new Map<string, Set<string>>();
-    for (const { event } of entries)
-      if (
-        event.kind === "submission_intent" &&
-        event.actionInput.schemaVersion === VALIDATION_TRACE_STAGING_RECLAIM
-      ) {
-        const consumes = event.actionInput.consumes as string;
-        intents.set(
-          consumes,
-          (intents.get(consumes) ?? new Set()).add(event.txHash),
-        );
+  /** Our spend backs the dispute's processes sent, by what each spends. */
+  const spendBackSends = () => {
+    const sends = new Map<string, Set<string>>();
+    for (const { actionId, txHash } of drive.sent())
+      if (actionId.startsWith(RECLAIM_PREFIX)) {
+        const consumes = actionId.slice(RECLAIM_PREFIX.length);
+        sends.set(consumes, (sends.get(consumes) ?? new Set()).add(txHash));
       }
-    return intents;
+    return sends;
   };
 
   return {
@@ -364,11 +366,12 @@ export const stagedOtherRecord = ({
     playToClose,
     removeByTheirs,
     runToResolution,
+    spentBackAgainAfterRollback,
     spentBy,
     expectSpentBack,
-    spendBackIntents,
+    spendBackSends,
     describeRun,
-    /** The thread the other run on our key Inited. */
+    /** The thread the earlier process's Init left. */
     siblingThread: () => siblingThread!,
     tearDown: () => {
       clock?.mockRestore();

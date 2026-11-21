@@ -1,12 +1,12 @@
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
   createFraudProofWorkflowRegistry,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import { createManifestBoundValueConservationWorkflow } from "./workflow.create-manifest-bound-value-conservation-workflow.js";
 
 export type ManifestBoundValueConservationWorkflow = Awaited<
@@ -16,12 +16,12 @@ export type ManifestBoundValueConservationWorkflow = Awaited<
 export const runOrResumeManifestBoundValueConservationWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundValueConservationWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }) =>
   runFraudProofWorkflowFromRetainedDa({
@@ -38,7 +38,7 @@ export const runOrResumeManifestBoundValueConservationWorkflow = async ({
       adapters: [workflow.adapter],
       launchScope: ["valueNotPreserved"],
     }),
-    journal,
+    run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     walletOnlySend,

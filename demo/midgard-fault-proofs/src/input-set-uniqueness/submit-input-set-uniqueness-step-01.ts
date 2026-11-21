@@ -70,7 +70,7 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { InputSetUniquenessContracts } from "./contracts.js";
 import {
@@ -99,7 +99,7 @@ export type InputSetUniquenessStep01Build = {
 };
 
 export type SubmitInputSetUniquenessStep01Result =
-  UnjournaledSubmission<InputSetUniquenessStep01Build>;
+  OutsideWorkflowSubmission<InputSetUniquenessStep01Build>;
 
 export const buildInputSetUniquenessStep01 = async ({
   lucid,

@@ -22,7 +22,7 @@ import {
 import { type FaultProofWitnessReferenceScripts } from "./witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 export const PHAS_MEMBERSHIP_WITHDRAW_TITLE = "phas.membership.withdraw";
@@ -57,7 +57,7 @@ export type InitBuild = {
   readonly fraudProofCatalogueRoot: string;
 };
 
-export type SubmitInitResult = UnjournaledSubmission<InitBuild>;
+export type SubmitInitResult = OutsideWorkflowSubmission<InitBuild>;
 
 export const requireFraudProofCatalogue = (
   deploymentInfo: ContractDeploymentInfo,
@@ -241,7 +241,8 @@ export type ResolvedInitBuild = {
   readonly fraudProofCatalogueRoot: string;
 };
 
-export type SubmitResolvedInitResult = UnjournaledSubmission<ResolvedInitBuild>;
+export type SubmitResolvedInitResult =
+  OutsideWorkflowSubmission<ResolvedInitBuild>;
 
 export const STANDARD_INIT_REFERENCE_SCRIPT_ROLES = {
   computationThreadMint: "V1 fraud-proof computation-thread minting",

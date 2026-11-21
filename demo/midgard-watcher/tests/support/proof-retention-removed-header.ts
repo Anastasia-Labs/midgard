@@ -3,7 +3,7 @@
  * header committed on an untracked operator UTxO and then removed as
  * fraudulent, with the proof-retention and tx-input seams over its store.
  */
-import type { OutRef } from "@al-ft/midgard-l1-follower";
+import { openSqliteFactStore, type OutRef } from "@al-ft/midgard-l1-follower";
 import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { expect } from "vitest";
@@ -13,6 +13,10 @@ import {
   watcherUnitHistoryPolicies,
 } from "../../src/l1-follower/projection.js";
 import { createWatcherProofRetention } from "../../src/l1-follower/proof-retention.js";
+import {
+  createWatcherProofRosterRetention,
+  type WatcherProofRosterRetention,
+} from "../../src/l1-follower/proof-roster-retention.js";
 import {
   type LedgerOutputsQuery,
   ledgerOutputsQueryFromTransport,
@@ -25,6 +29,7 @@ import { createTxInputsResolver } from "../../src/l1-follower/tx-inputs.js";
 import { D, harness, K, SEED, X } from "./l1-follower-raw-reads-fixture.js";
 import { removeTailTx } from "./l1-follower-state-queue-removal.js";
 import {
+  commitHeader,
   commitTx,
   initTx,
   queueState,
@@ -77,10 +82,30 @@ export const removedHeader = async (
     /** Resolve the init's inputs while its parent is in the window. */
     resolveInit?: boolean;
     open?: Parameters<typeof harness>[1];
+    /**
+     * A proof roster whose floor the store's pruning holds to (SQLite in
+     * memory). Absent: a roster no prune step consults.
+     */
+    roster?: WatcherProofRosterRetention;
   }>,
 ) => {
   const deployment = options.followUnit === true ? FOLLOWING : D;
-  const h = await harness(deployment, options.open);
+  const roster = options.roster ?? createWatcherProofRosterRetention();
+  const h = await harness(
+    deployment,
+    options.open ??
+      (options.roster === undefined
+        ? undefined
+        : {
+            dialect: "sqlite",
+            store: (opened) =>
+              openSqliteFactStore({
+                ...opened,
+                path: ":memory:",
+                pruneFloors: [roster.floor],
+              }),
+          }),
+  );
   closers.push(() => h.store.close());
   const real = ledgerOutputsQueryFromTransport(h.node);
   let isDown = false;
@@ -111,6 +136,8 @@ export const removedHeader = async (
   const retention = createWatcherProofRetention(h.store, {
     unitHistoryPolicies: watcherUnitHistoryPolicies(deployment),
     stateQueuePolicyId: deployment.stateQueueMint,
+    roster,
+    fraudProofSpend: deployment.fraudProofSpend,
   });
 
   const funding: SimTx = {
@@ -125,12 +152,15 @@ export const removedHeader = async (
   // The follower is within the node's window at the init: its seed input
   // resolves from the ledger.
   if (options.resolveInit !== false) expect(await resolver.step()).toEqual([]);
-  const commit = commitTx(queueState(h.chain, D)!, D, operatorUtxo);
+  const before = queueState(h.chain, D)!;
+  const commit = commitTx(before, D, operatorUtxo);
   const header = headerOf(commit);
+  // The committed header itself, as an observation of the queue carries it.
+  const headerBody = commitHeader(before);
   const committed = await h.forward([commit]);
   const commitHash = committed.hashes[0]!;
   if (options.resolveAtIngest) expect(await resolver.step()).toEqual([]);
-  const target = { category: "doubleSpend", headerHash: header };
+  const target = { category: "doubleSpend", headerHash: header } as const;
   if (options.pin)
     expect(await retention.pin(target)).toEqual({ kind: "pinned" });
 
@@ -226,10 +256,12 @@ export const removedHeader = async (
     ledger,
     resolver,
     retention,
+    roster,
     remint,
     recommit,
     target,
     header,
+    headerBody,
     commitHash,
     commitPoint: committed.point,
     removalPoint: removal.point,

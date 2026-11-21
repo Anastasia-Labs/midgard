@@ -29,9 +29,10 @@ import {
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator.js";
+import { proofMaterialsAccess } from "./proof-materials-view.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
@@ -52,7 +53,7 @@ export const createBoundTransactionPort = ({
         evidence,
         classification,
       }),
-    capture: async ({ action, artifact, entries }) => {
+    capture: async ({ action, artifact, holder }) => {
       const forced =
         artifact.schemaVersion === MISSING_SIGNATURE_FORCED_ARTIFACT
           ? await admitMissingSignatureForcedArtifact(artifact)
@@ -70,14 +71,18 @@ export const createBoundTransactionPort = ({
         );
       }
       const input = requiredAction(action);
-      // Every step reads the field carriage its prerequisite journaled.
+      // Every step reads the field carriage its prerequisite published.
       const ownOutputs = workflowFieldCarriageOwnOutputs({
         category: "missingSignature",
-        entries,
+        materials: proofMaterialsAccess({
+          signer: config.signer,
+          lucid: config.lucid,
+          holder,
+        }),
       });
       if (input.stage === "init") {
         const transaction = (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await builders.init({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -119,7 +124,7 @@ export const createBoundTransactionPort = ({
             "missingSignature: forced artifact entered an accepted stage",
           );
         const transaction = (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildMissingSignatureForcedAction({
               ownOutputs,
               lucid: config.lucid,
@@ -144,7 +149,7 @@ export const createBoundTransactionPort = ({
         if (admitted === undefined)
           throw new Error("missingSignature: accepted artifact missing");
         const transaction = (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await builders.step01({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -170,7 +175,7 @@ export const createBoundTransactionPort = ({
         if (admitted === undefined)
           throw new Error("missingSignature: accepted artifact missing");
         const transaction = (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await builders.step02({
               ownOutputs,
               lucid: config.lucid,
@@ -194,7 +199,7 @@ export const createBoundTransactionPort = ({
         if (admitted === undefined)
           throw new Error("missingSignature: accepted artifact missing");
         const transaction = (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await builders.step03({
               lucid: config.lucid,
               contracts: config.contracts,
@@ -213,7 +218,7 @@ export const createBoundTransactionPort = ({
         if (admitted === undefined)
           throw new Error("missingSignature: accepted artifact missing");
         const transaction = (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await builders.step04({
               ownOutputs,
               lucid: config.lucid,

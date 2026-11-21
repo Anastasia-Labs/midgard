@@ -35,7 +35,7 @@ it("starts no correction removal from an application that only observes", async 
           fraudProofAssetName: `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.doubleSpend}${HEADER}`,
         },
         walletLeases: {
-          readReservedOutRefs: async () => [],
+          heldOutRefs: () => [],
           holdWalletInputs: () => () => undefined,
         },
       }),

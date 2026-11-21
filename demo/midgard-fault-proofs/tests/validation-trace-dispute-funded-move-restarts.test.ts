@@ -1,10 +1,10 @@
 /** The validation-trace dispute's reveal across a watcher process stop, under
- * the prover funding permit, on the emulator. A defender opens a thread on
- * our case and reveals; the watcher signs our reveal and journals it, and
- * stops. Stopped after broadcasting, the next process lands those same
- * bytes and sends nothing again. Stopped before broadcasting, the next
- * process offers only the stopped bytes again until they expire, then makes
- * a single re-signed attempt, and the stopped bytes can no longer land.
+ * the watcher's prover funding, on the emulator. A defender opens a thread
+ * on our case and reveals; the watcher signs our reveal and stops. The next
+ * process holds nothing of the stopped one. Stopped after broadcasting, the
+ * stopped bytes land and the next process sends nothing again. Stopped
+ * before broadcasting, the next process builds the reveal again from the
+ * chain, and the stopped bytes can no longer land.
  * Either way exactly one reveal moves the thread.
  *
  * The category is not installed until its defender exists; this file
@@ -18,7 +18,7 @@ import {
   confirmedMoves,
   type FundedMoves,
   liveFundedThread,
-  moveIntents,
+  moveSends,
   openDefendedFundedCase,
 } from "./support/validation-trace-dispute-funded-moves.js";
 import {
@@ -38,9 +38,8 @@ const isReveal = (action: { readonly input: unknown }) =>
   (action.input as { readonly stage?: unknown }).stage === "reveal";
 
 /**
- * Stops the watcher process at our reveal's submit: once its intent is
- * durable, after (`broadcast`) or before its bytes reach the ledger. The
- * stopped turn never returns.
+ * Stops the watcher process at our reveal's submit, after (`broadcast`) or
+ * before its bytes reach the ledger. The stopped turn never returns.
  */
 const stopAtRevealSubmit = async ({
   broadcast,
@@ -84,16 +83,17 @@ const stopAtRevealSubmit = async ({
   return { signedHex: signedHex!, signedHash };
 };
 
-/** The process restarted over its durable state, run until our reveal has
- * put the thread on the defender's turn; returns its journal's view. */
+/** The process restarted, holding nothing of the stopped one, run until
+ * our reveal has put the thread on the defender's turn; returns the hash of
+ * the reveal that moved the thread. */
 const resume = async () => {
-  await journey.dispute.restart();
+  journey.dispute.restart();
   const { result, history } = await turnUntil(
     journey.dispute,
     VALIDATION_TRACE_THREAD_AWAITING,
   );
   expect(result.kind, history.join("\n")).toBe("pending");
-  const reveals = confirmedMoves(result).filter(
+  const reveals = (await confirmedMoves(journey.dispute)).filter(
     ({ stage }) => stage === "reveal",
   );
   // Exactly one reveal moved the thread.
@@ -101,7 +101,7 @@ const resume = async () => {
   const live = await liveFundedThread(journey);
   expect(isTurn(threadOf(live), "AwaitingOperator")).toBe(true);
   expect(reveals[0]!.outputs).toStrictEqual([`${live.txHash}#0`]);
-  return { result, landed: live.txHash };
+  return { landed: live.txHash };
 };
 
 describe("validation-trace dispute reveal across a watcher process stop", () => {
@@ -118,47 +118,32 @@ describe("validation-trace dispute reveal across a watcher process stop", () => 
   it(
     "lands the same signed reveal after a stop between its broadcast and its landing, sending nothing again",
     async () => {
-      try {
-        const stop = await stopAtRevealSubmit({ broadcast: true });
-        const { result, landed } = await resume();
-        expect(landed).toBe(stop.signedHash);
-        expect(journey.dispute.rebroadcasts).toStrictEqual([]);
-        expect(
-          moveIntents(result, "reveal").map(({ attempt, txHash }) => [
-            attempt,
-            txHash,
-          ]),
-        ).toStrictEqual([[1, stop.signedHash]]);
-      } finally {
-        await journey.dispute.close();
-      }
+      const stop = await stopAtRevealSubmit({ broadcast: true });
+      const { landed } = await resume();
+      expect(landed).toBe(stop.signedHash);
+      expect(journey.dispute.rebroadcasts).toStrictEqual([]);
+      expect(
+        moveSends(journey.dispute, "reveal").map(({ txHash }) => txHash),
+      ).toStrictEqual([stop.signedHash]);
     },
     TIMEOUT,
   );
 
   it(
-    "supersedes the reveal's unsent signed bytes once they expire after a stop before broadcast: one re-signed attempt lands, and the stopped bytes can no longer land",
+    "builds the reveal again after a stop before broadcast: the next process's own reveal lands, once, and the stopped bytes cannot land beside it",
     async () => {
-      try {
-        const stop = await stopAtRevealSubmit({ broadcast: false });
-        const { result, landed } = await resume();
-        // Only the stopped process's exact bytes are ever offered again.
-        expect(journey.dispute.rebroadcasts.length).toBeGreaterThan(0);
-        for (const offered of journey.dispute.rebroadcasts)
-          expect(offered).toBe(stop.signedHex);
-        const intents = moveIntents(result, "reveal");
-        expect(intents.map(({ attempt }) => attempt)).toStrictEqual([1, 2]);
-        expect(intents[0]!.txHash).toBe(stop.signedHash);
-        expect(intents[1]!.txHash).not.toBe(stop.signedHash);
-        expect(landed).toBe(intents[1]!.txHash);
-        const { emulator } = journey.scene.h;
-        await expect(emulator.submitTx(stop.signedHex)).rejects.toThrow();
-        expect(
-          (await emulator.getTransactionStatus(stop.signedHash)).status,
-        ).not.toBe("confirmed");
-      } finally {
-        await journey.dispute.close();
-      }
+      const stop = await stopAtRevealSubmit({ broadcast: false });
+      const { landed } = await resume();
+      // The next process knows nothing of the stopped bytes: it rebroadcasts
+      // nothing and sends the reveal it builds from the chain, which may be
+      // the very same transaction.
+      expect(journey.dispute.rebroadcasts).not.toContain(stop.signedHex);
+      const sends = moveSends(journey.dispute, "reveal");
+      expect(sends).toHaveLength(2);
+      expect(sends[0]!.txHash).toBe(stop.signedHash);
+      expect(landed).toBe(sends[1]!.txHash);
+      const { emulator } = journey.scene.h;
+      await expect(emulator.submitTx(stop.signedHex)).rejects.toThrow();
     },
     TIMEOUT,
   );

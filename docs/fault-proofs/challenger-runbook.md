@@ -41,10 +41,10 @@ at 2,160. Confirmation depth 30 is the anchor depth: it governs finalized audit
 anchors, incident records and evidence stamps. Proof actions proceed on
 authenticated inclusion at fixed depth 1. There is no runtime action-depth
 configuration field. A rollback invalidates cached authority and re-observes
-canonical state. Reconcile
-outstanding submissions before retrying suitable signed bytes or rebuilding with
-current inputs under fresh authority. Terminal inclusion remains recoverable until
-anchoring, and unresolved attempts retain their input exclusions. Generic nested
+canonical state from the chain before the next build under fresh authority.
+A transaction the watcher sent stays in its in-memory in-flight set, its
+wallet coins excluded from every other build, until it lands or its validity
+bound passes. Generic nested
 configuration types do not enable additional launcher modes. Follow the watcher
 process configuration for these exact values.
 
@@ -53,8 +53,8 @@ The challenger path requires:
 - the watcher's own L1 follower on a local Cardano node (`local_node`);
 - public libp2p retained-payload and proof-artifact protocols;
 - the exact deployment fingerprint on every request;
-- a durable watcher decision/workflow journal;
-- an action-specific funding reservation and admitted actuation permit;
+- a durable watcher decision journal;
+- an admitted actuation permit and a funded prover wallet;
 - every enabled category reported ready by the installed application registry.
 
 Completion: DA retention has completed a successful check, the watcher is
@@ -69,8 +69,8 @@ computation thread, so any party running a watcher can challenge. The
 production watcher is the normal entry point, and it submits every proof
 transaction itself. It obtains the challenged HeaderV1 from authenticated L1
 state, retrieves retained evidence through the public DA protocols, records
-the classifier decision, reserves funding, and runs or resumes the
-manifest-bound category workflow. A normal challenge needs no operator
+the classifier decision, and runs the manifest-bound category workflow, which
+reads its progress from the chain. A normal challenge needs no operator
 command.
 
 Operations status reports `retained_da_transport_failed` when the shared
@@ -88,13 +88,12 @@ node demo/midgard-fault-proofs/dist/bin.js workflow-readiness
 ```
 
 Do not invoke `run-workflow` as an authority bypass. Production workflow
-execution requires the watcher-created decision and funding permits plus its
-application-installed runtime registry.
+execution requires the watcher-created decision and actuation permits plus
+its application-installed runtime registry.
 
-Completion: the workflow journal contains confirmed init and step
-transactions, a permanent category-plus-header proof token, confirmed
-state-queue removal, exact slash/reward observations, and final
-reconciliation. Submitted or unknown transactions are not completion.
+Completion: the chain holds a permanent category-plus-header proof token, a
+confirmed state-queue removal that references it, and the exact slash and
+reward. Submitted or unknown transactions are not completion.
 
 ## 4. Verify independently
 
@@ -107,7 +106,7 @@ success flag. Verify:
    exactly once;
 4. retained evidence and immutable journal records hash to the recorded
    deployment identity;
-5. the watcher has no unfinished mutation, funding, or reconciliation job.
+5. the watcher has no queued or active proof job for the header.
 
 Completion: all five observations agree at a final chain point.
 
@@ -121,12 +120,12 @@ reason behind each page and what clears it.
 
 The watcher retries submission by itself: a held objective resumes on the
 next observation once its cause (prover wallet funds, the L1 provider,
-retained-DA reachability) is fixed, and a restart with the same journals
-resumes every objective from its journaled checkpoint. That restart is the
+retained-DA reachability) is fixed, and a restart resumes every objective
+from what the chain holds. That restart is the
 manual fallback; it follows
 [`manual-recovery-runbook.md`](manual-recovery-runbook.md). There is no
 standalone submission command that bypasses the watcher's decision and
-funding permits. An objective held as `fault_proof_resubmission_required` or
+actuation permits. An objective held as `fault_proof_resubmission_required` or
 `fault_proof_start_deadline_passed` cannot be resumed by this watcher;
 escalate it while the challenge window is open, since another independent
 challenger can still prove the same fault.
@@ -137,5 +136,5 @@ verifies the outcome.
 ## Recovery branch
 
 If any submission may have reached L1, switch to
-[`manual-recovery-runbook.md`](manual-recovery-runbook.md). Preserve the
-journal and reconcile before retrying.
+[`manual-recovery-runbook.md`](manual-recovery-runbook.md). Read the
+objective's transactions from L1 before retrying.

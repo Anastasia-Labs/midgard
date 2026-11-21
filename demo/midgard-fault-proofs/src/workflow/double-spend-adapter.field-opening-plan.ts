@@ -7,8 +7,10 @@ import type {
   DoubleSpendArtifact,
   DoubleSpendConstrainedWorkflowAdapterConfig,
 } from "./double-spend-adapter.preflight-of.js";
-import type { FraudProofWorkflowJournalEntry } from "./journal.js";
-import { workflowConfirmedTransactions } from "./own-outputs.js";
+import {
+  proofMaterialsAccess,
+  type ProofMaterialsHolder,
+} from "./proof-materials-view.js";
 
 export const createDoubleSpendFieldOpeningPlan = (
   config: DoubleSpendConstrainedWorkflowAdapterConfig,
@@ -33,26 +35,25 @@ export const createDoubleSpendFieldOpeningPlan = (
 };
 
 /**
- * The double-spend proof chunks and field carriage of a workflow, read at
- * the proof-materials and certificate addresses among the outputs of the
- * transactions its journal `entries` confirmed only.
+ * The double-spend proof chunks of a workflow, found by content at the
+ * proof-materials address, and its field carriage: publications found by
+ * content there too, and the certificate found by its token and datum at
+ * the certificate address.
  */
 export const createDoubleSpendOwnMaterials = (
   config: DoubleSpendConstrainedWorkflowAdapterConfig,
 ) => ({
-  proofChunks: async (
-    proofCbor: string,
-    entries: readonly FraudProofWorkflowJournalEntry[],
-  ) =>
+  proofChunks: async (holder: ProofMaterialsHolder, proofCbor: string) =>
     await resolvePublishedProofChunks({
       lucid: config.lucid,
       address: config.signer.proofMaterialsAddress,
       proofCbor,
-      ownTransactions: workflowConfirmedTransactions(entries),
+      view: config.signer.proofMaterials,
+      holder,
     }),
   fieldCarriage: async (
     planned: ReturnType<ReturnType<typeof createDoubleSpendFieldOpeningPlan>>,
-    entries: readonly FraudProofWorkflowJournalEntry[],
+    holder: ProofMaterialsHolder,
   ) =>
     await addressFieldCarriageOwnOutputs({
       lucid: config.lucid,
@@ -60,6 +61,10 @@ export const createDoubleSpendOwnMaterials = (
       publisherAddress: config.signer.proofMaterialsAddress,
       planned,
       certificatePolicyId: config.fieldPreimageCertificate.policyId,
-      ownTransactions: workflowConfirmedTransactions(entries),
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
+      }),
     }),
 });

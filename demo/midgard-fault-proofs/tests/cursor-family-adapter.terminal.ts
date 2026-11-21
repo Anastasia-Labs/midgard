@@ -19,7 +19,7 @@ import { THIRTEEN_STEP_CURSOR_SPEC } from "./support/thirteen-step-cursor-spec.j
 
 export const hash = (byte: string): string => byte.repeat(32);
 
-const headerHash = "ab".repeat(28);
+export const headerHash = "ab".repeat(28);
 
 export const outRef = (byte: string, index = 0): string =>
   `${hash(byte)}#${index}`;
@@ -117,17 +117,10 @@ export const port = (
   capture,
 });
 
-export const noLeaseCoordinator = {
-  acquire: async () => {
-    throw new Error("no mutation lease expected");
-  },
-};
-
 export const context = {
   identity,
   workflowId: hash("bb"),
   artifact: { prepared: true },
-  entries: [],
 } as const;
 
 export const required = (stage: FraudProofRawL1FamilyStage) => {

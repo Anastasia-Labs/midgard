@@ -1,6 +1,6 @@
 import type {
   LocallyEvaluatedTransaction,
-  UnjournaledSubmission,
+  OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import { missingSignatureStepLabel } from "./submit-common.js";
 
@@ -37,7 +37,7 @@ export type MissingSignatureStep04Build =
     });
 
 export type SubmitMissingSignatureStep04Result =
-  UnjournaledSubmission<MissingSignatureStep04Build>;
+  OutsideWorkflowSubmission<MissingSignatureStep04Build>;
 
 export type Step04SpendLayout = {
   readonly inputIndex: bigint;

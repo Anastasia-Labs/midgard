@@ -14,7 +14,7 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   buildFieldPreimageLengthAcceptedAuthentication,
@@ -85,7 +85,7 @@ export type FieldPreimageLengthLucidSubmissionContext = Readonly<{
   prepared: PreparedFieldPreimageLengthEvidence;
 }>;
 
-/** Builds and signs one stage's transaction for the journaled workflow. */
+/** Builds and signs one stage's transaction for the workflow. */
 export type FieldPreimageLengthLucidSubmitter = (
   context: FieldPreimageLengthLucidSubmissionContext,
 ) => Promise<LocallyEvaluatedTransaction>;
@@ -170,7 +170,7 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
     init: async (context) => {
       const resolved = await stage(context, "init");
       return (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await buildFieldPreimageLengthInit({
             config: context.config,
             fraudulentBlockOutRef: resolved.fraudulentBlockOutRef,
@@ -182,7 +182,7 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
     dispatchAccepted: async (context) => {
       const resolved = await stage(context, "dispatch");
       return (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await buildFieldPreimageLengthAcceptedDispatch({
             config: context.config,
             threadOutRef: required(
@@ -213,7 +213,7 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
     dispatchForced: async (context) => {
       const resolved = await stage(context, "dispatch");
       return (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await buildFieldPreimageLengthForcedDispatch({
             config: context.config,
             threadOutRef: required(
@@ -229,7 +229,7 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
       const prepared = inDomain(context.prepared);
       const resolved = await stage(context, "authenticate");
       return (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await buildFieldPreimageLengthAcceptedAuthentication({
             config: context.config,
             threadOutRef: required(
@@ -254,7 +254,7 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
       const resolved = await stage(context, "authenticate");
       if (fieldPreimageLengthOutOfDomain(context.prepared))
         return (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildFieldPreimageLengthForcedOutOfDomain({
               config: context.config,
               threadOutRef: required(
@@ -271,7 +271,7 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
           )
         ).transaction;
       return (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await buildFieldPreimageLengthForcedAuthentication({
             config: context.config,
             threadOutRef: required(
@@ -300,7 +300,7 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
     finalize: async (context) => {
       const resolved = await stage(context, "finalize");
       return (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await buildFieldPreimageLengthTerminal({
             config: context.config,
             threadOutRef: required(

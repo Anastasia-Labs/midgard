@@ -34,7 +34,7 @@ describe("fresh prerequisite selection changes", () => {
           : publicationAction;
       vi.mocked(port.inspect).mockResolvedValueOnce(
         action === baseAction
-          ? { kind: "satisfied" }
+          ? { kind: "satisfied", chunks: [] }
           : { kind: "required", action: publicationAction },
       );
       await expect(adapter.observe(context)).resolves.toMatchObject({

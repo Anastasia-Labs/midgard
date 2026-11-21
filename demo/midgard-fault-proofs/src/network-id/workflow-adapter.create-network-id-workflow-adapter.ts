@@ -1,7 +1,6 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk/core";
 import { NetworkIdForcedScanDatum } from "@al-ft/midgard-sdk/fraud-proof";
-import { deriveFieldPreimageCertification } from "@al-ft/midgard-sdk/state-queue";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -26,7 +25,7 @@ import {
 } from "../workflow/bespoke-adapter-field-carriage.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import type {
-  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowIdentity,
   JournalJsonObject,
 } from "../workflow/journal.js";
 import {
@@ -35,15 +34,12 @@ import {
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowObservation,
   type FraudProofWorkflowPreflight,
-  type FraudProofWorkflowReconcileResult,
 } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
-import {
-  createOwnOutputJournal,
-  workflowConfirmedTransactions,
-} from "../workflow/own-outputs.js";
+import { createOwnOutputJournal } from "../workflow/own-outputs.js";
+import { workflowProofMaterialsHolder } from "../workflow/proof-materials-view.holder.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { admitRemovalTransaction } from "../workflow/removal-admission.js";
-import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
@@ -74,34 +70,27 @@ import { buildNetworkIdStep02 } from "./submit-network-id-step-02.submit-network
 import {
   admitNetworkIdWorkflowArtifact,
   type AdmittedNetworkIdArtifact,
-  confirmedTxHash,
-  latestRemovalIntent,
-  parseMutationLeaseRecovery,
 } from "./workflow-adapter.admit-network-id-forced-artifact.js";
-import {
-  type NetworkIdWorkflowAdapterConfig,
-  recoverMutationLease,
-} from "./workflow-adapter.create-network-id-raw-l1-observation-port.js";
+import type { NetworkIdWorkflowAdapterConfig } from "./workflow-adapter.create-network-id-raw-l1-observation-port.js";
 import { createNetworkIdForcedStepContract } from "./workflow-adapter.forced-step-contract.js";
 import { createNetworkIdOwnThreadReads } from "./workflow-adapter.own-thread-reads.js";
 import { prepareNetworkIdWorkflowArtifact } from "./workflow-adapter.prepare-artifact.js";
 import {
   action,
-  type ActionKind,
   actionKind,
   CATEGORY,
-  contentActionId,
   forcedScanKindFor,
   isForcedScanKind,
   requireString,
   type WorkflowContext,
 } from "./workflow-adapter.prepared-from-artifact.js";
-import { type PreparedNetworkIdWrongfulRejection } from "./wrongful-rejection.js";
+import type { PreparedNetworkIdWrongfulRejection } from "./wrongful-rejection.js";
 
 /**
  * Concrete last-header adapter. It captures the actual signed transaction at
- * the post-local-evaluation/pre-network boundary, journals that hash through
- * the shared orchestrator, then submits exactly the captured body.
+ * the post-local-evaluation/pre-network boundary, hands that hash to the
+ * shared orchestrator's in-flight set, then submits exactly the captured
+ * body.
  */
 export const createNetworkIdWorkflowAdapter = (
   config: NetworkIdWorkflowAdapterConfig,
@@ -113,7 +102,13 @@ export const createNetworkIdWorkflowAdapter = (
       readonly mutationLease?: StateQueueMutationLease;
     }
   >();
-  const mutationLeaseByTxHash = new Map<string, StateQueueMutationLease>();
+  // The removal this process last submitted per header: the legacy
+  // provider route reads its completion facts from it, since only the raw-L1
+  // route derives a removal from the chain. A restart forgets it.
+  const submittedRemovals = new Map<
+    string,
+    Readonly<{ txHash: string; removedStateQueueOutRef: string }>
+  >();
   const category = CATEGORY;
 
   const { requireForcedStep, requireForcedStepReferenceScript } =
@@ -130,51 +125,6 @@ export const createNetworkIdWorkflowAdapter = (
       );
     }
     return referenceScript;
-  };
-
-  /**
-   * Scan occupancy, read only for the stages whose progress it decides. An
-   * accepted artifact, or a deployment without the scan, never pays the query.
-   */
-  const forcedScanOutRef = async ({
-    admitted,
-    kind,
-  }: {
-    readonly admitted: AdmittedNetworkIdArtifact;
-    readonly kind: ActionKind;
-  }): Promise<string | undefined> => {
-    if (admitted.direction !== "forced") return undefined;
-    if (
-      kind !== "init" &&
-      kind !== "forced_step01" &&
-      kind !== "forced_bind" &&
-      !isForcedScanKind(kind)
-    ) {
-      return undefined;
-    }
-    if (config.contracts.forcedScan === undefined) return undefined;
-    const utxo = await forcedScanThread(admitted.prepared.headerHash);
-    return utxo === undefined ? undefined : outRefLabel(utxo);
-  };
-
-  /**
-   * Forced-door occupancy, read only for the stages whose progress it decides.
-   * An accepted artifact never touches the door, so it never pays the query.
-   */
-  const forcedDoorOccupied = async ({
-    admitted,
-    kind,
-  }: {
-    readonly admitted: AdmittedNetworkIdArtifact;
-    readonly kind: ActionKind;
-  }): Promise<boolean> => {
-    if (admitted.direction === "accepted") return false;
-    if (kind !== "init" && kind !== "forced_step01" && kind !== "forced_bind") {
-      return false;
-    }
-    return (
-      (await forcedThreadOutRef(admitted.prepared.headerHash)) !== undefined
-    );
   };
 
   /**
@@ -212,14 +162,22 @@ export const createNetworkIdWorkflowAdapter = (
       ? undefined
       : outputsOpeningPlanFor(admitted);
 
-  /** The carriage of `opening` found at the signer and certificate addresses
-   * among the outputs of the transactions our journal `entries` confirmed. */
+  /** The carriage of `opening`: publications found by content at the
+   * proof-materials address for the workflow of `context`, the certificate
+   * by its token and datum at the certificate address. */
   const fieldCarriage = async (
     opening: FaultProofFieldOpeningPlan,
-    entries: readonly FraudProofWorkflowJournalEntry[],
+    context: Readonly<{
+      workflowId: string;
+      identity: FraudProofWorkflowIdentity;
+    }>,
   ) =>
     await addressFieldCarriageOwnOutputs({
-      ownTransactions: workflowConfirmedTransactions(entries),
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder: workflowProofMaterialsHolder(context),
+      }),
       lucid: config.lucid,
       network: config.network,
       publisherAddress: config.signer.proofMaterialsAddress,
@@ -381,22 +339,15 @@ export const createNetworkIdWorkflowAdapter = (
             "fraudulent header disappeared without the permanent Q35 proof token",
         };
       }
-      const intent = latestRemovalIntent(context);
-      if (intent === undefined || intent.kind !== "submission_intent") {
+      const removal = submittedRemovals.get(prepared.headerHash);
+      if (removal === undefined) {
         return {
           kind: "conflict",
           reason:
-            "fraudulent header disappeared without a journaled removal intent",
+            "fraudulent header disappeared and the provider route cannot derive its removal",
         };
       }
-      const removalTxHash = confirmedTxHash(context, intent.actionId);
-      if (removalTxHash === undefined) {
-        return {
-          kind: "conflict",
-          reason:
-            "confirmed removal facts are unavailable for terminal authentication",
-        };
-      }
+      const removalTxHash = removal.txHash;
       if (state?.proof === undefined) {
         return {
           kind: "conflict",
@@ -429,10 +380,7 @@ export const createNetworkIdWorkflowAdapter = (
           },
           correction: {
             removalTxHash,
-            removedStateQueueOutRef: requireString(
-              intent.actionInput.nextRemovalOutRef,
-              "removed state-queue out-ref",
-            ),
+            removedStateQueueOutRef: removal.removedStateQueueOutRef,
             fraudulentHeaderAbsent: true,
             referencedProofTokenOutRef: proofOutRef,
           },
@@ -455,9 +403,8 @@ export const createNetworkIdWorkflowAdapter = (
       }
       return {
         kind: "action_required",
-        // The production funding reservation permit binds the slash authority
-        // to the removal action through the shared `nextRemovalOutRef` and
-        // `fraudProofOutRef` names.
+        // The removal action names the outputs it spends: the next removal
+        // and the fraud proof (`nextRemovalOutRef`, `fraudProofOutRef`).
         action: action("remove", {
           nextRemovalOutRef:
             rawStage?.kind === "proof_token"
@@ -476,7 +423,7 @@ export const createNetworkIdWorkflowAdapter = (
     if (step02OutRef !== undefined) {
       const opening = finalStepOutputsOpeningPlanFor(admitted);
       if (opening !== undefined) {
-        const ownOutputs = await fieldCarriage(opening, context.entries);
+        const ownOutputs = await fieldCarriage(opening, context);
         const missing = firstUnclaimedFieldPublication({
           publisherAddress: config.signer.proofMaterialsAddress,
           planned: opening,
@@ -493,7 +440,7 @@ export const createNetworkIdWorkflowAdapter = (
                 fieldCommitment: opening.commitment,
                 publicationDatumCbor: missing.datumCbor,
               },
-              contentActionId({ base, entries: context.entries }),
+              base,
             ),
           };
         }
@@ -531,7 +478,7 @@ export const createNetworkIdWorkflowAdapter = (
                     .map((utxo) => outRefLabel(utxo))
                     .join(","),
                 },
-                contentActionId({ base, entries: context.entries }),
+                base,
               ),
             };
           }
@@ -557,7 +504,7 @@ export const createNetworkIdWorkflowAdapter = (
       if (scanUtxo !== undefined) {
         const scanOutRef = outRefLabel(scanUtxo);
         const { opening, plan } = forcedScanPlanFor(admitted);
-        const ownOutputs = await fieldCarriage(opening, context.entries);
+        const ownOutputs = await fieldCarriage(opening, context);
         const missing = firstUnclaimedFieldPublication({
           publisherAddress: config.signer.proofMaterialsAddress,
           planned: opening,
@@ -574,7 +521,7 @@ export const createNetworkIdWorkflowAdapter = (
                 fieldCommitment: opening.commitment,
                 publicationDatumCbor: missing.datumCbor,
               },
-              contentActionId({ base, entries: context.entries }),
+              base,
             ),
           };
         }
@@ -613,7 +560,7 @@ export const createNetworkIdWorkflowAdapter = (
                     .map((utxo) => outRefLabel(utxo))
                     .join(","),
                 },
-                contentActionId({ base, entries: context.entries }),
+                base,
               ),
             };
           }
@@ -652,11 +599,25 @@ export const createNetworkIdWorkflowAdapter = (
         };
       }
     }
+    // Init is read from finding no thread of ours at any step: a move of
+    // ours in flight between two of them leaves both empty until it lands.
     return {
       kind: "action_required",
       action: action("init", {
         fraudulentBlockOutRef: stateQueueOutRef,
       }),
+      absentAt: [
+        config.contracts.steps[0].spendingScriptAddress,
+        config.contracts.steps[1].spendingScriptAddress,
+        config.contracts.fraudProof.spendingScriptAddress,
+        ...(admitted.direction === "accepted"
+          ? []
+          : [requireForcedStep().spendingScriptAddress]),
+        ...(admitted.direction === "forced" &&
+        config.contracts.forcedScan !== undefined
+          ? [config.contracts.forcedScan.spendingScriptAddress]
+          : []),
+      ],
     };
   };
 
@@ -689,7 +650,7 @@ export const createNetworkIdWorkflowAdapter = (
       const buildAction = async (): Promise<LocallyEvaluatedTransaction> => {
         if (kind === "init") {
           return (
-            await journaledStepTransaction(
+            await workflowStepTransaction(
               await buildNetworkIdInit({
                 lucid: config.lucid,
                 blueprint: config.blueprint,
@@ -715,7 +676,7 @@ export const createNetworkIdWorkflowAdapter = (
             );
           }
           return (
-            await journaledStepTransaction(
+            await workflowStepTransaction(
               await buildNetworkIdStep01({
                 lucid: config.lucid,
                 blueprint: config.blueprint,
@@ -747,7 +708,7 @@ export const createNetworkIdWorkflowAdapter = (
           }
           requireForcedStep();
           return (
-            await journaledStepTransaction(
+            await workflowStepTransaction(
               await buildNetworkIdForcedStep01({
                 lucid: config.lucid,
                 contracts: config.contracts,
@@ -782,7 +743,7 @@ export const createNetworkIdWorkflowAdapter = (
             referenceScriptUtxo: requireForcedStepReferenceScript(),
           };
           return (
-            await journaledStepTransaction(
+            await workflowStepTransaction(
               admitted.direction === "accepted_forced"
                 ? await buildNetworkIdAcceptedForcedBind({
                     ...args,
@@ -808,14 +769,14 @@ export const createNetworkIdWorkflowAdapter = (
             "forced-scan thread out-ref",
           );
           const { opening, plan } = forcedScanPlanFor(admitted);
-          const ownOutputs = await fieldCarriage(opening, context.entries);
+          const ownOutputs = await fieldCarriage(opening, context);
           const scanUtxo = await forcedScanThread(prepared.headerHash);
           if (
             scanUtxo === undefined ||
             outRefLabel(scanUtxo) !== threadOutRef
           ) {
             throw new WorkflowActionChangedError(
-              "network-id forced scan thread moved away from the journaled batch out-ref",
+              "network-id forced scan thread moved away from the expected batch out-ref",
             );
           }
           const step = forcedScanNextStep({ utxo: scanUtxo, plan });
@@ -869,7 +830,7 @@ export const createNetworkIdWorkflowAdapter = (
             ...(certificate === undefined ? {} : { certificate }),
           });
           return (
-            await journaledStepTransaction(
+            await workflowStepTransaction(
               await buildNetworkIdForcedScanAction({
                 ownOutputs,
                 lucid: config.lucid,
@@ -903,7 +864,7 @@ export const createNetworkIdWorkflowAdapter = (
               "network-id field action does not match the prepared opening",
             );
           }
-          const ownOutputs = await fieldCarriage(opening, context.entries);
+          const ownOutputs = await fieldCarriage(opening, context);
           if (kind === "publish_field") {
             const missing = firstUnclaimedFieldPublication({
               publisherAddress: config.signer.proofMaterialsAddress,
@@ -982,7 +943,7 @@ export const createNetworkIdWorkflowAdapter = (
           const ownOutputs =
             opening === undefined
               ? createOwnOutputJournal()
-              : await fieldCarriage(opening, context.entries);
+              : await fieldCarriage(opening, context);
           const publications =
             opening === undefined
               ? []
@@ -1024,7 +985,7 @@ export const createNetworkIdWorkflowAdapter = (
             ...(certificate === undefined ? {} : { certificate }),
           });
           return (
-            await journaledStepTransaction(
+            await workflowStepTransaction(
               await buildNetworkIdStep02({
                 ownOutputs,
                 lucid: config.lucid,
@@ -1142,9 +1103,8 @@ export const createNetworkIdWorkflowAdapter = (
         transaction,
         ...(mutationLease === undefined ? {} : { mutationLease }),
       });
-      // The production funding reservation permit reads the signed body back
-      // from the in-memory preflight to reconcile the reserved inputs it
-      // actually spends, so the capture is bound beside the journal-safe view.
+      // The runner reads the signed body back from the preflight to hold
+      // the inputs it spends while it is in flight.
       return bindWorkflowPreflightTransaction(
         {
           actionId: context.action.actionId,
@@ -1155,16 +1115,6 @@ export const createNetworkIdWorkflowAdapter = (
             evaluator: LOCAL_UPLC_EVALUATOR,
           },
           referenceScripts: transaction.referenceScripts,
-          ...(mutationLease === undefined
-            ? {}
-            : {
-                durableRecovery: {
-                  stateQueueMutationLease: {
-                    token: mutationLease.token,
-                    source: mutationLease.source,
-                  },
-                },
-              }),
         },
         transaction.signed,
       );
@@ -1179,28 +1129,22 @@ export const createNetworkIdWorkflowAdapter = (
         return {
           kind: "ambiguous",
           detail:
-            "captured locally evaluated transaction is unavailable or differs from the journaled preflight hash",
+            "captured locally evaluated transaction is unavailable or differs from the preflight hash",
         };
       }
-      const recovery = parseMutationLeaseRecovery(
-        context.preflight.durableRecovery,
-      );
-      if (
-        (prepared.mutationLease === undefined) !== (recovery === undefined) ||
-        (prepared.mutationLease !== undefined &&
-          (prepared.mutationLease.token !== recovery?.token ||
-            prepared.mutationLease.source !== recovery.source))
-      ) {
-        throw new Error(
-          "network-id cached mutation lease differs from durable intent",
-        );
+      if (actionKind(context.action) === "remove") {
+        const admitted = admitNetworkIdWorkflowArtifact(context.artifact);
+        submittedRemovals.set(admitted.prepared.headerHash, {
+          txHash: prepared.transaction.txHash,
+          removedStateQueueOutRef: requireString(
+            context.action.input.nextRemovalOutRef,
+            "removed state-queue out-ref",
+          ),
+        });
       }
       try {
         const txHash = await submitCapturedTransaction(prepared.transaction);
         captured.delete(key);
-        if (prepared.mutationLease !== undefined) {
-          mutationLeaseByTxHash.set(txHash, prepared.mutationLease);
-        }
         return { kind: "submitted", txHash };
       } catch (cause) {
         return {
@@ -1208,242 +1152,11 @@ export const createNetworkIdWorkflowAdapter = (
           txHash: prepared.transaction.txHash,
           detail: cause instanceof Error ? cause.message : String(cause),
         };
+      } finally {
+        // The runner follows the submitted transaction on chain, so the
+        // lease ends with its submission.
+        await prepared.mutationLease?.release();
       }
-    },
-    reconcile: async (context): Promise<FraudProofWorkflowReconcileResult> => {
-      const admitted = admitNetworkIdWorkflowArtifact(context.artifact);
-      const prepared = admitted.prepared;
-      const kind = actionKind(context.action);
-      // A journaled submission the chain has not reflected yet is resolved
-      // through canonical signed-transaction recovery: still in the mempool is
-      // `pending`, expired is `not_found`, and anything the port cannot settle
-      // stays `unknown`. Reporting `not_found` directly would make the
-      // orchestrator abandon the funding transition and rebuild the identical
-      // transaction while the original is still landing.
-      const unconfirmed = async (
-        lease?: StateQueueMutationLease,
-      ): Promise<FraudProofWorkflowReconcileResult> => {
-        const observe = config.rawL1?.observeSignedTransaction;
-        if (context.txHash === undefined || observe === undefined) {
-          return { kind: "not_found" };
-        }
-        const { authorizeResubmission } = context;
-        return await reconcileSignedWorkflowTransaction({
-          transactionHash: context.txHash,
-          signedTransactionCborHex: context.signedTransactionCborHex,
-          observe,
-          rebroadcast: config.rawL1?.rebroadcastSignedTransaction,
-          authorizeResubmission:
-            authorizeResubmission === undefined
-              ? undefined
-              : async (signed) => {
-                  await lease?.renew();
-                  await authorizeResubmission(signed);
-                },
-        });
-      };
-      let advanced: boolean;
-      if (kind === "publish_field" || kind === "certify_field") {
-        const opening = outputsOpeningPlanFor(admitted);
-        if (opening === undefined) {
-          return {
-            kind: "conflict",
-            reason: "field action exists for a transaction-network fault",
-          };
-        }
-        if (context.action.input.fieldCommitment !== opening.commitment) {
-          return {
-            kind: "conflict",
-            reason: "field action commitment changed during reconciliation",
-          };
-        }
-        if (context.txHash === undefined) {
-          return {
-            kind: "conflict",
-            reason: "publication reconciliation omitted the intended tx hash",
-          };
-        }
-        const observer = config.rawL1?.publications;
-        if (observer === undefined) {
-          return {
-            kind: "conflict",
-            reason:
-              "production publication reconciliation has no authenticated raw-L1 observer",
-          };
-        }
-        if (kind === "publish_field") {
-          const candidates = await config.lucid.utxosAt(
-            config.signer.proofMaterialsAddress,
-          );
-          const candidate = candidates.find(
-            (utxo) =>
-              utxo.txHash === context.txHash &&
-              utxo.datum === context.action.input.publicationDatumCbor,
-          );
-          if (candidate === undefined) return await unconfirmed();
-          const observation = await observer.observeExact({
-            headerHash: prepared.headerHash,
-            kind: "field_publication",
-            address: config.signer.proofMaterialsAddress,
-            expectedOutRef: outRefLabel(candidate),
-            expectedDatumCbor: requireString(
-              context.action.input.publicationDatumCbor,
-              "publication datum",
-            ),
-          });
-          advanced = observation.kind === "confirmed";
-        } else {
-          // The certification transaction pays its certificate at output 0.
-          // Confirm that exact output: another valid certificate for the same
-          // opening may sort first at the address, and selecting by order
-          // would never settle this transaction.
-          const certification = deriveFieldPreimageCertification(opening.plan);
-          const observation = await observer.observeExact({
-            headerHash: prepared.headerHash,
-            kind: "field_certificate",
-            address: fieldPreimageCertificateAddress({
-              network: config.network,
-              certificatePolicyId:
-                config.contracts.fieldPreimageCertificatePolicyId,
-            }),
-            expectedOutRef: `${context.txHash}#0`,
-            expectedDatumCbor: certification.datumCbor,
-            expectedUnit: `${config.contracts.fieldPreimageCertificatePolicyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`,
-          });
-          advanced = observation.kind === "confirmed";
-        }
-      } else if (config.rawL1 !== undefined) {
-        if (
-          context.txHash === undefined ||
-          config.rawL1.transactionConfirmed === undefined
-        ) {
-          return {
-            kind: "conflict",
-            reason:
-              "production network-id reconciliation requires an intended tx hash and authenticated transaction history",
-          };
-        }
-        const rawStage = await config.rawL1.observe({
-          headerHash: prepared.headerHash,
-        });
-        const forcedOccupied = await forcedDoorOccupied({ admitted, kind });
-        const scanOutRef = await forcedScanOutRef({ admitted, kind });
-        const scanOccupied = scanOutRef !== undefined;
-        const beyondStep01 =
-          rawStage.kind === "step"
-            ? rawStage.step >= 2
-            : rawStage.kind === "proof_token" || rawStage.kind === "removed";
-        const tokenMinted =
-          rawStage.kind === "proof_token" || rawStage.kind === "removed";
-        const stageAdvanced = isForcedScanKind(kind)
-          ? scanOutRef !== context.action.input.threadOutRef
-          : kind === "init"
-            ? rawStage.kind !== "not_started" || forcedOccupied || scanOccupied
-            : kind === "step01"
-              ? beyondStep01
-              : kind === "forced_step01"
-                ? forcedOccupied || scanOccupied || beyondStep01
-                : kind === "forced_bind"
-                  ? !forcedOccupied && (scanOccupied || beyondStep01)
-                  : kind === "step02"
-                    ? tokenMinted
-                    : rawStage.kind === "removed" ||
-                      (rawStage.kind === "proof_token" &&
-                        rawStage.nextRemovalOutRef !==
-                          context.action.input.nextRemovalOutRef);
-        const intendedTransactionConfirmed =
-          await config.rawL1.transactionConfirmed({
-            headerHash: prepared.headerHash,
-            txHash: context.txHash,
-          });
-        if (stageAdvanced && !intendedTransactionConfirmed) {
-          return {
-            kind: "conflict",
-            reason:
-              "network-id chain advanced without the journaled transaction in authenticated unit history",
-          };
-        }
-        advanced = stageAdvanced && intendedTransactionConfirmed;
-      } else {
-        const state = await live(prepared.headerHash);
-        const forcedOccupied = await forcedDoorOccupied({ admitted, kind });
-        const scanOutRef = await forcedScanOutRef({ admitted, kind });
-        const scanOccupied = scanOutRef !== undefined;
-        const beyondStep01 =
-          state.step01 === undefined &&
-          (state.step02 !== undefined ||
-            state.proof !== undefined ||
-            state.stateQueue === undefined);
-        advanced = isForcedScanKind(kind)
-          ? scanOutRef !== context.action.input.threadOutRef
-          : kind === "init"
-            ? state.step01 !== undefined ||
-              state.step02 !== undefined ||
-              state.proof !== undefined ||
-              state.stateQueue === undefined ||
-              forcedOccupied ||
-              scanOccupied
-            : kind === "step01"
-              ? beyondStep01
-              : kind === "forced_step01"
-                ? forcedOccupied || scanOccupied || beyondStep01
-                : kind === "forced_bind"
-                  ? !forcedOccupied && (scanOccupied || beyondStep01)
-                  : kind === "step02"
-                    ? state.step02 === undefined &&
-                      (state.proof !== undefined ||
-                        state.stateQueue === undefined)
-                    : state.stateQueue === undefined;
-      }
-      if (advanced) {
-        if (context.txHash === undefined) {
-          return {
-            kind: "conflict",
-            reason:
-              "chain advanced but the journal carries no transaction hash",
-          };
-        }
-        const recovery =
-          context.txHash === undefined
-            ? { kind: "ok" as const, lease: undefined }
-            : await recoverMutationLease({
-                config,
-                txHash: context.txHash,
-                durableRecovery: context.durableRecovery,
-                mutationLeaseByTxHash,
-              });
-        if (recovery.kind === "conflict") return recovery;
-        await recovery.lease?.release();
-        if (context.txHash !== undefined) {
-          mutationLeaseByTxHash.delete(context.txHash);
-        }
-        return { kind: "confirmed", txHash: context.txHash };
-      }
-      const recovery =
-        context.txHash === undefined
-          ? { kind: "ok" as const, lease: undefined }
-          : await recoverMutationLease({
-              config,
-              txHash: context.txHash,
-              durableRecovery: context.durableRecovery,
-              mutationLeaseByTxHash,
-            });
-      if (recovery.kind === "conflict") return recovery;
-      const result = await unconfirmed(recovery.lease);
-      if (result.kind === "not_found") {
-        await recovery.lease?.release();
-        if (context.txHash !== undefined) {
-          mutationLeaseByTxHash.delete(context.txHash);
-        }
-      } else if (result.kind === "conflict") {
-        await recovery.lease?.fail(result.reason);
-        if (context.txHash !== undefined) {
-          mutationLeaseByTxHash.delete(context.txHash);
-        }
-      } else {
-        await recovery.lease?.renew();
-      }
-      return result;
     },
   };
 };

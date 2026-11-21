@@ -3,14 +3,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { verifyCompletedFraudProofWorkflow } from "../src/workflow/completed-verification.js";
-import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
-import {
-  computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowTerminal,
-  journalJsonDigest,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import type { FraudProofWorkflowTerminal } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { deriveFraudProofRawL1CompletedTerminal } from "../src/workflow/raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
 import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
 import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
@@ -37,65 +30,6 @@ describe("read-only completed workflow verification", () => {
     if (derived.kind !== "removed")
       throw new Error("fixture must be completed");
     const terminal = derived.terminal;
-    const identity = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-      deploymentFingerprint: DEPLOYMENT,
-      category: "doubleSpend" as const,
-      target: {
-        kind: "state_queue_header" as const,
-        headerHash: value.definition.headerHash,
-      },
-      decisionDigest: hash32("92"),
-    };
-    const workflowId = computeFraudProofWorkflowId(identity);
-    const entries: FraudProofWorkflowJournalEntry[] = [];
-    const append = (event: FraudProofWorkflowJournalEntry["event"]) =>
-      entries.push({
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-        workflowId,
-        identity,
-        sequence: entries.length,
-        recordedAt: "2026-09-16T12:00:00.000Z",
-        event,
-      });
-    append({ kind: "started" });
-    append({
-      kind: "prepared",
-      artifact: {},
-      artifactDigest: journalJsonDigest({}),
-    });
-    for (const txHash of [
-      terminal.proofToken.createdByTxHash,
-      terminal.correction.removalTxHash,
-    ]) {
-      append({
-        kind: "preflight_passed",
-        actionId: txHash,
-        txHash,
-        localEvaluator: "lucid",
-        referenceScripts: [],
-      });
-      append({
-        kind: "submission_intent",
-        actionId: txHash,
-        txHash,
-        attempt: 1,
-        actionInput: {},
-      });
-      append({ kind: "submitted", actionId: txHash, txHash, attempt: 1 });
-      append({
-        kind: "reconciled",
-        actionId: txHash,
-        txHash,
-        outcome: "confirmed",
-      });
-      append({ kind: "confirmed", actionId: txHash, txHash });
-    }
-    append({
-      kind: "completed",
-      terminal,
-      terminalDigest: journalJsonDigest(terminal),
-    });
     const definition = {
       ...value.definition,
       computationThread: {
@@ -114,16 +48,15 @@ describe("read-only completed workflow verification", () => {
     return {
       ...value,
       terminal,
-      entries,
       verify: (
         snapshot = value.snapshot,
-        candidate: FraudProofWorkflowTerminal = terminal,
+        /** `null` verifies without a runner's terminal. */
+        candidate: FraudProofWorkflowTerminal | null = terminal,
       ) =>
         verifyCompletedFraudProofWorkflow({
           binding,
-          entries,
-          terminal: candidate,
-          decisionDigest: identity.decisionDigest,
+          ...(candidate === null ? {} : { terminal: candidate }),
+          decisionDigest: hash32("92"),
           authority: {
             authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
             capture: async () => snapshot,
@@ -132,14 +65,17 @@ describe("read-only completed workflow verification", () => {
     };
   };
 
-  it("authenticates exact completed bytes and economics without thread decoders or journal mutations", async () => {
+  it("authenticates exact completed bytes and economics without thread decoders", async () => {
     const value = await completed();
-    const saved = structuredClone(value.entries);
     await expect(value.verify()).resolves.toEqual({
       kind: "applicable",
       terminal: value.terminal,
     });
-    expect(value.entries).toEqual(saved);
+    // Without a runner's terminal, the completion is the one the chain shows.
+    await expect(value.verify(value.snapshot, null)).resolves.toEqual({
+      kind: "applicable",
+      terminal: value.terminal,
+    });
   });
   it("invalidates completion when an authenticated rollback restores the target", async () => {
     const value = await completed();
@@ -164,35 +100,17 @@ describe("read-only completed workflow verification", () => {
       reason: "release_finality",
     });
   });
-  it.each(["headerHash", "economics", "proofToken"] as const)(
-    "rejects substituted durable %s",
-    async (field) => {
-      const value = await completed();
-      const changed =
-        field === "headerHash"
-          ? { ...value.terminal, headerHash: policy("99") }
-          : field === "economics"
-            ? {
-                ...value.terminal,
-                economics: {
-                  ...value.terminal.economics,
-                  proverRewardLovelace: "1",
-                },
-              }
-            : {
-                ...value.terminal,
-                proofToken: {
-                  ...value.terminal.proofToken,
-                  unit: policy("99"),
-                },
-              };
-      await expect(value.verify(value.snapshot, changed)).rejects.toThrow(
-        "durable terminal",
-      );
-    },
-  );
+  it("rejects a terminal for another header than the workflow's identity", async () => {
+    const value = await completed();
+    await expect(
+      value.verify(value.snapshot, {
+        ...value.terminal,
+        headerHash: policy("99"),
+      }),
+    ).rejects.toThrow("does not match workflow identity");
+  });
   it.each(["economics", "proofToken", "anchor"] as const)(
-    "rejects self-consistent journal %s that contradicts authenticated L1",
+    "rejects a self-consistent terminal %s that contradicts authenticated L1",
     async (field) => {
       const value = await completed();
       const changed =
@@ -219,15 +137,6 @@ describe("read-only completed workflow verification", () => {
                   unit: policy("99"),
                 },
               };
-      const last = value.entries.at(-1)!;
-      value.entries[value.entries.length - 1] = {
-        ...last,
-        event: {
-          kind: "completed",
-          terminal: changed,
-          terminalDigest: journalJsonDigest(changed),
-        },
-      };
       await expect(value.verify(value.snapshot, changed)).rejects.toThrow(
         "authenticated L1 facts",
       );
@@ -258,7 +167,6 @@ describe("read-only completed workflow verification", () => {
     "keeps a completed receipt pending after bounded rollback to canonical depth %s",
     async (confirmationDepth) => {
       const value = await completed();
-      const saved = structuredClone(value.entries);
       const point = value.snapshot.cursor.point;
       const tipInput = {
         slot: (BigInt(point.slot) + BigInt(confirmationDepth)).toString(),
@@ -292,7 +200,6 @@ describe("read-only completed workflow verification", () => {
         kind: "pending",
         reason: "release_finality",
       });
-      expect(value.entries).toEqual(saved);
     },
   );
 

@@ -124,7 +124,6 @@ import {
   REASON,
   registeredFamily,
 } from "./script-integrity-hash-missing-lifecycle.registered-family.js";
-import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
 import { network } from "./support/emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -139,6 +138,7 @@ import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deploymen
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { installFieldCarriage } from "./support/install-field-carriage.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
+import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("script-integrity-hash-missing real lifecycle", () => {
@@ -482,9 +482,9 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       threadOutRef?: string,
     ) => {
       const captured = await port.capture({
+        holder: TEST_PROOF_MATERIALS_HOLDER,
         action: actorAction(stage, threadOutRef),
         artifact,
-        entries: [],
       });
       const txHash = await submitCapturedTransaction(captured.transaction);
       await harness.proverLucid.awaitTx(txHash);
@@ -532,6 +532,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     vi.setSystemTime(harness.emulator.now());
     await measured("removal", async () => {
       const captured = await port.capture({
+        holder: TEST_PROOF_MATERIALS_HOLDER,
         action: {
           actionId: `remove:${setup.fraudulentBlockOutRef}:${proof.txHash}#${proof.outputIndex.toString()}:${setup.fraudulentBlockOutRef}`,
           input: {
@@ -545,7 +546,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
           },
         },
         artifact,
-        entries: [],
       });
       const txHash = await submitCapturedTransaction(captured.transaction);
       await harness.proverLucid.awaitTx(txHash);
@@ -763,6 +763,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     const forcedActorStep = async (ordinal: 1 | 2, threadOutRef: string) => {
       const stage = `step_0${ordinal.toString()}`;
       const captured = await forcedPort.capture({
+        holder: TEST_PROOF_MATERIALS_HOLDER,
         action: {
           actionId: `${stage}:${threadOutRef}:${setup.fraudulentBlockOutRef}`,
           input: {
@@ -775,7 +776,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
           },
         },
         artifact: forcedArtifact,
-        entries: [],
       });
       const txHash = await submitCapturedTransaction(captured.transaction);
       await harness.proverLucid.awaitTx(txHash);
@@ -988,12 +988,8 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     const redeemerPlan = plan(8, redeemerItems);
     expect(scriptPlan.plan.tier).toBe("Certified");
     expect(redeemerPlan.plan.tier).toBe("Certified");
-    // The field's carriage lands through the production prerequisite, so
-    // the port reads it back from the journal of those actions.
-    const journal = createConfirmedActionJournal({
-      category: "scriptIntegrityHashMissing",
-      headerHash: setup.headerHash,
-    });
+    // The field's carriage lands through the production prerequisite, and
+    // the port finds it at the proof-materials address by content.
     const publishAndCertify = async (planned: typeof scriptPlan) => {
       console.info(
         `[script-integrity-max] installing field ${planned.plan.fieldIndex.toString()}`,
@@ -1018,7 +1014,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
                 referenceScriptUtxo: certificateRef,
               },
             },
-            journal,
           }),
       );
       console.info(
@@ -1123,6 +1118,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       nextOrdinal: 4,
     ) => {
       const captured = await productionPort.capture({
+        holder: TEST_PROOF_MATERIALS_HOLDER,
         action: {
           actionId: `${stage}:${threadOutRef}:${setup.fraudulentBlockOutRef}`,
           input: {
@@ -1135,7 +1131,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
           },
         },
         artifact: productionArtifact,
-        entries: journal.entries(),
       });
       const txHash = await submitCapturedTransaction(captured.transaction);
       await harness.proverLucid.awaitTx(txHash);
@@ -1809,12 +1804,8 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     const redeemerPlan = plan(8, redeemerItems);
     expect(scriptPlan.plan.tier).toBe("RawUtxo");
     expect(redeemerPlan.plan.tier).toBe("RawUtxo");
-    // The fields' carriage lands through the production prerequisite, so the
-    // port reads it back from the journal of those actions.
-    const journal = createConfirmedActionJournal({
-      category: "scriptIntegrityHashMissing",
-      headerHash: s.setup.headerHash,
-    });
+    // The fields' carriage lands through the production prerequisite, and
+    // the port finds it at the proof-materials address by content.
     const certificateRef = (
       await publishPlainReferenceScriptUtxo({
         lucid: s.harness.funderLucid,
@@ -1840,7 +1831,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
               referenceScriptUtxo: certificateRef,
             },
           },
-          journal,
         })
       ).chunks;
     await publish(scriptPlan);
@@ -1891,6 +1881,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       threadOutRef: string,
     ) => {
       const captured = await port.capture({
+        holder: TEST_PROOF_MATERIALS_HOLDER,
         action: {
           actionId: `${stage}:${threadOutRef}:${s.setup.fraudulentBlockOutRef}`,
           input: {
@@ -1903,7 +1894,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
           },
         },
         artifact,
-        entries: journal.entries(),
       });
       const txHash = await submitCapturedTransaction(captured.transaction);
       await s.harness.proverLucid.awaitTx(txHash);

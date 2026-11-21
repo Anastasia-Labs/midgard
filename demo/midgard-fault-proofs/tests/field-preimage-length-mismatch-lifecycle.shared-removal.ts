@@ -1,7 +1,3 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
@@ -12,12 +8,9 @@ import { FIELD_PREIMAGE_LENGTH_CURSOR_SPEC } from "../src/field-preimage-length-
 import type { StateQueueMutationLeaseCoordinator } from "../src/remove-fraudulent-block.js";
 import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import { createFraudProofFamilyRawL1ObservationPort } from "../src/workflow/family-l1-observation.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-  journalJsonDigest,
 } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
@@ -202,13 +195,7 @@ export const removeThroughSharedFieldRecovery = async (
     },
   };
   const stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator =
-    {
-      acquire: async () => lease,
-      resume: async (identity) => {
-        expect(identity).toEqual({ token: lease.token, source: lease.source });
-        return lease;
-      },
-    };
+    { acquire: async () => lease };
   const binding = {
     ...config.binding,
     deploymentFingerprint,
@@ -231,7 +218,6 @@ export const removeThroughSharedFieldRecovery = async (
       spec: FIELD_PREIMAGE_LENGTH_CURSOR_SPEC,
       l1,
       transactions: ports.transactions,
-      stateQueueMutationLeaseCoordinator,
     });
   };
   const identity: FraudProofWorkflowIdentity = {
@@ -244,32 +230,10 @@ export const removeThroughSharedFieldRecovery = async (
     },
   };
   const workflowId = computeFraudProofWorkflowId(identity);
-  const directory = await mkdtemp(join(tmpdir(), "field-shared-removal-"));
-  const append = async (event: FraudProofWorkflowJournalEvent) => {
-    const store = new DirectoryFraudProofWorkflowJournalStore(directory);
-    const entries = await store.load(workflowId);
-    await store.append(
-      {
-        schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
-        identity,
-        workflowId,
-        sequence: entries.length,
-        recordedAt: new Date().toISOString(),
-        event,
-      },
-      entries.length,
-    );
-  };
   const clock = vi
     .spyOn(Date, "now")
     .mockImplementation(() => h.emulator.now());
   try {
-    await append({ kind: "started" });
-    await append({
-      kind: "prepared",
-      artifact: {},
-      artifactDigest: journalJsonDigest({}),
-    });
     const transactions: { kind: "remove-successor" | "remove-target" }[] = [];
     let measurement:
       | Awaited<ReturnType<typeof captureEmulatorSubmission>>["measurement"]
@@ -281,9 +245,6 @@ export const removeThroughSharedFieldRecovery = async (
         identity,
         workflowId,
         artifact: {},
-        entries: await new DirectoryFraudProofWorkflowJournalStore(
-          directory,
-        ).load(workflowId),
       };
       const current = adapter();
       const observed = await current.observe(context);
@@ -325,23 +286,6 @@ export const removeThroughSharedFieldRecovery = async (
         expect(signed.toTransaction().body().fee()).toBe(
           parameters.slashing_penalty,
         );
-      await append({
-        kind: "preflight_passed",
-        actionId: action.actionId,
-        txHash: preflight.txHash,
-        localEvaluator: preflight.localUplcEvaluation.evaluator,
-        referenceScripts: preflight.referenceScripts,
-      });
-      await append({
-        kind: "submission_intent",
-        actionId: action.actionId,
-        actionInput: action.input,
-        txHash: preflight.txHash,
-        attempt: 1,
-        ...(preflight.durableRecovery === undefined
-          ? {}
-          : { durableRecovery: preflight.durableRecovery }),
-      });
       const capture = await captureEmulatorSubmission(h.emulator, () =>
         current.submit({ ...context, action, preflight }),
       );
@@ -351,13 +295,6 @@ export const removeThroughSharedFieldRecovery = async (
       });
       measurement = capture.measurement;
       h.emulator.awaitBlock();
-      await append({
-        kind: "submission_ambiguous",
-        actionId: action.actionId,
-        attempt: 1,
-        txHash: preflight.txHash,
-        detail: "restart after broadcast between queue peels",
-      });
       await expect(
         l1.transactionConfirmed({
           headerHash: fixture.fraudulent.headerHash,
@@ -425,37 +362,6 @@ export const removeThroughSharedFieldRecovery = async (
           }),
         ).resolves.toBe(false);
       }
-      const recoveredEntries =
-        await new DirectoryFraudProofWorkflowJournalStore(directory).load(
-          workflowId,
-        );
-      const recoveredIntent = recoveredEntries.find(
-        ({ event }) =>
-          event.kind === "submission_intent" &&
-          event.actionId === action.actionId,
-      )!.event;
-      if (recoveredIntent.kind !== "submission_intent")
-        throw new Error("missing durable intent");
-      expect(
-        await adapter().reconcile({
-          ...context,
-          entries: recoveredEntries,
-          action: { ...action, input: recoveredIntent.actionInput },
-          txHash: recoveredIntent.txHash,
-          durableRecovery: recoveredIntent.durableRecovery,
-        }),
-      ).toEqual({ kind: "confirmed", txHash: preflight.txHash });
-      await append({
-        kind: "reconciled",
-        actionId: action.actionId,
-        txHash: preflight.txHash,
-        outcome: "confirmed",
-      });
-      await append({
-        kind: "confirmed",
-        actionId: action.actionId,
-        txHash: preflight.txHash,
-      });
       transactions.push({
         kind:
           index + 1 === expectedBondInputs.length
@@ -467,11 +373,6 @@ export const removeThroughSharedFieldRecovery = async (
       (await l1.observe({ headerHash: fixture.fraudulent.headerHash })).stage
         .kind,
     ).toBe("removed");
-    expect(
-      await new DirectoryFraudProofWorkflowJournalStore(directory).load(
-        workflowId,
-      ),
-    ).toHaveLength(2 + expectedBondInputs.length * 5);
     if (measurement === undefined)
       throw new Error("missing removal measurement");
     return {
@@ -480,6 +381,5 @@ export const removeThroughSharedFieldRecovery = async (
     };
   } finally {
     clock.mockRestore();
-    await rm(directory, { recursive: true, force: true });
   }
 };

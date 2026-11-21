@@ -37,7 +37,7 @@ import {
 } from "./linear-family-adapter.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
@@ -184,7 +184,7 @@ const transactionPort = (
     if (input.stage === "init") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildInit({
               lucid: config.lucid,
               blueprint: config.binding.blueprint,
@@ -210,7 +210,7 @@ const transactionPort = (
       );
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildFabricatedDepositStep01({
               lucid: config.lucid,
               contracts: config.contracts,
@@ -239,7 +239,7 @@ const transactionPort = (
             } as const);
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildFabricatedDepositStep02({
               lucid: config.lucid,
               contracts: config.contracts,
@@ -258,7 +258,7 @@ const transactionPort = (
     if (input.stage === "step_03") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildFabricatedDepositStep03({
               lucid: config.lucid,
               contracts: config.contracts,
@@ -282,7 +282,7 @@ const transactionPort = (
       try {
         await mutationLease.renew();
         const transaction = (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildFabricatedDepositStep04({
               lucid: config.lucid,
               contracts: config.contracts,

@@ -52,8 +52,6 @@ export const createFieldPreimageLengthRecoveryAdapter = (
         spec: FIELD_PREIMAGE_LENGTH_CURSOR_SPEC,
         l1: workflow.l1,
         transactions,
-        stateQueueMutationLeaseCoordinator:
-          workflow.stateQueueMutationLeaseCoordinator,
       }),
       prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
         category: "fieldPreimageLengthMismatch",

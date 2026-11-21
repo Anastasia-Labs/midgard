@@ -25,7 +25,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { confirmedValidationTraceStages } from "../../src/validation-trace-dispute/actions.js";
 import {
   VALIDATION_TRACE_CASE_CONVICTED,
   VALIDATION_TRACE_CASE_OPEN,
@@ -262,7 +261,7 @@ export const deepestCase = ({
         const { headerHash } = scene.failing.evidence;
         removal!.holdView();
         await removal!.l1For(headerHash).observe({ headerHash });
-        const { result, history } = await playThreads({
+        const { result } = await playThreads({
           scene,
           runner,
           sides: [a, b],
@@ -299,8 +298,7 @@ export const deepestCase = ({
           },
           limit: 400,
         });
-        if (!("entries" in result))
-          throw new Error(`no workflow journal: ${history.join("\n")}`);
+        const stages = await runner.confirmed();
         const depth = BigInt(
           validationTraceDepthForStepCount(Number(dispute.material.stepCount)),
         );
@@ -313,7 +311,7 @@ export const deepestCase = ({
 
         // Each thread resolved through its own one-step resolution and was
         // awarded.
-        const moves = confirmedOneStepMoves(result.entries);
+        const moves = confirmedOneStepMoves(stages);
         expect(
           moves.filter(({ stage }) => stage === "close_awarded"),
         ).toHaveLength(2);
@@ -326,7 +324,7 @@ export const deepestCase = ({
           );
 
         // The case closed Convicted, our bond back.
-        const close = confirmedValidationTraceStages(result.entries).at(-1)!;
+        const close = stages.at(-1)!;
         expect(close.action.stage).toBe("close");
         const lucid = scene.h.proverLucid;
         expect(

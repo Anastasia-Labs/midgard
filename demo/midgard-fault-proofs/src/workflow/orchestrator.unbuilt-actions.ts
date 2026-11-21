@@ -3,21 +3,19 @@
  * throws a `WorkflowActionUnbuiltError`. The run then observes again with
  * that action skipped, so a move the family ranks lower still goes in the
  * same run, and returns every such action as an alarm on its result, even
- * when another move landed. */
+ * when another move landed. A wallet-only action the restart wait holds is
+ * skipped the same way, with no alarm: once nothing else is left the run
+ * ends in the restart wait's named state. */
 import { WorkflowActionChangedError } from "./action-changed.js";
-import type {
-  FraudProofWorkflowIdentity,
-  FraudProofWorkflowJournalEntry,
-  FraudProofWorkflowJournalEvent,
-} from "./journal.js";
+import type { FraudProofWorkflowIdentity } from "./journal.js";
 import type { FraudProofWorkflowObservation } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   type FraudProofWorkflowAlarm,
   type FraudProofWorkflowNamedState,
   type FraudProofWorkflowRunResult,
-  journalRepeatsStall,
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import { threadReclaimNamedState } from "./own-thread-reclaim.js";
+import { faultProofRestartWaitNamedState } from "./wallet-only-send-gate.js";
 
 /** An action of the run that does not build; `message` is the alarm. */
 export class WorkflowActionUnbuiltError extends WorkflowActionChangedError {
@@ -48,6 +46,18 @@ export type UnbuiltWorkflowActions = Readonly<{
   /** Records `cause` when it is an unbuilt action, and says whether it was. */
   skip: (cause: unknown) => boolean;
   /**
+   * Skips the wallet-only action `actionId` for the rest of the run while
+   * the restart wait holds it. It raises no alarm: the wait opens by itself.
+   */
+  hold: (actionId: string) => void;
+  /**
+   * The first action the restart wait held, once `observation` has nothing
+   * else for the run to do: a skipped or held action again, or a wait.
+   */
+  waiting: (observation: FraudProofWorkflowObservation) => string | undefined;
+  /** Whether the restart wait holds an action of the run. */
+  holding: () => boolean;
+  /**
    * The alarm a run with unbuilt actions stops on once `observation` has
    * nothing else for it to do: a skipped action again, or a wait.
    */
@@ -59,8 +69,20 @@ export type UnbuiltWorkflowActions = Readonly<{
 export const createUnbuiltWorkflowActions = (): UnbuiltWorkflowActions => {
   const ids = new Set<string>();
   const alarms: FraudProofWorkflowAlarm[] = [];
+  const waits: string[] = [];
+  const idle = (observation: FraudProofWorkflowObservation) =>
+    observation.kind === "pending" ||
+    (observation.kind === "action_required" &&
+      ids.has(observation.action.actionId));
   return Object.freeze({
     ids,
+    hold: (actionId) => {
+      ids.add(actionId);
+      waits.push(actionId);
+    },
+    waiting: (observation) =>
+      waits.length > 0 && idle(observation) ? waits[0] : undefined,
+    holding: () => waits.length > 0,
     skip: (cause) => {
       if (!isWorkflowActionUnbuiltError(cause) || ids.has(cause.actionId))
         return false;
@@ -71,33 +93,25 @@ export const createUnbuiltWorkflowActions = (): UnbuiltWorkflowActions => {
       return true;
     },
     held: (observation) =>
-      alarms.length > 0 &&
-      (observation.kind === "pending" ||
-        (observation.kind === "action_required" &&
-          ids.has(observation.action.actionId)))
-        ? alarms[0]!.reason
-        : undefined,
+      alarms.length > 0 && idle(observation) ? alarms[0]!.reason : undefined,
     field: () =>
       alarms.length === 0 ? {} : { alarms: Object.freeze([...alarms]) },
   });
 };
 
 /**
- * The results a run hands back before it ends: a stall, journaled once per
- * cause; a pending wait; and a pending run that resumes on the next
- * observation. Each carries the run's alarms.
+ * The results a run hands back before it ends: a stall; a pending wait,
+ * naming the action whose transaction it awaits when it awaits one; and a
+ * pending run that resumes on the next observation. Each carries the run's alarms, and a pending one the restart
+ * wait's named state while that holds an action of the run.
  */
 export const workflowRunOutcomes = ({
   workflowId,
   identity,
-  entries,
-  append,
   unbuilt,
 }: {
   readonly workflowId: string;
   readonly identity: FraudProofWorkflowIdentity;
-  readonly entries: () => readonly FraudProofWorkflowJournalEntry[];
-  readonly append: (event: FraudProofWorkflowJournalEvent) => Promise<void>;
   readonly unbuilt: UnbuiltWorkflowActions;
 }) => {
   const result = (kind: "pending" | "stalled", reason: string) => ({
@@ -105,9 +119,12 @@ export const workflowRunOutcomes = ({
     workflowId,
     identity,
     reason,
-    entries: entries(),
     ...unbuilt.field(),
   });
+  // While the restart wait holds an action of the run, a pending result
+  // names it, whatever else the run left in flight.
+  const waiting = () =>
+    unbuilt.holding() ? { namedState: faultProofRestartWaitNamedState } : {};
   // A thread of ours left standing on a removed header that the run cannot
   // reclaim yet: held under the operator's alarm, resumed on observation.
   const named = (reason: string): FraudProofWorkflowRunResult | undefined => {
@@ -121,19 +138,22 @@ export const workflowRunOutcomes = ({
         };
   };
   return Object.freeze({
-    stalled: async (
+    stalled: (
       reason: string,
       phase?: "preflight",
-    ): Promise<FraudProofWorkflowRunResult> => {
-      if (!journalRepeatsStall(entries(), reason))
-        await append({ kind: "stalled", reason });
-      return {
-        ...result("stalled", reason),
-        ...(phase === undefined ? {} : { phase }),
-      };
-    },
-    pending: (reason: string): FraudProofWorkflowRunResult =>
-      named(reason) ?? result("pending", reason),
+    ): FraudProofWorkflowRunResult => ({
+      ...result("stalled", reason),
+      ...(phase === undefined ? {} : { phase }),
+    }),
+    pending: (
+      reason: string,
+      awaitingActionId?: string,
+    ): FraudProofWorkflowRunResult =>
+      named(reason) ?? {
+        ...result("pending", reason),
+        ...(awaitingActionId === undefined ? {} : { awaitingActionId }),
+        ...waiting(),
+      },
     resumeOnObservation: (
       reason: string,
       namedState?: FraudProofWorkflowNamedState,
@@ -141,7 +161,7 @@ export const workflowRunOutcomes = ({
       named(reason) ?? {
         ...result("pending", reason),
         resumeOnObservation: true,
-        ...(namedState === undefined ? {} : { namedState }),
+        ...(namedState === undefined ? waiting() : { namedState }),
       },
   });
 };

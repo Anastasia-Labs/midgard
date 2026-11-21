@@ -80,7 +80,7 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { WithdrawnReferenceInputContracts } from "./contracts.js";
 import {
@@ -125,7 +125,7 @@ export type WithdrawnReferenceInputStep01Build = {
 };
 
 export type SubmitWithdrawnReferenceInputStep01Result =
-  UnjournaledSubmission<WithdrawnReferenceInputStep01Build>;
+  OutsideWorkflowSubmission<WithdrawnReferenceInputStep01Build>;
 
 type WithdrawnReferenceInputStep01Layout = {
   readonly inputIndex: bigint;

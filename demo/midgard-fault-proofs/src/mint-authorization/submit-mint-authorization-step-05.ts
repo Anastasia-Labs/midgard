@@ -43,7 +43,7 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
 import {
@@ -92,7 +92,7 @@ export type MintAuthorizationStep05Build = {
 };
 
 export type SubmitMintAuthorizationStep05Result =
-  UnjournaledSubmission<MintAuthorizationStep05Build>;
+  OutsideWorkflowSubmission<MintAuthorizationStep05Build>;
 
 type Step05SpendLayout = {
   readonly inputIndex: bigint;

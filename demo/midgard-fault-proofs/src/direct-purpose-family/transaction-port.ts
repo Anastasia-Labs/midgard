@@ -29,8 +29,8 @@ import type {
   FieldPreimageCertificateBinding,
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
-import { workflowConfirmedTransactions } from "../workflow/own-outputs.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import {
   directPurposeSourceInclusion,
   planDirectPurposeArtifact,
@@ -201,10 +201,14 @@ export const createDirectWalkTransactionPort = <
         ...args,
         replayContext: config.replayContext,
       }),
-    capture: async ({ action, artifact, entries }) => {
+    capture: async ({ action, artifact, holder }) => {
       const ownOutputs = workflowFieldCarriageOwnOutputs({
         category,
-        entries,
+        materials: proofMaterialsAccess({
+          signer: config.signer,
+          lucid: config.lucid,
+          holder,
+        }),
       });
       const plan = await planDirectPurposeArtifact(artifactFamily, {
         artifact,
@@ -278,7 +282,8 @@ export const createDirectWalkTransactionPort = <
             lucid: config.lucid,
             address: config.signer.proofMaterialsAddress,
             proofCbor: inclusion.txMembershipProofCbor,
-            ownTransactions: workflowConfirmedTransactions(entries),
+            view: config.signer.proofMaterials,
+            holder,
           });
           return await buildDirectPurposeStep01Accepted({
             ...common,
@@ -370,7 +375,7 @@ export const createDirectWalkTransactionPort = <
           transition,
         );
       })();
-      const { transaction } = await journaledStepTransaction(
+      const { transaction } = await workflowStepTransaction(
         built,
         `${category} ${input.stage}`,
       );

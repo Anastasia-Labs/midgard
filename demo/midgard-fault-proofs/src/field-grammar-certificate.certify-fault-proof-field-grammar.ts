@@ -36,7 +36,7 @@ import { finishStep } from "./step-completion.js";
 import { walletOnlyValidTo } from "./wallet-only-validity.js";
 import {
   type LocallyEvaluatedTransaction,
-  submitUnjournaled,
+  submitOutsideWorkflow,
   workflowReferenceScript,
 } from "./workflow/transaction-boundary.js";
 
@@ -379,7 +379,7 @@ export const buildFaultProofFieldGrammarBatch = async ({
  * walking the whole field, so the step's cost no longer grows with the
  * field's item count.
  *
- * It sends each certificate batch directly, outside the workflow journal,
+ * It sends each certificate batch directly, outside any workflow's in-flight set,
  * and waits for it when `awaitConfirmation` holds (the default) before
  * building the next. The step builders that route a certified read through
  * it (`routeFaultProofFieldGrammar`) therefore submit before they return:
@@ -407,7 +407,7 @@ export const certifyFaultProofFieldGrammar = async ({
   let certificateUtxo = from?.certificateUtxo;
   while (from === null || from.next < itemCount) {
     const built = await buildFaultProofFieldGrammarBatch({ ...input, from });
-    const txHash = await submitUnjournaled(lucid, built.transaction, {
+    const txHash = await submitOutsideWorkflow(lucid, built.transaction, {
       label: "field-grammar certificate",
       awaitConfirmation,
     });

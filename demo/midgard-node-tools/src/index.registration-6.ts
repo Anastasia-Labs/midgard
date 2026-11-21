@@ -182,12 +182,6 @@ program
     "Cardano protocol-parameter snapshot independently digested for state-correction acceptance",
   )
   .option(
-    "--state-correction-workflow-journal <directory>",
-    "Immutable completed family workflow journal directory; repeat once per launch-scope family",
-    collectStringOption,
-    [],
-  )
-  .option(
     "--state-correction-l1-observation <path>",
     "Authenticated local Kupmios/Ogmios L1 transaction observation; repeat for every required transaction",
     collectStringOption,
@@ -212,10 +206,6 @@ program
       opts.mode === "unknown"
         ? opts.mode
         : "unknown";
-    const stateCorrectionWorkflowJournalDirectories = parseStringListOption(
-      opts.stateCorrectionWorkflowJournal,
-      "--state-correction-workflow-journal",
-    );
     const stateCorrectionL1ObservationPaths = parseStringListOption(
       opts.stateCorrectionL1Observation,
       "--state-correction-l1-observation",
@@ -235,14 +225,12 @@ program
       stateCorrectionSingleSourceValues.some(
         (value) => typeof value === "string",
       ) ||
-      stateCorrectionWorkflowJournalDirectories.length > 0 ||
       stateCorrectionL1ObservationPaths.length > 0 ||
       stateCorrectionRecoveryObservationPaths.length > 0;
     const hasAllStateCorrectionIndependentSources =
       stateCorrectionSingleSourceValues.every(
         (value) => typeof value === "string",
       ) &&
-      stateCorrectionWorkflowJournalDirectories.length > 0 &&
       stateCorrectionL1ObservationPaths.length > 0 &&
       stateCorrectionRecoveryObservationPaths.length > 0;
     if (
@@ -250,7 +238,7 @@ program
       !hasAllStateCorrectionIndependentSources
     ) {
       throw new Error(
-        "State-correction independent reconciliation requires manifest, blueprint, catalogue, parameters, at least one workflow journal, at least one authenticated L1 observation, at least one recovery observation, and the final snapshot together.",
+        "State-correction independent reconciliation requires manifest, blueprint, catalogue, parameters, at least one authenticated L1 observation, at least one recovery observation, and the final snapshot together.",
       );
     }
     let stackRun: StackRunInputs;
@@ -299,8 +287,6 @@ program
                 blueprintPath: opts.stateCorrectionBlueprint as string,
                 cataloguePath: opts.stateCorrectionCatalogue as string,
                 parametersPath: opts.stateCorrectionParameters as string,
-                workflowJournalDirectories:
-                  stateCorrectionWorkflowJournalDirectories,
                 l1ObservationPaths: stateCorrectionL1ObservationPaths,
                 recoveryObservationPaths:
                   stateCorrectionRecoveryObservationPaths,

@@ -11,6 +11,7 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type BoundScriptIntegrityHashMissingActuatorConfig,
   captured,
@@ -56,10 +57,14 @@ export const createScriptIntegrityHashMissingTransactionPort = (
   portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
   category: "scriptIntegrityHashMissing",
   prepare: prepareScriptIntegrityHashMissingArtifact,
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const ownOutputs = workflowFieldCarriageOwnOutputs({
       category: "scriptIntegrityHashMissing",
-      entries,
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
+      }),
     });
     const admitted = admitScriptIntegrityHashMissingArtifact(
       artifact,

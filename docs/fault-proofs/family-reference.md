@@ -333,10 +333,10 @@ The SDK registers the four scripts and their deployment/reference identities.
 The fault-proofs package exports accepted/forced binding, field opening,
 resumable scanning, finalization, cancellation, and retained-DA detection.
 The watcher installs the manifest-bound runner, retained-DA replay, reference
-roster, durable journal, and resumable proof-thread indexer topology. This is
+roster, decision journal, and resumable proof-thread indexer topology. This is
 source installation, not live deployment or release-acceptance evidence.
 The Lucid suites exercise the registered scripts with local UPLC evaluation,
 including a 32764-byte item in the maximum 32768-byte certified field, a fault
-at policy index 909 in a 32763-byte field, journal recovery after each physical
+at policy index 909 in a 32763-byte field, restart recovery after each physical
 continuation, honest
 mint/burn refusal, forged evidence, cancellation at all four steps, and removal.

@@ -176,7 +176,6 @@ export const verifyJourneyWorkflowBindings = async (input: {
       input.onProgress?.({ category, outcome: "started", durationMs: 0 });
       try {
         const readiness = await application.assertStartupReady({
-          mode: "resume",
           category,
           deploymentFingerprint: authority.deploymentIdentity.manifestId,
           headerHash: WATCHER_STARTUP_READINESS_HEADER_HASH,

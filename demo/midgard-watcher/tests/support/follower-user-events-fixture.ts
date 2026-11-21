@@ -22,6 +22,7 @@ import { watcherFollowerProjections } from "../../src/l1-follower/follower-runti
 import { readWatcherObservation } from "../../src/l1-follower/observation.js";
 import { watcherUnitHistoryPolicies } from "../../src/l1-follower/projection.js";
 import { createWatcherProofRetention } from "../../src/l1-follower/proof-retention.js";
+import { createWatcherProofRosterRetention } from "../../src/l1-follower/proof-roster-retention.js";
 import { createFollowerRawReads } from "../../src/l1-follower/raw-reads.js";
 import { createWatcherFollowerUserEvents } from "../../src/l1-follower/user-events.js";
 import {
@@ -208,6 +209,8 @@ export const openFollowerUserEvents = async (
   const proofRetention = createWatcherProofRetention(store, {
     unitHistoryPolicies,
     stateQueuePolicyId: hashes.stateQueueMint,
+    roster: createWatcherProofRosterRetention(),
+    fraudProofSpend: hashes.fraudProofSpend,
   });
   const userEvents = createWatcherFollowerUserEvents({
     store,

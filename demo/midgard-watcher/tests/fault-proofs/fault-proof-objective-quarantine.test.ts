@@ -5,20 +5,17 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
-import {
-  bindWorkflowActuationJournal,
-  createWorkflowActuationPermitController,
-} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import type { WorkflowAdapterRunnerInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
 import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 import { verifyCompletedFraudProofWorkflow } from "@al-ft/midgard-fault-proofs/workflow/completed-verification";
-import { bindWorkflowFundingReservationJournal } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
   createHeaderClassifier,
 } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
+import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
+import { WORKFLOW_RUNNER_FACTORIES } from "@al-ft/midgard-fault-proofs/workflow/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
@@ -27,16 +24,15 @@ import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-p
 import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";
 import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
-import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
-  cleanupFundingRecoveryFixtures,
+  cleanupClassifiedFaultFixtures,
   deploymentIdentity,
   finality,
+  setupClassifiedFaultFixture,
   sourcesFor,
-  walletAddress,
-} from "../support/fault-proof-funding-fixture.sources-for.js";
+} from "../support/classified-fault-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
-import { completedTerminalWriter } from "../support/funding-recovery-completed-terminal.js";
+import { landedRemoval } from "../support/landed-removal.js";
 import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
@@ -51,14 +47,14 @@ vi.mock("../../src/fault-proofs/fault-proof-application.js", async (load) => ({
 const closers: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
   for (const close of closers.splice(0).reverse()) await close();
-  await cleanupFundingRecoveryFixtures();
+  await cleanupClassifiedFaultFixtures();
 });
 
 const QUARANTINED = "fault_proof_objective_quarantined";
 
 /** A second double spend in its own block: another objective of the watcher. */
 const secondObjective = async (
-  fixture: Awaited<ReturnType<typeof setupFundingRecoveryFixture>>,
+  fixture: Awaited<ReturnType<typeof setupClassifiedFaultFixture>>,
 ) => {
   const shared = outRefCbor(92, 0n);
   const block = await buildCanonicalBlockFixture({
@@ -100,19 +96,16 @@ const secondObjective = async (
 };
 
 /**
- * One watcher with two objectives: `proved` runs its real workflow to a
- * verified completion; `held` is the second objective, whose run meets
- * `cause` until the test removes it.
+ * One watcher with two objectives: the convicted one's run lands our
+ * removal, which the real verification checks against raw L1; `held` is the
+ * second objective, whose run meets `cause` until the test removes it.
  */
 const setup = async (cause: () => unknown) => {
-  const fixture = await setupFundingRecoveryFixture(
-    false,
-    false,
-    false,
-    BigInt(Date.now()),
-  );
+  const fixture = await setupClassifiedFaultFixture({
+    headerEndTime: BigInt(Date.now()),
+  });
   const second = await secondObjective(fixture);
-  const { raw, writeTerminal } = await completedTerminalWriter(fixture);
+  const landed = await landedRemoval(fixture);
   const verifyCompleted = vi.fn(verifyCompletedFraudProofWorkflow);
   let present = true;
   const runOrResume = vi.fn(async (invocation: WorkflowAdapterRunnerInput) => {
@@ -127,67 +120,35 @@ const setup = async (cause: () => unknown) => {
         reason: "signed transaction awaiting inclusion",
       };
     }
-    const bound = bindWorkflowFundingReservationJournal({
-      journal: bindWorkflowActuationJournal({
-        journal: fixture.objectiveJournal(),
-        permit: invocation.actuationPermit,
-        category: "doubleSpend",
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        headerHash: fixture.old.headerHash,
-        decisionDigest: invocation.decisionDigest,
-      }),
-      permit: invocation.fundingReservationPermit,
-    });
-    await fixture.run(bound);
-    await writeTerminal();
-    return { kind: "completed" };
+    return landed.completed(invocation.decisionDigest);
+  });
+  const runner = WORKFLOW_RUNNER_FACTORIES.doubleSpend(async () => {
+    throw new Error("the quarantine tests never build through the runner");
   });
   const setAlert = vi.fn();
   const recordProofStep = vi.fn();
   /** A watcher process over the fixture's journals: a later call is a
    * restart of the one before, which it closes. */
   const start = async () => {
+    const inFlight = createWorkflowInFlight();
     const execution = createWatcherFaultProofExecution({
       application: {
-        runners: { doubleSpend: fixture.runner },
+        runners: { doubleSpend: runner },
         runOrResume,
-        verifyCompleted: async ({ entries, terminal, decisionDigest }) =>
-          verifyCompleted({
-            binding: raw.binding,
-            entries,
-            terminal,
-            decisionDigest,
-            authority: {
-              authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-              capture: async () => raw.snapshot,
-            },
-          }),
+        verifyCompleted: landed.verifyCompleted(
+          async () => landed.raw.snapshot,
+          verifyCompleted,
+        ),
       },
-      fundingFactory: fixture.fundingFactory(),
-      walletAddress,
-      // The prover wallet funds both objectives.
-      provider: {
-        getUtxos: async () => [
-          ...fixture.walletUtxos,
-          ...[0, 1, 2, 3].map((outputIndex) => ({
-            txHash: "97".repeat(32),
-            outputIndex,
-            address: walletAddress,
-            assets: { lovelace: 2_000_000_000n },
-          })),
-        ],
-        getUtxosByOutRef: async () => [],
-      },
-      workflowJournal: fixture.workflowJournal,
+      inFlight,
       runtimeConfigPath: "/unused-quarantine-test.json",
       deploymentFingerprint: deploymentIdentity.manifestId,
       operationsSink: { recordProofStep, setAlert },
     });
     const supervisor = createWatcherFaultProofSupervisor({
-      reservationDecisionHolds: () => [],
       proofRetention: storelessProofRetention,
       journalRoot: fixture.journalRoot,
-      workflowJournal: fixture.workflowJournal,
+      inFlight,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
@@ -309,13 +270,12 @@ describe("an objective that stalls or meets its own integrity error is quarantin
       "a workflow stall outside preflight",
       () => ({
         kind: "stalled",
-        reason:
-          "funding reservation failed for step_02: Error: funding released custody lacks confirmed workflow lineage",
+        reason: "step_02 thread output is absent at its expected reference",
       }),
     ],
     [
-      "an integrity error from its reconcile",
-      () => new Error("Rebroadcast changed recorded transaction hash"),
+      "an integrity error from its run",
+      () => new Error("signed transaction hash changed between build and send"),
     ],
     [
       "its family re-classifying the admitted fault",
@@ -394,7 +354,6 @@ describe("an objective whose header left the queue without a conviction of ours"
               referencedProofTokenOutRef: `${"c4".repeat(32)}#0`,
               confirmationDepth: 40,
             },
-            entries: [],
           }
         : goneStall("no terminal of ours stands: terminal_not_ours"),
     );

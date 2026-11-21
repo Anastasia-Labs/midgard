@@ -41,6 +41,23 @@ export const hideFromProvider = (
   return () => spy.mockRestore();
 };
 
+/** Drops the transaction `txHash`, which spent `spent` and paid `outputs`
+ * outputs, from the ledger of `emulator`: each of `spent` is unspent again
+ * and the transaction is unknown. */
+export const rollBackSpend = (
+  emulator: Emulator,
+  txHash: string,
+  spent: readonly UTxO[],
+  outputs: number,
+): void => {
+  const ledger = { ...emulator.ledger };
+  for (let outputIndex = 0; outputIndex < outputs; outputIndex += 1)
+    delete ledger[keyOf({ txHash, outputIndex })];
+  for (const utxo of spent) ledger[keyOf(utxo)] = { utxo, spent: false };
+  emulator.ledger = ledger;
+  delete emulator.transactionHistory[txHash];
+};
+
 /** Drops the transaction `txHash`, which spent `spent` and paid one output,
  * from the ledger of `emulator`: `spent` is unspent again and the
  * transaction is unknown. */
@@ -48,10 +65,4 @@ export const rollBack = (
   emulator: Emulator,
   txHash: string,
   spent: UTxO,
-): void => {
-  const ledger = { ...emulator.ledger };
-  delete ledger[keyOf({ txHash, outputIndex: 0 })];
-  ledger[keyOf(spent)] = { utxo: spent, spent: false };
-  emulator.ledger = ledger;
-  delete emulator.transactionHistory[txHash];
-};
+): void => rollBackSpend(emulator, txHash, [spent], 1);

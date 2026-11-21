@@ -1,18 +1,10 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { describe, expect, it, vi } from "vitest";
 
 import { createValueConservationAdapter } from "../src/value-not-preserved/adapter.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  journalJsonDigest,
 } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 const hash = (byte: string) => byte.repeat(32);
@@ -85,7 +77,6 @@ const context = {
   identity,
   workflowId: computeFraudProofWorkflowId(identity),
   artifact: { retained: "authenticated-value-source" },
-  entries: [],
   action,
 } as const;
 const fixture = () => {
@@ -96,8 +87,6 @@ const fixture = () => {
     release: vi.fn(async () => undefined),
     fail: vi.fn(async (_reason: string) => undefined),
   };
-  const resume = vi.fn(async () => lease);
-  const confirmed = vi.fn(async () => false);
   const capture = vi.fn(async () => ({
     transaction: transaction(),
     mutationLease: lease,
@@ -107,23 +96,10 @@ const fixture = () => {
       prepare: async () => context.artifact,
       current: async () => ({ kind: "action_required", action }),
       capture,
-      confirmed,
-      signedRecovery: {
-        observeSignedTransaction: async () => {
-          throw new Error("no signed bytes are recorded here");
-        },
-        rebroadcastSignedTransaction: async () => {
-          throw new Error("no signed bytes are recorded here");
-        },
-      },
-      stateQueueMutationLeaseCoordinator: {
-        acquire: async () => lease,
-        resume,
-      },
     });
-  return { make, lease, resume, confirmed, capture };
+  return { make, lease, capture };
 };
-describe("value conservation durable adapter", () => {
+describe("value conservation adapter", () => {
   it("yields a stale unsigned action before capturing a replacement transaction", async () => {
     const f = fixture();
     await expect(
@@ -134,85 +110,21 @@ describe("value conservation durable adapter", () => {
     ).rejects.toBeInstanceOf(WorkflowActionChangedError);
     expect(f.capture).not.toHaveBeenCalled();
   });
-  it("resumes a fsynced intent and exact mutation lease through a fresh adapter", async () => {
+  it("holds the exact mutation lease until its submission, then releases it", async () => {
     const f = fixture();
     const adapter = f.make();
     const preflight = await adapter.preflight(context);
-    const directory = await mkdtemp(
-      join(tmpdir(), "value-conservation-journal-"),
+    expect(f.lease.release).not.toHaveBeenCalled();
+    expect(await adapter.submit({ ...context, preflight })).toEqual({
+      kind: "submitted",
+      txHash,
+    });
+    expect(f.lease.release).toHaveBeenCalledOnce();
+    expect(f.lease.fail).not.toHaveBeenCalled();
+    // The submission consumed the captured body: a second send has none.
+    await expect(adapter.submit({ ...context, preflight })).rejects.toThrow(
+      "matching locally evaluated body",
     );
-    try {
-      const journal = new DirectoryFraudProofWorkflowJournalStore(directory);
-      const events: FraudProofWorkflowJournalEvent[] = [
-        { kind: "started" },
-        {
-          kind: "prepared",
-          artifact: context.artifact,
-          artifactDigest: journalJsonDigest(context.artifact),
-        },
-        {
-          kind: "preflight_passed",
-          actionId: action.actionId,
-          txHash: preflight.txHash,
-          localEvaluator: preflight.localUplcEvaluation.evaluator,
-          referenceScripts: preflight.referenceScripts,
-        },
-        {
-          kind: "submission_intent",
-          actionId: action.actionId,
-          actionInput: action.input,
-          attempt: 1,
-          txHash: preflight.txHash,
-          durableRecovery: preflight.durableRecovery,
-        },
-      ];
-      for (const [sequence, event] of events.entries())
-        await journal.append(
-          {
-            schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-            identity,
-            workflowId: context.workflowId,
-            sequence,
-            recordedAt: "2026-09-05T00:00:00.000Z",
-            event,
-          },
-          sequence,
-        );
-      expect(await adapter.submit({ ...context, preflight })).toEqual({
-        kind: "submitted",
-        txHash,
-      });
-      const entries = await new DirectoryFraudProofWorkflowJournalStore(
-        directory,
-      ).load(context.workflowId);
-      const intent = entries[3]!.event;
-      if (intent.kind !== "submission_intent")
-        throw new Error("missing durable intent");
-      const fresh = f.make();
-      const restart = {
-        ...context,
-        entries,
-        txHash: intent.txHash,
-        durableRecovery: intent.durableRecovery,
-      };
-      expect(await fresh.reconcile(restart)).toEqual({
-        kind: "pending",
-        txHash,
-      });
-      expect(f.resume).toHaveBeenCalledWith({
-        token: f.lease.token,
-        source: f.lease.source,
-      });
-      expect(f.lease.renew).toHaveBeenCalledOnce();
-      f.confirmed.mockResolvedValue(true);
-      expect(await fresh.reconcile(restart)).toEqual({
-        kind: "confirmed",
-        txHash,
-      });
-      expect(f.lease.release).toHaveBeenCalledOnce();
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
   });
   it("refuses substituted cursors before capture and duplicate preflight", async () => {
     const f = fixture();
@@ -232,7 +144,7 @@ describe("value conservation durable adapter", () => {
       "outstanding preflight",
     );
   });
-  it("refuses substituted body hashes and durable lease identities", async () => {
+  it("refuses a substituted body hash", async () => {
     const f = fixture();
     const adapter = f.make();
     const preflight = await adapter.preflight(context);
@@ -242,37 +154,5 @@ describe("value conservation durable adapter", () => {
         preflight: { ...preflight, txHash: hash("66") },
       }),
     ).rejects.toThrow("matching locally evaluated body");
-    await expect(
-      adapter.submit({
-        ...context,
-        preflight: {
-          ...preflight,
-          durableRecovery: {
-            stateQueueMutationLease: {
-              token: "another",
-              source: f.lease.source,
-            },
-          },
-        },
-      }),
-    ).rejects.toThrow("lease differs");
-  });
-  it("fails the resumed lease when authenticated confirmation detects mutation", async () => {
-    const f = fixture();
-    f.confirmed.mockRejectedValue(new Error("changed output checkpoint"));
-    expect(
-      await f.make().reconcile({
-        ...context,
-        txHash,
-        durableRecovery: {
-          stateQueueMutationLease: {
-            token: f.lease.token,
-            source: f.lease.source,
-          },
-        },
-      }),
-    ).toEqual({ kind: "conflict", reason: "Error: changed output checkpoint" });
-    expect(f.lease.fail).toHaveBeenCalledOnce();
-    expect(f.lease.release).not.toHaveBeenCalled();
   });
 });

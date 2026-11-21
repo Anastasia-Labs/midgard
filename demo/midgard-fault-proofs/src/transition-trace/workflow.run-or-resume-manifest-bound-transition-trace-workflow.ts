@@ -1,4 +1,4 @@
-import { type UTxO } from "@lucid-evolution/lucid";
+import type { UTxO } from "@lucid-evolution/lucid";
 
 import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
@@ -15,11 +15,11 @@ import {
   cursorStepContractNames,
   defineFamily,
 } from "../workflow/family-definition.family-definition.js";
-import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import { createFraudProofWorkflowRegistry } from "../workflow/orchestrator.js";
 import { runFraudProofWorkflow } from "../workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
-import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import type { RetainedDaPayloadSource } from "./fetch.js";
 import {
   captureTransitionTraceL1Events,
@@ -150,12 +150,12 @@ export type ManifestBoundTransitionTraceWorkflow = Awaited<
 export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   workflow: ManifestBoundTransitionTraceWorkflow;
   sources: readonly RetainedDaPayloadSource[];
-  journal: FraudProofWorkflowJournalStore;
+  run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }) => {
   const cell = cells.get(workflow);
@@ -253,7 +253,7 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
       adapters: [workflow.adapter],
       launchScope: ["transitionTrace"],
     }),
-    journal,
+    run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     walletOnlySend,

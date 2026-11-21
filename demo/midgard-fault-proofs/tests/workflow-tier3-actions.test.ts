@@ -3,14 +3,7 @@ import {
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
-import {
-  CML,
-  Emulator,
-  generateEmulatorAccount,
-  Lucid,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
@@ -23,14 +16,8 @@ import { createNetworkIdWorkflowAdapter } from "../src/network-id/workflow-adapt
 import { deriveL2TransactionSourceCbor } from "../src/prepare-double-spend.encode-l2-transaction-source-value.js";
 import { buildInit } from "../src/submit-init.js";
 import { createDoubleSpendConstrainedWorkflowAdapter } from "../src/workflow/double-spend-adapter.create-double-spend-constrained-workflow-adapter.js";
-import type { DoubleSpendWorkflowStage } from "../src/workflow/double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
 import type { DoubleSpendConstrainedWorkflowAdapterConfig } from "../src/workflow/double-spend-adapter.preflight-of.js";
-import {
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentity,
-  type JournalJsonObject,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
-import type { SignedTransactionRecoveryObservation } from "../src/workflow/signed-transaction-reconciliation.js";
+import type { JournalJsonObject } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   type LocallyEvaluatedTransaction,
   workflowPreflightTransaction,
@@ -43,8 +30,6 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   certificateFor,
-  chainPoint,
-  confirmedEntry,
   HEADER_HASH,
   ledgerReads,
   observe,
@@ -67,7 +52,7 @@ vi.mock("../src/submit-init.js", async (importOriginal) => ({
 }));
 
 describe("Q38 tier-3 workflow action chains", () => {
-  it("doubleSpend journals healing publications and certification before the proof step", async () => {
+  it("doubleSpend heals publications and certification by content before the proof step", async () => {
     const spendInputs = Array.from({ length: 440 }, (_, index) =>
       outRefCbor((index % 200) + 1, BigInt(Math.floor(index / 200))),
     );
@@ -169,69 +154,35 @@ describe("Q38 tier-3 workflow action chains", () => {
         datum: String(publication.action.input.publicationDatumCbor),
       }),
     ];
-    await expect(
-      adapter.reconcile({
-        identity: workflowIdentity("doubleSpend"),
-        workflowId: h32(0x51),
-        artifact,
-        entries: [],
-        action: publication.action,
-        txHash: publicationTxHash,
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash: publicationTxHash });
-    expect(observeExact).toHaveBeenCalledWith(
-      expect.objectContaining<Record<string, unknown>>({
-        expectedOutRef: `${publicationTxHash}#0`,
-        expectedDatumCbor: publication.action.input.publicationDatumCbor,
-      }),
-    );
-    observeExact.mockClear();
-    await expect(
-      adapter.reconcile({
-        identity: workflowIdentity("doubleSpend"),
-        workflowId: h32(0x51),
-        artifact,
-        entries: [],
-        action: publication.action,
-        txHash: h32(0x6b),
-      }),
-    ).resolves.toEqual({ kind: "pending", txHash: h32(0x6b) });
-    expect(observeExact).not.toHaveBeenCalled();
-    walletUtxos = [];
-    const healedPublication = await observe({
+    // The published chunk is found by content at the proof-materials
+    // address: the next chunk's publication is next.
+    const next = await observe({
       adapter,
       category: "doubleSpend",
       artifact,
-      entries: [confirmedEntry(publication.action.actionId)],
     });
-    expect(healedPublication).toMatchObject({
+    expect(next).toMatchObject({
       kind: "action_required",
-      action: { actionId: `${publication.action.actionId}:heal:1` },
+      action: { input: { stage: "publish-field", proofFor: "step_03" } },
     });
+    expect(next).not.toEqual(publication);
+    // The chunk gone again: the same publication heals it.
+    walletUtxos = [];
+    await expect(
+      observe({ adapter, category: "doubleSpend", artifact }),
+    ).resolves.toEqual(publication);
 
     walletUtxos = publicationsFor(plan);
     const certification = await observe({
       adapter,
       category: "doubleSpend",
       artifact,
-      published: [...walletUtxos, ...certificateUtxos],
     });
     expect(certification).toMatchObject({
       kind: "action_required",
       action: { input: { stage: "certify-field", proofFor: "step_03" } },
     });
     if (certification.kind !== "action_required") return;
-    const healedCertification = await observe({
-      adapter,
-      category: "doubleSpend",
-      artifact,
-      published: [...walletUtxos, ...certificateUtxos],
-      entries: [confirmedEntry(certification.action.actionId)],
-    });
-    expect(healedCertification).toMatchObject({
-      kind: "action_required",
-      action: { actionId: `${certification.action.actionId}:heal:1` },
-    });
 
     const certificate = certificateFor({ plan, network: "Preview" });
     certificateUtxos = [certificate];
@@ -240,7 +191,6 @@ describe("Q38 tier-3 workflow action chains", () => {
         adapter,
         category: "doubleSpend",
         artifact,
-        published: [...walletUtxos, ...certificateUtxos],
       }),
     ).resolves.toMatchObject({
       kind: "action_required",
@@ -251,9 +201,14 @@ describe("Q38 tier-3 workflow action chains", () => {
         },
       },
     });
+    // The certificate gone again: the same certification heals it.
+    certificateUtxos = [];
+    await expect(
+      observe({ adapter, category: "doubleSpend", artifact }),
+    ).resolves.toEqual(certification);
   });
 
-  it("networkId journals healing publications and certification before step-02", async () => {
+  it("networkId heals publications and certification by content before step-02", async () => {
     const output: MidgardTxOutput = {
       address: Buffer.concat([Buffer.from([0x61]), Buffer.alloc(28, 0x55)]),
       value: { lovelace: 1n, assets: new Map() },
@@ -311,14 +266,15 @@ describe("Q38 tier-3 workflow action chains", () => {
       outputIndex: 0,
       address: "state-queue",
     });
+    const reads = ledgerReads(() => [walletUtxos, certificateUtxos]);
     const lucid = {
-      utxosAtWithUnit: async (address: string) =>
+      ...reads,
+      utxosAtWithUnit: async (address: string, unit: string) =>
         address === "network-step-02"
           ? [step02Utxo]
           : address === "state-queue"
             ? [stateQueueUtxo]
-            : [],
-      ...ledgerReads(() => [walletUtxos, certificateUtxos]),
+            : await reads.utxosAtWithUnit(address, unit),
     } as unknown as LucidEvolution;
     const config = {
       lucid,
@@ -426,81 +382,36 @@ describe("Q38 tier-3 workflow action chains", () => {
         datum: String(publication.action.input.publicationDatumCbor),
       }),
     ];
-    await expect(
-      adapter.reconcile({
-        identity: workflowIdentity("networkId"),
-        workflowId: h32(0x51),
-        artifact,
-        entries: [],
-        action: publication.action,
-        txHash: publicationTxHash,
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash: publicationTxHash });
-    expect(observeExact).toHaveBeenCalledWith(
-      expect.objectContaining<Record<string, unknown>>({
-        expectedOutRef: `${publicationTxHash}#0`,
-        expectedDatumCbor: publication.action.input.publicationDatumCbor,
-      }),
-    );
-    observeExact.mockClear();
-    await expect(
-      adapter.reconcile({
-        identity: workflowIdentity("networkId"),
-        workflowId: h32(0x51),
-        artifact,
-        entries: [],
-        action: publication.action,
-        txHash: h32(0x6d),
-      }),
-    ).resolves.toEqual({ kind: "not_found" });
-    expect(observeExact).not.toHaveBeenCalled();
+    // The published chunk is found by content at the proof-materials
+    // address: the next chunk's publication is next.
+    const next = await observe({ adapter, category: "networkId", artifact });
+    expect(next).toMatchObject({
+      kind: "action_required",
+      action: { input: { kind: "publish_field" } },
+    });
+    expect(next).not.toEqual(publication);
+    // The chunk gone again: the same publication heals it.
     walletUtxos = [];
     await expect(
-      observe({
-        adapter,
-        category: "networkId",
-        artifact,
-        entries: [confirmedEntry(publication.action.actionId)],
-      }),
-    ).resolves.toMatchObject({
-      kind: "action_required",
-      action: { actionId: `${publication.action.actionId}:heal:1` },
-    });
+      observe({ adapter, category: "networkId", artifact }),
+    ).resolves.toEqual(publication);
 
     walletUtxos = publicationsFor(plan);
     const certification = await observe({
       adapter,
       category: "networkId",
       artifact,
-      published: [...walletUtxos, ...certificateUtxos],
     });
     expect(certification).toMatchObject({
       kind: "action_required",
       action: { input: { kind: "certify_field" } },
     });
     if (certification.kind !== "action_required") return;
-    await expect(
-      observe({
-        adapter,
-        category: "networkId",
-        artifact,
-        published: [...walletUtxos, ...certificateUtxos],
-        entries: [confirmedEntry(certification.action.actionId)],
-      }),
-    ).resolves.toMatchObject({
-      kind: "action_required",
-      action: { actionId: `${certification.action.actionId}:heal:1` },
-    });
 
     const certificate = certificateFor({ plan, network: "Preview" });
     certificateUtxos = [certificate];
     await expect(
-      observe({
-        adapter,
-        category: "networkId",
-        artifact,
-        published: [...walletUtxos, ...certificateUtxos],
-      }),
+      observe({ adapter, category: "networkId", artifact }),
     ).resolves.toMatchObject({
       kind: "action_required",
       action: {
@@ -510,227 +421,16 @@ describe("Q38 tier-3 workflow action chains", () => {
         },
       },
     });
+    // The certificate gone again: the same certification heals it.
+    certificateUtxos = [];
+    await expect(
+      observe({ adapter, category: "networkId", artifact }),
+    ).resolves.toEqual(certification);
   }, 30_000);
 
-  it("doubleSpend waits for finalized inclusion without rebuilding known intents", async () => {
-    const txHash = h32(0x7a);
-    let stage: DoubleSpendWorkflowStage = {
-      kind: "not_started",
-      stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
-    };
-    let included = false;
-    const adapter = createDoubleSpendConstrainedWorkflowAdapter({
-      l1: {
-        transactionConfirmed: async () => included,
-        observe: async () => stageObservation(stage),
-      },
-    } as unknown as DoubleSpendConstrainedWorkflowAdapterConfig);
-    const context = {
-      identity: workflowIdentity("doubleSpend"),
-      workflowId: h32(0x51),
-      artifact: { headerHash: HEADER_HASH },
-      entries: [],
-      action: {
-        actionId: `init:${STATE_QUEUE_OUT_REF}`,
-        input: { stage: "init" },
-      },
-      txHash,
-    } as const;
-    await expect(adapter.reconcile(context)).resolves.toEqual({
-      kind: "pending",
-      txHash,
-    });
-    stage = {
-      kind: "step_01",
-      threadOutRef: `${txHash}#0`,
-      stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
-    };
-    await expect(adapter.reconcile(context)).resolves.toMatchObject({
-      kind: "conflict",
-    });
-    included = true;
-    await expect(adapter.reconcile(context)).resolves.toEqual({
-      kind: "confirmed",
-      txHash,
-    });
-    included = false;
-    stage = { ...stage, threadOutRef: `${h32(0x7b)}#0` };
-    await expect(adapter.reconcile(context)).resolves.toMatchObject({
-      kind: "conflict",
-    });
-    for (const ordinal of [
-      "step_01",
-      "step_02",
-      "step_03",
-      "step_04",
-    ] as const) {
-      stage = {
-        kind: ordinal,
-        threadOutRef: THREAD_OUT_REF,
-        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
-      };
-      await expect(
-        adapter.reconcile({
-          ...context,
-          action: {
-            actionId: `${ordinal}:${THREAD_OUT_REF}`,
-            input: { stage: ordinal, threadOutRef: THREAD_OUT_REF },
-          },
-        }),
-      ).resolves.toEqual({ kind: "pending", txHash });
-    }
-    for (const nextRemovalOutRef of [STATE_QUEUE_OUT_REF, `${h32(0x7c)}#0`]) {
-      stage = {
-        kind: "proof_token",
-        fraudProofOutRef: `${h32(0x7d)}#0`,
-        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
-        nextRemovalOutRef,
-      };
-      await expect(
-        adapter.reconcile({
-          ...context,
-          action: {
-            actionId: `remove:${STATE_QUEUE_OUT_REF}`,
-            input: { stage: "remove", nextRemovalOutRef: STATE_QUEUE_OUT_REF },
-          },
-        }),
-      ).resolves.toEqual({ kind: "pending", txHash });
-    }
-  });
-
-  it.each(["init", "step_01", "step_02", "step_03", "step_04"] as const)(
-    "doubleSpend reconciles %s through canonical signed recovery after only its queue reference changes",
-    async (actionStage) => {
-      const account = generateEmulatorAccount({ lovelace: 100_000_000n });
-      const emulator = new Emulator([account]);
-      const lucid = await Lucid(emulator, "Custom");
-      lucid.selectWallet.fromSeed(account.seedPhrase);
-      const builder = lucid
-        .newTx()
-        .pay.ToAddress(account.address, { lovelace: 5_000_000n })
-        .validTo(emulator.now() + 30000);
-      const completed = await builder.complete({ localUPLCEval: true });
-      const signed = await completed.sign.withWallet().complete();
-      const transaction = {
-        transactionHash: signed.toHash(),
-        signedTransactionCborHex: signed.toCBOR(),
-      };
-      const currentQueueOutRef = `${h32(0xa1)}#0`;
-      let stage: DoubleSpendWorkflowStage =
-        actionStage === "init"
-          ? { kind: "not_started", stateQueueBlockOutRef: currentQueueOutRef }
-          : {
-              kind: actionStage,
-              threadOutRef: THREAD_OUT_REF,
-              stateQueueBlockOutRef: currentQueueOutRef,
-            };
-      expect(
-        CML.Transaction.from_cbor_hex(signed.toCBOR()).body().ttl(),
-      ).toBeLessThan(1000n);
-      const point = chainPoint(50, 1000, h32(0xa2));
-      const heldPoint = chainPoint(2210, 3160, h32(0xa3));
-      const finalPoint = chainPoint(2211, 3161, h32(0xa4));
-      let canonicalPoint = heldPoint;
-      let status: SignedTransactionRecoveryObservation["status"] =
-        "invalidated";
-      const observeSignedTransaction = vi.fn(async () => ({
-        ...transaction,
-        status,
-        canonicalPoint,
-        releaseFinalPoint: point,
-        inputs: [],
-        reason: "Authenticated signed-input outcome",
-      }));
-      const authorizeResubmission = vi.fn(async () => {});
-      const rebroadcastSignedTransaction = vi.fn<
-        NonNullable<
-          NonNullable<
-            DoubleSpendConstrainedWorkflowAdapterConfig["l1"]
-          >["rebroadcastSignedTransaction"]
-        >
-      >(async ({ authorizeResubmission, ...recorded }) => {
-        await authorizeResubmission(recorded);
-        return recorded.transactionHash;
-      });
-      const adapter = createDoubleSpendConstrainedWorkflowAdapter({
-        l1: {
-          transactionConfirmed: async () => false,
-          observeSignedTransaction,
-          rebroadcastSignedTransaction,
-          observe: async () => stageObservation(stage),
-        },
-      } as unknown as DoubleSpendConstrainedWorkflowAdapterConfig);
-      const context = {
-        identity: workflowIdentity("doubleSpend"),
-        workflowId: h32(0x51),
-        artifact: { headerHash: HEADER_HASH },
-        entries: [],
-        action: {
-          actionId: `${actionStage}:${STATE_QUEUE_OUT_REF}`,
-          input: {
-            stage: actionStage,
-            stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
-            threadOutRef: THREAD_OUT_REF,
-          },
-        },
-        txHash: transaction.transactionHash,
-        signedTransactionCborHex: transaction.signedTransactionCborHex,
-        authorizeResubmission,
-      } as const;
-      for (const retirementStatus of ["invalidated", "expired"] as const) {
-        status = retirementStatus;
-        canonicalPoint = heldPoint;
-        // Superseded at once; the retirement receipt alone waits for k.
-        await expect(adapter.reconcile(context)).resolves.toEqual({
-          kind: "not_found",
-        });
-        expect(rebroadcastSignedTransaction).not.toHaveBeenCalled();
-        expect(authorizeResubmission).not.toHaveBeenCalled();
-        canonicalPoint = finalPoint;
-        await expect(adapter.reconcile(context)).resolves.toEqual({
-          kind: "not_found",
-          retirement: {
-            transactionHash: transaction.transactionHash,
-            canonicalPoint: finalPoint,
-            releaseFinalPoint: point,
-            reason: retirementStatus,
-          },
-        });
-      }
-      expect(observeSignedTransaction).toHaveBeenLastCalledWith(transaction);
-      for (const pendingStatus of ["pending", "rebroadcast"] as const) {
-        status = pendingStatus;
-        await expect(adapter.reconcile(context)).resolves.toEqual({
-          kind: "pending",
-          txHash: transaction.transactionHash,
-        });
-      }
-      expect(authorizeResubmission).toHaveBeenCalledExactlyOnceWith(
-        transaction,
-      );
-      expect(rebroadcastSignedTransaction).toHaveBeenCalledTimes(1);
-      status = "conflict";
-      await expect(adapter.reconcile(context)).resolves.toEqual({
-        kind: "conflict",
-        reason: "Authenticated signed-input outcome",
-      });
-      // Changing the owned computation thread is not a reference-only update.
-      observeSignedTransaction.mockClear();
-      stage = {
-        kind: actionStage === "init" ? "step_01" : actionStage,
-        threadOutRef: `${h32(0xa4)}#0`,
-        stateQueueBlockOutRef: currentQueueOutRef,
-      };
-      await expect(adapter.reconcile(context)).resolves.toMatchObject({
-        kind: "conflict",
-      });
-      expect(observeSignedTransaction).not.toHaveBeenCalled();
-    },
-  );
-
-  // Regression: the production funding reservation permit reads the signed
-  // body back off the in-memory preflight, so a preflight that forgets to bind
-  // its captured transaction fails the whole run at reservation time.
+  // Regression: the runner reads the signed body back off the in-memory
+  // preflight to send it, so a preflight that forgets to bind its captured
+  // transaction fails the whole run.
   it("doubleSpend binds the captured signed transaction to the preflight it returns", async () => {
     const capturedTxHash = h32(0x7e);
     const capturedSigned = {
@@ -795,7 +495,6 @@ describe("Q38 tier-3 workflow action chains", () => {
       identity: workflowIdentity("doubleSpend"),
       workflowId: h32(0x51),
       artifact,
-      entries: [],
       action: observation.action,
     });
     expect(workflowPreflightTransaction(preflight)).toBeDefined();
@@ -805,76 +504,6 @@ describe("Q38 tier-3 workflow action chains", () => {
       txHash: capturedTxHash,
       scriptExecution: "reference_scripts",
       localUplcEvaluation: { status: "passed" },
-    });
-  });
-
-  it("doubleSpend resumes the exact descendant-removal fencing lease in a fresh adapter", async () => {
-    const txHash = h32(0x7a);
-    const renew = vi.fn(async () => undefined);
-    const resume = vi.fn(async ({ token, source }) => ({
-      token,
-      source,
-      renew,
-      release: vi.fn(async () => undefined),
-      fail: vi.fn(async () => undefined),
-    }));
-    const transactionStatus = vi.fn(async () => ({
-      status: "pending" as const,
-      txHash,
-    }));
-    const config = {
-      lucid: { transactionStatus },
-      stateQueueMutationLeaseCoordinator: {
-        acquire: async () => {
-          throw new Error("fresh reconciliation must not acquire a new lease");
-        },
-        resume,
-      },
-    } as unknown as DoubleSpendConstrainedWorkflowAdapterConfig;
-    const adapter = createDoubleSpendConstrainedWorkflowAdapter(config);
-    const identity: FraudProofWorkflowIdentity = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-      deploymentFingerprint: "d1".repeat(32),
-      category: "doubleSpend",
-      target: { kind: "state_queue_header", headerHash: HEADER_HASH },
-    };
-    const context = {
-      identity,
-      workflowId: h32(0x7b),
-      artifact: {},
-      entries: [],
-      action: {
-        actionId: `remove:${STATE_QUEUE_OUT_REF}`,
-        input: {
-          stage: "remove",
-          requiresMutationLease: true,
-          fraudProofOutRef: `${h32(0x7c)}#0`,
-          nextRemovalOutRef: STATE_QUEUE_OUT_REF,
-        },
-      },
-      txHash,
-    } as const;
-    await expect(
-      adapter.reconcile({
-        ...context,
-        durableRecovery: {
-          stateQueueMutationLease: {
-            token: "lease-fence-17",
-            source: "http://midgard-node.test",
-          },
-        },
-      }),
-    ).resolves.toEqual({ kind: "pending", txHash });
-    expect(resume).toHaveBeenCalledWith({
-      token: "lease-fence-17",
-      source: "http://midgard-node.test",
-    });
-    expect(renew).toHaveBeenCalledTimes(1);
-
-    const secondAdapter = createDoubleSpendConstrainedWorkflowAdapter(config);
-    await expect(secondAdapter.reconcile(context)).resolves.toMatchObject({
-      kind: "conflict",
-      reason: expect.stringContaining("omitted its durable mutation-lease"),
     });
   });
 });

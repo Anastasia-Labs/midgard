@@ -16,7 +16,6 @@ import {
   type FraudProofFamilyL1ObservationPort,
   observeFraudProofWorkflowHeader,
 } from "./family-l1-observation.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
   journalJsonDigest,
   type JournalJsonObject,
@@ -30,7 +29,8 @@ import {
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
-import { type WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WorkflowRun } from "./workflow-run.js";
 
 /** Cache only fresh canonical material; a saved JSON artifact is never cast back into evidence. */
 export const createCanonicalFamilyArtifactPort = <Material>(
@@ -104,8 +104,8 @@ export const withManifestBoundFamilyRecovery = <
   Object.freeze({ ...installation, ...assemble(installation) });
 
 /**
- * Fresh public-DA replay through the family adapter. A recorded workflow
- * resumes under reconciliation-only authority in the runtime, never here.
+ * Fresh public-DA replay through the family adapter. Nothing is stored, so a
+ * workflow resumed under reconciliation-only authority replays here too.
  */
 export const executeManifestBoundFamilyRecovery = async <
   Category extends FraudProofCatalogueCategoryName,
@@ -120,7 +120,7 @@ export const executeManifestBoundFamilyRecovery = async <
   terminalVerifier,
   releaseFinalityAuthority,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   binding: FraudProofWorkflowDeploymentBinding<Category>;
@@ -135,14 +135,12 @@ export const executeManifestBoundFamilyRecovery = async <
   terminalVerifier: FraudProofWorkflowTerminalVerifier;
   releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   sources: readonly RetainedDaPayloadSource[];
-  journal: FraudProofWorkflowJournalStore;
+  run: WorkflowRun;
   walletOnlySend: WalletOnlySend;
 }) => {
   const { category, headerHash } = binding.definition;
-  if (workflowActuationAuthorizingDecisionDigest(journal) !== decisionDigest)
-    throw new Error(
-      `${category} journal actuation permit changed decision digest`,
-    );
+  if (workflowActuationAuthorizingDecisionDigest(run) !== decisionDigest)
+    throw new Error(`${category} run actuation permit changed decision digest`);
   if (adapter.category !== category || l1.category !== category)
     throw new Error(`${category} recovery adapter changed deployment category`);
   return await runFraudProofWorkflowFromRetainedDa({
@@ -156,7 +154,7 @@ export const executeManifestBoundFamilyRecovery = async <
       adapters: [adapter],
       launchScope: [category],
     }),
-    journal,
+    run,
     terminalVerifier,
     releaseFinalityAuthority,
     walletOnlySend,

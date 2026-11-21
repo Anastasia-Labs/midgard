@@ -28,8 +28,8 @@ export const createAdmittedWorkflowRunner = <Input>({
   /**
    * Optional measured profile, bound to this runner for
    * `workflowFundingRequirementsForRunner`. Omitting it changes nothing at
-   * runtime: the runner is installed and ready, and its reservations are
-   * priced from the runtime funding policy, which never reads this profile.
+   * runtime: the runner is installed and ready, and nothing at runtime reads
+   * this profile.
    */
   readonly fundingRequirements?: WorkflowFundingRequirements;
 }): AdmittedRunner<Input> => {

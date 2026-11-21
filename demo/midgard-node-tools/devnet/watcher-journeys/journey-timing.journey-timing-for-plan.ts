@@ -8,7 +8,7 @@ import { stackUserEventFloorOffsetMs } from "./stack-user-event-floor.js";
  * Every automatic family's plan. A family's proof chain takes as many
  * dependent transactions as its data needs (scan steps loop over the data,
  * per-purpose routes vary), so no plan counts them: the correction ends only
- * when the workflow journal stops making progress by the watcher's own rule
+ * when the chain holds it or the watcher's own rule gives up on it
  * (`verifyJourneyCorrection`), and the family's time limit does not run
  * while it waits (`journeyFamilyDeadline`). The plan budgets the rest of the
  * journey.
@@ -25,8 +25,8 @@ export const GENERIC_JOURNEY_PLAN = Object.freeze({
  * phase, so nobody defends the case the watcher opens. The case validator
  * lets the watcher close it Convicted only past its defense deadline, the
  * side clock C plus the longest move validity range L_d after the case
- * starts (`validationTraceDefenseDeadlineMs`, validation-case-v1), and the
- * watcher journals nothing while it waits.
+ * starts (`validationTraceDefenseDeadlineMs`, validation-case-v1), and
+ * nothing of ours lands while it waits.
  */
 export const VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN = Object.freeze({
   category: "validationTraceDispute",
@@ -250,24 +250,24 @@ export const journeyTimingForPlan = (
           ),
     /**
      * The one release-finality wait in a journey: the native recorder
-     * authenticates the included terminal's transactions at the release depth
-     * and stamps it as the anchor. `completed`, journaled only beyond the
-     * recovery horizon, is not awaited. The terminal is already on chain, so
-     * this is a single confirmation window at the release depth plus its RPC
-     * allowance.
+     * authenticates the correction's transactions, read again from the
+     * chain, at the release depth and stamps it as the anchor. The
+     * correction is already on chain, so this is a single confirmation
+     * window at the release depth plus its RPC allowance.
      */
     finalizedEvidenceStampMs:
       Math.ceil(2 * idealDepthMs(confirmationDepth)) + 30_000,
     /**
      * An undefended case's defense window, C + L_d; zero for every other
-     * plan. The progress gate holds the journal's silence open from the
-     * case's start to that deadline (`journeyProgressClock`); the family's
-     * limit does not run meanwhile.
+     * plan. The watcher awaits its counterparty through it and holds no
+     * stall meanwhile, so the correction wait runs on; the family's limit
+     * does not run meanwhile.
      */
     undefendedCaseMs: undefendedCaseWaitMs(plan, disputeTiming),
   });
   // The correction, with any undefended case it waits out, is not budgeted
-  // here: the progress gate ends it, and the family's limit pauses for it.
+  // here: the chain's correction or the watcher's own verdict ends it, and
+  // the family's limit pauses for it.
   const journeyTimeoutMs =
     plan.successorTransactions * transactionAllowanceMs +
     allowances.authorityStartupMs +

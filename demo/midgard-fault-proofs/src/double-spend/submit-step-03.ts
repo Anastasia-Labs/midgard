@@ -65,7 +65,7 @@ import {
 } from "../workflow/own-outputs.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 
@@ -96,7 +96,7 @@ export type Step03Build = {
   readonly outputIndex: number;
 };
 
-export type SubmitStep03Result = UnjournaledSubmission<Step03Build>;
+export type SubmitStep03Result = OutsideWorkflowSubmission<Step03Build>;
 
 type Step03Layout = {
   readonly inputIndex: bigint;
@@ -182,7 +182,7 @@ export const buildStep03 = async ({
    * spend-input cardinality at the L1 byte frontier (#612).
    */
   readonly publishCarriage?: boolean;
-  /** Pre-observed tier-2/3 publications for journaled workflow use. */
+  /** Pre-observed tier-2/3 publications for workflow use. */
   readonly publishedCarriageUtxos?: readonly UTxO[];
   /** Pre-minted §8.6 certificate, required when the plan selects tier 3. */
   readonly certificateUtxo?: UTxO;

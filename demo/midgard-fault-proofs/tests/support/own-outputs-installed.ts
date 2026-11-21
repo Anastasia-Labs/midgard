@@ -12,43 +12,27 @@
  * dispute's pending claim, case and bond; field publication and certificate
  * rows are in `own-field-carriage-installed.ts`. Other roles join later.
  */
-import { startScriptDecodeWalk } from "@al-ft/midgard-validation/script-decode.step-walk";
 import {
   CML,
   coreToTxOutput,
-  Data,
   type Emulator,
-  getAddressDetails,
-  type LucidEvolution,
-  mintingPolicyToId,
-  scriptFromNative,
   type TxOutput,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
-import { spendProofMaterials } from "../../src/funding/proof-materials-address.js";
 import { plutusItemScript } from "../../src/script-decode/item-record.js";
-import { stageScriptDecodeBytes } from "../../src/script-decode/stage.js";
-import {
-  bindScriptDecodeRun,
-  scriptDecodeStagingDatums,
-} from "../../src/script-decode/submit.js";
+import { scriptDecodeStagingDatums } from "../../src/script-decode/submit.js";
 import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
-import { honestScript } from "./script-decode-plutus-max-shape.js";
-
-/**
- * A Plutus V3 script of over 2 KB, carried as a reference script by a shape
- * plant: a transaction that read the plant would pay its reference-script
- * fee (15 lovelace a byte), well past the fee spread the cost check allows.
- */
-const REFERENCE_SCRIPT = honestScript(2_048).toString("hex");
-
-/** Outputs per transaction of the mass plant. */
-const MASS_BATCH = 25;
-
-/** Distinct tokens in the token-bearing coin plant. */
-const TOKEN_BUNDLE = 40;
+export {
+  plantCopies,
+  plantCopyBefore,
+  plantForeignRun,
+  plantMass,
+  plantShapes,
+  plantTokenCoin,
+  removeOutput,
+} from "./own-outputs-installed.plants.js";
 
 /** The carriage roles a row covers, and where their outputs sit. */
 export type OwnOutputRole = Readonly<{
@@ -197,6 +181,128 @@ export const watchLedger = (
 
 export type LedgerWatch = ReturnType<typeof watchLedger>;
 
+/** An output another party placed that a transaction of the application
+ * spent or referenced: which transaction of ours took it, how, and the
+ * output as it was placed. */
+export type TakenPlanted = Readonly<{
+  outRef: string;
+  by: string;
+  as: "input" | "reference";
+  shape: Readonly<{
+    address: string;
+    datum: string | null;
+    datumHash: string | null;
+    scriptRef: boolean;
+    assets: Readonly<Record<string, string>>;
+  }>;
+}>;
+
+/** Every transaction the ledger accepted, in order: whose it was, what it
+ * spent and referenced, and where its outputs went. */
+export const ledgerTimeline = (watch: LedgerWatch) =>
+  watch.accepted.map(
+    ({ txHash, planted, inputs, referenceInputs, outputs }) => ({
+      txHash: txHash.slice(0, 12),
+      planted,
+      inputs: inputs.map((outRef) => outRef.slice(0, 12) + outRef.slice(64)),
+      references: referenceInputs.map(
+        (outRef) => outRef.slice(0, 12) + outRef.slice(64),
+      ),
+      outputs: outputs.map(({ address, datum, assets }) => ({
+        address: address.slice(-12),
+        datum: datum?.slice(0, 16) ?? null,
+        tokens: Object.keys(assets).length - 1,
+      })),
+    }),
+  );
+
+/** Every output another party placed that the application's transactions
+ * took, outside `excluded`, in the order they were taken. */
+export const takenPlanted = (
+  watch: LedgerWatch,
+  excluded: ReadonlySet<string> = new Set(),
+): readonly TakenPlanted[] => {
+  const placed = new Map<string, TxOutput>();
+  for (const { txHash, outputs, planted } of watch.accepted)
+    if (planted)
+      for (const [index, output] of outputs.entries())
+        placed.set(`${txHash}#${index.toString()}`, output);
+  return watch.ours().flatMap(({ txHash, inputs, referenceInputs }) =>
+    [
+      ...inputs.map((outRef) => ({ outRef, as: "input" as const })),
+      ...referenceInputs.map((outRef) => ({
+        outRef,
+        as: "reference" as const,
+      })),
+    ].flatMap(({ outRef, as }) => {
+      const output = placed.get(outRef);
+      if (output === undefined || excluded.has(outRef)) return [];
+      return [
+        {
+          outRef,
+          by: txHash,
+          as,
+          shape: {
+            address: output.address,
+            datum: output.datum ?? null,
+            datumHash: output.datumHash ?? null,
+            scriptRef: output.scriptRef != null,
+            assets: Object.fromEntries(
+              Object.entries(output.assets).map(([unit, quantity]) => [
+                unit,
+                quantity.toString(),
+              ]),
+            ),
+          },
+        },
+      ];
+    }),
+  );
+};
+
+/** The shape of an output another party placed that the application took. */
+export type TakenShape = TakenPlanted["shape"];
+
+/**
+ * Whether a placed output has the strict shape of carriage: an inline datum,
+ * no datum hash, no reference script, and no token beyond those `tokens`
+ * admits (none by default).
+ */
+export const strictShape = (
+  shape: TakenShape,
+  tokens: (unit: string, quantity: string) => boolean = () => false,
+): boolean =>
+  shape.datum !== null &&
+  shape.datumHash === null &&
+  !shape.scriptRef &&
+  Object.entries(shape.assets).every(
+    ([unit, quantity]) => unit === "lovelace" || tokens(unit, quantity),
+  );
+
+/**
+ * The placed outputs the application took, split into the exact copies of
+ * carriage it adopted (`strict` names their shape) and the rest.
+ */
+export const adoptedAndRejected = (
+  taken: readonly TakenPlanted[],
+  strict: (shape: TakenShape) => boolean = (shape) => strictShape(shape),
+) => ({
+  adopted: taken.filter(({ shape }) => strict(shape)),
+  rejected: taken.filter(({ shape }) => !strict(shape)),
+});
+
+/** Every output the ledger accepted, ours and other parties', by out-ref. */
+export const ledgerOutputs = (
+  watch: LedgerWatch,
+): ReadonlyMap<string, TxOutput> =>
+  new Map(
+    watch.accepted.flatMap(({ txHash, outputs }) =>
+      outputs.map(
+        (output, index) => [`${txHash}#${index.toString()}`, output] as const,
+      ),
+    ),
+  );
+
 /** The application's transaction that stages a chunk of `role`, and the out-ref of that chunk. */
 export const stagedChunkOf = (
   transaction: LedgerTransaction,
@@ -222,198 +328,6 @@ export const kindOf = (
   if (stagedChunkOf(transaction, staging) !== undefined) return "stage";
   return "step";
 };
-
-const submitAs = async (
-  watch: LedgerWatch,
-  lucid: LucidEvolution,
-  build: (lucid: LucidEvolution) => ReturnType<LucidEvolution["newTx"]>,
-): Promise<string> =>
-  await watch.asOtherParty(async () => {
-    lucid.clearUTxOOverride();
-    const unsigned = await build(lucid).complete();
-    const signed = await unsigned.sign.withWallet().complete();
-    return await signed.submit();
-  });
-
-/** A native-script token the other party can mint. */
-const otherPartyToken = (address: string) => {
-  const keyHash = getAddressDetails(address).paymentCredential!.hash;
-  const policy = scriptFromNative({ type: "sig", keyHash });
-  return { policy, unit: `${mintingPolicyToId(policy)}cafe` };
-};
-
-/**
- * Outputs holding `role`'s datums in other shapes: with a token, with a
- * reference script, and as a datum hash.
- */
-export const plantShapes = async (
-  watch: LedgerWatch,
-  lucid: LucidEvolution,
-  role: OwnOutputRole,
-) => {
-  const { policy, unit } = otherPartyToken(await lucid.wallet().address());
-  await submitAs(watch, lucid, (other) => {
-    let tx = other
-      .newTx()
-      .mintAssets({ [unit]: BigInt(role.datums.length) })
-      .attach.MintingPolicy(policy);
-    for (const datum of role.datums)
-      tx = tx.pay
-        .ToAddressWithData(
-          role.address,
-          { kind: "inline", value: datum },
-          { [unit]: 1n },
-        )
-        .pay.ToAddressWithData(
-          role.address,
-          { kind: "inline", value: datum },
-          {},
-          { type: "PlutusV3", script: REFERENCE_SCRIPT },
-        )
-        .pay.ToAddressWithData(
-          role.address,
-          { kind: "asHash", value: datum },
-          {},
-        );
-    return tx;
-  });
-};
-
-/**
- * One coin at `address` with no datum and no script, more ada than the
- * largest coin there, and a bundle of `TOKEN_BUNDLE` tokens: the coin a
- * wallet's coin selection would reach for first were tokens no bar.
- */
-export const plantTokenCoin = async (
-  watch: LedgerWatch,
-  lucid: LucidEvolution,
-  address: string,
-) => {
-  const { policy } = otherPartyToken(await lucid.wallet().address());
-  const policyId = mintingPolicyToId(policy);
-  const bundle: Record<string, bigint> = {};
-  for (let index = 0; index < TOKEN_BUNDLE; index += 1)
-    bundle[`${policyId}${index.toString(16).padStart(4, "0")}`] = 1n;
-  const largest = (await lucid.utxosAt(address)).reduce(
-    (max, { assets }) => (assets.lovelace! > max ? assets.lovelace! : max),
-    0n,
-  );
-  await submitAs(watch, lucid, (other) =>
-    other
-      .newTx()
-      .mintAssets(bundle)
-      .attach.MintingPolicy(policy)
-      .pay.ToAddress(address, {
-        lovelace: largest + 1_000_000_000n,
-        ...bundle,
-      }),
-  );
-};
-
-/** Exact copies of `role`'s outputs: the same datums, ada only, inline. */
-export const plantCopies = async (
-  watch: LedgerWatch,
-  lucid: LucidEvolution,
-  role: OwnOutputRole,
-) => {
-  await submitAs(watch, lucid, (other) => {
-    let tx = other.newTx();
-    for (const datum of role.datums)
-      tx = tx.pay.ToAddressWithData(
-        role.address,
-        { kind: "inline", value: datum },
-        {},
-      );
-    return tx;
-  });
-};
-
-/**
- * An exact copy of `datum` at `address` whose transaction id sorts before
- * `below`: submitted ahead of the transaction it copies, into the same block.
- */
-export const plantCopyBefore = async (
-  watch: LedgerWatch,
-  lucid: LucidEvolution,
-  { address, datum, below }: { address: string; datum: string; below: string },
-) => {
-  lucid.clearUTxOOverride();
-  for (let attempt = 0; attempt < 4_096; attempt += 1) {
-    const unsigned = await lucid
-      .newTx()
-      .pay.ToAddressWithData(
-        address,
-        { kind: "inline", value: datum },
-        { lovelace: 20_000_000n + BigInt(attempt) },
-      )
-      .complete();
-    const signed = await unsigned.sign.withWallet().complete();
-    if (signed.toHash() < below) {
-      return await watch.asOtherParty(async () => await signed.submit());
-    }
-  }
-  throw new Error("no copy sorting first was found");
-};
-
-/**
- * `count` datum-bearing outputs at `role`'s address, in transactions of
- * `MASS_BATCH`, a block each.
- */
-export const plantMass = async (
-  watch: LedgerWatch,
-  lucid: LucidEvolution,
-  role: OwnOutputRole,
-  { emulator, count }: { emulator: Emulator; count: number },
-) => {
-  for (let start = 0; start < count; start += MASS_BATCH) {
-    await submitAs(watch, lucid, (other) => {
-      let tx = other.newTx();
-      for (
-        let index = start;
-        index < Math.min(count, start + MASS_BATCH);
-        index += 1
-      )
-        tx = tx.pay.ToAddressWithData(
-          role.address,
-          { kind: "inline", value: Data.to(BigInt(index)) },
-          {},
-        );
-      return tx;
-    });
-    emulator.awaitBlock();
-  }
-};
-
-/**
- * The other party's own record of the same script, begun: it stages the
- * bytes at its own address and Binds a run of them.
- */
-export const plantForeignRun = async (
-  watch: LedgerWatch,
-  lucid: LucidEvolution,
-  {
-    emulator,
-    script,
-  }: {
-    emulator: Emulator;
-    script: NonNullable<ReturnType<typeof plutusItemScript>>;
-  },
-): Promise<UTxO> =>
-  await watch.asOtherParty(async () => {
-    const staging = await stageScriptDecodeBytes({
-      lucid,
-      scriptBytes: script.scriptBytes,
-    });
-    return await bindScriptDecodeRun({
-      lucid,
-      deployment: scriptDecodeDeploymentOf(emulator),
-      language: script.language,
-      scriptHashHex: script.scriptHashHex,
-      initialRun: startScriptDecodeWalk(script.language, script.scriptBytes)
-        .run,
-      staging,
-    });
-  });
 
 /**
  * Reads of the chain that do not yet show `outRef` while `hidden()` holds:
@@ -453,10 +367,9 @@ export const lagReadsOf = (
 };
 
 /**
- * The application's wall clock (`new Date()`, which its journal stamps
- * entries with) reading the emulator, as `Date.now` already does under the
- * installed application clock: journal times, retry intervals and the
- * provider grace then all run on the one chain clock.
+ * The application's wall clock (`new Date()`) reading the emulator, as
+ * `Date.now` already does under the installed application clock: retry
+ * intervals and the provider grace then all run on the one chain clock.
  */
 export const emulatorWallClock = () => {
   const RealDate = globalThis.Date;
@@ -472,29 +385,4 @@ export const emulatorWallClock = () => {
       globalThis.Date = RealDate;
     },
   };
-};
-
-/** Takes our coin or proof material `utxo` off the chain, ada to `to`. */
-export const removeOutput = async (
-  watch: LedgerWatch,
-  lucid: LucidEvolution,
-  utxo: UTxO,
-  to: string,
-) => {
-  await watch.asOtherParty(async () => {
-    lucid.clearUTxOOverride();
-    const wallet = getAddressDetails(await lucid.wallet().address());
-    const spend = lucid.newTx().collectFrom([utxo]);
-    const unsigned = await (
-      utxo.address === wallet.address.bech32
-        ? spend
-        : spendProofMaterials(spend, wallet.paymentCredential!.hash)
-    ).complete({
-      presetWalletInputs: [utxo],
-      coinSelection: false,
-      changeAddress: to,
-    });
-    await (await unsigned.sign.withWallet().complete()).submit();
-    lucid.clearUTxOOverride();
-  });
 };

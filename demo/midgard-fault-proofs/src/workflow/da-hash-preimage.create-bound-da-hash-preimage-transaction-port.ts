@@ -21,10 +21,7 @@ import {
   type ManifestBoundLinearFamilyWorkflow,
 } from "./family-definition.family-definition.js";
 import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
-import {
-  type FraudProofWorkflowJournalStore,
-  type JournalJsonObject,
-} from "./journal.js";
+import { type JournalJsonObject } from "./journal.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyCapturedAction,
@@ -36,12 +33,13 @@ import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-wor
 import { createFraudProofWorkflowRegistry } from "./orchestrator.js";
 import { runDaHashPreimageWorkflowFromRetainedDa } from "./orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
 import { type WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WorkflowRun } from "./workflow-run.js";
 
 const createBoundDaHashPreimageTransactionPort = ({
   config,
@@ -66,7 +64,7 @@ const createBoundDaHashPreimageTransactionPort = ({
     const input = requiredAction(action);
     if (input.stage === "init") {
       const transaction = (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await builders.init({
             lucid: config.lucid,
             blueprint: config.blueprint,
@@ -234,12 +232,12 @@ export const createManifestBoundDaHashPreimageWorkflow = (
 export const runOrResumeManifestBoundDaHashPreimageWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundDaHashPreimageWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
@@ -253,7 +251,7 @@ export const runOrResumeManifestBoundDaHashPreimageWorkflow = async ({
       adapters: [workflow.adapter],
       launchScope: ["daHashPreimage"],
     }),
-    journal,
+    run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     walletOnlySend,

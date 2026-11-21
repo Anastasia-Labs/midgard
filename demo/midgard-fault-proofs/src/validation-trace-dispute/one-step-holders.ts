@@ -126,8 +126,7 @@ export type ValidationTraceOneStepContract = Readonly<{
 /**
  * The deployment manifest's name for each holder a thread of ours visits
  * between the game and the award: the boundary, then the one-step
- * resolvers. A watcher's funding terms name these holders' addresses, so
- * its funding permit admits the moves that pay a thread to them.
+ * resolvers.
  */
 export const VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES = Object.freeze({
   boundary: "validationTraceDisputeBoundary",

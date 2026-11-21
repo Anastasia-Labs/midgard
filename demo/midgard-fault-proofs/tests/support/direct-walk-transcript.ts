@@ -23,12 +23,9 @@ import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "../../src/workflow/family-l1-observation.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEvent } from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-  journalJsonDigest,
 } from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
 import type { DirectWalkCategory } from "./direct-walk-emulator.js";
@@ -125,7 +122,7 @@ const provenance = {
 
 /**
  * The installed lifecycle: complete replay detects the fault, the port
- * prepares a journaled artifact, and the cursor adapter drives every action up
+ * prepares an artifact, and the cursor adapter drives every action up
  * to removal across an emulated restart after each broadcast. Returns the
  * actions in order; removal itself is not the family's.
  */
@@ -218,27 +215,6 @@ export const driveDirectWalkLifecycle = async <
     target: { kind: "state_queue_header", headerHash: setup.headerHash },
   };
   const workflowId = computeFraudProofWorkflowId(identity);
-  const store = new MemoryFraudProofWorkflowJournalStore();
-  const append = async (event: FraudProofWorkflowJournalEvent) => {
-    const entries = await store.load(workflowId);
-    await store.append(
-      {
-        schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
-        workflowId,
-        identity,
-        sequence: entries.length,
-        recordedAt: new Date().toISOString(),
-        event,
-      },
-      entries.length,
-    );
-  };
-  await append({ kind: "started" });
-  await append({
-    kind: "prepared",
-    artifact,
-    artifactDigest: journalJsonDigest(artifact),
-  });
   const threadUnit = toUnit(
     contracts.computationThread.policyId,
     h.category.categoryId + setup.headerHash,
@@ -297,9 +273,8 @@ export const driveDirectWalkLifecycle = async <
       spec: family.spec,
       l1,
       transactions: port,
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
-  // The journal hands each restart its artifact as stored JSON.
+  // Each restart prepares its artifact again from the same evidence.
   const restored = JSON.parse(JSON.stringify(artifact));
   const actions: DirectWalkAction[] = [];
   for (let n = 0; n < MAX_ACTIONS; n++) {
@@ -307,7 +282,6 @@ export const driveDirectWalkLifecycle = async <
       identity,
       workflowId,
       artifact: restored,
-      entries: await store.load(workflowId),
     };
     const current = adapter();
     const observation = await current.observe(context);
@@ -316,42 +290,10 @@ export const driveDirectWalkLifecycle = async <
     const { action } = observation;
     if (action.input.stage === "remove") return actions;
     const preflight = await current.preflight({ ...context, action });
-    const { actionId } = action;
     const { txHash } = preflight;
-    await append({
-      kind: "preflight_passed",
-      actionId,
-      txHash,
-      localEvaluator: preflight.localUplcEvaluation.evaluator,
-      referenceScripts: preflight.referenceScripts,
-    });
-    await append({
-      kind: "submission_intent",
-      actionId,
-      actionInput: action.input,
-      attempt: 1,
-      txHash,
-    });
     await current.submit({ ...context, action, preflight });
     h.emulator.awaitBlock();
     confirmed.add(txHash);
-    await append({
-      kind: "submission_ambiguous",
-      actionId,
-      attempt: 1,
-      txHash,
-      detail: "emulated restart after broadcast before receipt",
-    });
-    const recovered = await adapter().reconcile({ ...context, action, txHash });
-    if (recovered.kind !== "confirmed" || recovered.txHash !== txHash)
-      throw new Error(`${family.label}: ${txHash} did not reconcile`);
-    await append({
-      kind: "reconciled",
-      actionId,
-      outcome: "confirmed",
-      txHash,
-    });
-    await append({ kind: "confirmed", actionId, txHash });
     actions.push({ stage: String(action.input.stage), txHash });
   }
   throw new Error(

@@ -5,20 +5,18 @@
  *
  * A wallet below the collateral line holds the step's first staging under
  * the operator's alarm, naming the case, the thread, the deadline and what
- * the step still needs from our wallet, before any byte reaches the ledger,
- * releasing what it reserved. A wallet above the line stages the first run;
- * run below it, the next is held the same way, the first run's staging
- * output live and no wallet coin spent twice. Topped up, each
- * run left is staged under the permit, the thread plays through the staged
- * chain to the award, and each staging output is spent back to our wallet
- * under the permit; a spend back the ledger drops after its confirmation is
- * sent again, its exact signed bytes. */
-import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+ * the step still needs from our wallet, before any byte reaches the ledger.
+ * A wallet above the line stages the first run; run below it, the next is
+ * held the same way, the first run's staging output live and no wallet coin
+ * spent twice. Topped up, each run left is staged, the thread plays through
+ * the staged chain to the award, and each staging output is spent back to
+ * our wallet; a spend back the ledger drops after its confirmation is sent
+ * again, its exact signed bytes. */
+import { CML, coreToTxOutput, type UTxO } from "@lucid-evolution/lucid";
+import { beforeAll, describe, expect, it } from "vitest";
 
-import { VALIDATION_TRACE_STAGING_RECLAIM } from "../src/validation-trace-dispute/one-step-staging-journal.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
-import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
+import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/validation-trace-dispute/wallet-move-unfunded-alarm.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import {
   COLLATERAL_LINE,
@@ -42,7 +40,7 @@ import {
   playThreads,
 } from "./support/validation-trace-dispute-one-step-play.js";
 import {
-  entriesOf,
+  isStagingAction,
   landedSpenderOf,
 } from "./support/validation-trace-dispute-one-step-staged-drive.js";
 import {
@@ -53,16 +51,16 @@ import { reportFit } from "./support/validation-trace-dispute-scripted-defender.
 
 const { at, turns, place, open, stagingAddress, stagedOutputs, depositOf } =
   fundedStagingScene();
-/** The staging outputs the funded play staged, one per run. */
-const stagedOutRefs: string[] = [];
+/** The action-id prefix of a staging output's spend back. */
+const RECLAIM = "validation-trace-reclaim-staging:";
+/** The staging outputs the funded play staged, one per run, by out-ref. */
+const stagedOutputsByOutRef = new Map<string, UTxO>();
 
 /**
  * Turns the watcher twice from a wallet holding one coin of `held` and
- * expects each
- * turn to hold the staging of the step's run `index` under the operator's
- * alarm, naming what the step still needs, before any byte of it reaches
- * the ledger, releasing what it reserved; returns our transactions the
- * ledger took meanwhile.
+ * expects each turn to hold the staging of the step's run `index` under the
+ * operator's alarm, naming what the step still needs, before any byte of it
+ * reaches the ledger; returns our transactions the ledger took meanwhile.
  */
 const expectHeldUnderAlarm = async (held: bigint, index: number) => {
   const { h } = at.scene;
@@ -79,7 +77,7 @@ const expectHeldUnderAlarm = async (held: bigint, index: number) => {
 };
 
 /** Two turns, each holding the staging of the step's run `index` under the
- * operator's alarm, releasing what it reserved. */
+ * operator's alarm. */
 const holdTwice = async (index: number) => {
   for (let pause = 0; pause < 2; pause += 1) {
     const { result, history } = await turnUntil(
@@ -89,7 +87,7 @@ const holdTwice = async (index: number) => {
     expect(result.kind, history.join("\n")).toBe("pending");
     if (result.kind !== "pending") return;
     expect(result.reason).toContain(
-      `cannot fund validation-trace-stage:${digestOf(runs[index]!.datumCbor)}:`,
+      `cannot fund validation-trace-stage:${digestOf(runs[index]!.datumCbor)}:0 from its plain-ADA coins`,
     );
     // What the step still needs is text for the operator only.
     expect(result.reason).toMatch(
@@ -113,17 +111,11 @@ const holdTwice = async (index: number) => {
         alarm: true,
       },
     });
-    for (const reservation of await at.dispute.readReservations())
-      expect(reservation).toMatchObject({ activeInputs: [] });
   }
 };
 
-describe("validation-trace dispute staging of a staged builtin step's operands under the prover funding permit", () => {
+describe("validation-trace dispute staging of a staged builtin step's operands under the watcher's prover funding", () => {
   beforeAll(open, 1_800_000);
-
-  afterAll(async () => {
-    await at.dispute?.close();
-  });
 
   it(
     "holds the step's first staging under the operator's alarm, naming the case, the thread and the deadline, when our wallet cannot build it, before any byte reaches the ledger",
@@ -189,48 +181,45 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
   );
 
   it(
-    "stages each run left under the funding permit once our wallet is topped up, and plays the thread through the staged chain to the award",
+    "stages each run left once our wallet is topped up, and plays the thread through the staged chain to the award",
     async () => {
       // Back above the collateral line.
       await topUpProver(at.scene.h as never, COLLATERAL_LINE + 400n * ADA);
-      const { result, history } = await playThreads({
+      const { history } = await playThreads({
         scene: at.scene,
         runner: turns(),
         sides: [at.side],
-        until: async (run) =>
-          confirmedOneStepMoves(entriesOf(run)).some(
+        until: async () =>
+          confirmedOneStepMoves(await at.dispute.confirmed()).some(
             ({ stage }) => stage === "close_awarded",
           ),
         limit: 60,
       });
       expect(await place(), history.join("\n")).toBeUndefined();
-      const staged = entriesOf(result).filter(
-        ({ event }) =>
-          event.kind === "submission_intent" &&
-          event.actionInput.stage === "stage_operands",
-      );
+      const staged = at.dispute
+        .sent()
+        .filter(({ actionId }) => isStagingAction(actionId));
       expect(staged.length, history.join("\n")).toBe(runs.length);
-      const signed = staged.flatMap(({ event }) =>
-        event.kind === "submission_intent"
-          ? [
-              {
-                txHash: event.txHash,
-                cbor: at.scene.l1.signedCbors.get(event.txHash)!,
-              },
-            ]
-          : [],
-      );
+      const signed = staged.map(({ txHash }) => ({
+        txHash,
+        cbor: at.scene.l1.signedCbors.get(txHash)!,
+      }));
       reportFit(
         "funded staging",
         signed.map(({ cbor }) => cbor),
       );
       for (const { txHash, cbor } of signed) {
         const outputs = CML.Transaction.from_cbor_hex(cbor).body().outputs();
-        for (let index = 0; index < outputs.len(); index += 1)
-          if (coreToTxOutput(outputs.get(index)).address === stagingAddress())
-            stagedOutRefs.push(outRefOf({ txHash, outputIndex: index }));
+        for (let index = 0; index < outputs.len(); index += 1) {
+          const output = coreToTxOutput(outputs.get(index));
+          if (output.address === stagingAddress())
+            stagedOutputsByOutRef.set(
+              outRefOf({ txHash, outputIndex: index }),
+              { ...output, txHash, outputIndex: index },
+            );
+        }
       }
-      expect(stagedOutRefs).toHaveLength(runs.length);
+      expect(stagedOutputsByOutRef.size).toBe(runs.length);
     },
     TIMEOUT,
   );
@@ -239,33 +228,29 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
     "sends a spend back again, its exact signed bytes, when the ledger drops it after its confirmation",
     async () => {
       const { h } = at.scene;
-      const live = new Map(
-        (await stagedOutputs()).map((utxo) => [outRefOf(utxo), utxo]),
-      );
-      expect(live.size).toBeGreaterThan(0);
+      // A spend back goes out as soon as no thread needs its output, beside
+      // the thread's own moves, so one may have landed during the play. The
+      // ledger drops one that confirmed and whose own output is still
+      // unspent, so nothing after it rests on it.
       let dropped: { txHash: string; consumes: string } | undefined;
       for (let turn = 0; turn < 30 && dropped === undefined; turn += 1) {
-        const entries = entriesOf(await turns().runOnce());
-        dropped = entries.flatMap(({ event }) =>
-          event.kind === "submission_intent" &&
-          event.actionInput.schemaVersion ===
-            VALIDATION_TRACE_STAGING_RECLAIM &&
-          live.has(event.actionInput.consumes as string) &&
-          entries.some(
-            ({ event: later }) =>
-              later.kind === "confirmed" && later.txHash === event.txHash,
+        for (const { actionId, txHash } of at.dispute.sent()) {
+          const consumes = actionId.slice(RECLAIM.length);
+          if (
+            dropped === undefined &&
+            actionId.startsWith(RECLAIM) &&
+            stagedOutputsByOutRef.has(consumes) &&
+            (await h.emulator.getTransactionStatus(txHash)).status ===
+              "confirmed" &&
+            (await h.emulator.getUtxosByOutRef([{ txHash, outputIndex: 0 }]))
+              .length === 1
           )
-            ? [
-                {
-                  txHash: event.txHash,
-                  consumes: event.actionInput.consumes as string,
-                },
-              ]
-            : [],
-        )[0];
+            dropped = { txHash, consumes };
+        }
+        if (dropped === undefined) await turns().runOnce();
       }
       if (dropped === undefined) throw new Error("no spend back confirmed");
-      const staging = live.get(dropped.consumes)!;
+      const staging = stagedOutputsByOutRef.get(dropped.consumes)!;
       rollBack(h.emulator, dropped.txHash, staging);
       expect(onLedger(at.scene, staging)).toBe(true);
       const sent = at.dispute.rebroadcasts.length;
@@ -290,7 +275,7 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
   );
 
   it(
-    "spends each staging output back to our wallet under the funding permit once the thread has settled",
+    "spends each staging output back to our wallet once the thread has settled",
     async () => {
       for (let turn = 0; turn < 30; turn += 1) {
         await turns().runOnce();
@@ -298,7 +283,7 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
       }
       expect(await stagedOutputs()).toStrictEqual([]);
       const reclaims = await Promise.all(
-        stagedOutRefs.map(
+        [...stagedOutputsByOutRef.keys()].map(
           async (outRef) =>
             await landedSpenderOf(
               at.scene.l1.signedCbors,

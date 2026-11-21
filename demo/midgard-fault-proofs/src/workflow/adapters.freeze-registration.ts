@@ -1,8 +1,7 @@
 import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import type { WorkflowActuationPermit } from "./actuation-permit.js";
-import type { WorkflowFundingReservationPermit } from "./funding-reservation-permit.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.fraud-proof-workflow-journal-event.js";
+import type { WorkflowSends } from "./in-flight.js";
 import { WORKFLOW_ADAPTER_RUNNER } from "./runner-admission.js";
 import type { WalletOnlySend } from "./wallet-only-send-gate.js";
 
@@ -14,7 +13,6 @@ export const WORKFLOW_APPLICATION_REGISTRY_SCHEMA_VERSION =
 
 /** Permit-free identity/configuration used only for startup readiness. */
 export type WorkflowAdapterReadinessInput = {
-  readonly mode: "run" | "resume";
   readonly category: FraudProofCatalogueCategoryName;
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
@@ -27,13 +25,11 @@ export type WorkflowAdapterRunnerInput = WorkflowAdapterReadinessInput & {
   readonly decisionDigest: string;
   /** Live, revocable authority for this decision and rollback generation. */
   readonly actuationPermit: WorkflowActuationPermit;
-  /** Durable, exact-input funding authority for this decision/generation. */
-  readonly fundingReservationPermit: WorkflowFundingReservationPermit;
-  /** The durable journal this objective's workflow appends to; its owner
-   * decides where it lives. */
-  readonly journal: FraudProofWorkflowJournalStore;
+  /** The objective's part of the caller's in-flight set (`in-flight.ts`):
+   * what this process sent for it, and the wallet coins its builds hold. */
+  readonly sends: WorkflowSends;
   /**
-   * Called when a continuing session journals progress past its first poll,
+   * Called when a continuing session makes progress past its first poll,
    * so a caller can clear an alarm before the session ends. Never authority.
    * A throw is ignored and does not end the session.
    */

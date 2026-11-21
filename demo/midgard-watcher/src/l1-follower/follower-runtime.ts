@@ -32,6 +32,7 @@ import {
   createWatcherProofRetention,
   type WatcherProofRetention,
 } from "./proof-retention.js";
+import { createWatcherProofRosterRetention } from "./proof-roster-retention.js";
 import { createFollowerRawReads } from "./raw-reads.js";
 import {
   ledgerOutputsFromTransport,
@@ -151,6 +152,25 @@ export const watcherRetainedDepth = (
   automaticRecoveryMaxDepth: number,
 ): number => automaticRecoveryMaxDepth + 2;
 
+/** A prune floor holding the boundary back (`l1_prune_floor_<name>`). */
+export const L1_PRUNE_FLOOR_PREFIX = "l1_prune_floor_";
+
+/**
+ * Each prune floor holding the boundary back, as a status-only degradation
+ * counting its lag in slots: the history the store keeps past its retained
+ * depth while the floor holds.
+ */
+export const pruneFloorDegradations = (
+  status: FollowStatus | null,
+): readonly WatcherL1Degradation[] =>
+  (status?.prune.floorLags ?? []).map(({ floor, lagSlots }) =>
+    Object.freeze({
+      reason: `${L1_PRUNE_FLOOR_PREFIX}${floor}`,
+      count: lagSlots,
+      detail: `prune floor ${floor} holds pruning ${lagSlots.toString()} slot(s) below the retained depth`,
+    }),
+  );
+
 /**
  * The shared event projection, with its events held past k while an open
  * proof objective reads them: a row of `WATCHER_PROOF_PIN_EVENTS_TABLE`
@@ -210,6 +230,8 @@ export const openWatcherFollowerRuntime = (
       requestTimeoutMs: input.node.requestTimeoutMs,
       onDiagnostic: (line) => log(`L1 node transport: ${line}`),
     });
+  // Holds pruning at the origin until the first admission pass at tip.
+  const roster = createWatcherProofRosterRetention();
   const store = openSqliteFactStore({
     ...projectionStoreOptions(
       watcherFollowerProjections(input.deployment, input.eventProjection),
@@ -224,9 +246,10 @@ export const openWatcherFollowerRuntime = (
       },
       "sqlite",
     ),
-    ...(input.replayPruneFloor === undefined
-      ? {}
-      : { pruneFloors: [input.replayPruneFloor] }),
+    pruneFloors: [
+      roster.floor,
+      ...(input.replayPruneFloor === undefined ? [] : [input.replayPruneFloor]),
+    ],
     // Seeded (§5.3 step 4), never in the tracked-set record.
     wallets,
     path: input.storePath,
@@ -255,6 +278,8 @@ export const openWatcherFollowerRuntime = (
   const proofRetention = createWatcherProofRetention(store, {
     unitHistoryPolicies,
     stateQueuePolicyId: input.deployment.stateQueueMint,
+    roster,
+    fraudProofSpend: input.deployment.fraudProofSpend,
   });
   // Resolves recorded txs' inputs at ingest, while the node still serves
   // the predecessor's ledger state (E1 ruling, facet 2).
@@ -299,6 +324,7 @@ export const openWatcherFollowerRuntime = (
       nodeBehind: { slotTime },
       onStatus: (status) => {
         latest = status;
+        roster.observe(status);
         if (status.cursor !== null && !seeder.ready()) stepSeed();
         if (status.cursor !== null) txInputs.trigger();
         for (const listener of listeners) {
@@ -417,7 +443,12 @@ export const openWatcherFollowerRuntime = (
           : await store
               .transaction("read", eventRefusalDegradationsIn)
               .catch(unreadable(L1_EVENT_REFUSALS_UNREADABLE));
-      return [...inputs, ...proofRetention.degradations(), ...refusals];
+      return [
+        ...inputs,
+        ...proofRetention.degradations(),
+        ...pruneFloorDegradations(latest),
+        ...refusals,
+      ];
     },
     onChange: (listener: (status: FollowStatus) => void) => {
       listeners.add(listener);

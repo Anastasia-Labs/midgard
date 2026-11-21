@@ -1,6 +1,5 @@
-import { isWorkflowFundingPauseReason } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import { isWorkflowFundingPauseReason } from "@al-ft/midgard-fault-proofs/workflow/funding-pause-reason";
 
-import { WatcherProverFundingUnavailableError } from "../funding/prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 
 /**
@@ -13,8 +12,6 @@ export const WATCHER_PROVER_FUNDING_UNAVAILABLE = "prover_funding_unavailable";
 
 /** The funding reason of a pending run's reason or of a run's failure. */
 const fundingReason = (cause: unknown): string | undefined => {
-  if (cause instanceof WatcherProverFundingUnavailableError)
-    return cause.message;
   if (typeof cause === "string" && isWorkflowFundingPauseReason(cause))
     return cause;
   return undefined;

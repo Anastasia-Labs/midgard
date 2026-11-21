@@ -52,7 +52,6 @@ import {
 } from "../../src/value-not-preserved/union-schemas.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
-import { createConfirmedActionJournal } from "./confirmed-action-journal.js";
 import { network } from "./emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -66,6 +65,7 @@ import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.pu
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
+import { TEST_PROOF_MATERIALS_HOLDER } from "./proof-materials-holder.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,
@@ -851,10 +851,6 @@ export const registerValueConservationCases = (
           )
         ).utxo
       : undefined;
-    const journal = createConfirmedActionJournal({
-      category: "valueNotPreserved",
-      headerHash: setup.headerHash,
-    });
     // The direct path's own carriage, read back by its later steps.
     const ownOutputs = createOwnOutputJournal();
     for (const fieldIndex of [0, 2, 5] as const) {
@@ -901,46 +897,30 @@ export const registerValueConservationCases = (
         };
         for (let attempt = 0; attempt < 16; attempt++) {
           const next = await makePort().inspect({
+            holder: TEST_PROOF_MATERIALS_HOLDER,
             headerHash: setup.headerHash,
             baseAction,
             artifact,
-            entries: journal.entries(),
           });
           if (next.kind === "satisfied" || next.kind === "not_required") break;
           if (next.kind !== "required")
             throw new Error("unexpected pending field prerequisite");
           const captured = await makePort().capture({
+            holder: TEST_PROOF_MATERIALS_HOLDER,
             headerHash: setup.headerHash,
             action: next.action,
             artifact,
-            entries: journal.entries(),
           });
-          const txHash = await record(
-            `installed:field:${fieldIndex}:${attempt}`,
-            () => captured.transaction.signed.submit(),
+          await record(`installed:field:${fieldIndex}:${attempt}`, () =>
+            captured.transaction.signed.submit(),
           );
           harness.emulator.awaitBlock(1);
-          const durableRecovery = JSON.parse(
-            JSON.stringify(captured.durableRecovery),
-          );
-          expect(
-            (
-              await makePort().reconcile({
-                headerHash: setup.headerHash,
-                action: next.action,
-                artifact,
-                txHash,
-                durableRecovery,
-              })
-            ).kind,
-          ).toBe("confirmed");
-          journal.confirm({ action: next.action, txHash, durableRecovery });
         }
         const resolved = await makePort().resolveAuthenticated({
+          holder: TEST_PROOF_MATERIALS_HOLDER,
           headerHash: setup.headerHash,
           action: baseAction,
           artifact,
-          entries: journal.entries(),
         });
         const planned = planFaultProofFieldOpening({
           anchorSourceKind: forced ? 1n : 0n,

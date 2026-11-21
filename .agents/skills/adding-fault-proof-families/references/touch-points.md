@@ -105,7 +105,6 @@ own correctness. [script: .agents/skills/adding-fault-proof-families/scripts/fam
 | Surface                                                                  | Enforced by                                                                                                                |
 | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
 | `src/runtime/deployment-identity.catalogue-category-to-contract.ts` `CATALOGUE_CATEGORY_TO_CONTRACT` | Core projection; nothing to edit |
-| `src/funding/prover-funding-recovery.ts:190` category branches           | `[review]`; only a family with bespoke funding recovery needs one                                                          |
 | `src/fault-proofs/fault-proof-application.ts`                            | derives from `FAMILY_APPLICATION_REGISTRY`; nothing to add                                                                 |
 
 ## Node tools (`demo/midgard-node-tools/devnet/watcher-journeys`)

@@ -61,7 +61,7 @@ import type { TransitionTraceReconstruction } from "../transition-trace/reconstr
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
@@ -101,7 +101,7 @@ export type NativeScriptDecodingStep02Build = {
 };
 
 export type SubmitNativeScriptDecodingStep02Result =
-  UnjournaledSubmission<NativeScriptDecodingStep02Build>;
+  OutsideWorkflowSubmission<NativeScriptDecodingStep02Build>;
 
 export const buildNativeScriptDecodingStep02 = async ({
   lucid,

@@ -51,6 +51,7 @@ export const buildLinearFaultCancel = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  validTo,
 }: {
   readonly lucid: LucidEvolution;
   readonly family: string;
@@ -68,6 +69,8 @@ export const buildLinearFaultCancel = async ({
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  /** An upper validity bound (POSIX ms); none when absent. */
+  readonly validTo?: number;
 }) => {
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
@@ -135,9 +138,11 @@ export const buildLinearFaultCancel = async ({
     );
   }) satisfies BuildTxWithRedeemer;
   const funding = await fundStep(lucid, { signer });
+  const bounded =
+    validTo === undefined ? funding.tx : funding.tx.validTo(validTo);
   const signed = await completeStep(
     burn.attach(
-      funding.tx
+      bounded
         .collectFrom([threadUtxo], spendRedeemer)
         .readFrom([stepReference, ...burn.referenceInputs])
         .mintAssets({ [token.unit]: -1n }, burnRedeemer),

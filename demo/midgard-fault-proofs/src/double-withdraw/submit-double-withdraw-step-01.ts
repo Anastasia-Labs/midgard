@@ -51,7 +51,7 @@ import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { DoubleWithdrawContracts } from "./contracts.js";
 import {
@@ -159,7 +159,7 @@ export type DoubleWithdrawStep01Build = {
 };
 
 export type SubmitDoubleWithdrawStep01Result =
-  UnjournaledSubmission<DoubleWithdrawStep01Build>;
+  OutsideWorkflowSubmission<DoubleWithdrawStep01Build>;
 
 export const buildDoubleWithdrawStep01 = async ({
   lucid,

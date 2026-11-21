@@ -35,17 +35,15 @@ import {
   defineFamily,
 } from "../workflow/family-definition.family-definition.js";
 import type { FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
-import type {
-  FraudProofWorkflowJournalStore,
-  JournalJsonObject,
-} from "../workflow/journal.js";
+import type { JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import { runOrResumeManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { createStructuredDataPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
-import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
+import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   admitWithdrawalMistagWorkflowArtifact,
   prepareWithdrawalMistagWorkflowArtifact,
@@ -113,7 +111,7 @@ export const createWithdrawalMistagTransactionPort = (
       ...args,
       replayContext: config.replayContext,
     }),
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const prepared = await admitWithdrawalMistagWorkflowArtifact(artifact);
     if (prepared.challengedHeaderHash !== config.binding.definition.headerHash)
       throw new Error("withdrawalMistag bound header changed");
@@ -151,14 +149,14 @@ export const createWithdrawalMistagTransactionPort = (
         : (
             await config.evidencePrerequisite!.resolveAuthenticated({
               headerHash: prepared.challengedHeaderHash,
+              holder,
               action,
               artifact,
-              entries,
             })
           ).publications;
     return {
       transaction: (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await (async () => {
             if (input.stage === "init") {
               if (
@@ -335,6 +333,6 @@ export type ManifestBoundWithdrawalMistagWorkflow = Awaited<
 export const runOrResumeManifestBoundWithdrawalMistagWorkflow = (input: {
   workflow: ManifestBoundWithdrawalMistagWorkflow;
   sources: readonly RetainedDaPayloadSource[];
-  journal: FraudProofWorkflowJournalStore;
+  run: WorkflowRun;
   walletOnlySend: WalletOnlySend;
 }) => runOrResumeManifestBoundFamilyWorkflow(input);

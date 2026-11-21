@@ -13,7 +13,6 @@ import * as deployment from "../../src/workflow/deployment-manifest-binding.js";
 import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-application-registry.family-application-registry.js";
 import { familyStepContractNames } from "../../src/workflow/family-definition.family-definition.js";
 import * as observations from "../../src/workflow/family-l1-observation.js";
-import { unsafeCreateWorkflowFundingReservationPermitForTest } from "../../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
 import { bindManifestBoundFamilyWorkflow } from "../../src/workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.js";
 import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
@@ -29,6 +28,7 @@ import {
   realFaultProofBlueprint,
 } from "./field-grammar-certificate-deployment-fixture.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./workflow-process.js";
 
 type RecoveryFixture = Awaited<
   ReturnType<typeof customWorkflowRecoveryFixture>
@@ -53,7 +53,7 @@ const certificatePolicyId = "55".repeat(28);
 
 /**
  * Stands in for the manifest binding, the reference-script UTxO check and the
- * L1 observation port of a saved-journal fixture's deployment until
+ * L1 observation port of a recovery fixture's deployment until
  * `restore`. `binding` extends the bound deployment, as a family whose
  * constructor reads more of it needs.
  */
@@ -143,7 +143,7 @@ const standInFamilyDeployment = (
 };
 
 /**
- * Acquire a real assembly context for a saved-journal fixture. Manifest loading,
+ * Acquire a real assembly context for a recovery fixture. Manifest loading,
  * script identities and provider creation are isolated here; the binding and
  * its definition identity remain owned by the production assembly.
  */
@@ -206,20 +206,18 @@ const scriptDecodeReferences = (): Readonly<Record<string, UTxO>> => {
 };
 
 /**
- * Continues a saved-journal fixture as the watcher does once its header has
- * left the queue: the family's registered runner, under the fixture's
- * reconciliation-only permit, binds the family's config from the loaded
- * infrastructure and builds its workflow with the family's own constructor.
- * Only the manifest binding, the reference-script UTxOs and the L1
- * observation port are stood in for.
+ * Runs a recovery fixture as a restarted watcher does under reconciliation
+ * authority: the family's registered runner, under the fixture's
+ * reconciliation-only permit and over a fresh process's in-flight set,
+ * binds the family's config from the loaded infrastructure and builds its
+ * workflow with the family's own constructor. Only the manifest binding,
+ * the reference-script UTxOs and the L1 observation port are stood in for.
  */
 export const prepareRegisteredFamilyReconciliation = (
   input: RecoveryFixture,
   {
-    rollbackGeneration = "0",
     decisionDigest = input.decision.decisionDigest,
   }: Readonly<{
-    rollbackGeneration?: string;
     /** The decision the invocation, and the infrastructure loaded for it,
      * claim; the fixture's permit admitted `input.decision`. */
     decisionDigest?: string;
@@ -228,17 +226,9 @@ export const prepareRegisteredFamilyReconciliation = (
   const { binding } = input.workflow;
   const { category, headerHash } = binding.definition;
   const { deploymentFingerprint } = binding;
-  // Reserved now, as the host does before it invokes the runner: a permit
-  // revoked after this point is refused by the runner itself.
-  const fundingReservationPermit =
-    unsafeCreateWorkflowFundingReservationPermitForTest({
-      category,
-      actuationPermit: input.controller.permit,
-      deploymentFingerprint,
-      // Funding is reserved under the decision the permit admitted.
-      decisionDigest: input.decision.decisionDigest,
-      rollbackGeneration,
-    });
+  // The invocation is ready now: a permit revoked after this point is
+  // refused by the runner itself.
+  const sends = createTestWorkflowProcess().sends({ category, headerHash });
   return async () => {
     const stepCount = familyStepContractNames(
       FAMILY_APPLICATION_REGISTRY[category].definition!,
@@ -297,20 +287,12 @@ export const prepareRegisteredFamilyReconciliation = (
       }));
       return (await runner.runOrResume({
         walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
-        mode: "resume",
         category,
         deploymentFingerprint,
         headerHash,
         decisionDigest,
         actuationPermit: input.controller.permit,
-        fundingReservationPermit,
-        // A fresh view of the saved journal: each run binds its own.
-        journal: {
-          load: async (workflowId: string) =>
-            await input.store.load(workflowId),
-          append: async (...entry: Parameters<typeof input.store.append>) =>
-            await input.store.append(...entry),
-        },
+        sends,
         runtimeConfigPath: "/fixture/reconciliation-runtime.json",
       })) as FraudProofWorkflowRunResult;
     } finally {

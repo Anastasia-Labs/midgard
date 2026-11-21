@@ -1,6 +1,6 @@
 /** The decode records of the scripts our trace selects, on a deployment that
  * drives CEK script selections. Each is made through the shared script-decode
- * prerequisite as journaled actions of our workflow: before Init, so no
+ * prerequisite as actions of our workflow: before Init, so no
  * thread's clock runs while it is made, and before any resolution move should
  * one be missing by then. */
 import type { LucidEvolution } from "@lucid-evolution/lucid";
@@ -8,7 +8,6 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { findScriptDecodeRecord } from "../script-decode/record.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../workflow/orchestrator.js";
-import type { FraudProofAuthenticatedPublicationObserver } from "../workflow/raw-l1-publication-observation.js";
 import { createScriptDecodePrerequisitePort } from "../workflow/script-decode-prerequisite.create-script-decode-prerequisite-port.js";
 import { withScriptDecodePrerequisite } from "../workflow/script-decode-prerequisite.with-script-decode-prerequisite.js";
 import {
@@ -34,16 +33,12 @@ export const withValidationTraceScriptDecodeRecords = ({
   lucid,
   signer,
   deployment,
-  publications,
-  now,
   materialOf,
 }: {
   readonly base: FraudProofFamilyWorkflowAdapter;
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
   readonly deployment: ValidationTraceDisputeDeployment;
-  readonly publications: FraudProofAuthenticatedPublicationObserver | undefined;
-  readonly now: () => number;
   readonly materialOf: (
     headerHash: string,
   ) => ValidationTraceClaimMaterial | undefined;
@@ -54,10 +49,6 @@ export const withValidationTraceScriptDecodeRecords = ({
     !validationTraceDrivesSelections(deployment)
   )
     return base;
-  if (publications === undefined)
-    throw new Error(
-      "validation-trace script-decode records need a publication observer",
-    );
   return withScriptDecodePrerequisite({
     category: CATEGORY,
     base,
@@ -66,8 +57,6 @@ export const withValidationTraceScriptDecodeRecords = ({
       lucid,
       signer,
       deployment: () => scriptDecode,
-      publications,
-      now,
       itemForAction: async ({ action, artifact }) => {
         if (action.input.schemaVersion !== VALIDATION_TRACE_DISPUTE_ACTION)
           return null;

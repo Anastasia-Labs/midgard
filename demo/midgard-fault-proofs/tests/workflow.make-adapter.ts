@@ -6,9 +6,8 @@ import {
   canonicalBlockEvidenceFromVerifiedPayload,
 } from "../src/evidence/canonical-block-evidence.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
-import { type CanonicalViolationDetection } from "../src/workflow/classification.js";
+import type { CanonicalViolationDetection } from "../src/workflow/classification.js";
 import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
-import type { FraudProofWorkflowJournalStore } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
@@ -21,28 +20,47 @@ import {
 } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runFraudProofWorkflow } from "../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
-import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   type FraudProofReleaseFinalityAuthority,
 } from "../src/workflow/release-finality-policy.js";
-import { parseSignedWorkflowTransactionRetirement } from "../src/workflow/signed-transaction-retirement.js";
+import type {
+  SignedTransactionRecoveryObservation,
+  SignedWorkflowTransaction,
+} from "../src/workflow/signed-transaction-reconciliation.js";
+import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  signedRecoveryObservation,
+  signedWorkflowTransactionFixture,
+} from "./support/signed-workflow-transaction.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
+import type { TestWorkflowProcess } from "./support/workflow-process.js";
 
 export const DEPLOYMENT_FINGERPRINT = "d1".repeat(32);
 
-export const PROOF_TX_HASH = "a1".repeat(32);
+/** The proof's and the removal's exact signed bytes: two wallet spends of
+ * different coins, so neither spends a coin the other does. */
+const [PROOF, REMOVAL] = await Promise.all([
+  signedWorkflowTransactionFixture(),
+  signedWorkflowTransactionFixture({ coin: 1 }),
+]);
 
-export const REMOVAL_TX_HASH = "a2".repeat(32);
+export const PROOF_TX_HASH = PROOF.input.transactionHash;
+
+export const REMOVAL_TX_HASH = REMOVAL.input.transactionHash;
+
+/** The signed transaction the fixture's preflight builds for `actionId`. */
+export const signedFor = (actionId: string) =>
+  actionId === "prove" ? PROOF.signed : REMOVAL.signed;
 
 export const REFERENCE_OUT_REF = `${"b2".repeat(32)}#0`;
 
@@ -141,11 +159,63 @@ export const canonicalEvidenceWithEvents = async (
   return [evidence, evidence.transactions.map(({ nodeTxId }) => nodeTxId)];
 };
 
+/**
+ * The L1 a fixture workflow runs against: where each of its signed
+ * transactions stands. A transaction the chain does not name is pending;
+ * a landed one is included past the release-final point unless marked
+ * reversible.
+ */
+export type FixtureChain = {
+  readonly status: Map<string, SignedTransactionRecoveryObservation["status"]>;
+  /** Landed transactions still reversible: included after the release-final
+   * point. */
+  readonly reversible: Set<string>;
+  readonly land: (txHash: string) => void;
+  readonly landed: (txHash: string) => boolean;
+  observeSignedTransaction: FraudProofWorkflowTerminalVerifier["observeSignedTransaction"];
+};
+
+export const createFixtureChain = (): FixtureChain => {
+  const status = new Map<
+    string,
+    SignedTransactionRecoveryObservation["status"]
+  >();
+  const reversible = new Set<string>();
+  return {
+    status,
+    reversible,
+    land: (txHash) => {
+      status.set(txHash, "included");
+    },
+    landed: (txHash) => status.get(txHash) === "included",
+    observeSignedTransaction: async (input: SignedWorkflowTransaction) => {
+      const observed = signedRecoveryObservation(
+        input,
+        status.get(input.transactionHash) ?? "pending",
+      );
+      return reversible.has(input.transactionHash)
+        ? { ...observed, inclusionPoint: observed.canonicalPoint }
+        : observed;
+    },
+  };
+};
+
 type AdapterControls = {
   readonly submit?: FraudProofFamilyWorkflowAdapter["submit"];
-  readonly reconcile?: FraudProofFamilyWorkflowAdapter["reconcile"];
   readonly referenceScripts?: boolean;
-  readonly durableRecovery?: Readonly<Record<string, string>>;
+  /** The L1 the adapter reads; a fresh one by default. */
+  readonly chain?: FixtureChain;
+  /** Whether a submission lands at once; by default it does. */
+  readonly lands?: boolean;
+};
+
+const chains = new WeakMap<FraudProofFamilyWorkflowAdapter, FixtureChain>();
+
+/** The L1 `adapter` reads. */
+export const chainOf = (adapter: FraudProofFamilyWorkflowAdapter) => {
+  const chain = chains.get(adapter);
+  if (chain === undefined) throw new Error("not a fixture adapter");
+  return chain;
 };
 
 export const terminal = (headerHash: string): FraudProofWorkflowTerminal => ({
@@ -182,135 +252,132 @@ export const terminal = (headerHash: string): FraudProofWorkflowTerminal => ({
   },
 });
 
-/** Absence as canonical recovery reports it past the horizon: the attempt is
- * retired, so even a journal without a funding reservation may replace it. */
-export const retiredNotFound = (transactionHash: string) => {
-  const release = { slot: "1000", blockNo: "50", blockHash: "ab".repeat(32) };
-  const tip = { slot: "10000", blockNo: "2211", blockHash: "ef".repeat(32) };
-  return {
-    kind: "not_found" as const,
-    retirement: parseSignedWorkflowTransactionRetirement(
-      {
-        transactionHash,
-        reason: "expired",
-        canonicalPoint: { ...tip, pointId: computeFraudProofRawL1PointId(tip) },
-        releaseFinalPoint: {
-          ...release,
-          pointId: computeFraudProofRawL1PointId(release),
-        },
-      },
-      transactionHash,
-    ),
-  };
-};
-
 export const terminalVerifier = terminalVerifierOf(
   async ({ candidate }) => candidate,
 );
 
 export const makeAdapter = (
   controls: AdapterControls = {},
-): FraudProofFamilyWorkflowAdapter => ({
-  adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
-  category: "doubleSpend",
-  safety: FRAUD_PROOF_WORKFLOW_SAFETY,
-  // The family's L1 view of our threads: none of ours on the header.
-  observeOwnThreads: vi.fn(async () => ({ spends: [] })),
-  prepare: vi.fn(
-    async ({
-      evidence,
-    }: Parameters<FraudProofFamilyWorkflowAdapter["prepare"]>[0]) => ({
-      headerHash: evidence.headerHash,
-      txIds: [],
-    }),
-  ),
-  observe: vi.fn(
-    async ({
-      artifact,
-      entries,
-    }: Parameters<FraudProofFamilyWorkflowAdapter["observe"]>[0]) =>
-      entries.some(
-        (entry) =>
-          entry.event.kind === "confirmed" &&
-          entry.event.txHash === REMOVAL_TX_HASH,
-      )
-        ? {
-            kind: "completed" as const,
-            terminal: terminal(String(artifact.headerHash)),
-          }
-        : entries.some(
-              (entry) =>
-                entry.event.kind === "confirmed" &&
-                entry.event.txHash === PROOF_TX_HASH,
-            )
+): FraudProofFamilyWorkflowAdapter => {
+  const chain = controls.chain ?? createFixtureChain();
+  const adapter: FraudProofFamilyWorkflowAdapter = {
+    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
+    category: "doubleSpend",
+    safety: FRAUD_PROOF_WORKFLOW_SAFETY,
+    // The family's L1 view of our threads: none of ours on the header.
+    observeOwnThreads: vi.fn(async () => ({ spends: [] })),
+    prepare: vi.fn(
+      async ({
+        evidence,
+      }: Parameters<FraudProofFamilyWorkflowAdapter["prepare"]>[0]) => ({
+        headerHash: evidence.headerHash,
+        txIds: [],
+      }),
+    ),
+    // The family reads the chain: the removal landed completes the
+    // workflow, the proof landed requires the removal.
+    observe: vi.fn(
+      async ({
+        artifact,
+      }: Parameters<FraudProofFamilyWorkflowAdapter["observe"]>[0]) =>
+        chain.landed(REMOVAL_TX_HASH)
           ? {
-              kind: "action_required" as const,
-              action: { actionId: "remove", input: { step: 1 } },
+              kind: "completed" as const,
+              terminal: terminal(String(artifact.headerHash)),
             }
-          : {
-              kind: "action_required" as const,
-              action: { actionId: "prove", input: { step: 0 } },
+          : chain.landed(PROOF_TX_HASH)
+            ? {
+                kind: "action_required" as const,
+                action: { actionId: "remove", input: { step: 1 } },
+              }
+            : {
+                kind: "action_required" as const,
+                action: { actionId: "prove", input: { step: 0 } },
+              },
+    ),
+    preflight: vi.fn(
+      async ({
+        action,
+      }: Parameters<FraudProofFamilyWorkflowAdapter["preflight"]>[0]) =>
+        bindWorkflowPreflightTransaction(
+          {
+            actionId: action.actionId,
+            txHash: signedFor(action.actionId).toHash(),
+            scriptExecution: "reference_scripts" as const,
+            localUplcEvaluation: {
+              status: "passed" as const,
+              evaluator: "uplc-v1",
             },
-  ),
-  preflight: vi.fn(
-    async ({
-      action,
-    }: Parameters<FraudProofFamilyWorkflowAdapter["preflight"]>[0]) => ({
-      actionId: action.actionId,
-      txHash: action.actionId === "prove" ? PROOF_TX_HASH : REMOVAL_TX_HASH,
-      scriptExecution: "reference_scripts" as const,
-      localUplcEvaluation: { status: "passed" as const, evaluator: "uplc-v1" },
-      referenceScripts:
-        controls.referenceScripts === false
-          ? ([] as unknown as [
-              {
-                readonly role: string;
-                readonly outRef: string;
-                readonly scriptHash: string;
-              },
-            ])
-          : ([
-              {
-                role: "family-step",
-                outRef: REFERENCE_OUT_REF,
-                scriptHash: REFERENCE_SCRIPT_HASH,
-              },
-            ] as const),
-      ...(controls.durableRecovery === undefined
-        ? {}
-        : { durableRecovery: controls.durableRecovery }),
-    }),
-  ),
-  submit: vi.fn(
-    controls.submit ??
-      (async ({ preflight }) => ({
-        kind: "submitted" as const,
-        txHash: preflight.txHash,
-      })),
-  ),
-  reconcile: vi.fn(
-    controls.reconcile ??
-      (async ({ txHash }) =>
-        txHash === undefined
-          ? { kind: "conflict" as const, reason: "missing intended hash" }
-          : { kind: "confirmed" as const, txHash }),
-  ),
-});
+            referenceScripts:
+              controls.referenceScripts === false
+                ? ([] as unknown as [
+                    {
+                      readonly role: string;
+                      readonly outRef: string;
+                      readonly scriptHash: string;
+                    },
+                  ])
+                : ([
+                    {
+                      role: "family-step",
+                      outRef: REFERENCE_OUT_REF,
+                      scriptHash: REFERENCE_SCRIPT_HASH,
+                    },
+                  ] as const),
+          },
+          signedFor(action.actionId),
+        ),
+    ),
+    submit: vi.fn(
+      controls.submit ??
+        (async ({ preflight }) => {
+          if (controls.lands !== false) chain.land(preflight.txHash);
+          return { kind: "submitted" as const, txHash: preflight.txHash };
+        }),
+    ),
+  };
+  chains.set(adapter, chain);
+  return adapter;
+};
 
+/** `verifier` reading where each transaction stands from `adapter`'s chain,
+ * looked up at each read so a test may stub the chain's answer. */
+export const chainVerifier = (
+  adapter: FraudProofFamilyWorkflowAdapter,
+  verifier: FraudProofWorkflowTerminalVerifier = terminalVerifier,
+  chain: FixtureChain = chainOf(adapter),
+): FraudProofWorkflowTerminalVerifier =>
+  // A verifier that cannot read a sent transaction stays one, for the run to
+  // refuse.
+  verifier.observeSignedTransaction === undefined
+    ? verifier
+    : {
+        ...verifier,
+        observeSignedTransaction: async (input) =>
+          await chain.observeSignedTransaction(input),
+      };
+
+/** One objective's run of `adapter` in `process`, against the adapter's
+ * chain: `verifier` authenticates the terminal, the chain says where each
+ * in-flight transaction stands. */
 export const run = async ({
   evidence,
   adapter,
-  journal,
+  process,
   verifier = terminalVerifier,
   finalityAuthority = releaseFinalityAuthority(),
-  now = () => new Date("2026-08-29T00:00:00.000Z"),
+  nowMs,
+  chain,
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly adapter: FraudProofFamilyWorkflowAdapter;
-  readonly journal: FraudProofWorkflowJournalStore;
+  /** The chain `adapter` reads, when it wraps a fixture adapter. */
+  readonly chain?: FixtureChain;
+  readonly process: TestWorkflowProcess;
   readonly verifier?: FraudProofWorkflowTerminalVerifier;
   readonly finalityAuthority?: FraudProofReleaseFinalityAuthority;
-  readonly now?: () => Date;
+  /** The clock rebroadcasts are spaced on. */
+  readonly nowMs?: () => number;
 }) =>
   await runFraudProofWorkflow({
     walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
@@ -321,8 +388,15 @@ export const run = async ({
       adapters: [adapter],
       launchScope: ["doubleSpend"],
     }),
-    journal,
-    terminalVerifier: verifier,
+    run: process.run({
+      category: "doubleSpend",
+      headerHash: evidence.headerHash,
+    }),
+    terminalVerifier: chainVerifier(
+      adapter,
+      verifier,
+      chain ?? chainOf(adapter),
+    ),
     releaseFinalityAuthority: finalityAuthority,
-    now,
+    ...(nowMs === undefined ? {} : { nowMs }),
   });

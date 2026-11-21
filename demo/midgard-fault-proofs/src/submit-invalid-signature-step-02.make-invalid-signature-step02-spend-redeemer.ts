@@ -30,7 +30,7 @@ import {
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 /**
@@ -114,7 +114,7 @@ export type InvalidSignatureStep02Build = {
 };
 
 export type SubmitInvalidSignatureStep02Result =
-  UnjournaledSubmission<InvalidSignatureStep02Build>;
+  OutsideWorkflowSubmission<InvalidSignatureStep02Build>;
 
 type InvalidSignatureStep02DatumWithState = InvalidSignatureStep02Datum & {
   readonly data: NonNullable<InvalidSignatureStep02Datum["data"]>;

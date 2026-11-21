@@ -13,7 +13,7 @@ import { type ResolvedProverSigner } from "../runtime.js";
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import {
   type NetworkIdContracts,
@@ -65,7 +65,7 @@ export type NetworkIdForcedScanBuild = {
 };
 
 export type SubmitNetworkIdForcedScanResult =
-  UnjournaledSubmission<NetworkIdForcedScanBuild>;
+  OutsideWorkflowSubmission<NetworkIdForcedScanBuild>;
 
 export const requireForcedScanContract = (
   contracts: NetworkIdContracts,

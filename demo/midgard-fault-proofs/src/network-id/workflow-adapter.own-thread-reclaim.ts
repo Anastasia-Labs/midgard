@@ -62,11 +62,8 @@ export const withNetworkIdOwnThreadReclaim = ({
     "policy"
   >;
 }): FraudProofFamilyWorkflowAdapter => {
-  const l1 = config.rawL1;
-  const observeOwnThreads = l1?.observeOwnThreads;
-  const observeSignedTransaction = l1?.observeSignedTransaction;
-  if (observeOwnThreads === undefined || observeSignedTransaction === undefined)
-    return base;
+  const observeOwnThreads = config.rawL1?.observeOwnThreads;
+  if (observeOwnThreads === undefined) return base;
   const referenceAt: Readonly<Record<NetworkIdPhysicalStep, UTxO | undefined>> =
     {
       step01: config.stepReferenceScripts[0],
@@ -102,14 +99,6 @@ export const withNetworkIdOwnThreadReclaim = ({
         }),
       l1: {
         observeOwnThreads: async (input) => await observeOwnThreads(input),
-        observeSignedTransaction: async (input) =>
-          await observeSignedTransaction(input),
-        ...(l1?.rebroadcastSignedTransaction === undefined
-          ? {}
-          : {
-              rebroadcastSignedTransaction: async (input) =>
-                await l1.rebroadcastSignedTransaction!(input),
-            }),
       },
     }),
   });

@@ -2,13 +2,12 @@
  * complete DA replay's detection of a committed transaction whose script
  * fails, the shared workflow orchestrator Inits a thread, Opens the claim
  * and VerifySources it, and the case and its bond are live at the out-refs
- * the journal claimed from its own signed bodies. A block with no detection
+ * its own signed bodies pay them at. A block with no detection
  * starts no workflow. */
 import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import {
@@ -43,8 +42,8 @@ describe("validation-trace dispute runner: open step", () => {
       scene.failing,
       VALIDATION_TRACE_CASE_OPEN,
     );
-    if (!("entries" in result)) throw new Error("no workflow journal");
-    const stages = confirmedValidationTraceStages(result.entries);
+    expect(result.kind).toBe("pending");
+    const stages = await runner.confirmed();
     expect(stages.map(({ action }) => action.stage)).toStrictEqual([
       "init",
       "open",
@@ -91,9 +90,6 @@ describe("validation-trace dispute runner: open step", () => {
     expect(again.kind).toBe("pending");
     if (again.kind === "pending")
       expect(again.reason.startsWith(VALIDATION_TRACE_CASE_OPEN)).toBe(true);
-    if (!("entries" in again)) throw new Error("no workflow journal");
-    expect(
-      again.entries.filter(({ event }) => event.kind === "submission_intent"),
-    ).toHaveLength(3);
+    expect(runner.process.sent()).toHaveLength(3);
   });
 });

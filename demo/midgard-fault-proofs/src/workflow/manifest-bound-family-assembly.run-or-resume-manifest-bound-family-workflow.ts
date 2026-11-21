@@ -4,13 +4,13 @@ import type {
   ManifestBoundFamilyWorkflow,
 } from "./family-definition.js";
 import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import {
   createFraudProofWorkflowRegistry,
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
-import { type WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WorkflowRun } from "./workflow-run.js";
 
 /**
  * Runs or resumes an assembled workflow: observes its header, then hands the
@@ -25,7 +25,7 @@ export const runOrResumeManifestBoundFamilyWorkflow = async <
 >({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundFamilyWorkflow<
@@ -35,7 +35,7 @@ export const runOrResumeManifestBoundFamilyWorkflow = async <
     Runtime
   >;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> =>
   await runFraudProofWorkflowFromRetainedDa({
@@ -52,7 +52,7 @@ export const runOrResumeManifestBoundFamilyWorkflow = async <
       adapters: [workflow.adapter],
       launchScope: [workflow.definition.category],
     }),
-    journal,
+    run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     walletOnlySend,

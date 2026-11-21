@@ -18,7 +18,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_CONVICTED } from "../src/validation-trace-dispute/adapter.js";
 import { validationTraceOneStepHolder } from "../src/validation-trace-dispute/one-step-holders.js";
 import {
@@ -26,12 +25,11 @@ import {
   validationTraceDefenderDeadlineMs,
 } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
-import { CURSOR_FAMILY_ACTION } from "../src/workflow/cursor-family-state.js";
-import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
+import type { ConfirmedValidationTraceStage } from "./support/validation-trace-confirmed-stages.js";
 import {
   expectRealMoveFee,
   landedMoveFee,
@@ -63,8 +61,8 @@ const LATE_REPLY_MS = 30 * 60 * 1_000;
 let dispute: TwoThreadCase;
 /** The runs past the defense deadline with the second thread open. */
 let waited: FraudProofWorkflowRunResult[] = [];
-/** The run that closed the case. */
-let convicted: FraudProofWorkflowRunResult;
+/** The stages confirmed when the case closed. */
+let convicted: readonly ConfirmedValidationTraceStage[];
 
 const outRefOf = (utxo: UTxO) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
@@ -83,14 +81,11 @@ const outputAddress = (txHash: string, index: number) =>
       .to_hex(),
   ).to_bech32();
 
-/** The shared remove stage's journaled intents. */
-const removalIntents = (entries: readonly FraudProofWorkflowJournalEntry[]) =>
-  entries.flatMap(({ event }) =>
-    event.kind === "submission_intent" &&
-    event.actionInput.schemaVersion === CURSOR_FAMILY_ACTION
-      ? [event]
-      : [],
-  );
+/** The shared remove stage's transactions the process sent. */
+const removalSends = () =>
+  dispute.runner.process
+    .sent()
+    .filter(({ actionId }) => actionId.startsWith("remove:"));
 
 describe("validation-trace dispute runner: conviction after both defenders lose their one-step resolutions", () => {
   beforeAll(async () => {
@@ -173,9 +168,8 @@ describe("validation-trace dispute runner: conviction after both defenders lose 
       until: async (run) => isPendingFor(run, VALIDATION_TRACE_CASE_CONVICTED),
       limit: 60,
     });
-    convicted = result;
-    if (!("entries" in result)) throw new Error("no workflow journal");
-    const moves = confirmedOneStepMoves(result.entries);
+    convicted = await runner.confirmed();
+    const moves = confirmedOneStepMoves(convicted);
     expect(
       moves.map(({ stage }) => stage),
       history.join("\n"),
@@ -199,8 +193,7 @@ describe("validation-trace dispute runner: conviction after both defenders lose 
       expectRealMoveFee(await landedMoveFee(scene, txHash));
     expect(await threadClosed(dispute, b.unit)).toBe(true);
     // The case closes after both threads, from the case the last close left.
-    const stages = confirmedValidationTraceStages(result.entries);
-    const close = stages.at(-1)!;
+    const close = convicted.at(-1)!;
     expect(close.action.stage).toBe("close");
     expect(close.action.consumes).toBe(`${second.at(-1)!.txHash}#0`);
     // Nothing was signed after the case's close.
@@ -225,7 +218,7 @@ describe("validation-trace dispute runner: conviction after both defenders lose 
     expect(refund!.assets).toEqual({ lovelace: BOND_LOVELACE });
     if (!("reason" in result)) throw new Error("no reason");
     expect(result.reason).toContain("not yet seen");
-    expect(removalIntents(result.entries)).toEqual([]);
+    expect(removalSends()).toEqual([]);
   }, 1_800_000);
 
   it("removes the convicted block once the L1 view has seen the record", async () => {
@@ -254,10 +247,8 @@ describe("validation-trace dispute runner: conviction after both defenders lose 
       }
       throw new Error(`the removal did not complete: ${history.join("\n")}`);
     })().finally(() => clock.mockRestore());
-    if (!("terminal" in result) || !("entries" in convicted))
-      throw new Error("no terminal");
-    const record = confirmedValidationTraceStages(convicted.entries).at(-1)!
-      .outputs[0]!.outRef;
+    if (!("terminal" in result)) throw new Error("no terminal");
+    const record = convicted.at(-1)!.outputs[0]!.outRef;
     expect(result.terminal.correction.referencedProofTokenOutRef).toBe(record);
     await expectStateQueueHeaderOrder({
       lucid: h.proverLucid,
@@ -272,20 +263,19 @@ describe("validation-trace dispute runner: conviction after both defenders lose 
     // The removal's run went on to the slash before the terminal: a later
     // run signs nothing more.
     const before = prepared.length;
-    const result = await runner.runOnce(scene.failing);
+    await runner.runOnce(scene.failing);
     expect(prepared.length).toBe(before);
-    if (!("entries" in result)) throw new Error("no workflow journal");
-    const intents = result.entries.flatMap(({ event }, index) =>
-      event.kind === "submission_intent" ? [{ event, index }] : [],
-    );
-    const removals = intents.filter(
-      ({ event }) => event.actionInput.schemaVersion === CURSOR_FAMILY_ACTION,
+    const sends = runner.process
+      .sent()
+      .map((event, index) => ({ event, index }));
+    const removals = sends.filter(({ event }) =>
+      event.actionId.startsWith("remove:"),
     );
     expect(removals.length).toBeGreaterThan(0);
-    const slashes = intents.filter(({ event }) =>
+    const slashes = sends.filter(({ event }) =>
       event.actionId.startsWith("validation-trace-slash-lost-defense:"),
     );
-    // One slash, the successor's, after every removal intent.
+    // One slash, the successor's, after every removal send.
     const closes = prepared.filter(({ stage }) => stage === "close_awarded");
     expect(closes).toHaveLength(2);
     expect(slashes.map(({ event }) => event.actionId)).toStrictEqual([
@@ -306,8 +296,7 @@ describe("validation-trace dispute runner: conviction after both defenders lose 
   }, 900_000);
 
   it("fits the machine arm's move within the transaction limits", () => {
-    if (!("entries" in convicted)) throw new Error("no workflow journal");
-    const moves = confirmedOneStepMoves(convicted.entries).slice(7);
+    const moves = confirmedOneStepMoves(convicted).slice(7);
     reportFit("VerifyArm machine", [signedCbor(moves[4]!.txHash)]);
   });
 });

@@ -31,7 +31,7 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { CommittedFieldShapeContracts } from "./contracts.js";
 import {
@@ -69,7 +69,7 @@ export type CommittedFieldShapeStep02Build = {
 };
 
 export type SubmitCommittedFieldShapeStep02Result =
-  UnjournaledSubmission<CommittedFieldShapeStep02Build>;
+  OutsideWorkflowSubmission<CommittedFieldShapeStep02Build>;
 
 export const buildCommittedFieldShapeStep02 = async ({
   lucid,

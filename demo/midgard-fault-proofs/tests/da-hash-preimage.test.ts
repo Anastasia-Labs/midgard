@@ -3,7 +3,7 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { ROOT_DOMAINS } from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
-import { type EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -19,7 +19,6 @@ import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import type { FraudProofWorkflowIdentity } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { createLinearFamilyWorkflowAdapter } from "../src/workflow/linear-family-adapter.js";
 import {
@@ -35,15 +34,21 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
-import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
+import {
+  bindWorkflowPreflightTransaction,
+  type LocallyEvaluatedTransaction,
+} from "../src/workflow/transaction-boundary.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { signedWorkflowTransactionFixture } from "./support/signed-workflow-transaction.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
+import { createFixtureChain } from "./workflow.make-adapter.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
@@ -235,7 +240,7 @@ describe("production da-hash-preimage workflow V1", () => {
     ).rejects.toThrow("not an in-memory authenticated raw-leaf plan");
   });
 
-  it("captures the real step boundary, journals the exact body, and reconciles from raw L1", async () => {
+  it("captures the real step boundary, submits the exact body, and reads the next step from raw L1", async () => {
     const artifact = await daHashPreimageArtifact(await plan());
     const stage = {
       value: {
@@ -286,17 +291,11 @@ describe("production da-hash-preimage workflow V1", () => {
       category: "daHashPreimage",
       l1: l1(stage),
       transactions,
-      stateQueueMutationLeaseCoordinator: {
-        acquire: async () => {
-          throw new Error("no removal lease expected");
-        },
-      },
     });
     const context = {
       identity,
       workflowId: hash("bb"),
       artifact,
-      entries: [],
     } as const;
     const observed = await adapter.observe(context);
     if (observed.kind !== "action_required") {
@@ -325,13 +324,12 @@ describe("production da-hash-preimage workflow V1", () => {
       threadOutRef: `${txHash}#0`,
       stateQueueBlockOutRef: outRef("10"),
     };
-    await expect(
-      adapter.reconcile({
-        ...context,
-        action: observed.action,
-        txHash,
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash });
+    await expect(adapter.observe(context)).resolves.toMatchObject({
+      kind: "action_required",
+      action: {
+        input: { stage: "step_02", threadOutRef: `${txHash}#0` },
+      },
+    });
   });
 
   it("keeps Q44 out of the canonical-only prepare route", async () => {
@@ -344,11 +342,17 @@ describe("production da-hash-preimage workflow V1", () => {
     );
   });
 
-  it("admits only the dedicated raw-leaf route into the shared durable journal loop", async () => {
+  it("admits only the dedicated raw-leaf route into the shared workflow loop", async () => {
     const routed = await routedQ44Fixture();
     const deploymentFingerprint = hash("d1");
-    const txHashes = [hash("a1"), hash("a2"), hash("a3"), hash("a4")];
     const actionIds = ["init", "step_01", "step_02", "remove"];
+    const signedActions = await Promise.all(
+      actionIds.map(async () => await signedWorkflowTransactionFixture()),
+    );
+    const txHashes = signedActions.map(({ input }) => input.transactionHash);
+    // The L1 the family reads: each action's transaction lands once sent.
+    const chain = createFixtureChain();
+    const observedArtifacts: unknown[] = [];
     const terminal = {
       schemaVersion: "midgard-fraud-proof-workflow-terminal-v1" as const,
       category: "daHashPreimage" as const,
@@ -390,50 +394,49 @@ describe("production da-hash-preimage workflow V1", () => {
       category: "daHashPreimage",
       safety: FRAUD_PROOF_WORKFLOW_SAFETY,
       prepare,
-      observe: async ({ artifact, entries }) => {
+      observe: async ({ artifact }) => {
         expect(artifact.schemaVersion).toBe(
           "midgard-production-da-hash-preimage-artifact-v1",
         );
-        const confirmed = entries.filter(
-          (entry) => entry.event.kind === "confirmed",
-        ).length;
-        return confirmed === actionIds.length
+        observedArtifacts.push(artifact);
+        const landed = txHashes.filter((sent) => chain.landed(sent)).length;
+        return landed === actionIds.length
           ? { kind: "completed", terminal: structuredClone(terminal) }
           : {
               kind: "action_required",
               action: {
-                actionId: actionIds[confirmed]!,
-                input: { sequence: confirmed },
+                actionId: actionIds[landed]!,
+                input: { sequence: landed },
               },
             };
       },
-      preflight: async ({ action }) => ({
-        actionId: action.actionId,
-        txHash: txHashes[actionIds.indexOf(action.actionId)]!,
-        scriptExecution: "reference_scripts",
-        localUplcEvaluation: {
-          status: "passed",
-          evaluator: "lucid-evolution.complete(localUPLCEval=true)",
-        },
-        referenceScripts: [
+      preflight: async ({ action }) =>
+        bindWorkflowPreflightTransaction(
           {
-            role: `Q44 ${action.actionId}`,
-            outRef: referenceOutRef,
-            scriptHash: "66".repeat(28),
+            actionId: action.actionId,
+            txHash: txHashes[actionIds.indexOf(action.actionId)]!,
+            scriptExecution: "reference_scripts",
+            localUplcEvaluation: {
+              status: "passed",
+              evaluator: "lucid-evolution.complete(localUPLCEval=true)",
+            },
+            referenceScripts: [
+              {
+                role: `Q44 ${action.actionId}`,
+                outRef: referenceOutRef,
+                scriptHash: "66".repeat(28),
+              },
+            ],
           },
-        ],
-      }),
-      submit: async ({ preflight }) => ({
-        kind: "submitted",
-        txHash: preflight.txHash,
-      }),
-      reconcile: async ({ txHash: submitted }) => ({
-        kind: "confirmed",
-        txHash: submitted!,
-      }),
+          signedActions[actionIds.indexOf(action.actionId)]!.signed,
+        ),
+      submit: async ({ preflight }) => {
+        chain.land(preflight.txHash);
+        return { kind: "submitted", txHash: preflight.txHash };
+      },
     };
     const finalityPolicy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
-    const journal = new MemoryFraudProofWorkflowJournalStore();
+    const process = createTestWorkflowProcess();
     const run = () =>
       runDaHashPreimageWorkflowFromRetainedDa({
         walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
@@ -444,10 +447,14 @@ describe("production da-hash-preimage workflow V1", () => {
           adapters: [adapter],
           launchScope: ["daHashPreimage"],
         }),
-        journal,
-        terminalVerifier: terminalVerifierOf(
-          async ({ candidate }) => candidate,
-        ),
+        run: process.run({
+          category: "daHashPreimage",
+          headerHash: routed.headerHash,
+        }),
+        terminalVerifier: {
+          ...terminalVerifierOf(async ({ candidate }) => candidate),
+          observeSignedTransaction: chain.observeSignedTransaction,
+        },
         releaseFinalityAuthority: {
           authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
           verifyForWorkflow: async () => ({
@@ -465,26 +472,18 @@ describe("production da-hash-preimage workflow V1", () => {
     expect(prepare).not.toHaveBeenCalled();
     if (result.kind !== "terminal_included")
       throw new Error("Q44 did not include");
-    const prepared = result.entries.find(
-      (entry) => entry.event.kind === "prepared",
-    );
-    expect(prepared?.event).toMatchObject({
-      kind: "prepared",
-      artifact: {
-        evidenceBinding: {
-          route: "authenticated_source_leaf",
-          headerHash: routed.headerHash,
-          committedTxId,
-        },
-      },
+    expect(observedArtifacts[0]).toMatchObject({
+      schemaVersion: "midgard-production-da-hash-preimage-artifact-v1",
     });
-    expect(
-      result.entries.filter((entry) => entry.event.kind === "confirmed"),
-    ).toHaveLength(4);
+    expect(JSON.stringify(observedArtifacts[0])).toContain(committedTxId);
+    expect(process.sent().map(({ actionId }) => actionId)).toEqual(actionIds);
+    expect(process.sent().map(({ txHash: sent }) => sent)).toEqual(txHashes);
     terminal.observedAt.confirmationDepth = 2161;
     expect((await run()).kind).toBe("terminal_included");
     terminal.observedAt.confirmationDepth = 2162;
     expect((await run()).kind).toBe("completed");
     expect(prepare).not.toHaveBeenCalled();
+    // The later runs read every action landed and send nothing more.
+    expect(process.sent()).toHaveLength(actionIds.length);
   });
 });

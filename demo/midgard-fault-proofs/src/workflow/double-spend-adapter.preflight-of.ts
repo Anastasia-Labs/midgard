@@ -5,19 +5,12 @@ import type {
   UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-} from "../remove-fraudulent-block.js";
+import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { type FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import { type DoubleSpendL1ObservationPort } from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
-import type {
-  FraudProofWorkflowJournalEntry,
-  JournalJsonObject,
-  JournalJsonValue,
-} from "./journal.js";
+import type { JournalJsonObject, JournalJsonValue } from "./journal.js";
 import type {
   FraudProofL1Source,
   FraudProofSignedTransactionRecovery,
@@ -148,33 +141,6 @@ export const requireJournalString = (
   return value;
 };
 
-export const confirmed = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
-  actionId: string,
-): boolean =>
-  entries.some(
-    (entry) =>
-      entry.event.kind === "confirmed" && entry.event.actionId === actionId,
-  );
-
-export const contentActionId = ({
-  base,
-  entries,
-}: {
-  readonly base: string;
-  readonly entries: readonly FraudProofWorkflowJournalEntry[];
-}): string => {
-  const priorConfirmations = entries.filter(
-    (entry) =>
-      entry.event.kind === "confirmed" &&
-      (entry.event.actionId === base ||
-        entry.event.actionId.startsWith(`${base}:heal:`)),
-  ).length;
-  return priorConfirmations === 0
-    ? base
-    : `${base}:heal:${priorConfirmations.toString()}`;
-};
-
 export const action = (
   actionId: string,
   input: JournalJsonObject,
@@ -183,14 +149,13 @@ export const action = (
 export const preflightOf = (
   actionId: string,
   transaction: LocallyEvaluatedTransaction,
-  durableRecovery?: JournalJsonObject,
 ): FraudProofWorkflowPreflight => {
   requireReferenceOnlyScriptWitnesses({
     transaction,
     label: "double-spend production transaction",
   });
-  // The production funding reservation permit reads the signed body back from
-  // the in-memory preflight to reconcile the reserved inputs it spends.
+  // The runner reads the signed body back from the preflight to hold the
+  // inputs it spends while it is in flight.
   return bindWorkflowPreflightTransaction(
     {
       actionId,
@@ -204,47 +169,7 @@ export const preflightOf = (
         evaluator: LOCAL_UPLC_EVALUATOR,
       },
       referenceScripts: transaction.referenceScripts,
-      ...(durableRecovery === undefined ? {} : { durableRecovery }),
     },
     transaction.signed,
   );
-};
-
-export const mutationLeaseRecovery = (
-  lease: StateQueueMutationLease,
-): JournalJsonObject => ({
-  stateQueueMutationLease: {
-    token: lease.token,
-    source: lease.source,
-  },
-});
-
-export const parseMutationLeaseRecovery = (
-  recovery: JournalJsonObject | undefined,
-): { readonly token: string; readonly source: string } | undefined => {
-  if (recovery === undefined) return undefined;
-  const keys = Object.keys(recovery);
-  const value = recovery.stateQueueMutationLease;
-  if (
-    keys.length !== 1 ||
-    keys[0] !== "stateQueueMutationLease" ||
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value)
-  ) {
-    throw new Error("durable recovery has an invalid mutation-lease shape");
-  }
-  const record = value as Readonly<Record<string, JournalJsonValue>>;
-  if (
-    Object.keys(record).sort().join(",") !== "source,token" ||
-    typeof record.token !== "string" ||
-    record.token.trim().length === 0 ||
-    record.token.trim() !== record.token ||
-    typeof record.source !== "string" ||
-    record.source.trim().length === 0 ||
-    record.source.trim() !== record.source
-  ) {
-    throw new Error("durable recovery mutation-lease identity is malformed");
-  }
-  return { token: record.token, source: record.source };
 };

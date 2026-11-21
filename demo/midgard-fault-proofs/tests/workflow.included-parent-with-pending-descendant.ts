@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
   canonicalEvidence,
+  chainOf,
   makeAdapter,
   PROOF_TX_HASH,
   REMOVAL_TX_HASH,
@@ -11,56 +12,37 @@ import {
 } from "./workflow.make-adapter.js";
 
 describe("canonical reobservation with pending descendants", () => {
-  it("closes an included descendant before reopening its still-included parent", async () => {
+  it("holds a landed, still reversible proof while the observation lags it, sending nothing again", async () => {
     const evidence = await canonicalEvidence();
-    const journal = new MemoryFraudProofWorkflowJournalStore();
-    let parentIncluded = false;
-    let childSubmitted = false;
-    let childConfirmed = false;
-    const reconciled: string[] = [];
-    const adapter = makeAdapter({
-      submit: async ({ preflight }) => {
-        if (preflight.txHash === REMOVAL_TX_HASH) childSubmitted = true;
-        return { kind: "submitted", txHash: preflight.txHash };
-      },
-      reconcile: async ({
-        txHash,
-        reconciliationOnly,
-        signedTransactionCborHex,
-        authorizeResubmission,
-      }) => {
-        if (reconciliationOnly) {
-          expect(signedTransactionCborHex).toBeUndefined();
-          expect(authorizeResubmission).toBeUndefined();
-        }
-        reconciled.push(txHash!);
-        if (txHash === PROOF_TX_HASH) parentIncluded = true;
-        else childConfirmed = true;
-        return { kind: "confirmed", txHash: txHash! };
-      },
-    });
+    const process = createTestWorkflowProcess();
+    const adapter = makeAdapter();
+    const chain = chainOf(adapter);
+    chain.reversible.add(PROOF_TX_HASH);
+    let lagging = true;
     adapter.observe = async () =>
-      childConfirmed
+      chain.landed(REMOVAL_TX_HASH)
         ? { kind: "completed", terminal: terminal(evidence.headerHash) }
         : {
             kind: "action_required",
-            // Inclusion of the closing child consumes the parent's effects.
-            // Its journal must catch up before deriving the next action.
+            // The family's view of L1 has not yet caught up with the proof.
             action:
-              parentIncluded && !childSubmitted
+              chain.landed(PROOF_TX_HASH) && !lagging
                 ? { actionId: "remove", input: { step: 1 } }
                 : { actionId: "prove", input: { step: 0 } },
           };
-    const result = await run({ evidence, adapter, journal });
-    expect(result.kind).toBe("completed");
-    expect(reconciled).toEqual([PROOF_TX_HASH, PROOF_TX_HASH, REMOVAL_TX_HASH]);
+    expect(await run({ evidence, adapter, process })).toMatchObject({
+      kind: "pending",
+      awaitingActionId: "prove",
+    });
+    expect(adapter.submit).toHaveBeenCalledTimes(1);
+    lagging = false;
+    expect(await run({ evidence, adapter, process })).toMatchObject({
+      kind: "completed",
+    });
     expect(adapter.submit).toHaveBeenCalledTimes(2);
-    expect(
-      result.kind === "completed" &&
-        result.entries.some(
-          ({ event }) =>
-            event.kind === "reobserved" && event.actionId === "prove",
-        ),
-    ).toBe(false);
+    expect(process.sent().map(({ actionId }) => actionId)).toEqual([
+      "prove",
+      "remove",
+    ]);
   });
 });

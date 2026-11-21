@@ -35,9 +35,9 @@ const PARAMETERS: DeploymentManifestCardanoProtocolParameters = {
   },
 };
 
-/** What the watcher's first validation-dispute reservation must hold, from
- * the three product values: the deployment-bound bond, the SDK's case floor
- * and the exported wallet-move reserve. */
+/** What the prover's VerifySource and first wallet move spend, from the
+ * three product values: the deployment-bound bond, the SDK's case floor and
+ * the exported wallet-move reserve. */
 const productRequirement = () =>
   BOND +
   VALIDATION_CASE_FLOOR_LOVELACE +
@@ -118,7 +118,7 @@ describe("ensureProverDisputeFunding", () => {
     expect(spendable(wallet)).toBeGreaterThanOrEqual(productRequirement());
   });
 
-  it("counts a tagged refund as funding, as the watcher's reservation does", async () => {
+  it("counts a tagged refund as funding, as the prover's wallet does", async () => {
     const wallet = [
       ...actorFunding(),
       coin(51, 20_000_000_000n, { datum: "d87980" }),
@@ -130,7 +130,7 @@ describe("ensureProverDisputeFunding", () => {
     expect(ports.transfers).toHaveLength(0);
   });
 
-  it("leaves a coin holding a token out, as the watcher's reservation does", async () => {
+  it("leaves a coin holding a token out, as the prover's wallet does", async () => {
     const token = { [`${"22".repeat(28)}74`]: 1n };
     const wallet = [
       ...actorFunding(),

@@ -20,10 +20,6 @@ export const PROOF_MATERIALS_SWEEP_STAGE = "proof_materials_sweep" as const;
  */
 export const PROOF_MATERIALS_SWEEP_PAGE_INPUTS = 100;
 
-/** Why an ended workflow waits on its proof materials. */
-export const PROOF_MATERIALS_SWEEP_OUTSTANDING =
-  "proof-materials-sweep-outstanding" as const;
-
 const OUT_REF = /^[0-9a-f]{64}#(0|[1-9][0-9]*)$/u;
 
 const byOutRef = (left: string, right: string) => {

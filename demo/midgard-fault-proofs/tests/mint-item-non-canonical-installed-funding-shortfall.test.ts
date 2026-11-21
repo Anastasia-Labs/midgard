@@ -1,9 +1,9 @@
 /**
  * A mint-item proof the prover wallet cannot pay for, through the watcher's
- * installed application: the family runs its own journaled workflow, not the
- * shared orchestrator, and pauses the same way. A wallet that cannot pay for
- * the next transaction pauses the objective with the funding-shortfall
- * reason and releases its reservation; a top-up resumes it to conviction. A
+ * installed application: the family runs its own workflow, not the shared
+ * orchestrator, and pauses the same way. A wallet that cannot pay for the
+ * next transaction pauses the objective with the funding-shortfall reason; a
+ * top-up resumes it to conviction. A
  * coin holding a token is never spent.
  */
 import {
@@ -61,7 +61,7 @@ import {
 } from "../src/mint-item-non-canonical/schemas.js";
 import { MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS } from "../src/mint-item-non-canonical/workflow.load-manifest-bound-mint-item-non-canonical-config.js";
 import { MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
-import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.workflow-funding-shortfall.js";
+import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/workflow-funding-shortfall.js";
 import {
   drainProverToOneCoin,
   sendTokenCoin,

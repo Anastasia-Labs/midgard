@@ -178,9 +178,9 @@ export const runInstalled = async (
           categoryId + committed.headerHash,
         ),
       );
-    // Conviction is the proof token. Removal after it is not driven here:
-    // under the funding reservation a bond-backed slash needs the finalized
-    // manifest's slash authority, which this legacy-deployment harness lacks.
+    // Conviction is the proof token. Removal after it is not driven here: a
+    // bond-backed slash needs the finalized manifest's slash authority, which
+    // this legacy-deployment harness lacks.
     clock.state.crashAfterPolls = options.maxPolls;
     cleanup =
       (await options.beforeTurns?.({ harness, application, clock })) ??
@@ -250,7 +250,7 @@ export const runInstalled = async (
       convicted,
       turns,
       polls: clock.state.polls,
-      journalEntries: await application.journalEntries(),
+      sent: application.sent(),
       reasons,
       footprint,
     } as const;
@@ -293,7 +293,7 @@ export const stopsOnceAndRestarts = (pollCap: number) => {
     ) => {
       expect(String(error)).toContain("installed application process stopped");
       stops += 1;
-      await application.restart();
+      application.restart();
       clock.state.crashAfterPolls = clock.state.polls + pollCap;
     },
     stops: () => stops,

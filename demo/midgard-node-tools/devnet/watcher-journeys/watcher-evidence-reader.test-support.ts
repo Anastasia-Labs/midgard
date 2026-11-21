@@ -1,19 +1,10 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
-} from "@al-ft/midgard-fault-proofs/workflow/journal";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "midgard-watcher";
-import { openWatcherWorkflowStoreForTest } from "midgard-watcher/tests/support/watcher-workflow-store";
 
 import {
   createWatcherEvidenceReader,
@@ -68,43 +59,4 @@ export const recordedWatcher = async () => {
       launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     });
   return { root, journalDirectory, storePath, processConfigPath, reader };
-};
-
-export const appendWorkflow = async (
-  storePath: string,
-  category: FraudProofCatalogueCategoryName,
-  headerHash: string,
-  count: number,
-  fingerprint = FINGERPRINT,
-) => {
-  const workflows = openWatcherWorkflowStoreForTest(storePath);
-  try {
-    const identity = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-      deploymentFingerprint: fingerprint,
-      category,
-      target: { kind: "state_queue_header" as const, headerHash },
-    };
-    const store = workflows.forObjective({ category, headerHash });
-    for (let sequence = 0; sequence < count; sequence += 1) {
-      const entry: FraudProofWorkflowJournalEntry = {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-        workflowId: computeFraudProofWorkflowId(identity),
-        identity,
-        sequence,
-        recordedAt: "2026-10-29T00:00:00.000Z",
-        event:
-          sequence === 0
-            ? { kind: "started" }
-            : {
-                kind: "prepared",
-                artifact: {},
-                artifactDigest: createHash("sha256").update("{}").digest("hex"),
-              },
-      };
-      await store.append(entry, sequence);
-    }
-  } finally {
-    workflows.close();
-  }
 };

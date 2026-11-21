@@ -125,7 +125,7 @@ export const detectMissingRedeemerReplay = async ({
   });
 };
 
-/** The journaled `missingRedeemer` workflow artifact: the retained payload, the
+/** The `missingRedeemer` workflow artifact: the retained payload, the
  * predecessor ledger and the coordinate, re-planned on every admission. */
 export const MISSING_REDEEMER_ARTIFACT_FAMILY = directPurposeArtifactFamily({
   label: "missingRedeemer",

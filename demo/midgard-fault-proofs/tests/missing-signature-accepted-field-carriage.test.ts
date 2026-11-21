@@ -1,14 +1,15 @@
 /**
  * The accepted missing-signature path's field carriage, driven through the
  * workflow's transaction port and field-carriage prerequisite on the
- * emulator. A process is rebuilt for every action: only the journal stays.
+ * emulator. A process is rebuilt for every action: only the chain stays.
  *
  * The step-04 witness field is too wide to ride inline, so it is published
- * before the step by its journaled prerequisite, and a step captured again
- * by a new process reads that publication instead of publishing it again.
- * Every carriage plan a step builder asks `publishFaultProofFieldCarriage`
- * for needs exactly the slots (keys and count) of the plan the prerequisite
- * required, and each finds them journaled instead of building a turn.
+ * before the step by its prerequisite, and a step captured again by a new
+ * process reads that publication instead of publishing it again. Every
+ * carriage plan a step builder asks `publishFaultProofFieldCarriage` for
+ * needs exactly the slots (keys and count) of the plan the prerequisite
+ * required, and each finds them at the proof-materials address by content
+ * instead of building a turn.
  */
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { type UTxO } from "@lucid-evolution/lucid";
@@ -29,7 +30,6 @@ import {
   publishedCoverage,
   resetCarriagePlanRecord,
 } from "./support/carriage-plan-parity.js";
-import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import {
   buildMissingSignatureSubject,
@@ -41,6 +41,7 @@ import {
   setupMissingSignatureScenario,
 } from "./support/missing-signature-emulator.build-missing-signature-subject.js";
 import { network } from "./support/missing-signature-forced-scenario.js";
+import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
 
 vi.mock("../src/field-opening.js", async (importOriginal) =>
   (await import("./support/carriage-plan-parity.js")).recordingFieldOpening(
@@ -91,7 +92,7 @@ const acceptedArtifact = (scenario: MissingSignatureScenario) => {
 };
 
 describe("missing-signature accepted-path field carriage", () => {
-  it("publishes the step-04 field once through its journaled prerequisite, and a new process captures the step from it", async () => {
+  it("publishes the step-04 field once through its prerequisite, and a new process captures the step from it", async () => {
     const harness = await makeMissingSignatureEmulatorHarness();
     // Another transaction of the block carries the accused key's witness,
     // so its verification key is public evidence.
@@ -115,10 +116,6 @@ describe("missing-signature accepted-path field carriage", () => {
         label: "missing-signature certificate mint",
       });
     harness.emulator.awaitBlock(1);
-    const journal = createConfirmedActionJournal({
-      category: "missingSignature",
-      headerHash,
-    });
     /** A new watcher process: its port and prerequisite, nothing else. */
     const process = () => ({
       port: unsafeCreateMissingSignatureTransactionPortForTest({
@@ -208,47 +205,32 @@ describe("missing-signature accepted-path field carriage", () => {
         throw new Error("missing action");
       return observation.action;
     };
-    /** Each prerequisite action, by a new process, journaled once confirmed. */
+    /** Each prerequisite action, by a new process, landed before the next. */
     const settlePrerequisite = async (baseAction: FraudProofWorkflowAction) => {
       for (let attempt = 0; attempt < 8; attempt += 1) {
         const next = await process().prerequisite.inspect({
+          holder: TEST_PROOF_MATERIALS_HOLDER,
           headerHash,
           baseAction,
           artifact,
-          entries: journal.entries(),
         });
         if (next.kind !== "required") return next.kind;
         const captured = await process().prerequisite.capture({
+          holder: TEST_PROOF_MATERIALS_HOLDER,
           headerHash,
           action: next.action,
           artifact,
-          entries: journal.entries(),
         });
-        const txHash = await captured.transaction.signed.submit();
+        await captured.transaction.signed.submit();
         harness.emulator.awaitBlock(1);
-        const durableRecovery = JSON.parse(
-          JSON.stringify(captured.durableRecovery),
-        );
-        expect(
-          (
-            await process().prerequisite.reconcile({
-              headerHash,
-              action: next.action,
-              artifact,
-              txHash,
-              durableRecovery,
-            })
-          ).kind,
-        ).toBe("confirmed");
-        journal.confirm({ action: next.action, txHash, durableRecovery });
       }
       throw new Error("prerequisite did not settle");
     };
     const capture = async (action: FraudProofWorkflowAction) =>
       await process().port.capture({
+        holder: TEST_PROOF_MATERIALS_HOLDER,
         action,
         artifact,
-        entries: journal.entries(),
       });
     const submit = async (
       captured: Awaited<ReturnType<typeof capture>>,
@@ -294,7 +276,7 @@ describe("missing-signature accepted-path field carriage", () => {
     expect(await settlePrerequisite(step04)).toBe("satisfied");
     const published = await datumOutputsAtProver();
     expect(published).toHaveLength(1);
-    // A process that captured the step stops before journaling it; the next
+    // A process that captured the step stops before sending it; the next
     // one captures it again.
     await capture(step04);
     const next = await submit(await capture(step04), stepAddress(3));
@@ -304,7 +286,7 @@ describe("missing-signature accepted-path field carriage", () => {
     );
 
     // Step 02's required signers ride inline; step 04's witnesses need the
-    // publication the prerequisite journaled, and both builders asked for
+    // publication the prerequisite landed, and both builders asked for
     // exactly what it required, from the prover's proof-materials address.
     expect(publishedCoverage()).toEqual(["4:Inline", "7:RawUtxo"]);
     expect(carriageNeedsByField(carriagePlanRecord.published)).toEqual(

@@ -1,26 +1,20 @@
 /** The restart wait in the runner: a transaction that spends only wallet
- * coins is held, with nothing journaled or prepared for it, until the
- * caller's wait is over; one spending a specific output of ours is sent at
- * once; and a wallet-only transaction with no upper validity bound, or one
- * later than one window past the run's clock, other than the field-preimage
- * carriage publication, is refused. */
-import { CML, type TxSigned, type UTxO } from "@lucid-evolution/lucid";
+ * coins is held, with nothing sent for it, until the caller's wait is over,
+ * while the moves ranked after it still go; one spending a specific output
+ * of ours is sent at once; and a wallet-only transaction with no upper
+ * validity bound, or one later than one window past the run's clock, other
+ * than the field-preimage carriage publication, is refused. */
+import { CML, type TxSigned } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { proofMaterialsAddressOfFundingAddress } from "../src/funding/proof-materials-address.js";
 import { WALLET_ONLY_VALIDITY_MS } from "../src/wallet-only-validity.js";
 import { runFraudProofWorkflowCli } from "../src/workflow/cli.js";
-import { bindWorkflowFundingReservationJournal } from "../src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.js";
-import { unsafeWorkflowFundingReservationSelectedOutRefsForTest } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowPreflight,
 } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runAdmittedFraudProofWorkflow } from "../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
-import { readWorkflowRuntimeFundingPolicy } from "../src/workflow/runtime-funding-policy.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   clockOnlyWalletOnlySend,
@@ -29,25 +23,23 @@ import {
 } from "../src/workflow/wallet-only-send-gate.js";
 import { releaseFinality } from "./support/raw-l1-terminal-fixture.output.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
+  chainOf,
+  chainVerifier,
   makeAdapter,
   REFERENCE_OUT_REF,
   REFERENCE_SCRIPT_HASH,
-  terminalVerifier,
 } from "./workflow.make-adapter.js";
 import {
   admittedActuation,
   DEPLOYMENT,
   fundingAddress,
+  fundingKey,
 } from "./workflow-runtime.admitted-actuation.js";
-import {
-  runtimeFunding,
-  signedFundingTransaction,
-} from "./workflow-runtime.runtime-funding.js";
 
 const FEE = 200_000n;
-/** The run's journal clock, and the caller's clock now: one-second slots
- * from 0. */
+/** The caller's clock now: one-second slots from 0. */
 const NOW_MS = 1_000_000;
 /** The caller's slot one window past its clock now. */
 const LATEST_VALID_TO_SLOT = Math.floor(
@@ -61,115 +53,137 @@ const TTL = LATEST_TTL - 10n;
 const RESTART_WAIT = { name: "fault_proof_restart_wait", alarm: false };
 const TOKEN_POLICY = "e1".repeat(28);
 const THREAD_LOVELACE = 3_000_000n;
-/** The reserved coin the proof-materials scene resolves at the
- * proof-materials address, and its value. */
+/** The coins our wallet lists, and their value. */
+const WALLET_COINS = [`${"81".repeat(32)}#0`, `${"81".repeat(32)}#1`];
+const WALLET_LOVELACE = 40_000_000n;
+/** A thread of ours at a governed contract. */
+const THREAD_OUT_REF = `${"91".repeat(32)}#0`;
+/** An output of ours at the proof-materials address, and its value. */
 const MATERIALS_OUT_REF = `${"73".repeat(32)}#0`;
 const MATERIALS_LOVELACE = 10_000_000n;
 
-class RecordingJournal extends MemoryFraudProofWorkflowJournalStore {
-  readonly kinds: string[] = [];
-
-  override async append(
-    entry: FraudProofWorkflowJournalEntry,
-    expectedSequence: number,
-  ): Promise<void> {
-    await super.append(entry, expectedSequence);
-    this.kinds.push(entry.event.kind);
-  }
-}
-
 type Spend =
-  /** The reservation's wallet coins alone. */
+  /** Our wallet's coins alone. */
   | "wallet"
   /** Wallet coins and a thread of ours at a governed contract. */
   | "thread"
-  /** Wallet coins and a reserved output at the proof-materials address. */
+  /** Wallet coins and an output at the proof-materials address. */
   | "proof_materials";
 
-/** A funded run whose one action builds the transaction `spend` names. */
+/** The move a run offers after a held wallet-only action, when the scene
+ * has one: it spends a thread of ours. */
+const THREAD_MOVE = {
+  actionId: "thread-move",
+  input: { actionKind: "step-one", move: "thread" },
+};
+
+const outRefInput = (outRef: string) => {
+  const [txHash, index] = outRef.split("#");
+  return CML.TransactionInput.new(
+    CML.TransactionHash.from_hex(txHash!),
+    BigInt(index!),
+  );
+};
+
+/** Our key's signed spend of `inputOutRefs` back to our wallet. */
+const signedSpend = (input: {
+  readonly inputOutRefs: readonly string[];
+  readonly outputLovelace: bigint;
+  readonly mint?: CML.Mint;
+  readonly ttl?: bigint;
+}): TxSigned => {
+  const inputs = CML.TransactionInputList.new();
+  for (const outRef of input.inputOutRefs) inputs.add(outRefInput(outRef));
+  const outputs = CML.TransactionOutputList.new();
+  outputs.add(
+    CML.TransactionOutput.new(
+      CML.Address.from_bech32(fundingAddress),
+      CML.Value.from_coin(input.outputLovelace),
+    ),
+  );
+  const body = CML.TransactionBody.new(inputs, outputs, FEE);
+  if (input.mint !== undefined) body.set_mint(input.mint);
+  if (input.ttl !== undefined) body.set_ttl(input.ttl);
+  const witnesses = CML.TransactionWitnessSet.new();
+  const vkeys = CML.VkeywitnessList.new();
+  vkeys.add(
+    CML.Vkeywitness.new(
+      fundingKey.to_public(),
+      fundingKey.sign(CML.hash_transaction(body).to_raw_bytes()),
+    ),
+  );
+  witnesses.set_vkeywitnesses(vkeys);
+  const transaction = CML.Transaction.new(body, witnesses, true, undefined);
+  return {
+    toTransaction: () => transaction,
+    toHash: () => CML.hash_transaction(body).to_hex(),
+    toCBOR: () => transaction.to_cbor_hex(),
+  } as unknown as TxSigned;
+};
+
+/** A run whose action builds the transaction `spend` names; with
+ * `threadMove`, a run that skips that action offers `THREAD_MOVE` next. A
+ * wallet coin in the returned `spentElsewhere` is one another transaction
+ * spent: no transaction built after that spends it. */
 const scene = async ({
   spend = "wallet",
   ttl = TTL,
   unboundedCarriagePublication = false,
+  threadMove = false,
 }: {
   readonly spend?: Spend;
   readonly ttl?: bigint | null;
   readonly unboundedCarriagePublication?: boolean;
+  readonly threadMove?: boolean;
 } = {}) => {
-  const sample = await runtimeFunding("step-one");
-  const contract = readWorkflowRuntimeFundingPolicy(sample.policy).contracts[0]!
-    .address;
-  const thread: UTxO = {
-    txHash: "91".repeat(32),
-    outputIndex: 0,
-    address: contract,
-    assets: { lovelace: THREAD_LOVELACE, [`${TOKEN_POLICY}aa`]: 1n },
-    datum: "00",
-  };
-  const threadRef = `${thread.txHash}#0`;
-  const materials: UTxO = {
-    txHash: "73".repeat(32),
-    outputIndex: 0,
-    address: proofMaterialsAddressOfFundingAddress(fundingAddress),
-    assets: { lovelace: MATERIALS_LOVELACE },
-  };
-  const journal = new RecordingJournal();
-  const runtime = await runtimeFunding("step-one", {
-    begin: false,
-    journal,
-    ...(spend === "thread"
-      ? { additionalInputs: [thread], confirmedInputs: [thread] }
-      : spend === "proof_materials"
-        ? { additionalInputs: [materials] }
-        : {}),
-  });
+  const spentElsewhere = new Set<string>();
+  const actuation = await admittedActuation();
+  const { headerHash } = actuation;
+  const objective = { category: "doubleSpend" as const, headerHash };
+  const process = createTestWorkflowProcess({ nowMs: () => NOW_MS });
+  process.sends(objective).noteWalletCoins(WALLET_COINS);
   const action = { actionId: "step-one", input: { actionKind: "step-one" } };
   const sent: string[] = [];
   const built: TxSigned[] = [];
   const base = makeAdapter();
   const adapter: FraudProofFamilyWorkflowAdapter = {
     ...base,
-    observe: async ({ entries }) =>
-      entries.some(({ event }) => event.kind === "submitted")
+    observe: async ({ inFlight, unbuiltActionIds }) =>
+      (inFlight?.().length ?? 0) > 0
         ? { kind: "pending" as const, reason: "awaiting inclusion" }
-        : { kind: "action_required" as const, action },
-    preflight: async () => {
-      const funding = unsafeWorkflowFundingReservationSelectedOutRefsForTest(
-        runtime.permit,
-      ).fundingOutRefs;
-      const fundingLovelace = funding
-        .map((outRef) =>
-          BigInt(
-            runtime.snapshot.activeInputs.find(
-              (input) => input.outRef === outRef,
-            )!.lovelace,
-          ),
-        )
-        .reduce((total, lovelace) => total + lovelace, 0n);
+        : {
+            kind: "action_required" as const,
+            action:
+              threadMove && unbuiltActionIds?.has(action.actionId) === true
+                ? THREAD_MOVE
+                : action,
+          },
+    preflight: async ({ action: asked }) => {
+      const spends: Spend =
+        asked.actionId === THREAD_MOVE.actionId ? "thread" : spend;
       const burn = CML.Mint.new();
       burn.set(
         CML.ScriptHash.from_hex(TOKEN_POLICY),
         CML.AssetName.from_hex("aa"),
         -1n,
       );
-      const signed = signedFundingTransaction({
+      const signed = signedSpend({
         inputOutRefs: [
-          ...funding,
-          ...(spend === "thread" ? [threadRef] : []),
-          ...(spend === "proof_materials" ? [MATERIALS_OUT_REF] : []),
+          ...WALLET_COINS.filter((coin) => !spentElsewhere.has(coin)),
+          ...(spends === "thread" ? [THREAD_OUT_REF] : []),
+          ...(spends === "proof_materials" ? [MATERIALS_OUT_REF] : []),
         ],
         outputLovelace:
-          fundingLovelace -
+          WALLET_LOVELACE -
           FEE +
-          (spend === "thread" ? THREAD_LOVELACE : 0n) +
-          (spend === "proof_materials" ? MATERIALS_LOVELACE : 0n),
-        fee: FEE,
-        ...(spend === "thread" ? { mint: burn } : {}),
+          (spends === "thread" ? THREAD_LOVELACE : 0n) +
+          (spends === "proof_materials" ? MATERIALS_LOVELACE : 0n),
+        ...(spends === "thread" ? { mint: burn } : {}),
         ...(ttl === null ? {} : { ttl }),
       });
       built.push(signed);
       const preflight: FraudProofWorkflowPreflight = Object.freeze({
-        actionId: action.actionId,
+        actionId: asked.actionId,
         txHash: signed.toHash(),
         scriptExecution: "reference_scripts" as const,
         localUplcEvaluation: {
@@ -193,48 +207,44 @@ const scene = async ({
       sent.push(preflight.txHash);
       return { kind: "submitted" as const, txHash: preflight.txHash };
     },
-    reconcile: async ({ txHash }) => ({
-      kind: "pending" as const,
-      txHash: txHash!,
-    }),
   };
-  const { headerHash } = runtime.actuation;
   const run = (open: WalletOnlySend["open"]) =>
     runAdmittedFraudProofWorkflow({
       deploymentFingerprint: DEPLOYMENT,
       category: "doubleSpend",
       headerHash,
-      evidenceBinding: {
-        route: "canonical_block",
-        headerHash,
-        payloadEnvelopeSha256: "77".repeat(32),
-        payloadSha256: "78".repeat(32),
-        l1BlockHash: "79".repeat(32),
-        l1Slot: "1",
-      },
       prepareFamilyArtifact: async () => ({}),
       registry: createFraudProofWorkflowRegistry({
         adapters: [adapter],
         launchScope: ["doubleSpend"],
       }),
-      journal,
-      terminalVerifier,
+      run: process.run(objective),
+      // Every transaction sent is still pending on the chain.
+      terminalVerifier: chainVerifier(base),
       releaseFinality: {
         ...releaseFinality,
         deploymentIdentityDigest: DEPLOYMENT,
       },
-      now: () => new Date(NOW_MS),
+      nowMs: () => NOW_MS,
       walletOnlySend: { open, latestValidToSlot: () => LATEST_VALID_TO_SLOT },
     });
-  return { journal, runtime, sent, built, run };
+  return {
+    process,
+    objective,
+    sent,
+    built,
+    run,
+    chain: chainOf(base),
+    spentElsewhere,
+  };
 };
 
 const closed = () => vi.fn<WalletOnlySend["open"]>(async () => false);
 const open = () => vi.fn<WalletOnlySend["open"]>(async () => true);
 
 describe("workflow: the restart wait of a wallet-only transaction", () => {
-  it("holds a wallet-only action before the wait is over, leaving nothing journaled, prepared or sent", async () => {
-    const { journal, runtime, sent, run } = await scene();
+  it("holds a wallet-only action before the wait is over, sending nothing and holding no coin for it", async () => {
+    const { process, sent, run } = await scene();
     const reader = closed();
     const held = await run(reader);
     expect(held).toMatchObject({
@@ -246,16 +256,13 @@ describe("workflow: the restart wait of a wallet-only transaction", () => {
       ),
     });
     expect(reader).toHaveBeenCalled();
-    expect(journal.kinds).not.toContain("preflight_passed");
-    expect(journal.kinds).not.toContain("submission_intent");
-    expect(journal.kinds).not.toContain("stalled");
-    // No reservation transition holds the coins for it.
-    expect(runtime.prepare).not.toHaveBeenCalled();
+    expect(process.sent()).toEqual([]);
+    expect(process.inFlight.heldOutRefs()).toEqual([]);
     expect(sent).toEqual([]);
   });
 
   it("holds it while the wait is still closed, and sends it at the first run after the wait is over", async () => {
-    const { journal, runtime, sent, built, run } = await scene();
+    const { process, sent, built, run } = await scene();
     // The caller's wait opens on the clock and on its observed chain; the
     // runner reads only the caller's answer.
     const wait = { clockPast: true, chainPast: false };
@@ -266,9 +273,7 @@ describe("workflow: the restart wait of a wallet-only transaction", () => {
     const sending = await run(reader);
     expect(sending).not.toHaveProperty("namedState");
     expect(sent).toEqual([built.at(-1)!.toHash()]);
-    expect(journal.kinds).toContain("preflight_passed");
-    expect(journal.kinds).toContain("submission_intent");
-    expect(runtime.prepare).toHaveBeenCalledOnce();
+    expect(process.sent().map(({ txHash }) => txHash)).toEqual(sent);
   });
 
   it("sends an action spending a thread of ours at once: its own input excludes a duplicate", async () => {
@@ -280,7 +285,31 @@ describe("workflow: the restart wait of a wallet-only transaction", () => {
     expect(sent).toEqual([built.at(-1)!.toHash()]);
   });
 
-  it("does not read a reserved output at the proof-materials address as a wallet coin", async () => {
+  it("skips a held wallet-only action for the run and sends the thread move ranked after it, the wait still named", async () => {
+    const { process, sent, built, run } = await scene({
+      threadMove: true,
+    });
+    const reader = closed();
+    const result = await run(reader);
+    expect(reader).toHaveBeenCalledOnce();
+    // The thread move went in the same run; only its transaction was built
+    // past the wallet-only one, and sent.
+    expect(built).toHaveLength(2);
+    expect(sent).toEqual([built[1]!.toHash()]);
+    expect(process.sent().map(({ actionId }) => actionId)).toEqual([
+      THREAD_MOVE.actionId,
+    ]);
+    // The run ends with the thread move in flight and the held action still
+    // held: the wait's named state stays visible, and the hold is no alarm.
+    expect(result).toMatchObject({
+      kind: "pending",
+      reason: "transaction for thread-move is pending",
+      namedState: RESTART_WAIT,
+    });
+    expect(result).not.toHaveProperty("alarms");
+  });
+
+  it("does not read an output at the proof-materials address as a wallet coin", async () => {
     const { run } = await scene({ spend: "proof_materials" });
     const reader = closed();
     // The run goes past the gate without asking whether the wait is over.
@@ -301,8 +330,50 @@ describe("workflow: the restart wait of a wallet-only transaction", () => {
     expect(built.at(-1)!.toTransaction().body().ttl()).toBeUndefined();
   });
 
+  it("drops an unbounded carriage publication once another transaction spends one of its coins, and builds the required action at the next observation", async () => {
+    const { process, objective, sent, built, run, chain, spentElsewhere } =
+      await scene({
+        ttl: null,
+        unboundedCarriagePublication: true,
+      });
+    await run(open());
+    const first = built.at(-1)!.toHash();
+    expect(sent).toEqual([first]);
+    // While it can still land, the run holds on it and builds nothing.
+    expect(await run(open())).toMatchObject({
+      kind: "pending",
+      reason: "transaction for step-one is pending",
+    });
+    expect(built).toHaveLength(1);
+    // Another transaction spends one of its coins: with no validity bound
+    // it is still dead, and the chain says so.
+    spentElsewhere.add(WALLET_COINS[0]!);
+    chain.status.set(first, "invalidated_at_tip");
+    // The run that sees it dead drops it from the in-flight set, its coins
+    // free, and ends on the observation it already took.
+    expect(await run(open())).toMatchObject({
+      kind: "pending",
+      reason: "awaiting inclusion",
+    });
+    expect(process.sends(objective).inFlight()).toEqual([]);
+    expect(built).toHaveLength(1);
+    // The next observation requires the action again, and the run builds it
+    // on the coin still ours.
+    expect(await run(open())).toMatchObject({ kind: "pending" });
+    expect(built).toHaveLength(2);
+    const second = built[1]!.toHash();
+    expect(second).not.toBe(first);
+    expect(sent).toEqual([first, second]);
+    expect(
+      process
+        .sends(objective)
+        .inFlight()
+        .map(({ txHash }) => txHash),
+    ).toEqual([second]);
+  });
+
   it("refuses any other wallet-only transaction with no upper validity bound, naming the action", async () => {
-    const { journal, runtime, sent, run } = await scene({ ttl: null });
+    const { process, sent, run } = await scene({ ttl: null });
     const refused = await run(open());
     expect(refused).toMatchObject({
       kind: "stalled",
@@ -310,9 +381,7 @@ describe("workflow: the restart wait of a wallet-only transaction", () => {
         "preflight failed for step-one: WalletOnlyValidityBoundError: wallet-only transaction of step-one carries no upper validity bound",
       ),
     });
-    expect(journal.kinds).toContain("stalled");
-    expect(journal.kinds).not.toContain("submission_intent");
-    expect(runtime.prepare).not.toHaveBeenCalled();
+    expect(process.sent()).toEqual([]);
     expect(sent).toEqual([]);
   });
 
@@ -324,7 +393,7 @@ describe("workflow: the restart wait of a wallet-only transaction", () => {
   });
 
   it("refuses a wallet-only transaction bound one slot past the rounding allowance, naming the action", async () => {
-    const { journal, runtime, sent, run } = await scene({
+    const { process, sent, run } = await scene({
       ttl: LATEST_TTL + 1n,
     });
     const refused = await run(open());
@@ -334,45 +403,29 @@ describe("workflow: the restart wait of a wallet-only transaction", () => {
         `preflight failed for step-one: WalletOnlyValidityBoundError: wallet-only transaction of step-one carries upper validity bound slot ${(LATEST_TTL + 1n).toString()}, later than slot ${LATEST_TTL.toString()}, one window past the caller's clock`,
       ),
     });
-    expect(journal.kinds).not.toContain("submission_intent");
-    expect(runtime.prepare).not.toHaveBeenCalled();
+    expect(process.sent()).toEqual([]);
     expect(sent).toEqual([]);
   });
 });
 
-describe("workflow: no run without a funding reservation", () => {
-  // The wallet-coin set comes from the run's funding reservation; with none
-  // bound the runner would read no coin as a wallet coin. Production never
-  // runs without one.
-  it("refuses a CLI run without a funding reservation permit before any family runs", async () => {
+describe("workflow: no run without the supervisor's in-flight set", () => {
+  // Wallet coins and in-flight transactions live in the application
+  // supervisor's in-flight set; production never runs without it.
+  it("refuses a CLI run without the in-flight set before any family runs", async () => {
     const actuation = await admittedActuation();
     await expect(
       runFraudProofWorkflowCli({
-        mode: "run",
         category: "doubleSpend",
         deploymentFingerprint: DEPLOYMENT,
         headerHash: actuation.headerHash,
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
-        journal: new MemoryFraudProofWorkflowJournalStore(),
         runtimeConfigPath: "/etc/midgard/runtime.json",
         walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       }),
     ).rejects.toThrow(
-      "production workflow actuation requires admitted decision and funding reservation permits from the application supervisor",
+      "production workflow actuation requires an admitted decision, its actuation permit and the in-flight set from the application supervisor",
     );
-  });
-
-  it("refuses to bind a funding reservation permit it did not admit", () => {
-    expect(() =>
-      bindWorkflowFundingReservationJournal({
-        journal: new MemoryFraudProofWorkflowJournalStore(),
-        permit: Object.freeze({
-          permitVersion:
-            "midgard-production-workflow-funding-reservation-permit-v1",
-        }) as never,
-      }),
-    ).toThrow("production funding reservation permit was not admitted");
   });
 });
 
@@ -386,7 +439,7 @@ describe("workflow: the restart wait of a process with no L1 follower", () => {
       expect(open()).toBe(false);
       vi.setSystemTime(startedAtMs + WALLET_ONLY_VALIDITY_MS);
       expect(open()).toBe(true);
-      // It binds no funding reservation, so it checks no wallet-only bound.
+      // It has no slot clock, so it checks no wallet-only bound.
       expect(() => latestValidToSlot()).toThrow("no slot clock");
     } finally {
       vi.useRealTimers();

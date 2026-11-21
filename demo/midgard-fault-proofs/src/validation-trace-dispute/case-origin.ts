@@ -13,7 +13,7 @@ import * as SDK from "@al-ft/midgard-sdk/da";
 import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { addMintedAssets } from "../workflow/funding-reservation-permit.ledger-accounting.js";
+import { addMintedAssets } from "../workflow/minted-assets.js";
 import type { ValidationTraceCaseTransaction } from "./case-history.js";
 
 /**

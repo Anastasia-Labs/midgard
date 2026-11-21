@@ -7,19 +7,6 @@
         "const prune = depth > recoveryDepth && !live;"
       ]
     },
-    "midgard-fault-proofs/src/workflow/signed-transaction-reconciliation.ts": {
-      "reason": "Watcher signed-tx reconciliation counts blocks after a boundary against the release depth; watcher intent families move to the intent journal in I4 (deferred).",
-      "sites": [
-        "BigInt(observed.canonicalPoint.blockNo) -",
-        "blocksAfterBoundary <="
-      ]
-    },
-    "midgard-fault-proofs/src/workflow/signed-transaction-retirement.ts": {
-      "reason": "Watcher signed-tx retirement depth against the release depth; watcher intent families move to the intent journal in I4 (deferred).",
-      "sites": [
-        "BigInt(canonicalPoint.blockNo) - BigInt(releaseFinalPoint.blockNo) <="
-      ]
-    },
     "midgard-node-tools/devnet/phase4-process/scripts/check-recovery-window.mjs": {
       "reason": "Devnet harness: a slot forecast window derived from k, not a depth decision; no role reads it.",
       "sites": [
@@ -203,25 +190,6 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
-    "midgard-fault-proofs/src/workflow/funding-reservation-permit.parse-workflow-funding-prepared-transition.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [".sort(([a], [b]) => a.localeCompare(b))"]
-    },
-    "midgard-fault-proofs/src/workflow/funding-reservation-permit.read-workflow-funding-recovery.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
-    },
-    "midgard-fault-proofs/src/workflow/funding-reservation-permit.parse-workflow-funding-snapshot.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [".sort(([left], [right]) => left.localeCompare(right));"]
-    },
-    "midgard-fault-proofs/src/workflow/funding-reservation-permit.workflow-funding-reservation-port.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "index > 0 && values[index - 1]!.localeCompare(value) >= 0,",
-        "index > 0 && assets[index - 1]!.unit.localeCompare(asset.unit) >= 0,"
-      ]
-    },
     "midgard-fault-proofs/src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
@@ -229,13 +197,6 @@
         ".sort((left, right) => left.role.localeCompare(right.role)),",
         ".sort((left, right) => left.unit.localeCompare(right.unit)),",
         ".sort((left, right) => left.txHash.localeCompare(right.txHash)),"
-      ]
-    },
-    "midgard-fault-proofs/src/workflow/runtime-funding-policy.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        ".sort((left, right) => left.address.localeCompare(right.address));",
-        ".sort((left, right) => left.outRef.localeCompare(right.outRef));"
       ]
     },
     "midgard-fault-proofs/src/zero-input/replay.ts": {
@@ -288,12 +249,6 @@
     "midgard-fault-proofs/tests/value-conservation-replay.test.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": ["[...left, ...right].sort(([l], [r]) => l.localeCompare(r));"]
-    },
-    "midgard-fault-proofs/tests/workflow-runtime.compiled-manifest-bound-production-runtime-v1.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        "].sort((left, right) => left.outRef.localeCompare(right.outRef)),"
-      ]
     },
     "midgard-node-tools/devnet/watcher-journeys/activate-retained-successor-live.test.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
@@ -484,46 +439,9 @@
       "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": ["? `${left.txHash}#${left.outputIndex}`.localeCompare("]
     },
-    "midgard-watcher/src/fault-proofs/fault-proof-supervisor.create-supervisor.ts": {
+    "midgard-watcher/src/fault-proofs/fault-proof-supervisor.compare-jobs.ts": {
       "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": ["return left.headerHash.localeCompare(right.headerHash);"]
-    },
-    "midgard-watcher/src/funding/prover-funding-authority.collateral-forfeiture.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [".sort((a, b) => a.unit.localeCompare(b.unit)),"]
-    },
-    "midgard-watcher/src/funding/prover-funding-calculation.capital-flow.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
-    },
-    "midgard-watcher/src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "index > 0 && consumedOutRefs[index - 1]!.localeCompare(outRef) >= 0,",
-        "left.outRef.localeCompare(right.outRef);",
-        ".sort(([left], [right]) => left.localeCompare(right))"
-      ]
-    },
-    "midgard-watcher/src/funding/prover-funding-reservation.plan-watcher-prover-funding-reservation.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        ".sort((left, right) => left.outRef.localeCompare(right.outRef)),"
-      ]
-    },
-    "midgard-watcher/src/funding/prover-funding-reservation.watcher-prover-funding-reservation-store.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "index > 0 && assets[index - 1]!.unit.localeCompare(asset.unit) >= 0,",
-        "index > 0 && inputs[index - 1]!.outRef.localeCompare(input.outRef) >= 0,"
-      ]
-    },
-    "midgard-watcher/src/funding/sqlite-prover-funding-reservation-store.derive-signed-transition.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "(left, right) => left.outRef.localeCompare(right.outRef),",
-        "left.outRef.localeCompare(right.outRef),",
-        ".sort(([left], [right]) => left.localeCompare(right))"
-      ]
     },
     "midgard-watcher/src/runtime/deployment-identity.verify-watcher-deployment-identity.ts": {
       "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
@@ -535,16 +453,6 @@
         "left.code.localeCompare(right.code) ||",
         "left.subjectDigest.localeCompare(right.subjectDigest),"
       ]
-    },
-    "midgard-watcher/tests/funding/prover-funding-calculation.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        "].sort((left, right) => left.outRef.localeCompare(right.outRef)),"
-      ]
-    },
-    "midgard-watcher/tests/funding/sqlite-prover-funding-reservation-store.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": ["left.outRef.localeCompare(right.outRef),"]
     }
   },
   "midgard/no-cross-package-root": {
@@ -850,10 +758,6 @@
       "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/readiness-evidence.verify-journey-result-evidence.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
     },
-    "midgard-node-tools/devnet/watcher-journeys/readiness-evidence.verify-journey-result-evidence.ts": {
-      "reason": "Kept on the root because midgard-node-tools/devnet/watcher-journeys/readiness-evidence.test.ts stubs validateFraudProofWorkflowJournal on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
-      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
-    },
     "midgard-node-tools/devnet/watcher-journeys/staging-recovery.test.ts": {
       "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
@@ -1061,28 +965,12 @@
       "reason": "At its module-size cap: one import per declaring subpath would push it past the cap, so it keeps the root entry until the file is split.",
       "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
     },
-    "midgard-watcher/src/fault-proofs/fault-proof-objective-journal.ts": {
-      "reason": "Kept on the root because midgard-node-tools/devnet/watcher-journeys/readiness-evidence.test.ts stubs validateFraudProofWorkflowJournal on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
-      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
-    },
     "midgard-watcher/src/fault-proofs/fault-proof-progress-authority.ts": {
       "reason": "Kept on the root because midgard-node-tools/devnet/watcher-journeys/readiness-evidence.test.ts, midgard-watcher/tests/fault-proofs/fault-proof-progress-authority-recovery-bound.test.ts, midgard-watcher/tests/fault-proofs/fault-proof-progress-authority-retention.test.ts stub createWorkflowReconciliationPermitController, validateFraudProofWorkflowJournal on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
       "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/src/fault-proofs/fault-proof-supervisor.ts": {
       "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-objective-journal.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
-      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
-    },
-    "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.ts": {
-      "reason": "Kept on the root because midgard-watcher/tests/fault-proofs/watcher-installed-journey.test.ts stubs createWorkflowRuntimeFundingPolicy on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test). VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES also has no subpath yet.",
-      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
-    },
-    "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts": {
-      "reason": "At its module-size cap: one import per declaring subpath would push it past the cap, so it keeps the root entry until the file is split.",
-      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
-    },
-    "midgard-watcher/src/funding/prover-funding-authority.ts": {
-      "reason": "Evaluation-order preamble: midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/src/runtime/watcher-runtime.prepare-authority.ts": {
@@ -1119,10 +1007,6 @@
       "reason": "At its module-size cap: one import per declaring subpath would push it past the cap, so it keeps the root entry until the file is split.",
       "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
     },
-    "midgard-watcher/tests/funding/prover-funding-recovery.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
-      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
-    },
     "midgard-watcher/tests/published-da-target-consumption.test.ts": {
       "reason": "Evaluation-order preamble: midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
@@ -1134,14 +1018,6 @@
     "midgard-watcher/tests/runtime/secret-distinctness.test.ts": {
       "reason": "The test stubs resolveProverSigner on the fault-proofs root (vi.mock with a spread of the actual module) and imports that root to observe the stub; narrowing it is a test change, which the narrowing change made none of.",
       "sites": ["import * as FaultProofs from \"@al-ft/midgard-fault-proofs\";"]
-    },
-    "midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts": {
-      "reason": "At its module-size cap: one import per declaring subpath would push it past the cap, so it keeps the root entry until the file is split.",
-      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
-    },
-    "midgard-watcher/tests/support/fault-proof-funding-fixture.ts": {
-      "reason": "Evaluation-order preamble: midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
-      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts": {
       "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",

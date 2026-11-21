@@ -1,7 +1,3 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -19,12 +15,9 @@ import {
 } from "../src/workflow/family-l1-observation.js";
 import { createAuthenticatedFieldCarriagePrerequisitePort } from "../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
 import { withFieldCarriagePrerequisite } from "../src/workflow/field-carriage-prerequisite.with-field-carriage-prerequisite.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-  journalJsonDigest,
 } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
@@ -62,7 +55,7 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
     },
     { name: "maximum", direction: 0 as const, item: maximumItem },
   ])(
-    "captures, journals and restarts $name through proof mint and removal",
+    "captures and restarts $name through proof mint and removal",
     async (scenario) => {
       pinStepTranscript();
       const h = await makeDecodingEmulatorHarness();
@@ -169,30 +162,6 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
         target: { kind: "state_queue_header", headerHash: setup.headerHash },
       };
       const workflowId = computeFraudProofWorkflowId(identity);
-      const directory = await mkdtemp(
-        join(tmpdir(), "native-decoding-journal-"),
-      );
-      const append = async (event: FraudProofWorkflowJournalEvent) => {
-        const store = new DirectoryFraudProofWorkflowJournalStore(directory);
-        const entries = await store.load(workflowId);
-        await store.append(
-          {
-            schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
-            workflowId,
-            identity,
-            sequence: entries.length,
-            recordedAt: new Date().toISOString(),
-            event,
-          },
-          entries.length,
-        );
-      };
-      await append({ kind: "started" });
-      await append({
-        kind: "prepared",
-        artifact,
-        artifactDigest: journalJsonDigest(artifact),
-      });
       const threadUnit = toUnit(
         h.decoding.computationThread.policyId,
         h.category.categoryId + setup.headerHash,
@@ -253,7 +222,7 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
           };
         },
       };
-      // The subject field's carriage lands as the workflow's own journaled
+      // The subject field's carriage lands as the workflow's own
       // actions, under the family's declared requirement, before the step
       // that reads it.
       const [subjectField] =
@@ -283,22 +252,14 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
             spec: NATIVE_SCRIPT_DECODING_CURSOR_SPEC,
             l1,
             transactions: port,
-            stateQueueMutationLeaseCoordinator: leaseCoordinator,
           }),
         });
       for (let n = 0; n < 30; n++) {
-        const store = new DirectoryFraudProofWorkflowJournalStore(directory);
-        const entries = await store.load(workflowId);
-        const restored = JSON.parse(
-          JSON.stringify(
-            entries.find((row) => row.event.kind === "prepared")!.event,
-          ),
-        );
+        const restored = JSON.parse(JSON.stringify(artifact));
         const context = {
           identity,
           workflowId,
-          artifact: restored.artifact,
-          entries,
+          artifact: restored,
         };
         const current = adapter();
         const observation = await current.observe(context);
@@ -307,54 +268,9 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
         const action = observation.action;
         if (action.input.stage === "remove") break;
         const preflight = await current.preflight({ ...context, action });
-        await append({
-          kind: "preflight_passed",
-          actionId: action.actionId,
-          txHash: preflight.txHash,
-          localEvaluator: preflight.localUplcEvaluation.evaluator,
-          referenceScripts: preflight.referenceScripts,
-        });
-        await append({
-          kind: "submission_intent",
-          actionId: action.actionId,
-          actionInput: action.input,
-          ...(preflight.durableRecovery === undefined
-            ? {}
-            : { durableRecovery: preflight.durableRecovery }),
-          attempt: 1,
-          txHash: preflight.txHash,
-        });
         await current.submit({ ...context, action, preflight });
         h.emulator.awaitBlock();
         confirmed.add(preflight.txHash);
-        await append({
-          kind: "submission_ambiguous",
-          actionId: action.actionId,
-          attempt: 1,
-          txHash: preflight.txHash,
-          detail: "emulated restart after broadcast before receipt",
-        });
-        const recovered = await adapter().reconcile({
-          ...context,
-          action,
-          txHash: preflight.txHash,
-          durableRecovery: preflight.durableRecovery,
-        });
-        expect(recovered).toEqual({
-          kind: "confirmed",
-          txHash: preflight.txHash,
-        });
-        await append({
-          kind: "reconciled",
-          actionId: action.actionId,
-          outcome: "confirmed",
-          txHash: preflight.txHash,
-        });
-        await append({
-          kind: "confirmed",
-          actionId: action.actionId,
-          txHash: preflight.txHash,
-        });
       }
       expect(
         await h.proverLucid.utxosAtWithUnit(

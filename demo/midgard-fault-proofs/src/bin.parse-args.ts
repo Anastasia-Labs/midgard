@@ -69,7 +69,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let nativeTxCompactPath: string | undefined;
   let addrTxWitsPreimagePath: string | undefined;
   let badAddrTxWitIndex: string | undefined;
-  let workflowJournalDir: string | undefined;
   let workflowRuntimeConfigPath: string | undefined;
   let deploymentFingerprint: string | undefined;
   let correctionJournalPath: string | undefined;
@@ -262,9 +261,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--no-await-confirmation":
         awaitConfirmation = false;
         break;
-      case "--workflow-journal-dir":
-        workflowJournalDir = rest[++index];
-        break;
       case "--workflow-runtime-config":
         workflowRuntimeConfigPath = rest[++index];
         break;
@@ -345,7 +341,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     nativeTxCompactPath,
     addrTxWitsPreimagePath,
     badAddrTxWitIndex,
-    workflowJournalDir,
     workflowRuntimeConfigPath,
     deploymentFingerprint,
     correctionJournalPath,

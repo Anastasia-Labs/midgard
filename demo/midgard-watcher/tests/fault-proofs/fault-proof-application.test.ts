@@ -657,7 +657,6 @@ it("verifies completion deployment metadata without resolving wallet secrets", a
         category: "doubleSpend",
         headerHash: HEADER,
         decisionDigest: "cd".repeat(32),
-        entries: [],
         terminal: fundingTerminal(HEADER, "aa".repeat(32), "bb".repeat(32)),
       }),
     ).rejects.toThrow(/blueprint/u);

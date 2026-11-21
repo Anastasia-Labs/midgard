@@ -1,7 +1,6 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import { WorkflowActionChangedError } from "./action-changed.js";
-import { type JournalJsonObject } from "./journal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -11,16 +10,10 @@ import type {
   FraudProofWorkflowAction,
   FraudProofWorkflowPreflight,
 } from "./orchestrator.js";
-import { workflowConfirmedTransactions } from "./own-outputs.js";
 import { cacheKey } from "./proof-chunk-prerequisite.cache-key.js";
-import {
-  parseProofCarriageRecovery,
-  proofCarriageRecovery,
-} from "./proof-chunk-prerequisite.requirement-from-journaled-action.js";
 import {
   isPublicationAction,
   PROOF_CHUNK_PREREQUISITE,
-  type ProofCarriageRecovery,
   type ProofChunkPrerequisitePort,
   routeActionIdentity,
   sameJson,
@@ -37,7 +30,7 @@ import {
 } from "./transaction-boundary.js";
 
 /**
- * Adds a direct-first, journal-visible proof-carriage decision in front of an
+ * Adds a direct-first proof-carriage decision in front of an
  * exact family step. The wrapper first captures and locally evaluates the
  * complete direct transaction. It may publish proof chunks only when that
  * exact attempt fails with the release-bound CML max-transaction-size error.
@@ -72,12 +65,10 @@ export const withProofChunkPrerequisite = <
         kind: "direct";
         baseAction: FraudProofWorkflowAction;
         basePreflight: FraudProofWorkflowPreflight;
-        durableRecovery: JournalJsonObject;
       }>
     | Readonly<{
         kind: "publication";
         transaction: LocallyEvaluatedTransaction;
-        durableRecovery: JournalJsonObject;
       }>;
   const prepared = new Map<string, PreparedRoute>();
   const adapter: FraudProofFamilyWorkflowAdapter = {
@@ -105,18 +96,24 @@ export const withProofChunkPrerequisite = <
     observe: async (context) => {
       const observed = await base.observe(context);
       if (
-        context.reconciliationOnly === true ||
         observed.kind !== "action_required" ||
         context.identity.target.kind !== "state_queue_header"
       ) {
         return observed;
       }
-      const inspection = await prerequisite.inspect({
+      const step = {
         headerHash: context.identity.target.headerHash,
+        workflowId: context.workflowId,
         baseAction: observed.action,
         artifact: context.artifact,
-        entries: context.entries,
-      });
+      };
+      // A workflow under reconciliation-only authority builds nothing, but
+      // what its step needs stays out of every sweep.
+      if (context.reconciliationOnly === true) {
+        await prerequisite.need(step);
+        return observed;
+      }
+      const inspection = await prerequisite.inspect(step);
       if (inspection.kind === "required") {
         return { kind: "action_required", action: inspection.action };
       }
@@ -134,9 +131,9 @@ export const withProofChunkPrerequisite = <
         }
         const inspection = await prerequisite.inspect({
           headerHash: context.identity.target.headerHash,
+          workflowId: context.workflowId,
           baseAction: context.action,
           artifact: context.artifact,
-          entries: context.entries,
         });
         if (inspection.kind === "required" || inspection.kind === "pending") {
           throw new WorkflowActionChangedError(
@@ -147,9 +144,7 @@ export const withProofChunkPrerequisite = <
           action: context.action,
           route:
             inspection.kind === "satisfied"
-              ? {
-                  publication: workflowConfirmedTransactions(context.entries),
-                }
+              ? { published: inspection.chunks }
               : "direct",
           run: async () => await base.preflight(context),
         });
@@ -165,9 +160,9 @@ export const withProofChunkPrerequisite = <
       }
       const inspection = await prerequisite.inspect({
         headerHash: context.identity.target.headerHash,
+        workflowId: context.workflowId,
         baseAction: observed.action,
         artifact: context.artifact,
-        entries: context.entries,
       });
       if (
         inspection.kind !== "required" ||
@@ -202,8 +197,9 @@ export const withProofChunkPrerequisite = <
             }),
         });
       } catch (cause) {
-        const directCapacityFailure =
-          prerequisite.classifyDirectCapacityFailure(cause);
+        // Chunks are published only when the direct attempt fails on the
+        // release-bound transaction size; this throws on any other failure.
+        prerequisite.classifyDirectCapacityFailure(cause);
         const captured = await prerequisite.capture({
           headerHash: context.identity.target.headerHash,
           action: context.action,
@@ -220,19 +216,11 @@ export const withProofChunkPrerequisite = <
           transaction: captured.transaction,
           label: `${category} proof publication`,
         });
-        const durableRecovery = proofCarriageRecovery({
-          route: "publication",
-          baseAction: observed.action,
-          requirement: route.requirement,
-          directCapacityFailure,
-          publicationDurableRecovery: captured.durableRecovery,
-        });
         prepared.set(
           key,
           Object.freeze({
             kind: "publication",
             transaction: captured.transaction,
-            durableRecovery,
           }),
         );
         return bindWorkflowPreflightTransaction(
@@ -245,26 +233,16 @@ export const withProofChunkPrerequisite = <
               evaluator: LOCAL_UPLC_EVALUATOR,
             },
             referenceScripts: [],
-            durableRecovery,
           } satisfies FraudProofWorkflowPreflight,
           captured.transaction.signed,
         );
       }
-      const durableRecovery = proofCarriageRecovery({
-        route: "direct",
-        baseAction: observed.action,
-        requirement: route.requirement,
-        ...(direct.durableRecovery === undefined
-          ? {}
-          : { baseDurableRecovery: direct.durableRecovery }),
-      });
       prepared.set(
         key,
         Object.freeze({
           kind: "direct",
           baseAction: observed.action,
           basePreflight: direct,
-          durableRecovery,
         }),
       );
       return copyWorkflowPreflightTransaction({
@@ -272,7 +250,6 @@ export const withProofChunkPrerequisite = <
         to: {
           ...direct,
           actionId: context.action.actionId,
-          durableRecovery,
         } satisfies FraudProofWorkflowPreflight,
       });
     },
@@ -282,10 +259,7 @@ export const withProofChunkPrerequisite = <
       }
       const key = cacheKey(context.workflowId, context.action.actionId);
       const captured = prepared.get(key);
-      if (
-        captured === undefined ||
-        !sameJson(captured.durableRecovery, context.preflight.durableRecovery)
-      ) {
+      if (captured === undefined) {
         throw new Error(
           `${category} proof carriage has no exact locally evaluated body`,
         );
@@ -315,69 +289,6 @@ export const withProofChunkPrerequisite = <
       } finally {
         prepared.delete(key);
       }
-    },
-    reconcile: async (context) => {
-      if (!isPublicationAction(context.action)) {
-        return await base.reconcile(context);
-      }
-      if (context.identity.target.kind !== "state_queue_header") {
-        return {
-          kind: "conflict",
-          reason: `${category} proof publication changed workflow target`,
-        };
-      }
-      let route: ReturnType<typeof routeActionIdentity>;
-      let recovery: ProofCarriageRecovery;
-      try {
-        route = routeActionIdentity(context.action);
-        if (context.action.input.category !== category) {
-          throw new Error(`${category} proof carriage changed category`);
-        }
-        recovery = parseProofCarriageRecovery({
-          value: context.durableRecovery,
-          requirement: route.requirement,
-        });
-      } catch (cause) {
-        return { kind: "conflict", reason: String(cause) };
-      }
-      if (!sameJson(route.baseAction, recovery.baseAction)) {
-        return {
-          kind: "conflict",
-          reason: `${category} proof carriage recovery changed its base action`,
-        };
-      }
-      if (recovery.route === "direct") {
-        return await base.reconcile({
-          identity: context.identity,
-          workflowId: context.workflowId,
-          artifact: context.artifact,
-          entries: context.entries,
-          action: recovery.baseAction,
-          ...(context.signedTransactionCborHex === undefined
-            ? {}
-            : { signedTransactionCborHex: context.signedTransactionCborHex }),
-          ...(context.authorizeResubmission === undefined
-            ? {}
-            : { authorizeResubmission: context.authorizeResubmission }),
-          ...(context.txHash === undefined ? {} : { txHash: context.txHash }),
-          ...(recovery.baseDurableRecovery === undefined
-            ? {}
-            : { durableRecovery: recovery.baseDurableRecovery }),
-        });
-      }
-      return await prerequisite.reconcile({
-        headerHash: context.identity.target.headerHash,
-        ...(context.signedTransactionCborHex === undefined
-          ? {}
-          : { signedTransactionCborHex: context.signedTransactionCborHex }),
-        ...(context.authorizeResubmission === undefined
-          ? {}
-          : { authorizeResubmission: context.authorizeResubmission }),
-        action: context.action,
-        artifact: context.artifact,
-        ...(context.txHash === undefined ? {} : { txHash: context.txHash }),
-        durableRecovery: recovery.publicationDurableRecovery,
-      });
     },
   };
   return Object.freeze(adapter);

@@ -123,11 +123,18 @@ export const assertCanonicalComputationSteps = (
 
 export const rawToUtxo = (raw: FraudProofRawL1Utxo): UTxO => {
   const [txHash, outputIndex] = raw.outRef.split("#");
-  return {
-    txHash: txHash!,
-    outputIndex: Number(outputIndex),
-    ...coreToTxOutput(CML.TransactionOutput.from_cbor_hex(raw.outputCbor)),
-  };
+  // Freed here, not left to its finalizer: a capture's outputs are decoded
+  // within one turn, and one can carry a datum of hundreds of kilobytes.
+  const output = CML.TransactionOutput.from_cbor_hex(raw.outputCbor);
+  try {
+    return {
+      txHash: txHash!,
+      outputIndex: Number(outputIndex),
+      ...coreToTxOutput(output),
+    };
+  } finally {
+    output.free();
+  }
 };
 
 export const outRef = (utxo: UTxO): string =>

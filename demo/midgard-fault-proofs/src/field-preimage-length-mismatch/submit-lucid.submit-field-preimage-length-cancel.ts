@@ -7,7 +7,7 @@ import { fetchUtxoByOutRef, outRefLabel, parseOutRef } from "../runtime.js";
 import { requireComputationThreadToken } from "../step-support.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { ManifestBoundFieldPreimageLengthConfig } from "./config.js";
 
@@ -141,7 +141,7 @@ export type FieldPreimageLengthForcedDispatchBuild = Readonly<{
 }>;
 
 export type SubmitFieldPreimageLengthForcedDispatchResult =
-  UnjournaledSubmission<FieldPreimageLengthForcedDispatchBuild>;
+  OutsideWorkflowSubmission<FieldPreimageLengthForcedDispatchBuild>;
 
 export type FieldPreimageLengthClaimResolver = (
   completeReferenceInputs: readonly UTxO[],

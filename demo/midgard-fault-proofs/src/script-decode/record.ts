@@ -225,7 +225,7 @@ export const fitScriptDecodeWalk = async (
  * The record UTxO of `scriptBytes` in `language`, minting it if there is none
  * yet. An open run of the script (an interrupted earlier record) is resumed
  * from its on-chain cursor. The bytes are staged afresh unless `ownOutputs`
- * holds chunks an earlier call staged and journaled there, still live; they
+ * holds chunks an earlier call staged and claimed there, still live; they
  * are found by their out-refs, never by a search of an address.
  * Each Walk takes the most ticks that build within the ledger's limits
  * (`fitScriptDecodeWalk`). A Walk the ledger rejects is refitted after
@@ -253,7 +253,7 @@ export const recordScriptDecode = async ({
   readonly maxWalks?: number;
   readonly maxSubmitAttempts?: number;
   readonly refreshLedgerParameters?: () => Promise<void>;
-  /** Where the staged chunks are journaled, for a later call to reuse. */
+  /** Where the staged chunks are claimed, for a later call to reuse. */
   readonly ownOutputs?: OwnOutputJournal;
 }): Promise<{
   readonly recordUtxo: UTxO;

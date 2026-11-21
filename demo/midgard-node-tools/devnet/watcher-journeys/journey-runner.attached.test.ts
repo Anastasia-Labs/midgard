@@ -15,7 +15,6 @@ import {
   liveStatus,
   removeStackDirectories,
   runningStackWatcher,
-  seedWorkflowStarted,
   STACK_GENESIS,
   STACK_REQUIRED_BOND_LOVELACE,
 } from "./attached-journey-session.test-support.js";
@@ -48,10 +47,8 @@ const stackShiftCoverMs = () => {
 };
 
 describe("journey runner on an attached stack", () => {
-  it("reads the stack watcher's journals and the stack's genesis, holds operator-2, and launches nothing", async () => {
+  it("reads the stack's genesis, holds operator-2, and launches nothing", async () => {
     const stack = await runningStackWatcher(liveStatus());
-    const headerHash = "12".repeat(28);
-    await seedWorkflowStarted(stack.storePath, headerHash);
     const session = await openAttachedJourneySession(
       stack.context,
       stack.options(),
@@ -69,7 +66,6 @@ describe("journey runner on an attached stack", () => {
         ledgerAt: input.ledgerAt,
         readsConfirmedTransactions:
           typeof input.readConfirmedTransaction === "function",
-        baseline: await readJson(join(directory, "workflow-baseline.json")),
         timing: await readJson(join(directory, "timing-plan.json")),
       };
       throw new Error("staged");
@@ -88,10 +84,6 @@ describe("journey runner on an attached stack", () => {
       directory,
       ledgerAt: session.ledgerAt,
       readsConfirmedTransactions: true,
-      baseline: {
-        category: "doubleSpend",
-        prefixes: [{ headerHash, entryCount: 1 }],
-      },
       timing: {
         cadence: {
           slotLengthSeconds: STACK_GENESIS.slotLength,

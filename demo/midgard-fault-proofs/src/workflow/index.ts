@@ -8,7 +8,6 @@ export * from "./canonical-decodability.js";
 export * from "./catalogue-replay.js";
 export * from "./classification.js";
 export * from "./cli.js";
-export * from "./collateral-forfeiture.js";
 export * from "./committed-field-shape.js";
 export * from "./complete-replay.js";
 export * from "./completed-verification.js";
@@ -30,10 +29,11 @@ export * from "./family-definition.js";
 export * from "./family-l1-observation.js";
 export * from "./field-carriage-prerequisite.js";
 export * from "./forced-rejection-reason.js";
+export { isWorkflowFundingPauseReason } from "./funding-pause-reason.js";
 export * from "./funding-requirements.js";
 export * from "./funding-requirements-test-support.js";
-export * from "./funding-reservation-permit.js";
 export * from "./header-classifier.js";
+export * from "./in-flight.js";
 export * from "./input-no-idx.js";
 export * from "./input-set-uniqueness.js";
 export * from "./installed-categories.js";
@@ -58,16 +58,20 @@ export * from "./non-existent-input.js";
 export * from "./orchestrator.js";
 export {
   FRAUD_PROOF_OWN_THREADS_UNOBSERVABLE,
-  FRAUD_PROOF_THREAD_RECLAIM_REFUSED,
   FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE,
   FRAUD_PROOF_THREAD_RECLAIM_UNFUNDED,
-  type FraudProofThreadReclaim,
 } from "./own-thread-reclaim.js";
-export {
-  journaledProgress,
-  WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
-} from "./pending-continuation.js";
+export { WORKFLOW_CONTINUATION_QUIET_BOUND_MS } from "./pending-continuation.js";
 export * from "./proof-chunk-prerequisite.js";
+export { runProofMaterialsSweep } from "./proof-materials-sweep-run.js";
+export * from "./proof-materials-view.follower-reader.js";
+export {
+  createProofMaterialsView,
+  lucidProofMaterialsReader,
+  type ProofMaterialsObjective,
+  type ProofMaterialsReader,
+  type ProofMaterialsView,
+} from "./proof-materials-view.js";
 export * from "./raw-datum-preimage-prerequisite.js";
 export * from "./raw-l1-family-derivation.js";
 export * from "./raw-l1-publication-observation.js";
@@ -78,16 +82,11 @@ export * from "./release-finality-policy.js";
 export * from "./replay-requirements.js";
 export * from "./runtime.js";
 export { validationDisputeWalletMoveReserve } from "./runtime-funding-fee.js";
-export * from "./runtime-funding-policy.js";
 export {
-  reconcileSignedWorkflowTransaction,
+  isFinalAtReleaseDepth,
   type SignedTransactionRecoveryObservation,
   type SignedWorkflowTransaction,
 } from "./signed-transaction-reconciliation.js";
-export {
-  parseSignedWorkflowTransactionRetirement,
-  type SignedWorkflowTransactionRetirement,
-} from "./signed-transaction-retirement.js";
 export * from "./sqlite-busy.js";
 export * from "./superseded-attempt-read-schedule.js";
 export * from "./transaction-boundary.js";
@@ -97,3 +96,6 @@ export {
 } from "./wallet-only-send-gate.js";
 export * from "./withdrawn-input.js";
 export * from "./withdrawn-reference-input.js";
+export * from "./workflow-funding-shortfall.js";
+export * from "./workflow-run.js";
+export { restrictWorkflowWallet } from "./workflow-wallet.js";

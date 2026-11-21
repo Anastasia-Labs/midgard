@@ -9,7 +9,6 @@ import {
 } from "@al-ft/midgard-fault-proofs/workflow/family-application";
 import { FAMILY_APPLICATION_REGISTRY } from "@al-ft/midgard-fault-proofs/workflow/family-application-registry";
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import { MemoryFraudProofWorkflowJournalStore } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import type { FraudProofL1Source } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import {
   EMPTY_MERKLE_TREE_ROOT,
@@ -17,7 +16,7 @@ import {
   Header,
   type Header as HeaderType,
 } from "@al-ft/midgard-sdk/core";
-import { type AuthenticatedStateQueueHeaderObservation } from "@al-ft/midgard-sdk/fraud-proof";
+import type { AuthenticatedStateQueueHeaderObservation } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   type Provider,
@@ -432,11 +431,9 @@ describe("watcher decision-time predecessor ledger", () => {
     whileLoading?: () => void,
   ) => {
     const execution = {
-      mode: "run",
       category,
       deploymentFingerprint: DEPLOYMENT,
       headerHash: HEADER_HASH,
-      journal: new MemoryFraudProofWorkflowJournalStore(),
       runtimeConfigPath: FORWARDED_RUNTIME_CONFIG_PATH,
       decisionDigest: decisionDigestFor(category),
       actuationPermit: Object.freeze({
@@ -680,7 +677,6 @@ describe("watcher admitted runtime configuration", () => {
           category: "doubleSpend",
           headerHash: HEADER_HASH,
           decisionDigest: decisionDigestFor("doubleSpend"),
-          entries: [],
           terminal: fundingTerminal(
             HEADER_HASH,
             "aa".repeat(32),

@@ -21,6 +21,8 @@ export type JourneyWatcherStartStatus = {
       readiness?: string;
     }[];
   } & Record<string, unknown>;
+  /** The watcher's L1 holds; an objective's detail starts with its target. */
+  l1Readiness?: readonly { reason: string; detail: string }[];
 } & Record<string, unknown>;
 
 /**
@@ -64,4 +66,50 @@ export const journeyStartDeadlinePassed = (
   )
     return `The watcher's latest safe start for ${named} passed with its job queued and no step signed (remainingSafeStartMs ${supervisor.remainingSafeStartMs}), so it will not prove it`;
   return undefined;
+};
+
+/**
+ * Holds by which the watcher has itself given up on the objective: its
+ * continuation reached no new awaited action for its quiet bound, its
+ * counterparty's deadline passed unanswered, or the objective needs a
+ * manual resubmission.
+ */
+const JOURNEY_FATAL_HOLDS: ReadonlySet<string> = new Set([
+  "fault_proof_continuation_stalled",
+  "fault_proof_counterparty_deadline_passed",
+  "fault_proof_resubmission_required",
+]);
+
+/**
+ * Holds that pause the objective until a later run clears them: a refused L1
+ * read, unavailable prover funding, a held trace replay, or a quarantined
+ * run awaiting its backoff. One that outlasts the watcher's quiet bound with
+ * nothing of ours landing ends the correction.
+ */
+const isJourneyPausingHold = (reason: string) =>
+  reason === "prover_funding_unavailable" ||
+  reason === "validation_trace_replay_held" ||
+  reason === "fault_proof_objective_quarantined" ||
+  reason.startsWith("fault_proof_l1_refused:");
+
+/** The watcher's holds on this target, sorted into fatal and pausing. */
+export const journeyTargetHolds = (
+  { l1Readiness }: JourneyWatcherStartStatus,
+  target: JourneyWatcherJob,
+): Readonly<{
+  fatal: readonly string[];
+  pausing: readonly string[];
+}> => {
+  const named = `${target.category}/${target.headerHash}:`;
+  const held = (l1Readiness ?? []).filter(({ detail }) =>
+    detail.startsWith(named),
+  );
+  return {
+    fatal: held
+      .filter(({ reason }) => JOURNEY_FATAL_HOLDS.has(reason))
+      .map(({ reason, detail }) => `${reason} (${detail})`),
+    pausing: held
+      .filter(({ reason }) => isJourneyPausingHold(reason))
+      .map(({ reason }) => reason),
+  };
 };

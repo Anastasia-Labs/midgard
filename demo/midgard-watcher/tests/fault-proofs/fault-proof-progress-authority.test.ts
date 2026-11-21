@@ -1,7 +1,3 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   assertWorkflowActuationPermitIdentity,
@@ -9,54 +5,65 @@ import {
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import * as DecisionJournal from "../../src/fault-proofs/fault-decision-journal.js";
 import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { createWatcherFaultProofProgressAuthority } from "../../src/fault-proofs/fault-proof-progress-authority.js";
 import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";
-import { isWatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
-import { WATCHER_JOURNAL_DATABASE_FILE } from "../../src/fault-proofs/watcher-journal-database.js";
-import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-observation.js";
-import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.canonical-json.js";
-import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
-  cleanupFundingRecoveryFixtures,
+  cleanupClassifiedFaultFixtures,
   deploymentIdentity,
-} from "../support/fault-proof-funding-fixture.sources-for.js";
+  setupClassifiedFaultFixture,
+} from "../support/classified-fault-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { inFlightOf } from "../support/in-flight-fixture.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
-import { testStorageRoot } from "../support/test-storage-root.js";
 import {
-  emptyWorkflowJournal,
+  recordObjectives,
   TEST_JOURNAL_KEY,
 } from "../support/watcher-journal-fixture.js";
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  await cleanupFundingRecoveryFixtures();
+  await cleanupClassifiedFaultFixtures();
 });
-const setup = async (unsigned = false) => {
-  const fixture = await setupFundingRecoveryFixture(unsigned);
-  // Every read of the workflow journal, counted.
-  const readExecution = vi.fn(fixture.workflowJournal.readExecution);
+const setup = async () => {
+  const fixture = await setupClassifiedFaultFixture();
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot: fixture.journalRoot,
-    workflowJournal: { ...fixture.workflowJournal, readExecution },
     deploymentFingerprint: deploymentIdentity.manifestId,
     categories: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
+    ...inFlightOf(),
   });
   const observation = progressObservation({
     deploymentFingerprint: deploymentIdentity.manifestId,
+    header: {
+      header: fixture.fixture.header,
+      headerHash: fixture.old.headerHash,
+    },
   });
   return {
     fixture,
     authority,
-    readExecution,
     request: { observation, rollbackGeneration: "2" },
   };
 };
 
-describe("supervisor historical progress authority", () => {
+/** The live fault `decision` as the bridge hands it over, with a fresh
+ * submission permit. */
+const faultOf = (
+  observation: ReturnType<typeof progressObservation>,
+  decision: Awaited<ReturnType<typeof setupClassifiedFaultFixture>>["old"],
+  rollbackGeneration = "2",
+) => ({
+  decision,
+  deadline: watcherFaultProofDeadline(observation.finalizedHeaders[0]!),
+  actuationPermit: createWorkflowActuationPermitController({
+    decision,
+    rollbackGeneration,
+  }).permit,
+});
+
+describe("supervisor progress authority", () => {
   it("starts the proof deadline at an authenticated catch-up node's commit time", async () => {
     const test = await setup();
     const header = test.fixture.fixture.header;
@@ -83,277 +90,37 @@ describe("supervisor historical progress authority", () => {
     });
   });
 
-  it("indexes once, wakes historical work only for changed observations, and evicts acknowledged completion", async () => {
+  it("drives nothing an earlier process left: work starts only from a live fault", async () => {
     const test = await setup();
-    const load = test.readExecution;
-    const first = await test.authority.admit(test.request);
-    expect(first).toHaveLength(1);
-    expect(first[0]!.decision.decisionDigest).toBe(
-      test.fixture.old.decisionDigest,
-    );
-    expect(
-      assertWorkflowActuationPermitIdentity({
-        permit: first[0]!.actuationPermit,
-        category: "doubleSpend",
-        rollbackGeneration: "2",
-      }).authority,
-    ).toBe("reconciliation");
-    load.mockClear();
-    for (let i = 0; i < 50; i++)
-      expect(await test.authority.admit(test.request)).toEqual([]);
-    const changed = {
-      ...test.request,
-      observation: progressObservation({
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        revision: 2,
-      }),
-    };
-    expect((await test.authority.admit(changed))[0]!.actuationPermit).toBe(
-      first[0]!.actuationPermit,
-    );
-    expect(load).not.toHaveBeenCalled();
-    await test.authority.markCompleted(test.fixture.old);
-    expect(
-      await test.authority.admit({
-        ...changed,
-        observation: progressObservation({
-          deploymentFingerprint: deploymentIdentity.manifestId,
-          revision: 3,
+    // An earlier process's open objective.
+    recordObjectives(test.fixture.journalRoot, [
+      { category: "doubleSpend", headerHash: test.fixture.old.headerHash },
+    ]);
+    for (const revision of [1, 2, 3])
+      expect(
+        await test.authority.admit({
+          ...test.request,
+          observation: progressObservation({
+            deploymentFingerprint: deploymentIdentity.manifestId,
+            header: {
+              header: test.fixture.fixture.header,
+              headerHash: test.fixture.old.headerHash,
+            },
+            revision,
+          }),
         }),
-      }),
-    ).toEqual([]);
-    expect(load).not.toHaveBeenCalled();
-  });
-
-  it("wakes retained signed work once when the queue observation advances to a quiet native block", async () => {
-    const test = await setup();
-    expect(await test.authority.admit(test.request)).toHaveLength(1);
-    expect(await test.authority.admit(test.request)).toEqual([]);
-    const { observationDigest: _digest, ...prior } = test.request.observation;
-    const advanced = {
-      ...prior,
-      nativePoint: {
-        ...prior.nativePoint,
-        blockNo: (BigInt(prior.nativePoint.blockNo) + 1n).toString(),
-        slot: (BigInt(prior.nativePoint.slot) + 20n).toString(),
-        blockHash:
-          "27807a70215e3e018eec9be8c619c692e06a78ebcb63daf90d7abe823f3bbf47",
-      },
-    };
-    const quietObservation =
-      unsafeAdmitWatcherStateQueueObservationForReplayTest({
-        ...advanced,
-        observationDigest: watcherSha256CanonicalJson(advanced),
-      });
-    const request = { ...test.request, observation: quietObservation };
-    const contexts = await test.authority.admit(request);
+      ).toEqual([]);
+    expect(test.authority.unfinishedCount()).toBe(0);
+    // The fault, observed live, admits its objective afresh.
+    const contexts = await test.authority.admit({
+      ...test.request,
+      fault: faultOf(test.request.observation, test.fixture.old),
+    });
     expect(contexts).toHaveLength(1);
     expect(contexts[0]!.decision.decisionDigest).toBe(
       test.fixture.old.decisionDigest,
     );
-    expect(contexts[0]!.observationRevision).toBe(
-      `${quietObservation.observationDigest}:${advanced.nativePoint.blockHash}`,
-    );
-    for (let i = 0; i < 5; i++)
-      expect(await test.authority.admit(request)).toEqual([]);
-    expect(
-      await test.authority.admit({ ...request, rollbackGeneration: "1" }),
-    ).toEqual([]);
-  });
-
-  it("re-admits a completed execution decision appended by the live writer after startup cache creation", async () => {
-    const fixture = await setupFundingRecoveryFixture();
-    const journalRoot = await mkdtemp(
-      join(testStorageRoot, ".watcher-progress-decision-"),
-    );
-    try {
-      const journalInput = {
-        directory: journalRoot,
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        launchScope: installedLaunchScope(fixture.old.launchScope),
-        authenticationKey: TEST_JOURNAL_KEY,
-      };
-      const writer =
-        await DecisionJournal.openWatcherFaultDecisionJournal(journalInput);
-      const authority = createWatcherFaultProofProgressAuthority({
-        journalRoot,
-        workflowJournal: emptyWorkflowJournal(),
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        categories: installedLaunchScope(fixture.old.launchScope),
-        authenticationKey: TEST_JOURNAL_KEY,
-      });
-      const observation = progressObservation({
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        header: {
-          header: fixture.fixture.header,
-          headerHash: fixture.old.headerHash,
-        },
-      });
-      expect(
-        await authority.admit({ observation, rollbackGeneration: "1" }),
-      ).toEqual([]);
-      await writer.appendLiveDecision(fixture.old);
-      await writer.appendLiveDecision(fixture.fresh);
-      const admit = async (decision: typeof fixture.old) =>
-        authority.admit({
-          observation,
-          rollbackGeneration: "1",
-          fault: {
-            decision,
-            deadline: watcherFaultProofDeadline(
-              observation.finalizedHeaders[0]!,
-            ),
-            actuationPermit: createWorkflowActuationPermitController({
-              decision,
-              rollbackGeneration: "1",
-            }).permit,
-          },
-        });
-      await admit(fixture.old);
-      const execution = {
-        workflowId: fixture.initial.workflowId,
-        entries: fixture.originalEntries,
-      };
-      await authority.updateExecution({ objective: fixture.old, execution });
-      // Completion retires the in-memory objective while an already-coalesced
-      // invocation can still restore the same exact execution identity.
-      const refresh = vi.spyOn(
-        DecisionJournal,
-        "openWatcherFaultDecisionJournal",
-      );
-      await authority.markCompleted(fixture.old);
-      await admit(fixture.fresh);
-      await expect(
-        authority.updateExecution({ objective: fixture.old, execution }),
-      ).resolves.toBeUndefined();
-      for (let index = 0; index < 20; index++) {
-        await authority.markCompleted(fixture.old);
-        await authority.updateExecution({ objective: fixture.old, execution });
-      }
-      expect(refresh).not.toHaveBeenCalled();
-      expect(await writer.readAll()).toHaveLength(2);
-    } finally {
-      await rm(journalRoot, { recursive: true, force: true });
-    }
-  });
-
-  it.each(["recorded", "missing", "corrupt"] as const)(
-    "authenticates the live writer's current decision chain on a genuine cache miss (%s)",
-    async (availability) => {
-      const fixture = await setupFundingRecoveryFixture();
-      const journalRoot = await mkdtemp(
-        join(testStorageRoot, ".watcher-progress-decision-"),
-      );
-      try {
-        const writer = await DecisionJournal.openWatcherFaultDecisionJournal({
-          directory: journalRoot,
-          deploymentFingerprint: deploymentIdentity.manifestId,
-          launchScope: installedLaunchScope(fixture.old.launchScope),
-          authenticationKey: TEST_JOURNAL_KEY,
-        });
-        const authority = createWatcherFaultProofProgressAuthority({
-          journalRoot,
-          workflowJournal: emptyWorkflowJournal(),
-          deploymentFingerprint: deploymentIdentity.manifestId,
-          categories: installedLaunchScope(fixture.old.launchScope),
-          authenticationKey: TEST_JOURNAL_KEY,
-        });
-        await authority.admit({
-          observation: progressObservation({
-            deploymentFingerprint: deploymentIdentity.manifestId,
-          }),
-          rollbackGeneration: "1",
-        });
-        if (availability !== "missing")
-          await writer.appendLiveDecision(fixture.old);
-        await writer.appendLiveDecision(fixture.fresh);
-        if (availability === "corrupt") {
-          // Another writer alters the committed row behind the journal.
-          const raw = new DatabaseSync(
-            join(journalRoot, WATCHER_JOURNAL_DATABASE_FILE),
-          );
-          raw
-            .prepare(
-              "UPDATE watcher_fault_decisions SET body = '{}' WHERE row_key = ?",
-            )
-            .run(fixture.old.decisionDigest);
-          raw.close();
-        }
-        const refresh = vi.spyOn(
-          DecisionJournal,
-          "openWatcherFaultDecisionJournal",
-        );
-        const update = {
-          objective: fixture.old,
-          execution: {
-            workflowId: fixture.initial.workflowId,
-            entries: fixture.originalEntries,
-          },
-        };
-        if (availability === "recorded") {
-          await expect(
-            authority.updateExecution(update),
-          ).resolves.toBeUndefined();
-          for (let index = 0; index < 20; index++) {
-            await authority.markCompleted(fixture.old);
-            await authority.updateExecution(update);
-          }
-        } else if (availability === "missing") {
-          // A missing decision holds the objective by name.
-          const missing = authority.updateExecution(update);
-          await expect(missing).rejects.toThrow("omitted its exact recorded");
-          await expect(missing).rejects.toSatisfy(
-            isWatcherProofDecisionMissingError,
-          );
-          const { category, headerHash, decisionDigest } = fixture.old;
-          expect(authority.decisionHolds()).toMatchObject([
-            { kind: "objective", category, headerHash, decisionDigest },
-          ]);
-          expect(authority.unfinishedCount()).toBe(1);
-        } else {
-          await expect(authority.updateExecution(update)).rejects.toThrow(
-            `row ${fixture.old.decisionDigest} MAC differs`,
-          );
-          expect(authority.decisionHolds()).toEqual([]);
-        }
-        // The miss reads the writer's commits through the open journal; it
-        // never reopens it.
-        expect(refresh).not.toHaveBeenCalled();
-      } finally {
-        await rm(journalRoot, { recursive: true, force: true });
-      }
-    },
-  );
-
-  it("refreshes an initially unsigned indexed execution after its real journal records an intent", async () => {
-    const test = await setup(true);
-    // Its header is still queued, so the unsigned objective is not released.
-    expect(
-      await test.authority.admit({
-        ...test.request,
-        observation: progressObservation({
-          deploymentFingerprint: deploymentIdentity.manifestId,
-          header: test.fixture.fixture,
-        }),
-      }),
-    ).toEqual([]);
-    await test.fixture.append(test.fixture.events.preflight);
-    await test.fixture.append(test.fixture.events.submissionIntent);
-    const entries = await test.fixture.journal.load(
-      test.fixture.initial.workflowId,
-    );
-    await test.authority.updateExecution({
-      objective: test.fixture.old,
-      execution: { workflowId: test.fixture.initial.workflowId, entries },
-    });
-    const contexts = await test.authority.admit({
-      ...test.request,
-      observation: progressObservation({
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        revision: 2,
-      }),
-    });
-    expect(contexts).toHaveLength(1);
+    expect(test.authority.unfinishedCount()).toBe(1);
   });
 
   it("admits a new fault even on the same observation without mutating an active older permit", async () => {
@@ -407,13 +174,10 @@ describe("supervisor historical progress authority", () => {
 
   it("mints deadline recovery separately from the active submission permit", async () => {
     const test = await setup();
-    await test.authority.admit(test.request);
+    const fault = faultOf(test.request.observation, test.fixture.old);
+    await test.authority.admit({ ...test.request, fault });
     const permit = await test.authority.reconcileExecution({
       objective: test.fixture.old,
-      execution: {
-        workflowId: test.fixture.initial.workflowId,
-        entries: test.fixture.originalEntries,
-      },
       rollbackGeneration: "2",
     });
     expect(
@@ -426,69 +190,53 @@ describe("supervisor historical progress authority", () => {
       authority: "reconciliation",
       decisionDigest: test.fixture.old.decisionDigest,
     });
+    expect(
+      assertWorkflowActuationPermitIdentity({
+        permit: fault.actuationPermit,
+        category: "doubleSpend",
+        rollbackGeneration: "2",
+      }).authority,
+    ).toBe("submission");
   });
 });
 
 describe("supervisor progress authority: proof retention", () => {
   it("pins a newly admitted fault's header before indexing it, once", async () => {
-    const fixture = await setupFundingRecoveryFixture();
-    const journalRoot = await mkdtemp(
-      join(testStorageRoot, ".watcher-progress-decision-"),
-    );
-    try {
-      const writer = await DecisionJournal.openWatcherFaultDecisionJournal({
-        directory: journalRoot,
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        launchScope: installedLaunchScope(fixture.old.launchScope),
-        authenticationKey: TEST_JOURNAL_KEY,
-      });
-      const pinned: string[] = [];
-      const authority = createWatcherFaultProofProgressAuthority({
-        journalRoot,
-        workflowJournal: emptyWorkflowJournal(),
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        categories: installedLaunchScope(fixture.old.launchScope),
-        authenticationKey: TEST_JOURNAL_KEY,
-        retention: {
-          ...storelessProofRetention,
-          pin: async ({ category, headerHash }) => {
-            pinned.push(`${category}/${headerHash}`);
-            return { kind: "pinned" };
-          },
+    const fixture = await setupClassifiedFaultFixture();
+    const pinned: string[] = [];
+    const authority = createWatcherFaultProofProgressAuthority({
+      journalRoot: fixture.journalRoot,
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      categories: installedLaunchScope(fixture.old.launchScope),
+      authenticationKey: TEST_JOURNAL_KEY,
+      ...inFlightOf(),
+      retention: {
+        ...storelessProofRetention,
+        pin: async ({ category, headerHash }) => {
+          pinned.push(`${category}/${headerHash}`);
+          return { kind: "pinned" };
         },
+      },
+    });
+    const observation = progressObservation({
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      header: {
+        header: fixture.fixture.header,
+        headerHash: fixture.old.headerHash,
+      },
+    });
+    await authority.admit({ observation, rollbackGeneration: "1" });
+    expect(pinned).toEqual([]);
+    const admit = () =>
+      authority.admit({
+        observation,
+        rollbackGeneration: "1",
+        fault: faultOf(observation, fixture.old, "1"),
       });
-      const observation = progressObservation({
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        header: {
-          header: fixture.fixture.header,
-          headerHash: fixture.old.headerHash,
-        },
-      });
-      await authority.admit({ observation, rollbackGeneration: "1" });
-      expect(pinned).toEqual([]);
-      await writer.appendLiveDecision(fixture.old);
-      const admit = () =>
-        authority.admit({
-          observation,
-          rollbackGeneration: "1",
-          fault: {
-            decision: fixture.old,
-            deadline: watcherFaultProofDeadline(
-              observation.finalizedHeaders[0]!,
-            ),
-            actuationPermit: createWorkflowActuationPermitController({
-              decision: fixture.old,
-              rollbackGeneration: "1",
-            }).permit,
-          },
-        });
-      await admit();
-      await admit();
-      expect(pinned).toEqual([
-        `${fixture.old.category}/${fixture.old.headerHash}`,
-      ]);
-    } finally {
-      await rm(journalRoot, { recursive: true, force: true });
-    }
+    await admit();
+    await admit();
+    expect(pinned).toEqual([
+      `${fixture.old.category}/${fixture.old.headerHash}`,
+    ]);
   });
 });

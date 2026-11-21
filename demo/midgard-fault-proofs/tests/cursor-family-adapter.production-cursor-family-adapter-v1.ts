@@ -11,13 +11,13 @@ import { workflowPreflightTransaction } from "../src/workflow/transaction-bounda
 import {
   context,
   hash,
+  headerHash,
+  identity,
   l1,
-  noLeaseCoordinator,
   outRef,
   port,
   required,
   signed,
-  terminal,
   transaction,
   txHash,
 } from "./cursor-family-adapter.terminal.js";
@@ -36,7 +36,6 @@ describe("production cursor family adapter V1", () => {
       spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
     });
     const original = await adapter.observe(context);
     if (original.kind !== "action_required") throw new Error("missing action");
@@ -54,7 +53,13 @@ describe("production cursor family adapter V1", () => {
     expect(capture).toHaveBeenCalledExactlyOnceWith({
       action: current.action,
       artifact: context.artifact,
-      entries: context.entries,
+      holder: {
+        workflowId: context.workflowId,
+        objective: {
+          category: identity.category,
+          headerHash,
+        },
+      },
     });
   });
 
@@ -70,7 +75,6 @@ describe("production cursor family adapter V1", () => {
       spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
     });
     const original = required(stage.value);
     const action = {
@@ -107,7 +111,6 @@ describe("production cursor family adapter V1", () => {
       spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
     });
     const action = required(stage.value);
     const preflight = await adapter.preflight({ ...context, action });
@@ -149,7 +152,6 @@ describe("production cursor family adapter V1", () => {
       spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
     });
     await expect(
       adapter.preflight({
@@ -180,7 +182,6 @@ describe("production cursor family adapter V1", () => {
         spec: THIRTEEN_STEP_CURSOR_SPEC,
         l1: l1(stage),
         transactions: port(async () => ({ transaction: hostile })),
-        stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
       });
       await expect(
         hostileAdapter.preflight({ ...context, action }),
@@ -188,53 +189,7 @@ describe("production cursor family adapter V1", () => {
     }
   });
 
-  it("reconciles an ambiguous submitted body after a fresh-process restart", async () => {
-    const stage = {
-      value: {
-        kind: "step",
-        step: 5,
-        threadOutRef: outRef("11"),
-        stateQueueBlockOutRef: outRef("10"),
-      } as FraudProofRawL1FamilyStage,
-    };
-    const action = required(stage.value);
-    const first = createCursorFamilyWorkflowAdapter({
-      spec: THIRTEEN_STEP_CURSOR_SPEC,
-      l1: l1(stage),
-      transactions: port(async () => ({
-        transaction: transaction({
-          signed: signed({
-            submit: async () => {
-              stage.value = {
-                kind: "step",
-                step: 5,
-                threadOutRef: `${txHash}#0`,
-                stateQueueBlockOutRef: outRef("10"),
-              };
-              throw new Error("connection closed after submission");
-            },
-          }),
-        }),
-      })),
-      stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
-    });
-    const preflight = await first.preflight({ ...context, action });
-    await expect(
-      first.submit({ ...context, action, preflight }),
-    ).rejects.toThrow("connection closed after submission");
-
-    const fresh = createCursorFamilyWorkflowAdapter({
-      spec: THIRTEEN_STEP_CURSOR_SPEC,
-      l1: l1(stage, async (candidate) => candidate === txHash),
-      transactions: port(async () => ({ transaction: transaction() })),
-      stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
-    });
-    await expect(
-      fresh.reconcile({ ...context, action, txHash }),
-    ).resolves.toEqual({ kind: "confirmed", txHash });
-  });
-
-  it("resumes, renews, releases, and fails the durable descendant-removal lease", async () => {
+  it("ends the descendant-removal lease with the removal's submission", async () => {
     const proofOutRef = outRef("22");
     const removalOutRef = outRef("33");
     const stage = {
@@ -246,131 +201,36 @@ describe("production cursor family adapter V1", () => {
       } as FraudProofRawL1FamilyStage,
     };
     const action = required(stage.value);
-    const lease = () => ({
+    const acquired = {
       token: "cursor-removal-lease",
       source: "state-queue-observer-v1",
       renew: vi.fn(async () => undefined),
       release: vi.fn(async () => undefined),
       fail: vi.fn(async () => undefined),
-    });
-    const acquired = lease();
+    };
     const capturedRemoval = transaction();
-    const first = createCursorFamilyWorkflowAdapter({
+    const adapter = createCursorFamilyWorkflowAdapter({
       spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(async () => ({
         transaction: capturedRemoval,
         mutationLease: acquired,
       })),
-      stateQueueMutationLeaseCoordinator: { acquire: async () => acquired },
     });
-    const preflight = await first.preflight({ ...context, action });
+    const preflight = await adapter.preflight({ ...context, action });
     expect(workflowPreflightTransaction(preflight)).toBe(
       capturedRemoval.signed,
     );
-    expect(preflight.durableRecovery).toEqual({
-      stateQueueMutationLease: {
-        token: acquired.token,
-        source: acquired.source,
-      },
-    });
-
-    const pendingLease = lease();
-    const pending = createCursorFamilyWorkflowAdapter({
-      spec: THIRTEEN_STEP_CURSOR_SPEC,
-      l1: l1(stage, async () => true),
-      transactions: port(async () => ({ transaction: transaction() })),
-      stateQueueMutationLeaseCoordinator: {
-        acquire: async () => pendingLease,
-        resume: async () => pendingLease,
-      },
-    });
+    expect(acquired.release).not.toHaveBeenCalled();
     await expect(
-      pending.reconcile({
-        ...context,
-        action,
-        txHash,
-        durableRecovery: preflight.durableRecovery,
-      }),
-    ).resolves.toEqual({ kind: "pending", txHash });
-    expect(pendingLease.renew).toHaveBeenCalledTimes(1);
-
-    const releasedLease = lease();
-    stage.value = { kind: "removed", terminal: terminal() };
-    const confirmed = createCursorFamilyWorkflowAdapter({
-      spec: THIRTEEN_STEP_CURSOR_SPEC,
-      l1: l1(stage, async () => true),
-      transactions: port(async () => ({ transaction: transaction() })),
-      stateQueueMutationLeaseCoordinator: {
-        acquire: async () => releasedLease,
-        resume: async () => releasedLease,
-      },
-    });
-    await expect(
-      confirmed.reconcile({
-        ...context,
-        action,
-        txHash,
-        durableRecovery: preflight.durableRecovery,
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash });
-    expect(releasedLease.release).toHaveBeenCalledTimes(1);
-
-    const expiredResume = vi.fn(async () => {
-      throw new Error("old mutation lease expired after confirmed removal");
-    });
-    const expired = createCursorFamilyWorkflowAdapter({
-      spec: THIRTEEN_STEP_CURSOR_SPEC,
-      l1: l1(stage, async () => true),
-      transactions: port(async () => {
-        throw new Error("must not rebuild");
-      }),
-      stateQueueMutationLeaseCoordinator: {
-        acquire: async () => {
-          throw new Error("must not acquire");
-        },
-        resume: expiredResume,
-      },
-    });
-    await expect(
-      expired.reconcile({
-        ...context,
-        action: action,
-        txHash,
-        durableRecovery: preflight.durableRecovery,
-        authorizeResubmission: async () => {
-          throw new Error("must not submit");
-        },
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash });
-    expect(expiredResume).toHaveBeenCalledTimes(1);
-
-    const failedLease = lease();
-    stage.value = {
-      kind: "removed",
-      terminal: terminal({ removedOutRef: outRef("34") }),
-    };
-    const conflicted = createCursorFamilyWorkflowAdapter({
-      spec: THIRTEEN_STEP_CURSOR_SPEC,
-      l1: l1(stage, async () => true),
-      transactions: port(async () => ({ transaction: transaction() })),
-      stateQueueMutationLeaseCoordinator: {
-        acquire: async () => failedLease,
-        resume: async () => failedLease,
-      },
-    });
-    await expect(
-      conflicted.reconcile({
-        ...context,
-        action,
-        txHash,
-        durableRecovery: preflight.durableRecovery,
-      }),
-    ).resolves.toMatchObject({ kind: "conflict" });
-    expect(failedLease.fail).toHaveBeenCalledTimes(1);
+      adapter.submit({ ...context, action, preflight }),
+    ).resolves.toEqual({ kind: "submitted", txHash });
+    expect(acquired.release).toHaveBeenCalledTimes(1);
+    expect(acquired.fail).not.toHaveBeenCalled();
+    expect(acquired.renew).not.toHaveBeenCalled();
   });
 
-  it("fails an acquired lease if signed-body admission fails before durable intent", async () => {
+  it("fails an acquired lease if signed-body admission fails before submission", async () => {
     const stage = {
       value: {
         kind: "proof_token",
@@ -394,7 +254,6 @@ describe("production cursor family adapter V1", () => {
         transaction: transaction({ signed: signed({ inlineScript: true }) }),
         mutationLease: lease,
       })),
-      stateQueueMutationLeaseCoordinator: { acquire: async () => lease },
     });
     await expect(adapter.preflight({ ...context, action })).rejects.toThrow(
       "embeds inline script witnesses",

@@ -27,7 +27,6 @@ export {
   type WatcherFaultProofDeadline,
   watcherFaultProofDeadline,
   type WatcherFaultProofJob,
-  type WatcherFaultProofReconciliation,
   type WatcherFaultProofSupervisor,
   type WatcherFaultProofSupervisorStatus,
 } from "./fault-proof-supervisor.validate-job.js";

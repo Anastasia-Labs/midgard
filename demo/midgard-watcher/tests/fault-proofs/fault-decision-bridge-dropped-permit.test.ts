@@ -1,18 +1,15 @@
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";
 import { WatcherRetainedHeaderAttestationPendingError } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
-import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
 import { harness } from "./fault-decision-bridge.harness.js";
 import {
   type decision,
   headerFixture,
   observation,
 } from "./fault-decision-bridge.observation.js";
-
-afterEach(cleanupFundingRecoveryFixtures);
 
 describe("a fault target the bridge stops using", () => {
   it.each([
@@ -134,11 +131,6 @@ describe("a fault target the bridge stops using", () => {
     expect(target?.headerHash).toBe(targeted!.headerHash);
     // Its run returned retryable: the retry holds the permit it was handed.
     const retryPermit = h.progressRequests[0]!.fault!.actuationPermit;
-    const journaled = () =>
-      test.fixture.workflowJournal
-        .readExecution(test.fixture.objective)
-        ?.entries.map(({ event }) => event.kind);
-    const before = journaled();
 
     // Our removal landed: the header left the queue.
     const departed = {
@@ -157,7 +149,6 @@ describe("a fault target the bridge stops using", () => {
     });
     expect(retried).toMatchObject({ kind: "authority_revoked" });
     expect(test.runOrResume).not.toHaveBeenCalled();
-    expect(journaled()).toEqual(before);
     expect(test.execution.readiness()).not.toContainEqual(
       expect.objectContaining({ reason: WATCHER_FAULT_PROOF_QUARANTINED }),
     );

@@ -24,5 +24,6 @@ export const sceneCaseHistory = (
     );
   return {
     transactions: async (input) => await (await history).transactions(input),
+    snapshot: async (input) => await (await history).snapshot!(input),
   };
 };

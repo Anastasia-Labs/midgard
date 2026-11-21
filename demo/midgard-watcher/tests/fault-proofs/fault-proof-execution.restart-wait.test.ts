@@ -1,9 +1,8 @@
 /** A run held by the restart wait: the objective is pending under
- * `fault_proof_restart_wait`, the reservation minted for the run is released
- * on the way out, no observation admits it again while the wait lasts, and
- * the first one after the wait is over runs it. */
+ * `fault_proof_restart_wait`, each observation while the wait lasts runs it
+ * again and leaves it held the same way, and the first one after the wait is
+ * over sends its action. */
 import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { setTimeout as waitForDisk } from "node:timers/promises";
 
 import { WALLET_ONLY_VALIDITY_MS } from "@al-ft/midgard-fault-proofs/wallet-only-validity";
@@ -11,19 +10,11 @@ import type { WorkflowAdapterRunnerInput } from "@al-ft/midgard-fault-proofs/wor
 import { FAULT_PROOF_RESTART_WAIT } from "@al-ft/midgard-fault-proofs/workflow/wallet-only-send-gate";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
-import {
-  cleanupFundingRecoveryFixtures,
-  deploymentIdentity,
-} from "../support/fault-proof-funding-fixture.sources-for.js";
-import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
 const paths: string[] = [];
 afterEach(async () => {
-  await cleanupFundingRecoveryFixtures();
   await Promise.all(
     paths.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
@@ -38,23 +29,8 @@ const waitFor = async (predicate: () => boolean) => {
 };
 
 describe("supervisor execution under the restart wait", () => {
-  it("holds a gated run pending, releases its reservation, and runs it once the wait is over", async () => {
-    const test = await setupFaultProofExecution(true);
-    // The run's decision is recorded where its funding is, as in a watcher
-    // process: an unused reservation of it is released when the run ends.
-    const decisions = await openWatcherFaultDecisionJournal({
-      directory: join(test.fixture.journalRoot, "fresh"),
-      deploymentFingerprint: deploymentIdentity.manifestId,
-      launchScope: installedLaunchScope(test.fixture.fresh.launchScope),
-      authenticationKey: TEST_JOURNAL_KEY,
-    });
-    await decisions.appendLiveDecision(test.fixture.fresh);
-    const fresh = test.fixture.fresh.decisionDigest;
-    // The wallet coins the run's decision holds in its reservations.
-    const coinsHeld = async () =>
-      (await test.fixture.records())
-        .filter((record) => record.decisionDigest === fresh)
-        .flatMap(({ activeInputs }) => activeInputs);
+  it("holds a gated run pending at every observation, and sends its action once the wait is over", async () => {
+    const test = await setupFaultProofExecution();
     const objective = `doubleSpend/${test.input.job.headerHash}`;
     const reason = `${FAULT_PROOF_RESTART_WAIT}: init spends only wallet coins`;
     // What the runner hands back for a wallet-only action held by the wait.
@@ -63,13 +39,10 @@ describe("supervisor execution under the restart wait", () => {
       reason,
       resumeOnObservation: true,
       namedState: { name: FAULT_PROOF_RESTART_WAIT, alarm: false },
-      entries: [],
     };
-    const heldDuringRun: number[] = [];
     let proceeded = 0;
     test.runOrResume.mockImplementation(
       async (invocation: WorkflowAdapterRunnerInput) => {
-        heldDuringRun.push((await coinsHeld()).length);
         if (!(await invocation.walletOnlySend.open())) return gated;
         proceeded++;
         return {
@@ -96,7 +69,7 @@ describe("supervisor execution under the restart wait", () => {
         const outcome = await test.execution.execute({
           ...test.input,
           job: { ...test.input.job, mode: "run" },
-          admission: { ...admission, mode: "run", funding: "create_or_resume" },
+          admission: { ...admission, mode: "run" },
         });
         outcomes.push(outcome);
         return outcome;
@@ -139,21 +112,17 @@ describe("supervisor execution under the restart wait", () => {
       expect(test.execution.readiness()).toEqual([
         { reason: FAULT_PROOF_RESTART_WAIT, detail: `${objective}: ${reason}` },
       ]);
-      // The run held a fresh reservation, and nothing of it is held after the
-      // gated return.
-      expect(heldDuringRun).toHaveLength(1);
-      expect(heldDuringRun[0]).toBeGreaterThan(0);
-      expect(await coinsHeld()).toEqual([]);
 
       // The clock is past the instant, the follower's applied block is not:
-      // no observation admits the held objective, so nothing is rebuilt or
-      // preflighted again, and its named state stays in readiness.
+      // each observation admits the objective, whose run, left with only the
+      // held action, ends held again and keeps its named state in readiness.
       const instantSlot = (constructedAtMs + WALLET_ONLY_VALIDITY_MS) / 1_000;
       now = constructedAtMs + WALLET_ONLY_VALIDITY_MS;
       for (const [index, revision] of ["second", "third", "fourth"].entries()) {
         applied = instantSlot - 3 + index;
-        await admitted(revision, 1);
-        expect(test.runOrResume).toHaveBeenCalledTimes(1);
+        await admitted(revision, index + 2);
+        expect(test.runOrResume).toHaveBeenCalledTimes(index + 2);
+        expect(outcomes.at(-1)).toEqual(outcomes[0]);
         expect(test.execution.readiness()).toEqual([
           {
             reason: FAULT_PROOF_RESTART_WAIT,
@@ -163,12 +132,12 @@ describe("supervisor execution under the restart wait", () => {
       }
       expect(proceeded).toBe(0);
 
-      // The next block is past it too: the next observation runs the action.
+      // The next block is past it too: the next observation sends the action.
       applied = instantSlot;
-      await admitted("fifth", 2);
+      await admitted("fifth", 5);
       expect(proceeded).toBe(1);
       expect(test.execution.readiness()).toEqual([]);
-      expect(test.runOrResume).toHaveBeenCalledTimes(2);
+      expect(test.runOrResume).toHaveBeenCalledTimes(5);
     } finally {
       await supervisor.close();
     }

@@ -1,5 +1,6 @@
 /**
- * The follower's L1 degradations reach status and metrics without failing
+ * The follower's L1 degradations, and the own-thread sweep's beside them,
+ * reach status and metrics without failing
  * readiness (ruling C on permanently unresolvable tx inputs), while the same
  * name as a follower readiness reason makes the watcher not ready; the
  * decision driver's reasons reach readiness the same way.
@@ -10,6 +11,7 @@ import {
 } from "@al-ft/midgard-l1-follower";
 import { describe, expect, it } from "vitest";
 
+import { FAULT_PROOF_OWN_THREAD_UNRECLAIMED } from "../../src/fault-proofs/own-thread-sweep.js";
 import type { WatcherFollowerReadiness } from "../../src/l1-follower/follower-runtime.js";
 import {
   L1_TX_INPUTS_UNRESOLVABLE,
@@ -20,7 +22,10 @@ import {
   WATCHER_DECISION_PASS_FAILED,
   type WatcherDecisionReadiness,
 } from "../../src/runtime/watcher-runtime.decision-driver.js";
-import { createWatcherL1Readiness } from "../../src/runtime/watcher-runtime.l1-readiness.js";
+import {
+  createWatcherL1Readiness,
+  PROOF_MATERIALS_SWEEP_CLOSED,
+} from "../../src/runtime/watcher-runtime.l1-readiness.js";
 import { supervisor } from "./operations-observability.supervisor.js";
 
 const MANIFEST = "11".repeat(32);
@@ -31,6 +36,9 @@ const watcher = (
     degradations: readonly WatcherL1Degradation[];
   }>,
   driver: readonly WatcherDecisionReadiness[] = [],
+  /** Degradations beside the follower's, as the own-thread sweep adds. */
+  beside: () => readonly WatcherL1Degradation[] = () => [],
+  sweepClosed: readonly string[] = [],
 ) => {
   const l1 = createWatcherL1Readiness({
     follower: {
@@ -38,6 +46,9 @@ const watcher = (
       degradations: () => Promise.resolve(follower.degradations),
     },
     driver: () => ({ readiness: () => driver }),
+    proofMaterials: {
+      sweepClosed: () => sweepClosed,
+    },
   });
   const observability = createWatcherOperationsObservability({
     deploymentFingerprint: MANIFEST,
@@ -52,7 +63,7 @@ const watcher = (
     }),
     retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
     l1Readiness: l1.read,
-    l1Degradations: l1.degradations,
+    l1Degradations: () => [...l1.degradations(), ...beside()],
     nowMs: () => 100_000n,
   });
   observability.sink.recordL1Source({
@@ -85,6 +96,53 @@ describe("L1 degradations in operations observability", () => {
     });
     expect(w.api.metrics().l1Degradations).toEqual({
       [L1_TX_INPUTS_UNRESOLVABLE]: "3",
+    });
+  });
+
+  it("reports the own-thread sweep's degradation beside the follower's and stays ready", async () => {
+    const unreclaimed = {
+      reason: FAULT_PROOF_OWN_THREAD_UNRECLAIMED,
+      count: 1,
+      detail: `${"ab".repeat(32)}#0 lovelace=3000000 unfunded: no fee coin`,
+    };
+    const w = watcher(
+      {
+        readiness: [],
+        degradations: [
+          { reason: L1_TX_INPUTS_UNRESOLVABLE, count: 3, detail: "no proof" },
+        ],
+      },
+      [],
+      () => [unreclaimed],
+    );
+    await w.l1.refresh();
+    expect(w.api.status()).toMatchObject({
+      readiness: "ready",
+      readinessReasons: [],
+      l1Degradations: [
+        { reason: L1_TX_INPUTS_UNRESOLVABLE, count: "3", detail: "no proof" },
+        { ...unreclaimed, count: "1" },
+      ],
+    });
+    expect(w.api.metrics().l1Degradations).toEqual({
+      [L1_TX_INPUTS_UNRESOLVABLE]: "3",
+      [FAULT_PROOF_OWN_THREAD_UNRECLAIMED]: "1",
+    });
+  });
+
+  it("reports why the proof-materials sweep is closed in status and stays ready", async () => {
+    const detail =
+      "addr_test1_materials: the first admission pass at the follower tip has not completed in this process";
+    const w = watcher({ readiness: [], degradations: [] }, [], () => [], [
+      detail,
+    ]);
+    await w.l1.refresh();
+    expect(w.api.status()).toMatchObject({
+      readiness: "ready",
+      readinessReasons: [],
+      l1Degradations: [
+        { reason: PROOF_MATERIALS_SWEEP_CLOSED, count: "1", detail },
+      ],
     });
   });
 

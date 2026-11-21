@@ -8,30 +8,22 @@ import {
 import type { ResolvedProverSigner } from "../runtime.js";
 import { type JournalJsonObject } from "./journal.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
-import { recoveryForTransaction } from "./proof-chunk-prerequisite.recovery-for-transaction.js";
-import {
-  parseProofCarriageRecovery,
-  parseRecovery,
-  requirementFromJournaledAction,
-} from "./proof-chunk-prerequisite.requirement-from-journaled-action.js";
 import {
   exact,
   PROOF_CHUNK_PREREQUISITE,
   type ProofChunkPrerequisitePort,
-  type ProofChunkPublicationRecovery,
   type ProofChunkRequirement,
   publicationAction,
   record,
   requirementFor,
   sameJson,
   sha256,
-  TX_HASH,
 } from "./proof-chunk-prerequisite.route-action-identity.js";
+import { proofMaterialsViewFor } from "./proof-materials-view.js";
 import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
   type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation.js";
-import { reconcileSignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
 
 /**
  * Concrete authenticated publication port. Lucid is used only to build/query
@@ -47,7 +39,6 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
   publications,
   proofCborForAction,
   maximumTransactionBytes,
-  transactionConfirmed,
 }: {
   readonly category: Category;
   readonly lucid: LucidEvolution;
@@ -60,10 +51,6 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
   }) => string | null | Promise<string | null>;
   /** Exact `cardanoProtocolParameters.snapshot.maxTxSize` from the manifest. */
   readonly maximumTransactionBytes?: string | number;
-  readonly transactionConfirmed: (input: {
-    readonly headerHash: string;
-    readonly txHash: string;
-  }) => Promise<boolean>;
 }): ProofChunkPrerequisitePort<Category> => {
   if (
     publications.observerVersion !==
@@ -167,6 +154,12 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
     }
     return { requirement: required };
   };
+  const materials = () =>
+    proofMaterialsViewFor({
+      view: signer.proofMaterials,
+      lucid,
+      address: signer.proofMaterialsAddress,
+    });
   const observeOutputs = async ({
     headerHash,
     outputs,
@@ -224,7 +217,19 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
         errorSha256: sha256(message),
       });
     },
-    inspect: async ({ headerHash, baseAction, artifact, entries }) => {
+    need: async ({ headerHash, workflowId, baseAction, artifact }) => {
+      const required = await requirement({
+        headerHash,
+        action: baseAction,
+        artifact,
+      });
+      if (required !== null && required.chunkDatums.length > 0)
+        materials().need(
+          { workflowId, objective: { category, headerHash } },
+          required.chunkDatums,
+        );
+    },
+    inspect: async ({ headerHash, workflowId, baseAction, artifact }) => {
       const required = await requirement({
         headerHash,
         action: baseAction,
@@ -233,52 +238,20 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
       if (required === null || required.chunkDatums.length === 0) {
         return { kind: "not_required" };
       }
+      const view = materials();
       const routeAction = publicationAction({
         category,
         baseAction,
         requirement: required,
       });
-      const confirmation = [...entries]
-        .reverse()
-        .find(
-          (entry) =>
-            entry.event.kind === "confirmed" &&
-            entry.event.actionId === routeAction.actionId,
-        )?.event;
-      const confirmed = confirmation?.kind === "confirmed";
-      const intent = [...entries]
-        .reverse()
-        .find(
-          (entry) =>
-            entry.event.kind === "submission_intent" &&
-            entry.event.actionId === routeAction.actionId,
-        );
-      let publicationAuthorized = false;
-      let publicationTxHash: string | undefined;
-      if (
-        confirmed &&
-        intent !== undefined &&
-        intent.event.kind === "submission_intent"
-      ) {
-        const recovery = parseProofCarriageRecovery({
-          value: intent.event.durableRecovery,
-          requirement: required,
-        });
-        publicationAuthorized =
-          recovery.route === "publication" &&
-          sameJson(recovery.baseAction, baseAction);
-        // The publication that landed: its chunks alone are ours.
-        publicationTxHash =
-          confirmation?.kind === "confirmed" ? confirmation.txHash : undefined;
-      }
-      if (!publicationAuthorized || publicationTxHash === undefined) {
-        return { kind: "required", action: routeAction };
-      }
+      // Found by content: an earlier publication of this workflow, of
+      // another, or a copy anyone paid, as long as it is plainly shaped.
       const chunks = await resolvePublishedProofChunks({
         lucid,
         address: signer.proofMaterialsAddress,
         proofCbor: required.proofCbor,
-        ownTransactions: new Set([publicationTxHash]),
+        view,
+        holder: { workflowId, objective: { category, headerHash } },
       });
       if (chunks === undefined) {
         return { kind: "required", action: routeAction };
@@ -291,7 +264,7 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
         })),
       });
       return outputsConfirmed.every(Boolean)
-        ? { kind: "satisfied" }
+        ? { kind: "satisfied", chunks }
         : {
             kind: "pending",
             reason: `${category} exact proof chunks exist but are not authenticated on the current chain`,
@@ -307,75 +280,7 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
           proofCbor: required.proofCbor,
         })
       ).transaction;
-      return {
-        transaction,
-        durableRecovery: recoveryForTransaction({
-          transaction,
-          requirement: required,
-          address: signer.proofMaterialsAddress,
-        }),
-      };
-    },
-    reconcile: async ({
-      headerHash,
-      action,
-      txHash,
-      durableRecovery,
-      signedTransactionCborHex,
-      authorizeResubmission,
-    }) => {
-      let required: ProofChunkRequirement;
-      try {
-        required = requirementFromJournaledAction({
-          category,
-          action,
-          durableRecovery,
-        });
-      } catch (cause) {
-        return { kind: "conflict", reason: String(cause) };
-      }
-      if (txHash === undefined || !TX_HASH.test(txHash)) {
-        return {
-          kind: "conflict",
-          reason: `${category} proof-chunk intent omitted its exact transaction hash`,
-        };
-      }
-      let recovery: ProofChunkPublicationRecovery;
-      try {
-        recovery = parseRecovery({
-          value: durableRecovery,
-          requirement: required,
-          txHash,
-        });
-      } catch (cause) {
-        return { kind: "conflict", reason: String(cause) };
-      }
-      const confirmed = await observeOutputs({
-        headerHash,
-        outputs: recovery.outputs,
-      });
-      if (confirmed.every(Boolean)) {
-        return { kind: "confirmed", txHash };
-      }
-      const included = await transactionConfirmed({ headerHash, txHash });
-      if (confirmed.some(Boolean) || included) {
-        return {
-          kind: "conflict",
-          reason: `${category} proof-chunk transaction did not produce its exact complete output set`,
-        };
-      }
-      // Current-chain absence does not establish rejection or expiry of a
-      // submitted publication. Preserve its exact journaled output set.
-      return signedTransactionCborHex === undefined ||
-        publications.observeSignedTransaction === undefined
-        ? { kind: "pending", txHash }
-        : reconcileSignedWorkflowTransaction({
-            transactionHash: txHash,
-            signedTransactionCborHex,
-            observe: publications.observeSignedTransaction,
-            rebroadcast: publications.rebroadcastSignedTransaction,
-            authorizeResubmission,
-          });
+      return { transaction };
     },
   };
   return Object.freeze(port);

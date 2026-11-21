@@ -8,7 +8,7 @@ import {
   type SubmitDaHashPreimageStep02CliConfig,
   type SubmitDaHashPreimageStep02Result,
 } from "./submit-da-hash-preimage-step-02.js";
-import { submitUnjournaled } from "./workflow/transaction-boundary.js";
+import { submitOutsideWorkflow } from "./workflow/transaction-boundary.js";
 
 export const submitDaHashPreimageStep02FromFiles = async (
   config: SubmitDaHashPreimageStep02CliConfig,
@@ -28,7 +28,7 @@ export const submitDaHashPreimageStep02FromFiles = async (
     threadOutRef: config.threadOutRef,
   });
   const awaitConfirmation = config.awaitConfirmation ?? true;
-  const txHash = await submitUnjournaled(lucid, transaction, {
+  const txHash = await submitOutsideWorkflow(lucid, transaction, {
     label: "da-hash-preimage step-02",
     awaitConfirmation,
   });

@@ -1,6 +1,3 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { inspect } from "node:util";
 
@@ -38,14 +35,8 @@ import {
   withFieldCarriagePrerequisite,
 } from "../../src/workflow/field-carriage-prerequisite.js";
 import {
-  DirectoryFraudProofWorkflowJournalStore,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEvent } from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
-import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-  journalJsonDigest,
 } from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   createAuthenticatedRawDatumPreimagePrerequisitePort,
@@ -130,8 +121,8 @@ const partOf = (name: string): MintAuthorizationInstalledPart =>
           : "rest";
 
 /**
- * Runs one scenario through mint and removal, restarting the workflow from its
- * journal at every boundary.
+ * Runs one scenario through mint and removal, restarting the workflow adapter
+ * from the prepared artifact at every boundary.
  */
 export const captureAndRestart = async (name: string): Promise<void> => {
   if (name === "maximum-selected-assets") {
@@ -429,42 +420,6 @@ export const captureAndRestart = async (name: string): Promise<void> => {
     target: { kind: "state_queue_header", headerHash: setup.headerHash },
   };
   const workflowId = computeFraudProofWorkflowId(identity);
-  const directory = await mkdtemp(
-    join(tmpdir(), "mint-authorization-journal-"),
-  );
-  // Native maxima execute thousands of real cursor actions. The bounded
-  // polarity/signer cases above reopen the fsynced directory journal at
-  // every boundary; the same adapter protocol uses the validated memory
-  // journal here to keep filesystem O(N²) history reads out of fit tests.
-  const memoryJournal =
-    name.startsWith("maximum-native") ||
-    name === "maximum-witnesses" ||
-    name === "maximum-reference-tail"
-      ? new MemoryFraudProofWorkflowJournalStore()
-      : undefined;
-  const journal = () =>
-    memoryJournal ?? new DirectoryFraudProofWorkflowJournalStore(directory);
-  const append = async (event: FraudProofWorkflowJournalEvent) => {
-    const store = journal();
-    const entries = await store.load(workflowId);
-    await store.append(
-      {
-        schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
-        workflowId,
-        identity,
-        sequence: entries.length,
-        recordedAt: new Date().toISOString(),
-        event,
-      },
-      entries.length,
-    );
-  };
-  await append({ kind: "started" });
-  await append({
-    kind: "prepared",
-    artifact,
-    artifactDigest: journalJsonDigest(artifact),
-  });
   const threadUnit = toUnit(
     h.family.computationThread.policyId,
     h.category.categoryId + setup.headerHash,
@@ -536,7 +491,6 @@ export const captureAndRestart = async (name: string): Promise<void> => {
           spec: MINT_AUTHORIZATION_CURSOR_SPEC,
           l1,
           transactions: port,
-          stateQueueMutationLeaseCoordinator: leaseCoordinator,
           refineAction: mintAuthorizationRefineAction({
             lucid: h.proverLucid,
             signer: h.proverSigner,
@@ -546,18 +500,11 @@ export const captureAndRestart = async (name: string): Promise<void> => {
     });
   for (let n = 0; n < 3000; n++) {
     await setImmediate();
-    const store = journal();
-    const entries = await store.load(workflowId);
-    const restored = JSON.parse(
-      JSON.stringify(
-        entries.find((row) => row.event.kind === "prepared")!.event,
-      ),
-    );
+    const restored = JSON.parse(JSON.stringify(artifact));
     const context = {
       identity,
       workflowId,
-      artifact: restored.artifact,
-      entries,
+      artifact: restored,
     };
     if (n % 200 === 0 && name.startsWith("maximum"))
       process.stderr.write(`${name}: cursor action ${n}\n`);
@@ -571,7 +518,7 @@ export const captureAndRestart = async (name: string): Promise<void> => {
         current.preflight({
           ...context,
           action,
-          artifact: { ...restored.artifact, headerHash: "00".repeat(28) },
+          artifact: { ...restored, headerHash: "00".repeat(28) },
         }),
       ).rejects.toThrow();
       await expect(
@@ -579,7 +526,7 @@ export const captureAndRestart = async (name: string): Promise<void> => {
           ...context,
           action,
           artifact: {
-            ...restored.artifact,
+            ...restored,
             coordinate: { sourceIndex: 0, policyIndex: "1" },
           },
         }),
@@ -643,54 +590,9 @@ export const captureAndRestart = async (name: string): Promise<void> => {
           `${String(action.input.stage)}: ${inspect(cause, { depth: 15 })}`,
         );
       });
-    await append({
-      kind: "preflight_passed",
-      actionId: action.actionId,
-      txHash: preflight.txHash,
-      localEvaluator: preflight.localUplcEvaluation.evaluator,
-      referenceScripts: preflight.referenceScripts,
-    });
-    await append({
-      kind: "submission_intent",
-      actionId: action.actionId,
-      actionInput: action.input,
-      ...(preflight.durableRecovery === undefined
-        ? {}
-        : { durableRecovery: preflight.durableRecovery }),
-      attempt: 1,
-      txHash: preflight.txHash,
-    });
     await current.submit({ ...context, action, preflight });
     h.emulator.awaitBlock();
     confirmed.add(preflight.txHash);
-    await append({
-      kind: "submission_ambiguous",
-      actionId: action.actionId,
-      attempt: 1,
-      txHash: preflight.txHash,
-      detail: "emulated restart after broadcast before receipt",
-    });
-    const recovered = await adapter().reconcile({
-      ...context,
-      action,
-      txHash: preflight.txHash,
-      durableRecovery: preflight.durableRecovery,
-    });
-    expect(recovered).toEqual({
-      kind: "confirmed",
-      txHash: preflight.txHash,
-    });
-    await append({
-      kind: "reconciled",
-      actionId: action.actionId,
-      outcome: "confirmed",
-      txHash: preflight.txHash,
-    });
-    await append({
-      kind: "confirmed",
-      actionId: action.actionId,
-      txHash: preflight.txHash,
-    });
   }
   expect(
     await h.proverLucid.utxosAtWithUnit(

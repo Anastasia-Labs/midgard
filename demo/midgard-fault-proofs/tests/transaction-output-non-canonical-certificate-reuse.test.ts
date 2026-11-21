@@ -30,10 +30,13 @@ import {
   driveCapturedStep,
   fieldPreimageCertificateCount,
 } from "./support/captured-step-turns.js";
-import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import {
+  TEST_PROOF_MATERIALS_HOLDER,
+  testProofMaterials,
+} from "./support/proof-materials-holder.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import { buildForcedOutputFixture } from "./support/transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
 import { canonicalOutputOfLength } from "./support/transaction-output-non-canonical-emulator.continue-raw.js";
@@ -200,10 +203,6 @@ describe("transactionOutputNonCanonical step 02 built turn by turn", () => {
       },
     };
     const headerHash = "00".repeat(28);
-    const journal = createConfirmedActionJournal({
-      category: "transactionOutputNonCanonical",
-      headerHash,
-    });
     const port = createAuthenticatedFieldCarriagePrerequisitePort({
       category: "transactionOutputNonCanonical",
       lucid,
@@ -220,36 +219,22 @@ describe("transactionOutputNonCanonical step 02 built turn by turn", () => {
     let certification: string | undefined;
     for (let turn = 0; turn < 8; turn += 1) {
       const inspected = await port.inspect({
+        holder: TEST_PROOF_MATERIALS_HOLDER,
         headerHash,
         baseAction,
         artifact: {},
-        entries: journal.entries(),
       });
       if (inspected.kind === "satisfied") break;
       if (inspected.kind !== "required")
         throw new Error(`field prerequisite is ${inspected.kind}`);
-      const { transaction, durableRecovery } = await port.capture({
+      const { transaction } = await port.capture({
+        holder: TEST_PROOF_MATERIALS_HOLDER,
         headerHash,
         action: inspected.action,
         artifact: {},
-        entries: journal.entries(),
       });
       await submitCapturedTransaction(transaction);
       ready.harness.emulator.awaitBlock();
-      await expect(
-        port.reconcile({
-          headerHash,
-          action: inspected.action,
-          artifact: {},
-          txHash: transaction.txHash,
-          durableRecovery,
-        }),
-      ).resolves.toEqual({ kind: "confirmed", txHash: transaction.txHash });
-      journal.confirm({
-        action: inspected.action,
-        txHash: transaction.txHash,
-        durableRecovery,
-      });
       if (inspected.action.input.stage === "certify_field_carriage")
         certification = capturedOutputHolding(transaction, certificateUnit);
     }
@@ -265,7 +250,10 @@ describe("transactionOutputNonCanonical step 02 built turn by turn", () => {
           ready,
           workflowFieldCarriageOwnOutputs({
             category: "transactionOutputNonCanonical",
-            entries: journal.entries(),
+            materials: testProofMaterials(
+              ready.harness.proverSigner,
+              ready.harness.proverLucid,
+            ),
           }),
         ),
     });

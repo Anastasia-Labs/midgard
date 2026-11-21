@@ -52,7 +52,7 @@ import { computationThreadOutputPredicate } from "./tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "./witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 const STEP_LABEL = minFeeStepLabel(0);
@@ -70,7 +70,8 @@ export type MinFeeStep01Build = {
   readonly outputIndex: number;
 };
 
-export type SubmitMinFeeStep01Result = UnjournaledSubmission<MinFeeStep01Build>;
+export type SubmitMinFeeStep01Result =
+  OutsideWorkflowSubmission<MinFeeStep01Build>;
 
 export const buildMinFeeStep01 = async ({
   lucid,

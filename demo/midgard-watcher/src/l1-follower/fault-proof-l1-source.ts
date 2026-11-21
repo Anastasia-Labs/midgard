@@ -331,6 +331,10 @@ export const createWatcherFaultProofL1Source = (
           releaseFinality,
           "recovery_finality",
         ),
+        releaseDepth: observationMinimumDepth(
+          releaseFinality,
+          "release_finality",
+        ),
       }),
   };
   return Object.freeze(source);

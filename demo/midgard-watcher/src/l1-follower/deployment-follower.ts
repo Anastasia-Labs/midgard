@@ -3,18 +3,15 @@ import { parseFaultProofBlueprint } from "@al-ft/midgard-sdk/core";
 import { buildComputationThreadValidator } from "@al-ft/midgard-sdk/deployment";
 
 import type { WatcherFaultProofL1 } from "../fault-proofs/fault-proof-application.production-dependencies.js";
-import type { WatcherOrphanedReservationObserver } from "../funding/prover-funding-recovery.orphaned-reservation.js";
 import type { WatcherDeploymentProtocolScriptAuthority } from "../runtime/deployment-identity.parse-trust-roots.js";
 import {
   createWatcherFaultProofL1Source,
   WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX,
 } from "./fault-proof-l1-source.js";
-import { createSignedTransactionRecovery } from "./fault-proof-l1-source.signed.js";
 import {
   openWatcherFollowerRuntime,
   type WatcherFollowerRuntime,
   type WatcherFollowerRuntimeInput,
-  watcherRetainedDepth,
 } from "./follower-runtime.js";
 import { parseHubOracleOneShot } from "./hub-oracle-one-shot.js";
 
@@ -22,8 +19,6 @@ export type WatcherDeploymentFollower = WatcherFollowerRuntime &
   Readonly<{
     /** The fault-proof families' L1: follower sources and the provider. */
     faultProofL1: WatcherFaultProofL1;
-    /** Where a recorded signed transaction stands, at the release-final depth. */
-    observeSignedTransaction: WatcherOrphanedReservationObserver;
   }>;
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -152,11 +147,5 @@ export const openWatcherDeploymentFollower = (
         }),
       provider: follower.provider,
     }),
-    observeSignedTransaction: createSignedTransactionRecovery({
-      store: follower.store,
-      rawReads: follower.rawReads,
-      node: follower.transport,
-      recoveryDepth: watcherRetainedDepth(input.automaticRecoveryMaxDepth),
-    }).observeSignedTransaction,
   });
 };

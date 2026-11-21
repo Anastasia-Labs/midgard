@@ -5,20 +5,12 @@
  * materials swept back), put in front of a family adapter. Each is taken in place of what the
  * adapter observes when `next` says so, or in place of a resolution by
  * another record when `resolved` says so, built from the live chain at its
- * preflight, and reconciled from its exact signed bytes. A build that fails
+ * preflight; the runner follows its exact signed bytes. A build that fails
  * is the action's recorded, retried outcome for its workflow alone; a wait on
  * the L1 source goes to the orchestrator as a wait. */
 import type { TxSigned } from "@lucid-evolution/lucid";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import {
-  isWorkflowFundingShortfall,
-  type WorkflowFundingShortfallError,
-} from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
-import type {
-  JournalJsonObject,
-  JournalJsonValue,
-} from "../workflow/journal.js";
 import {
   type FraudProofSignedTransactionRecovery,
   isFraudProofL1WaitError,
@@ -34,7 +26,7 @@ import {
   type FraudProofResolvedByAnotherRecord,
   isFraudProofResolvedByAnotherRecordError,
 } from "../workflow/resolved-by-another-record.js";
-import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
+import { isFinalAtReleaseDepth } from "../workflow/signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
@@ -42,6 +34,10 @@ import {
   requireReferenceOnlyScriptWitnesses,
   submitCapturedTransaction,
 } from "../workflow/transaction-boundary.js";
+import {
+  isWorkflowFundingShortfall,
+  type WorkflowFundingShortfallError,
+} from "../workflow/workflow-funding-shortfall.js";
 
 export type OwnKeyActions = Readonly<{
   /** Whether `action` is one of ours. */
@@ -66,8 +62,8 @@ export type OwnKeyActions = Readonly<{
     context: FraudProofWorkflowAdapterContext,
     resolution: FraudProofResolvedByAnotherRecord,
   ) => Promise<FraudProofWorkflowObservation | undefined>;
-  /** The alarm `action` of ours pauses on when its reservation cannot be
-   * funded, `shortfall` being the pause; none to pause on `shortfall`. */
+  /** The alarm `action` of ours pauses on when our wallet cannot fund its
+   * build, `shortfall` being the pause; none to pause on `shortfall`. */
   unfunded?: (
     context: FraudProofWorkflowAdapterContext,
     action: FraudProofWorkflowAction,
@@ -82,31 +78,10 @@ export type OwnKeyActions = Readonly<{
   ) => Promise<
     Readonly<{
       signed: TxSigned;
-      recovery?: Record<string, JournalJsonValue>;
       referenceScripts?: LocallyEvaluatedTransaction["referenceScripts"];
     }>
   >;
 }>;
-
-/** The signed bytes the recovery of an action of ours keeps. */
-export const ownKeySignedBytes = (
-  durableRecovery: JournalJsonObject | undefined,
-): string | undefined => {
-  const recorded = durableRecovery?.signedTransactionCborHex;
-  return typeof recorded === "string" ? recorded : undefined;
-};
-
-/** Whether a transaction, where `observed` says it stands, is final at
- * release depth. */
-export const isFinalAtReleaseDepth = (
-  observed: Awaited<
-    ReturnType<FraudProofSignedTransactionRecovery["observeSignedTransaction"]>
-  >,
-): boolean =>
-  observed.status === "included" &&
-  observed.inclusionPoint !== undefined &&
-  BigInt(observed.inclusionPoint.blockNo) <=
-    BigInt(observed.releaseFinalPoint.blockNo);
 
 /** Whether the transaction `txHash`, signed as `signed`, is final at
  * release depth. */
@@ -126,13 +101,11 @@ export const finalAtReleaseDepth = async (
 export const withOwnKeyActions = ({
   base,
   own,
-  signedRecovery,
   label,
   family = "validation-trace",
 }: {
   readonly base: FraudProofFamilyWorkflowAdapter;
   readonly own: OwnKeyActions;
-  readonly signedRecovery: FraudProofSignedTransactionRecovery;
   /** What the actions are, for their messages. */
   readonly label: string;
   /** Whose actions they are, for their messages. */
@@ -221,10 +194,6 @@ export const withOwnKeyActions = ({
             evaluator: LOCAL_UPLC_EVALUATOR,
           },
           referenceScripts,
-          durableRecovery: {
-            ...built.recovery,
-            signedTransactionCborHex: transaction.signed.toCBOR(),
-          },
         },
         transaction.signed,
       );
@@ -248,31 +217,6 @@ export const withOwnKeyActions = ({
       } finally {
         prepared.delete(key);
       }
-    },
-    reconcile: async (context) => {
-      if (!own.owns(context.action)) return await base.reconcile(context);
-      const { txHash, durableRecovery } = context;
-      if (txHash === undefined)
-        return {
-          kind: "conflict",
-          reason: `${family} ${label} omitted its transaction hash`,
-        };
-      const signed =
-        context.signedTransactionCborHex ?? ownKeySignedBytes(durableRecovery);
-      const reconciled = await reconcileSignedWorkflowTransaction({
-        transactionHash: txHash,
-        ...(signed === undefined ? {} : { signedTransactionCborHex: signed }),
-        observe: signedRecovery.observeSignedTransaction,
-        rebroadcast: signedRecovery.rebroadcastSignedTransaction,
-        ...(context.authorizeResubmission === undefined
-          ? {}
-          : { authorizeResubmission: context.authorizeResubmission }),
-        reportInclusion: true,
-      });
-      return reconciled.kind === "pending" &&
-        reconciled.retirement?.reason === "included"
-        ? { kind: "confirmed", txHash }
-        : reconciled;
     },
   };
   return Object.freeze(adapter);

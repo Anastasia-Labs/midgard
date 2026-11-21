@@ -1,15 +1,15 @@
-import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
 import { REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import type { FraudProofWorkflowRunResult } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   createFraudProofWorkflowRegistry,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
-import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   type ManifestBoundRedeemerCanonicityWorkflow,
   type ManifestBoundRedeemerCanonicityWorkflowConfig,
@@ -48,19 +48,18 @@ export const createManifestBoundRedeemerCanonicityWorkflow = async (
 export const executeManifestBoundRedeemerCanonicityWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundRedeemerCanonicityWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   if (
-    workflowActuationAuthorizingDecisionDigest(journal) !==
-    workflow.decisionDigest
+    workflowActuationAuthorizingDecisionDigest(run) !== workflow.decisionDigest
   )
-    throw new Error("redeemerCanonicity journal changed decision digest");
+    throw new Error("redeemerCanonicity run changed decision digest");
   const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
   });
@@ -73,7 +72,7 @@ export const executeManifestBoundRedeemerCanonicityWorkflow = async ({
       adapters: [workflow.adapter],
       launchScope: ["redeemerCanonicity"],
     }),
-    journal,
+    run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     walletOnlySend,

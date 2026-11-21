@@ -26,7 +26,7 @@ import {
   MAXIMUM_PROOF_CHUNK_COUNT,
   ProofChunkDatum,
 } from "@al-ft/midgard-sdk/core";
-import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { isAdaOnlyInlineDatumOutput } from "./ada-only-carriage-output.js";
 import {
@@ -45,8 +45,12 @@ import {
 import { completeStep, finishStep, fundStep } from "./step-completion.js";
 import { walletOnlyValidTo } from "./wallet-only-validity.js";
 import type { LocallyEvaluatedTransaction } from "./workflow/transaction-boundary.js";
-
 export * from "./proof-chunk-carriage.js";
+import {
+  type ProofMaterialsHolder,
+  type ProofMaterialsView,
+  proofMaterialsViewFor,
+} from "./workflow/proof-materials-view.js";
 export { MAXIMUM_CHUNK_PROOF_STEP_COUNT, MAXIMUM_PROOF_CHUNK_COUNT };
 
 export type PublishedProof = {
@@ -55,22 +59,69 @@ export type PublishedProof = {
   readonly proofStepCount: number;
 };
 
+const publishedChunk = (utxo: UTxO, datum: string): PublishedProofChunk => {
+  const decoded = Data.from(datum, ProofChunkDatum) as unknown as {
+    readonly proof_steps: readonly unknown[];
+  };
+  return {
+    utxo,
+    outRef: `${utxo.txHash}#${utxo.outputIndex.toString()}`,
+    datumCbor: datum,
+    stepCount: decoded.proof_steps.length,
+  };
+};
+
+/**
+ * The chunks of `proofCbor` live at the proof-materials `address`, found by
+ * content through the process's view: for each chunk datum, a plain output
+ * with exactly those bytes, the same copy every workflow picks; undefined
+ * unless every chunk has one. Whoever paid a copy, only the prover can spend
+ * it, and the step checks content alone.
+ */
 export const resolvePublishedProofChunks = async ({
   lucid,
   address,
   proofCbor,
-  ownTransactions,
+  view,
+  holder,
 }: {
   readonly lucid: LucidEvolution;
   readonly address: string;
   readonly proofCbor: string;
-  /**
-   * The transactions whose outputs are ours: those the workflow's journal
-   * confirmed, or the one publication being reconciled. A chunk of the same
-   * content that another workflow paid to the address is never ours, so
-   * neither workflow adopts or spends the other's.
-   */
-  readonly ownTransactions: ReadonlySet<string>;
+  /** The process's view; the address read through `lucid` without one. */
+  readonly view?: ProofMaterialsView;
+  /** The workflow whose step needs the chunks, until it is released. */
+  readonly holder: ProofMaterialsHolder;
+}): Promise<readonly PublishedProofChunk[] | undefined> => {
+  const datums = splitProofIntoChunkDatums(proofCbor);
+  if (datums.length === 0) return [];
+  const found = await proofMaterialsViewFor({ view, lucid, address }).find(
+    datums,
+    holder,
+  );
+  const chunks: PublishedProofChunk[] = [];
+  for (const [index, datum] of datums.entries()) {
+    const utxo = found[index];
+    if (utxo === undefined) return undefined;
+    chunks.push(publishedChunk(utxo, datum));
+  }
+  return chunks;
+};
+
+/**
+ * The chunks of `proofCbor` among the outputs of the one publication
+ * `txHash`: what reading that transaction back checks it produced.
+ */
+export const resolvePublicationProofChunks = async ({
+  lucid,
+  address,
+  proofCbor,
+  txHash,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly address: string;
+  readonly proofCbor: string;
+  readonly txHash: string;
 }): Promise<readonly PublishedProofChunk[] | undefined> => {
   const datums = splitProofIntoChunkDatums(proofCbor);
   if (datums.length === 0) return [];
@@ -81,24 +132,15 @@ export const resolvePublishedProofChunks = async ({
     const match = candidates.find((utxo) => {
       const label = `${utxo.txHash}#${utxo.outputIndex.toString()}`;
       return (
-        ownTransactions.has(utxo.txHash) &&
+        utxo.txHash === txHash &&
         !claimed.has(label) &&
         isAdaOnlyInlineDatumOutput(utxo) &&
         canonicalPlutusDataCbor(utxo.datum) === datum
       );
     });
     if (match === undefined) return undefined;
-    const label = `${match.txHash}#${match.outputIndex.toString()}`;
-    claimed.add(label);
-    const decoded = Data.from(datum, ProofChunkDatum) as unknown as {
-      readonly proof_steps: readonly unknown[];
-    };
-    chunks.push({
-      utxo: match,
-      outRef: label,
-      datumCbor: datum,
-      stepCount: decoded.proof_steps.length,
-    });
+    claimed.add(`${match.txHash}#${match.outputIndex.toString()}`);
+    chunks.push(publishedChunk(match, datum));
   }
   return chunks;
 };

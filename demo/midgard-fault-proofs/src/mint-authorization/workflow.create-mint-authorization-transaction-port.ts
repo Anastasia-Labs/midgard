@@ -26,7 +26,8 @@ import type { ManifestBoundFamilyWorkflow } from "../workflow/family-definition.
 import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import {
   admitMintAuthorizationWorkflowArtifact,
   prepareMintAuthorizationWorkflowArtifact,
@@ -68,10 +69,14 @@ export const createMintAuthorizationTransactionPort = (
       classification,
       replayContext: config.replayContext,
     }),
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const ownOutputs = workflowFieldCarriageOwnOutputs({
       category: "mintAuthorization",
-      entries,
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
+      }),
     });
     const admitted = await admitMintAuthorizationWorkflowArtifact(artifact);
     if (admitted.current.headerHash !== config.binding.definition.headerHash)
@@ -112,9 +117,9 @@ export const createMintAuthorizationTransactionPort = (
         ? (
             await rawPrerequisite.resolveAuthenticated({
               headerHash: admitted.current.headerHash,
+              holder,
               action,
               artifact,
-              entries,
             })
           ).publications
         : undefined;
@@ -133,7 +138,7 @@ export const createMintAuthorizationTransactionPort = (
     } as const;
     return {
       transaction: (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await (async () => {
             if (stage === "init") {
               return await buildInit({

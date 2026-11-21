@@ -2,8 +2,6 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import type { HeaderFaultDecision } from "./header-classifier.authenticated-state-queue-observation-digest.js";
 import { requireRunnableHeaderFault } from "./header-classifier.require-runnable-header-fault.js";
-import { validateFraudProofWorkflowJournal } from "./journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEntry } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
   journalJsonDigest,
   normalizeJournalJson,
@@ -18,12 +16,10 @@ export type WorkflowActuationCheckpoint =
   | "before_observe"
   | "before_preflight"
   | "before_submit"
-  // The spend back of a staging output of ours, the one fresh submission a
-  // reconciliation-only workflow still makes
-  // (funding-reservation-permit.begin-workflow-funding-reservation-action.ts).
+  // A reclaim of our own outputs, the one send reconciliation-only
+  // authority still admits.
   | "before_reclaim_preflight"
   | "before_reclaim_submit"
-  | "before_reconcile"
   | "before_terminal_verify";
 
 /**
@@ -82,7 +78,7 @@ export const admittedPermits = new WeakMap<object, PermitState>();
 
 export const admittedRevocationErrors = new WeakSet<object>();
 
-export const journalPermits = new WeakMap<
+export const runPermits = new WeakMap<
   object,
   Readonly<{
     permit: WorkflowActuationPermit;
@@ -163,50 +159,25 @@ export const createWorkflowActuationPermitController = (input: {
   readonly rollbackGeneration: string;
 }): WorkflowActuationPermitController => createController(input);
 
-/** Historical classification grants only observation of an already signed
- * execution. It never regains runnable classification or submission authority. */
+/**
+ * Historical classification grants only the following of transactions this
+ * process already sent for the fault: never runnable classification or
+ * submission authority. The caller grants it only while its in-flight set
+ * holds a transaction of the objective (`in-flight.ts`).
+ */
 export const createWorkflowReconciliationPermitController = (input: {
   readonly decision: HeaderFaultDecision;
   readonly deploymentFingerprint: string;
   readonly rollbackGeneration: string;
-  readonly entries: readonly FraudProofWorkflowJournalEntry[];
 }): WorkflowActuationPermitController => {
   const { decisionDigest, ...unsealed } = input.decision;
-  const first = input.entries[0];
-  const prepared = input.entries[1];
   if (
-    first === undefined ||
-    prepared?.event.kind !== "prepared" ||
-    !input.entries.some(({ event }) => event.kind === "submission_intent") ||
     input.decision.decision !== "fault_detected" ||
     journalJsonDigest(normalizeJournalJson(unsealed)) !== decisionDigest ||
-    input.decision.deploymentFingerprint !== input.deploymentFingerprint ||
-    first.identity.deploymentFingerprint !== input.deploymentFingerprint ||
-    first.identity.decisionDigest !== decisionDigest ||
-    first.identity.category !== input.decision.category ||
-    first.identity.target.kind !== "state_queue_header" ||
-    first.identity.target.headerHash !== input.decision.headerHash
+    input.decision.deploymentFingerprint !== input.deploymentFingerprint
   )
     throw new Error(
-      "reconciliation authority requires an exact existing signed workflow",
-    );
-  validateFraudProofWorkflowJournal({
-    workflowId: first.workflowId,
-    entries: input.entries,
-    expectedIdentity: first.identity,
-  });
-  const binding = prepared.event.artifact.evidenceBinding;
-  if (
-    typeof binding !== "object" ||
-    binding === null ||
-    Array.isArray(binding) ||
-    !("headerHash" in binding) ||
-    !("payloadSha256" in binding) ||
-    binding.headerHash !== input.decision.headerHash ||
-    binding.payloadSha256 !== input.decision.payloadSha256
-  )
-    throw new Error(
-      "reconciliation authority changed its prepared fault evidence",
+      "reconciliation authority requires the exact classified fault",
     );
   return createController({
     ...input,

@@ -36,7 +36,7 @@ import {
 } from "../workflow/structured-data-preimage.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import {
   withdrawalMistagError,
@@ -382,4 +382,4 @@ export type WithdrawalMistagStepBuild = {
 };
 
 export type SubmitWithdrawalMistagStepResult =
-  UnjournaledSubmission<WithdrawalMistagStepBuild>;
+  OutsideWorkflowSubmission<WithdrawalMistagStepBuild>;

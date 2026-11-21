@@ -5,11 +5,7 @@ import {
   FIELD_CARRIAGE_PREREQUISITE,
   type FieldCarriagePrerequisitePort,
 } from "../src/workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import type {
-  FraudProofWorkflowIdentity,
-  FraudProofWorkflowJournalEntry,
-  JournalJsonObject,
-} from "../src/workflow/journal.js";
+import type { FraudProofWorkflowIdentity } from "../src/workflow/journal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -75,7 +71,6 @@ export const context = {
   identity,
   workflowId: "bc".repeat(32),
   artifact: { source: "public-da" },
-  entries: [],
 } as const;
 
 const signed = (): LocallyEvaluatedTransaction["signed"] =>
@@ -127,18 +122,12 @@ export const base = (): FraudProofFamilyWorkflowAdapter => ({
     kind: "submitted" as const,
     txHash: "cd".repeat(32),
   })),
-  reconcile: vi.fn(async () => ({
-    kind: "confirmed" as const,
-    txHash: "cd".repeat(32),
-  })),
 });
 
 export const prerequisite = ({
   phase = "publication",
-  reconcile = async () => ({ kind: "confirmed" as const, txHash }),
 }: {
   readonly phase?: "publication" | "certificate" | "satisfied";
-  readonly reconcile?: FieldCarriagePrerequisitePort<"nonExistentInput">["reconcile"];
 } = {}): FieldCarriagePrerequisitePort<"nonExistentInput"> => ({
   portVersion: FIELD_CARRIAGE_PREREQUISITE,
   category: "nonExistentInput",
@@ -146,6 +135,7 @@ export const prerequisite = ({
     publications: [],
     requirement: null,
   })),
+  need: vi.fn(async () => {}),
   inspect: vi.fn(async () =>
     phase === "satisfied"
       ? { kind: "satisfied" as const }
@@ -161,63 +151,14 @@ export const prerequisite = ({
         ? ("certificate" as const)
         : ("publication" as const),
     transaction: transaction(),
-    durableRecovery: {
-      fieldCarriage: {
-        schemaVersion: "midgard-production-field-carriage-recovery-v1",
-        kind: phase,
-        requirementSha256,
-        outRef: `${txHash}#0`,
-        datumCbor: "d87980",
-        unit: null,
-      },
-    },
   })),
-  reconcile,
 });
 
-const journalBase = {
-  schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
-  workflowId: context.workflowId,
-  identity,
-  recordedAt: "2026-09-14T00:00:00.000Z",
-} as const;
-
-/** `entries` once `action` confirmed, its intent holding `durableRecovery`. */
-export const confirmedCarriage = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
-  {
-    action,
-    txHash: hash,
-    durableRecovery,
-  }: {
-    readonly action: FraudProofWorkflowAction;
-    readonly txHash: string;
-    readonly durableRecovery: JournalJsonObject;
-  },
-): readonly FraudProofWorkflowJournalEntry[] => [
-  ...entries,
-  {
-    ...journalBase,
-    sequence: entries.length,
-    event: {
-      kind: "submission_intent",
-      actionId: action.actionId,
-      actionInput: action.input,
-      txHash: hash,
-      attempt: 1,
-      durableRecovery,
-    },
-  },
-  {
-    ...journalBase,
-    sequence: entries.length + 1,
-    event: { kind: "confirmed", actionId: action.actionId, txHash: hash },
-  },
-];
-
-/** Reads `candidates()` by out-ref, as the provider serves them. */
+/** Reads `candidates()` by out-ref and by address, as the provider serves them. */
 export const outRefReader = (candidates: () => readonly UTxO[]) =>
   ({
+    utxosAt: async (address: string) =>
+      candidates().filter((candidate) => candidate.address === address),
     utxosByOutRef: async (
       refs: readonly { txHash: string; outputIndex: number }[],
     ) =>

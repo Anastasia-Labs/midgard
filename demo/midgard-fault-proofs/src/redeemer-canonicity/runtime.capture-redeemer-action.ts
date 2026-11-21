@@ -36,13 +36,16 @@ import {
   defineFamily,
 } from "../workflow/family-definition.family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
-import type { FraudProofWorkflowJournalEntry } from "../workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   journalJsonDigest,
   type JournalJsonObject,
 } from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import {
+  proofMaterialsAccess,
+  type ProofMaterialsHolder,
+} from "../workflow/proof-materials-view.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import { detectRedeemerCanonicityFromCanonicalBlock } from "./authenticated-workflow.js";
 import {
   admitRedeemerWorkflowArtifact,
@@ -215,11 +218,15 @@ const captureRedeemerAction = async (
   workflow: RedeemerWorkflowCore,
   action: FraudProofWorkflowAction,
   artifact: JournalJsonObject,
-  entries: readonly FraudProofWorkflowJournalEntry[],
+  holder: ProofMaterialsHolder,
 ): Promise<CursorFamilyCapturedAction> => {
   const ownOutputs = workflowFieldCarriageOwnOutputs({
     category: "redeemerCanonicity",
-    entries,
+    materials: proofMaterialsAccess({
+      signer: workflow.signer,
+      lucid: workflow.lucid,
+      holder,
+    }),
   });
   const admitted = admitRedeemerWorkflowArtifact(artifact);
   const input = action.input;
@@ -240,7 +247,7 @@ const captureRedeemerAction = async (
         workflow.binding.releaseEconomics.policy.fraudProverRewardLovelace,
       ),
     });
-  const { transaction } = await journaledStepTransaction(
+  const { transaction } = await workflowStepTransaction(
     await (async () => {
       const common = {
         lucid: workflow.lucid,
@@ -379,6 +386,6 @@ const createRedeemerCanonicityTransactionPort = (
   },
   prepare: async ({ evidence }) =>
     await prepareRedeemerCanonicityWorkflowArtifact(evidence),
-  capture: async ({ action, artifact, entries }) =>
-    await captureRedeemerAction(workflow, action, artifact, entries),
+  capture: async ({ action, artifact, holder }) =>
+    await captureRedeemerAction(workflow, action, artifact, holder),
 });

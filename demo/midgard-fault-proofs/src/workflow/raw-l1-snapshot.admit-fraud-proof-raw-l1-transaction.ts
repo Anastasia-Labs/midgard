@@ -115,12 +115,26 @@ export const utxo = (value: unknown, label: string): FraudProofRawL1Utxo => {
   } catch {
     throw new Error(`${label}.outputCbor is not a Cardano output`);
   }
-  if (output.to_canonical_cbor_hex() !== outputCbor) {
-    throw new Error(`${label}.outputCbor is not canonical`);
+  // Each decoded object is freed here, not left to its finalizer: a capture
+  // decodes every output it holds within one turn, and an output can carry
+  // a datum of hundreds of kilobytes.
+  let actualDatum: string | null;
+  let actualScript: string | null;
+  try {
+    if (output.to_canonical_cbor_hex() !== outputCbor) {
+      throw new Error(`${label}.outputCbor is not canonical`);
+    }
+    const option = output.datum();
+    const datum = option?.as_datum();
+    actualDatum = datum?.to_canonical_cbor_hex() ?? null;
+    datum?.free();
+    option?.free();
+    const script = output.script_ref();
+    actualScript = script?.to_canonical_cbor_hex() ?? null;
+    script?.free();
+  } finally {
+    output.free();
   }
-  const actualDatum =
-    output.datum()?.as_datum()?.to_canonical_cbor_hex() ?? null;
-  const actualScript = output.script_ref()?.to_canonical_cbor_hex() ?? null;
   const datumCbor =
     parsed.datumCbor === null
       ? null
@@ -147,9 +161,14 @@ export const admitFraudProofRawL1Utxo = (
   label = "raw L1 UTxO",
 ): FraudProofRawL1Utxo => utxo(value, label);
 
-export const outputAddress = (candidate: FraudProofRawL1Utxo): string =>
-  coreToTxOutput(CML.TransactionOutput.from_cbor_hex(candidate.outputCbor))
-    .address;
+export const outputAddress = (candidate: FraudProofRawL1Utxo): string => {
+  const output = CML.TransactionOutput.from_cbor_hex(candidate.outputCbor);
+  try {
+    return coreToTxOutput(output).address;
+  } finally {
+    output.free();
+  }
+};
 
 const bodyInputOutRefs = (body: CML.TransactionBody): readonly string[] => {
   const result: string[] = [];
@@ -178,10 +197,60 @@ const bodyReferenceInputOutRefs = (
   return result;
 };
 
+/** Whether `value` is, field for field, one of `admitted`'s resolved
+ * outputs in order: the same exact bytes that were admitted. */
+const sameUtxos = (
+  value: unknown,
+  admitted: readonly FraudProofRawL1Utxo[],
+): boolean =>
+  Array.isArray(value) &&
+  value.length === admitted.length &&
+  value.every((candidate: unknown, index) => {
+    if (
+      typeof candidate !== "object" ||
+      candidate === null ||
+      Array.isArray(candidate) ||
+      Object.keys(candidate).length !== 4
+    )
+      return false;
+    const entry = admitted[index]!;
+    const fields = candidate as Readonly<Record<string, unknown>>;
+    return (
+      fields.outRef === entry.outRef &&
+      fields.outputCbor === entry.outputCbor &&
+      fields.datumCbor === entry.datumCbor &&
+      fields.referenceScriptCbor === entry.referenceScriptCbor
+    );
+  });
+
+const confirmationDepthOf = (
+  parsed: Readonly<Record<string, unknown>>,
+  label: string,
+  minimumConfirmationDepth: number,
+): number => {
+  if (
+    !Number.isSafeInteger(parsed.confirmationDepth) ||
+    (parsed.confirmationDepth as number) < minimumConfirmationDepth
+  ) {
+    throw new Error(`${label} is below release finality`);
+  }
+  return parsed.confirmationDepth as number;
+};
+
+/**
+ * Admits one raw transaction. `admitted` holds transactions admitted
+ * before, by hash: a candidate whose bytes are exactly an admitted one's
+ * (body, witnesses, redeemers and every resolved output) passes every byte
+ * check that one passed, so only its inclusion point and depth, which move
+ * with the chain, are checked again. A capture holds the whole history of
+ * each unit it names, so without this every capture decoded every
+ * transaction of that history again.
+ */
 export const admitFraudProofRawL1Transaction = (
   value: unknown,
   label: string,
   minimumConfirmationDepth: number,
+  admitted?: ReadonlyMap<string, FraudProofRawL1Transaction>,
 ): FraudProofRawL1Transaction => {
   const parsed = exact(
     value,
@@ -201,6 +270,26 @@ export const admitFraudProofRawL1Transaction = (
   if (parsed.isValid !== true)
     throw new Error(`${label} must be a valid transaction`);
   const txHash = digest(parsed.txHash, `${label}.txHash`);
+  const prior = admitted?.get(txHash);
+  if (
+    prior !== undefined &&
+    parsed.bodyCbor === prior.bodyCbor &&
+    parsed.witnessSetCbor === prior.witnessSetCbor &&
+    parsed.redeemersCbor === prior.redeemersCbor &&
+    sameUtxos(parsed.resolvedInputs, prior.resolvedInputs) &&
+    sameUtxos(parsed.resolvedReferenceInputs, prior.resolvedReferenceInputs)
+  ) {
+    const confirmationDepth = confirmationDepthOf(
+      parsed,
+      label,
+      minimumConfirmationDepth,
+    );
+    return {
+      ...prior,
+      inclusionPoint: point(parsed.inclusionPoint, `${label}.inclusionPoint`),
+      confirmationDepth,
+    };
+  }
   const bodyCbor = cbor(parsed.bodyCbor, `${label}.bodyCbor`);
   const witnessSetCbor = cbor(parsed.witnessSetCbor, `${label}.witnessSetCbor`);
   let body: CML.TransactionBody;
@@ -211,19 +300,59 @@ export const admitFraudProofRawL1Transaction = (
   } catch {
     throw new Error(`${label} contains invalid transaction CBOR`);
   }
+  try {
+    return admitDecoded({
+      parsed,
+      label,
+      txHash,
+      bodyCbor,
+      witnessSetCbor,
+      body,
+      witnesses,
+      minimumConfirmationDepth,
+    });
+  } finally {
+    body.free();
+    witnesses.free();
+  }
+};
+
+const admitDecoded = ({
+  parsed,
+  label,
+  txHash,
+  bodyCbor,
+  witnessSetCbor,
+  body,
+  witnesses,
+  minimumConfirmationDepth,
+}: {
+  readonly parsed: Record<string, unknown>;
+  readonly label: string;
+  readonly txHash: string;
+  readonly bodyCbor: string;
+  readonly witnessSetCbor: string;
+  readonly body: CML.TransactionBody;
+  readonly witnesses: CML.TransactionWitnessSet;
+  readonly minimumConfirmationDepth: number;
+}): FraudProofRawL1Transaction => {
+  const hash = CML.hash_transaction(body);
+  const hashHex = hash.to_hex();
+  hash.free();
   // Cardano hashes the original body encoding. Normalizing legal CBOR
   // (including indefinite datum containers) would change the signed tx id.
   if (
     body.to_cbor_hex() !== bodyCbor ||
     witnesses.to_cbor_hex() !== witnessSetCbor ||
-    CML.hash_transaction(body).to_hex() !== txHash
+    hashHex !== txHash
   ) {
     throw new Error(
       `${label} transaction bytes do not round-trip exactly or are hash-mismatched`,
     );
   }
-  const actualRedeemers =
-    witnesses.redeemers()?.to_canonical_cbor_hex() ?? null;
+  const redeemers = witnesses.redeemers();
+  const actualRedeemers = redeemers?.to_canonical_cbor_hex() ?? null;
+  redeemers?.free();
   const redeemersCbor =
     parsed.redeemersCbor === null
       ? null
@@ -231,12 +360,11 @@ export const admitFraudProofRawL1Transaction = (
   if (actualRedeemers !== redeemersCbor) {
     throw new Error(`${label}.redeemersCbor differs from the witness set`);
   }
-  if (
-    !Number.isSafeInteger(parsed.confirmationDepth) ||
-    (parsed.confirmationDepth as number) < minimumConfirmationDepth
-  ) {
-    throw new Error(`${label} is below release finality`);
-  }
+  const confirmationDepth = confirmationDepthOf(
+    parsed,
+    label,
+    minimumConfirmationDepth,
+  );
   const resolvedInputs = array(
     parsed.resolvedInputs,
     `${label}.resolvedInputs`,
@@ -280,7 +408,7 @@ export const admitFraudProofRawL1Transaction = (
     redeemersCbor,
     isValid: true,
     inclusionPoint: point(parsed.inclusionPoint, `${label}.inclusionPoint`),
-    confirmationDepth: parsed.confirmationDepth as number,
+    confirmationDepth,
     resolvedInputs,
     resolvedReferenceInputs,
   };

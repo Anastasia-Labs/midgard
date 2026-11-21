@@ -16,7 +16,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { confirmedValidationTraceStages } from "../../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
 import {
@@ -104,6 +103,21 @@ export type TwoThreadCase = Readonly<{
   removal: RecordedRemoval | undefined;
 }>;
 
+/** Pays the prover wallet `count` plain 100-ada coins of its own. A move
+ * stays in flight, its collateral held with it, until it is final at the
+ * release depth, so a wallet whose moves are final only below the tip needs
+ * a free coin for each move in flight at once. */
+const splitProverCoins = async (scene: Scene, count: number) => {
+  const { proverLucid: lucid, proverSigner: signer, emulator } = scene.h;
+  signer.selectWallet(lucid);
+  let split = lucid.newTx();
+  for (let coin = 0; coin < count; coin += 1)
+    split = split.pay.ToAddress(signer.address, { lovelace: 100_000_000n });
+  const signed = await (await split.complete()).sign.withWallet().complete();
+  await signed.submit();
+  emulator.awaitBlock(1);
+};
+
 /** Opens our case and has both operators defend it, each on its own thread
  * on its defender's turn; the operator's trace agrees with ours up to
  * `operatorFrom` and the successor's up to `successorFrom`. */
@@ -158,8 +172,8 @@ export const defendTwoThreads = async ({
   // Published before the scene's blocks, so the publications take none of
   // the source verification's window from the failing block's end.
   let oneStep: ValidationTraceOneStepReferences | undefined;
-  let certificate: Parameters<typeof oneStepDeployment>[3];
-  let grammar: Parameters<typeof oneStepDeployment>[4];
+  let certificate: Parameters<typeof oneStepDeployment>[2];
+  let grammar: Parameters<typeof oneStepDeployment>[3];
   const scene = await setUpScene(async (contracts) => {
     if (certifies)
       certificate = await publishFieldPreimageCertificate(contracts);
@@ -197,19 +211,15 @@ export const defendTwoThreads = async ({
         : {}),
     };
   }, failing);
+  if (releaseDepth !== undefined && releaseDepth > 0)
+    await splitProverCoins(scene, 2 * (releaseDepth + 1));
   const removal =
     recorder === undefined ? undefined : await recordedRemoval(scene, recorder);
   const successor = await enrollSuccessor(
     scene.h as never,
     scene.operator.vkey,
   );
-  const deployment = oneStepDeployment(
-    scene,
-    oneStep!,
-    undefined,
-    certificate,
-    grammar,
-  );
+  const deployment = oneStepDeployment(scene, oneStep!, certificate, grammar);
   const prepared: PreparedMove[] = [];
   const runner = makeRunner(scene, {
     deployment,
@@ -234,13 +244,8 @@ export const defendTwoThreads = async ({
           ),
         }),
   });
-  const { result } = await runUntil(
-    runner,
-    scene.failing,
-    VALIDATION_TRACE_CASE_OPEN,
-  );
-  if (!("entries" in result)) throw new Error("no workflow journal");
-  const verified = confirmedValidationTraceStages(result.entries).find(
+  await runUntil(runner, scene.failing, VALIDATION_TRACE_CASE_OPEN);
+  const verified = (await runner.confirmed()).find(
     ({ action }) => action.stage === "verify_source",
   )!;
   const material = await failingMaterial(scene);

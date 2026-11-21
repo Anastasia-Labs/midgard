@@ -1,9 +1,9 @@
 /**
  * The script-decode record through the watcher's installed application:
  * the committed block's undecodable Plutus item is detected by the
- * watcher's classifier, and the admitted runner, funded by the watcher's
- * prover-funding authority, records the decode and convicts, turn by turn,
- * from its durable journal, with no proof material prepared outside it.
+ * watcher's classifier, and the admitted runner, funded by the prover
+ * wallet, records the decode and convicts, turn by turn, from the chain,
+ * with no proof material prepared outside it.
  */
 import { describe, expect, it, vi } from "vitest";
 

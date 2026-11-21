@@ -1,6 +1,5 @@
 import type { UTxO } from "@lucid-evolution/lucid";
 
-import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { createCursorFamilyWorkflowAdapter } from "./cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import { requireManifestBoundReferenceScriptUtxo } from "./deployment-manifest-binding.js";
 import { LINEAR_FAMILY_DEFINITION_VERSION } from "./family-definition.family-adapter-arm.js";
@@ -13,10 +12,10 @@ import type {
   FamilyTransactionPort,
   FaultProofWitnessRole,
 } from "./family-definition.js";
-import { type FraudProofFamilyL1ObservationPort } from "./family-l1-observation.js";
+import type { FraudProofFamilyL1ObservationPort } from "./family-l1-observation.js";
 import { createLinearFamilyWorkflowAdapter } from "./linear-family-adapter.js";
 import type { LinearFamilyCategory } from "./linear-family-spec.js";
-import { type FraudProofFamilyWorkflowAdapter } from "./orchestrator.js";
+import type { FraudProofFamilyWorkflowAdapter } from "./orchestrator.js";
 
 // A bound context is valid only for the definition whose references it checked.
 // Structural copies and same-category definitions cannot reuse that authority.
@@ -187,7 +186,6 @@ export const familyAdapter = <
 >({
   definition,
   context,
-  stateQueueMutationLeaseCoordinator,
 }: {
   readonly definition: FamilyDefinition<
     Category,
@@ -203,7 +201,6 @@ export const familyAdapter = <
     StepCount,
     Runtime
   >;
-  readonly stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }): {
   readonly transactions: FamilyTransactionPort<Category>;
   readonly adapter: FraudProofFamilyWorkflowAdapter;
@@ -219,7 +216,6 @@ export const familyAdapter = <
           Category & LinearFamilyCategory
         >,
         transactions,
-        stateQueueMutationLeaseCoordinator,
       }),
     };
   }
@@ -231,7 +227,6 @@ export const familyAdapter = <
       spec: arm.spec,
       l1: context.l1,
       transactions,
-      stateQueueMutationLeaseCoordinator,
       ...(refineAction === undefined ? {} : { refineAction }),
     }),
   };

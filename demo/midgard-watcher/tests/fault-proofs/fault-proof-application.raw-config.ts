@@ -157,7 +157,6 @@ export const invocation = (
   category: WatcherFaultProofStartupInvocation["category"],
   overrides: Partial<WatcherFaultProofStartupInvocation> = {},
 ): WatcherFaultProofStartupInvocation => ({
-  mode: "run",
   category,
   deploymentFingerprint: DEPLOYMENT,
   headerHash: HEADER,

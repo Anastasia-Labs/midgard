@@ -31,11 +31,7 @@ import {
   planValidationTraceOneStep,
   type ValidationTraceCoreStepPlan,
 } from "../../src/validation-trace-dispute/one-step-plan.js";
-import {
-  journaledStagings,
-  VALIDATION_TRACE_STAGING,
-} from "../../src/validation-trace-dispute/one-step-staging-journal.js";
-import type { FraudProofWorkflowJournalEntry } from "../../src/workflow/journal.js";
+import type { InFlightTransaction } from "../../src/workflow/in-flight.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   playThreads,
@@ -188,22 +184,18 @@ export const lastStagedStep = async (
 const outRefOf = (utxo: UTxO) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
-/** The journal entries a run of the runner returned. */
-export const entriesOf = (
-  result: FraudProofWorkflowRunResult,
-): readonly FraudProofWorkflowJournalEntry[] =>
-  "entries" in result ? result.entries : [];
+/** Whether `actionId` names a staging of ours. */
+export const isStagingAction = (actionId: string) =>
+  actionId.startsWith("validation-trace-stage:");
 
-/** The action ids of the staging actions the journal shows submitted. */
-export const stagingIntents = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
+/** The action ids of the staging actions among `sent`, each once, in the
+ * order they were first sent. */
+export const stagingSends = (
+  sent: readonly InFlightTransaction[],
 ): readonly string[] => [
   ...new Set(
-    entries.flatMap(({ event }) =>
-      event.kind === "submission_intent" &&
-      event.actionInput.schemaVersion === VALIDATION_TRACE_STAGING
-        ? [event.actionId]
-        : [],
+    sent.flatMap(({ actionId }) =>
+      isStagingAction(actionId) ? [actionId] : [],
     ),
   ),
 ];
@@ -310,9 +302,6 @@ export const stagedDrive = ({
     },
   });
 
-  /** The latest journal the runner returned. */
-  let latest: readonly FraudProofWorkflowJournalEntry[] = [];
-
   const placeOfB = async () => {
     const { scene, deployment, b } = drive.dispute();
     return await threadPlace(scene, deployment, b.unit);
@@ -330,7 +319,6 @@ export const stagedDrive = ({
 
   return {
     ...drive,
-    entries: () => latest,
     placeOfB,
 
     /** The witness of the staged step. */
@@ -356,12 +344,9 @@ export const stagedDrive = ({
     },
 
     /** Plays the runner one block at a time until `until` holds over the
-     * journal and the run; the history of its runs. */
+     * run; the history of its runs. */
     play: async (
-      until: (
-        entries: readonly FraudProofWorkflowJournalEntry[],
-        result: FraudProofWorkflowRunResult,
-      ) => Promise<boolean>,
+      until: (result: FraudProofWorkflowRunResult) => Promise<boolean>,
       limit = 40,
     ): Promise<readonly string[]> => {
       const { scene, runner, a, b } = drive.dispute();
@@ -369,17 +354,57 @@ export const stagedDrive = ({
         scene,
         runner,
         sides: [a, b],
-        until: async (result) => {
-          latest = entriesOf(result);
-          return await until(latest, result);
-        },
+        until,
         limit,
       });
       return history;
     },
 
-    /** The staging outputs the journal shows. */
-    stagings: () => journaledStagings(latest).stagings,
+    /** The action ids of the staging actions the dispute's processes sent,
+     * each once. */
+    stagingSends: () => stagingSends(drive.sent()),
+
+    /** The staging outputs the confirmed stagings of the dispute's processes
+     * left, in the order they were sent: each with the action that staged
+     * it and its transaction's signed bytes. */
+    stagings: async () => {
+      const { scene } = drive.dispute();
+      const address = midgardCekStagingAddress(
+        scene.h.proverLucid.config().network!,
+        scene.h.proverSigner.paymentKeyHash,
+      );
+      const found: {
+        actionId: string;
+        txHash: string;
+        signed: string;
+        outRef: string;
+        datumCbor: string;
+      }[] = [];
+      const seen = new Set<string>();
+      for (const sent of drive.sent()) {
+        if (!isStagingAction(sent.actionId) || seen.has(sent.txHash)) continue;
+        seen.add(sent.txHash);
+        const status = await scene.h.emulator.getTransactionStatus(sent.txHash);
+        if (status.status !== "confirmed") continue;
+        const outputs = CML.Transaction.from_cbor_hex(
+          sent.signedTransactionCborHex,
+        )
+          .body()
+          .outputs();
+        for (let index = 0; index < outputs.len(); index += 1) {
+          const { address: at, datum } = coreToTxOutput(outputs.get(index));
+          if (at === address && typeof datum === "string")
+            found.push({
+              actionId: sent.actionId,
+              txHash: sent.txHash,
+              signed: sent.signedTransactionCborHex,
+              outRef: `${sent.txHash}#${index.toString()}`,
+              datumCbor: datum,
+            });
+        }
+      }
+      return found;
+    },
 
     /** The staging outputs the landed transactions left at our staging
      * address, in the order they landed: what the ledger shows staged. The

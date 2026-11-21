@@ -12,16 +12,12 @@ import {
   PROVER_MINIMUM_LOVELACE,
   removeStackDirectories,
   runningStackWatcher,
-  seedWorkflowStarted,
   STACK_DEPOSIT_LOVELACE,
   STACK_REQUIRED_BOND_LOVELACE,
   watcherContainer,
 } from "./attached-journey-session.test-support.js";
 import { selectJourneyFixtures } from "./catalogue.js";
-import {
-  captureJourneyWorkflowBaseline,
-  openAttachedJourneySession,
-} from "./journey-session.js";
+import { openAttachedJourneySession } from "./journey-session.js";
 
 afterAll(removeStackDirectories);
 afterEach(closeStackWatchers);
@@ -56,25 +52,6 @@ describe("attached journey session", () => {
       });
       await session.assertHealthy();
       expect(await session.evidence.readDecisions()).toEqual([]);
-    } finally {
-      await session.close();
-    }
-  });
-
-  it("captures its baseline from the stack watcher's workflow journal", async () => {
-    const stack = await runningStackWatcher(liveStatus());
-    const headerHash = "12".repeat(28);
-    await seedWorkflowStarted(stack.storePath, headerHash);
-    const session = await openAttachedJourneySession(
-      stack.context,
-      stack.options(),
-    );
-    try {
-      const baseline = await session.captureWorkflowBaseline("doubleSpend");
-      expect(baseline.get(headerHash)).toHaveLength(1);
-      expect(baseline).toEqual(
-        await captureJourneyWorkflowBaseline(stack.storePath, "doubleSpend"),
-      );
     } finally {
       await session.close();
     }

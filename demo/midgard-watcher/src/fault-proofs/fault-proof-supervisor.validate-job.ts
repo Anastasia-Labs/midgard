@@ -4,28 +4,26 @@ import {
   type WorkflowActuationPermit,
   type WorkflowActuationRevokedError,
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
-import type {
-  HeaderDecision,
-  HeaderFaultDecision,
-} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { Header, StateQueueNode } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { assertWatcherStateQueueHeaderObservation } from "../indexers/authenticated-state-queue-observation.js";
-import { type WatcherStateQueueHeaderObservation } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
-import { type WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
+import type { WatcherStateQueueHeaderObservation } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
+import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-execution.js";
 import type { WatcherProofCleanupFailure } from "./fault-proof-objective-cleanup.js";
-import {
-  type WatcherProofExecution,
-  type WatcherProofObjective,
-} from "./fault-proof-objective-journal.js";
+import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import { listWatcherProofObjectives } from "./fault-proof-objective-table.js";
 import type {
   WatcherDecisionSupersedeRequest,
   WatcherDecisionSupersession,
   WatcherFaultProofProgressRequest,
+  WatcherProofMaterialsRoster,
 } from "./fault-proof-progress-authority.js";
+import type { WatcherFaultProofDepartureStep } from "./fault-proof-progress-authority.types.js";
+import type { WatcherProofMaterialsSweep } from "./fault-proof-supervisor.proof-materials-sweep.js";
 import type { WatcherDecisionHold } from "./watcher-decision-hold.js";
 import type { WatcherJournalDatabase } from "./watcher-journal-database.js";
 
@@ -94,13 +92,6 @@ export type WatcherFaultProofJob = Readonly<{
   observationRevision?: string;
 }>;
 
-export type WatcherFaultProofReconciliation = Readonly<{
-  category: WatcherInstalledWorkflowCategory;
-  headerHash: string;
-  decisionDigest: string;
-  actuationPermit: WorkflowActuationPermit;
-}>;
-
 export type UnsafeWatcherFaultProofJobForTest = Omit<
   WatcherFaultProofJob,
   "deadline"
@@ -126,11 +117,10 @@ export type WatcherFaultProofSupervisorStatus = Readonly<{
   /** A fault-proof journal holds its cap of live rows: readiness reports
    * journal_capacity until rows complete or are pruned. */
   journalCapacity: boolean;
-  /** Objectives and funding reservations whose recorded decision is
-   * missing: readiness reports journal_decision_missing until each one
-   * resolves from L1 facts. */
+  /** Objectives held by name, each with the readiness reason it names until
+   * its header leaves the finalized queue. */
   journalDecisionMissing: readonly WatcherDecisionHold[];
-  /** Released or final objectives whose workflow rows could not be deleted
+  /** Released or final objectives whose rows could not be deleted
    * (their rows stay): every admission retries the removal, and readiness
    * reports fault_proof_objective_cleanup_failed until it succeeds. */
   objectiveCleanupFailures: readonly WatcherProofCleanupFailure[];
@@ -139,12 +129,8 @@ export type WatcherFaultProofSupervisorStatus = Readonly<{
   journalBusy: string | null;
 }>;
 
-/** What the runtime does around the in-process requeue after journal_busy. */
+/** What the runtime does after the in-process requeue after journal_busy. */
 export type WatcherJournalBusyRequeue = Readonly<{
-  /** Sweeps idle funding while no supervisor job runs. Unlike the startup
-   * sweep, it leaves an unsigned reservation whose decision is missing to
-   * the next startup. */
-  releaseUnusedFunding(): Promise<void>;
   /** Asks the decision driver for a pass, which dispatches the work again. */
   wake(): void;
 }>;
@@ -174,7 +160,6 @@ export type UnsafeWatcherFaultProofSupervisorForTest =
         actuationPermit?: WorkflowActuationPermit,
         deadline?: WatcherFaultProofDeadline,
         rollbackGeneration?: string,
-        reconciliations?: readonly WatcherFaultProofReconciliation[],
       ): Promise<number>;
       unsafeRunOrResumeForTest(
         job: UnsafeWatcherFaultProofJobForTest,
@@ -193,14 +178,24 @@ export type SupervisorDependencies = Readonly<{
       admission: WatcherFaultProofExecutionAdmission;
     }>,
   ): Promise<unknown>;
+  /** Checks the objective's completion against the chain: `terminal` is a
+   * run's fresh result, absent when only the chain says what completed. An
+   * applicable completion names the removal transaction the chain shows and
+   * its confirmation depth. */
   verifyCompleted(
     input: Readonly<{
       job: WatcherFaultProofJob;
-      execution: WatcherProofExecution;
       actuationPermit: WorkflowActuationPermit | null;
+      terminal?: FraudProofWorkflowTerminal;
     }>,
   ): Promise<
-    | Readonly<{ kind: "applicable"; confirmationDepth: number }>
+    | Readonly<{
+        kind: "applicable";
+        confirmationDepth: number;
+        terminalTxHash: string;
+        /** The completion the chain shows, when the check read it whole. */
+        terminal?: FraudProofWorkflowTerminal;
+      }>
     | Readonly<{ kind: "pending" | "retryable"; reason?: string }>
   >;
   isActuationRevokedError(
@@ -208,9 +203,14 @@ export type SupervisorDependencies = Readonly<{
   ): error is WorkflowActuationRevokedError;
   /** The objective is no longer driven: held, completed or its header gone. */
   objectiveSettled?(objective: WatcherProofObjective): void;
-  /** Releases a superseded decision's unused prover funding; false when a
-   * reservation of it is bound to a run. */
-  releaseDecisionFunding?(decision: HeaderFaultDecision): Promise<boolean>;
+  /** The proof step an objective whose header left the queue takes from the
+   * chain alone, with no run (`WatcherProofDepartureStep`). */
+  departureStep?(step: WatcherFaultProofDepartureStep): void;
+  /** The process's proof-materials roster, told by the progress authority. */
+  proofMaterials?: WatcherProofMaterialsRoster;
+  /** The sweep-only run after a departure completes an objective
+   * (`fault-proof-supervisor.proof-materials-sweep.ts`). */
+  sweepProofMaterials?: WatcherProofMaterialsSweep;
 }>;
 
 /** The supervisor clock: a safe non-negative integer of milliseconds. */
@@ -255,6 +255,9 @@ export const validateJob = (
   requireAdmittedDeadline: boolean,
   actuationPermit: WorkflowActuationPermit | null,
 ): WatcherFaultProofJob => {
+  // A queued job carries its admitted deadline, except the job of an
+  // objective whose header left the queue: no deadline binds it, and only
+  // its reconciliation permit drives it.
   if (job.deadline === null) {
     if (
       actuationPermit === null ||
@@ -272,9 +275,7 @@ export const validateJob = (
       authority.headerHash !== job.headerHash ||
       authority.decisionDigest !== job.decisionDigest
     )
-      throw new Error(
-        "reconciliation job changed its existing execution identity",
-      );
+      throw new Error("reconciliation job changed its objective identity");
     return Object.freeze({ ...job, deadline: null });
   }
   const deadline =

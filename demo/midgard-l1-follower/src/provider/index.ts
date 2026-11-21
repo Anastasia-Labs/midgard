@@ -31,6 +31,7 @@ export {
 export {
   L1FollowerProvider,
   type L1FollowerProviderOptions,
+  type PlainOutputsAnswer,
 } from "./provider.js";
 export {
   describeLedgerRejection,

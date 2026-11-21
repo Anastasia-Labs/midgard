@@ -12,7 +12,6 @@ import type {
   ManifestBoundFamilyWorkflow,
   ManifestBoundFamilyWorkflowConfig,
 } from "./family-definition.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import type { FraudProofL1Source } from "./l1-source.js";
 import type { LinearFamilyCategory } from "./linear-family-spec.js";
 import type {
@@ -21,6 +20,7 @@ import type {
 } from "./orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
 import type { WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WorkflowRun } from "./workflow-run.js";
 
 export const FAMILY_APPLICATION_RECORD =
   "midgard-production-family-application-record-v1" as const;
@@ -106,8 +106,7 @@ export type FamilyApplicationRecord<
   execute: (input: {
     readonly workflow: Workflow;
     readonly sources: readonly RetainedDaPayloadSource[];
-    readonly journal: FraudProofWorkflowJournalStore;
-    readonly mode: "run" | "resume";
+    readonly run: WorkflowRun;
     readonly walletOnlySend: WalletOnlySend;
   }) => Promise<unknown>;
   /** Whether the constructed workflow must carry the invocation's digest. */

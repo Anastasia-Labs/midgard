@@ -2,12 +2,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import {
-  computeFraudProofReleaseFinalityPolicyDigest,
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowTerminal,
-  validateFraudProofWorkflowJournal,
-} from "@al-ft/midgard-fault-proofs";
+import { computeFraudProofReleaseFinalityPolicyDigest } from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
@@ -27,7 +22,6 @@ import type {
 } from "./fixture.js";
 import { verifyJourneySuccessorStageEvidence } from "./honest-successor.stage.js";
 import {
-  canonicalDigest,
   inputLabels,
   type JourneyEvidenceDeployment,
   type JourneyResult,
@@ -71,8 +65,9 @@ export const verifyJourneyProverPayout = (
 };
 
 /**
- * A result label is a claim. Live completion requires its manifest, validated
- * journal, native transactions and healthy-successor decision to agree.
+ * A result label is a claim. Live completion requires its manifest, the
+ * correction its finalized stamp read from the chain, the native
+ * transactions and the healthy-successor decision to agree.
  */
 export const verifyJourneyResultEvidence = async (
   runDirectory: string,
@@ -118,31 +113,9 @@ export const verifyJourneyResultEvidence = async (
     successor.header.prevHeaderHash,
     successorPredecessor.headerHash,
   );
-  const saved = await readJourneyArtifact<FraudProofWorkflowJournalEntry[]>(
-    join(directory, "completed-workflow.json"),
-  );
-  assert(saved.length > 0, "Workflow journal is empty");
-  let entries = validateFraudProofWorkflowJournal({
-    workflowId: saved[0]!.workflowId,
-    entries: saved,
-  });
   let nativeEvidencePath = await readJourneyNativeEvidencePath(directory);
-  let anchoredTerminal: FraudProofWorkflowTerminal | undefined;
+  let completion = result.completion;
   if (result.executionPolicy === "authenticated-inclusion") {
-    const provisional = [...entries]
-      .reverse()
-      .find(
-        ({ event }) =>
-          event.kind === "terminal_included" || event.kind === "completed",
-      )?.event;
-    assert(
-      provisional?.kind === "terminal_included" ||
-        provisional?.kind === "completed",
-    );
-    assert.equal(
-      canonicalDigest(result.completion),
-      canonicalDigest(provisional.terminal),
-    );
     const stamp = await readJourneyArtifact<JourneyFinalizedEvidenceStamp>(
       join(directory, "finalized-evidence-stamp.json"),
     );
@@ -159,61 +132,22 @@ export const verifyJourneyResultEvidence = async (
         deployment.manifest.l1Finality,
       ),
     );
-    entries = validateFraudProofWorkflowJournal({
-      workflowId: saved[0]!.workflowId,
-      entries: await readJourneyArtifact<FraudProofWorkflowJournalEntry[]>(
-        join(directory, "finalized-workflow.json"),
-      ),
-    });
-    assert.deepEqual(
-      entries.slice(0, saved.length),
-      saved,
-      "Final journal changed the provisional history",
-    );
-    // An included anchor's release depth is re-checked below against the
-    // native capture; older stamps predate the kind and anchor `completed`.
-    const terminalKind = stamp.terminalKind ?? "completed";
-    const anchor =
-      terminalKind === "completed"
-        ? entries.at(-1)!.event
-        : [...entries]
-            .reverse()
-            .find(({ event }) => event.kind === "terminal_included")?.event;
-    assert(
-      anchor?.kind === terminalKind,
-      "Finalized journal lacks the stamp's anchored terminal",
-    );
-    if (terminalKind === "terminal_included")
-      assert(
-        entries.every(({ event }) => event.kind !== "completed"),
-        "Included anchor ignored a completed terminal",
-      );
-    assert.equal(
-      canonicalDigest(stamp.terminal),
-      canonicalDigest(anchor.terminal),
-    );
-    anchoredTerminal = anchor.terminal;
+    // The correction the chain held at the release depth, which a rollback
+    // may have rebuilt since the provisional result; its depth is re-checked
+    // below against the native capture.
+    completion = stamp.terminal;
     nativeEvidencePath = stamp.nativeEvidencePath;
   }
-  assert.equal(entries[0]!.identity.deploymentFingerprint, fingerprint);
-  assert.equal(entries[0]!.identity.category, category);
-  assert.deepEqual(entries[0]!.identity.target, {
-    kind: "state_queue_header",
-    headerHash: staged.current.headerHash,
-  });
-  const completedTerminal = () => {
-    const terminal = entries.at(-1)!.event;
-    assert.equal(terminal.kind, "completed", "Workflow has not completed");
-    if (terminal.kind !== "completed")
-      throw new Error("Workflow has not completed");
-    assert.equal(
-      canonicalDigest(result.completion),
-      canonicalDigest(terminal.terminal),
-      "Result changed the validated terminal",
-    );
-    return terminal.terminal;
-  };
-  const completion = anchoredTerminal ?? completedTerminal();
+  assert.equal(
+    completion.category,
+    category,
+    "Correction names another family",
+  );
+  assert.equal(
+    completion.headerHash,
+    staged.current.headerHash,
+    "Correction names another header",
+  );
   const decisions = await readDecisions(runDirectory, fingerprint);
   const fault = decisions.find(
     (decision) => decision.headerHash === staged.current.headerHash,
@@ -222,7 +156,6 @@ export const verifyJourneyResultEvidence = async (
     fault?.decision === "fault_detected" && fault.category === category,
     "Intended automatic fault decision is missing",
   );
-  assert.equal(entries[0]!.identity.decisionDigest, fault.decisionDigest);
   // Healthy decisions are not journaled; the watcher's verified diagnostics are.
   await verifyJourneyVerifiedHeaders(directory, [
     staged.predecessor,
@@ -247,8 +180,6 @@ export const verifyJourneyResultEvidence = async (
     deployment.manifest.steps.initProtocol.txHash,
   );
   transaction(deployment.initialization.txHash);
-  for (const { event } of entries)
-    if (event.kind === "confirmed") transaction(event.txHash);
   // The release depth (a stamp's finalityDepth) authenticates the anchor.
   const confirmationDepth = BigInt(
     deployment.manifest.l1Finality.confirmationDepth,
@@ -385,7 +316,7 @@ export const verifyJourneyResultEvidence = async (
   assert.deepEqual(result.diagnostics.status.readinessReasons, []);
   assert.equal(result.diagnostics.status.launchScope.complete, true);
   return {
-    workflowId: entries[0]!.workflowId,
+    removalTxHash: completion.correction.removalTxHash,
     headerHash: staged.current.headerHash,
     successor: successor.headerHash,
   };

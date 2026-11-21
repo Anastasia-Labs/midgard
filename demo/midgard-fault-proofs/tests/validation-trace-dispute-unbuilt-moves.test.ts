@@ -22,7 +22,7 @@ import {
   validationTraceDefenderDeadlineMs,
 } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
-import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
+import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/validation-trace-dispute/wallet-move-unfunded-alarm.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   awaitLastSlotAtOrBefore,

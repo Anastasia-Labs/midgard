@@ -21,8 +21,7 @@ export {
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
-import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
-import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
+import type { FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { executeManifestBoundFamilyRecovery } from "../workflow/manifest-bound-family-recovery.js";
 import type {
@@ -30,7 +29,8 @@ import type {
   FraudProofWorkflowTerminalVerifier,
 } from "../workflow/orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
-import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import type {
   LoadManifestBoundFieldPreimageLengthConfig,
   ManifestBoundFieldPreimageLengthConfig,
@@ -174,18 +174,18 @@ export const createManifestBoundFieldPreimageLengthWorkflow = async (
 export const executeManifestBoundFieldPreimageLengthWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundFieldPreimageLengthWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }) =>
   await executeManifestBoundFamilyRecovery({
     ...workflow,
     sources,
-    journal,
+    run,
     walletOnlySend,
     replayer: FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   });

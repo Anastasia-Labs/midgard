@@ -1,6 +1,6 @@
-/** The funding permit's fee rule: a transaction's minimum fee at the
- * signed protocol's exact prices, the per-transaction fee ceiling, and the
- * reserve a validation dispute keeps for a thread move our wallet pays. */
+/** The workflow's fee rule: a transaction's minimum fee at the signed
+ * protocol's exact prices, the per-transaction fee ceiling, and what a
+ * validation dispute's prover must hold for a thread move our wallet pays. */
 import type { DeploymentManifestCardanoProtocolParameters } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CML } from "@lucid-evolution/lucid";
 
@@ -74,10 +74,10 @@ export const workflowRuntimeFundingMinimumFee = ({
 };
 
 /**
- * The funding permit's per-transaction fee ceiling: the minimum fee of a
- * transaction at the protocol's maximum signed size, execution units and
- * reference-script bytes. The permit refuses a funded transaction whose fee
- * passes it.
+ * The per-transaction fee ceiling: the minimum fee of a transaction at the
+ * protocol's maximum signed size, execution units and reference-script
+ * bytes. A wallet-paid dispute move whose fee passes it is refused
+ * (`ValidationTraceMoveFeeOverCapError`).
  */
 export const workflowRuntimeFundingMaximumFee = (
   parameters: Pick<
@@ -115,16 +115,16 @@ export const VALIDATION_DISPUTE_WALLET_MOVE = Object.freeze({
 });
 
 /**
- * What a reservation must hold for one move our wallet pays, under
+ * What the prover's wallet must hold for one move it pays, under
  * `parameters`: the fee of a move of the protocol's largest signed size, our
  * wallet's inputs and change included, at the protocol's per-transaction
  * execution limit, reading the largest measured move's reference scripts,
  * and the minimum ada of its change, a plain coin returned to the funding
  * key. The builder selects our wallet's coins with the move's scripts
  * budgeted at that limit before it evaluates them, so a reserve priced at
- * the move's own execution units would not let it select. The funding
- * permit keeps it when the case opens; a later move our wallet cannot fund
- * does not build, and raises the operator's alarm.
+ * the move's own execution units would not let it select. A funding-adequacy
+ * check adds it to the bond and the case floor; a move our wallet cannot
+ * fund does not build, and raises the operator's alarm.
  */
 export const validationDisputeWalletMoveReserve = ({
   parameters,

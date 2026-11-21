@@ -2,11 +2,12 @@ import { readFile } from "node:fs/promises";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core";
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/journal";
 
 import type { DbEvidence, RawEvidenceRef } from "../e2e/summary.js";
-import type { E2EStateCorrectionAcceptance } from "./e2e-state-correction-acceptance.js";
-import { REQUIRED_STATE_CORRECTION_GATE_LABELS } from "./e2e-state-correction-acceptance.js";
+import {
+  type E2EStateCorrectionAcceptance,
+  REQUIRED_STATE_CORRECTION_GATE_LABELS,
+} from "./e2e-state-correction-acceptance.js";
 import {
   deriveAuthenticatedL1Observation,
   parseAuthenticatedL1Observation,
@@ -20,12 +21,6 @@ import {
   type StateCorrectionIndependentEvidence,
   type StateCorrectionIndependentSourcePaths,
 } from "./e2e-state-correction-reconciliation.final-snapshot.js";
-import {
-  loadWorkflow,
-  manifestCatalogue,
-  parseNodeDatabaseExport,
-  requiredTransactions,
-} from "./e2e-state-correction-reconciliation.load-workflow.js";
 import { parseFinalSnapshot } from "./e2e-state-correction-reconciliation.parse-final-snapshot.js";
 import {
   assertEqual,
@@ -37,6 +32,11 @@ import {
   readJson,
   sha256,
 } from "./e2e-state-correction-reconciliation.parse-kupo-matches.js";
+import {
+  manifestCatalogue,
+  parseNodeDatabaseExport,
+  requiredTransactions,
+} from "./e2e-state-correction-reconciliation.parse-node-database-export.js";
 
 export const reconcileStateCorrectionIndependentEvidence = async ({
   expectedRunId,
@@ -55,7 +55,6 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     blueprintBytes,
     catalogueValue,
     parametersValue,
-    workflows,
     l1Values,
     recoveryValues,
     finalSnapshotValue,
@@ -64,7 +63,6 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     readFile(paths.blueprintPath),
     readJson(paths.cataloguePath),
     readJson(paths.parametersPath),
-    Promise.all(paths.workflowJournalDirectories.map(loadWorkflow)),
     Promise.all(paths.l1ObservationPaths.map(readJson)),
     Promise.all(paths.recoveryObservationPaths.map(readJson)),
     readJson(paths.finalSnapshotPath),
@@ -114,113 +112,18 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     "claim parameter digest",
   );
 
-  if (workflows.length !== claim.families.length) {
-    throw new Error(
-      `workflow journal count mismatch: expected ${claim.families.length.toString()}, found ${workflows.length.toString()}`,
-    );
+  if (
+    new Set(claim.families.map((family) => family.familyId)).size !==
+    claim.families.length
+  ) {
+    throw new Error("state-correction claim repeats a family");
   }
-  const workflowByCategory = new Map(
-    workflows.map((workflow) => [
-      workflow.entries[0]!.identity.category,
-      workflow,
-    ]),
-  );
-  if (workflowByCategory.size !== workflows.length) {
-    throw new Error("workflow journals contain duplicate family categories");
-  }
-  const terminals = new Map<string, FraudProofWorkflowTerminal>();
   for (const family of claim.families) {
-    const workflow = workflowByCategory.get(
-      family.familyId as Parameters<typeof workflowByCategory.get>[0],
-    );
-    if (workflow === undefined) {
-      throw new Error(`missing workflow journal for ${family.familyId}`);
-    }
-    const identity = workflow.entries[0]!.identity;
-    const terminal = workflow.terminal;
-    assertEqual(
-      identity.deploymentFingerprint,
-      manifest.manifestId,
-      `${family.familyId} workflow deployment`,
-    );
-    assertEqual(
-      identity.target,
-      { kind: "state_queue_header", headerHash: family.headerHash },
-      `${family.familyId} workflow target`,
-    );
-    assertEqual(
-      terminal.category,
-      family.familyId,
-      `${family.familyId} terminal category`,
-    );
-    assertEqual(
-      terminal.headerHash,
-      family.headerHash,
-      `${family.familyId} terminal header`,
-    );
-    assertEqual(
-      terminal.proofToken.createdByTxHash,
-      family.proofTokenTxHash,
-      `${family.familyId} proof-token creation`,
-    );
-    assertEqual(
-      terminal.proofToken.retainedAtFinalState,
-      true,
-      `${family.familyId} permanent proof-token retention`,
-    );
-    assertEqual(
-      terminal.correction.removalTxHash,
-      family.removalTxHash,
-      `${family.familyId} removal`,
-    );
-    assertEqual(
-      terminal.correction.referencedProofTokenOutRef,
-      terminal.proofToken.outRef,
-      `${family.familyId} removal proof-token reference`,
-    );
     assertEqual(
       family.correctionTxHash,
       family.removalTxHash,
       `${family.familyId} correction/removal identity`,
     );
-    assertEqual(
-      terminal.economics.slashedLovelace,
-      family.expectedSlashLovelace,
-      `${family.familyId} exact slash`,
-    );
-    assertEqual(
-      terminal.economics.proverRewardLovelace,
-      family.expectedProverRewardLovelace,
-      `${family.familyId} exact prover reward`,
-    );
-    assertEqual(
-      {
-        slot: terminal.observedAt.slot,
-        blockHash: terminal.observedAt.blockHash,
-      },
-      family.chainPoint,
-      `${family.familyId} final chain point`,
-    );
-    const familyTxHashes = new Set([
-      family.initTxHash,
-      ...family.proofStepTxHashes,
-      family.proofTokenTxHash,
-      family.removalTxHash,
-      family.correctionTxHash,
-    ]);
-    for (const txHash of familyTxHashes) {
-      if (!workflow.confirmedTxHashes.has(txHash)) {
-        throw new Error(
-          `${family.familyId} required transaction ${txHash} is not confirmed in its journal`,
-        );
-      }
-    }
-    if (workflow.confirmedTxHashes.size !== familyTxHashes.size) {
-      throw new Error(
-        `${family.familyId} workflow has confirmed transactions omitted from the aggregate claim`,
-      );
-    }
-    terminals.set(family.familyId, terminal);
   }
 
   const claimedL1Observations = l1Values.map((value, index) =>
@@ -277,17 +180,6 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
       "authenticated L1 observations contain transactions outside the required Q57 set",
     );
   }
-  for (const family of claim.families) {
-    const terminal = terminals.get(family.familyId)!;
-    const removalObservation = observationByTxHash.get(
-      family.removalTxHash,
-    )!.observation;
-    assertEqual(
-      removalObservation.observedAtTip,
-      terminal.observedAt,
-      `${family.familyId} authenticated terminal chain observation`,
-    );
-  }
   const terminalPoint = (txHash: string): ChainPoint => {
     const observed = observationByTxHash.get(txHash)?.observation.observedAtTip;
     if (observed === undefined) {
@@ -297,6 +189,13 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     }
     return { slot: observed.slot, blockHash: observed.blockHash };
   };
+  for (const family of claim.families) {
+    assertEqual(
+      terminalPoint(family.removalTxHash),
+      family.chainPoint,
+      `${family.familyId} authenticated terminal chain point`,
+    );
+  }
   assertEqual(
     terminalPoint(claim.withdrawalReservePayout.payoutConcludeTxHash),
     claim.withdrawalReservePayout.chainPoint,
@@ -402,10 +301,32 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
   if (rawStateQueueMatches.length !== 0) {
     throw new Error("final raw Kupo state-queue response is not drained");
   }
-  const expectedRetainedProofTokens = claim.families.map((family) => {
-    const token = terminals.get(family.familyId)!.proofToken;
-    return { unit: token.unit, outRef: token.outRef };
-  });
+  assertEqual(
+    finalSnapshot.economics.map((entry) => entry.familyId),
+    claim.families.map((family) => family.familyId),
+    "final economics family order",
+  );
+  // Each family's retained proof token is an output of its authenticated
+  // proof-token transaction, and its removal references that output.
+  const expectedRetainedProofTokens = finalSnapshot.economics.map(
+    (entry, index) => {
+      const family = claim.families[index]!;
+      assertEqual(
+        entry.proofTokenOutRef.slice(
+          0,
+          entry.proofTokenOutRef.lastIndexOf("#"),
+        ),
+        family.proofTokenTxHash,
+        `${family.familyId} proof-token creation`,
+      );
+      assertEqual(
+        entry.removalReferencedProofTokenOutRef,
+        entry.proofTokenOutRef,
+        `${family.familyId} removal proof-token reference`,
+      );
+      return { unit: entry.proofTokenUnit, outRef: entry.proofTokenOutRef };
+    },
+  );
   assertEqual(
     finalAuthentication.kupoProofTokenResponses.map(({ unit, outRef }) => ({
       unit,
@@ -582,68 +503,17 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
   ) {
     throw new Error("final chain/queue state is not drained and corrected");
   }
-  assertEqual(
-    finalSnapshot.economics.map((entry) => entry.familyId),
-    claim.families.map((family) => family.familyId),
-    "final economics family order",
-  );
   for (const [index, observed] of finalSnapshot.economics.entries()) {
     const family = claim.families[index]!;
-    const terminal = terminals.get(family.familyId)!;
     assertEqual(
       observed.removalTxHash,
       family.removalTxHash,
       `${family.familyId} economic removal`,
     );
     assertEqual(
-      observed.proofTokenUnit,
-      terminal.proofToken.unit,
-      `${family.familyId} retained proof-token unit`,
-    );
-    assertEqual(
-      observed.proofTokenOutRef,
-      terminal.proofToken.outRef,
-      `${family.familyId} retained proof-token outref`,
-    );
-    assertEqual(
-      observed.removalReferencedProofTokenOutRef,
-      terminal.correction.referencedProofTokenOutRef,
-      `${family.familyId} snapshot removal proof-token reference`,
-    );
-    assertEqual(
       observed.proofTokenFinalState,
       "retained",
       `${family.familyId} snapshot proof-token final state`,
-    );
-    assertEqual(
-      observed.operatorCredential,
-      terminal.economics.operatorCredential,
-      `${family.familyId} operator credential`,
-    );
-    assertEqual(
-      observed.proverCredential,
-      terminal.economics.proverCredential,
-      `${family.familyId} prover credential`,
-    );
-    assertEqual(
-      observed.operatorBondInputOutRef,
-      terminal.economics.operatorBondInputOutRef,
-      `${family.familyId} operator bond input outref`,
-    );
-    assertEqual(
-      observed.operatorBondInputLovelace,
-      terminal.economics.operatorBondInputLovelace,
-      `${family.familyId} operator bond input lovelace`,
-    );
-    assertEqual(
-      observed.proverRewardOutputOutRef,
-      terminal.economics.proverRewardOutputOutRef,
-      `${family.familyId} prover reward output outref`,
-    );
-    assertEqual(
-      observed.removalFeeLovelace,
-      terminal.economics.removalFeeLovelace,
-      `${family.familyId} removal fee`,
     );
     assertEqual(
       observed.slashedLovelace,
@@ -724,16 +594,6 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     { label: "state-correction-blueprint", path: paths.blueprintPath },
     { label: "state-correction-catalogue", path: paths.cataloguePath },
     { label: "state-correction-parameters", path: paths.parametersPath },
-    ...workflows.flatMap((workflow) => [
-      {
-        label: `workflow-journal:${workflow.entries[0]!.identity.category}`,
-        path: workflow.directory,
-      },
-      ...workflow.entryPaths.map((path, index) => ({
-        label: `workflow-journal-entry:${workflow.entries[0]!.identity.category}:${index.toString()}`,
-        path,
-      })),
-    ]),
     ...paths.l1ObservationPaths.map((path, index) => ({
       label: `authenticated-l1-observation:${index.toString()}`,
       path,
@@ -770,9 +630,6 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     db: [
       satisfied(REQUIRED_STATE_CORRECTION_GATE_LABELS[0], {
         familyCount: claim.families.length.toString(),
-        workflowJournalDigests: workflows
-          .map((workflow) => workflow.digest)
-          .join(","),
         authenticatedL1TransactionCount: requiredHashes.size.toString(),
       }),
       satisfied(REQUIRED_STATE_CORRECTION_GATE_LABELS[1], {
@@ -805,7 +662,7 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     transactions,
     rawEvidence,
     notes: [
-      `State-correction acceptance independently reconciled ${claim.families.length.toString()} family journals, ${requiredHashes.size.toString()} authenticated L1 transactions, and ${recoveryObservations.length.toString()} recovery observations at ${finalSnapshot.observedAt.slot}:${finalSnapshot.observedAt.blockHash}.`,
+      `State-correction acceptance independently reconciled ${claim.families.length.toString()} families, ${requiredHashes.size.toString()} authenticated L1 transactions, and ${recoveryObservations.length.toString()} recovery observations at ${finalSnapshot.observedAt.slot}:${finalSnapshot.observedAt.blockHash}.`,
     ],
   };
 };

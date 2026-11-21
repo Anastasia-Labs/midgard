@@ -15,7 +15,7 @@ import {
   defineLinearFamily,
   type ManifestBoundLinearFamilyWorkflow,
 } from "./family-definition.family-definition.js";
-import { type FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
+import type { FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
 import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
@@ -28,7 +28,8 @@ import {
   exactJournalRecord,
 } from "./native-index-artifact.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { proofMaterialsAccess } from "./proof-materials-view.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 import { admitWithdrawnInputArtifact } from "./withdrawn-input.admit-withdrawn-input-artifact.js";
 import {
   actionInput,
@@ -51,10 +52,14 @@ const createTransactionPort = (
       evidence,
       classification,
     }),
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const ownOutputs = workflowFieldCarriageOwnOutputs({
       category: "withdrawnInput",
-      entries,
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
+      }),
     });
     const admitted = await admitWithdrawnInputArtifact(
       artifact,
@@ -67,7 +72,7 @@ const createTransactionPort = (
     if (input.stage === "init") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildWithdrawnInputInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -91,13 +96,12 @@ const createTransactionPort = (
     if (input.stage === "step_01") {
       const chunks = await resolveDirectFirstProofChunks({
         action,
-        lucid: config.lucid,
         address: config.signer.proofMaterialsAddress,
         proofCbor: admitted.artifact.tx.txMembershipProofCbor,
       });
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildWithdrawnInputStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -124,7 +128,7 @@ const createTransactionPort = (
       const field = await resolveField(config, admitted.spendPlan, ownOutputs);
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildWithdrawnInputStep02({
               ownOutputs,
               lucid: config.lucid,
@@ -153,7 +157,7 @@ const createTransactionPort = (
     if (input.stage === "step_03") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildWithdrawnInputStep03({
               lucid: config.lucid,
               contracts: config.contracts,

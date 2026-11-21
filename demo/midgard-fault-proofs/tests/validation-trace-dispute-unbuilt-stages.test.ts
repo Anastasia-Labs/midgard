@@ -47,20 +47,13 @@ const reasonOf = (result: FraudProofWorkflowRunResult) => {
   return result.reason;
 };
 
-/** The intents the runner journaled for `stage`. */
-const intentsFor = (
-  result: FraudProofWorkflowRunResult,
-  stage: ValidationTraceStage,
-) =>
-  "entries" in result
-    ? result.entries.filter(
-        ({ event }) =>
-          event.kind === "submission_intent" &&
-          event.actionId.startsWith(
-            `validation-trace-${stage.replaceAll("_", "-")}:`,
-          ),
-      )
-    : [];
+/** The transactions `of`'s process sent for `stage`. */
+const sentFor = (of: Runner, stage: ValidationTraceStage) =>
+  of.process
+    .sent()
+    .filter(({ actionId }) =>
+      actionId.startsWith(`validation-trace-${stage.replaceAll("_", "-")}:`),
+    );
 
 /** Runs the runner under the unbuildable size limit until it waits under
  * the move-unbuilt alarm; returns the run. */
@@ -95,13 +88,13 @@ const expectAlarm = (
     name: VALIDATION_TRACE_MOVE_UNBUILT,
     alarm: true,
   });
-  expect(intentsFor(result, stage)).toStrictEqual([]);
+  expect(sentFor(runner, stage)).toStrictEqual([]);
 };
 
 /** One run under the ledger's own limit, which sends `stage`. */
 const sends = async (stage: ValidationTraceStage) => {
-  const result = await runner.runOnce(scene.failing);
-  expect(intentsFor(result, stage)).toHaveLength(1);
+  await runner.runOnce(scene.failing);
+  expect(sentFor(runner, stage)).toHaveLength(1);
 };
 
 const WINDOW = "the end of the case open window";
@@ -147,7 +140,7 @@ describe("validation-trace dispute runner: our init, open, verify_source and clo
     expect(reasonOf(result)).not.toContain(VALIDATION_TRACE_MOVE_UNBUILT);
     const runState = validationTraceRunState(result);
     expect("namedState" in runState && runState.namedState).toBeFalsy();
-    expect(intentsFor(result, "init")).toStrictEqual([]);
+    expect(sentFor(moved, "init")).toStrictEqual([]);
   }, 600_000);
 
   it("raises the move-unbuilt alarm when our init does not build, naming the end of the case open window it feeds, and sends it once it builds", async () => {

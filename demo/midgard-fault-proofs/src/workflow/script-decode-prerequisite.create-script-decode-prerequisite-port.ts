@@ -1,10 +1,9 @@
 /**
- * The port that records a Plutus item's script decode as journaled side
- * actions of a family workflow. `inspect` reads the chain (through the
- * provider: liveness only, as the validator checks every step) and the
- * journal, and names the one action the record needs next; `capture` builds
- * and signs it from the reserved funding; `reconcile` settles a submitted one
- * from its signed bytes on authenticated L1, or else from its exact output.
+ * The port that records a Plutus item's script decode as side actions of a
+ * family workflow. `inspect` reads the chain (through the provider: liveness
+ * only, as the validator checks every step) and names the one action the
+ * record needs next; `capture` builds and signs it from the prover wallet.
+ * The workflow follows each submitted one by its signed bytes.
  */
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import {
@@ -14,7 +13,6 @@ import {
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
-import { scriptDecodeRunTokenName } from "../script-decode/data.js";
 import { plutusItemScript } from "../script-decode/item-record.js";
 import {
   findScriptDecodeRecord,
@@ -23,6 +21,7 @@ import {
   SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS,
   scriptDecodeLedgerLimits,
 } from "../script-decode/record.js";
+import { resumeScriptDecodeRun } from "../script-decode/resume.js";
 import {
   buildScriptDecodeBindTx,
   buildScriptDecodeFinishTx,
@@ -33,21 +32,16 @@ import {
   scriptDecodeStagingDatums,
 } from "../script-decode/submit.js";
 import { WorkflowActionChangedError } from "./action-changed.js";
-import { TX_HASH } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import { isWorkflowFundingShortfall } from "./funding-reservation-permit.workflow-funding-shortfall.js";
 import type { JournalJsonObject } from "./journal.js";
-import type { FraudProofWorkflowReconcileResult } from "./orchestrator.js";
-import type { FraudProofAuthenticatedPublicationObserver } from "./raw-l1-publication-observation.js";
 import {
-  confirmedScriptDecodeOutputs,
+  proofMaterialsAccess,
+  type ProofMaterialsHolder,
+} from "./proof-materials-view.js";
+import {
   parseScriptDecodeAction,
-  parseScriptDecodeRecovery,
   SCRIPT_DECODE_PREREQUISITE,
   scriptDecodeAction,
-  scriptDecodeAttemptsExhausted,
   scriptDecodeDatumDigest,
-  scriptDecodeRecovery,
-  scriptDecodeRejectedAttempts,
 } from "./script-decode-prerequisite.actions.js";
 import { scriptDecodeReferenceCandidates } from "./script-decode-prerequisite.deployment.js";
 import {
@@ -63,26 +57,17 @@ import {
   scriptDecodeCursorAtRun,
   scriptDecodeFuelGuess,
 } from "./script-decode-prerequisite.walk-cursor.js";
-import { reconcileSignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
 import {
   type LocallyEvaluatedTransaction,
   workflowReferenceScriptsUsedByTransaction,
 } from "./transaction-boundary.js";
-
-/**
- * How long a confirmed output the provider does not show is taken for
- * provider lag rather than spent.
- */
-export const SCRIPT_DECODE_PROVIDER_GRACE_MS = 10 * 60_000;
+import { isWorkflowFundingShortfall } from "./workflow-funding-shortfall.js";
 
 /**
  * How long a signed Walk or Finish stays valid. Stage and Bind spend only
  * wallet coins and carry the shorter wallet-only window instead.
  */
 export const SCRIPT_DECODE_VALIDITY_MS = 15 * 60_000;
-
-/** Our newest runs looked up at once: a rollback revives at most these. */
-const RUN_LOOKBACK = 16;
 
 const outRefOf = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
@@ -101,8 +86,6 @@ export const createScriptDecodePrerequisitePort = <
   signer,
   deployment,
   itemForAction,
-  publications,
-  now = Date.now,
   maxAttempts = SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS,
   refreshLedgerParameters = refreshScriptDecodeLedgerParameters(lucid),
 }: {
@@ -111,9 +94,7 @@ export const createScriptDecodePrerequisitePort = <
   readonly signer: ResolvedProverSigner;
   readonly deployment: () => ScriptDecodeDeployment;
   readonly itemForAction: ScriptDecodeItemForAction;
-  readonly publications: FraudProofAuthenticatedPublicationObserver;
-  readonly now?: () => number;
-  /** Submissions of one action the ledger may reject before it is held. */
+  /** Submissions of one action this process makes before it is held. */
   readonly maxAttempts?: number;
   readonly refreshLedgerParameters?: () => Promise<void>;
 }): ScriptDecodePrerequisitePort<Category> => {
@@ -124,31 +105,31 @@ export const createScriptDecodePrerequisitePort = <
     const item = await itemForAction(input);
     return item === null ? undefined : plutusItemScript(item);
   };
-  const recent = (confirmedAt: string): boolean =>
-    now() - Date.parse(confirmedAt) < SCRIPT_DECODE_PROVIDER_GRACE_MS;
-  const runUnit = (scriptHashHex: string) =>
-    `${deployment().validator.policyId}${scriptDecodeRunTokenName(scriptHashHex)}`;
   const runAt = async (outRef: string): Promise<UTxO | undefined> =>
     (await lucid.utxosByOutRef([parseOutRef(outRef)]))[0];
   const stagedChunks = (input: {
-    readonly entries: Parameters<
-      typeof confirmedScriptDecodeOutputs
-    >[0]["entries"];
-    readonly scriptHashHex: string;
     readonly scriptBytes: Uint8Array;
+    readonly holder: ProofMaterialsHolder;
   }) =>
     scriptDecodeStagedChunks({
-      ...input,
+      scriptBytes: input.scriptBytes,
       lucid,
-      category,
       address: signer.proofMaterialsAddress,
-      recent,
+      materials: proofMaterialsAccess({ signer, lucid, holder: input.holder }),
     });
 
   const port: ScriptDecodePrerequisitePort<Category> = {
     portVersion: SCRIPT_DECODE_PREREQUISITE,
     category,
-    inspect: async ({ baseAction, artifact, entries }) => {
+    need: async ({ holder, baseAction, artifact }) => {
+      const script = await scriptOf({ action: baseAction, artifact });
+      if (script === undefined) return;
+      proofMaterialsAccess({ signer, lucid, holder }).view.need(
+        holder,
+        scriptDecodeStagingDatums(script.scriptBytes),
+      );
+    },
+    inspect: async ({ baseAction, artifact, attempts, holder }) => {
       const script = await scriptOf({ action: baseAction, artifact });
       if (script === undefined) return { kind: "not_required" };
       const { scriptHashHex, scriptBytes, language } = script;
@@ -164,6 +145,7 @@ export const createScriptDecodePrerequisitePort = <
       const required = (
         stage: Parameters<typeof scriptDecodeAction>[0]["stage"],
         fields: Parameters<typeof scriptDecodeAction>[0]["fields"],
+        absentAt?: readonly string[],
       ) => {
         const action = scriptDecodeAction({
           category,
@@ -172,91 +154,48 @@ export const createScriptDecodePrerequisitePort = <
           stage,
           fields,
         } as Parameters<typeof scriptDecodeAction>[0]);
-        return scriptDecodeAttemptsExhausted(
-          entries,
-          action.actionId,
-          maxAttempts,
-        )
+        const absent = absentAt === undefined ? {} : { absentAt };
+        return attempts(action.actionId) >= maxAttempts
           ? ({
               kind: "held",
               action,
-              reason: `${SCRIPT_DECODE_RECORD_HELD}: ${action.actionId} was rejected on all ${maxAttempts.toString()} attempts`,
+              reason: `${SCRIPT_DECODE_RECORD_HELD}: ${action.actionId} did not land on any of its ${maxAttempts.toString()} attempts`,
+              ...absent,
             } as const)
-          : ({ kind: "required", action } as const);
+          : ({ kind: "required", action, ...absent } as const);
       };
-      const lagging = (outRef: string) =>
-        ({
-          kind: "pending",
-          reason: `script decode output ${outRef} is not yet visible to the provider`,
-        }) as const;
-      const confirmed = (
-        stages: Parameters<typeof confirmedScriptDecodeOutputs>[0]["stages"],
-      ) =>
-        confirmedScriptDecodeOutputs({
-          entries,
-          category,
-          scriptHashHex,
-          stages,
-        });
-
-      const staged = await stagedChunks({
-        entries,
-        scriptHashHex,
-        scriptBytes,
-      });
-      if (staged.kind === "pending") return lagging(staged.outRef);
+      const staged = await stagedChunks({ scriptBytes, holder });
       if (staged.kind === "publish") {
         return required("script_decode_stage", {
           chunkIndex: staged.ordinal,
           datumCborSha256: scriptDecodeDatumDigest(
             scriptDecodeStagingDatums(scriptBytes)[staged.ordinal]!,
           ),
-          replacesOutRef: staged.replaces,
         });
       }
 
-      const runs = confirmed(["script_decode_bind", "script_decode_walk"])
-        .slice(-RUN_LOOKBACK)
-        .reverse();
-      const visible = new Map(
-        (
-          await lucid.utxosByOutRef(
-            runs.map(({ recovery }) => parseOutRef(recovery.outRef)),
-          )
-        ).map((utxo) => [outRefOf(utxo), utxo]),
-      );
-      const newest = runs[0];
-      const current = runs
-        .map(({ recovery }) => visible.get(recovery.outRef))
-        .find((utxo) => utxo !== undefined);
-      if (
-        current === undefined ||
-        outRefOf(current) !== newest?.recovery.outRef
-      ) {
-        if (newest !== undefined && recent(newest.confirmedAt)) {
-          return lagging(newest.recovery.outRef);
-        }
-      }
-      if (current === undefined) {
-        return required("script_decode_bind", {
-          previousRunOutRef: newest?.recovery.outRef ?? null,
-        });
-      }
-      const cursor = scriptDecodeCursorAtRun({
+      // The open run on chain furthest along that the honest walk writes,
+      // whoever bound it: bind is permissionless and every honest run
+      // finishes into the one record.
+      const resumed = await resumeScriptDecodeRun({
+        lucid,
+        deployment: deployment(),
         language,
         scriptBytes,
         scriptHashHex,
-        runUtxo: current,
       });
-      const runOutRef = outRefOf(current);
-      if (cursor === undefined) {
-        return required("script_decode_bind", { previousRunOutRef: runOutRef });
-      }
-      return scriptDecodeWalkRecord(cursor) === undefined
+      // No record and no run, both read at the validator's address: a Walk
+      // or Finish of ours in flight there leaves it empty until it lands.
+      if (resumed === undefined)
+        return required("script_decode_bind", {}, [
+          deployment().validator.spendingScriptAddress,
+        ]);
+      const runOutRef = outRefOf(resumed.runUtxo);
+      return scriptDecodeWalkRecord(resumed.cursor) === undefined
         ? required("script_decode_walk", { runOutRef })
         : required("script_decode_finish", { runOutRef });
     },
-    capture: async ({ action, artifact, entries }) => {
+    capture: async ({ action, artifact, attempts, holder }) => {
       const parsed = parseScriptDecodeAction(action, category);
       const script = await scriptOf({ action: parsed.baseAction, artifact });
       if (script?.scriptHashHex !== parsed.scriptHashHex) {
@@ -270,19 +209,16 @@ export const createScriptDecodePrerequisitePort = <
         new WorkflowActionChangedError(
           `${category} script decode ${what} is no longer on chain`,
         );
-      // A rejected attempt is refitted against freshly read ledger limits.
-      if (scriptDecodeRejectedAttempts(entries, action.actionId) > 0) {
+      // An attempt that did not land is refitted against freshly read ledger
+      // limits.
+      if (attempts > 0) {
         await refreshLedgerParameters();
       }
       signer.selectWallet(lucid);
       const validTo =
         lucid.slotToUnixTime(lucid.currentSlot()) + SCRIPT_DECODE_VALIDITY_MS;
       const staging = async () => {
-        const staged = await stagedChunks({
-          entries,
-          scriptHashHex,
-          scriptBytes,
-        });
+        const staged = await stagedChunks({ scriptBytes, holder });
         if (staged.kind !== "ready") throw changed("staging");
         return [...staged.utxos];
       };
@@ -299,7 +235,6 @@ export const createScriptDecodePrerequisitePort = <
         return { runUtxo, cursor };
       };
       let built: ScriptDecodeSignedTx;
-      let unit: string | null = runUnit(scriptHashHex);
       try {
         switch (parsed.stage) {
           case "script_decode_stage": {
@@ -316,7 +251,6 @@ export const createScriptDecodePrerequisitePort = <
               datum,
               address: signer.proofMaterialsAddress,
             });
-            unit = null;
             break;
           }
           case "script_decode_bind":
@@ -363,7 +297,6 @@ export const createScriptDecodePrerequisitePort = <
               record,
               validTo,
             });
-            unit = `${bound.validator.policyId}${scriptHashHex}`;
             break;
           }
         }
@@ -384,73 +317,7 @@ export const createScriptDecodePrerequisitePort = <
           }),
         ),
       });
-      return {
-        transaction,
-        durableRecovery: scriptDecodeRecovery({
-          stage: parsed.stage,
-          transaction,
-          address: built.address,
-          matches: built.matches,
-          unit,
-        }),
-      };
-    },
-    reconcile: async ({
-      action,
-      txHash,
-      durableRecovery,
-      signedTransactionCborHex,
-      authorizeResubmission,
-    }): Promise<FraudProofWorkflowReconcileResult> => {
-      if (txHash === undefined || !TX_HASH.test(txHash)) {
-        return {
-          kind: "conflict",
-          reason: `${category} script decode action omitted its exact transaction hash`,
-        };
-      }
-      let recovery: ReturnType<typeof parseScriptDecodeRecovery>;
-      try {
-        recovery = parseScriptDecodeRecovery({
-          value: durableRecovery,
-          stage: parseScriptDecodeAction(action, category).stage,
-          txHash,
-        });
-      } catch (cause) {
-        return { kind: "conflict", reason: String(cause) };
-      }
-      if (
-        signedTransactionCborHex !== undefined &&
-        publications.observeSignedTransaction !== undefined
-      ) {
-        const reconciled = await reconcileSignedWorkflowTransaction({
-          transactionHash: txHash,
-          signedTransactionCborHex,
-          observe: publications.observeSignedTransaction,
-          rebroadcast: publications.rebroadcastSignedTransaction,
-          authorizeResubmission,
-          reportInclusion: true,
-        });
-        // Included deeper than automatic recovery reaches is still included.
-        return reconciled.kind === "pending" &&
-          reconciled.retirement?.reason === "included"
-          ? { kind: "confirmed", txHash }
-          : reconciled;
-      }
-      // Without the signed bytes (a funding confirmation journaled before its
-      // reconciliation), the exact output the intent journaled settles it. A
-      // record transaction touches no family history unit, so the family's
-      // authenticated L1 never shows it; the provider does, for liveness
-      // only, as the validator checks every record step it continues from.
-      const output = await runAt(recovery.outRef);
-      return output !== undefined &&
-        output.address === recovery.address &&
-        output.datum !== undefined &&
-        output.datum !== null &&
-        output.scriptRef == null &&
-        scriptDecodeDatumDigest(output.datum) === recovery.datumCborSha256 &&
-        (recovery.unit === null || output.assets[recovery.unit] === 1n)
-        ? { kind: "confirmed", txHash }
-        : { kind: "pending", txHash };
+      return { transaction };
     },
   };
   return Object.freeze(port);

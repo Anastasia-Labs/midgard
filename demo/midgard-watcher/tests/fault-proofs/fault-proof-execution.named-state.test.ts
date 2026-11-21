@@ -7,16 +7,13 @@ import {
   VALIDATION_TRACE_REPLAY_HELD,
   ValidationTraceReplayHeldError,
 } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/replay-hold";
-import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs/workflow/workflow-funding-shortfall";
+import { describe, expect, it, vi } from "vitest";
 
 import { WATCHER_FAULT_PROOF_CONTINUATION_STALLED } from "../../src/fault-proofs/fault-proof-continuation-stall.js";
 import { WATCHER_PROVER_FUNDING_UNAVAILABLE } from "../../src/fault-proofs/fault-proof-funding-hold.js";
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
-import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
-
-afterEach(cleanupFundingRecoveryFixtures);
 
 describe("supervisor execution adapter with a family's named run state", () => {
   it.each([
@@ -48,7 +45,6 @@ describe("supervisor execution adapter with a family's named run state", () => {
     "holds the objective under $name (alarm: $alarm) until a later run reports something else",
     async ({ name, alarm, reason }) => {
       const test = await setupFaultProofExecution();
-      const before = await test.fixture.records();
       const logged: string[] = [];
       const stderr = vi
         .spyOn(process.stderr, "write")
@@ -81,7 +77,6 @@ describe("supervisor execution adapter with a family's named run state", () => {
           expect.objectContaining({ status: "reconciling" }),
         );
         expect(test.setAlert).not.toHaveBeenCalled();
-        expect(await test.fixture.records()).toEqual(before);
         test.runOrResume.mockResolvedValueOnce({
           kind: "pending",
           reason: "signed transaction awaiting inclusion",
@@ -240,7 +235,6 @@ describe("supervisor execution adapter with a held script re-execution", () => {
     "retries the objective under the hold's reason for %s, after its retry time, until a later run reports something else",
     async (_, thrown) => {
       const test = await setupFaultProofExecution();
-      const before = await test.fixture.records();
       const { headerHash } = test.input.job;
       const held = new ValidationTraceReplayHeldError(
         headerHash,
@@ -275,7 +269,6 @@ describe("supervisor execution adapter with a held script re-execution", () => {
         },
       ]);
       expect(test.setAlert).not.toHaveBeenCalled();
-      expect(await test.fixture.records()).toEqual(before);
       test.runOrResume.mockResolvedValueOnce({
         kind: "pending",
         reason: "signed transaction awaiting inclusion",

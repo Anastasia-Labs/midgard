@@ -32,8 +32,8 @@ const scriptDecodeStagingDigest = (datum: string): string =>
  * Stages `scriptBytes` in order across UTxOs at `address` (by default the
  * proof-materials address of the selected wallet's key, which that key
  * spends back), one transaction each. With
- * `ownOutputs`, a chunk an earlier call staged and journaled there, still
- * live, is reused; every chunk staged here is journaled there.
+ * `ownOutputs`, a chunk an earlier call staged and claimed there, still
+ * live, is reused; every chunk staged here is claimed there.
  */
 export const stageScriptDecodeBytes = async ({
   lucid,
@@ -73,7 +73,7 @@ export const stageScriptDecodeBytes = async ({
       datum: datums[resolved.ordinal]!,
       address: target,
     });
-    // The out-ref is journaled from the signed body before it is sent.
+    // The out-ref is claimed from the signed body before it is sent.
     const [claim] = claimOwnOutputs({
       signed: built.signed,
       slots: [{ address: built.address, matches: built.matches }],

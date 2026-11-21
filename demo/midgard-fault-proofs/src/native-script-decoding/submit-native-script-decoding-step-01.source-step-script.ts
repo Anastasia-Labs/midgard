@@ -3,7 +3,7 @@ import { type UTxO } from "@lucid-evolution/lucid";
 
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
@@ -30,7 +30,7 @@ export type NativeScriptDecodingStep01Build = {
 };
 
 export type SubmitNativeScriptDecodingStep01Result =
-  UnjournaledSubmission<NativeScriptDecodingStep01Build>;
+  OutsideWorkflowSubmission<NativeScriptDecodingStep01Build>;
 
 /** Source the mandatory authenticated step-01 reference script. */
 export const sourceStepScript = <

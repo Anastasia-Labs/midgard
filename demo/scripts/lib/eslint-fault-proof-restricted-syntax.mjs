@@ -1,25 +1,26 @@
 /**
  * The fault-proof `no-restricted-syntax` config objects, which
  * demo/eslint.config.mjs spreads in place: production source neither submits
- * unjournaled nor drives a removal outside its allow-lists, journaled workflow
+ * outside a workflow nor drives a removal outside its allow-lists, workflow
  * code does not submit fault-proof turns, and a fault-proof builder does not
  * preset its own wallet inputs.
  *
- * Builders return their signed transaction and the journaled runner submits
- * it. Blind spots: a direct `signed.submit()` call, `submitCapturedTransaction`
- * (the journaled adapters submit through it, so it stays open), a computed
- * member access such as `module["submitUnjournaled"]`, a local function with a
- * restricted name (intent-journal.ts in midgard-node declares a
- * `submitUnjournaled` of its own), and a call through a renamed re-export.
+ * Builders return their signed transaction and the workflow runner submits
+ * it, holding it in the process's in-flight set until it lands or its bound
+ * passes. Blind spots: a direct `signed.submit()` call,
+ * `submitCapturedTransaction` (the workflow adapters submit through it, so it
+ * stays open), a computed member access such as
+ * `module["submitOutsideWorkflow"]`, a local function with a restricted name,
+ * and a call through a renamed re-export.
  */
 
 // A fault-proof builder that presets wallet inputs without narrowing them
-// hides the restricted wallet's reserved collateral from Lucid.
+// hides the restricted wallet's collateral from Lucid.
 const presetWalletInputsRestriction = {
   selector:
     "Property[key.name='presetWalletInputs'], Property[key.value='presetWalletInputs'], AssignmentExpression[left.property.name='presetWalletInputs']",
   message:
-    "A fault-proof builder does not choose its own presetWalletInputs: a needless preset hides the wallet's reserved collateral from Lucid. Fix: spread the wallet inputs of stepWalletFunding or plainWalletInputs (src/funding/plain-funding-output.ts) into complete, passing what the transaction must not spend as `excluding`.",
+    "A fault-proof builder does not choose its own presetWalletInputs: a needless preset hides the wallet's collateral from Lucid. Fix: spread the wallet inputs of stepWalletFunding or plainWalletInputs (src/funding/plain-funding-output.ts) into complete, passing what the transaction must not spend as `excluding`.",
 };
 
 // The fault-proof sources that preset wallet inputs deliberately.
@@ -29,23 +30,23 @@ const presetWalletInputsOwners = [
   "midgard-fault-proofs/src/remove-unattested-block*",
 ];
 
-// `submitUnjournaled` sends a transaction no workflow journal records, so
-// production source never reaches it: import, re-export, member access or
-// destructuring.
-const unjournaledSubmissionRestrictions = [
-  "ImportSpecifier[imported.name='submitUnjournaled']",
-  "ExportSpecifier[local.name='submitUnjournaled']",
-  "MemberExpression[property.name='submitUnjournaled']",
-  "ObjectPattern > Property[key.name='submitUnjournaled']",
+// `submitOutsideWorkflow` sends a transaction no workflow's in-flight set
+// holds, so production source never reaches it: import, re-export, member
+// access or destructuring.
+const outsideWorkflowSubmissionRestrictions = [
+  "ImportSpecifier[imported.name='submitOutsideWorkflow']",
+  "ExportSpecifier[local.name='submitOutsideWorkflow']",
+  "MemberExpression[property.name='submitOutsideWorkflow']",
+  "ObjectPattern > Property[key.name='submitOutsideWorkflow']",
 ].map((selector) => ({
   selector,
   message:
-    "submitUnjournaled sends a transaction no workflow journal records: only the diagnostic CLI, the removal driver, the turn submitter and the field-grammar certifier submit that way. Fix: return the signed transaction from the builder and let the journaled workflow runner, a CLI from-files module or a test submit it.",
+    "submitOutsideWorkflow sends a transaction no workflow's in-flight set holds: only the diagnostic CLI, the removal driver, the turn submitter and the field-grammar certifier submit that way. Fix: return the signed transaction from the builder and let the workflow runner, a CLI from-files module or a test submit it.",
 }));
 
 // The turn submitters send a builder's prerequisite and continuation turns
-// unjournaled; journaled workflow code takes each turn through
-// journaledStepTransaction instead, and only the diagnostic CLI submits them.
+// outside any workflow; workflow code takes each turn through
+// workflowStepTransaction instead, and only the diagnostic CLI submits them.
 const turnSubmissionNames = [
   "submitPrerequisiteTurn",
   "settleFaultProofTurns",
@@ -59,14 +60,13 @@ const turnSubmissionRestrictions = turnSubmissionNames.flatMap((name) =>
     `ObjectPattern > Property[key.name='${name}']`,
   ].map((selector) => ({
     selector,
-    message: `${name} submits fault-proof turns no workflow journal records: only the diagnostic CLI and its from-files modules submit turns that way. Fix: take the turn through journaledStepTransaction (src/workflow/step-transaction.ts), which refuses a prerequisite and journals a continuation as the step.`,
+    message: `${name} submits fault-proof turns outside any workflow: only the diagnostic CLI and its from-files modules submit turns that way. Fix: take the turn through workflowStepTransaction (src/workflow/step-transaction.ts), which refuses a prerequisite and returns a continuation as the step.`,
   })),
 );
 
-// The journaled workflow code of the fault proofs: the shared workflow
-// modules and each family's workflow adapter, transaction port, actuator and
-// recovery modules.
-const journaledWorkflowModules = [
+// The workflow code of the fault proofs: the shared workflow modules and each
+// family's workflow adapter, transaction port, actuator and recovery modules.
+const workflowModules = [
   "midgard-fault-proofs/src/workflow/**",
   "midgard-fault-proofs/src/*/workflow*.ts",
   "midgard-fault-proofs/src/*/authenticated-workflow*.ts",
@@ -81,21 +81,21 @@ const journaledWorkflowModules = [
   "midgard-fault-proofs/src/field-preimage-length-mismatch/config.create-concrete-field-preimage-length-lucid-builders.ts",
 ];
 
-// The journaled workflow modules among the wallet-input preset owners.
+// The workflow modules among the wallet-input preset owners.
 const presetOwningWorkflowModules = [
   "midgard-fault-proofs/src/validation-trace-dispute/adapter.ts",
   "midgard-fault-proofs/src/validation-trace-dispute/transactions.ts",
   "midgard-fault-proofs/src/validation-trace-dispute/workflow.ts",
 ];
 
-// The one unjournaled submitter among the journaled workflow modules.
+// The one submitter outside a workflow among the workflow modules.
 const transactionBoundary =
   "midgard-fault-proofs/src/workflow/transaction-boundary.ts";
 
-// The fault-proof sources that submit unjournaled: the boundary itself, the
-// diagnostic CLI and its from-files modules, the removal driver, the turn
-// submitter and the field-grammar certifier.
-const unjournaledSubmitters = [
+// The fault-proof sources that submit outside a workflow: the boundary
+// itself, the diagnostic CLI and its from-files modules, the removal driver,
+// the turn submitter and the field-grammar certifier.
+const outsideWorkflowSubmitters = [
   transactionBoundary,
   "midgard-fault-proofs/src/bin*.ts",
   "midgard-fault-proofs/src/*-from-files.ts",
@@ -104,8 +104,8 @@ const unjournaledSubmitters = [
   "midgard-fault-proofs/src/field-grammar-certificate.certify-fault-proof-field-grammar.ts",
 ];
 
-// `submitRemoveFraudulentBlock` submits removals unjournaled and owns their
-// lease from acquisition to release; only the CLI removal module and
+// `submitRemoveFraudulentBlock` submits removals outside any workflow and owns
+// their lease from acquisition to release; only the CLI removal module and
 // proven-correction removal drive it.
 const removalDriverRestrictions = [
   "ImportSpecifier[imported.name='submitRemoveFraudulentBlock']",
@@ -114,7 +114,7 @@ const removalDriverRestrictions = [
 ].map((selector) => ({
   selector,
   message:
-    "submitRemoveFraudulentBlock submits a removal no workflow journal records: only the CLI removal module and proven-correction removal drive it. Fix: build with buildRemoveFraudulentBlock and submit through the journaled removal adapter.",
+    "submitRemoveFraudulentBlock submits a removal outside any workflow: only the CLI removal module and proven-correction removal drive it. Fix: build with buildRemoveFraudulentBlock and submit through the workflow's removal adapter.",
 }));
 
 export const faultProofRestrictedSyntaxConfigs = [
@@ -124,15 +124,15 @@ export const faultProofRestrictedSyntaxConfigs = [
   // set to the narrowest, and each allow-list object drops only its own
   // restriction.
   {
-    // Production source sends fault-proof transactions through the journaled
-    // workflow runner. Unjournaled submission belongs to the diagnostic CLI
-    // and to the tests; a removal is submitted unjournaled only by the
+    // Production source sends fault-proof transactions through the workflow
+    // runner. Submission outside a workflow belongs to the diagnostic CLI and
+    // to the tests; a removal is submitted outside a workflow only by the
     // removal driver's callers.
     files: ["midgard-watcher/src/**/*.ts", "midgard-node/src/**/*.ts"],
     rules: {
       "no-restricted-syntax": [
         "error",
-        ...unjournaledSubmissionRestrictions,
+        ...outsideWorkflowSubmissionRestrictions,
         ...removalDriverRestrictions,
         ...turnSubmissionRestrictions,
       ],
@@ -143,7 +143,7 @@ export const faultProofRestrictedSyntaxConfigs = [
     rules: {
       "no-restricted-syntax": [
         "error",
-        ...unjournaledSubmissionRestrictions,
+        ...outsideWorkflowSubmissionRestrictions,
         ...removalDriverRestrictions,
       ],
     },
@@ -152,8 +152,7 @@ export const faultProofRestrictedSyntaxConfigs = [
     // A fault-proof builder's wallet inputs come from one rule. Lucid takes
     // collateral only from among preset wallet inputs, so a builder that
     // presets the wallet without narrowing it drops the collateral the
-    // watcher's restricted wallet reserves, and the reservation refuses the
-    // transaction. The validation-trace dispute and the unattested-block
+    // watcher's restricted wallet offers. The validation-trace dispute and the unattested-block
     // removal own deliberate presets of their own.
     files: ["midgard-fault-proofs/src/**/*.ts"],
     ignores: presetWalletInputsOwners,
@@ -161,13 +160,13 @@ export const faultProofRestrictedSyntaxConfigs = [
       "no-restricted-syntax": [
         "error",
         presetWalletInputsRestriction,
-        ...unjournaledSubmissionRestrictions,
+        ...outsideWorkflowSubmissionRestrictions,
         ...removalDriverRestrictions,
       ],
     },
   },
   {
-    files: unjournaledSubmitters,
+    files: outsideWorkflowSubmitters,
     ignores: presetWalletInputsOwners,
     rules: {
       "no-restricted-syntax": [
@@ -178,15 +177,15 @@ export const faultProofRestrictedSyntaxConfigs = [
     },
   },
   {
-    // Journaled workflow code takes each fault-proof turn through
-    // journaledStepTransaction and never submits one itself.
-    files: journaledWorkflowModules,
+    // Workflow code takes each fault-proof turn through
+    // workflowStepTransaction and never submits one itself.
+    files: workflowModules,
     ignores: [...presetWalletInputsOwners, transactionBoundary],
     rules: {
       "no-restricted-syntax": [
         "error",
         presetWalletInputsRestriction,
-        ...unjournaledSubmissionRestrictions,
+        ...outsideWorkflowSubmissionRestrictions,
         ...removalDriverRestrictions,
         ...turnSubmissionRestrictions,
       ],
@@ -197,7 +196,7 @@ export const faultProofRestrictedSyntaxConfigs = [
     rules: {
       "no-restricted-syntax": [
         "error",
-        ...unjournaledSubmissionRestrictions,
+        ...outsideWorkflowSubmissionRestrictions,
         ...removalDriverRestrictions,
         ...turnSubmissionRestrictions,
       ],
@@ -225,7 +224,8 @@ export const faultProofRestrictedSyntaxConfigs = [
     },
   },
   {
-    // The CLI removal module submits unjournaled and drives the removal.
+    // The CLI removal module submits outside a workflow and drives the
+    // removal.
     files: [
       "midgard-fault-proofs/src/remove-fraudulent-block.submit-remove-fraudulent-block-from-files.ts",
     ],
@@ -240,7 +240,7 @@ export const faultProofRestrictedSyntaxConfigs = [
       "no-restricted-syntax": [
         "error",
         presetWalletInputsRestriction,
-        ...unjournaledSubmissionRestrictions,
+        ...outsideWorkflowSubmissionRestrictions,
       ],
     },
   },

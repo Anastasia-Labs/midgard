@@ -120,7 +120,7 @@ const isRemoval = (action: FraudProofWorkflowAction): boolean =>
  * The convicted block's removal: one shared cursor-family adapter per
  * challenged block, driving only its remove stage. `convicted` is what the
  * dispute observes once our record is on chain; `route` hands the remove
- * stage's preflight, submit and reconcile, which carry the lease, to it.
+ * stage's preflight and submit, which carry the lease, to it.
  * A block's adapter is forgotten once its removal is complete or in
  * conflict: a later observation builds it again from the L1 view, as it does
  * after a restart.
@@ -143,8 +143,6 @@ export const createValidationTraceRemoval = ({
     const adapter = createCursorFamilyWorkflowAdapter({
       spec: VALIDATION_TRACE_REMOVAL_SPEC,
       l1: removal.l1For(headerHash),
-      stateQueueMutationLeaseCoordinator:
-        removal.stateQueueMutationLeaseCoordinator,
       transactions: {
         portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
         category: CATEGORY,
@@ -218,10 +216,6 @@ export const createValidationTraceRemoval = ({
         isRemoval(context.action)
           ? await forContext(context).submit(context)
           : await dispute.submit(context),
-      reconcile: async (context) =>
-        isRemoval(context.action)
-          ? await forContext(context).reconcile(context)
-          : await dispute.reconcile(context),
     }),
   };
 };

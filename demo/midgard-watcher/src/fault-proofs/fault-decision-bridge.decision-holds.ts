@@ -49,9 +49,9 @@ const failureSuffix = ({ failure }: Finishing): string =>
  * The bridge's side of durable decision continuity. A fresh classification
  * whose durable fault for the same observation differs (the classifier or
  * its configuration changed) supersedes that fault through the progress
- * authority, or holds the header while a signed attempt of it is unresolved
- * or the CorrectionLock is Locked under it. A held header yields no target
- * for the pass; every other header is still selected. A Locked fraud-proof
+ * authority, or holds the header while a transaction this process sent for
+ * it can still land or the CorrectionLock is Locked under it. A held header
+ * yields no target for the pass; every other header is still selected. A Locked fraud-proof
  * correction no admitted fault reproduces is held the same way. Each hold
  * is on readiness while it lasts and warned once when it begins.
  *

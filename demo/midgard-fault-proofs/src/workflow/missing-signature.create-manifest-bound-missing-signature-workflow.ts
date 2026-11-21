@@ -25,7 +25,6 @@ import {
   observeFraudProofWorkflowHeader,
 } from "./family-l1-observation.js";
 import { withFieldCarriagePrerequisite } from "./field-carriage-prerequisite.js";
-import { type FraudProofWorkflowJournalStore } from "./journal.js";
 import {
   type BoundMissingSignatureTransactionsConfig,
   type MissingSignatureBuilderSet,
@@ -48,6 +47,7 @@ import {
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
 import { type WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WorkflowRun } from "./workflow-run.js";
 
 export const createManifestBoundMissingSignatureWorkflow = async (
   config: ManifestBoundMissingSignatureWorkflowConfig,
@@ -231,8 +231,6 @@ export const createManifestBoundMissingSignatureWorkflow = async (
   let adapter = createMissingSignatureWorkflowAdapter({
     l1,
     transactions,
-    stateQueueMutationLeaseCoordinator:
-      config.stateQueueMutationLeaseCoordinator,
   });
   const prerequisite = createMissingSignatureFieldPrerequisite({
     lucid: config.lucid,
@@ -261,12 +259,12 @@ export const createManifestBoundMissingSignatureWorkflow = async (
 export const runOrResumeManifestBoundMissingSignatureWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundMissingSignatureWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
@@ -281,7 +279,7 @@ export const runOrResumeManifestBoundMissingSignatureWorkflow = async ({
       adapters: [workflow.adapter],
       launchScope: ["missingSignature"],
     }),
-    journal,
+    run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     walletOnlySend,

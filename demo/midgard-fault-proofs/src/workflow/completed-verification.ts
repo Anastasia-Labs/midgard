@@ -1,9 +1,9 @@
 import type { FraudProofTerminalDeploymentBinding } from "./deployment-manifest-binding.js";
-import { validateFraudProofWorkflowJournal } from "./journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEntry } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
   journalJsonDigest,
+  normalizeFraudProofWorkflowIdentity,
   normalizeJournalJson,
 } from "./journal.fraud-proof-workflow-terminal.js";
 import { normalizeWorkflowTerminal } from "./orchestrator.normalize-workflow-terminal.js";
@@ -27,20 +27,23 @@ export type FraudProofCompletedVerification =
         | "checkpoint_changed";
     }>;
 
-/** Recheck durable completion against canonical raw L1 without opening a signer,
- * authorizing an action, reserving funding, or rewriting the completed journal. */
+/**
+ * Rechecks a completion against canonical raw L1 without opening a signer,
+ * authorizing an action or reserving funding. The completion is derived
+ * from the chain; when `terminal` is given (a runner's fresh result) the
+ * derived terminal must state the same facts. An applicable result carries
+ * the derived terminal, whose removal transaction a completion marker binds.
+ */
 export const verifyCompletedFraudProofWorkflow = async ({
   binding,
   authority,
-  entries,
-  terminal,
   decisionDigest,
+  terminal,
 }: {
   readonly binding: FraudProofTerminalDeploymentBinding;
   readonly authority: FraudProofRawL1SnapshotAuthority;
-  readonly entries: readonly FraudProofWorkflowJournalEntry[];
-  readonly terminal: FraudProofWorkflowTerminal;
   readonly decisionDigest: string;
+  readonly terminal?: FraudProofWorkflowTerminal;
 }): Promise<FraudProofCompletedVerification> => {
   if (
     authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY ||
@@ -50,36 +53,22 @@ export const verifyCompletedFraudProofWorkflow = async ({
       binding.deploymentFingerprint
   )
     throw new Error("completed workflow changed raw L1 or release authority");
-  const first = entries[0];
-  if (
-    first === undefined ||
-    first.identity.decisionDigest !== decisionDigest ||
-    first.identity.deploymentFingerprint !== binding.deploymentFingerprint ||
-    first.identity.category !== binding.definition.category ||
-    first.identity.target.kind !== "state_queue_header" ||
-    first.identity.target.headerHash !== binding.definition.headerHash
-  )
-    throw new Error(
-      "completed workflow differs from its exact execution identity",
-    );
-  validateFraudProofWorkflowJournal({
-    workflowId: first.workflowId,
-    entries,
-    expectedIdentity: first.identity,
+  const identity = normalizeFraudProofWorkflowIdentity({
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+    deploymentFingerprint: binding.deploymentFingerprint,
+    category: binding.definition.category,
+    target: {
+      kind: "state_queue_header",
+      headerHash: binding.definition.headerHash,
+    },
+    decisionDigest,
   });
-  const completed = entries.at(-1)?.event;
-  if (
-    completed?.kind !== "completed" ||
-    journalJsonDigest(normalizeJournalJson(completed.terminal)) !==
-      journalJsonDigest(normalizeJournalJson(terminal))
-  )
-    throw new Error("completed workflow changed its durable terminal");
-  normalizeWorkflowTerminal({
-    identity: first.identity,
-    terminal,
-    entries,
-    releaseFinality: binding.releaseFinality,
-  });
+  if (terminal !== undefined)
+    normalizeWorkflowTerminal({
+      identity,
+      terminal,
+      releaseFinality: binding.releaseFinality,
+    });
   const request = fraudProofRawL1SnapshotRequestForFamily({
     definition: binding.definition,
     releaseFinality: binding.releaseFinality,
@@ -110,16 +99,19 @@ export const verifyCompletedFraudProofWorkflow = async ({
       ...value,
       observedAt: { ...value.observedAt, confirmationDepth: 0 },
     });
-  if (journalJsonDigest(facts(observed)) !== journalJsonDigest(facts(terminal)))
+  if (
+    terminal !== undefined &&
+    journalJsonDigest(facts(observed)) !== journalJsonDigest(facts(terminal))
+  )
     throw new Error(
       "completed workflow terminal differs from authenticated L1 facts",
     );
   if (
     !snapshot.transactions.some(
-      ({ txHash }) => txHash === terminal.proofToken.createdByTxHash,
+      ({ txHash }) => txHash === observed.proofToken.createdByTxHash,
     ) ||
     !snapshot.transactions.some(
-      ({ txHash }) => txHash === terminal.correction.removalTxHash,
+      ({ txHash }) => txHash === observed.correction.removalTxHash,
     )
   )
     throw new Error(
@@ -131,9 +123,8 @@ export const verifyCompletedFraudProofWorkflow = async ({
   )
     return { kind: "pending", reason: "release_finality" };
   normalizeWorkflowTerminal({
-    identity: first.identity,
+    identity,
     terminal: observed,
-    entries,
     releaseFinality: binding.releaseFinality,
   });
   return { kind: "applicable", terminal: observed };

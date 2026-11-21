@@ -6,7 +6,7 @@ import {
 } from "../../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 
 /**
- * A read of a superseded attempt's signed bytes no row here expects. The
+ * A read of where a sent transaction stands that no row here expects. The
  * workflow holds on a read that fails instead of failing, so the read is
  * counted: every row of a suite that imports this module fails if it made
  * one.
@@ -21,7 +21,7 @@ afterEach(() => {
   expect(reads, "signed transaction reads").toBe(0);
 });
 
-/** A terminal verifier for a workflow that reads no superseded attempt. */
+/** A terminal verifier for a workflow that follows no sent transaction. */
 export const terminalVerifierOf = (
   verify: FraudProofWorkflowTerminalVerifier["verify"],
 ): FraudProofWorkflowTerminalVerifier => ({

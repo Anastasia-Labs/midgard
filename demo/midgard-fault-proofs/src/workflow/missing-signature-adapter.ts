@@ -1,23 +1,16 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import type {
-  StateQueueMutationLease,
-  StateQueueMutationLeaseCoordinator,
-} from "../remove-fraudulent-block.js";
+import type { StateQueueMutationLease } from "../remove-fraudulent-block.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
-import type { FraudProofWorkflowJournalEntry } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
   journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
 } from "./journal.fraud-proof-workflow-terminal.js";
-import {
-  missingSignatureObservation,
-  reconcileMissingSignatureAction,
-} from "./missing-signature-state.js";
+import { missingSignatureObservation } from "./missing-signature-state.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -28,7 +21,7 @@ import type {
   FraudProofWorkflowPreflight,
   FraudProofWorkflowReferenceScript,
 } from "./orchestrator.js";
-import { reconcileQueueLeaseFamily } from "./queue-lease-family-reconcile.js";
+import type { ProofMaterialsHolder } from "./proof-materials-view.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
@@ -66,8 +59,8 @@ export interface MissingSignatureTransactionPort {
   capture(input: {
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
-    /** The workflow journal: its own carriage claims among it. */
-    readonly entries: readonly FraudProofWorkflowJournalEntry[];
+    /** The workflow and objective that find proof materials for the step. */
+    readonly holder: ProofMaterialsHolder;
   }): Promise<MissingSignatureCapturedAction>;
 }
 
@@ -143,11 +136,9 @@ const admitReferenceScripts = (
 const preflightOf = ({
   action,
   transaction,
-  durableRecovery,
 }: {
   readonly action: FraudProofWorkflowAction;
   readonly transaction: LocallyEvaluatedTransaction;
-  readonly durableRecovery?: JournalJsonObject;
 }): FraudProofWorkflowPreflight =>
   bindWorkflowPreflightTransaction(
     {
@@ -159,7 +150,6 @@ const preflightOf = ({
         evaluator: LOCAL_UPLC_EVALUATOR,
       },
       referenceScripts: admitReferenceScripts(transaction),
-      ...(durableRecovery === undefined ? {} : { durableRecovery }),
     },
     transaction.signed,
   );
@@ -167,56 +157,20 @@ const preflightOf = ({
 const cacheKey = (workflowId: string, actionId: string): string =>
   `${workflowId}\u0000${actionId}`;
 
-const mutationLeaseRecovery = (
-  lease: StateQueueMutationLease,
-): JournalJsonObject => ({
-  stateQueueMutationLease: { token: lease.token, source: lease.source },
-});
-
-const parseMutationLeaseRecovery = (
-  recovery: JournalJsonObject | undefined,
-): { readonly token: string; readonly source: string } | undefined => {
-  if (recovery === undefined) return undefined;
-  const value = recovery.stateQueueMutationLease;
-  if (
-    Object.keys(recovery).length !== 1 ||
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value)
-  ) {
-    throw new Error("missingSignature durable mutation lease is malformed");
-  }
-  const record = value as Readonly<Record<string, unknown>>;
-  if (
-    Object.keys(record).sort().join(",") !== "source,token" ||
-    typeof record.token !== "string" ||
-    record.token.trim() !== record.token ||
-    record.token.length === 0 ||
-    typeof record.source !== "string" ||
-    record.source.trim() !== record.source ||
-    record.source.length === 0
-  ) {
-    throw new Error("missingSignature durable mutation lease is malformed");
-  }
-  return { token: record.token, source: record.source };
-};
-
 const requiresMutationLease = (action: FraudProofWorkflowAction): boolean =>
   action.input.stage === "remove" &&
   action.input.requiresMutationLease === true;
 
 /**
- * Crash-safe workflow adapter for missing-signature's cursor-driven step 04.
- * Chain state is authoritative on every action and reconciliation boundary.
+ * Workflow adapter for missing-signature's cursor-driven step 04. Chain state
+ * is authoritative on every action boundary.
  */
 export const createMissingSignatureWorkflowAdapter = ({
   l1,
   transactions,
-  stateQueueMutationLeaseCoordinator,
 }: {
   readonly l1: FraudProofFamilyL1ObservationPort<"missingSignature">;
   readonly transactions: MissingSignatureTransactionPort;
-  readonly stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }): FraudProofFamilyWorkflowAdapter => {
   if (
     l1.portVersion !== FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT ||
@@ -227,7 +181,6 @@ export const createMissingSignatureWorkflowAdapter = ({
     throw new Error("missingSignature workflow ports changed identity");
   }
   const prepared = new Map<string, MissingSignatureCapturedAction>();
-  const leaseByTxHash = new Map<string, StateQueueMutationLease>();
   const current = async (headerHash: string) => {
     const observed = await l1.observe({ headerHash });
     return {
@@ -269,7 +222,7 @@ export const createMissingSignatureWorkflowAdapter = ({
       }
       return (await current(identity.target.headerHash)).workflow;
     },
-    preflight: async ({ identity, workflowId, artifact, action, entries }) => {
+    preflight: async ({ identity, workflowId, artifact, action }) => {
       if (
         identity.category !== CATEGORY ||
         identity.target.kind !== "state_queue_header"
@@ -294,7 +247,13 @@ export const createMissingSignatureWorkflowAdapter = ({
       const captured = await transactions.capture({
         action,
         artifact,
-        entries,
+        holder: {
+          workflowId,
+          objective: {
+            category: CATEGORY,
+            headerHash: identity.target.headerHash,
+          },
+        },
       });
       if (
         requiresMutationLease(action) !==
@@ -311,17 +270,12 @@ export const createMissingSignatureWorkflowAdapter = ({
         const preflight = preflightOf({
           action,
           transaction: captured.transaction,
-          ...(captured.mutationLease === undefined
-            ? {}
-            : {
-                durableRecovery: mutationLeaseRecovery(captured.mutationLease),
-              }),
         });
         prepared.set(key, captured);
         return preflight;
       } catch (cause) {
         await captured.mutationLease?.fail(
-          `preflight admission failed before durable intent: ${String(cause)}`,
+          `preflight admission failed before submission: ${String(cause)}`,
         );
         throw cause;
       }
@@ -337,83 +291,17 @@ export const createMissingSignatureWorkflowAdapter = ({
           "missingSignature submit has no exact locally evaluated captured body",
         );
       }
-      const recovery = parseMutationLeaseRecovery(preflight.durableRecovery);
-      if (
-        (captured.mutationLease === undefined) !== (recovery === undefined) ||
-        (captured.mutationLease !== undefined &&
-          (captured.mutationLease.token !== recovery?.token ||
-            captured.mutationLease.source !== recovery.source))
-      ) {
-        throw new Error(
-          "missingSignature cached mutation lease differs from durable intent",
-        );
-      }
       try {
-        if (captured.mutationLease !== undefined) {
-          leaseByTxHash.set(preflight.txHash, captured.mutationLease);
-        }
         return {
           kind: "submitted",
           txHash: await submitCapturedTransaction(captured.transaction),
         };
       } finally {
         prepared.delete(key);
+        // The runner follows the submitted transaction on chain, so the
+        // lease ends with its submission.
+        await captured.mutationLease?.release();
       }
-    },
-    reconcile: async ({
-      identity,
-      action,
-      txHash,
-      durableRecovery,
-      signedTransactionCborHex,
-      authorizeResubmission,
-    }) => {
-      if (
-        identity.category !== CATEGORY ||
-        identity.target.kind !== "state_queue_header"
-      ) {
-        throw new Error("missingSignature reconcile changed workflow identity");
-      }
-      const headerHash = identity.target.headerHash;
-      const recovery = parseMutationLeaseRecovery(durableRecovery);
-      if (requiresMutationLease(action) !== (recovery !== undefined)) {
-        return {
-          kind: "conflict",
-          reason:
-            "missingSignature durable mutation-lease identity disagrees with removal topology",
-        };
-      }
-      const observed = await l1.observe({
-        headerHash,
-      });
-      return await reconcileQueueLeaseFamily({
-        category: CATEGORY,
-        ...(txHash === undefined ? {} : { txHash }),
-        ...(recovery === undefined ? {} : { recovery }),
-        coordinator: stateQueueMutationLeaseCoordinator,
-        leaseByTxHash,
-        l1,
-        ...(signedTransactionCborHex === undefined
-          ? {}
-          : { signedTransactionCborHex }),
-        ...(authorizeResubmission === undefined
-          ? {}
-          : { authorizeResubmission }),
-        read: async (recoverUnconfirmedTransaction) =>
-          await reconcileMissingSignatureAction({
-            headerHash,
-            action,
-            ...(txHash === undefined ? {} : { txHash }),
-            provenance: observed.provenance,
-            stage: observed.stage,
-            recoverUnconfirmedTransaction,
-            transactionConfirmed: async (hash) =>
-              await l1.transactionConfirmed({
-                headerHash,
-                txHash: hash,
-              }),
-          }),
-      });
     },
   };
   return Object.freeze(adapter);

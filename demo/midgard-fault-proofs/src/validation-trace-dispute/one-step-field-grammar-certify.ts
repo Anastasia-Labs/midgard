@@ -24,7 +24,6 @@ import {
 } from "../field-grammar-certificate.certify-fault-proof-field-grammar.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -32,11 +31,9 @@ import type {
   FraudProofWorkflowObservation,
 } from "../workflow/orchestrator.js";
 import {
-  confirmedValidationTraceStages,
   parseValidationTraceAction,
   VALIDATION_TRACE_DISPUTE_ACTION,
 } from "./actions.js";
-import { validationTraceArtifactOf } from "./artifact.js";
 import type { ValidationTraceCaseHistory } from "./case-history.js";
 import { validationTraceCaseReads } from "./case-reads.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
@@ -55,6 +52,7 @@ import { validationTraceOneStepDrives } from "./one-step-holders.js";
 import { validationTraceReaderPlan } from "./one-step-moves.js";
 import { planValidationTraceOneStep } from "./one-step-plan.js";
 import { type OwnKeyActions, withOwnKeyActions } from "./own-key-actions.js";
+import type { ValidationTraceOwnViewOf } from "./own-view.js";
 import {
   discoverValidationTraceThreads,
   validationTraceRecordedThreads,
@@ -115,6 +113,16 @@ const parseCertify = (action: FraudProofWorkflowAction): Certify => {
 const label = ({ txHash, outputIndex }: UTxO): string =>
   `${txHash}#${outputIndex.toString()}`;
 
+/** Where the deployment's field grammar certificates sit. */
+const certificateAddressOf = (
+  deployment: ValidationTraceDisputeDeployment,
+): string =>
+  fieldGrammarCertificateAddress({
+    network: deployment.network,
+    certificatePolicyId:
+      deployment.fieldGrammarCertificate!.validator.spendingScriptHash,
+  });
+
 /** Our `InProgress` certificate of the field `plan` names, if one is live. */
 const inProgress = async (
   lucid: LucidEvolution,
@@ -125,12 +133,7 @@ const inProgress = async (
   const policyId =
     deployment.fieldGrammarCertificate!.validator.spendingScriptHash;
   const unit = SDK.fieldGrammarCertificateUnit(policyId);
-  const live = await lucid.utxosAt(
-    fieldGrammarCertificateAddress({
-      network: deployment.network,
-      certificatePolicyId: policyId,
-    }),
-  );
+  const live = await lucid.utxosAt(certificateAddressOf(deployment));
   return live.find((utxo) => {
     if (utxo.assets[unit] !== 1n || typeof utxo.datum !== "string")
       return false;
@@ -162,15 +165,14 @@ export const validationTraceFieldGrammarCertification = ({
   signer,
   deployment,
   caseHistory,
-  signedRecovery,
   materialOf,
   carriageOf,
+  ownView,
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
   readonly deployment: ValidationTraceDisputeDeployment;
   readonly caseHistory: ValidationTraceCaseHistory;
-  readonly signedRecovery: FraudProofSignedTransactionRecovery;
   readonly materialOf: (
     headerHash: string,
   ) => ValidationTraceClaimMaterial | undefined;
@@ -179,10 +181,17 @@ export const validationTraceFieldGrammarCertification = ({
     context: FraudProofWorkflowAdapterContext,
     consumes: string,
   ) => Promise<ValidationTraceFieldCarriage | undefined>;
+  /** Where our case is read from. */
+  readonly ownView: ValidationTraceOwnViewOf;
 }) => {
   const owner = signer.paymentKeyHash;
   const drives = validationTraceOneStepDrives(deployment);
-  const { ourCase } = validationTraceCaseReads({ lucid, signer, deployment });
+  const { ourCases } = validationTraceCaseReads({
+    lucid,
+    signer,
+    deployment,
+    caseHistory,
+  });
   /** Each step's routed item read, by state index, per trace. */
   const planned = new WeakMap<
     ValidationTraceClaimMaterial,
@@ -221,35 +230,36 @@ export const validationTraceFieldGrammarCertification = ({
     return stateIndices.flatMap((index) => known.get(index) ?? []);
   };
 
-  /** The reads the steps left to the threads of our case in their games
+  /** The reads the steps left to the threads of our cases in their games
    * make, once within the lookahead. */
   const ahead = async (
     context: FraudProofWorkflowAdapterContext,
     material: ValidationTraceClaimMaterial,
   ): Promise<readonly ValidationTraceFieldItemRead[]> => {
-    const artifact = validationTraceArtifactOf(context);
-    const found = await ourCase(
-      artifact,
-      confirmedValidationTraceStages(context.entries),
-    );
-    if (found === undefined) return [];
-    const { threads } = await discoverValidationTraceThreads({
-      lucid,
-      deployment,
-      recorded: await validationTraceRecordedThreads({
-        caseHistory,
-        headerHash: artifact.headerHash,
-        caseUnit: found.caseUnit,
-      }),
-      caseUnit: found.caseUnit,
-      prover: owner,
-    });
+    const view = ownView(context);
+    const artifact = view.artifact();
     const indices = new Set<number>();
-    for (const { at, thread } of threads) {
-      const [low, high] = [Number(thread.low_index), Number(thread.high_index)];
-      if (at === "timeout" || high - low > VALIDATION_TRACE_GRAMMAR_LOOKAHEAD)
-        continue;
-      for (let index = low; index < high; index += 1) indices.add(index);
+    for (const found of await ourCases(view)) {
+      const { threads } = await discoverValidationTraceThreads({
+        lucid,
+        deployment,
+        recorded: await validationTraceRecordedThreads({
+          caseHistory,
+          headerHash: artifact.headerHash,
+          caseUnit: found.caseUnit,
+        }),
+        caseUnit: found.caseUnit,
+        prover: owner,
+      });
+      for (const { at, thread } of threads) {
+        const [low, high] = [
+          Number(thread.low_index),
+          Number(thread.high_index),
+        ];
+        if (at === "timeout" || high - low > VALIDATION_TRACE_GRAMMAR_LOOKAHEAD)
+          continue;
+        for (let index = low; index < high; index += 1) indices.add(index);
+      }
     }
     return await readsOf(
       material,
@@ -274,7 +284,7 @@ export const validationTraceFieldGrammarCertification = ({
       (move === undefined || !MOVES.has(move.stage))
     )
       return undefined;
-    const material = materialOf(validationTraceArtifactOf(context).headerHash);
+    const material = materialOf(ownView(context).artifact().headerHash);
     if (material === undefined) return undefined;
     const reads: { read: ValidationTraceFieldItemRead; consumes: string }[] =
       [];
@@ -341,15 +351,21 @@ export const validationTraceFieldGrammarCertification = ({
       action.input.schemaVersion === VALIDATION_TRACE_GRAMMAR_CERTIFY,
     next: async (context, observed) => {
       const action = await due(context, observed);
-      return action === undefined
-        ? undefined
+      if (action === undefined) return undefined;
+      // An open is read from finding no certificate of ours at their
+      // address: our batch in flight there may leave it empty until it
+      // lands.
+      return action.input.progress === "open"
+        ? {
+            kind: "action_required",
+            action,
+            absentAt: [certificateAddressOf(deployment)],
+          }
         : { kind: "action_required", action };
     },
     build: async (context, action) => {
       const { fieldIndex, consumes } = parseCertify(action);
-      const material = materialOf(
-        validationTraceArtifactOf(context).headerHash,
-      );
+      const material = materialOf(ownView(context).artifact().headerHash);
       const certificate = deployment.fieldGrammarCertificate;
       if (material === undefined || certificate === undefined)
         throw new Error(
@@ -404,7 +420,6 @@ export const validationTraceFieldGrammarCertification = ({
       : withOwnKeyActions({
           base,
           own,
-          signedRecovery,
           label: "field grammar certification",
         });
 

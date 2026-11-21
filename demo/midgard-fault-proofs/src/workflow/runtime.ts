@@ -3,14 +3,14 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.admit-retained-da-provenance.js";
 import { DaLibp2pRetainedDaSource } from "../transition-trace/fetch.da-libp2p-retained-da-source.js";
 import {
-  assertWorkflowJournalActuation,
-  bindWorkflowActuationJournal,
-} from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
-import { workflowJournalIsReconciliationOnly } from "./actuation-permit.js";
-import {
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunner,
-  type WorkflowAdapterRunnerInput,
+  assertWorkflowRunActuation,
+  bindWorkflowRunActuation,
+  workflowRunIsReconciliationOnly,
+} from "./actuation-permit.js";
+import type {
+  WorkflowAdapterReadinessInput,
+  WorkflowAdapterRunner,
+  WorkflowAdapterRunnerInput,
 } from "./adapters.js";
 import {
   applyFamilyApplicationRecord,
@@ -25,14 +25,13 @@ import type {
 import { FAMILY_APPLICATION_REGISTRY } from "./family-application-registry.family-application-registry.js";
 import type { FamilyApplicationRegistryEntry } from "./family-application-registry.value-not-preserved-family-application-record.js";
 import type { WorkflowFundingRequirements } from "./funding-requirements.js";
-import { bindWorkflowFundingReservationJournal } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
-import { type InstalledFraudProofCategory } from "./installed-categories.js";
-import { resumeRecordedFraudProofWorkflow } from "./orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
+import type { InstalledFraudProofCategory } from "./installed-categories.js";
 import { continuePendingWorkflow } from "./pending-continuation.js";
 import {
   createAdmittedWorkflowRunner,
   WORKFLOW_ADAPTER_RUNNER,
 } from "./runner-admission.js";
+import { createWorkflowRun } from "./workflow-run.js";
 
 export const WORKFLOW_RUNTIME_CONFIG =
   "midgard-production-fraud-proof-runtime-config-v1" as const;
@@ -127,19 +126,23 @@ const createManifestBoundWorkflowRunOrResume =
         `production workflow runner category mismatch: expected=${category} actual=${invocation.category}`,
       );
     }
-    const journal = bindWorkflowFundingReservationJournal({
-      permit: invocation.fundingReservationPermit,
-      journal: bindWorkflowActuationJournal({
-        journal: invocation.journal,
-        permit: invocation.actuationPermit,
-        decisionDigest: invocation.decisionDigest,
-        deploymentFingerprint: invocation.deploymentFingerprint,
-        category,
-        headerHash: invocation.headerHash,
-      }),
+    if (
+      invocation.sends.category !== category ||
+      invocation.sends.headerHash !== invocation.headerHash
+    )
+      throw new Error(
+        "production workflow in-flight set belongs to another objective",
+      );
+    const run = bindWorkflowRunActuation({
+      run: createWorkflowRun(invocation.sends),
+      permit: invocation.actuationPermit,
+      decisionDigest: invocation.decisionDigest,
+      deploymentFingerprint: invocation.deploymentFingerprint,
+      category,
+      headerHash: invocation.headerHash,
     });
-    assertWorkflowJournalActuation({
-      journal,
+    assertWorkflowRunActuation({
+      run,
       deploymentFingerprint: invocation.deploymentFingerprint,
       category,
       headerHash: invocation.headerHash,
@@ -165,7 +168,7 @@ const createManifestBoundWorkflowRunOrResume =
         loaded.infrastructure,
         invocation,
       );
-      const reconciliationOnly = workflowJournalIsReconciliationOnly(journal);
+      const reconciliationOnly = workflowRunIsReconciliationOnly(run);
       const application: FamilyApplicationInvocation = {
         deploymentFingerprint: invocation.deploymentFingerprint,
         category,
@@ -182,28 +185,14 @@ const createManifestBoundWorkflowRunOrResume =
       });
       return await continuePendingWorkflow({
         invocation,
-        journal,
-        execute: (mode) => {
-          if (reconciliationOnly) {
-            return resumeRecordedFraudProofWorkflow({
-              deploymentFingerprint: invocation.deploymentFingerprint,
-              category,
-              headerHash: invocation.headerHash,
-              journal,
-              adapter: workflow.adapter,
-              terminalVerifier: workflow.terminalVerifier,
-              releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-              walletOnlySend: invocation.walletOnlySend,
-            });
-          }
-          return record.execute({
+        run,
+        execute: async () =>
+          await record.execute({
             workflow,
             sources,
-            journal,
-            mode,
+            run,
             walletOnlySend: invocation.walletOnlySend,
-          });
-        },
+          }),
       });
     } finally {
       await loaded.close();

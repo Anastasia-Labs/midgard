@@ -9,13 +9,13 @@ import { NETWORK_ID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-repla
 import { releaseFinalityAuthorityFromDeploymentBinding } from "../workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
 import { bindFraudProofWorkflowDeployment } from "../workflow/deployment-manifest-binding.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { FraudProofWorkflowRunResult } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   createFraudProofWorkflowRegistry,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
-import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   createNetworkIdAuthenticatedL1TerminalVerifier,
   createNetworkIdL1ObservationPort,
@@ -159,14 +159,14 @@ export const createManifestBoundNetworkIdWorkflow = async (
 export const runOrResumeManifestBoundNetworkIdWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   maxSubmissionAttempts,
   maxActions,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundNetworkIdWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
   readonly walletOnlySend: WalletOnlySend;
@@ -191,7 +191,7 @@ export const runOrResumeManifestBoundNetworkIdWorkflow = async ({
       adapters: [workflow.adapter],
       launchScope: ["networkId"],
     }),
-    journal,
+    run,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     terminalVerifier: workflow.terminalVerifier,
     ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),

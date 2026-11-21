@@ -3,23 +3,24 @@ import type {
   WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs/workflow/adapters";
 import type { CompleteCanonicalReplayContext } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
-import { restrictWorkflowFundingSigner } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import type { WorkflowRuntimeLoader } from "@al-ft/midgard-fault-proofs/workflow/runtime";
+import { restrictWorkflowWallet } from "@al-ft/midgard-fault-proofs/workflow/workflow-wallet";
 
 import type { WatcherConfig } from "../runtime/config.js";
-import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
-import { type WatcherWorkflowInfrastructure } from "../storage/retained-da-runtime.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import type { WatcherWorkflowInfrastructure } from "../storage/retained-da-runtime.js";
 import {
   bindWatcherDeploymentAuthority,
   readSecret,
 } from "./fault-proof-application.bind-watcher-deployment-authority.js";
-import {
-  type WatcherFaultProofApplication,
-  type WatcherFaultProofApplicationConstructionOptions,
-  type WatcherFaultProofApplicationDependencies,
-  type WatcherFaultProofInfrastructureAuthority,
-  type WatcherFaultProofL1,
+import type {
+  WatcherFaultProofApplication,
+  WatcherFaultProofApplicationConstructionOptions,
+  WatcherFaultProofApplicationDependencies,
+  WatcherFaultProofInfrastructureAuthority,
+  WatcherFaultProofL1,
 } from "./fault-proof-application.production-dependencies.js";
+import type { WatcherProofMaterialsViews } from "./proof-materials-views.js";
 
 /**
  * The source id a family's L1 snapshots and signed recovery are recorded
@@ -76,8 +77,10 @@ export const replayContextsPinnedAtLoadStart = (
 
 /**
  * The watcher's one loader body for an acting invocation. On top of the
- * deployment binding it reads the prover wallet, selects the (possibly
- * funding-restricted) signer and hands over the optional
+ * deployment binding it reads the prover wallet, selects the signer (for an
+ * acting invocation, restricted to the coins no action of this process
+ * holds), with the process's one view of its proof-materials address, and
+ * hands over the optional
  * parts a family may require; the family's record then binds its own
  * manifest-bound config from these inside the shared runtime, so nothing here
  * is per family. Which optional parts a family needs is the record's
@@ -92,6 +95,7 @@ export const buildCommonInfrastructure = async ({
   l1,
   dependencies,
   environment,
+  proofMaterials,
 }: {
   readonly watcherConfig: WatcherConfig;
   readonly invocation: WorkflowAdapterReadinessInput;
@@ -102,6 +106,8 @@ export const buildCommonInfrastructure = async ({
   readonly replayContext: CompleteCanonicalReplayContext | undefined;
   readonly dependencies: WatcherFaultProofApplicationDependencies;
   readonly environment: NodeJS.ProcessEnv;
+  /** The process's proof-materials views, shared by every invocation. */
+  readonly proofMaterials: WatcherProofMaterialsViews;
 }): Promise<WatcherWorkflowInfrastructure> => {
   const { category } = invocation;
   const [binding, proverSecret] = await Promise.all([
@@ -118,18 +124,22 @@ export const buildCommonInfrastructure = async ({
       label: "watcher prover wallet",
     }),
   ]);
-  const resolvedSigner = dependencies.resolveSigner({
+  const keySigner = dependencies.resolveSigner({
     network: watcherConfig.targetNetwork,
     secret: proverSecret,
   });
+  const resolvedSigner = {
+    ...keySigner,
+    proofMaterials: proofMaterials.viewFor(keySigner.proofMaterialsAddress),
+  };
   const executionInvocation = invocation as Partial<WorkflowAdapterRunnerInput>;
   const decisionDigest = executionInvocation.decisionDigest;
   const signer =
-    executionInvocation.fundingReservationPermit === undefined
+    executionInvocation.sends === undefined
       ? resolvedSigner
-      : restrictWorkflowFundingSigner({
+      : restrictWorkflowWallet({
           signer: resolvedSigner,
-          permit: executionInvocation.fundingReservationPermit,
+          sends: executionInvocation.sends,
         });
   signer.selectWallet(binding.lucid);
   return Object.freeze({

@@ -1,14 +1,12 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { journalJsonDigest } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { expect } from "vitest";
 
 import { journeyFamilyDirectory, writeJourneyArtifact } from "./artifacts.js";
 import {
   finalizePendingJourneyEvidence,
-  journeyProgressClock,
-  readJourneyWorkflowEntries,
+  journeyCorrectionChain,
   verifyJourneyCorrection,
 } from "./correction.js";
 import type { JourneyWatcherStartStatus } from "./correction.watcher-start-deadline.js";
@@ -33,8 +31,8 @@ import { createJourneyVerifiedHeaders } from "./verified-headers.js";
  * One shared service lifecycle for a family's acceptance journey. Every
  * stage, wait and staging step checks the family's `signal` and stops with
  * its reason once it aborts. The correction runs inside `excludingLimit`:
- * the journal's progress ends it, so the family's time limit pauses for it
- * (`journeyFamilyDeadline`).
+ * the chain's correction or the watcher's own verdict ends it, so the
+ * family's time limit pauses for it (`journeyFamilyDeadline`).
  */
 export const runJourney = async (
   runDirectory: string,
@@ -75,19 +73,20 @@ export const runJourney = async (
         : attachedJourneyMode(session, directory);
     closeMode = mode.close;
     const { releaseFinality } = session;
-    const baselineStartedAt = new Date().toISOString();
-    const baseline = await mode.captureWorkflowBaseline(category);
-    await writeJourneyArtifact(join(directory, "workflow-baseline.json"), {
-      startedAt: baselineStartedAt,
-      finishedAt: new Date().toISOString(),
-      category,
-      prefixes: [...baseline].map(([headerHash, entries]) => ({
-        headerHash,
-        workflowId: entries[0]?.workflowId ?? null,
-        entryCount: entries.length,
-        journalDigest: journalJsonDigest(entries),
-      })),
-    });
+    const correctionChain = (
+      target: Readonly<{
+        category: typeof category;
+        headerHash: string;
+      }>,
+    ) =>
+      journeyCorrectionChain({
+        kupoUrl: context.kupoUrl,
+        contracts: deployment.contracts,
+        provider,
+        transactions: mode.transactions,
+        proverAddress: mode.proverAddress,
+        ...target,
+      });
     const timing = await mode.readTiming(execution.fixture, {
       authenticatedConfirmationDepth: releaseFinality.policy.confirmationDepth,
       actionDepth: JOURNEY_ACTION_DEPTH,
@@ -162,7 +161,6 @@ export const runJourney = async (
       directory,
       join(context.runDirectory, "work/journeys/head.json"),
     );
-    const workflowBaseline = baseline.get(staged.current.headerHash) ?? [];
     await poll(
       `automatic ${fixture.category} decision`,
       async () => {
@@ -182,20 +180,18 @@ export const runJourney = async (
       },
       timing.allowances.automaticDecisionMs,
     );
-    const completion = await excludingLimit(() =>
+    const { completion, alreadyCorrected } = await excludingLimit(() =>
       verifyJourneyCorrection({
-        workflowBaseline,
         actionDepth: JOURNEY_ACTION_DEPTH,
-        ...journeyProgressClock({ timing, transactions: mode.transactions }),
-        resumeAllowanceMs: timing.allowances.automaticDecisionMs,
-        reconciliationAllowanceMs: timing.allowances.finalizedEvidenceStampMs,
         context,
         transactions: mode.transactions,
-        watcherStore: mode.watcherStore,
+        chain: correctionChain({
+          category: fixture.category,
+          headerHash: staged.current.headerHash,
+        }),
         watcherStatus: async () =>
           (await operations("/v1/status")) as JourneyWatcherStartStatus,
         proverAddress: mode.proverAddress,
-        directory,
         category: fixture.category,
         headerHash: staged.current.headerHash,
         predecessorHeaderHash: staged.predecessor.headerHash,
@@ -254,29 +250,16 @@ export const runJourney = async (
       deploymentFingerprint: deployment.manifest.manifestId,
       block: successor,
     });
-    const observedTerminal = (
-      await readJourneyWorkflowEntries({
-        watcherStore: mode.watcherStore,
-        category: fixture.category,
-        headerHash: staged.current.headerHash,
-      })
-    ).find(
-      ({ event }) =>
-        (event.kind === "terminal_included" || event.kind === "completed") &&
-        event.terminal.correction.removalTxHash ===
-          completion.correction.removalTxHash,
-    );
-    if (observedTerminal === undefined)
-      throw new Error(
-        "Terminal observation disappeared from its immutable journal",
-      );
     // Save the anchor request before the provisional verdict so restart cannot
     // lose finality tracking after releasing this family's execution slot.
     await writeJourneyArtifact(join(directory, "pending-evidence-stamp.json"), {
       category: fixture.category,
       headerHash: staged.current.headerHash,
       deploymentFingerprint: deployment.manifest.manifestId,
-      terminalObservedAt: observedTerminal.recordedAt,
+      // When the removal landed: its block's slot.
+      terminalObservedAt: new Date(
+        deployment.operatorLucid.slotToUnixTime(completion.observedAt.slot),
+      ).toISOString(),
       successorTxHash: successor.commitTxHash,
       completedAtConfirmationDepth: completion.observedAt.confirmationDepth,
       finalityDepth: releaseFinality.policy.confirmationDepth,
@@ -286,9 +269,9 @@ export const runJourney = async (
     await writeJourneyArtifact(join(directory, "result.json"), {
       status: "passed",
       executionPolicy: "authenticated-inclusion",
-      proofExecution: workflowBaseline.some(
-        ({ event }) => event.kind === "completed",
-      )
+      // Whether an earlier run's correction was already on chain at the
+      // journey's first read.
+      proofExecution: alreadyCorrected
         ? "historical-completed-proof"
         : "current-inclusion-policy",
       evidenceStatus: "terminal-included-awaiting-anchor",
@@ -311,7 +294,7 @@ export const runJourney = async (
     const finalizeEvidence = () =>
       finalizePendingJourneyEvidence({
         journeysDirectory: join(context.runDirectory, "work/journeys"),
-        watcherStore: mode.watcherStore,
+        readCorrection: (request) => correctionChain(request).correction(),
         deploymentFingerprint: deployment.manifest.manifestId,
         releaseFinalityPolicyDigest: releaseFinality.policyDigest,
         finalityDepth: releaseFinality.policy.confirmationDepth,

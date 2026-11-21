@@ -96,7 +96,6 @@ export const prepareWatcherRuntimeWorkflows = async (
       faultProofReadiness.push(
         await retryL1Read(() =>
           faultProofApplication.assertStartupReady({
-            mode: "resume",
             category,
             deploymentFingerprint: deploymentIdentity.manifestId,
             headerHash: WATCHER_STARTUP_READINESS_HEADER_HASH,

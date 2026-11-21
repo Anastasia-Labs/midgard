@@ -112,9 +112,9 @@ export const buildNativeScriptInvalidStep02 = async ({
   readonly scriptWitnessItems: readonly Uint8Array[];
   readonly scriptIndex: bigint;
   readonly publishCarriage?: boolean;
-  /** Pre-observed publications supplied by a journaled production action. */
+  /** Pre-observed publications supplied by a production workflow action. */
   readonly publishedCarriageUtxos?: readonly UTxO[];
-  /** Pre-observed tier-3 certificate supplied by its journaled mint action. */
+  /** Pre-observed tier-3 certificate supplied by its mint action. */
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   /** Our carriage claims; a fresh in-memory journal by default. */

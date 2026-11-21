@@ -177,7 +177,6 @@ it("derives the conservation cursor and datum from one snapshot while the pendin
     },
     workflowId: "aa".repeat(32),
     artifact: {},
-    entries: [],
   };
   await expect(workflow.adapter.observe(context)).resolves.toMatchObject({
     kind: "action_required",

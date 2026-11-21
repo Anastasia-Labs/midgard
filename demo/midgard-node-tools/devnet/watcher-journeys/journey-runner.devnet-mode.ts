@@ -12,10 +12,7 @@ import type { JourneyFixtureStage } from "./fixture.js";
 import { devnetSuccessorPort } from "./honest-successor.js";
 import { WATCHER_LAUNCH_TIMEOUT_MS } from "./journey-runner.journey-execution.js";
 import type { JourneyRunMode } from "./journey-runner.journey-mode.js";
-import {
-  captureJourneyWorkflowBaseline,
-  type JourneySession,
-} from "./journey-session.js";
+import type { JourneySession } from "./journey-session.js";
 import { readJourneyTiming } from "./journey-timing.js";
 import { verifyJourneyPublicDa } from "./public-da-preflight.js";
 
@@ -30,8 +27,6 @@ export const devnetJourneyMode = (session: JourneySession): JourneyRunMode => {
   const reusedWatcher = session.watcherStarted();
   let config: { workflowJournalDirectory: string } | undefined;
   return {
-    captureWorkflowBaseline: (category) =>
-      captureJourneyWorkflowBaseline(watcherConfig.storage.path, category),
     // A devnet stages on the family's clock, so its limit holds the staging.
     readTiming: (fixture, options) =>
       readJourneyTiming(context.runDirectory, fixture.category, {
@@ -165,7 +160,6 @@ export const devnetJourneyMode = (session: JourneySession): JourneyRunMode => {
           }).map((decision) => ({ decision }))
         : [];
     },
-    watcherStore: watcherConfig.storage.path,
     transactions: native,
     get proverAddress() {
       return session.proverAddress();

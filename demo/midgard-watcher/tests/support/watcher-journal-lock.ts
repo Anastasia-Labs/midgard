@@ -4,7 +4,7 @@ import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-p
 import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
 import { handleWatcherOperationsHttpRequest } from "../../src/runtime/operations-observability.handle-http-request.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
-import { deploymentIdentity } from "./fault-proof-funding-fixture.sources-for.js";
+import { deploymentIdentity } from "./classified-fault-fixture.js";
 import { TEST_JOURNAL_KEY } from "./watcher-journal-fixture.js";
 
 /**

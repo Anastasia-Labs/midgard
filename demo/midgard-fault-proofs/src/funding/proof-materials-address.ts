@@ -69,19 +69,6 @@ export const proofMaterialsAddressOfFundingAddress = (
   );
 };
 
-/**
- * Whether `address` is one of the prover's own two addresses: its funding
- * address `fundingAddress` or the proof-materials address of the same key.
- * A funding reservation tracks the prover's outputs at both; only those at
- * the funding address fund a transaction.
- */
-export const isProverOwnAddress = (
-  fundingAddress: string,
-  address: string,
-): boolean =>
-  address === fundingAddress ||
-  address === proofMaterialsAddressOfFundingAddress(fundingAddress);
-
 /** Whether `inputs` include an output at the proof-materials address of `fundingAddress`. */
 export const spendsProofMaterial = (
   fundingAddress: string,

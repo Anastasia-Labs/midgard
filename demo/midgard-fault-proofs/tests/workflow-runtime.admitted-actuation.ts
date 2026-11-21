@@ -3,29 +3,14 @@ import { CML } from "@lucid-evolution/lucid";
 
 import { createWorkflowActuationPermitController } from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
-import { unsafeCreateWorkflowFundingReservationPermitForTest } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
-import type { WorkflowJournalWriter } from "../src/workflow/funding-reservation-permit.workflow-journal-writer.js";
 import { authenticatedStateQueueObservationDigest } from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
 import { createHeaderClassifier } from "../src/workflow/header-classifier.create-header-classifier.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type {
-  FraudProofWorkflowJournalEvent,
-  FraudProofWorkflowJournalStore,
-} from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
-import {
-  computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentity,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
-import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
-import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -96,85 +81,12 @@ export const admittedActuation = async () => {
     decision,
     rollbackGeneration: "7",
   });
-  const fundingReservationPermit =
-    unsafeCreateWorkflowFundingReservationPermitForTest({
-      category: "doubleSpend",
-      actuationPermit: controller.permit,
-      deploymentFingerprint: DEPLOYMENT,
-      decisionDigest: decision.decisionDigest,
-      rollbackGeneration: "7",
-    });
   return Object.freeze({
     decisionDigest: decision.decisionDigest,
     actuationPermit: controller.permit,
-    fundingReservationPermit,
     headerHash: decision.headerHash,
     revoke: controller.revoke,
     restrictToReconciliation: controller.restrictToReconciliation,
-  });
-};
-
-/** The preflight and intent a submission of `action` records, over the
- * fixture's real CML bytes. */
-export const fundingAttemptEvents = (
-  action: FraudProofWorkflowAction,
-  preflight: object,
-): readonly [
-  FraudProofWorkflowJournalEvent,
-  FraudProofWorkflowJournalEvent,
-] => {
-  const signed = workflowPreflightTransaction(preflight)!;
-  return [
-    {
-      kind: "preflight_passed",
-      actionId: action.actionId,
-      txHash: signed.toHash(),
-      localEvaluator: "funding-boundary-fixture",
-      referenceScripts: [],
-    },
-    {
-      kind: "submission_intent",
-      actionId: action.actionId,
-      actionInput: action.input,
-      txHash: signed.toHash(),
-      attempt: 1,
-    },
-  ];
-};
-
-/** A workflow journal that keeps nothing: funding-boundary fixtures check
- * the reservation, not the journal. */
-export const discardingWorkflowJournal = (): FraudProofWorkflowJournalStore =>
-  Object.freeze({ load: async () => [], append: async () => undefined });
-
-/** A writer over a funding-bound fixture journal: its entries follow the
- * workflow's started and prepared records. */
-export const fixtureJournalWriter = (
-  journal: object,
-  headerHash = "ab".repeat(28),
-): WorkflowJournalWriter => {
-  const identity: FraudProofWorkflowIdentity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: DEPLOYMENT,
-    category: "doubleSpend",
-    target: { kind: "state_queue_header", headerHash },
-    decisionDigest: "ac".repeat(32),
-  };
-  let next = 2;
-  return Object.freeze({
-    journal: journal as FraudProofWorkflowJournalStore,
-    entriesFor: async (events) =>
-      events.map((event, index) => ({
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-        workflowId: computeFraudProofWorkflowId(identity),
-        identity,
-        sequence: next + index,
-        recordedAt: new Date(0).toISOString(),
-        event,
-      })),
-    recorded: (entries) => {
-      next += entries.length;
-    },
   });
 };
 
@@ -195,8 +107,3 @@ export const fundingReferenceScript = Object.freeze({
   type: "PlutusV3" as const,
   script: "4d01000033222220051200120011",
 });
-
-/** A fresh directory journal store for one invocation: each invocation binds
- * its own actuation authority to the store object it is given. */
-export const directoryJournal = (directory: string) =>
-  new DirectoryFraudProofWorkflowJournalStore(directory);

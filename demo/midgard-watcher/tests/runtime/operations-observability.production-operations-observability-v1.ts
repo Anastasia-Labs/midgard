@@ -382,7 +382,7 @@ describe("production operations observability V1", () => {
     }
   });
 
-  it("names objective cleanup failures and unreadable objectives on readiness, and clears them once settled", () => {
+  it("names objective cleanup failures and start-deadline holds on readiness, and clears them once settled", () => {
     const proofSupervisor = supervisor();
     const observability = createWatcherOperationsObservability({
       deploymentFingerprint: "11".repeat(32),
@@ -420,8 +420,8 @@ describe("production operations observability V1", () => {
           kind: "objective",
           ...objective,
           decisionDigest: null,
-          detail: "doubleSpend/ab: journal entry sequence gap",
-          readiness: "fault_proof_objective_unreadable",
+          detail: "doubleSpend/ab",
+          readiness: "fault_proof_start_deadline_passed",
         },
       ],
     });
@@ -429,7 +429,7 @@ describe("production operations observability V1", () => {
       readiness: "not_ready",
       readinessReasons: [
         "fault_proof_objective_cleanup_failed",
-        "fault_proof_objective_unreadable",
+        "fault_proof_start_deadline_passed",
       ],
     });
     proofSupervisor.setStatus({

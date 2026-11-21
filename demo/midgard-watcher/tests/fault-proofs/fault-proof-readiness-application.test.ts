@@ -100,7 +100,6 @@ describe("watcher fault-proof readiness application", () => {
     ) =>
       application
         .assertStartupReady({
-          mode: "resume",
           category,
           deploymentFingerprint: manifest.manifestId,
           headerHash: HEADER,

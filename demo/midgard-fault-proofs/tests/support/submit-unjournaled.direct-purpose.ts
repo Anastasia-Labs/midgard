@@ -11,7 +11,7 @@ import {
   type DirectPurposeCustody,
 } from "../../src/direct-purpose-family/submit.js";
 import { parseOutRef } from "../../src/runtime.js";
-import { submitUnjournaled } from "../../src/workflow/transaction-boundary.js";
+import { submitOutsideWorkflow } from "../../src/workflow/transaction-boundary.js";
 
 /** Submits one honest transition and returns the thread's next UTxO. */
 export const submitDirectPurposeTransition = async (
@@ -21,7 +21,7 @@ export const submitDirectPurposeTransition = async (
 ): Promise<{ readonly txHash: string; readonly thread: UTxO }> => {
   const { transaction, nextThreadOutRef } =
     await buildDirectPurposeTransitionTx(custody, thread, transition);
-  const txHash = await submitUnjournaled(custody.lucid, transaction, {
+  const txHash = await submitOutsideWorkflow(custody.lucid, transaction, {
     label: `${custody.family.label} ${transition.label}`,
     awaitConfirmation: true,
   });

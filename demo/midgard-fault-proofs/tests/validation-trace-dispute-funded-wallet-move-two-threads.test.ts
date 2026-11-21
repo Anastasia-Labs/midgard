@@ -28,7 +28,7 @@ import {
 } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceCaseExpiryMs } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
-import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
+import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/validation-trace-dispute/wallet-move-unfunded-alarm.js";
 import {
   drainProver,
   drainProverToOneCoin,
@@ -67,7 +67,7 @@ const units = () => [journey.unit, journey.second.unit];
 
 /** The signed moves of `kind` the watcher built, in order. */
 const signedOf = (kind: string) =>
-  journey.moves.filter(({ authority }) => authority.kind === kind);
+  journey.moves.filter((move) => move.kind === kind);
 
 /** The thread token a captured move spends. */
 const unitOf = ({ thread }: { readonly thread: UTxO }) =>
@@ -126,7 +126,7 @@ const liveThreads = async () =>
 /**
  * Turns twice into the operator's alarm over the `stage` move of `thread`,
  * which must land by `deadline`: a pending run its next observation retries,
- * nothing reaching the ledger, every input released and the thread unmoved.
+ * nothing reaching the ledger and the thread unmoved.
  */
 const expectUnfundedAlarms = async ({
   stage,
@@ -166,9 +166,6 @@ const expectUnfundedAlarms = async ({
       expect(result.reason).toContain(
         `before its deadline ${deadline.toString()};`,
       );
-      // The refused attempt released every input it held.
-      for (const reservation of await dispute.readReservations())
-        expect(reservation).toMatchObject({ activeInputs: [] });
     }
     expect(watch.ours()).toHaveLength(0);
   } finally {
@@ -182,10 +179,9 @@ const expectUnfundedAlarms = async ({
 const caseExpiry = () =>
   validationTraceCaseExpiryMs(Data.from(journey.caseOrigin.datum!, SDK.Case));
 
-describe("validation-trace dispute wallet-paid moves on two threads of one case under the prover funding permit", () => {
+describe("validation-trace dispute wallet-paid moves on two threads of one case under the prover funding", () => {
   beforeAll(async () => {
     journey = await openTwoDefendedFundedCase({
-      liveParameters: true,
       // Fees rise before the watcher's first turn until every thread move's
       // minimum passes the per-move cap.
       beforeOpen: ({ h: { emulator } }) => {
@@ -212,15 +208,14 @@ describe("validation-trace dispute wallet-paid moves on two threads of one case 
     }
   }, TIMEOUT);
 
-  afterAll(async () => {
+  afterAll(() => {
     restoreFees?.();
-    await journey?.dispute.close();
   });
 
   it(
     "holds our first reveal under the operator's alarm, naming the end of our clock on its thread, while the wallet cannot fund it",
     async () => {
-      // Our wallet runs below the collateral line: no reservation holds it.
+      // Our wallet runs below the collateral line.
       await drainProverToOneCoin(journey.scene.h as never, SHORT);
       const thread = (await liveThreads()).get(journey.second.unit)!;
       await expectUnfundedAlarms({
@@ -240,7 +235,7 @@ describe("validation-trace dispute wallet-paid moves on two threads of one case 
     "lands both of our reveals once the wallet is topped up to fund both, each paid whole by our wallet, the one whose clock ends first first",
     async () => {
       const { scene, dispute, capture } = journey;
-      const reserve = await dispute.walletMoveReserve();
+      const reserve = dispute.walletMoveReserve();
       const before = await liveThreads();
       // Back above the collateral line.
       await topUpProver(scene.h as never, 2_100n * ADA + 2n * reserve);
@@ -284,7 +279,7 @@ describe("validation-trace dispute wallet-paid moves on two threads of one case 
       scene.h.emulator.awaitSlot(
         lucid.unixTimeToSlot(deadline) - lucid.currentSlot() + 2,
       );
-      const reserve = await dispute.walletMoveReserve();
+      const reserve = dispute.walletMoveReserve();
       await drainProver(scene.h as never, reserve);
       await turnWhile(async () => signedOf("timeout").length >= 1, 4);
       const [first] = signedOf("timeout");

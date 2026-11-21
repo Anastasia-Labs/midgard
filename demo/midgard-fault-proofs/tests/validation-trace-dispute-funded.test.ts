@@ -4,16 +4,15 @@
  * from plain coins while a larger token-bearing coin sits at the prover's
  * address. A process stopped after broadcasting
  * VerifySource lands those same bytes, and one stopped after they landed
- * sends nothing again; one stopped before broadcasting supersedes its
- * unsent bytes once they expire with a single re-signed attempt, so one
- * case and one bond open and the stopped bytes can no longer land. A
- * wallet that cannot hold the bond, or cannot pay VerifySource, pauses the
- * objective on the watcher's prover-funding hold until a top-up, then
- * lands.
+ * sends nothing again; after one stopped before broadcasting, the next
+ * process builds VerifySource again from the chain and its own lands, so
+ * one case and one bond open and the stopped bytes cannot land beside it. A wallet that cannot pay VerifySource pauses the objective on the
+ * watcher's prover-funding hold until a top-up, then lands.
  *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
+import { CML } from "@lucid-evolution/lucid";
 import {
   holdWatcherFaultProofOnFunding,
   WATCHER_PROVER_FUNDING_UNAVAILABLE,
@@ -21,12 +20,9 @@ import {
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
-import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
-import { readValidationDisputeFundingAuthority } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
-import { isWorkflowFundingPauseReason } from "../src/workflow/funding-reservation-permit.is-workflow-funding-pause-reason.js";
-import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.workflow-funding-shortfall.js";
+import { isWorkflowFundingPauseReason } from "../src/workflow/funding-pause-reason.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
-import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
+import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/workflow-funding-shortfall.js";
 import {
   drainProver,
   drainProverToOneCoin,
@@ -36,8 +32,8 @@ import {
   plantTokenCoin,
   watchLedger,
 } from "./support/own-outputs-installed.js";
+import { ourOpener } from "./support/validation-trace-dispute-funded-moves.js";
 import {
-  type AdapterWrap,
   openFundedDispute,
   turnUntil,
 } from "./support/validation-trace-dispute-funded-runner.js";
@@ -48,10 +44,9 @@ import {
   expectOneCaseAndBond,
   FLOOR,
   FUNDED,
-  isVerifySource,
   stopAtVerifySourceSubmit,
   TIMEOUT,
-  verifySourceIntents,
+  verifySourceSends,
 } from "./support/validation-trace-dispute-funded-verify-source.js";
 import {
   BOND_LOVELACE,
@@ -61,7 +56,7 @@ import {
 
 let scene: Scene;
 
-describe("validation-trace dispute VerifySource under the prover funding permit", () => {
+describe("validation-trace dispute VerifySource under the prover funding", () => {
   // Each case disputes the scene's failing block from a fresh deployment,
   // its prover wallet split into a collateral output and plain funding.
   beforeEach(async () => {
@@ -73,53 +68,42 @@ describe("validation-trace dispute VerifySource under the prover funding permit"
     async () => {
       await drainProver(scene.h as never, FUNDED);
       const dispute = await openFundedDispute(scene);
-      try {
-        // The opener VerifySource spends, read from the ledger before it does.
-        let openerLovelace: bigint | undefined;
-        const observeOpener: AdapterWrap = (adapter) => ({
-          ...adapter,
-          preflight: async (context) => {
-            const preflight = await adapter.preflight(context);
-            if (isVerifySource(context.action)) {
-              const signed = workflowPreflightTransaction(preflight)!;
-              const [opener] = await scene.h.emulator.getUtxosByOutRef([
-                parseOwnOutRef(
-                  readValidationDisputeFundingAuthority(signed)!.openerOutRef,
-                ),
-              ]);
-              openerLovelace = opener!.assets.lovelace;
-            }
-            return preflight;
-          },
-        });
-        const { result, history } = await turnUntil(
-          dispute,
-          VALIDATION_TRACE_CASE_OPEN,
-          { wrap: observeOpener },
-        );
-        expect(result.kind, history.join("\n")).toBe("pending");
-        const { caseOutput, bond, caseClaim, bondClaim } = await caseAndBond(
-          scene,
-          result,
-        );
-        expect(bond.address).toBe(
-          scene.chain.disputeBond.spendingScriptAddress,
-        );
-        expect(bond.assets).toStrictEqual({
-          lovelace: BOND_LOVELACE,
-          [bondClaim.unit]: 1n,
-        });
-        expect(caseOutput.address).toBe(scene.chain.case.spendingScriptAddress);
-        expect(caseOutput.assets[caseClaim.unit]).toBe(1n);
-        // The pending claim's datum alone needs more than the floor in
-        // min-Ada, so a production-built opener always clears it and the
-        // case carries the opener's lovelace.
-        expect(openerLovelace).toBeDefined();
-        expect(openerLovelace!).toBeGreaterThan(FLOOR);
-        expect(caseOutput.assets.lovelace).toBe(openerLovelace);
-      } finally {
-        await dispute.close();
-      }
+      const { result, history } = await turnUntil(
+        dispute,
+        VALIDATION_TRACE_CASE_OPEN,
+      );
+      expect(result.kind, history.join("\n")).toBe("pending");
+      const { caseOutput, bond, caseClaim, bondClaim } = await caseAndBond(
+        scene,
+        dispute,
+      );
+      // The opener VerifySource spends: the pending claim our Open left.
+      const opener = await ourOpener(scene, dispute);
+      const [verifySource] = verifySourceSends(dispute);
+      const inputs = CML.Transaction.from_cbor_hex(
+        scene.l1.signedCbors.get(verifySource!)!,
+      )
+        .body()
+        .inputs();
+      expect(
+        Array.from({ length: inputs.len() }, (_, index) => {
+          const input = inputs.get(index);
+          return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+        }),
+      ).toContain(`${opener.txHash}#${opener.outputIndex.toString()}`);
+      const openerLovelace = opener.assets.lovelace;
+      expect(bond.address).toBe(scene.chain.disputeBond.spendingScriptAddress);
+      expect(bond.assets).toStrictEqual({
+        lovelace: BOND_LOVELACE,
+        [bondClaim.unit]: 1n,
+      });
+      expect(caseOutput.address).toBe(scene.chain.case.spendingScriptAddress);
+      expect(caseOutput.assets[caseClaim.unit]).toBe(1n);
+      // The pending claim's datum alone needs more than the floor in
+      // min-Ada, so a production-built opener always clears it and the
+      // case carries the opener's lovelace.
+      expect(openerLovelace).toBeGreaterThan(FLOOR);
+      expect(caseOutput.assets.lovelace).toBe(openerLovelace);
     },
     TIMEOUT,
   );
@@ -129,28 +113,22 @@ describe("validation-trace dispute VerifySource under the prover funding permit"
     async () => {
       await drainProver(scene.h as never, FUNDED);
       const dispute = await openFundedDispute(scene);
-      try {
-        const stop = stopAtVerifySourceSubmit({ broadcast: true });
-        await stop.stopped(dispute);
-        await dispute.restart();
-        const { result, history } = await turnUntil(
-          dispute,
-          VALIDATION_TRACE_CASE_OPEN,
-        );
-        expect(result.kind, history.join("\n")).toBe("pending");
-        // The bytes already reached the ledger's mempool: nothing is sent again.
-        expect(dispute.rebroadcasts).toStrictEqual([]);
-        const { verify } = await caseAndBond(scene, result);
-        expect(
-          verify.outputs.map(({ outRef }) => outRef.split("#")[0]),
-        ).toStrictEqual([stop.signedHash(), stop.signedHash()]);
-        expect(
-          verifySourceIntents(result).map(({ txHash }) => txHash),
-        ).toStrictEqual([stop.signedHash()]);
-        await expectOneCaseAndBond(scene);
-      } finally {
-        await dispute.close();
-      }
+      const stop = stopAtVerifySourceSubmit({ broadcast: true });
+      await stop.stopped(dispute);
+      dispute.restart();
+      const { result, history } = await turnUntil(
+        dispute,
+        VALIDATION_TRACE_CASE_OPEN,
+      );
+      expect(result.kind, history.join("\n")).toBe("pending");
+      // The bytes already reached the ledger's mempool: nothing is sent again.
+      expect(dispute.rebroadcasts).toStrictEqual([]);
+      const { verify } = await caseAndBond(scene, dispute);
+      expect(
+        verify.outputs.map(({ outRef }) => outRef.split("#")[0]),
+      ).toStrictEqual([stop.signedHash(), stop.signedHash()]);
+      expect(verifySourceSends(dispute)).toStrictEqual([stop.signedHash()]);
+      await expectOneCaseAndBond(scene);
     },
     TIMEOUT,
   );
@@ -160,81 +138,58 @@ describe("validation-trace dispute VerifySource under the prover funding permit"
     async () => {
       await drainProver(scene.h as never, FUNDED);
       const dispute = await openFundedDispute(scene);
-      try {
-        const stop = stopAtVerifySourceSubmit({ broadcast: true });
-        await stop.stopped(dispute);
-        scene.h.emulator.awaitBlock(1);
-        expect(
-          (await scene.h.emulator.getTransactionStatus(stop.signedHash()))
-            .status,
-        ).toBe("confirmed");
-        await dispute.restart();
-        const { result, history } = await turnUntil(
-          dispute,
-          VALIDATION_TRACE_CASE_OPEN,
-        );
-        expect(result.kind, history.join("\n")).toBe("pending");
-        expect(dispute.rebroadcasts).toStrictEqual([]);
-        expect(
-          verifySourceIntents(result).map(({ txHash }) => txHash),
-        ).toStrictEqual([stop.signedHash()]);
-        const { verify } = await caseAndBond(scene, result);
-        expect(
-          verify.outputs.map(({ outRef }) => outRef.split("#")[0]),
-        ).toStrictEqual([stop.signedHash(), stop.signedHash()]);
-        await expectOneCaseAndBond(scene);
-      } finally {
-        await dispute.close();
-      }
+      const stop = stopAtVerifySourceSubmit({ broadcast: true });
+      await stop.stopped(dispute);
+      scene.h.emulator.awaitBlock(1);
+      expect(
+        (await scene.h.emulator.getTransactionStatus(stop.signedHash())).status,
+      ).toBe("confirmed");
+      dispute.restart();
+      const { result, history } = await turnUntil(
+        dispute,
+        VALIDATION_TRACE_CASE_OPEN,
+      );
+      expect(result.kind, history.join("\n")).toBe("pending");
+      expect(dispute.rebroadcasts).toStrictEqual([]);
+      expect(verifySourceSends(dispute)).toStrictEqual([stop.signedHash()]);
+      const { verify } = await caseAndBond(scene, dispute);
+      expect(
+        verify.outputs.map(({ outRef }) => outRef.split("#")[0]),
+      ).toStrictEqual([stop.signedHash(), stop.signedHash()]);
+      await expectOneCaseAndBond(scene);
     },
     TIMEOUT,
   );
 
   it(
-    "supersedes VerifySource's unsent signed bytes once they expire after a stop before broadcast: one re-signed attempt, one case and bond, and the stopped bytes can no longer land",
+    "builds VerifySource again after a stop before broadcast: the next process's own lands, opening one case and one bond, and the stopped bytes cannot land beside it",
     async () => {
       await drainProver(scene.h as never, FUNDED);
       const dispute = await openFundedDispute(scene);
-      try {
-        const stop = stopAtVerifySourceSubmit({ broadcast: false });
-        await stop.stopped(dispute);
-        await dispute.restart();
-        const { result, history } = await turnUntil(
-          dispute,
-          VALIDATION_TRACE_CASE_OPEN,
-        );
-        expect(result.kind, history.join("\n")).toBe("pending");
-        // Only the stopped process's exact bytes are ever offered again; the
-        // journal's 30 s retry interval outlasts their validity range, so they
-        // expire unsent and the attempt is re-signed.
-        expect(dispute.rebroadcasts.length).toBeGreaterThan(0);
-        expect(new Set(dispute.rebroadcasts)).toStrictEqual(
-          new Set([stop.signedHex()]),
-        );
-        const intents = verifySourceIntents(result);
-        expect(intents.map(({ attempt }) => attempt)).toStrictEqual([1, 2]);
-        expect(intents[0]!.txHash).toBe(stop.signedHash());
-        expect(intents[1]!.txHash).not.toBe(stop.signedHash());
-        expect(
-          (await scene.h.emulator.getTransactionStatus(stop.signedHash()))
-            .status,
-        ).not.toBe("confirmed");
-        const { verify } = await caseAndBond(scene, result);
-        expect(
-          verify.outputs.map(({ outRef }) => outRef.split("#")[0]),
-        ).toStrictEqual([intents[1]!.txHash, intents[1]!.txHash]);
-        await expectOneCaseAndBond(scene);
-        // The superseded bytes are dead: the ledger refuses them now.
-        await expect(
-          scene.h.emulator.submitTx(stop.signedHex()),
-        ).rejects.toThrow();
-        expect(
-          (await scene.h.emulator.getTransactionStatus(stop.signedHash()))
-            .status,
-        ).not.toBe("confirmed");
-      } finally {
-        await dispute.close();
-      }
+      const stop = stopAtVerifySourceSubmit({ broadcast: false });
+      await stop.stopped(dispute);
+      dispute.restart();
+      const { result, history } = await turnUntil(
+        dispute,
+        VALIDATION_TRACE_CASE_OPEN,
+      );
+      expect(result.kind, history.join("\n")).toBe("pending");
+      // The next process knows nothing of the stopped bytes: it rebroadcasts
+      // nothing and sends the VerifySource it builds from the chain, which
+      // may be the very same transaction.
+      expect(dispute.rebroadcasts).not.toContain(stop.signedHex());
+      const sends = verifySourceSends(dispute);
+      expect(sends).toHaveLength(2);
+      expect(sends[0]).toBe(stop.signedHash());
+      const { verify } = await caseAndBond(scene, dispute);
+      expect(
+        verify.outputs.map(({ outRef }) => outRef.split("#")[0]),
+      ).toStrictEqual([sends[1], sends[1]]);
+      await expectOneCaseAndBond(scene);
+      // The ledger refuses the stopped bytes now.
+      await expect(
+        scene.h.emulator.submitTx(stop.signedHex()),
+      ).rejects.toThrow();
     },
     TIMEOUT,
   );
@@ -260,26 +215,22 @@ describe("validation-trace dispute VerifySource under the prover funding permit"
           );
         expect(others).toStrictEqual([]);
         const dispute = await openFundedDispute(scene);
-        try {
-          const { result, history } = await turnUntil(
-            dispute,
-            VALIDATION_TRACE_CASE_OPEN,
-          );
-          expect(result.kind, history.join("\n")).toBe("pending");
-          expect(confirmedStages(result)).toStrictEqual([
-            "init",
-            "open",
-            "verify_source",
-          ]);
-          expect(watch.ours()).toHaveLength(3);
-          for (const transaction of watch.ours())
-            expect(transaction.inputs).not.toContain(tokenCoin);
-          expect(
-            await h.emulator.getUtxosByOutRef([parseOwnOutRef(tokenCoin!)]),
-          ).toHaveLength(1);
-        } finally {
-          await dispute.close();
-        }
+        const { result, history } = await turnUntil(
+          dispute,
+          VALIDATION_TRACE_CASE_OPEN,
+        );
+        expect(result.kind, history.join("\n")).toBe("pending");
+        expect(await confirmedStages(dispute)).toStrictEqual([
+          "init",
+          "open",
+          "verify_source",
+        ]);
+        expect(watch.ours()).toHaveLength(3);
+        for (const transaction of watch.ours())
+          expect(transaction.inputs).not.toContain(tokenCoin);
+        expect(
+          await h.emulator.getUtxosByOutRef([parseOwnOutRef(tokenCoin!)]),
+        ).toHaveLength(1);
       } finally {
         watch.restore();
       }
@@ -288,167 +239,46 @@ describe("validation-trace dispute VerifySource under the prover funding permit"
   );
 
   it(
-    "holds an objective whose wallet cannot reserve the bond on the prover-funding pause, then lands after a top-up",
-    async () => {
-      const { h } = scene;
-      await drainProverToOneCoin(h as never, 5_000n * ADA);
-      const dispute = await openFundedDispute(scene);
-      try {
-        const reserve = await dispute.walletMoveReserve();
-        expect(reserve).toBeGreaterThan(0n);
-        const unavailable = await dispute.turn().then(
-          () => undefined,
-          (cause: unknown) => cause,
-        );
-        expect(String(unavailable)).toContain(
-          `prover wallet cannot reserve the validation dispute bond, case floor and wallet-move reserve: required=${(BOND_LOVELACE + FLOOR + reserve).toString()} available=${(5_000n * ADA).toString()}`,
-        );
-        const holds = new Map<string, { reason: string; detail: string }>();
-        expect(
-          holdWatcherFaultProofOnFunding(
-            holds,
-            {
-              category: "validationTraceDispute",
-              headerHash: dispute.decision.headerHash,
-            } as never,
-            unavailable,
-          ),
-        ).toMatchObject({ kind: "pending" });
-        expect([...holds.values()].map(({ reason }) => reason)).toStrictEqual([
-          WATCHER_PROVER_FUNDING_UNAVAILABLE,
-        ]);
-        expect(await dispute.readReservations()).toHaveLength(0);
-
-        await topUpProver(h as never, BOND_LOVELACE);
-        const { result, history } = await turnUntil(
-          dispute,
-          VALIDATION_TRACE_CASE_OPEN,
-        );
-        expect(result.kind, history.join("\n")).toBe("pending");
-        expect((await caseAndBond(scene, result)).bond.assets.lovelace).toBe(
-          BOND_LOVELACE,
-        );
-      } finally {
-        await dispute.close();
-      }
-    },
-    TIMEOUT,
-  );
-
-  it(
-    "pauses VerifySource on the funding-shortfall hold when the wallet cannot pay it, releases the reservation, and lands after a top-up",
+    "pauses VerifySource on the funding-shortfall hold when the wallet cannot pay it, and lands after a top-up",
     async () => {
       const { h } = scene;
       const dispute = await openFundedDispute(scene);
-      try {
-        // One coin enough to reserve the bond, the case floor and the
-        // wallet-move reserve, not to pay for Init, Open and VerifySource
-        // besides.
-        await drainProverToOneCoin(
-          h as never,
-          BOND_LOVELACE + FLOOR + (await dispute.walletMoveReserve()),
-        );
-        const paused = await turnUntil(dispute, WORKFLOW_FUNDING_SHORTFALL);
-        expect(paused.result.kind, paused.history.join("\n")).toBe("pending");
-        if (paused.result.kind !== "pending") return;
-        expect(paused.result.reason).toContain(
-          "cannot fund validation-trace-verify-source:",
-        );
-        expect(isWorkflowFundingPauseReason(paused.result.reason)).toBe(true);
-        const holds = new Map<string, { reason: string; detail: string }>();
-        holdWatcherFaultProofOnFunding(
-          holds,
-          {
-            category: "validationTraceDispute",
-            headerHash: dispute.decision.headerHash,
-          } as never,
-          paused.result.reason,
-        );
-        expect([...holds.values()].map(({ reason }) => reason)).toStrictEqual([
-          WATCHER_PROVER_FUNDING_UNAVAILABLE,
-        ]);
-        expect(confirmedStages(paused.result)).toStrictEqual(["init", "open"]);
+      // One coin enough for the bond, the case floor and the wallet-move
+      // reserve, not to pay for Init, Open and VerifySource besides.
+      await drainProverToOneCoin(
+        h as never,
+        BOND_LOVELACE + FLOOR + dispute.walletMoveReserve(),
+      );
+      const paused = await turnUntil(dispute, WORKFLOW_FUNDING_SHORTFALL);
+      expect(paused.result.kind, paused.history.join("\n")).toBe("pending");
+      if (paused.result.kind !== "pending") return;
+      expect(paused.result.reason).toContain(
+        "cannot fund validation-trace-verify-source:",
+      );
+      expect(isWorkflowFundingPauseReason(paused.result.reason)).toBe(true);
+      const holds = new Map<string, { reason: string; detail: string }>();
+      holdWatcherFaultProofOnFunding(
+        holds,
+        {
+          category: "validationTraceDispute",
+          headerHash: dispute.decision.headerHash,
+        } as never,
+        paused.result.reason,
+      );
+      expect([...holds.values()].map(({ reason }) => reason)).toStrictEqual([
+        WATCHER_PROVER_FUNDING_UNAVAILABLE,
+      ]);
+      expect(await confirmedStages(dispute)).toStrictEqual(["init", "open"]);
 
-        // The paused attempt released every input it held.
-        const reservations = await dispute.readReservations();
-        expect(reservations.length).toBeGreaterThan(0);
-        for (const reservation of reservations)
-          expect(reservation).toMatchObject({ activeInputs: [] });
-        await topUpProver(h as never, 100n * ADA);
-        const { result, history } = await turnUntil(
-          dispute,
-          VALIDATION_TRACE_CASE_OPEN,
-        );
-        expect(result.kind, history.join("\n")).toBe("pending");
-        expect((await caseAndBond(scene, result)).bond.assets.lovelace).toBe(
-          BOND_LOVELACE,
-        );
-      } finally {
-        await dispute.close();
-      }
-    },
-    TIMEOUT,
-  );
-
-  it(
-    "refuses, at the funding permit, a VerifySource that would leave the wallet less than the wallet-move reserve: it pauses on the funding-shortfall hold before any byte reaches the ledger, releases the reservation, and lands after a top-up",
-    async () => {
-      const { h } = scene;
-      await drainProver(h as never, FUNDED);
-      const dispute = await openFundedDispute(scene);
-      try {
-        // Init and Open land; VerifySource waits while the wallet drains.
-        const holdVerifySource: AdapterWrap = (adapter) => ({
-          ...adapter,
-          preflight: async (context) => {
-            if (isVerifySource(context.action))
-              throw new WorkflowActionChangedError("verify-source held");
-            return await adapter.preflight(context);
-          },
-        });
-        const held = await turnUntil(dispute, "verify-source held", {
-          wrap: holdVerifySource,
-        });
-        expect(confirmedStages(held.result)).toStrictEqual(["init", "open"]);
-        // The bond and less than the reserve over VerifySource's fee: enough
-        // to build VerifySource, not to keep the reserve after it, in one
-        // coin.
-        const reserve = await dispute.walletMoveReserve();
-        await drainProverToOneCoin(h as never, BOND_LOVELACE + reserve);
-        const watch = watchLedger(h.emulator);
-        try {
-          const paused = await turnUntil(dispute, WORKFLOW_FUNDING_SHORTFALL);
-          expect(paused.result.kind, paused.history.join("\n")).toBe("pending");
-          if (paused.result.kind !== "pending") return;
-          expect(paused.result.reason).toContain(
-            "cannot fund validation-trace-verify-source:",
-          );
-          expect(paused.result.reason).toContain(
-            "VerifySource leaves less than the wallet-move reserve",
-          );
-          expect(confirmedStages(paused.result)).toStrictEqual([
-            "init",
-            "open",
-          ]);
-          expect(watch.ours()).toHaveLength(0);
-        } finally {
-          watch.restore();
-        }
-        // The refused attempt released every input it held.
-        for (const reservation of await dispute.readReservations())
-          expect(reservation).toMatchObject({ activeInputs: [] });
-        await topUpProver(h as never, 100n * ADA);
-        const { result, history } = await turnUntil(
-          dispute,
-          VALIDATION_TRACE_CASE_OPEN,
-        );
-        expect(result.kind, history.join("\n")).toBe("pending");
-        expect((await caseAndBond(scene, result)).bond.assets.lovelace).toBe(
-          BOND_LOVELACE,
-        );
-      } finally {
-        await dispute.close();
-      }
+      await topUpProver(h as never, 100n * ADA);
+      const { result, history } = await turnUntil(
+        dispute,
+        VALIDATION_TRACE_CASE_OPEN,
+      );
+      expect(result.kind, history.join("\n")).toBe("pending");
+      expect((await caseAndBond(scene, dispute)).bond.assets.lovelace).toBe(
+        BOND_LOVELACE,
+      );
     },
     TIMEOUT,
   );

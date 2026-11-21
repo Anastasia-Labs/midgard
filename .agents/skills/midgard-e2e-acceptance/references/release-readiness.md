@@ -43,8 +43,7 @@ the functional checks, it gates on these state-correction labels:
   authority.
 
 The aggregate claim is only an index. The finalizer re-derives every gate from
-immutable workflow journals, raw Kupo and Ogmios responses with recomputable
-digests, raw recovery outputs, a raw node-database export, the deployment
+raw Kupo and Ogmios responses with recomputable digests, raw recovery outputs, a raw node-database export, the deployment
 manifest, blueprint, catalogue, parameters, and a live re-read through local
 Kupmios. A bundle of mutually consistent files without that live read stays
 blocked.
@@ -125,8 +124,7 @@ The finalizer takes:
 - `--state-correction-evidence`, `--state-correction-deployment-manifest`,
   `--state-correction-blueprint`, `--state-correction-catalogue`,
   `--state-correction-parameters` and `--state-correction-final-snapshot`; and
-- repeatable `--state-correction-workflow-journal`,
-  `--state-correction-l1-observation` and
+- repeatable `--state-correction-l1-observation` and
   `--state-correction-recovery-observation`.
 
 It builds its live authority from the Compose stack's loopback Kupo and Ogmios

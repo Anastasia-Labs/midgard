@@ -27,8 +27,9 @@ import {
 import { exactJournalRecord } from "./native-index-artifact.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
+import { proofMaterialsAccess } from "./proof-materials-view.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
@@ -170,10 +171,14 @@ export const createTransactionPort = (
       evidence,
       classification,
     }),
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const ownOutputs = workflowFieldCarriageOwnOutputs({
       category: "withdrawnReferenceInput",
-      entries,
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
+      }),
     });
     const admitted = await admitWithdrawnReferenceInputArtifact(
       artifact,
@@ -186,7 +191,7 @@ export const createTransactionPort = (
     if (input.stage === "init") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildWithdrawnReferenceInputInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -210,7 +215,7 @@ export const createTransactionPort = (
     if (input.stage === "step_01") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildWithdrawnReferenceInputStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -240,7 +245,7 @@ export const createTransactionPort = (
       );
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildWithdrawnReferenceInputStep02({
               ownOutputs,
               lucid: config.lucid,
@@ -268,7 +273,7 @@ export const createTransactionPort = (
     if (input.stage === "step_03") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildWithdrawnReferenceInputStep03({
               lucid: config.lucid,
               contracts: config.contracts,

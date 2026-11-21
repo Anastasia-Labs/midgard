@@ -22,6 +22,7 @@ import {
   THREAD_OUT_REF,
   withOtherAsset,
 } from "./support/double-spend-shared-carriage-harness.js";
+import { testProofMaterials } from "./support/proof-materials-holder.js";
 import { repeatedFirstChunkItems } from "./support/repeated-first-chunk-items.js";
 import { publishCarriageUnjournaled } from "./support/submit-unjournaled.js";
 
@@ -34,13 +35,12 @@ const repeatedFirstChunkSpendInputs = () =>
 
 /**
  * The ledger view and carriage claims the double-spend adapter publishes
- * with, over `wallet` as the prover's proof-materials address, `own` being
- * the outputs of transactions our journal confirmed.
+ * with, over `wallet` as the prover's proof-materials address; the claims
+ * are found by content.
  */
 const adapterCarriage = async (
   plan: ReturnType<typeof certifiedOpening>["plan"],
   wallet: readonly UTxO[],
-  own: readonly UTxO[] = wallet,
 ) => {
   const lucid = {
     utxosAt: async () => [...wallet],
@@ -61,97 +61,12 @@ const adapterCarriage = async (
       network: "Preview",
       publisherAddress: SIGNER.proofMaterialsAddress,
       planned: plan,
-      ownTransactions: new Set(own.map(({ txHash }) => txHash)),
+      materials: testProofMaterials(SIGNER, lucid),
     }),
   };
 };
 
 describe("double-spend carriage shared with other on-chain objects", () => {
-  it("confirms its own certificate transaction by its exact output, whatever else sits at the certificate address", async () => {
-    const { artifact, certificate, publications } = certifiedOpening();
-    const certificates: UTxO[] = [];
-    const harness = doubleSpendHarness({
-      artifact,
-      stage: {
-        kind: "step_03",
-        threadOutRef: THREAD_OUT_REF,
-        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
-      },
-      walletUtxos: publications,
-      certificateUtxos: certificates,
-    });
-    const certify = await harness.next();
-    expect(certify.input.stage).toBe("certify-field");
-    const ownTxHash = h32(0x6c);
-    const confirmed = { kind: "confirmed", txHash: ownTxHash };
-
-    certificates.push(certificate(ownTxHash));
-    await expect(harness.reconcile(certify, ownTxHash)).resolves.toEqual(
-      confirmed,
-    );
-
-    // Another valid certificate for the same opening, ordered first.
-    const other = certificate(LOWEST_TX_HASH);
-    certificates.unshift(other);
-    await expect(harness.reconcile(certify, ownTxHash)).resolves.toEqual(
-      confirmed,
-    );
-
-    // Without its own output the transaction is not confirmed by the other.
-    certificates.splice(0, certificates.length, other);
-    await expect(harness.reconcile(certify, ownTxHash)).resolves.toEqual({
-      kind: "pending",
-      txHash: ownTxHash,
-    });
-  });
-
-  it("confirms its own proof-chunk publication by its own outputs, whatever else sits at the prover's proof-materials address", async () => {
-    const proofCbor = Data.to([{ Branch: { skip: 0n, neighbors: "" } }], Proof);
-    const [chunkDatum] = splitProofIntoChunkDatums(proofCbor);
-    const chunk = (txHash: string): UTxO => ({
-      txHash,
-      outputIndex: 0,
-      address: SIGNER.proofMaterialsAddress,
-      assets: { lovelace: 2_000_000n },
-      datum: chunkDatum!,
-    });
-    const { artifact } = certifiedOpening(proofCbor);
-    const wallet: UTxO[] = [];
-    const harness = doubleSpendHarness({
-      artifact,
-      stage: {
-        kind: "step_01",
-        threadOutRef: THREAD_OUT_REF,
-        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
-      },
-      walletUtxos: wallet,
-      certificateUtxos: [],
-    });
-    const publish = await harness.next();
-    expect(publish.input.stage).toBe("publish-proof");
-    const ownTxHash = h32(0x6d);
-    const confirmed = { kind: "confirmed", txHash: ownTxHash };
-
-    wallet.push(chunk(ownTxHash));
-    await expect(harness.reconcile(publish, ownTxHash)).resolves.toEqual(
-      confirmed,
-    );
-
-    // Another output with the same chunk datum, ordered first.
-    const other = chunk(LOWEST_TX_HASH);
-    wallet.unshift(other);
-    await expect(harness.reconcile(publish, ownTxHash)).resolves.toEqual(
-      confirmed,
-    );
-
-    // Without its own outputs the transaction is not confirmed by the other.
-    wallet.splice(0, wallet.length, other);
-    await expect(harness.reconcile(publish, ownTxHash)).resolves.toEqual({
-      kind: "pending",
-      txHash: ownTxHash,
-    });
-  });
-
   it("treats a certificate other than the scheduled one as a changed proof-step action", async () => {
     const { artifact, certificate, publications } = certifiedOpening();
     const certificates: UTxO[] = [certificate(h32(0x61))];
@@ -350,39 +265,27 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     );
   });
 
-  it("publishes a field chunk whose only output of its content is another workflow's", async () => {
+  it.each([
+    ["uses a plain field chunk that another transaction paid to us", true],
+    ["finds its landed publications by content after a restart", false],
+  ] as const)("%s", async (_name, otherPaidFirst) => {
     const { plan, publications } = certifiedOpening();
     const [first, ...rest] = publications;
-    const wallet = [{ ...first!, txHash: LOWEST_TX_HASH }, ...rest];
-    class PublicationStarted extends Error {}
+    const wallet = otherPaidFirst
+      ? [{ ...first!, txHash: LOWEST_TX_HASH }, ...rest]
+      : [...publications];
     await expect(
       publishCarriageUnjournaled({
-        ...(await adapterCarriage(plan, wallet, rest)),
+        ...(await adapterCarriage(plan, wallet)),
         signer: SIGNER,
         planned: plan,
         publisherAddress: SIGNER.proofMaterialsAddress,
         label: "double-spend shared carriage test",
         beforePublication: async () => {
-          throw new PublicationStarted();
+          throw new Error("every chunk is already on chain");
         },
-      }),
-    ).rejects.toBeInstanceOf(PublicationStarted);
-  });
-
-  it("never takes another workflow's certificate of the same opening for its own", async () => {
-    const { artifact, certificate, publications } = certifiedOpening();
-    const harness = doubleSpendHarness({
-      artifact,
-      stage: {
-        kind: "step_03",
-        threadOutRef: THREAD_OUT_REF,
-        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
-      },
-      walletUtxos: publications,
-      certificateUtxos: [certificate(LOWEST_TX_HASH)],
-      foreignTxHashes: [LOWEST_TX_HASH],
-    });
-    expect((await harness.next()).input.stage).toBe("certify-field");
+      }).then((utxos) => utxos.map(outRef)),
+    ).resolves.toEqual(wallet.map(outRef));
   });
 
   it("publishes every field chunk when two chunks are identical", async () => {

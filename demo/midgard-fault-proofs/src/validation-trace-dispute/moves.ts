@@ -2,14 +2,12 @@
  * now from the thread's live state: reveal our midpoint on our turn, move a
  * thread whose defender ran out of clock to the timeout validator, and close
  * it there into the case with the defender's lost-defense receipt (builders
- * in move-builders.ts). Each signed move carries the funding permit's move
- * authority and names the outputs it leaves. */
+ * in move-builders.ts). The outputs each move leaves are read back from the
+ * chain. */
 import * as SDK from "@al-ft/midgard-sdk/da";
-import { Data, type TxSignBuilder, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type TxSignBuilder } from "@lucid-evolution/lucid";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { grantValidationDisputeMoveAuthority } from "../workflow/funding-reservation-permit.assert-validation-dispute-move.js";
-import { validationTraceRecovery } from "./actions.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import {
   buildValidationTraceGameMove,
@@ -25,7 +23,6 @@ import {
   validationTraceDefenderDeadlineMs,
   type ValidationTraceThread,
   type ValidationTraceThreadHolder,
-  type ValidationTraceThreadMove,
   validationTraceThreadTokenName,
 } from "./threads.js";
 import {
@@ -42,8 +39,6 @@ export type ValidationTraceMoveInput = StageInput &
     threadOutRef: string;
     /** Our case's unit, which names the thread's case. */
     caseUnit: string;
-    /** The pending claim our Open left, which the authority binds. */
-    caseOpenerOutRef: string;
   }>;
 
 /** The thread at `threadOutRef`, a thread of our case at `at`, or changed. */
@@ -88,38 +83,15 @@ export const liveThread = async (
 const awaiting = (thread: SDK.CaseThread) =>
   typeof thread.turn !== "string" && "AwaitingOperator" in thread.turn;
 
-/**
- * Signs, grants the move authority over the thread `thread` of `defenderVkh`
- * and names the move's own outputs.
- */
+/** Signs the move, with the dispute's contracts it references. */
 export const captureMove = async ({
   input,
-  stage,
   unsigned,
-  thread,
-  defenderVkh,
-  caseInput,
-  slots,
 }: {
   readonly input: ValidationTraceMoveInput;
-  readonly stage: ValidationTraceThreadMove;
   readonly unsigned: TxSignBuilder;
-  readonly thread: Readonly<{ utxo: UTxO }>;
-  readonly defenderVkh: string;
-  readonly caseInput?: UTxO;
-  readonly slots: readonly Readonly<{ address: string; unit: string }>[];
 }): Promise<CapturedValidationTraceStage> => {
   const signed = await unsigned.sign.withWallet().complete();
-  grantValidationDisputeMoveAuthority({
-    signed,
-    kind: stage,
-    deploymentFingerprint: input.deployment.deploymentFingerprint,
-    headerHash: input.artifact.headerHash,
-    caseOpenerOutRef: input.caseOpenerOutRef,
-    thread: thread.utxo,
-    defenderVkh,
-    ...(caseInput === undefined ? {} : { caseInput }),
-  });
   const { references } = input.deployment;
   const transaction = captured(signed, [
     { role: "validation-trace-game", utxo: references.game },
@@ -135,7 +107,6 @@ export const captureMove = async ({
   ]);
   return {
     transaction,
-    durableRecovery: validationTraceRecovery({ stage, transaction, slots }),
   };
 };
 
@@ -191,14 +162,7 @@ export const captureValidationTraceReveal = async (
         validTo,
       }),
   });
-  return await captureMove({
-    input,
-    stage: "reveal",
-    unsigned,
-    thread,
-    defenderVkh: thread.thread.header.defender_vkh,
-    slots: [{ address, unit: thread.unit }],
-  });
+  return await captureMove({ input, unsigned });
 };
 
 /** EnterChallengerTimeout: a thread whose defender's clock ran out, now. */
@@ -235,14 +199,7 @@ export const captureValidationTraceTimeout = async (
         validTo,
       }),
   });
-  return await captureMove({
-    input,
-    stage: "timeout",
-    unsigned,
-    thread,
-    defenderVkh: thread.thread.header.defender_vkh,
-    slots: [{ address, unit: thread.unit }],
-  });
+  return await captureMove({ input, unsigned });
 };
 
 /** ThreadClose: a thread timed out on its defender's side, into our case. */
@@ -292,20 +249,5 @@ export const captureValidationTraceThreadClose = async (
     ],
     build: (fee) => close(fee).tx,
   });
-  const { receiptUnit } = close(0n);
-  return await captureMove({
-    input,
-    stage: "close_thread",
-    unsigned,
-    thread,
-    defenderVkh: thread.thread.header.defender_vkh,
-    caseInput: caseUtxo,
-    slots: [
-      { address: deployment.chain.case.spendingScriptAddress, unit: caseUnit },
-      {
-        address: deployment.chain.award.spendingScriptAddress,
-        unit: receiptUnit,
-      },
-    ],
-  });
+  return await captureMove({ input, unsigned });
 };

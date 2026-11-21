@@ -6,6 +6,7 @@
  * ReadyForOneStep on a trace of ours is planned from that trace. With every
  * thread closed and none the defender's, the case closes once its defense
  * deadline has passed, as an undefended case does. */
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 import type * as SDK from "@al-ft/midgard-sdk/da";
 import {
   Constr,
@@ -297,3 +298,33 @@ export const observeValidationTraceThreads = async ({
         }),
       };
 };
+
+/** Whether anyone has defended the case. */
+export const isValidationTraceCaseContested = (caseDatum: SDK.Case): boolean =>
+  caseDatum.open_threads > 0n ||
+  caseDatum.defender_won ||
+  caseDatum.defenders_root !== EMPTY_MERKLE_TREE_ROOT;
+
+/** The next step on one live case of ours: its threads' once anyone has
+ * defended it, else its close once its defense deadline has passed. */
+export const observeValidationTraceCase = async (
+  input: Parameters<typeof observeValidationTraceThreads>[0],
+): Promise<FraudProofWorkflowObservation> =>
+  isValidationTraceCaseContested(input.caseDatum)
+    ? await observeValidationTraceThreads(input)
+    : input.now > validationTraceDefenseDeadlineMs(input.caseDatum)
+      ? {
+          kind: "action_required",
+          action: validationTraceAction({
+            stage: "close",
+            consumes: input.caseOutRef,
+          }),
+        }
+      : {
+          kind: "pending",
+          reason: validationTraceCaseOpenReason({
+            caseUnit: input.caseUnit,
+            outRef: input.caseOutRef,
+            caseDatum: input.caseDatum,
+          }),
+        };

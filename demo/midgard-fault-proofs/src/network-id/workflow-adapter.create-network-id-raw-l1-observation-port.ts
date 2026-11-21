@@ -8,15 +8,11 @@ import type { FaultProofFieldGrammarDeployment } from "../field-grammar-certific
 import type {
   RemoveFraudulentBlockExplicitCategory,
   RemoveFraudulentBlockFraudCategory,
-  StateQueueMutationLease,
   StateQueueMutationLeaseCoordinator,
 } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type {
-  FraudProofWorkflowTerminal,
-  JournalJsonObject,
-} from "../workflow/journal.js";
+import type { FraudProofWorkflowTerminal } from "../workflow/journal.js";
 import {
   type FraudProofL1Source,
   type FraudProofSignedTransactionRecovery,
@@ -54,62 +50,7 @@ import type { NetworkIdCatalogueCategory } from "./submit-common.js";
 import {
   type NetworkIdRawL1ObservationPort,
   type NetworkIdWorkflowTerminalFacts,
-  parseMutationLeaseRecovery,
 } from "./workflow-adapter.admit-network-id-forced-artifact.js";
-
-export const recoverMutationLease = async ({
-  config,
-  txHash,
-  durableRecovery,
-  mutationLeaseByTxHash,
-}: {
-  readonly config: NetworkIdWorkflowAdapterConfig;
-  readonly txHash: string;
-  readonly durableRecovery: JournalJsonObject | undefined;
-  readonly mutationLeaseByTxHash: Map<string, StateQueueMutationLease>;
-}): Promise<
-  | { readonly kind: "ok"; readonly lease: StateQueueMutationLease | undefined }
-  | { readonly kind: "conflict"; readonly reason: string }
-> => {
-  let identity: { readonly token: string; readonly source: string } | undefined;
-  try {
-    identity = parseMutationLeaseRecovery(durableRecovery);
-  } catch (cause) {
-    return {
-      kind: "conflict",
-      reason: cause instanceof Error ? cause.message : String(cause),
-    };
-  }
-  if (identity === undefined) return { kind: "ok", lease: undefined };
-  const cached = mutationLeaseByTxHash.get(txHash);
-  if (cached !== undefined) {
-    if (cached.token !== identity.token || cached.source !== identity.source) {
-      return {
-        kind: "conflict",
-        reason: "network-id cached mutation lease changed its fencing identity",
-      };
-    }
-    return { kind: "ok", lease: cached };
-  }
-  const resume = config.removal.stateQueueMutationLeaseCoordinator?.resume;
-  if (resume === undefined) {
-    return {
-      kind: "conflict",
-      reason:
-        "network-id mutation-lease coordinator cannot resume the journaled fencing token",
-    };
-  }
-  try {
-    const lease = await resume(identity);
-    mutationLeaseByTxHash.set(txHash, lease);
-    return { kind: "ok", lease };
-  } catch (cause) {
-    return {
-      kind: "conflict",
-      reason: `journaled network-id mutation lease cannot be resumed: ${String(cause)}`,
-    };
-  }
-};
 
 export const createNetworkIdRawL1ObservationPort = ({
   authority,

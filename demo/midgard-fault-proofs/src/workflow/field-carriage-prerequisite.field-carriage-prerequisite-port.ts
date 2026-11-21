@@ -4,43 +4,28 @@ import {
   type MidgardFieldCarriagePlan,
   planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
-import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
-import { type MintingPolicy, type UTxO } from "@lucid-evolution/lucid";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
+import type { MintingPolicy, UTxO } from "@lucid-evolution/lucid";
 
-import { type FaultProofFieldOpeningPlan } from "../field-opening.js";
-import {
-  boundDataPublicationPlan,
-  type BoundDataPublicationRequirement,
-} from "./bound-data-publication.js";
+import type { FaultProofFieldOpeningPlan } from "../field-opening.js";
 import {
   journalJsonDigest,
   normalizeJournalJson,
 } from "./journal.fraud-proof-workflow-terminal.js";
-import type {
-  FraudProofWorkflowJournalEntry,
-  JournalJsonObject,
-} from "./journal.js";
-import {
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowReconcileResult,
-} from "./orchestrator.js";
+import type { JournalJsonObject } from "./journal.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import type { ProofMaterialsHolder } from "./proof-materials-view.js";
 import {
   rawDatumPreimagePublicationPlan,
   type RawDatumPreimageRequirement,
 } from "./raw-datum-preimage.js";
-import { type SignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
-import { type LocallyEvaluatedTransaction } from "./transaction-boundary.js";
+import type { LocallyEvaluatedTransaction } from "./transaction-boundary.js";
 
 export const FIELD_CARRIAGE_PREREQUISITE =
   "midgard-production-field-carriage-prerequisite-v1" as const;
 
 export const RAW_DATUM_PREIMAGE_PREREQUISITE =
   "midgard-raw-datum-preimage-prerequisite-v1" as const;
-
-export { BOUND_DATA_PUBLICATION_PREREQUISITE } from "./bound-data-publication.js";
-
-export const FIELD_CARRIAGE_RECOVERY =
-  "midgard-production-field-carriage-recovery-v1" as const;
 
 export const TX_HASH = /^[0-9a-f]{64}$/u;
 
@@ -106,19 +91,11 @@ export type FieldCarriageRequirement = Readonly<{
 type RawRequirement = RawDatumPreimageRequirement &
   Readonly<{ planned: ReturnType<typeof rawDatumPreimagePublicationPlan> }>;
 
-type BoundRequirement = BoundDataPublicationRequirement &
-  Readonly<{ planned: ReturnType<typeof boundDataPublicationPlan> }>;
-
 export type PreimageCarriageRequirement =
   | FieldCarriageRequirement
-  | RawDatumPreimageRequirement
-  | BoundDataPublicationRequirement;
+  | RawDatumPreimageRequirement;
 
-export type Requirement = (
-  | FieldCarriageRequirement
-  | RawRequirement
-  | BoundRequirement
-) &
+export type Requirement = (FieldCarriageRequirement | RawRequirement) &
   Readonly<{
     identitySha256: string;
     publicationDatums: readonly string[];
@@ -127,46 +104,42 @@ export type Requirement = (
     certificateUnit: string | null;
   }>;
 
-export type Recovery = Readonly<{
-  schemaVersion: typeof FIELD_CARRIAGE_RECOVERY;
-  kind: "publication" | "certificate";
-  requirementSha256: string;
-  outRef: string;
-  datumCbor: string;
-  unit: string | null;
-  publicationAddress?: string;
-}>;
-
 export interface FieldCarriagePrerequisitePort<
   Category extends FraudProofCatalogueCategoryName,
 > {
   readonly portVersion: typeof FIELD_CARRIAGE_PREREQUISITE;
   readonly category: Category;
   /**
-   * The step's carriage, read by the out-refs the workflow's own publish and
-   * certify actions recorded in `entries`.
+   * The step's carriage: publications at the proof-materials address found
+   * by content for `holder`, and the certificate by its token and datum.
    */
   resolveAuthenticated(input: {
     readonly headerHash: string;
+    readonly holder: ProofMaterialsHolder;
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
-    readonly entries: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<
     Readonly<{
       publications: readonly UTxO[];
       certificate?: UTxO;
-      requirement:
-        | FieldCarriageRequirement
-        | RawRequirement
-        | BoundRequirement
-        | null;
+      requirement: FieldCarriageRequirement | RawRequirement | null;
     }>
   >;
-  inspect(input: {
+  /**
+   * Registers with the proof-materials view what the step for `baseAction`
+   * needs at the proof-materials address, without reading anything else.
+   */
+  need(input: {
     readonly headerHash: string;
+    readonly holder: ProofMaterialsHolder;
     readonly baseAction: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
-    readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<void>;
+  inspect(input: {
+    readonly headerHash: string;
+    readonly holder: ProofMaterialsHolder;
+    readonly baseAction: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
   }): Promise<
     | { readonly kind: "not_required" | "satisfied" }
     | { readonly kind: "pending"; readonly reason: string }
@@ -174,27 +147,15 @@ export interface FieldCarriagePrerequisitePort<
   >;
   capture(input: {
     readonly headerHash: string;
+    readonly holder: ProofMaterialsHolder;
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
-    readonly entries: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<{
     /** A chunk publication, which carries no upper validity bound, or the
      * certificate over the published chunks. */
     readonly kind: "publication" | "certificate";
     readonly transaction: LocallyEvaluatedTransaction;
-    readonly durableRecovery: JournalJsonObject;
   }>;
-  reconcile(input: {
-    readonly headerHash: string;
-    readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
-    readonly txHash?: string;
-    readonly durableRecovery?: JournalJsonObject;
-    readonly signedTransactionCborHex?: string;
-    readonly authorizeResubmission?: (
-      input: SignedWorkflowTransaction,
-    ) => Promise<void>;
-  }): Promise<FraudProofWorkflowReconcileResult>;
 }
 
 export const sha256 = (value: string): string =>

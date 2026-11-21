@@ -35,16 +35,10 @@ export const installedWorkflowEmulatorClock = (emulator: Emulator) => {
       proofToken: result.terminal.proofToken,
       correction: result.terminal.correction,
       economics: result.terminal.economics,
-      intents: result.entries.flatMap(({ event }) =>
-        event.kind === "submission_intent" ? [event] : [],
-      ),
     });
     if (retained === undefined) retained = identity;
     else
-      expect(
-        identity,
-        "same signed intents and terminal outrefs across restart",
-      ).toBe(retained);
+      expect(identity, "same terminal outrefs across restart").toBe(retained);
     return depth;
   };
   return {
@@ -69,7 +63,7 @@ export const installedWorkflowEmulatorClock = (emulator: Emulator) => {
       if (result.kind === "completed") {
         expect(
           observedRecoveryEdge,
-          "reopened journal held at the recovery edge",
+          "the restarted run held at the recovery edge",
         ).toBe(true);
         expect(await inspect(result)).toBe(horizon + 2);
       }

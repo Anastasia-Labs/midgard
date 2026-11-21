@@ -1327,7 +1327,6 @@ jobs:
             watcher-journeys/catalogue.test.ts \
             watcher-journeys/committee-acceptance.test.ts \
             watcher-journeys/correction-recovery.test.ts \
-            watcher-journeys/correction.journey-progress-clock.test.ts \
             watcher-journeys/correction.journey-progress-rule.test.ts \
             watcher-journeys/correction.test.ts \
             watcher-journeys/correction.watcher-start-deadline.test.ts \

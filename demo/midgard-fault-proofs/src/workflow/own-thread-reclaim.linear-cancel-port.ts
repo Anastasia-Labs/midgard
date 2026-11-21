@@ -63,15 +63,8 @@ export const createLinearCancelReclaimPort = ({
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly cancel?: LinearCancelBuilder;
   readonly l1: Required<
-    Pick<
-      FraudProofFamilyL1ObservationPort<never>,
-      "observeOwnThreads" | "observeSignedTransaction"
-    >
-  > &
-    Pick<
-      FraudProofFamilyL1ObservationPort<never>,
-      "rebroadcastSignedTransaction"
-    >;
+    Pick<FraudProofFamilyL1ObservationPort<never>, "observeOwnThreads">
+  >;
 }): OwnThreadReclaimPort => {
   const captured = new Map<string, LocallyEvaluatedTransaction>();
   const unavailable = (): string | undefined => {
@@ -142,16 +135,5 @@ export const createLinearCancelReclaimPort = ({
         captured.delete(preflight.txHash);
       }
     },
-    observeSignedTransaction: async (input) =>
-      await l1.observeSignedTransaction(input),
-    ...(l1.rebroadcastSignedTransaction === undefined
-      ? {}
-      : {
-          rebroadcastSignedTransaction: async (
-            input: Parameters<
-              NonNullable<OwnThreadReclaimPort["rebroadcastSignedTransaction"]>
-            >[0],
-          ) => await l1.rebroadcastSignedTransaction!(input),
-        }),
   });
 };

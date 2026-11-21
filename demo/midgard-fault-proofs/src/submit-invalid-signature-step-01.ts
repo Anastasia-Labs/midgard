@@ -88,7 +88,7 @@ import {
 } from "./witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 /**
@@ -163,7 +163,7 @@ export type InvalidSignatureStep01Build = {
 };
 
 export type SubmitInvalidSignatureStep01Result =
-  UnjournaledSubmission<InvalidSignatureStep01Build>;
+  OutsideWorkflowSubmission<InvalidSignatureStep01Build>;
 
 type InvalidSignatureStep01Layout = {
   readonly inputIndex: bigint;

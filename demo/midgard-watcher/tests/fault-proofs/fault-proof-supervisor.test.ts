@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
-import { DatabaseSync } from "node:sqlite";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import type { WorkflowActuationRevokedError } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import { h28 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -12,12 +12,10 @@ import {
 } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import type { WatcherFaultProofJob } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
-import { createWatcherWorkflowJournal } from "../../src/fault-proofs/watcher-workflow-journal.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
-  emptyWorkflowJournal,
   recordObjectives,
   recordRawObjectiveRow,
 } from "../support/watcher-journal-fixture.js";
@@ -73,10 +71,9 @@ describe("production fault-proof supervisor", () => {
   it("does not expose caller-selected category dispatch in production", async () => {
     const root = await directory();
     const supervisor = createWatcherFaultProofSupervisor({
-      reservationDecisionHolds: () => [],
+      inFlight: createWorkflowInFlight(),
       proofRetention: storelessProofRetention,
       journalRoot: root,
-      workflowJournal: emptyWorkflowJournal(),
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
@@ -112,25 +109,16 @@ describe("production fault-proof supervisor", () => {
     await supervisor.close();
   });
 
-  it("recovers recorded objectives in installed category and header order, never listing workflow rows", async () => {
+  it("recovers recorded objectives in installed category and header order", async () => {
     const root = await directory();
     recordObjectives(root, [
       { category: "networkId", headerHash: h28(0xbb) },
       { category: "doubleSpend", headerHash: h28(0xcc) },
       { category: "doubleSpend", headerHash: h28(0xaa) },
     ]);
-    // Workflow rows without an objective row are not recovered.
-    const workflowDatabase = new DatabaseSync(":memory:");
-    const workflowJournal = createWatcherWorkflowJournal(workflowDatabase);
-    workflowDatabase
-      .prepare(
-        "INSERT INTO watcher_workflow_journal_v1 VALUES (?, 0, 'doubleSpend', ?, 'started', 0, '{}')",
-      )
-      .run("ee".repeat(32), h28(0xdd));
     const observed: string[] = [];
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      workflowJournal,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       run: async (job) => {
         observed.push(`${job.mode}:${job.category}:${job.headerHash}`);
@@ -423,14 +411,15 @@ describe("production fault-proof supervisor", () => {
     ).rejects.toThrow("supervisor is blocked");
   });
 
-  it("holds a job whose recorded decision is missing by name and keeps running later targets", async () => {
+  it("holds a job by name and keeps running later targets", async () => {
     const root = await directory();
     const hold = {
       kind: "objective",
       category: "doubleSpend",
       headerHash: h28(0x33),
       decisionDigest: "33".repeat(32),
-      detail: "proof progress has no exact recorded execution decision",
+      detail: `doubleSpend/${h28(0x33)}`,
+      readiness: "fault_proof_start_deadline_passed",
     } as const;
     const ran: string[] = [];
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
@@ -586,6 +575,11 @@ describe("production fault-proof supervisor", () => {
           if (job.headerHash === h28(0x91)) await gate.promise;
           return { kind: "completed" };
         },
+        // At maturity the chain still shows every target live.
+        unsafeVerifyCompletedForTest: async () => ({
+          kind: "pending",
+          reason: "target_live",
+        }),
       });
     const supervisor = create();
     let settled = false;

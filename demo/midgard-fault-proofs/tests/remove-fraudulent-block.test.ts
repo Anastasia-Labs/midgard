@@ -271,7 +271,7 @@ describe("Q53 exact fraud-slash economics", () => {
 });
 
 describe("remove-fraudulent-block local lease coordinator", () => {
-  it("acquires and resumes the one frozen local lease identity", async () => {
+  it("acquires the one frozen local lease identity", async () => {
     const coordinator = createLocalStateQueueMutationLeaseCoordinator();
     const acquired = await coordinator.acquire();
     expect({ token: acquired.token, source: acquired.source }).toEqual({
@@ -284,41 +284,5 @@ describe("remove-fraudulent-block local lease coordinator", () => {
     await expect(acquired.renew()).resolves.toBeUndefined();
     await expect(acquired.release()).resolves.toBeUndefined();
     await expect(acquired.fail("lost race")).resolves.toBeUndefined();
-
-    // A fresh coordinator (a restarted process) resumes the journaled identity.
-    const resumed =
-      await createLocalStateQueueMutationLeaseCoordinator().resume?.({
-        token: acquired.token,
-        source: acquired.source,
-      });
-    expect(resumed).toMatchObject({
-      token: LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
-      source: LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
-    });
-  });
-
-  it("refuses a journaled Midgard node lease as a different coordinator", async () => {
-    const coordinator = createLocalStateQueueMutationLeaseCoordinator();
-    await expect(
-      coordinator.resume?.({
-        token: "lease-token",
-        source: "http://midgard-node.test",
-      }),
-    ).rejects.toThrow("different coordinator");
-    await expect(
-      coordinator.resume?.({
-        token: LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
-        source: "http://midgard-node.test",
-      }),
-    ).rejects.toThrow("cannot switch coordination mode");
-  });
-
-  it("refuses an unknown local lease token", async () => {
-    await expect(
-      createLocalStateQueueMutationLeaseCoordinator().resume?.({
-        token: "lease-token",
-        source: LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
-      }),
-    ).rejects.toThrow("unknown local token");
   });
 });

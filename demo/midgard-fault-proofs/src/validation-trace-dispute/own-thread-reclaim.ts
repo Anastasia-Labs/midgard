@@ -17,7 +17,6 @@ import type {
   FraudProofFamilyL1ObservationPort,
   FraudProofFamilyL1View,
 } from "../workflow/family-l1-observation.js";
-import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
@@ -65,7 +64,6 @@ export const withValidationTraceOwnThreadReclaim = ({
   signer,
   deployment,
   l1For,
-  signedRecovery,
   releaseFinality,
 }: {
   readonly base: FraudProofFamilyWorkflowAdapter;
@@ -80,7 +78,6 @@ export const withValidationTraceOwnThreadReclaim = ({
     FraudProofFamilyL1ObservationPort<typeof CATEGORY>,
     "observe" | "observeOwnThreads" | "observeView"
   >;
-  readonly signedRecovery: FraudProofSignedTransactionRecovery;
   readonly releaseFinality: Pick<
     VerifiedFraudProofReleaseFinalityPolicy,
     "policy"
@@ -153,10 +150,6 @@ export const withValidationTraceOwnThreadReclaim = ({
     witnessReferenceScripts: witnessReferenceScripts ?? {},
     l1: {
       observeOwnThreads: async ({ headerHash }) => await ownThreads(headerHash),
-      observeSignedTransaction: async (input) =>
-        await signedRecovery.observeSignedTransaction(input),
-      rebroadcastSignedTransaction: async (input) =>
-        await signedRecovery.rebroadcastSignedTransaction(input),
     },
   });
   const wrapped = withOwnThreadReclaim({
@@ -184,10 +177,6 @@ export const withValidationTraceOwnThreadReclaim = ({
     submit: async (context) => {
       endPass(context);
       return await wrapped.submit(context);
-    },
-    reconcile: async (context) => {
-      endPass(context);
-      return await wrapped.reconcile(context);
     },
   } satisfies FraudProofFamilyWorkflowAdapter);
 };

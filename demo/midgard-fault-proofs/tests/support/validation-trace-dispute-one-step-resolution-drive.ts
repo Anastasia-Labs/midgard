@@ -40,6 +40,7 @@ import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../../src/validation-trace-d
 import type { FraudProofSignedTransactionRecovery } from "../../src/workflow/l1-source.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.js";
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
+import { confirmedValidationTraceStages } from "./validation-trace-confirmed-stages.js";
 import { expectWithinWalletMoveShape } from "./validation-trace-dispute-move-fees.js";
 import {
   defendTwoThreads,
@@ -54,7 +55,7 @@ import {
   threadPlace,
   withLedgerParameters,
 } from "./validation-trace-dispute-one-step-play.js";
-import { makeRunner } from "./validation-trace-dispute-runner.js";
+import { makeRunner, type Runner } from "./validation-trace-dispute-runner.js";
 import { reportFit } from "./validation-trace-dispute-scripted-defender.js";
 
 const outRefOf = (utxo: UTxO) =>
@@ -123,6 +124,9 @@ export const resolutionDrive = <
   ) => Promise<Plan>;
 }) => {
   let dispute: TwoThreadCase;
+  /** Every runner the dispute ran in, oldest first: a restart is a new
+   * one. */
+  const runners: Runner[] = [];
   /** The successor thread's moves past the game. */
   let moves: PreparedMove[];
   /** Each move's transaction, by its fit label. */
@@ -206,8 +210,12 @@ export const resolutionDrive = <
     const rewritten = { ...honest, ...rewrite(honest, plan) };
     const window = validationTraceMoveWindow(lucid);
     return {
-      build: async () =>
-        await completeValidationTraceMove({
+      build: async () => {
+        // Our runs leave the shared Lucid on the wallet a run restricts to
+        // the coins no transaction of ours in flight holds; a move built
+        // here, outside the runner, pays from the whole wallet.
+        scene.h.proverSigner.selectWallet(lucid);
+        return await completeValidationTraceMove({
           lucid,
           stage: "resolve",
           referenced: [reference, ...(rewritten.reads?.references ?? [])],
@@ -224,10 +232,44 @@ export const resolutionDrive = <
               fee,
               ...window,
             }),
-        }),
+        });
+      },
       unmoved: async () =>
         expect(outRefOf((await placeOfB()).utxo)).toBe(outRefOf(before.utxo)),
     };
+  };
+
+  /** A fresh process of our runner, as the case was set up, its adapter
+   * rewritten by `wrap`, reading where each signed transaction stands from
+   * `signedRecovery` when given. */
+  const processOver = (
+    wrap: (
+      adapter: FraudProofFamilyWorkflowAdapter,
+    ) => FraudProofFamilyWorkflowAdapter,
+    signedRecovery?: FraudProofSignedTransactionRecovery,
+  ) => {
+    const { scene, deployment, removal } = dispute;
+    const recovery =
+      signedRecovery ??
+      (installs.releaseDepth === undefined
+        ? undefined
+        : emulatorSignedTransactionRecovery(
+            scene.h.emulator,
+            installs.releaseDepth,
+          ));
+    return makeRunner(scene, {
+      deployment,
+      wrap,
+      ...(recovery === undefined ? {} : { signedRecovery: recovery }),
+      ...(removal === undefined
+        ? {}
+        : {
+            removal: removal.removal,
+            terminalVerifier: removal.terminalVerifier(
+              scene.failing.evidence.headerHash,
+            ),
+          }),
+    });
   };
 
   return {
@@ -244,6 +286,7 @@ export const resolutionDrive = <
         ...installs,
       });
       const { scene, runner, a, b } = dispute;
+      runners.push(runner);
       await playThreads({
         scene,
         runner,
@@ -253,10 +296,25 @@ export const resolutionDrive = <
       });
     },
 
-    /** Stops the runner's process and starts another over its journal,
-     * holding nothing the first held in memory, reading where each signed
-     * transaction stands from `signedRecovery` and its adapter rewritten by
-     * `wrap` when given. */
+    processOver,
+
+    /** Every transaction the dispute's processes sent, oldest process
+     * first. */
+    sent: () => runners.flatMap(({ process }) => process.sent()),
+
+    /** The stage transactions the dispute's processes sent that the
+     * emulator confirmed. */
+    confirmed: async () =>
+      await confirmedValidationTraceStages({
+        emulator: dispute.scene.h.emulator,
+        deployment: dispute.deployment,
+        sent: runners.flatMap(({ process }) => process.sent()),
+      }),
+
+    /** Stops the runner's process and starts another, holding nothing the
+     * first held in memory, reading where each signed transaction stands
+     * from `signedRecovery` and its adapter rewritten by `wrap` when
+     * given. */
     restart: ({
       signedRecovery,
       wrap,
@@ -266,33 +324,13 @@ export const resolutionDrive = <
         adapter: FraudProofFamilyWorkflowAdapter,
       ) => FraudProofFamilyWorkflowAdapter;
     } = {}) => {
-      const { scene, deployment, prepared, runner, removal } = dispute;
-      const recovery =
-        signedRecovery ??
-        (installs.releaseDepth === undefined
-          ? undefined
-          : emulatorSignedTransactionRecovery(
-              scene.h.emulator,
-              installs.releaseDepth,
-            ));
-      dispute = Object.freeze({
-        ...dispute,
-        runner: makeRunner(scene, {
-          deployment,
-          journal: runner.journal,
-          wrap: (adapter) =>
-            capturePrepared(prepared)(wrap?.(adapter) ?? adapter),
-          ...(recovery === undefined ? {} : { signedRecovery: recovery }),
-          ...(removal === undefined
-            ? {}
-            : {
-                removal: removal.removal,
-                terminalVerifier: removal.terminalVerifier(
-                  scene.failing.evidence.headerHash,
-                ),
-              }),
-        }),
-      });
+      const { prepared } = dispute;
+      const runner = processOver(
+        (adapter) => capturePrepared(prepared)(wrap?.(adapter) ?? adapter),
+        signedRecovery,
+      );
+      runners.push(runner);
+      dispute = Object.freeze({ ...dispute, runner });
     },
 
     /** The hop at `at` with a transition other than the one the resolver

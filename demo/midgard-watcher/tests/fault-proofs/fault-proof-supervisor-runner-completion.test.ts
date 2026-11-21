@@ -1,18 +1,14 @@
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  journalJsonDigest,
-  normalizeJournalJson,
 } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { describe, expect, it, vi } from "vitest";
 
-import type { WatcherProofExecution } from "../../src/fault-proofs/fault-proof-objective-journal.js";
 import { admitWatcherProofRunnerCompletion } from "../../src/fault-proofs/fault-proof-supervisor.admit-runner-completion.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
 
 // The verifier is the authority seam here; these tests prove it is reached
-// before the supervisor caches completion or releases a dependent objective.
+// before the supervisor marks a completion.
 const job = {
   mode: "run" as const,
   category: "doubleSpend" as const,
@@ -34,36 +30,27 @@ const terminal = fundingTerminal(
   "bb".repeat(32),
 );
 const workflowId = computeFraudProofWorkflowId(identity);
-const execution: WatcherProofExecution = {
-  workflowId,
-  entries: [
-    {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-      workflowId,
-      identity,
-      recordedAt: "2026-10-01T00:00:00.000Z",
-      sequence: 0,
-      event: {
-        kind: "completed",
-        terminal,
-        terminalDigest: journalJsonDigest(normalizeJournalJson(terminal)),
-      },
-    },
-  ],
-};
+/** A run's report that it completed, with the terminal it read. */
+const completedOutcome = () => ({
+  kind: "completed",
+  result: { kind: "completed", workflowId, terminal },
+});
 describe("fresh runner completion admission", () => {
-  it("waits for canonical verification before caching completion", async () => {
-    type Applicable = { kind: "applicable"; confirmationDepth: number };
+  it("waits for canonical verification of the reported terminal before marking its completion", async () => {
+    type Applicable = {
+      kind: "applicable";
+      confirmationDepth: number;
+      terminalTxHash: string;
+    };
     let resolve!: (value: Applicable) => void;
     const wait = new Promise<Applicable>((done) => {
       resolve = done;
     });
     const verifyCompleted = vi.fn(async () => await wait);
     const onApplicable = vi.fn();
-    const outcome = { kind: "completed" };
+    const outcome = completedOutcome();
     const completion = admitWatcherProofRunnerCompletion({
       job,
-      execution,
       actuationPermit: null,
       verifyCompleted,
       outcome,
@@ -71,14 +58,19 @@ describe("fresh runner completion admission", () => {
     });
     expect(verifyCompleted).toHaveBeenCalledWith({
       job,
-      execution,
       actuationPermit: null,
+      terminal,
     });
     expect(onApplicable).not.toHaveBeenCalled();
-    resolve({ kind: "applicable", confirmationDepth: 12 });
+    resolve({
+      kind: "applicable",
+      confirmationDepth: 12,
+      terminalTxHash: "bb".repeat(32),
+    });
     expect(await completion).toBe(outcome);
     expect(onApplicable).toHaveBeenCalledExactlyOnceWith({
-      execution,
+      workflowId,
+      terminalTxHash: "bb".repeat(32),
       confirmationDepth: 12,
     });
   });
@@ -87,13 +79,12 @@ describe("fresh runner completion admission", () => {
     expect(
       await admitWatcherProofRunnerCompletion({
         job,
-        execution,
         actuationPermit: null,
         verifyCompleted: async () => ({
           kind: "pending",
           reason: "release_finality",
         }),
-        outcome: { kind: "completed" },
+        outcome: completedOutcome(),
         onApplicable,
       }),
     ).toEqual({
@@ -104,15 +95,27 @@ describe("fresh runner completion admission", () => {
     await expect(
       admitWatcherProofRunnerCompletion({
         job,
-        execution,
         actuationPermit: null,
         verifyCompleted: async () => {
           throw new Error("noncanonical terminal");
         },
-        outcome: { kind: "completed" },
+        outcome: completedOutcome(),
         onApplicable,
       }),
     ).rejects.toThrow("noncanonical terminal");
     expect(onApplicable).not.toHaveBeenCalled();
+  });
+  it("refuses a completion that reports no terminal, before any verification", async () => {
+    const verifyCompleted = vi.fn();
+    await expect(
+      admitWatcherProofRunnerCompletion({
+        job,
+        actuationPermit: null,
+        verifyCompleted,
+        outcome: { kind: "completed" },
+        onApplicable: vi.fn(),
+      }),
+    ).rejects.toThrow("proof runner reported completion without its terminal");
+    expect(verifyCompleted).not.toHaveBeenCalled();
   });
 });

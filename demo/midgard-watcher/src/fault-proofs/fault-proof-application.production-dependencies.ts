@@ -6,7 +6,6 @@ import {
   createLocalStateQueueMutationLeaseCoordinator,
   FAMILY_APPLICATION_REGISTRY,
   type FraudProofCompletedVerification,
-  type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
   type HeaderDecision,
   parseContractDeploymentInfo,
@@ -24,6 +23,8 @@ import {
   type FraudProofL1Source,
   type ValidationTraceReplayHold,
 } from "@al-ft/midgard-fault-proofs";
+import type { OwnThreadCanceller } from "@al-ft/midgard-fault-proofs/own-thread-cancel";
+import type { WorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
@@ -36,22 +37,30 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { WatcherWalletLeases } from "../funding/prover-funding-reservation.js";
-import { type WatcherWorkflowFundingProfileOverlay } from "../funding/workflow-funding-profile-overlay.js";
-import {
-  type WatcherAuthenticatedStateQueueObservation,
-  type WatcherStateQueueHeaderObservation,
+import type { WatcherWorkflowFundingProfileOverlay } from "../funding/workflow-funding-profile-overlay.js";
+import type {
+  WatcherAuthenticatedStateQueueObservation,
+  WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherConfig } from "../runtime/config.js";
-import { type VerifiedWatcherDeploymentAuthority } from "../runtime/deployment-authority.js";
-import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import type { VerifiedWatcherDeploymentAuthority } from "../runtime/deployment-authority.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import type { WatcherDecisionReadiness } from "../runtime/watcher-runtime.decision-driver.js";
-import {
-  type WatcherRetainedDaRuntimeOptions,
-  type WatcherRetainedDaTransportStatus,
+import type {
+  WatcherRetainedDaRuntimeOptions,
+  WatcherRetainedDaTransportStatus,
 } from "../storage/retained-da-runtime.js";
 import type { WatcherFaultDetectorAlert } from "./fault-detector-isolation.js";
+import type { WatcherProofMaterialsViews } from "./proof-materials-views.js";
 import type { WatcherReplayedLedger } from "./replayed-ledger.js";
+
+/** The wallet coins this process's workflows and other actions hold, from
+ * the in-flight set: an action outside any workflow offers none of them and
+ * holds the coins it spends until it may no longer land. */
+export type WatcherWalletLeases = Pick<
+  WorkflowInFlight,
+  "heldOutRefs" | "holdWalletInputs"
+>;
 
 export const WATCHER_FAULT_PROOF_APPLICATION =
   "midgard-watcher-fault-proof-production-application-v1" as const;
@@ -210,8 +219,8 @@ export type WatcherCompletedFaultProofInput = Readonly<{
   category: WatcherInstalledWorkflowCategory;
   headerHash: string;
   decisionDigest: string;
-  entries: readonly FraudProofWorkflowJournalEntry[];
-  terminal: FraudProofWorkflowTerminal;
+  /** A runner's fresh terminal; absent when the chain alone is read. */
+  terminal?: FraudProofWorkflowTerminal;
 }>;
 
 export type WatcherCompletedFaultProofVerification =
@@ -255,6 +264,38 @@ export type WatcherFaultProofApplication = Readonly<{
       walletLeases: WatcherWalletLeases;
     }>,
   ): Promise<ProvenCorrectionRemoval | Readonly<{ kind: "observing" }>>;
+  /**
+   * The canceller of our own computation threads, signing with the prover
+   * wallet, paid from coins `walletLeases` neither leases nor holds, and
+   * holding the coins each cancel spends there until its validity ends.
+   * `observing`: this application only observes and cancels nothing.
+   */
+  openOwnThreadCanceller(
+    input: Readonly<{ walletLeases: WatcherWalletLeases }>,
+  ): Promise<
+    | Readonly<{ kind: "cancelling"; canceller: OwnThreadCanceller }>
+    | Readonly<{ kind: "observing" }>
+  >;
+  /**
+   * One sweep-only run (`runProofMaterialsSweep`) of an objective the chain
+   * alone completed with `terminal`, under its reconciliation permit,
+   * through the restricted wallet the generic loader installs on `sends`.
+   */
+  sweepProofMaterials(
+    input: Pick<
+      WorkflowAdapterRunnerInput,
+      | "category"
+      | "headerHash"
+      | "runtimeConfigPath"
+      | "decisionDigest"
+      | "actuationPermit"
+      | "sends"
+      | "walletOnlySend"
+    > &
+      Readonly<{ terminal: FraudProofWorkflowTerminal }>,
+  ): Promise<unknown>;
+  /** The process's proof-materials views, which every workflow shares. */
+  proofMaterials?: WatcherProofMaterialsViews;
   close(): Promise<void>;
 }>;
 

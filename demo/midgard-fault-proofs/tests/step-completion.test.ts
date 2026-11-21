@@ -28,13 +28,13 @@ import {
   type StepFunding,
 } from "../src/step-completion.js";
 import {
-  submitUnjournaled,
+  submitOutsideWorkflow,
   workflowTransactionInputOutRefs,
 } from "../src/workflow/transaction-boundary.js";
 import {
-  fundReservedCoin,
-  restrictedProverFunding,
-} from "./support/restricted-prover-funding.js";
+  fundProverCoin,
+  restrictedProverWallet,
+} from "./support/restricted-prover-wallet.js";
 
 const network = "Custom" as const;
 const ada = (amount: bigint) => amount * 1_000_000n;
@@ -132,7 +132,7 @@ describe("fundStep and completeStep", () => {
     const requiredSigners = signed.toTransaction().body().required_signers();
     expect(requiredSigners?.len()).toBe(1);
     expect(requiredSigners?.get(0).to_hex()).toBe(signer.paymentKeyHash);
-    await submitUnjournaled(
+    await submitOutsideWorkflow(
       lucid,
       finishStep(signed, { referenceScripts: [] }),
       {
@@ -210,19 +210,20 @@ describe("fundStep and completeStep", () => {
     );
   });
 
-  it("fund a script step and post its collateral from the restricted wallet's reserved pool", async () => {
+  it("fund a script step and post its collateral from the coins the restricted wallet offers, never one another action holds", async () => {
     const { emulator, lucid, funderLucid, signer, scriptUtxo } = await prover([
       { lovelace: ada(40n) },
       { lovelace: ada(30n) },
     ]);
-    await fundReservedCoin({
+    const held = await fundProverCoin({
       emulator,
       funderLucid,
       signer,
     });
-    const restricted = await restrictedProverFunding({
+    const restricted = restrictedProverWallet({
       emulator,
       signer,
+      held: [held],
     });
 
     const funding = await fundStep(lucid, { signer: restricted.signer });
@@ -234,7 +235,7 @@ describe("fundStep and completeStep", () => {
     );
     const transaction = finishStep(signed, { referenceScripts: [] });
     await restricted.beforeSubmit(transaction);
-    await submitUnjournaled(lucid, transaction, {
+    await submitOutsideWorkflow(lucid, transaction, {
       label: "test step-01",
       awaitConfirmation: true,
     });
@@ -324,7 +325,7 @@ describe("finishStep", () => {
   });
 });
 
-describe("submitUnjournaled", () => {
+describe("submitOutsideWorkflow", () => {
   const finishedStep = async () => {
     const setup = await prover([{ lovelace: ada(20n) }]);
     const funding = await fundStep(setup.lucid, { signer: setup.signer });
@@ -342,7 +343,7 @@ describe("submitUnjournaled", () => {
   it("returns the hash and waits for confirmation only when asked", async () => {
     const pending = await finishedStep();
     expect(
-      await submitUnjournaled(pending.lucid, pending.transaction, {
+      await submitOutsideWorkflow(pending.lucid, pending.transaction, {
         label: "test step-01",
         awaitConfirmation: false,
       }),
@@ -353,7 +354,7 @@ describe("submitUnjournaled", () => {
 
     const confirmed = await finishedStep();
     expect(
-      await submitUnjournaled(confirmed.lucid, confirmed.transaction, {
+      await submitOutsideWorkflow(confirmed.lucid, confirmed.transaction, {
         label: "test step-01",
         awaitConfirmation: true,
       }),
@@ -373,7 +374,7 @@ describe("submitUnjournaled", () => {
     );
     try {
       await expect(
-        submitUnjournaled(lucid, transaction, {
+        submitOutsideWorkflow(lucid, transaction, {
           label: "test step-01",
           awaitConfirmation: false,
         }),

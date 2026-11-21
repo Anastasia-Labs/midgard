@@ -1,7 +1,3 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import {
   decodeMidgardNativeTxProofFieldLengths,
   encodeMidgardNativeTxProofFieldLengths,
@@ -15,9 +11,7 @@ import {
   FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import {
-  journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
 } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
@@ -42,6 +36,7 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 
 const category = "fieldPreimageLengthMismatch";
 const deploymentFingerprint = "22".repeat(32);
@@ -57,7 +52,7 @@ const releaseFinalityAuthority = {
   }),
 };
 
-const fixtureFor = async (directory: string) => {
+const fixtureFor = async () => {
   const transaction = buildFixtureTransaction({
     spendInputs: [outRefCbor(7, 0n)],
     fee: 1n,
@@ -91,7 +86,7 @@ const fixtureFor = async (directory: string) => {
   const material = (routed: WorkflowRawFamilyEvidence) => {
     if (routed.kind !== "field_preimage_length_mismatch")
       throw new Error("wrong raw family");
-    // This adapter only probes routing and durable envelopes. The installed
+    // This adapter only probes routing and the prepared artifact. The installed
     // family adapter owns the reversible typed encoding of proof material.
     return normalizeJournalJson(
       JSON.parse(
@@ -113,17 +108,8 @@ const fixtureFor = async (directory: string) => {
   const prepareRaw = vi.fn(async (routed: WorkflowRawFamilyEvidence) =>
     material(routed),
   );
-  const validateRaw = vi.fn(
-    async ({
-      routed,
-      artifact,
-    }: {
-      routed: WorkflowRawFamilyEvidence;
-      artifact: JournalJsonObject;
-    }) => {
-      if (journalJsonDigest(material(routed)) !== journalJsonDigest(artifact))
-        throw new Error("raw saved material changed");
-    },
+  const observe = vi.fn<FraudProofFamilyWorkflowAdapter["observe"]>(
+    async () => ({ kind: "pending", reason: "routing boundary" }),
   );
   const adapter: FraudProofFamilyWorkflowAdapter = {
     adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
@@ -131,11 +117,9 @@ const fixtureFor = async (directory: string) => {
     safety: FRAUD_PROOF_WORKFLOW_SAFETY,
     prepare: forbidden,
     prepareRaw,
-    validatePreparedRawArtifact: validateRaw,
-    observe: async () => ({ kind: "pending", reason: "routing boundary" }),
+    observe,
     preflight: forbidden,
     submit: forbidden,
-    reconcile: forbidden,
   };
   const input = {
     walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
@@ -163,7 +147,10 @@ const fixtureFor = async (directory: string) => {
       adapters: [adapter],
       launchScope: [category],
     }),
-    journal: new DirectoryFraudProofWorkflowJournalStore(directory),
+    run: createTestWorkflowProcess().run({
+      category,
+      headerHash: fixture.headerHash,
+    }),
     terminalVerifier: terminalVerifierOf(forbidden),
     releaseFinalityAuthority,
   };
@@ -171,92 +158,56 @@ const fixtureFor = async (directory: string) => {
     input,
     adapter,
     prepareRaw,
-    validateRaw,
+    observe,
     forbidden,
     headerHash: fixture.headerHash,
   };
 };
 
-it("routes authenticated raw length mismatch into a restartable directory envelope", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "field-length-raw-"));
-  try {
-    const fixture = await fixtureFor(directory);
-    const result = await runFraudProofWorkflowFromRetainedDa(fixture.input);
-    expect(result.kind).toBe("pending");
-    if (result.kind !== "pending") throw new Error("expected routing boundary");
-    const reopened = new DirectoryFraudProofWorkflowJournalStore(directory);
-    const entries = await reopened.load(result.workflowId);
-    expect(entries.map(({ event }) => event.kind)).toEqual([
-      "started",
-      "prepared",
-    ]);
-    expect(entries[0]?.identity.target).toEqual({
-      kind: "state_queue_header",
+it("routes authenticated raw length mismatch into raw preparation, preparing it again after a restart", async () => {
+  const fixture = await fixtureFor();
+  const result = await runFraudProofWorkflowFromRetainedDa(fixture.input);
+  expect(result.kind).toBe("pending");
+  const artifact = fixture.observe.mock.calls[0]![0].artifact;
+  expect(artifact).toMatchObject({
+    prepared: {
+      direction: "wrongfulAcceptance",
       headerHash: fixture.headerHash,
-    });
-    const prepared = entries[1]!.event;
-    if (prepared.kind !== "prepared")
-      throw new Error("prepared envelope missing");
-    expect(prepared.artifact).toMatchObject({
-      evidenceBinding: {
-        route: "authenticated_raw_family",
-        category,
-        headerHash: fixture.headerHash,
-      },
-      releaseFinality: {
-        policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
-      },
-      familyArtifact: {
-        prepared: {
-          direction: "wrongfulAcceptance",
-          headerHash: fixture.headerHash,
-        },
-      },
-    });
-    expect(
-      (
-        await runFraudProofWorkflowFromRetainedDa({
-          ...fixture.input,
-          journal: reopened,
-        })
-      ).kind,
-    ).toBe("pending");
-    expect(fixture.prepareRaw).toHaveBeenCalledOnce();
-    expect(fixture.validateRaw).toHaveBeenCalledOnce();
-    fixture.validateRaw.mockRejectedValueOnce(
-      new Error("raw saved material changed"),
-    );
-    await expect(
-      runFraudProofWorkflowFromRetainedDa({
+    },
+  });
+  expect(fixture.observe.mock.calls[0]![0].identity.target).toEqual({
+    kind: "state_queue_header",
+    headerHash: fixture.headerHash,
+  });
+  // A restart holds nothing: the same evidence prepares the same artifact.
+  expect(
+    (
+      await runFraudProofWorkflowFromRetainedDa({
         ...fixture.input,
-        journal: reopened,
-      }),
-    ).rejects.toThrow("raw saved material changed");
-    expect(fixture.forbidden).not.toHaveBeenCalled();
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
+        run: createTestWorkflowProcess().run({
+          category,
+          headerHash: fixture.headerHash,
+        }),
+      })
+    ).kind,
+  ).toBe("pending");
+  expect(fixture.prepareRaw).toHaveBeenCalledTimes(2);
+  expect(fixture.observe.mock.calls.at(-1)![0].artifact).toEqual(artifact);
+  expect(fixture.forbidden).not.toHaveBeenCalled();
 });
 
-it("rejects a different registry before raw length preparation or journal creation", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "field-length-route-scope-"));
-  try {
-    const fixture = await fixtureFor(directory);
-    await expect(
-      runFraudProofWorkflowFromRetainedDa({
-        ...fixture.input,
-        replayer: MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
-        registry: createFraudProofWorkflowRegistry({
-          adapters: [
-            { ...fixture.adapter, category: "mintDeclaredAssetLimit" },
-          ],
-          launchScope: ["mintDeclaredAssetLimit"],
-        }),
+it("rejects a different registry before raw length preparation", async () => {
+  const fixture = await fixtureFor();
+  await expect(
+    runFraudProofWorkflowFromRetainedDa({
+      ...fixture.input,
+      replayer: MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
+      registry: createFraudProofWorkflowRegistry({
+        adapters: [{ ...fixture.adapter, category: "mintDeclaredAssetLimit" }],
+        launchScope: ["mintDeclaredAssetLimit"],
       }),
-    ).rejects.toThrow("exact fieldPreimageLengthMismatch registry");
-    expect(fixture.prepareRaw).not.toHaveBeenCalled();
-    expect(fixture.forbidden).not.toHaveBeenCalled();
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
+    }),
+  ).rejects.toThrow("exact fieldPreimageLengthMismatch registry");
+  expect(fixture.prepareRaw).not.toHaveBeenCalled();
+  expect(fixture.forbidden).not.toHaveBeenCalled();
 });

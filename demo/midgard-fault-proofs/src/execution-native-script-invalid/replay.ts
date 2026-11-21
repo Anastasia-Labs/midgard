@@ -146,7 +146,7 @@ export const detectExecutionNativeScriptInvalidReplay = async ({
   });
 };
 
-/** The journaled `executionNativeScriptInvalid` workflow artifact: the retained
+/** The `executionNativeScriptInvalid` workflow artifact: the retained
  * payload, the predecessor ledger and the coordinate, re-planned on every
  * admission. */
 export const EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY =

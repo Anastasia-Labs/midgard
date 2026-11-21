@@ -86,7 +86,7 @@ export const buildStep04 = async ({
    * the preimage inline in this step's redeemer (#612).
    */
   readonly publishCarriage?: boolean;
-  /** Pre-observed tier-2/3 publications for journaled workflow use. */
+  /** Pre-observed tier-2/3 publications for workflow use. */
   readonly publishedCarriageUtxos?: readonly UTxO[];
   /** Pre-minted §8.6 certificate, required when the plan selects tier 3. */
   readonly certificateUtxo?: UTxO;

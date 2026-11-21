@@ -68,7 +68,7 @@ import {
 } from "./witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 export const requireFabricatedWithdrawalStep04Datum = ({
@@ -155,7 +155,7 @@ export type FabricatedWithdrawalStep04Build = {
 };
 
 export type SubmitFabricatedWithdrawalStep04Result =
-  UnjournaledSubmission<FabricatedWithdrawalStep04Build>;
+  OutsideWorkflowSubmission<FabricatedWithdrawalStep04Build>;
 
 type FabricatedWithdrawalStep04SpendLayout = {
   readonly inputIndex: bigint;

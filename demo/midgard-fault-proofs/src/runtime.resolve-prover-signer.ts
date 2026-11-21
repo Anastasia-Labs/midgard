@@ -15,6 +15,7 @@ import {
 
 import { proofMaterialsAddress } from "./funding/proof-materials-address.js";
 import { type ContractDeploymentInfo } from "./inspect-contracts.js";
+import type { ProofMaterialsView } from "./workflow/proof-materials-view.js";
 
 const DEFAULT_WALLET_SEED_ENV = "USER_WALLET";
 
@@ -42,9 +43,10 @@ export type ResolvedProverSigner = {
   readonly proofMaterialsAddress: string;
   readonly paymentKeyHash: string;
   readonly selectWallet: (lucid: LucidEvolution) => void;
-  /** The wallet out-refs a funding reservation holds for this signer to
-   * spend, when one restricts it; any of its wallet's otherwise. */
-  readonly reservedFunding?: () => readonly string[];
+  /** The process's one view of `proofMaterialsAddress`, shared by every
+   * workflow it runs; without one a port reads the address through its own
+   * Lucid (`proofMaterialsViewFor`). */
+  readonly proofMaterials?: ProofMaterialsView;
 };
 
 export type ParsedOutRef = OutRefLike;

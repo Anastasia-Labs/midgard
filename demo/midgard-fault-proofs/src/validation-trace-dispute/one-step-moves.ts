@@ -5,8 +5,8 @@
  * the award holds into our case with its defender's lost-defense receipt.
  * The thread is read by the out-ref the action names and checked as ours:
  * our case's token for one of its recorded defenders, at the holder its
- * address names, with a datum that names us its prover. Each move carries the
- * funding permit's move authority and names the output it leaves. */
+ * address names, with a datum that names us its prover. The output each
+ * move leaves is read back from the chain. */
 import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
@@ -139,14 +139,7 @@ export const captureValidationTraceEnterResolution = async (
         signer: signer.paymentKeyHash,
       }),
   });
-  return await captureMove({
-    input,
-    stage: "enter_resolution",
-    unsigned,
-    thread,
-    defenderVkh: thread.thread.header.defender_vkh,
-    slots: [{ address: boundary.address, unit: thread.unit }],
-  });
+  return await captureMove({ input, unsigned });
 };
 
 /**
@@ -365,14 +358,7 @@ export const captureValidationTraceResolve = async (
         ...window,
       }),
   });
-  return await captureMove({
-    input,
-    stage: "resolve",
-    unsigned,
-    thread,
-    defenderVkh: thread.defenderVkh,
-    slots: [{ address: to.address, unit: thread.unit }],
-  });
+  return await captureMove({ input, unsigned });
 };
 
 /** CloseAwardedThread: a thread we won at the award, into our case. */
@@ -420,20 +406,5 @@ export const captureValidationTraceAwardedClose = async (
     referenced: [caseConfig, references.case, references.award],
     build: (fee) => close(fee).tx,
   });
-  const { receiptUnit } = close(0n);
-  return await captureMove({
-    input,
-    stage: "close_awarded",
-    unsigned,
-    thread,
-    defenderVkh: thread.defenderVkh,
-    caseInput: caseUtxo,
-    slots: [
-      { address: deployment.chain.case.spendingScriptAddress, unit: caseUnit },
-      {
-        address: deployment.chain.award.spendingScriptAddress,
-        unit: receiptUnit,
-      },
-    ],
-  });
+  return await captureMove({ input, unsigned });
 };

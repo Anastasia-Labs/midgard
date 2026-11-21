@@ -5,14 +5,13 @@ import {
   WitnessScriptDecodingStep04DatumSchema,
 } from "@al-ft/midgard-sdk/fraud-proof";
 
-import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
-import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
+import type { CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
 import {
   cursorStepContractNames,
   defineFamily,
 } from "../workflow/family-definition.family-definition.js";
-import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,
@@ -26,7 +25,8 @@ import {
   SCRIPT_DECODE_REFERENCE_SCRIPTS,
   scriptDecodeDeploymentFromReferences,
 } from "../workflow/script-decode-prerequisite.deployment.js";
-import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   type BoundContext,
   createWitnessScriptDecodingRecoveryPorts,
@@ -172,17 +172,17 @@ export type ManifestBoundWitnessScriptDecodingWorkflow =
 export const executeManifestBoundWitnessScriptDecodingWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundWitnessScriptDecodingWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }) =>
   await executeManifestBoundFamilyRecovery({
     ...workflow,
     sources,
-    journal,
+    run,
     walletOnlySend,
   });

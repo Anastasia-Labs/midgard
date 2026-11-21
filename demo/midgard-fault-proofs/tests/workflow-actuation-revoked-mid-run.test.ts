@@ -1,21 +1,24 @@
 /** A permit revoked while a run is past its start hands the revocation back
  * to the caller, whichever stage it lands in, so the caller reads the run as
- * revoked, not as a stall of a proof that failed: nothing is journaled as
- * stalled, and nothing more is sent. */
+ * revoked, not as a stall of a proof that failed, and nothing more is
+ * sent. */
 import { describe, expect, it } from "vitest";
 
-import { bindWorkflowActuationJournal } from "../src/workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
 import { isWorkflowActuationRevokedError } from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
-import { unsafeWorkflowFundingReservationSelectedOutRefsForTest } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
-import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import { bindWorkflowRunActuation } from "../src/workflow/actuation-permit.js";
+import {
+  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+  type FraudProofFamilyWorkflowAdapter,
+} from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
+import type { FraudProofWorkflowTerminalVerifier } from "../src/workflow/orchestrator.js";
 import { runAdmittedFraudProofWorkflow } from "../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { releaseFinality } from "./support/raw-l1-terminal-fixture.output.js";
+import { signedWorkflowTransactionFixture } from "./support/signed-workflow-transaction.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN_ON_PREVIEW } from "./support/wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
   makeAdapter,
   REFERENCE_OUT_REF,
@@ -23,70 +26,36 @@ import {
   terminal,
   terminalVerifier,
 } from "./workflow.make-adapter.js";
-import { DEPLOYMENT } from "./workflow-runtime.admitted-actuation.js";
 import {
-  runtimeFunding,
-  signedFundingTransaction,
-} from "./workflow-runtime.runtime-funding.js";
+  admittedActuation,
+  DEPLOYMENT,
+} from "./workflow-runtime.admitted-actuation.js";
 
-const FUNDING_LOVELACE = 15_000_000n;
-const FEE = 200_000n;
 const ACTION = { actionId: "step-one", input: { actionKind: "step-one" } };
 
-type Stage = "preflight" | "reconcile" | "terminal_verify";
+type Stage = "preflight" | "follow" | "terminal_verify";
 
-/** The kinds of the events the run journals. */
-class RecordingJournal extends MemoryFraudProofWorkflowJournalStore {
-  readonly kinds: string[] = [];
-
-  override async append(
-    entry: FraudProofWorkflowJournalEntry,
-    expectedSequence: number,
-  ): Promise<void> {
-    await super.append(entry, expectedSequence);
-    this.kinds.push(entry.event.kind);
-  }
-}
-
-/** A funded run whose permit is revoked while it is in `stage`. */
+/** A run whose permit is revoked while it is in `stage`. */
 const scene = async (stage: Stage) => {
-  const journal = new RecordingJournal();
-  const runtime = await runtimeFunding("step-one", { begin: false, journal });
-  // The run's own permit, as the watcher's runner binds it.
-  bindWorkflowActuationJournal({
-    journal,
-    permit: runtime.actuation.actuationPermit,
-    decisionDigest: runtime.actuation.decisionDigest,
-    deploymentFingerprint: DEPLOYMENT,
-    category: "doubleSpend",
-    headerHash: runtime.actuation.headerHash,
-  });
-  const revoke = () => runtime.actuation.revoke("fault_target_changed");
+  const actuation = await admittedActuation();
+  const { headerHash } = actuation;
+  const objective = { category: "doubleSpend" as const, headerHash };
+  const process = createTestWorkflowProcess();
+  const revoke = () => actuation.revoke("fault_target_changed");
+  const { signed } = await signedWorkflowTransactionFixture();
   const sent: string[] = [];
   const base = makeAdapter();
   const adapter: FraudProofFamilyWorkflowAdapter = {
     ...base,
     observe: async () => {
       if (stage === "terminal_verify")
-        return {
-          kind: "completed" as const,
-          terminal: terminal(runtime.actuation.headerHash),
-        };
+        return { kind: "completed" as const, terminal: terminal(headerHash) };
       // The target moves while the family reads L1, before preflight.
       if (stage === "preflight") revoke();
       return { kind: "action_required" as const, action: ACTION };
     },
-    preflight: async ({ action }) => {
-      const signed = signedFundingTransaction({
-        inputOutRefs: unsafeWorkflowFundingReservationSelectedOutRefsForTest(
-          runtime.permit,
-        ).fundingOutRefs,
-        outputLovelace: FUNDING_LOVELACE - FEE,
-        fee: FEE,
-        // A wallet-only transaction carries its validity window.
-        ttl: 1_000n,
-      });
-      return bindWorkflowPreflightTransaction(
+    preflight: async ({ action }) =>
+      bindWorkflowPreflightTransaction(
         Object.freeze({
           actionId: action.actionId,
           txHash: signed.toHash(),
@@ -104,69 +73,79 @@ const scene = async (stage: Stage) => {
           ] as const,
         }),
         signed,
-      );
-    },
+      ),
     submit: async ({ preflight }) => {
       sent.push(preflight.txHash);
       return { kind: "submitted" as const, txHash: preflight.txHash };
     },
-    // The target moves while the sent attempt is reconciled.
-    reconcile: async ({ txHash }) => {
-      revoke();
-      return { kind: "pending" as const, ...(txHash ? { txHash } : {}) };
-    },
   };
-  const { headerHash } = runtime.actuation;
+  const verifier: FraudProofWorkflowTerminalVerifier =
+    stage === "terminal_verify"
+      ? // The target moves while the landed proof is verified.
+        terminalVerifierOf(async ({ candidate }) => {
+          revoke();
+          return candidate;
+        })
+      : stage === "follow"
+        ? {
+            verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+            verify: terminalVerifier.verify,
+            // The target moves while the sent transaction is followed.
+            observeSignedTransaction: async () => {
+              revoke();
+              return { status: "pending" } as never;
+            },
+          }
+        : terminalVerifier;
   const run = () =>
     runAdmittedFraudProofWorkflow({
       walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN_ON_PREVIEW,
       deploymentFingerprint: DEPLOYMENT,
       category: "doubleSpend",
       headerHash,
-      evidenceBinding: {
-        route: "canonical_block",
-        headerHash,
-        payloadEnvelopeSha256: "77".repeat(32),
-        payloadSha256: "78".repeat(32),
-        l1BlockHash: "79".repeat(32),
-        l1Slot: "1",
-      },
       prepareFamilyArtifact: async () => ({}),
       registry: createFraudProofWorkflowRegistry({
         adapters: [adapter],
         launchScope: ["doubleSpend"],
       }),
-      journal,
-      // The target moves while the landed proof is verified.
-      terminalVerifier:
-        stage === "terminal_verify"
-          ? terminalVerifierOf(async ({ candidate }) => {
-              revoke();
-              return candidate;
-            })
-          : terminalVerifier,
+      // The run's own permit, as the watcher's runner binds it.
+      run: bindWorkflowRunActuation({
+        run: process.run(objective),
+        permit: actuation.actuationPermit,
+        decisionDigest: actuation.decisionDigest,
+        deploymentFingerprint: DEPLOYMENT,
+        category: "doubleSpend",
+        headerHash,
+      }),
+      terminalVerifier: verifier,
       releaseFinality: {
         ...releaseFinality,
         deploymentIdentityDigest: DEPLOYMENT,
       },
     });
-  return { journal, sent, run };
+  return { sent, run };
 };
 
 describe("workflow: a permit revoked mid-run", () => {
-  it.each(["preflight", "reconcile", "terminal_verify"] as const)(
-    "hands the revocation back from %s and journals no stall",
+  it.each(["preflight", "follow", "terminal_verify"] as const)(
+    "hands the revocation back from %s",
     async (stage) => {
-      const { journal, sent, run } = await scene(stage);
-      const outcome = await run().then(
-        (result) => result,
-        (error: unknown) => error,
-      );
-      expect(isWorkflowActuationRevokedError(outcome)).toBe(true);
-      expect(journal.kinds).toContain("prepared");
-      expect(journal.kinds).not.toContain("stalled");
-      // Only the reconcile stage sent anything, before its permit was revoked.
-      expect(sent).toHaveLength(stage === "reconcile" ? 1 : 0);
+      const { sent, run } = await scene(stage);
+      const attempt = () =>
+        Promise.resolve()
+          .then(run)
+          .then(
+            (result) => result,
+            (error: unknown) => error,
+          );
+      // A follow that finds its transaction still pending holds the run; the
+      // revocation is handed back when the run next asserts its permit, at
+      // the start of the next run (or of the session's next poll).
+      if (stage === "follow")
+        expect(await attempt()).toMatchObject({ kind: "pending" });
+      expect(isWorkflowActuationRevokedError(await attempt())).toBe(true);
+      // Only the follow stage sent anything, before its permit was revoked.
+      expect(sent).toHaveLength(stage === "follow" ? 1 : 0);
     },
   );
 });

@@ -214,10 +214,6 @@ export const assembleBoundManifestBoundFamilyWorkflow = <
   if (binding.definition.category !== category || l1.category !== category) {
     throw new Error(`${category} bound deployment changed category`);
   }
-  const transactionConfirmed = async (input: {
-    readonly headerHash: string;
-    readonly txHash: string;
-  }) => await l1.transactionConfirmed(input);
   // These ports capture lazy requirement callbacks. Sharing their handles with
   // transaction ports ensures capture resolves the same authenticated evidence
   // that the adapter's prerequisites published.
@@ -248,8 +244,6 @@ export const assembleBoundManifestBoundFamilyWorkflow = <
   const { transactions, adapter: familyAdapterBase } = familyAdapter({
     definition,
     context,
-    stateQueueMutationLeaseCoordinator:
-      deployment.stateQueueMutationLeaseCoordinator,
   });
   const replayer = definition.replayer(context);
   let adapter = familyAdapterBase;
@@ -269,7 +263,6 @@ export const assembleBoundManifestBoundFamilyWorkflow = <
             references: deployment.auxiliaryReferences,
           }),
         itemForAction: (input) => scriptDecodeRecord(context, input),
-        publications: l1.publications,
       }),
     });
   }
@@ -297,7 +290,6 @@ export const assembleBoundManifestBoundFamilyWorkflow = <
         publications: l1.publications,
         maximumTransactionBytes: binding.cardanoProtocolParameters.maxTxSize,
         proofCborForAction: (input) => proofChunk(context, input),
-        transactionConfirmed,
       }),
     });
   }

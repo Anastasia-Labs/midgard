@@ -2,13 +2,12 @@
  * A header removed against a fraud-proof record that this run did not
  * create: another prover's, a sibling run's on our key, or another family's.
  * The block is corrected and nothing of this run's remains to prove. Once
- * every signed attempt in this run's journal is settled, the run ends
- * resolved by another record. That is never our conviction: no terminal, and
+ * none of this run's transactions is in flight, the run ends resolved by
+ * another record. That is never our conviction: no terminal, and
  * no reward is claimed.
  */
 import { CML } from "@lucid-evolution/lucid";
 
-import type { FraudProofWorkflowJournalEntry } from "./journal.js";
 import {
   bodyOutputsContainUnit,
   historicalTransactions,
@@ -117,39 +116,3 @@ export const recordBackedRemoval = ({
   }
   return undefined;
 };
-
-/**
- * Whether every signed attempt in the journal is settled: confirmed on
- * chain, or retired for good. An attempt that is only absent at the tip may
- * still land, so it is not settled. A rollback that reopens a confirmed
- * attempt (`reobserved`) makes it unsettled again.
- */
-export const journalAttemptsSettled = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
-): boolean => {
-  const open = new Set<string>();
-  for (const { event } of entries) {
-    if (event.kind === "submission_intent" || event.kind === "reobserved")
-      open.add(event.txHash);
-    else if (
-      event.kind === "confirmed" ||
-      event.kind === "signed_attempt_retired" ||
-      (event.kind === "reconciled" &&
-        event.retirement !== undefined &&
-        event.txHash !== undefined)
-    )
-      open.delete(event.txHash!);
-  }
-  return open.size === 0;
-};
-
-/** Whether this journal confirms the transaction that created the record a
- * removal cited. If it does not, a sibling run's record removed the header. */
-export const journalCreatedRecord = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
-  createdByTxHash: string,
-): boolean =>
-  entries.some(
-    ({ event }) =>
-      event.kind === "confirmed" && event.txHash === createdByTxHash,
-  );

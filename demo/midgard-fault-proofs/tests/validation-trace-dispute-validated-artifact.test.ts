@@ -38,12 +38,7 @@ describe("a saved validation-trace artifact checked again", () => {
 
   beforeAll(async () => {
     scene = await setUpScene();
-    makeRunner(scene, {
-      wrap: (base) => {
-        adapter = base;
-        return base;
-      },
-    });
+    adapter = makeRunner(scene).adapterOf(scene.failing);
     const { evidence, context } = scene.failing;
     const classification = await classifyCanonicalBlockViolations({
       evidence,
@@ -53,7 +48,7 @@ describe("a saved validation-trace artifact checked again", () => {
     if (classification.decision !== "fault_detected")
       throw new Error("the failing block detects no fault");
     const prepared = { evidence, classification, replayContext: context };
-    // The artifact as the journal saves it.
+    // The artifact normalised as the orchestrator hands it to the adapter.
     const artifact = normalizeJournalJson(
       await adapter.prepare(prepared),
     ) as JournalJsonObject;

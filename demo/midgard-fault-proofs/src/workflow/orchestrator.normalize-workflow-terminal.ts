@@ -1,8 +1,3 @@
-import { isCollateralForfeitureEvent } from "./collateral-forfeiture.js";
-import type {
-  FraudProofWorkflowJournalEntry,
-  FraudProofWorkflowJournalEvent,
-} from "./journal.fraud-proof-workflow-journal-event.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
@@ -10,15 +5,15 @@ import {
   type JournalJsonObject,
   normalizeJournalJson,
 } from "./journal.fraud-proof-workflow-terminal.js";
-import {
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowPreflight,
+import type {
+  FraudProofWorkflowAction,
+  FraudProofWorkflowPreflight,
 } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   normalizeOutRef,
   normalizeTxHash,
 } from "./orchestrator.immutable-fraud-proof-workflow-registry.js";
-import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 import { copyWorkflowPreflightTransaction } from "./transaction-boundary.js";
 
 export const validateAction = (
@@ -92,18 +87,7 @@ export const validatePreflight = ({
   }
   return copyWorkflowPreflightTransaction({
     from: preflight,
-    to: {
-      ...preflight,
-      txHash,
-      ...(preflight.durableRecovery === undefined
-        ? {}
-        : {
-            durableRecovery: normalizeJournalJson(
-              preflight.durableRecovery,
-              `workflow preflight ${action.actionId} durable recovery`,
-            ) as JournalJsonObject,
-          }),
-    },
+    to: { ...preflight, txHash },
   });
 };
 
@@ -117,13 +101,11 @@ const normalizeNonNegativeLovelace = (value: string, field: string): string => {
 export const normalizeWorkflowTerminal = ({
   identity,
   terminal,
-  entries,
   releaseFinality,
   inclusionOnly = false,
 }: {
   readonly identity: FraudProofWorkflowIdentity;
   readonly terminal: FraudProofWorkflowTerminal;
-  readonly entries: readonly FraudProofWorkflowJournalEntry[];
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly inclusionOnly?: boolean;
 }): FraudProofWorkflowTerminal => {
@@ -148,28 +130,6 @@ export const normalizeWorkflowTerminal = ({
   if (createdByTxHash === removalTxHash) {
     throw new Error(
       "terminal proof-token creation and removal must be distinct transactions",
-    );
-  }
-  const confirmed = new Set(
-    entries
-      .filter(
-        (
-          entry,
-        ): entry is FraudProofWorkflowJournalEntry & {
-          readonly event: Extract<
-            FraudProofWorkflowJournalEvent,
-            { readonly kind: "confirmed" }
-          >;
-        } => entry.event.kind === "confirmed",
-      )
-      .map((entry) => entry.event.txHash),
-  );
-  // The terminal verifier authenticates the correction independently. Another
-  // caller can finish it after our included descendant peel, so its removal
-  // need not be one of this workflow's signed submission intents.
-  if (!confirmed.has(createdByTxHash)) {
-    throw new Error(
-      "terminal proof-token creation must be confirmed in this workflow journal",
     );
   }
   if (!/^(?:[0-9a-f]{2}){28,60}$/u.test(terminal.proofToken.unit)) {
@@ -279,50 +239,4 @@ export const normalizeWorkflowTerminal = ({
       removalTxHash,
     },
   };
-};
-
-export const lastActionEvent = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
-  actionId: string,
-): FraudProofWorkflowJournalEvent | undefined =>
-  [...entries]
-    .reverse()
-    .map((entry) => entry.event)
-    .find(
-      (event) =>
-        "actionId" in event &&
-        event.actionId === actionId &&
-        !isCollateralForfeitureEvent(event),
-    );
-
-export const lastKnownTxHash = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
-  actionId: string,
-): string | undefined => {
-  let latestIntentIndex = -1;
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const event = entries[index]!.event;
-    if (event.kind === "submission_intent" && event.actionId === actionId) {
-      latestIntentIndex = index;
-      break;
-    }
-  }
-  if (latestIntentIndex < 0) {
-    return undefined;
-  }
-  for (let index = entries.length - 1; index >= latestIntentIndex; index -= 1) {
-    const entry = entries[index]!;
-    const event = entry.event;
-    if (
-      !("actionId" in event) ||
-      event.actionId !== actionId ||
-      isCollateralForfeitureEvent(event)
-    ) {
-      continue;
-    }
-    if ("txHash" in event && event.txHash !== undefined) {
-      return event.txHash;
-    }
-  }
-  return undefined;
 };

@@ -126,15 +126,18 @@ export const describeSignedRecovery = (): void => {
       );
     });
 
-    it("included by its exact body; other witness bytes are the same inclusion, told apart by the reason", async () => {
+    it("included by its exact body, final only at the block release-deep under the tip (confirmationDepth, not the recovery depth); other witness bytes are the same inclusion, told apart by the reason", async () => {
+      // A in b1, then b2..b6, then z at the tip (b7): b6 is 2 deep.
+      expect(RELEASE.policy.confirmationDepth).toBe(2);
       const s = await setup();
+      const boundary = await s.empty(1);
       const z = s.intent();
       const { point } = await s.forward([z]);
       const included = {
         status: "included",
         inclusionPoint: point,
         canonicalPoint: point,
-        releaseFinalPoint: point,
+        releaseFinalPoint: boundary,
         inputs: [],
       };
       expect(await s.observe(z)).toEqual({

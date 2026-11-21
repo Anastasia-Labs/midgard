@@ -5,17 +5,18 @@ import { MAXIMUM_CHUNK_PROOF_STEP_COUNT, Proof } from "@al-ft/midgard-sdk/core";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { splitProofIntoChunkDatums } from "../src/publish-proof-chunks.js";
-import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
-import { normalizeJournalJson } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
+  type PublishedProofChunk,
+  splitProofIntoChunkDatums,
+} from "../src/publish-proof-chunks.js";
+import { normalizeJournalJson } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import type {
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowAction,
 } from "../src/workflow/orchestrator.js";
 import { createAuthenticatedProofChunkPrerequisitePort } from "../src/workflow/proof-chunk-prerequisite.create-authenticated-proof-chunk-prerequisite-port.js";
 import {
   PROOF_CHUNK_PREREQUISITE,
-  PROOF_CHUNK_PUBLICATION_RECOVERY,
   type ProofChunkPrerequisitePort,
   resolveDirectFirstProofChunks,
 } from "../src/workflow/proof-chunk-prerequisite.route-action-identity.js";
@@ -24,7 +25,6 @@ import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/
 import {
   base,
   baseAction,
-  confirmedEntry,
   context,
   headerHash,
   identity,
@@ -80,7 +80,10 @@ describe("production proof-chunk prerequisite V1", () => {
     expect(port.capture).not.toHaveBeenCalled();
     expect(underlying.preflight).not.toHaveBeenCalled();
     expect(underlying.submit).not.toHaveBeenCalled();
-    vi.mocked(port.inspect).mockResolvedValue({ kind: "satisfied" });
+    vi.mocked(port.inspect).mockResolvedValue({
+      kind: "satisfied",
+      chunks: [],
+    });
     await expect(adapter.observe(context)).resolves.toEqual({
       kind: "action_required",
       action: baseAction,
@@ -109,13 +112,12 @@ describe("production proof-chunk prerequisite V1", () => {
           observeExact: async () => ({ kind: "not_found" }),
         },
         proofCborForAction: () => proofCbor,
-        transactionConfirmed: async () => false,
       });
       return await port.inspect({
         headerHash,
+        workflowId: context.workflowId,
         baseAction,
         artifact: context.artifact,
-        entries: [],
       });
     };
     const encoded = await inspect(encodedProofCbor);
@@ -134,7 +136,7 @@ describe("production proof-chunk prerequisite V1", () => {
     );
   });
 
-  it("keeps journaled proof chunks pending and rejects incomplete authenticated output sets", async () => {
+  it("requires the publication again once its chunks are gone, and holds on incompletely authenticated chunks", async () => {
     const proofCbor = canonicalPlutusDataCbor(
       Data.to(
         Array.from({ length: MAXIMUM_CHUNK_PROOF_STEP_COUNT + 1 }, () => ({
@@ -145,12 +147,12 @@ describe("production proof-chunk prerequisite V1", () => {
     );
     const datums = splitProofIntoChunkDatums(proofCbor);
     expect(datums).toHaveLength(2);
-    let included = false;
+    let chain: UTxO[] = [];
     const confirmedOutputs = new Set<string>();
     const port = createAuthenticatedProofChunkPrerequisitePort({
       category: "invalidRange",
       maximumTransactionBytes: 16_384,
-      lucid: { utxosAt: async () => [] } as unknown as LucidEvolution,
+      lucid: { utxosAt: async () => chain } as unknown as LucidEvolution,
       signer: proofSigner,
       publications: {
         observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
@@ -160,55 +162,16 @@ describe("production proof-chunk prerequisite V1", () => {
             : { kind: "not_found" },
       },
       proofCborForAction: () => proofCbor,
-      transactionConfirmed: async () => included,
     });
-    const required = await port.inspect({
+    const step = {
       headerHash,
+      workflowId: context.workflowId,
       baseAction,
       artifact: context.artifact,
-      entries: [],
-    });
+    };
+    const required = await port.inspect(step);
     if (required.kind !== "required")
       throw new Error("missing proof publication requirement");
-    const proofCborSha256 = required.action.input.proofCborSha256;
-    if (typeof proofCborSha256 !== "string")
-      throw new Error("missing proof identity");
-    const outputs = datums.map((datumCbor, index) => ({
-      outRef: `${txHash}#${index}`,
-      datumCbor,
-    }));
-    const input = {
-      headerHash,
-      action: required.action,
-      artifact: context.artifact,
-      txHash,
-      durableRecovery: {
-        proofChunkPublication: {
-          schemaVersion: PROOF_CHUNK_PUBLICATION_RECOVERY,
-          proofCborSha256,
-          outputs,
-        },
-      },
-    } as const;
-    await expect(port.reconcile(input)).resolves.toEqual({
-      kind: "pending",
-      txHash,
-    });
-    included = true;
-    await expect(port.reconcile(input)).resolves.toMatchObject({
-      kind: "conflict",
-      reason: expect.stringContaining("exact complete output set"),
-    });
-    included = false;
-    confirmedOutputs.add(outputs[0]!.outRef);
-    await expect(port.reconcile(input)).resolves.toMatchObject({
-      kind: "conflict",
-    });
-    confirmedOutputs.add(outputs[1]!.outRef);
-    await expect(port.reconcile(input)).resolves.toEqual({
-      kind: "confirmed",
-      txHash,
-    });
     const wrapper = withProofChunkPrerequisite({
       category: "invalidRange",
       base: base({
@@ -218,73 +181,50 @@ describe("production proof-chunk prerequisite V1", () => {
       }),
       prerequisite: {
         ...port,
-        capture: async () => ({
-          transaction: transaction(),
-          durableRecovery: input.durableRecovery,
-        }),
+        capture: async () => ({ transaction: transaction() }),
       },
     });
-    const preflight = await wrapper.preflight({
-      ...context,
+    await expect(
+      wrapper.preflight({ ...context, action: required.action }),
+    ).resolves.toMatchObject({
+      actionId: required.action.actionId,
+      txHash,
+      scriptExecution: "none",
+    });
+    // The publication's outputs exist by content, but only one is
+    // authenticated on the current chain: the step waits.
+    const outputs: UTxO[] = datums.map((datum, outputIndex) => ({
+      txHash,
+      outputIndex,
+      address: proofSigner.proofMaterialsAddress,
+      assets: { lovelace: 2_000_000n },
+      datum,
+    }));
+    const outRefs = outputs.map(
+      ({ txHash: hash, outputIndex }) => `${hash}#${outputIndex.toString()}`,
+    );
+    chain = outputs;
+    confirmedOutputs.add(outRefs[0]!);
+    await expect(port.inspect(step)).resolves.toMatchObject({
+      kind: "pending",
+      reason: expect.stringContaining("not authenticated"),
+    });
+    confirmedOutputs.add(outRefs[1]!);
+    const satisfied = await port.inspect(step);
+    expect(satisfied).toMatchObject({ kind: "satisfied" });
+    if (satisfied.kind !== "satisfied") throw new Error("chunks not found");
+    expect(satisfied.chunks.map(({ outRef }) => outRef)).toEqual(outRefs);
+    // A previously confirmed publication disappears. The next observation must
+    // expose its exact old action so the workflow publishes it again.
+    chain = [];
+    confirmedOutputs.clear();
+    await expect(port.inspect(step)).resolves.toEqual({
+      kind: "required",
       action: required.action,
     });
-    const recorded = (
-      event: FraudProofWorkflowJournalEntry["event"],
-      sequence: number,
-    ): FraudProofWorkflowJournalEntry => ({
-      schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
-      workflowId: context.workflowId,
-      identity,
-      sequence,
-      recordedAt: "2026-09-13T00:00:00.000Z",
-      event,
-    });
-    const entries = [
-      recorded(
-        {
-          kind: "submission_intent",
-          actionId: required.action.actionId,
-          actionInput: required.action.input,
-          txHash,
-          attempt: 1,
-          durableRecovery: preflight.durableRecovery,
-        },
-        0,
-      ),
-      recorded(
-        { kind: "confirmed", actionId: required.action.actionId, txHash },
-        1,
-      ),
-    ];
-    // A previously confirmed publication disappears. The next observation must
-    // expose its exact old action so the orchestrator can reconcile signed bytes.
-    confirmedOutputs.clear();
-    await expect(
-      port.inspect({
-        headerHash,
-        baseAction,
-        artifact: context.artifact,
-        entries,
-      }),
-    ).resolves.toEqual({ kind: "required", action: required.action });
-
-    await expect(
-      port.reconcile({
-        ...input,
-        durableRecovery: {
-          proofChunkPublication: {
-            ...input.durableRecovery.proofChunkPublication,
-            outputs: [
-              { ...outputs[0]!, outRef: `${"ff".repeat(32)}#0` },
-              outputs[1]!,
-            ],
-          },
-        },
-      }),
-    ).resolves.toMatchObject({ kind: "conflict" });
   });
 
-  it("makes the publication a distinct durable action and forbids step bypass", async () => {
+  it("makes the publication a distinct action and forbids step bypass", async () => {
     const underlying = base({
       preflightFailure: new Error(
         "Max transaction size of 16384 exceeded. Found: 16385",
@@ -316,9 +256,6 @@ describe("production proof-chunk prerequisite V1", () => {
       localUplcEvaluation: { status: "passed" },
       referenceScripts: [],
     });
-    expect(preflight.durableRecovery).toEqual(
-      expect.objectContaining({ proofCarriage: expect.any(Object) }),
-    );
     expect(publication.classifyDirectCapacityFailure).toHaveBeenCalledOnce();
     expect(publication.capture).toHaveBeenCalledOnce();
     await expect(
@@ -347,9 +284,9 @@ describe("production proof-chunk prerequisite V1", () => {
       txHash: "99".repeat(32),
       scriptExecution: "reference_scripts",
     });
-    expect(preflight.durableRecovery).toMatchObject({
-      proofCarriage: { route: "direct", baseAction },
-    });
+    expect(underlying.preflight).toHaveBeenCalledWith(
+      expect.objectContaining({ action: baseAction }),
+    );
     expect(publication.capture).not.toHaveBeenCalled();
     await expect(
       adapter.submit({
@@ -361,7 +298,7 @@ describe("production proof-chunk prerequisite V1", () => {
     expect(underlying.submit).toHaveBeenCalledOnce();
   });
 
-  it("accepts the orchestrator's journal-normalized copy of the route action", async () => {
+  it("accepts a JSON-normalized copy of the route action", async () => {
     const underlying = base();
     const publication = prerequisite();
     const adapter = withProofChunkPrerequisite({
@@ -420,54 +357,6 @@ describe("production proof-chunk prerequisite V1", () => {
     expect(underlying.preflight).toHaveBeenCalledOnce();
   });
 
-  it("reconciles a journaled publication through a fresh adapter process", async () => {
-    const authorizeResubmission = vi.fn(async () => undefined);
-    const reconcile = vi.fn(async () => ({
-      kind: "confirmed" as const,
-      txHash,
-    }));
-    const publication = prerequisite({ reconcile });
-    const original = withProofChunkPrerequisite({
-      category: "invalidRange",
-      base: base({
-        preflightFailure: new Error(
-          "Max transaction size of 16384 exceeded. Found: 16385",
-        ),
-      }),
-      prerequisite: publication,
-    });
-    const preflight = await original.preflight({
-      ...context,
-      action: publicationAction,
-    });
-    const fresh = withProofChunkPrerequisite({
-      category: "invalidRange",
-      base: base(),
-      prerequisite: publication,
-    });
-    await expect(
-      fresh.reconcile({
-        ...context,
-        action: publicationAction,
-        txHash,
-        durableRecovery: preflight.durableRecovery,
-        signedTransactionCborHex: "recorded-signed-bytes",
-        authorizeResubmission,
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash });
-    expect(reconcile).toHaveBeenCalledWith({
-      signedTransactionCborHex: "recorded-signed-bytes",
-      authorizeResubmission,
-      headerHash,
-      action: publicationAction,
-      artifact: context.artifact,
-      txHash,
-      durableRecovery: expect.objectContaining({
-        proofChunkPublication: expect.any(Object),
-      }),
-    });
-  });
-
   it("rejects duplicate or substituted publication captures", async () => {
     const publication = prerequisite();
     const adapter = withProofChunkPrerequisite({
@@ -509,9 +398,6 @@ describe("production proof-chunk prerequisite V1", () => {
       assets: { lovelace: 2_000_000n },
       datum: datumCbor,
     } as UTxO;
-    const lucid = {
-      utxosAt: vi.fn(async () => [preexistingChunk]),
-    } as unknown as LucidEvolution;
     const directAction: FraudProofWorkflowAction = Object.freeze({
       actionId: `step_03:${"ab".repeat(32)}#0`,
       input: Object.freeze({
@@ -548,7 +434,6 @@ describe("production proof-chunk prerequisite V1", () => {
       preflight: vi.fn(async ({ action }) => {
         const chunks = await resolveDirectFirstProofChunks({
           action,
-          lucid,
           address: preexistingChunk.address,
           proofCbor,
         });
@@ -567,13 +452,13 @@ describe("production proof-chunk prerequisite V1", () => {
       }),
     });
     const makePrerequisite = (
-      satisfied = false,
+      satisfied?: readonly PublishedProofChunk[],
     ): ProofChunkPrerequisitePort<"noReferenceInput"> => ({
       ...prerequisite(),
       category: "noReferenceInput",
       inspect: vi.fn(async () =>
-        satisfied
-          ? { kind: "satisfied" as const }
+        satisfied !== undefined
+          ? { kind: "satisfied" as const, chunks: satisfied }
           : { kind: "required" as const, action: routeAction },
       ),
     });
@@ -591,7 +476,7 @@ describe("production proof-chunk prerequisite V1", () => {
       }),
     ).resolves.toMatchObject({
       txHash: "99".repeat(32),
-      durableRecovery: { proofCarriage: { route: "direct" } },
+      scriptExecution: "reference_scripts",
     });
     expect(fittingPort.capture).not.toHaveBeenCalled();
     expect(observedChunkCounts).toEqual([0]);
@@ -611,34 +496,41 @@ describe("production proof-chunk prerequisite V1", () => {
       }),
     ).resolves.toMatchObject({
       txHash,
-      durableRecovery: {
-        proofCarriage: {
-          route: "publication",
-          directCapacityFailure: {
-            maximumTransactionBytes: 16_384,
-            actualTransactionBytes: 16_385,
-          },
-        },
-      },
+      scriptExecution: "none",
     });
+    expect(maximumPort.classifyDirectCapacityFailure).toHaveReturnedWith(
+      expect.objectContaining({
+        maximumTransactionBytes: 16_384,
+        actualTransactionBytes: 16_385,
+      }),
+    );
     expect(maximumPort.capture).toHaveBeenCalledOnce();
     expect(observedChunkCounts).toEqual([0, 0]);
 
-    const published = withProofChunkPrerequisite({
-      category: "noReferenceInput",
-      base: makeBase(),
-      prerequisite: makePrerequisite(true),
-    });
-    // Only a publication our journal confirmed carries our chunks.
+    const chunk: PublishedProofChunk = {
+      utxo: preexistingChunk,
+      outRef: `${preexistingChunk.txHash}#0`,
+      datumCbor,
+      stepCount: 1,
+    };
+    // The step carries exactly the chunks the prerequisite found and
+    // authenticated, whoever paid them; never a set of another proof.
+    const otherDatum = splitProofIntoChunkDatums(
+      Data.to([{ Branch: { skip: 1n, neighbors: "" } }], Proof),
+    )[0]!;
     await expect(
-      published.preflight({ ...noReferenceContext, action: directAction }),
-    ).rejects.toThrow("journal-authorized proof publication has no exact");
+      withProofChunkPrerequisite({
+        category: "noReferenceInput",
+        base: makeBase(),
+        prerequisite: makePrerequisite([{ ...chunk, datumCbor: otherDatum }]),
+      }).preflight({ ...noReferenceContext, action: directAction }),
+    ).rejects.toThrow("not the exact complete set of this proof");
     await expect(
-      published.preflight({
-        ...noReferenceContext,
-        entries: [confirmedEntry(preexistingChunk.txHash)],
-        action: directAction,
-      }),
+      withProofChunkPrerequisite({
+        category: "noReferenceInput",
+        base: makeBase(),
+        prerequisite: makePrerequisite([chunk]),
+      }).preflight({ ...noReferenceContext, action: directAction }),
     ).resolves.toMatchObject({ txHash: "99".repeat(32) });
     expect(observedChunkCounts).toEqual([0, 0, 1]);
   });

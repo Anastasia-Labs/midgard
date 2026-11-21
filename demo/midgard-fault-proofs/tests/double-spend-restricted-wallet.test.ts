@@ -1,7 +1,8 @@
 /** Double-spend steps 03 and 04 built under the watcher's restricted prover
  * wallet. Both read published reference scripts, which once made them hand
  * Lucid a preset; Lucid then takes collateral only from among the preset.
- * Each step must still spend and post as collateral reserved coins alone. */
+ * Each step must still spend and post as collateral only the plain coins
+ * the restricted wallet offers, never one another action holds. */
 import { outRefLabel } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
@@ -10,27 +11,28 @@ import { buildStep04 } from "../src/double-spend/submit-step-04.submit-step04.js
 import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
 import { network } from "./support/emulator/blueprints.js";
 import {
-  fundReservedCoin,
-  restrictedProverFunding,
-} from "./support/restricted-prover-funding.js";
+  fundProverCoin,
+  restrictedProverWallet,
+} from "./support/restricted-prover-wallet.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
 import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("double-spend steps under the watcher's restricted wallet", () => {
-  it("funds step 03 and step 04 and posts their collateral from the reserved pool", async () => {
+  it("funds step 03 and step 04 and posts their collateral from the coins the restricted wallet offers", async () => {
     pinStepTranscript();
     let step03Checked = () => 0;
     const staged = await stageDoubleSpendStep04({
       step03Funding: async ({ emulator, funderLucid, proverSigner }) => {
-        await fundReservedCoin({
+        const held = await fundProverCoin({
           emulator,
           funderLucid,
           signer: proverSigner,
         });
-        const funding = await restrictedProverFunding({
+        const funding = restrictedProverWallet({
           emulator,
           signer: proverSigner,
+          held: [held],
         });
         step03Checked = funding.checked;
         return funding;
@@ -38,7 +40,7 @@ describe("double-spend steps under the watcher's restricted wallet", () => {
     });
     expect(step03Checked()).toBe(1);
 
-    const funding = await restrictedProverFunding({
+    const funding = restrictedProverWallet({
       emulator: staged.emulator,
       signer: staged.proverSigner,
     });

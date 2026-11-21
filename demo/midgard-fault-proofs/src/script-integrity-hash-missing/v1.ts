@@ -2,10 +2,10 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
 import { SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
-import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
+import type { CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
 import { STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS } from "../workflow/cursor-family-runtime.js";
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
@@ -18,12 +18,12 @@ import {
   type ManifestBoundFamilyWorkflow,
 } from "../workflow/family-definition.family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
-import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
+import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import type { FraudProofWorkflowRunResult } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import { createScriptIntegrityHashMissingTransactionPort } from "./actuator.create-script-integrity-hash-missing-transaction-port.js";
 import type { ScriptIntegrityHashMissingWorkflowReferenceScripts } from "./actuator.resolve-field.js";
 import { scriptIntegrityHashMissingFieldRequirement } from "./actuator.script-integrity-hash-missing-field-requirement.js";
@@ -219,20 +219,19 @@ export const createManifestBoundScriptIntegrityHashMissingWorkflow = async (
 export const executeManifestBoundScriptIntegrityHashMissingWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundScriptIntegrityHashMissingWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   if (
-    workflowActuationAuthorizingDecisionDigest(journal) !==
-    workflow.decisionDigest
+    workflowActuationAuthorizingDecisionDigest(run) !== workflow.decisionDigest
   )
     throw new Error(
-      "scriptIntegrityHashMissing journal actuation permit changed decision digest",
+      "scriptIntegrityHashMissing run actuation permit changed decision digest",
     );
   const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
@@ -246,7 +245,7 @@ export const executeManifestBoundScriptIntegrityHashMissingWorkflow = async ({
       adapters: [workflow.adapter],
       launchScope: ["scriptIntegrityHashMissing"],
     }),
-    journal,
+    run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     walletOnlySend,

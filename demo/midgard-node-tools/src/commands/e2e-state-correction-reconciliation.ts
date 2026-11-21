@@ -10,7 +10,7 @@ import "./e2e-state-correction-reconciliation.final-snapshot.js";
 import "./e2e-state-correction-reconciliation.parse-kupo-matches.js";
 import "./e2e-state-correction-reconciliation.derive-authenticated-l1-observation.js";
 import "./e2e-state-correction-reconciliation.parse-final-snapshot.js";
-import "./e2e-state-correction-reconciliation.load-workflow.js";
+import "./e2e-state-correction-reconciliation.parse-node-database-export.js";
 import "./e2e-state-correction-reconciliation.reconcile-state-correction-independent-evidence.js";
 export {
   E2E_AUTHENTICATED_L1_TX_OBSERVATION_SCHEMA_VERSION,

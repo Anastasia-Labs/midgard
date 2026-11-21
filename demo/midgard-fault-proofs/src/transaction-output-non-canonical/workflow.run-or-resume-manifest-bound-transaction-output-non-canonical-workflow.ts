@@ -1,13 +1,12 @@
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk/fraud-proof";
 
-import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
-import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
+import type { CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
 import {
   cursorStepContractNames,
   defineFamily,
 } from "../workflow/family-definition.family-definition.js";
-import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,
@@ -17,7 +16,8 @@ import {
   type ManifestBoundFamilyWorkflowWithRecovery,
   withManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
-import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   TransactionOutputStep02DatumSchema,
   TransactionOutputStep03DatumDatumSchema,
@@ -153,17 +153,17 @@ export const executeManifestBoundTransactionOutputNonCanonicalWorkflow =
   async ({
     workflow,
     sources,
-    journal,
+    run,
     walletOnlySend,
   }: {
     readonly workflow: ManifestBoundTransactionOutputNonCanonicalWorkflow;
     readonly sources: readonly RetainedDaPayloadSource[];
-    readonly journal: FraudProofWorkflowJournalStore;
+    readonly run: WorkflowRun;
     readonly walletOnlySend: WalletOnlySend;
   }) =>
     await executeManifestBoundFamilyRecovery({
       ...workflow,
       sources,
-      journal,
+      run,
       walletOnlySend,
     });

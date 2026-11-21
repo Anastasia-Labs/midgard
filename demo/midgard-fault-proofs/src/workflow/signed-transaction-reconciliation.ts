@@ -1,9 +1,6 @@
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CML } from "@lucid-evolution/lucid";
 
-import type { FraudProofWorkflowReconcileResult } from "./orchestrator.js";
 import type { FraudProofRawL1Point } from "./raw-l1-snapshot.js";
-import { parseSignedWorkflowTransactionRetirement } from "./signed-transaction-retirement.js";
 
 export type SignedWorkflowTransaction = Readonly<{
   transactionHash: string;
@@ -32,6 +29,17 @@ export type SignedTransactionRecoveryObservation = SignedWorkflowTransaction &
     inputs: readonly Readonly<{ outRef: string; outputCbor: string }>[];
     reason: string;
   }>;
+
+/** Whether a transaction, where `observed` says it stands, is final: landed
+ * at or below the release-final point, never on first sight of landing. The
+ * one finality rule for a transaction of ours. */
+export const isFinalAtReleaseDepth = (
+  observed: SignedTransactionRecoveryObservation,
+): boolean =>
+  observed.status === "included" &&
+  observed.inclusionPoint !== undefined &&
+  BigInt(observed.inclusionPoint.blockNo) <=
+    BigInt(observed.releaseFinalPoint.blockNo);
 
 export const inspectSignedWorkflowTransaction = (
   input: SignedWorkflowTransaction,
@@ -79,165 +87,4 @@ export const inspectSignedWorkflowTransaction = (
     expiresAtSlot: body.ttl(),
     validFromSlot: body.validity_interval_start(),
   };
-};
-
-/** The family calls this while its computation predecessor remains current;
- * authenticated input replacement can make an older signed body impossible. */
-export const reconcileSignedWorkflowTransaction = async ({
-  transactionHash,
-  signedTransactionCborHex,
-  observe,
-  rebroadcast,
-  authorizeResubmission,
-  reportInclusion = false,
-}: {
-  readonly transactionHash: string;
-  readonly signedTransactionCborHex?: string;
-  readonly observe?: (
-    input: SignedWorkflowTransaction,
-  ) => Promise<SignedTransactionRecoveryObservation>;
-  readonly rebroadcast?: (
-    input: SignedWorkflowTransaction & {
-      readonly authorizeResubmission: (
-        input: SignedWorkflowTransaction,
-      ) => Promise<void>;
-    },
-  ) => Promise<string>;
-  readonly authorizeResubmission?: (
-    input: SignedWorkflowTransaction,
-  ) => Promise<void>;
-  /** A superseded attempt's inclusion within k is adopted as the result;
-   * deeper, its retirement is bookkeeping. */
-  readonly reportInclusion?: boolean;
-}): Promise<FraudProofWorkflowReconcileResult> => {
-  const pending = { kind: "pending", txHash: transactionHash } as const;
-  if (signedTransactionCborHex === undefined || observe === undefined)
-    return {
-      kind: "unknown",
-      reason:
-        "Recorded signed bytes or canonical recovery source are unavailable",
-    };
-  const input = { transactionHash, signedTransactionCborHex };
-  inspectSignedWorkflowTransaction(input);
-  let observed: SignedTransactionRecoveryObservation;
-  try {
-    observed = await observe(input);
-  } catch (cause) {
-    // Transport, lag, or changing canonical boundaries cannot establish absence.
-    return {
-      kind: "unknown",
-      reason: `Canonical signed recovery is unresolved: ${String(cause)}`,
-    };
-  }
-  if (
-    observed.transactionHash !== transactionHash ||
-    observed.signedTransactionCborHex !== signedTransactionCborHex
-  )
-    throw new Error(
-      "Signed recovery observation substituted the durable transaction",
-    );
-  // Its collateral is spent, so an attempt that landed failing phase 2 is
-  // impossible at once and the workflow moves on, told that it landed. It is
-  // retired from its own block beyond k, as an inclusion is.
-  const landedInvalid = { kind: "not_found", landedInvalid: true } as const;
-  if (
-    (observed.status === "included" || observed.status === "landed_invalid") &&
-    observed.inclusionPoint !== undefined &&
-    BigInt(observed.canonicalPoint.blockNo) -
-      BigInt(observed.inclusionPoint.blockNo) >
-      BigInt(DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth)
-  )
-    return {
-      ...(observed.status === "included" ? pending : landedInvalid),
-      retirement: parseSignedWorkflowTransactionRetirement(
-        {
-          transactionHash,
-          canonicalPoint: observed.canonicalPoint,
-          releaseFinalPoint: observed.inclusionPoint,
-          reason: observed.status === "included" ? "included" : "invalidated",
-        },
-        transactionHash,
-      ),
-    };
-  if (observed.status === "included" && reportInclusion)
-    return { kind: "confirmed", txHash: transactionHash };
-  if (observed.status === "landed_invalid")
-    return observed.inclusionPoint === undefined
-      ? {
-          kind: "unknown",
-          reason: "A phase-2-invalid landing was observed without its block",
-        }
-      : landedInvalid;
-  if (observed.status === "expired" || observed.status === "invalidated") {
-    const blocksAfterBoundary =
-      BigInt(observed.canonicalPoint.blockNo) -
-      BigInt(observed.releaseFinalPoint.blockNo);
-    // Impossible at the tip but not yet retirable: superseded, not retired.
-    if (
-      blocksAfterBoundary <=
-      BigInt(DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth)
-    )
-      return { kind: "not_found" };
-    return {
-      kind: "not_found",
-      retirement: parseSignedWorkflowTransactionRetirement(
-        {
-          transactionHash,
-          canonicalPoint: observed.canonicalPoint,
-          releaseFinalPoint: observed.releaseFinalPoint,
-          reason: observed.status,
-        },
-        transactionHash,
-      ),
-    };
-  }
-  // Owner ruling (whichever lands wins): an attempt impossible at the tip no
-  // longer holds the workflow. A replacement must spend one of its funding
-  // inputs, and a late landing after a rollback is adopted as the result.
-  if (
-    observed.status === "expired_at_tip" ||
-    observed.status === "invalidated_at_tip"
-  )
-    return { kind: "not_found" };
-  if (observed.status === "conflict")
-    return { kind: "conflict", reason: observed.reason };
-  if (observed.status === "unknown")
-    return { kind: "unknown", reason: observed.reason };
-  if (
-    observed.status === "rebroadcast" &&
-    (rebroadcast === undefined || authorizeResubmission === undefined)
-  )
-    return {
-      kind: "unknown",
-      reason: "Exact recorded transaction requires live rebroadcast authority",
-      absent: true,
-    };
-  if (
-    observed.status === "rebroadcast" &&
-    rebroadcast !== undefined &&
-    authorizeResubmission !== undefined
-  ) {
-    let authorized = false;
-    let submitted: string;
-    try {
-      submitted = await rebroadcast({
-        ...input,
-        authorizeResubmission: async (signed) => {
-          await authorizeResubmission(signed);
-          authorized = true;
-        },
-      });
-    } catch (cause) {
-      // A rejected authorization submits nothing. An ambiguous acknowledgement
-      // retains the same signed intent for the next canonical reconciliation.
-      if (authorized) return pending;
-      return {
-        kind: "unknown",
-        reason: `Recorded transaction rebroadcast remains unresolved: ${String(cause)}`,
-      };
-    }
-    if (submitted !== transactionHash)
-      throw new Error("Rebroadcast changed recorded transaction hash");
-  }
-  return pending;
 };

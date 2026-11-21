@@ -20,7 +20,7 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import { type AdmittedScriptIntegrityHashMissingArtifact } from "./artifact.js";
 import type { ScriptIntegrityHashMissingContracts } from "./contracts.js";
@@ -130,7 +130,7 @@ export const captured = async (
   label: string,
 ) =>
   Object.freeze({
-    transaction: (await journaledStepTransaction(built, label)).transaction,
+    transaction: (await workflowStepTransaction(built, label)).transaction,
   });
 
 export const direct = (

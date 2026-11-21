@@ -7,17 +7,15 @@ import {
 } from "./watcher-journal-database.js";
 
 /**
- * An objective whose run stalled outside preflight, whose funding or run met
- * an integrity error of its own (a reconcile that refused its durable
- * transaction, or a reservation the recovery authorization cannot match to
- * the objective's journal, for example), or whose family contradicted its
+ * An objective whose run stalled outside preflight, whose run met an
+ * integrity error of its own, or whose family contradicted its
  * admitted decision (re-classifying the fault as `no_fault_detected` or
  * `unprovable_gap`, or returning an outcome of no known kind). Only that
  * objective is held: the
  * process keeps running, every other objective keeps proving, and the
- * supervisor runs this one again on a bounded backoff. Nothing is signed
- * before a failed funding mint, and each later run reconciles its journal
- * before it acts, so it re-checks the cause rather than resending anything;
+ * supervisor runs this one again on a bounded backoff. Each later run reads
+ * the chain before it acts, so it re-checks the cause rather than resending
+ * anything;
  * the hold ends with the first run that meets something else.
  */
 export const WATCHER_FAULT_PROOF_QUARANTINED =

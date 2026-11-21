@@ -1,9 +1,8 @@
 /**
  * Lands a field's carriage the way a workflow does: through the production
- * field-carriage prerequisite, each publication and certificate a journaled
- * action whose signed body names the out-refs the workflow reads back. The
- * journal the actions are confirmed into is the one a test's later captures
- * read their carriage from.
+ * field-carriage prerequisite, each publication and certificate an action
+ * landed on the emulator before the next inspection. A test's later captures
+ * find the carriage at the proof-materials address by content.
  */
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import type {
@@ -25,7 +24,10 @@ import {
   type FraudProofAuthenticatedPublicationObserver,
 } from "../../src/workflow/raw-l1-publication-observation.js";
 import { submitCapturedTransaction } from "../../src/workflow/transaction-boundary.js";
-import type { createConfirmedActionJournal } from "./confirmed-action-journal.js";
+import {
+  TEST_PROOF_MATERIALS_HOLDER,
+  testProofMaterials,
+} from "./proof-materials-holder.js";
 
 /** Bounds the prerequisite's turns: one per publication batch and certificate. */
 const MAX_TURNS = 256;
@@ -58,7 +60,6 @@ export const installFieldCarriage = async ({
   network,
   signer,
   requirement,
-  journal,
 }: {
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
@@ -69,7 +70,6 @@ export const installFieldCarriage = async ({
   readonly requirement: FieldCarriageRequirement & {
     readonly planned: FaultProofFieldOpeningPlan;
   };
-  readonly journal: ReturnType<typeof createConfirmedActionJournal>;
 }): Promise<{
   readonly chunks: readonly UTxO[];
   readonly certificate: UTxO | undefined;
@@ -90,41 +90,27 @@ export const installFieldCarriage = async ({
     if (turn === MAX_TURNS)
       throw new Error("the field-carriage prerequisite never settled");
     const inspected = await port.inspect({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
       headerHash,
       baseAction,
       artifact: {},
-      entries: journal.entries(),
     });
     if (inspected.kind === "satisfied" || inspected.kind === "not_required")
       break;
     if (inspected.kind !== "required")
       throw new Error(`field prerequisite is ${inspected.kind}`);
-    const { transaction, durableRecovery } = await port.capture({
+    const { transaction } = await port.capture({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
       headerHash,
       action: inspected.action,
       artifact: {},
-      entries: journal.entries(),
     });
     await submitCapturedTransaction(transaction);
     emulator.awaitBlock(1);
-    const reconciled = await port.reconcile({
-      headerHash,
-      action: inspected.action,
-      artifact: {},
-      txHash: transaction.txHash,
-      durableRecovery,
-    });
-    if (reconciled.kind !== "confirmed")
-      throw new Error(`field prerequisite action is ${reconciled.kind}`);
-    journal.confirm({
-      action: inspected.action,
-      txHash: transaction.txHash,
-      durableRecovery,
-    });
   }
   const ownOutputs = workflowFieldCarriageOwnOutputs({
     category,
-    entries: journal.entries(),
+    materials: testProofMaterials(signer, lucid),
   });
   const chunks = await resolveFaultProofFieldCarriagePublications({
     ownOutputs,

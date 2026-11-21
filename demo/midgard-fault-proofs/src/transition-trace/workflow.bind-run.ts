@@ -16,8 +16,9 @@ import {
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { createChunkedRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import {
   transitionTraceProofChunks,
   transitionTraceTimedProofNeedsChunks,
@@ -186,7 +187,7 @@ const bindRun = (context: TransitionContext) => {
         );
       return prepared.artifact;
     },
-    capture: async ({ action, artifact, entries }) => {
+    capture: async ({ action, artifact, holder }) => {
       const prepared = admit(artifact);
       const input = cursorFamilyActionInput({
         category: "transitionTrace",
@@ -211,9 +212,9 @@ const bindRun = (context: TransitionContext) => {
       if ((await requirementForAction({ action, artifact })) !== null)
         await prerequisite.resolveAuthenticated({
           headerHash: binding.definition.headerHash,
+          holder,
           action,
           artifact,
-          entries,
         });
       const fields = await refineAction({ action, artifact });
       if (fields.requiresMutationLease !== input.requiresMutationLease)
@@ -251,7 +252,11 @@ const bindRun = (context: TransitionContext) => {
               ...common,
               ownOutputs: workflowFieldCarriageOwnOutputs({
                 category: "transitionTrace",
-                entries,
+                materials: proofMaterialsAccess({
+                  signer: config.signer,
+                  lucid: config.lucid,
+                  holder,
+                }),
               }),
               threadOutRef,
               proof: prepared.proof,
@@ -265,7 +270,11 @@ const bindRun = (context: TransitionContext) => {
             ...common,
             ownOutputs: workflowFieldCarriageOwnOutputs({
               category: "transitionTrace",
-              entries,
+              materials: proofMaterialsAccess({
+                signer: config.signer,
+                lucid: config.lucid,
+                holder,
+              }),
             }),
             threadOutRef,
             proof: prepared.proof,
@@ -273,7 +282,7 @@ const bindRun = (context: TransitionContext) => {
             depositOpening: prepared.depositOpening,
           });
         })();
-        const { transaction } = await journaledStepTransaction(
+        const { transaction } = await workflowStepTransaction(
           built,
           `transition-trace ${input.stage}`,
         );

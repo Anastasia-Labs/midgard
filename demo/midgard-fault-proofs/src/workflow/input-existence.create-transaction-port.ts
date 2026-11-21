@@ -26,7 +26,8 @@ import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { proofMaterialsAccess } from "./proof-materials-view.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 
 /** A family's linear workflow transaction port. */
 export const inputExistenceTransactionPort = <
@@ -50,10 +51,14 @@ export const inputExistenceTransactionPort = <
         classification,
         owner: config.signer.paymentKeyHash,
       }),
-    capture: async ({ action, artifact, entries }) => {
+    capture: async ({ action, artifact, holder }) => {
       const ownOutputs = workflowFieldCarriageOwnOutputs({
         category,
-        entries,
+        materials: proofMaterialsAccess({
+          signer: config.signer,
+          lucid: config.lucid,
+          holder,
+        }),
       });
       const admitted = admitLedgerAbsenceArtifact(
         artifact,
@@ -71,7 +76,7 @@ export const inputExistenceTransactionPort = <
       if (input.stage === "init")
         return {
           transaction: (
-            await journaledStepTransaction(
+            await workflowStepTransaction(
               await buildInit({
                 lucid: config.lucid,
                 blueprint: config.binding.blueprint,
@@ -122,7 +127,7 @@ export const inputExistenceTransactionPort = <
           : await resolveChunks({ action, config, proofCbor: proof });
       return {
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildInputExistenceStep({
               lucid: config.lucid,
               blueprint: config.binding.blueprint,

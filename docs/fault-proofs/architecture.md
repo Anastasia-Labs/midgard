@@ -63,25 +63,29 @@ slot and handing over pending work use the same serialized boundary as intake.
 A new observation does not mutate the running permit. Explicit loss of chain
 authority revokes active and pending permits; handover revalidates authority.
 
-Immediately before funding, the supervisor validates the selected workflow
-journal. Retained signed attempts reuse their reservation and exact transaction
-records. Provisional completion continues authenticated finality verification.
-A completed journal is acknowledged only after canonical terminal verification,
-without opening a signer, allocating funding, or invoking the runner. Its
-cached verification is bound to the journal revision and canonical generation.
-Past the latest safe start, a run keeps full submission authority until the
+The workflow keeps nothing on disk about what it sent. Each run reads the
+family's progress from the chain; the transactions this process sent that
+are not yet final live in an in-memory in-flight set, which holds their
+wallet coins out of every other build until each lands or its validity bound
+passes. After a restart, a next transaction that spends only wallet coins
+waits one wallet-only validity window, a step that spends the proof thread
+cannot land twice, and publications are found by content. A completion is
+acknowledged only after canonical terminal verification, without opening a
+signer or invoking the runner; its marker binds the terminal transaction
+hash. Past the latest safe start, a run keeps full submission authority until the
 header matures, and is marked late. At or past maturity, and while a signed
-objective is not the current proof target, its signed attempt only reconciles
-under a separate read-only permit, which does not authorize a fresh spend.
+objective is not the current proof target, the run only observes under a
+separate read-only permit, which does not authorize a fresh spend.
 
-Unfinished objectives are indexed from existing records at restart. Canonical
+A restart drives no objective from local rows: a live fault admits its
+objective again, and its run reads from the chain what was done. Canonical
 observations wake affected work; identical observations do not spin the worker.
 Admitted native blocks also wake pending finality when queue evidence is
 unchanged. This progress marker grants no transaction or finality authority;
-the runner still authenticates the retained attempt and terminal observations.
+the runner still authenticates the terminal observations.
 Typed transport failures use capped exponential backoff, and temporary funding
-unavailability waits for another observation. Corrupt records, foreign execution
-identities, and authentication failures remain actionable hard failures.
+unavailability waits for another observation. Corrupt records and
+authentication failures remain actionable hard failures.
 
 Active execution decisions stay pinned in memory; a bounded recent cache covers
 late observations of completed objectives. A genuine cache miss opens a fresh
@@ -90,9 +94,9 @@ decisions since startup. Repeated completion checks reuse validated identities.
 Decision records are published atomically after their bytes are synced, so a
 concurrent authenticated reader sees only complete records.
 
-The workflow journal and signed records remain authoritative. The queue journal
-records scheduling activity: a finished queue entry never proves completion of
-the objective. No separate persistent objective state machine is introduced.
+The chain is authoritative for proof progress. The queue journal records
+scheduling activity: a finished queue entry never proves completion of the
+objective. No separate persistent objective state machine is introduced.
 
 ## Catalogue and deployment identity
 
@@ -198,8 +202,8 @@ This DA/liveness remedy does not prove fraud or slash the operator.
 ## Off-chain workflow runtime
 
 The fault-proof package performs retained-DA replay, violation classification,
-evidence construction, publication, transaction submission, durable journaling,
-resume/reconciliation, and removal. Runner factories are defined in
+evidence construction, publication, transaction submission, chain-derived
+resume, and removal. Runner factories are defined in
 `demo/midgard-fault-proofs/src/workflow/runtime.ts`; the watcher composes the
 complete source catalogue in its application. [Off-chain reference](offchain-reference.md)
 links those authorities. Classification or topology knowledge alone does not

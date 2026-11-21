@@ -22,7 +22,6 @@ import {
   withNetworkIdOwnThreadReclaim,
 } from "../src/network-id/workflow-adapter.own-thread-reclaim.js";
 import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runAdmittedFraudProofWorkflow } from "../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
@@ -49,11 +48,13 @@ import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { emulatorSignedTransactionRecovery } from "./support/emulator-signed-recovery.js";
 import {
   expectResolvedWithReclaim,
   walletLovelace,
 } from "./support/own-thread-reclaim-expectations.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
   DEPLOYMENT_FINGERPRINT,
   terminalVerifier,
@@ -242,12 +243,26 @@ const scene = async (ours: "forcedStep" | "forcedScan") => {
       ...rawL1,
       observeSignedTransaction: async () => {
         throw new Error(
-          "no signed bytes are recorded without a funding reservation",
+          "the workflow follows its sends through the terminal verifier",
         );
       },
     },
   };
-  const journal = new MemoryFraudProofWorkflowJournalStore();
+  // One watcher process across every run of the scene.
+  const process = createTestWorkflowProcess();
+  // The process builds its workflow once, as the manifest-bound
+  // construction does, and runs it at every observation.
+  const registry = createFraudProofWorkflowRegistry({
+    adapters: [
+      withNetworkIdOwnThreadReclaim({
+        base: createNetworkIdWorkflowAdapter(config),
+        config,
+        contracts: harness.networkId,
+        releaseFinality,
+      }),
+    ],
+    launchScope: ["networkId"],
+  });
   const artifact = JSON.parse(
     JSON.stringify(networkIdForcedArtifactFromPrepared(prepared)),
   );
@@ -257,28 +272,18 @@ const scene = async (ours: "forcedStep" | "forcedScan") => {
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       category: "networkId",
       headerHash,
-      evidenceBinding: {
-        route: "canonical_block",
-        headerHash,
-        payloadEnvelopeSha256: "77".repeat(32),
-        payloadSha256: "78".repeat(32),
-        l1BlockHash: "79".repeat(32),
-        l1Slot: "1",
-      },
       prepareFamilyArtifact: async () => artifact,
-      registry: createFraudProofWorkflowRegistry({
-        adapters: [
-          withNetworkIdOwnThreadReclaim({
-            base: createNetworkIdWorkflowAdapter(config),
-            config,
-            contracts: harness.networkId,
-            releaseFinality,
-          }),
-        ],
-        launchScope: ["networkId"],
-      }),
-      journal,
-      terminalVerifier,
+      registry,
+      run: process.run({ category: "networkId", headerHash }),
+      // The workflow follows each send of ours by where it stands at the
+      // emulator's tip, final once it is past the release horizon.
+      terminalVerifier: {
+        ...terminalVerifier,
+        observeSignedTransaction: emulatorSignedTransactionRecovery(
+          harness.emulator,
+          FINAL_DEPTH,
+        ).observeSignedTransaction,
+      },
       releaseFinality,
     });
   return {
@@ -348,7 +353,11 @@ describe("network-id: our thread off the linear chain on a header another prover
         });
 
         s.harness.emulator.awaitBlock(FINAL_DEPTH);
-        expectResolvedWithReclaim(await s.run(), thread, reclaimTxHash);
+        expectResolvedWithReclaim(
+          await s.run(),
+          thread.threadOutRef,
+          reclaimTxHash,
+        );
         expect(sent).toHaveLength(1);
       } finally {
         s.restore();

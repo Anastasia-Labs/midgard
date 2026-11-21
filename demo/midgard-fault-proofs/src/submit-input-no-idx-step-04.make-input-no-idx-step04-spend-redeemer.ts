@@ -32,7 +32,7 @@ import {
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 /** Prepared outputs preimage produced by `prepare-input-no-idx`. */
@@ -125,7 +125,7 @@ export type InputNoIdxStep04Build = {
 };
 
 export type SubmitInputNoIdxStep04Result =
-  UnjournaledSubmission<InputNoIdxStep04Build>;
+  OutsideWorkflowSubmission<InputNoIdxStep04Build>;
 
 type InputNoIdxStep04DatumWithState = InputNoIdxStep04Datum & {
   readonly data: NonNullable<InputNoIdxStep04Datum["data"]>;

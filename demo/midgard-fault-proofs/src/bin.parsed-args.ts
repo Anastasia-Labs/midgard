@@ -62,7 +62,6 @@ export type ParsedArgs = {
   readonly nativeTxCompactPath: string | undefined;
   readonly addrTxWitsPreimagePath: string | undefined;
   readonly badAddrTxWitIndex: string | undefined;
-  readonly workflowJournalDir: string | undefined;
   readonly workflowRuntimeConfigPath: string | undefined;
   readonly deploymentFingerprint: string | undefined;
   readonly correctionJournalPath: string | undefined;
@@ -75,8 +74,8 @@ export const usage = `Usage:
   --midgard-node-url, --transactions-file, and --sample-double-spend are labelled diagnostics only and are rejected before proof construction.
   remove-* coordinate state-queue mutation locally and never contact a Midgard node. A non-tail removal that loses a race to a competing commit or merge fails and must be re-run; the watcher's workflow orchestrator retries it until confirmed.
   midgard-fault-proofs workflow-readiness [--fraud-category <${fraudCategoryUsage}>]
-  midgard-fault-proofs run-workflow --fraud-category <${fraudCategoryUsage}> --deployment-fingerprint <32-byte hex> --header-hash <28-byte hex> --workflow-journal-dir <directory> --workflow-runtime-config <versioned-infrastructure-config.json>
-  midgard-fault-proofs resume-workflow --fraud-category <${fraudCategoryUsage}> --deployment-fingerprint <32-byte hex> --header-hash <28-byte hex> --workflow-journal-dir <directory> --workflow-runtime-config <versioned-infrastructure-config.json>
+  midgard-fault-proofs run-workflow --fraud-category <${fraudCategoryUsage}> --deployment-fingerprint <32-byte hex> --header-hash <28-byte hex> --workflow-runtime-config <versioned-infrastructure-config.json>
+  midgard-fault-proofs resume-workflow --fraud-category <${fraudCategoryUsage}> --deployment-fingerprint <32-byte hex> --header-hash <28-byte hex> --workflow-runtime-config <versioned-infrastructure-config.json>
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
   midgard-fault-proofs prepare-transition-trace --da-payload-envelope <retained-da-envelope.cbor(.json)> --header-hash <committed 28-byte header hash, hex> [--output-dir <dir>]
   midgard-fault-proofs submit-transition-trace-proof --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --transition-fault-proof <proof.cbor(.json)> [--transition-l2-replay <replay.json>] [--reference-input <txHash#outputIndex> ...] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]

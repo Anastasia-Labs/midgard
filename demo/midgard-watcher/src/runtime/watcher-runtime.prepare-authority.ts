@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { resolveProverSigner } from "@al-ft/midgard-fault-proofs";
 
 import { loadWatcherWorkflowFundingProfileOverlay } from "../funding/workflow-funding-profile-overlay.js";
-import { openWatcherSqliteDurableBackend } from "../storage/sqlite-durable-backend.js";
 import { loadWatcherVerifiedDeploymentAuthority } from "./deployment-authority.js";
 import { watcherDeploymentReleaseFinalityPolicy } from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import {
@@ -113,9 +112,6 @@ export const prepareWatcherRuntimeAuthority = async (
     bundlePath: input.config.fundingProfileBundlePath,
     deploymentIdentity,
   });
-  const sqlite = await openWatcherSqliteDurableBackend({
-    path: input.config.watcherConfig.storage.path,
-  });
 
   return {
     deploymentAuthority,
@@ -123,7 +119,6 @@ export const prepareWatcherRuntimeAuthority = async (
     localL1Source,
     rollbackAuthenticationKey,
     fundingProfileOverlay,
-    sqlite,
   };
 };
 

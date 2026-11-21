@@ -66,7 +66,7 @@ export type WatcherFaultDecisionBridge = Readonly<{
   schemaVersion: typeof WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION;
   /**
    * Re-authenticates and journals the current queue without starting work.
-   * Startup uses this before scanning existing workflow journals.
+   * Startup uses this before it admits objectives again.
    */
   prepareForRecovery(
     observation: WatcherAuthenticatedStateQueueObservation,

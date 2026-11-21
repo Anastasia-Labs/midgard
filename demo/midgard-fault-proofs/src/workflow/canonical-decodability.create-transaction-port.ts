@@ -32,9 +32,8 @@ import {
   type PreimageCarriageRequirement,
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
-import { workflowConfirmedTransactions } from "./own-outputs.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
@@ -99,7 +98,7 @@ export const createTransactionPort = (
       "canonical-decodability requires the authenticated raw committed-field evidence route",
     );
   },
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const admitted = await admitCanonicalDecodabilityArtifact(artifact);
     if (admitted.artifact.headerHash !== config.headerHash) {
       throw new Error(
@@ -110,7 +109,7 @@ export const createTransactionPort = (
     if (input.stage === "init") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildCanonicalDecodabilityInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -137,13 +136,14 @@ export const createTransactionPort = (
           lucid: config.lucid,
           address: config.signer.proofMaterialsAddress,
           proofCbor: admitted.artifact.txMembershipProofCbor,
-          ownTransactions: workflowConfirmedTransactions(entries),
+          view: config.signer.proofMaterials,
+          holder,
         }),
         config.fieldCarriage.resolveAuthenticated({
           headerHash: config.headerHash,
+          holder,
           action,
           artifact,
-          entries,
         }),
       ]);
       if (proofChunks === undefined || field.requirement === null) {
@@ -153,7 +153,7 @@ export const createTransactionPort = (
       }
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildCanonicalDecodabilityStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -192,7 +192,7 @@ export const createTransactionPort = (
     if (input.stage === "step_02") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildCanonicalDecodabilityStep02({
               lucid: config.lucid,
               contracts: config.contracts,

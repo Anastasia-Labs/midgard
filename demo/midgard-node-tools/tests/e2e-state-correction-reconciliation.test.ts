@@ -1,19 +1,9 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core";
-import {
-  computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowTerminal,
-  journalJsonDigest,
-  normalizeJournalJson,
-} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@al-ft/midgard-core/deployment-manifest-identity", async (load) => ({
@@ -58,123 +48,15 @@ const writeJson = async (path: string, value: unknown): Promise<string> => {
   return sha256(content);
 };
 
-const makeWorkflowEntries = ({
-  manifestId,
-  headerHash,
-  txHashes,
-  removalTxHash,
-  chainPoint,
-  omitActionHistory,
-}: {
-  readonly manifestId: string;
-  readonly headerHash: string;
-  readonly txHashes: readonly string[];
-  readonly removalTxHash: string;
-  readonly chainPoint: { readonly slot: string; readonly blockHash: string };
-  readonly omitActionHistory: boolean;
-}): readonly FraudProofWorkflowJournalEntry[] => {
-  const identity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: manifestId,
-    category: "doubleSpend" as const,
-    target: { kind: "state_queue_header" as const, headerHash },
-  };
-  const workflowId = computeFraudProofWorkflowId(identity);
-  const terminal: FraudProofWorkflowTerminal = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
-    category: "doubleSpend",
-    headerHash,
-    proofToken: {
-      unit: "aa".repeat(28),
-      outRef: `${txHashes[2]!}#0`,
-      createdByTxHash: txHashes[2]!,
-      retainedAtFinalState: true,
-    },
-    correction: {
-      removalTxHash,
-      removedStateQueueOutRef: `${hash(91)}#0`,
-      fraudulentHeaderAbsent: true,
-      referencedProofTokenOutRef: `${txHashes[2]!}#0`,
-    },
-    economics: {
-      operatorCredential: "11".repeat(28),
-      proverCredential: "22".repeat(28),
-      operatorBondInputOutRef: `${hash(92)}#0`,
-      operatorBondInputLovelace: "5000000",
-      proverRewardOutputOutRef: `${removalTxHash}#0`,
-      removalFeeLovelace: "200000",
-      slashedLovelace: "5000000",
-      proverRewardLovelace: "1000000",
-      duplicateRewardAbsent: true,
-    },
-    observedAt: { ...chainPoint, confirmationDepth: 2 },
-  };
-  const events: FraudProofWorkflowJournalEntry["event"][] = [
-    { kind: "started" },
-    {
-      kind: "prepared",
-      artifact: {},
-      artifactDigest: journalJsonDigest({}),
-    },
-  ];
-  txHashes.forEach((txHash, index) => {
-    const actionId = `action-${index.toString()}`;
-    if (!omitActionHistory) {
-      events.push(
-        {
-          kind: "preflight_passed",
-          actionId,
-          txHash,
-          localEvaluator: "uplc-v1",
-          referenceScripts: [
-            {
-              role: "family-step",
-              outRef: `${hash(92)}#0`,
-              scriptHash: "33".repeat(28),
-            },
-          ],
-        },
-        {
-          kind: "submission_intent",
-          actionId,
-          actionInput: {},
-          attempt: 1,
-          txHash,
-        },
-        { kind: "submitted", actionId, attempt: 1, txHash },
-        {
-          kind: "reconciled",
-          actionId,
-          outcome: "confirmed",
-          txHash,
-        },
-      );
-    }
-    events.push({ kind: "confirmed", actionId, txHash });
-  });
-  events.push({
-    kind: "completed",
-    terminal,
-    terminalDigest: journalJsonDigest(normalizeJournalJson(terminal)),
-  });
-  return events.map((event, sequence) => ({
-    schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-    workflowId,
-    identity,
-    sequence,
-    recordedAt: new Date(Date.UTC(2026, 7, 29, 0, 0, sequence)).toISOString(),
-    event,
-  }));
-};
-
 const makeFixture = async ({
   omitL1Observation = false,
-  omitActionHistory = false,
   rejectAtIndependentAuthority = false,
+  economicsChange = {},
 }: {
   readonly omitL1Observation?: boolean;
-  readonly omitActionHistory?: boolean;
   readonly rejectAtIndependentAuthority?: boolean;
+  /** Fields of the family's final economics entry to replace. */
+  readonly economicsChange?: Readonly<Record<string, string>>;
 } = {}): Promise<{
   readonly expectedRunId: string;
   readonly claim: E2EStateCorrectionAcceptance;
@@ -284,6 +166,7 @@ const makeFixture = async ({
       slashedLovelace: family.expectedSlashLovelace,
       proverRewardLovelace: family.expectedProverRewardLovelace,
       duplicateRewardCount: 0,
+      ...economicsChange,
     },
   ];
   const finalWithdrawalReservePayout = {
@@ -459,25 +342,6 @@ const makeFixture = async ({
   const finalSnapshotPath = join(root, "final-snapshot.json");
   await writeJson(finalSnapshotPath, finalSnapshot);
 
-  const workflowDirectory = join(root, "workflow");
-  await mkdir(workflowDirectory);
-  const workflowEntries = makeWorkflowEntries({
-    manifestId,
-    headerHash,
-    txHashes: [initTxHash, stepTxHash, proofTokenTxHash, removalTxHash],
-    removalTxHash,
-    chainPoint,
-    omitActionHistory,
-  });
-  await Promise.all(
-    workflowEntries.map((entry, index) =>
-      writeJson(
-        join(workflowDirectory, `${index.toString().padStart(8, "0")}.json`),
-        entry,
-      ),
-    ),
-  );
-
   const requiredTxHashes = new Set([
     initTxHash,
     stepTxHash,
@@ -601,7 +465,6 @@ const makeFixture = async ({
       blueprintPath,
       cataloguePath,
       parametersPath,
-      workflowJournalDirectories: [workflowDirectory],
       l1ObservationPaths,
       recoveryObservationPaths: [recoveryPath],
       finalSnapshotPath,
@@ -645,13 +508,27 @@ describe("Q57 independent state-correction reconciliation", () => {
     ).rejects.toThrow(/state-correction acceptance run mismatch/u);
   });
 
-  it("rejects a terminal journal assembled without authenticated action history", async () => {
-    const fixture = await makeFixture({ omitActionHistory: true });
+  it("rejects a retained proof token that is not an output of the family's proof-token transaction", async () => {
+    const fixture = await makeFixture({
+      economicsChange: {
+        proofTokenOutRef: `${hash(77)}#0`,
+        removalReferencedProofTokenOutRef: `${hash(77)}#0`,
+      },
+    });
     await expect(
       reconcileStateCorrectionIndependentEvidence(fixture),
-    ).rejects.toThrow(
-      /(?:lacks matching authenticated reconciliation|confirmation must follow matching confirmed reconciliation)/u,
-    );
+    ).rejects.toThrow(/doubleSpend proof-token creation mismatch/u);
+  });
+
+  it("rejects a removal that references another proof token", async () => {
+    const fixture = await makeFixture({
+      economicsChange: {
+        removalReferencedProofTokenOutRef: `${hash(12)}#1`,
+      },
+    });
+    await expect(
+      reconcileStateCorrectionIndependentEvidence(fixture),
+    ).rejects.toThrow(/doubleSpend removal proof-token reference mismatch/u);
   });
 
   it("rejects fully self-consistent forged files when the independent live authority disagrees", async () => {

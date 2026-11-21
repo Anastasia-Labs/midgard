@@ -25,7 +25,7 @@ import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
@@ -64,7 +64,7 @@ export type NativeScriptDecodingStep03Build = {
 };
 
 export type SubmitNativeScriptDecodingStep03Result =
-  UnjournaledSubmission<NativeScriptDecodingStep03Build>;
+  OutsideWorkflowSubmission<NativeScriptDecodingStep03Build>;
 
 // ## Shared plumbing
 

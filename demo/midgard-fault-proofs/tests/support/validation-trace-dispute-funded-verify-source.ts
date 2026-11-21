@@ -1,13 +1,12 @@
 /**
  * The funded validation-trace dispute's VerifySource, as its emulator tests
- * observe it: the journal's confirmed stages and intents, the case and bond
- * left live on the ledger, and a watcher process stopped at VerifySource's
- * submit.
+ * observe it: the stages its processes sent that the ledger confirmed, the
+ * VerifySource transactions they sent, the case and bond left live on the
+ * ledger, and a watcher process stopped at VerifySource's submit.
  */
 import * as SDK from "@al-ft/midgard-sdk/da";
 import { expect } from "vitest";
 
-import { confirmedValidationTraceStages } from "../../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
 import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
@@ -28,25 +27,18 @@ export const TIMEOUT = 600_000;
 /** A wallet that holds the bond, the case floor and every fee besides. */
 export const FUNDED = BOND_LOVELACE + 1_000n * ADA;
 
-type TurnResult = Awaited<ReturnType<FundedDispute["turn"]>>;
-
-export const entriesOf = (result: TurnResult) => {
-  if (!("entries" in result)) throw new Error("no workflow journal");
-  return result.entries;
-};
-
 export const isVerifySource = (action: { readonly input: unknown }) =>
   (action.input as { readonly stage?: unknown }).stage === "verify_source";
 
-/** The workflow stages the journal confirmed, in order. */
-export const confirmedStages = (result: TurnResult) =>
-  confirmedValidationTraceStages(entriesOf(result)).map(
-    ({ action }) => action.stage,
-  );
+/** The stages the dispute's processes sent that the ledger confirmed, in
+ * order. */
+export const confirmedStages = async (dispute: FundedDispute) =>
+  (await dispute.confirmed()).map(({ action }) => action.stage);
 
-/** The case and the bond VerifySource left live, by the journal's claims. */
-export const caseAndBond = async (scene: Scene, result: TurnResult) => {
-  const stages = confirmedValidationTraceStages(entriesOf(result));
+/** The case and the bond VerifySource left live, as its signed body pays
+ * them. */
+export const caseAndBond = async (scene: Scene, dispute: FundedDispute) => {
+  const stages = await dispute.confirmed();
   expect(stages.map(({ action }) => action.stage)).toStrictEqual([
     "init",
     "open",
@@ -67,14 +59,14 @@ export const caseAndBond = async (scene: Scene, result: TurnResult) => {
   };
 };
 
-/** The VerifySource intents the journal recorded, in order. */
-export const verifySourceIntents = (result: TurnResult) =>
-  entriesOf(result).flatMap(({ event }) =>
-    event.kind === "submission_intent" &&
-    event.actionId.startsWith("validation-trace-verify-source:")
-      ? [{ attempt: event.attempt, txHash: event.txHash }]
-      : [],
-  );
+/** The VerifySource transactions the dispute's processes sent, in order. */
+export const verifySourceSends = (dispute: FundedDispute) =>
+  dispute
+    .sent()
+    .filter(({ actionId }) =>
+      actionId.startsWith("validation-trace-verify-source:"),
+    )
+    .map(({ txHash }) => txHash);
 
 /** Exactly one live case and one live bond exist at their contracts. */
 export const expectOneCaseAndBond = async (scene: Scene) => {
@@ -93,9 +85,8 @@ export const expectOneCaseAndBond = async (scene: Scene) => {
 };
 
 /**
- * Stops the watcher process at VerifySource's submit: once its intent is
- * durable, after (`broadcast`) or before its bytes reach the ledger. The
- * stopped turn never returns.
+ * Stops the watcher process at VerifySource's submit: after (`broadcast`)
+ * or before its bytes reach the ledger. The stopped turn never returns.
  */
 export const stopAtVerifySourceSubmit = ({
   broadcast,

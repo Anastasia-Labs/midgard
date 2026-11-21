@@ -1,9 +1,4 @@
 import type {
-  FraudProofWorkflowJournalEntry,
-  FraudProofWorkflowTerminal,
-} from "@al-ft/midgard-fault-proofs/workflow/journal";
-
-import type {
   DbEvidence,
   RawEvidenceRef,
   TransactionEvidence,
@@ -23,7 +18,6 @@ export type StateCorrectionIndependentSourcePaths = {
   readonly blueprintPath: string;
   readonly cataloguePath: string;
   readonly parametersPath: string;
-  readonly workflowJournalDirectories: readonly string[];
   readonly l1ObservationPaths: readonly string[];
   readonly recoveryObservationPaths: readonly string[];
   readonly finalSnapshotPath: string;
@@ -226,15 +220,6 @@ export type NodeDatabaseExport = Pick<
   | "forcedClassifications"
 > & {
   readonly schemaVersion: "midgard-e2e-state-correction-node-db-export-v1";
-};
-
-export type LoadedWorkflow = {
-  readonly directory: string;
-  readonly digest: string;
-  readonly entries: readonly FraudProofWorkflowJournalEntry[];
-  readonly terminal: FraudProofWorkflowTerminal;
-  readonly confirmedTxHashes: ReadonlySet<string>;
-  readonly entryPaths: readonly string[];
 };
 
 export const record = (

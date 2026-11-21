@@ -17,13 +17,8 @@ import {
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
-import {
-  type ConfirmedValidationTraceStage,
-  confirmedValidationTraceStages,
-} from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
-import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
@@ -32,6 +27,7 @@ import {
   expectResolvedWithReclaim,
   walletLovelace,
 } from "./support/own-thread-reclaim-expectations.js";
+import type { ConfirmedValidationTraceStage } from "./support/validation-trace-confirmed-stages.js";
 import {
   type Scene,
   setUpScene,
@@ -49,18 +45,12 @@ const FINAL_DEPTH = RELEASE_FINALITY_POLICY.automaticRecoveryMaxDepth + 2;
 /** Our run waits here, its thread at the opener, until the test lets it on. */
 const OUR_OPEN_HELD = "our open is held by the test";
 
-const entriesOf = (result: FraudProofWorkflowRunResult) => {
-  if (!("entries" in result)) throw new Error("no workflow journal");
-  return result.entries;
-};
-
-const stageOf = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
+/** The first stage `stage` that `runner`'s process sent and the emulator
+ * confirmed. */
+const stageOf = async (
+  runner: Runner,
   stage: ConfirmedValidationTraceStage["action"]["stage"],
-) =>
-  confirmedValidationTraceStages(entries).find(
-    ({ action }) => action.stage === stage,
-  );
+) => (await runner.confirmed()).find(({ action }) => action.stage === stage);
 
 describe("validation-trace dispute runner: another prover removes the block while our thread stands at the opener", () => {
   let recorder: ReturnType<typeof recordCrossBlockRawEmulator>;
@@ -119,15 +109,10 @@ describe("validation-trace dispute runner: another prover removes the block whil
       removal: theirRemoval.removal,
       terminalVerifier: theirRemoval.terminalVerifier(headerHash),
     });
-    const held = await runUntil(ours, scene.failing, OUR_OPEN_HELD);
-    ourThread = stageOf(entriesOf(held.result), "init")!.outputs[0]!.outRef;
-    const opened = await runUntil(
-      theirs,
-      scene.failing,
-      VALIDATION_TRACE_CASE_OPEN,
-    );
-    theirCase = stageOf(entriesOf(opened.result), "verify_source")!.outputs[0]!
-      .outRef;
+    await runUntil(ours, scene.failing, OUR_OPEN_HELD);
+    ourThread = (await stageOf(ours, "init"))!.outputs[0]!.outRef;
+    await runUntil(theirs, scene.failing, VALIDATION_TRACE_CASE_OPEN);
+    theirCase = (await stageOf(theirs, "verify_source"))!.outputs[0]!.outRef;
   }, 1_800_000);
 
   afterAll(() => recorder?.restore());
@@ -165,8 +150,7 @@ describe("validation-trace dispute runner: another prover removes the block whil
       }
       if (theirResult === undefined || !("terminal" in theirResult))
         throw new Error(`their removal did not land: ${history.join("\n")}`);
-      const theirRecord = stageOf(theirResult.entries, "close")!.outputs[0]!
-        .outRef;
+      const theirRecord = (await stageOf(theirs, "close"))!.outputs[0]!.outRef;
 
       // Our thread still stands at the opener, and our run is let on.
       const [thread] = await lucid.utxosByOutRef([parseOwnOutRef(ourThread)]);
@@ -225,11 +209,7 @@ describe("validation-trace dispute runner: another prover removes the block whil
       expect(await lucid.utxosByOutRef([parseOwnOutRef(ourThread)])).toEqual(
         [],
       );
-      expectResolvedWithReclaim(
-        result,
-        { threadOutRef: ourThread, lovelace: threadLovelace.toString() },
-        reclaimTxHash,
-      );
+      expectResolvedWithReclaim(result, ourThread, reclaimTxHash);
       if (result.kind !== "resolved_by_another_record") return;
       expect(result.resolution).toMatchObject({
         removalTxHash: theirResult.terminal.correction.removalTxHash,

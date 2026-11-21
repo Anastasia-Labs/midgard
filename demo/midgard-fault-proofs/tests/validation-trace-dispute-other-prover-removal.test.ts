@@ -10,18 +10,14 @@ import { Data, generateEmulatorAccount, Lucid } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
-import {
-  type ConfirmedValidationTraceStage,
-  confirmedValidationTraceStages,
-} from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
-import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
+import type { ConfirmedValidationTraceStage } from "./support/validation-trace-confirmed-stages.js";
 import {
   type Scene,
   setUpScene,
@@ -34,27 +30,18 @@ import {
 } from "./support/validation-trace-dispute-runner.js";
 import { RELEASE_FINALITY_POLICY } from "./workflow.make-adapter.js";
 
-const entriesOf = (result: FraudProofWorkflowRunResult) => {
-  if (!("entries" in result)) throw new Error("no workflow journal");
-  return result.entries;
-};
-
-/** The confirmed stage of `stage` in a run's journal. */
-const stageOf = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
+/** The first stage `stage` that `runner`'s process sent and the emulator
+ * confirmed. */
+const stageOf = async (
+  runner: Runner,
   stage: ConfirmedValidationTraceStage["action"]["stage"],
-) =>
-  confirmedValidationTraceStages(entries).find(
-    ({ action }) => action.stage === stage,
-  );
+) => (await runner.confirmed()).find(({ action }) => action.stage === stage);
 
-/** The shared remove stage's journaled actions. */
-const removals = (entries: readonly FraudProofWorkflowJournalEntry[]) =>
-  entries.filter(
-    ({ event }) =>
-      event.kind === "submission_intent" &&
-      event.actionId.startsWith("remove:"),
-  );
+/** The shared remove stage's transactions `runner`'s process sent. */
+const removals = (runner: Runner) =>
+  runner.process
+    .sent()
+    .filter(({ actionId }) => actionId.startsWith("remove:"));
 
 const defenseDeadline = async (scene: Scene, outRef: string) => {
   const [live] = await scene.h.proverLucid.utxosByOutRef([
@@ -106,14 +93,8 @@ describe("validation-trace dispute runner: another prover convicts the block and
       terminalVerifier: theirRemoval.terminalVerifier(headerHash),
     });
     for (const runner of [ours, theirs]) {
-      const { result } = await runUntil(
-        runner,
-        scene.failing,
-        VALIDATION_TRACE_CASE_OPEN,
-      );
-      opened.push(
-        stageOf(entriesOf(result), "verify_source")!.outputs[0]!.outRef,
-      );
+      await runUntil(runner, scene.failing, VALIDATION_TRACE_CASE_OPEN);
+      opened.push((await stageOf(runner, "verify_source"))!.outputs[0]!.outRef);
     }
   }, 1_800_000);
 
@@ -152,8 +133,7 @@ describe("validation-trace dispute runner: another prover convicts the block and
       }
       if (theirResult === undefined || !("terminal" in theirResult))
         throw new Error(`their removal did not land: ${history.join("\n")}`);
-      const theirRecord = stageOf(theirResult.entries, "close")!.outputs[0]!
-        .outRef;
+      const theirRecord = (await stageOf(theirs, "close"))!.outputs[0]!.outRef;
       expect(theirResult.terminal.correction.referencedProofTokenOutRef).toBe(
         theirRecord,
       );
@@ -165,13 +145,13 @@ describe("validation-trace dispute runner: another prover convicts the block and
 
       // Our open case still closes, and our record names our key; the block
       // is then read as removed against their record.
-      const waiting = await runUntil(
+      await runUntil(
         ours,
         scene.failing,
         "the header was removed against another record; the removal awaits release finality",
         16,
       );
-      const close = stageOf(entriesOf(waiting.result), "close")!;
+      const close = (await stageOf(ours, "close"))!;
       expect(close.action.consumes).toBe(opened[0]);
       const [ourRecord] = await lucid.utxosByOutRef([
         parseOwnOutRef(close.outputs[0]!.outRef),
@@ -192,10 +172,7 @@ describe("validation-trace dispute runner: another prover convicts the block and
         referencedProofTokenOutRef: theirRecord,
       });
       expect("terminal" in resolved).toBe(false);
-      expect(removals(resolved.entries)).toEqual([]);
-      expect(resolved.entries.map(({ event }) => event.kind)).not.toContain(
-        "completed",
-      );
+      expect(removals(ours)).toEqual([]);
     } finally {
       clock.mockRestore();
     }

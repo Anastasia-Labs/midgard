@@ -49,7 +49,7 @@ export const createMissingSignatureFieldPrerequisite = ({
   /**
    * The accepted path's step-02 and step-04 fields, planned exactly as their
    * builders plan them from the thread state step 01 binds: the field
-   * carriage either needs is published and journaled before the step.
+   * carriage either needs is published before the step.
    */
   const acceptedRequirement = (
     stage: "step_02" | "step_04",

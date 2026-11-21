@@ -14,7 +14,7 @@ import {
 } from "./runtime.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 /** Prepared reference-inputs preimage produced by `prepare-reference-input-no-idx`. */
@@ -122,7 +122,7 @@ export type ReferenceInputNoIdxStep02Build = {
 };
 
 export type SubmitReferenceInputNoIdxStep02Result =
-  UnjournaledSubmission<ReferenceInputNoIdxStep02Build>;
+  OutsideWorkflowSubmission<ReferenceInputNoIdxStep02Build>;
 
 export type ReferenceInputNoIdxStep02Layout = {
   readonly inputIndex: bigint;

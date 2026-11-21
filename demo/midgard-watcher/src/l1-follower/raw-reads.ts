@@ -14,7 +14,7 @@ import {
 import { CML } from "@lucid-evolution/lucid";
 
 import { recordsUnitHistory, stateQueueNodeUnitPattern } from "./projection.js";
-import { partlyPrunedIn } from "./proof-retention.js";
+import { partlyPrunedIn } from "./proof-retention.history-state.js";
 import { headerPrunedIn, unitPrunedIn } from "./pruned-keys.js";
 import {
   canonicalBlock,

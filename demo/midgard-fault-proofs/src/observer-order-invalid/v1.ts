@@ -9,7 +9,7 @@ import { requireTransactionsRootMatch } from "../prepare-double-spend.prepare-do
 import { buildTrieView } from "../prepare-double-spend.resolve-double-spend-pair.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
 import { OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.create-complete-canonical-replay-union.js";
 import {
@@ -27,9 +27,8 @@ import {
   type ManifestBoundFamilyWorkflow,
 } from "../workflow/family-definition.family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
+import type { FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
-import type { FraudProofWorkflowJournalStore } from "../workflow/journal.fraud-proof-workflow-journal-event.js";
 import { journalJsonDigest } from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
@@ -38,8 +37,10 @@ import {
   createFraudProofWorkflowRegistry,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
-import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   createObserverOrderInvalidActuator,
   type ObserverOrderInvalidActuatorAction,
@@ -225,13 +226,17 @@ const createTransactionPort = (
     },
     prepare: async ({ evidence }) =>
       await prepareObserverOrderWorkflowArtifact(evidence),
-    capture: async ({ action, artifact, entries }) =>
+    capture: async ({ action, artifact, holder }) =>
       await actuator.capture({
         action: action.input as unknown as ObserverOrderInvalidActuatorAction,
         artifact,
         ownOutputs: workflowFieldCarriageOwnOutputs({
           category: CATEGORY,
-          entries,
+          materials: proofMaterialsAccess({
+            signer: context.signer,
+            lucid: context.lucid,
+            holder,
+          }),
         }),
       }),
   };
@@ -396,19 +401,18 @@ const currentAction = async ({
 export const executeManifestBoundObserverOrderInvalidWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundObserverOrderInvalidWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   if (
-    workflowActuationAuthorizingDecisionDigest(journal) !==
-    workflow.decisionDigest
+    workflowActuationAuthorizingDecisionDigest(run) !== workflow.decisionDigest
   )
-    throw new Error("observerOrderInvalid journal changed decision digest");
+    throw new Error("observerOrderInvalid run changed decision digest");
   const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
   });
@@ -421,7 +425,7 @@ export const executeManifestBoundObserverOrderInvalidWorkflow = async ({
       adapters: [workflow.adapter],
       launchScope: [CATEGORY],
     }),
-    journal,
+    run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     walletOnlySend,

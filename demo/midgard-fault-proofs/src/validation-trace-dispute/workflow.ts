@@ -30,7 +30,6 @@ import {
   type FraudProofFamilyL1ObservationPort,
   observeFraudProofWorkflowHeader,
 } from "../workflow/family-l1-observation.js";
-import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type {
   FraudProofL1Source,
   FraudProofSignedTransactionRecovery,
@@ -47,6 +46,7 @@ import {
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { scriptDecodeDeploymentFromReferences } from "../workflow/script-decode-prerequisite.deployment.js";
 import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import { createValidationTraceDisputeWorkflowAdapter } from "./adapter.js";
 import { createValidationTraceCaseHistory } from "./case-history.js";
 import {
@@ -182,7 +182,6 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
     });
   };
   const deployment = Object.freeze<ValidationTraceDisputeDeployment>({
-    deploymentFingerprint: binding.deploymentFingerprint,
     network: binding.network,
     blueprint: binding.blueprint,
     init: {
@@ -296,7 +295,6 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
         signer: config.signer,
         deployment,
         l1For,
-        signedRecovery: l1,
         releaseFinality: binding.releaseFinality,
       }),
     ...(config.now === undefined ? {} : { now: config.now }),
@@ -330,12 +328,12 @@ const RUN_REPLAY_HOLDS = createValidationTraceReplayHolds();
 export const runOrResumeManifestBoundValidationTraceDisputeWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundValidationTraceDisputeWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }): Promise<
   FraudProofWorkflowRunResult | ValidationTraceAwaitingCounterparty
@@ -358,7 +356,7 @@ export const runOrResumeManifestBoundValidationTraceDisputeWorkflow = async ({
         adapters: [workflow.adapter],
         launchScope: [CATEGORY],
       }),
-      journal,
+      run,
       terminalVerifier: workflow.terminalVerifier,
       releaseFinalityAuthority: workflow.releaseFinalityAuthority,
       walletOnlySend,

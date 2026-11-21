@@ -4,11 +4,10 @@
  * from a short wallet, its thread paying the fee, and the defender goes
  * silent. Fees then rise until the timeout and the thread's close are priced
  * over the per-move cap, so our plain-Ada wallet pays each of them whole. A
- * wallet run below the collateral line, from which nothing can be reserved,
- * holds the timeout under the operator's alarm, naming the case, the thread
- * and the deadline, before any byte reaches the ledger, releasing what it
- * reserved, and keeps retrying at each observation without wedging. Topped up to less than the wallet-move
- * reserve but enough for the move, it lands the timeout with no alarm, its
+ * wallet run below the collateral line holds the timeout under the
+ * operator's alarm, naming the case, the thread and the deadline, before any
+ * byte reaches the ledger, and keeps retrying at each observation without
+ * wedging. Topped up to less than the wallet-move reserve but enough for the move, it lands the timeout with no alarm, its
  * successor keeping all of the thread's lovelace; refilled to that reserve,
  * it lands the thread's close, which pays the thread's rest less the receipt
  * to our funding key, and the case closes Convicted.
@@ -28,7 +27,7 @@ import {
   validationTraceCaseExpiryMs,
 } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
-import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
+import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/validation-trace-dispute/wallet-move-unfunded-alarm.js";
 import { network } from "./support/emulator/blueprints.js";
 import {
   drainProver,
@@ -40,7 +39,7 @@ import {
   confirmedMoves,
   type FundedMoves,
   liveFundedThread,
-  moveIntents,
+  moveSends,
   openDefendedFundedCase,
   passDefenderDeadline,
   recordedOutput,
@@ -73,7 +72,7 @@ let silent: UTxO;
 /** The `kind` moves that landed. */
 const hashesOf = (kind: string) =>
   journey.moves
-    .filter(({ authority }) => authority.kind === kind)
+    .filter((move) => move.kind === kind)
     .map(({ signed }) => signed.toHash())
     .filter((hash) => journey.scene.l1.signedCbors.has(hash));
 
@@ -90,9 +89,9 @@ const inputsOf = (txHash: string) => {
 const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
-describe("validation-trace dispute wallet-paid thread moves under the prover funding permit", () => {
+describe("validation-trace dispute wallet-paid thread moves under the prover funding", () => {
   beforeAll(async () => {
-    journey = await openDefendedFundedCase({ liveParameters: true });
+    journey = await openDefendedFundedCase();
     const { scene, defender, trace } = journey;
     await revealAsDefender(
       scene,
@@ -102,9 +101,8 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
     );
   }, TIMEOUT);
 
-  afterAll(async () => {
+  afterAll(() => {
     restoreFees?.();
-    await journey?.dispute.close();
   });
 
   it(
@@ -150,7 +148,7 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
       const caseUnit = Object.keys(caseOrigin.assets).find((unit) =>
         unit.startsWith(scene.chain.case.policyId),
       )!;
-      // Our wallet runs below the collateral line: no reservation holds it.
+      // Our wallet runs below the collateral line.
       await drainProverToOneCoin(scene.h as never, SHORT);
       const watch = watchLedger(scene.h.emulator);
       try {
@@ -182,9 +180,6 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
               alarm: true,
             },
           });
-          // The refused attempt released every input it held.
-          for (const reservation of await dispute.readReservations())
-            expect(reservation).toMatchObject({ activeInputs: [] });
         }
         expect(watch.ours()).toHaveLength(0);
       } finally {
@@ -200,7 +195,7 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
     "lands the timeout, priced over the cap, once the wallet is topped up to less than the wallet-move reserve but enough for the move, with no alarm, our wallet paying its whole fee and its successor keeping all of the thread's lovelace",
     async () => {
       const { scene, dispute, capture } = journey;
-      const reserve = BigInt(await dispute.walletMoveReserve());
+      const reserve = dispute.walletMoveReserve();
       // Enough for the builder to select the move's coins; less than the
       // reserve.
       const held = reserve / 2n;
@@ -238,7 +233,7 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
     async () => {
       const { scene, dispute, capture } = journey;
       await topUpProver(scene.h as never, 100n * ADA);
-      await drainProver(scene.h as never, await dispute.walletMoveReserve());
+      await drainProver(scene.h as never, dispute.walletMoveReserve());
       const { result, history } = await turnUntil(
         dispute,
         VALIDATION_TRACE_CASE_CONVICTED,
@@ -249,16 +244,11 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
       const [close, ...again] = hashesOf("close_thread");
       expect(again).toStrictEqual([]);
       expect(
-        confirmedMoves(result)
-          .map(({ stage }) => stage)
-          .slice(-3),
+        (await confirmedMoves(dispute)).map(({ stage }) => stage).slice(-3),
       ).toStrictEqual(["timeout", "close_thread", "close"]);
       expect(
-        moveIntents(result, "close-thread").map(({ attempt, txHash }) => [
-          attempt,
-          txHash,
-        ]),
-      ).toStrictEqual([[1, close]]);
+        moveSends(dispute, "close-thread").map(({ txHash }) => txHash),
+      ).toStrictEqual([close]);
       const fee = await landedMoveFee(scene, close!);
       expect(fee.paid).toBeGreaterThan(VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE);
       expect(fee.paid).toBeGreaterThanOrEqual(fee.ledger);
@@ -288,13 +278,13 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
       reportFit(
         "funded wallet-paid timeout",
         journey.moves
-          .filter(({ authority }) => authority.kind === "timeout")
+          .filter(({ kind }) => kind === "timeout")
           .map(({ signed }) => signed.toCBOR()),
       );
       reportFit(
         "funded wallet-paid close_thread",
         journey.moves
-          .filter(({ authority }) => authority.kind === "close_thread")
+          .filter(({ kind }) => kind === "close_thread")
           .map(({ signed }) => signed.toCBOR()),
       );
     },

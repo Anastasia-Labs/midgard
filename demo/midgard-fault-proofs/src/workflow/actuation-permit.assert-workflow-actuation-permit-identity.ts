@@ -4,23 +4,24 @@ import {
   admittedPermits,
   admittedRevocationErrors,
   assertPermit,
-  journalPermits,
+  runPermits,
   WORKFLOW_ACTUATION_PERMIT,
   type WorkflowActuationCheckpoint,
   type WorkflowActuationPermit,
   WorkflowActuationRevokedError,
 } from "./actuation-permit.create-workflow-reconciliation-permit-controller.js";
-import { type HeaderFaultDecision } from "./header-classifier.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.fraud-proof-workflow-journal-event.js";
+import type { HeaderFaultDecision } from "./header-classifier.js";
 import {
   journalJsonDigest,
   normalizeJournalJson,
 } from "./journal.fraud-proof-workflow-terminal.js";
+import type { WorkflowRun } from "./workflow-run.js";
 
 /**
- * Cross-check used by the funding reservation controller. It exposes only the
- * already-public workflow identity, never a permit minter or revocation state
- * mutation, and structural permit lookalikes remain rejected by the WeakMap.
+ * Cross-check used by the watcher's supervisor, execution and progress
+ * authority. It exposes only the already-public workflow identity, never a
+ * permit minter or revocation state mutation, and structural permit
+ * lookalikes remain rejected by the WeakMap.
  */
 export const assertWorkflowActuationPermitIdentity = ({
   permit,
@@ -111,29 +112,27 @@ export const bindWorkflowActuationRecoveryIdentity = (input: {
   }
   if (state.executionBound && state.executionDecisionDigest !== decisionDigest)
     throw new Error(
-      "workflow recovery cannot change an execution after journal binding",
+      "workflow recovery cannot change an execution after its run is bound",
     );
   state.executionDecisionDigest = decisionDigest;
 };
 
-/** Bind an opaque live permit to the exact journal object passed downstream. */
-export const bindWorkflowActuationJournal = <
-  Journal extends FraudProofWorkflowJournalStore,
->({
-  journal,
+/** Binds an opaque live permit to one invocation's run. */
+export const bindWorkflowRunActuation = ({
+  run,
   permit,
   decisionDigest,
   deploymentFingerprint,
   category,
   headerHash,
 }: {
-  readonly journal: Journal;
+  readonly run: WorkflowRun;
   readonly permit: WorkflowActuationPermit;
   readonly decisionDigest: string;
   readonly deploymentFingerprint: string;
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
-}): Journal => {
+}): WorkflowRun => {
   assertPermit({
     permit,
     decisionDigest,
@@ -142,14 +141,12 @@ export const bindWorkflowActuationJournal = <
     headerHash,
     checkpoint: "runner_start",
   });
-  if (journalPermits.has(journal)) {
-    throw new Error(
-      "production workflow journal already has actuation authority",
-    );
+  if (runPermits.has(run)) {
+    throw new Error("production workflow run already has actuation authority");
   }
   admittedPermits.get(permit)!.executionBound = true;
-  journalPermits.set(
-    journal,
+  runPermits.set(
+    run,
     Object.freeze({
       permit,
       decisionDigest,
@@ -160,21 +157,21 @@ export const bindWorkflowActuationJournal = <
       headerHash,
     }),
   );
-  return journal;
+  return run;
 };
 
 export const workflowActuationDecisionDigest = (
-  journal: FraudProofWorkflowJournalStore,
+  run: WorkflowRun,
 ): string | undefined => {
-  return journalPermits.get(journal)?.executionDecisionDigest;
+  return runPermits.get(run)?.executionDecisionDigest;
 };
 
 /** The current classified decision authorizes infrastructure configuration;
- * recovery retains a separate, original decision for durable execution identity. */
+ * recovery retains a separate, original decision for the execution identity. */
 export const workflowActuationAuthorizingDecisionDigest = (
-  journal: FraudProofWorkflowJournalStore,
+  run: WorkflowRun,
 ): string | undefined => {
-  return journalPermits.get(journal)?.decisionDigest;
+  return runPermits.get(run)?.decisionDigest;
 };
 
 export const workflowActuationPermitIsReconciliationOnly = (
@@ -194,11 +191,10 @@ export const workflowActuationPermitIsReconciliationOnly = (
   return state.reconciliationReason !== undefined;
 };
 
-/** Recovery-only authority never becomes permission to build or broadcast. */
-export const workflowJournalIsReconciliationOnly = (
-  journal: FraudProofWorkflowJournalStore,
-): boolean => {
-  const binding = journalPermits.get(journal);
+/** Reconciliation-only authority follows transactions already sent and
+ * never becomes permission to build or broadcast. */
+export const workflowRunIsReconciliationOnly = (run: WorkflowRun): boolean => {
+  const binding = runPermits.get(run);
   if (binding === undefined) return false;
   return (
     admittedPermits.get(binding.permit)!.reconciliationReason !== undefined
@@ -206,24 +202,24 @@ export const workflowJournalIsReconciliationOnly = (
 };
 
 /**
- * Shared checkpoint used by the orchestrator. An unbound journal is retained
- * only for lower-level tests/diagnostics; admitted production runners always
- * bind before loading runtime infrastructure.
+ * Shared checkpoint used by the orchestrator. A run bound to no permit is
+ * retained only for lower-level tests and diagnostics; admitted production
+ * runners always bind before loading runtime infrastructure.
  */
-export const assertWorkflowJournalActuation = ({
-  journal,
+export const assertWorkflowRunActuation = ({
+  run,
   deploymentFingerprint,
   category,
   headerHash,
   checkpoint,
 }: {
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly deploymentFingerprint: string;
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
   readonly checkpoint: WorkflowActuationCheckpoint;
 }): void => {
-  const binding = journalPermits.get(journal);
+  const binding = runPermits.get(run);
   if (binding === undefined) {
     return;
   }

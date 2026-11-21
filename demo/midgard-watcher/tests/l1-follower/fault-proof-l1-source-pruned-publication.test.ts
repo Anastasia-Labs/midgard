@@ -1,7 +1,4 @@
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  FIELD_CARRIAGE_RECOVERY,
-} from "@al-ft/midgard-fault-proofs/workflow/field-carriage-prerequisite";
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "@al-ft/midgard-fault-proofs/workflow/field-carriage-prerequisite";
 import {
   fraudProofSignedTransactionRecovery,
   withFraudProofL1Recovery,
@@ -28,11 +25,11 @@ import {
 } from "../support/l1-follower-raw-source-fixture.js";
 
 /**
- * A field publication of ours that the node dropped, reconciled through the
- * field-carriage port over the watcher's fault-proof L1 source once the
- * follower has pruned: the exact read finds no output, signed recovery
- * rebroadcasts the journaled bytes, and once they land the publication is
- * confirmed.
+ * A field publication of ours that the node dropped, continued in process
+ * over the watcher's fault-proof L1 source once the follower has pruned: the
+ * field-carriage port still requires it, signed recovery reads the exact
+ * bytes this process sent as worth rebroadcasting and resends them
+ * unchanged, and once they land it reads them included.
  */
 
 const baseAction: FraudProofWorkflowAction = Object.freeze({
@@ -48,7 +45,7 @@ const baseAction: FraudProofWorkflowAction = Object.freeze({
 });
 
 describe("field publication on a pruned follower", () => {
-  it("rebroadcasts a dropped publication and confirms it once it lands", async () => {
+  it("rebroadcasts a dropped publication this process sent and reads it included once it lands", async () => {
     const fx = await fixture();
     await pruneFixture(fx);
     const double = nodeDouble();
@@ -85,15 +82,18 @@ describe("field publication on a pruned follower", () => {
     });
     const required = await port.inspect({
       headerHash: fx.header,
+      holder: {
+        workflowId: "pruned-publication",
+        objective: { category: "nonExistentInput", headerHash: fx.header },
+      },
       baseAction,
       artifact: {},
-      entries: [],
     });
     if (required.kind !== "required")
       throw new Error("expected a publication requirement");
     const datumCbor = requirement.publicationDatums[0]!;
-    // Our publication: spends V#0 (live at T) and pays the datum to T. It
-    // was submitted and journaled, then dropped: it never reaches the chain.
+    // Our publication: spends V#0 (live at T) and pays the datum to T. This
+    // process sent it, then the node dropped it: it never reaches the chain.
     const publication: SimTx = {
       inputs: [{ txHash: Buffer.from(fx.hashes.v, "hex"), index: 0 }],
       outputs: [
@@ -107,38 +107,24 @@ describe("field publication on a pruned follower", () => {
     };
     const txHash = hex(simTxHash(publication));
     const signed = signedOf(publication);
-    const input = {
-      headerHash: fx.header,
-      action: required.action,
-      artifact: {},
-      txHash,
-      durableRecovery: {
-        fieldCarriage: {
-          schemaVersion: FIELD_CARRIAGE_RECOVERY,
-          kind: "publication",
-          requirementSha256: required.action.input.requirementSha256 as string,
-          outRef: `${txHash}#0`,
-          datumCbor,
-          unit: null,
-        },
-      },
+    const sent = {
+      transactionHash: txHash,
       signedTransactionCborHex: signed.signedTransactionCborHex,
-      authorizeResubmission: async () => undefined,
     } as const;
-
-    await expect(port.reconcile(input)).resolves.toEqual({
-      kind: "pending",
-      txHash,
-    });
-    expect(double.calls).toEqual([
-      `hasTx:${txHash}`,
-      `submit:${signed.signedTransactionCborHex}`,
-    ]);
+    await expect(
+      publications.observeSignedTransaction!(sent),
+    ).resolves.toMatchObject({ status: "rebroadcast" });
+    await expect(
+      publications.rebroadcastSignedTransaction!({
+        ...sent,
+        authorizeResubmission: async () => undefined,
+      }),
+    ).resolves.toBe(txHash);
+    expect(double.calls).toContain(`submit:${signed.signedTransactionCborHex}`);
 
     await fx.forward([publication]);
-    await expect(port.reconcile(input)).resolves.toEqual({
-      kind: "confirmed",
-      txHash,
-    });
+    await expect(
+      publications.observeSignedTransaction!(sent),
+    ).resolves.toMatchObject({ status: "included" });
   });
 });

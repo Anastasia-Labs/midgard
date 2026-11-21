@@ -32,7 +32,7 @@ import {
   validationTraceMoveMinimumFee,
 } from "../src/validation-trace-dispute/move-fee.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
-import { isWorkflowFundingShortfall } from "../src/workflow/funding-reservation-permit.workflow-funding-shortfall.js";
+import { isWorkflowFundingShortfall } from "../src/workflow/workflow-funding-shortfall.js";
 
 const ADA = 1_000_000n;
 const CAP = VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE;

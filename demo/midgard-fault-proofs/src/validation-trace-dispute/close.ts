@@ -19,8 +19,6 @@ import {
 
 import { plainWalletInputs } from "../funding/plain-funding-output.js";
 import { witnessMintingPolicyCarriage } from "../witness-reference-scripts.js";
-import { grantValidationDisputeCloseAuthority } from "../workflow/funding-reservation-permit.validation-dispute-close-authority.js";
-import { validationTraceRecovery } from "./actions.js";
 import {
   captured,
   type CapturedValidationTraceStage,
@@ -257,24 +255,20 @@ export const buildValidationTraceClose = async ({
 
 /**
  * Close our convicted case, now: only once the current slot's time is past
- * the case's defense deadline, the earliest a close may start. The close's
- * funding authority binds it to the case the pending claim our Open left
- * at `caseOpenerOutRef` opened.
+ * the case's defense deadline, the earliest a close may start.
  */
 export const captureValidationTraceClose = async (
   input: StageInput & {
     readonly caseOutRef: string;
     readonly bondOutRef: string;
-    readonly caseOpenerOutRef: string;
   },
 ): Promise<CapturedValidationTraceStage> => {
   const { lucid } = input;
   const validFrom = lucid.slotToUnixTime(lucid.currentSlot());
-  const { tx, caseDatum, proof, candidates, caseInput, bond } =
-    await buildValidationTraceClose({
-      ...input,
-      validFrom,
-    });
+  const { tx, caseDatum, candidates } = await buildValidationTraceClose({
+    ...input,
+    validFrom,
+  });
   const deadline = validationTraceDefenseDeadlineMs(caseDatum);
   if (validFrom <= deadline)
     throw new Error(
@@ -285,21 +279,8 @@ export const captureValidationTraceClose = async (
     ...(await plainWalletInputs(lucid)),
   });
   const signed = await unsigned.sign.withWallet().complete();
-  grantValidationDisputeCloseAuthority({
-    signed,
-    deploymentFingerprint: input.deployment.deploymentFingerprint,
-    headerHash: input.artifact.headerHash,
-    caseOpenerOutRef: input.caseOpenerOutRef,
-    caseInput,
-    bond,
-  });
   const transaction = captured(signed, candidates);
   return {
     transaction,
-    durableRecovery: validationTraceRecovery({
-      stage: "close",
-      transaction,
-      slots: [proof],
-    }),
   };
 };

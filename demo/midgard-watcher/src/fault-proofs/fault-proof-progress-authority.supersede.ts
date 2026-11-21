@@ -3,70 +3,35 @@ import {
   type WorkflowActuationPermit,
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import type { HeaderFaultDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
 
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import type { WatcherFaultDecisionJournal } from "./fault-decision-journal.js";
 import type { WatcherProofObjectiveCleanup } from "./fault-proof-objective-cleanup.js";
-import {
-  isWatcherProofJournalRefusal,
-  readWatcherProofExecution,
-  type WatcherProofObjective,
-} from "./fault-proof-objective-journal.js";
+import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import type {
   WatcherDecisionSupersedeHoldReason,
   WatcherFaultProofProgressAuthority,
 } from "./fault-proof-progress-authority.types.js";
-import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
-
-/**
- * Whether a signed attempt of the execution is still in flight: as the
- * workflow journal fold reads it, an action whose latest intent is neither
- * confirmed nor reconciled not found.
- */
-const unresolvedAttempt = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
-): boolean => {
-  const open = new Set<string>();
-  for (const { event } of entries) {
-    if (event.kind === "submission_intent") open.add(event.actionId);
-    else if (event.kind === "reobserved") {
-      open.clear();
-      open.add(event.actionId);
-    } else if (
-      event.kind === "confirmed" ||
-      (event.kind === "reconciled" && event.outcome === "not_found")
-    )
-      open.delete(event.actionId);
-  }
-  return open.size !== 0;
-};
 
 /**
  * The progress authority's supersede. A durable fault decision a fresh
  * classification of the same observation no longer reproduces is replaced
- * once nothing of it is in flight: no job of it is queued or active and
- * every signed attempt of it is confirmed or failed. Its unused prover
- * funding is released first, because the release reads its decision row;
- * then its workflow rows and its decision row are forgotten; then the fresh
- * fault is recorded as a live decision. A signed reservation of it is left
- * to the orphaned-funding settle, which returns its inputs once each of its
- * attempts is retired on L1; what an attempt left on L1 (a partial proof)
- * is abandoned. Removing the row is the supersession, so a decision that
- * returns later (A to B to A) is recorded afresh. The work is one
- * objective's rows and reservations, whoever moved the replay context.
+ * once nothing of it is in flight: no job of it is queued or active and no
+ * transaction this process sent for it can still land. Its rows and its
+ * decision row are forgotten; then the fresh fault is
+ * recorded as a live decision. What an earlier transaction left on L1 (a
+ * partial proof) is abandoned. Removing the row is the supersession, so a
+ * decision that returns later (A to B to A) is recorded afresh. The work is
+ * one objective's rows, whoever moved the replay context.
  */
 export const createProgressSupersede = (input: {
-  readonly workflowJournal: WatcherWorkflowJournal;
-  readonly deploymentFingerprint: string;
   readonly retention?: WatcherProofRetention;
   readonly onObjectiveSettled?: (objective: WatcherProofObjective) => void;
-  /** Told when the superseded objective held a signed attempt, whose
-   * funding the orphaned-funding settle now owns. */
-  readonly onObjectiveUnattended?: (objective: WatcherProofObjective) => void;
-  readonly releaseDecisionFunding?: (
-    decision: HeaderFaultDecision,
-  ) => Promise<boolean>;
+  /** Whether a transaction this process sent for the objective can still
+   * land (`WorkflowInFlight.sending`). */
+  readonly sending: (objective: WatcherProofObjective) => boolean;
+  /** Drops the objective's part of the in-flight set. */
+  readonly forgetInFlight: (objective: WatcherProofObjective) => void;
   readonly initialize: () => Promise<void>;
   readonly cleanup: WatcherProofObjectiveCleanup;
   readonly objectives: ReadonlyMap<
@@ -93,25 +58,7 @@ export const createProgressSupersede = (input: {
     ) => Object.freeze({ kind: "held" as const, reason, detail });
     if (input.held(key)) return holding("objective_held");
     if (input.cleanup.pending(prior)) return holding("job_pending");
-    let execution;
-    try {
-      execution = readWatcherProofExecution({
-        journal: input.workflowJournal,
-        deploymentFingerprint: input.deploymentFingerprint,
-        objective: prior,
-      });
-    } catch (error) {
-      if (!isWatcherProofJournalRefusal(error)) throw error;
-      return holding("objective_held");
-    }
-    if (execution !== undefined && unresolvedAttempt(execution.entries))
-      return holding("submission_unresolved");
-    if ((await input.releaseDecisionFunding?.(prior)) === false)
-      return holding("funding_in_use");
-    const signed =
-      execution?.entries.some(
-        ({ event }) => event.kind === "submission_intent",
-      ) === true;
+    if (input.sending(prior)) return holding("submission_unresolved");
     const objective = input.objectives.get(key);
     input.forgetObjective(key);
     input.decisions.delete(prior.decisionDigest);
@@ -137,7 +84,7 @@ export const createProgressSupersede = (input: {
           category === prior.category && headerHash === prior.headerHash,
       );
     if (failure !== undefined) return holding("cleanup_failed", failure.detail);
-    if (signed) input.onObjectiveUnattended?.(prior);
+    input.forgetInFlight(prior);
     if (fresh.decision === "fault_detected")
       await (await input.openDecisions()).appendLiveDecision(fresh);
     input.pruneDecisions();

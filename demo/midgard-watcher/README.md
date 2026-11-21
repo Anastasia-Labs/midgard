@@ -170,16 +170,15 @@ lets the next decision pass dispatch it again; the reason clears then. A journal
 that cannot be used, or a rollback key the journals were not written under, is
 a configuration error: the watcher exits before the operations server binds.
 An objective that is released (its header left the finalized state queue)
-or whose completion is final is cleaned up in process: the watcher deletes its
-workflow rows in `watcher.sqlite` and then forgets its journal rows, once no
-job of the objective is queued, running or awaiting a retry in this process. A
-final completion is cleaned up once an observation no longer queues its
-header. A released objective that holds a signed attempt keeps its workflow
-rows: the funding sweep holds that attempt's reservation until the attempt is
-retired on L1, then releases it and deletes those rows in the same
-transaction. Queue rows a previous process left
-queued or active do not defer the cleanup, and a row a crash left with no
-execution is forgotten once its header leaves the queue. A removal that fails
+or whose completion is final is cleaned up in process: the watcher forgets
+its rows in `watcher-journals.sqlite` once no job of the objective is queued,
+running or awaiting a retry in this process. A final completion is cleaned up
+once an observation no longer queues its header. An objective no admitted
+fault names any more is driven by nothing; once its header leaves the queue
+it is released, and a thread of ours it leaves standing is reclaimed by the
+own-thread sweep. A transaction this process sent for it keeps its wallet
+coins held in memory until its validity bound passes. Queue rows a previous
+process left queued or active do not defer the cleanup. A removal that fails
 keeps the rows, is retried by every admission, and is listed in
 `supervisor.objectiveCleanupFailures` in `/v1/status`, and `/readyz` reports
 `fault_proof_objective_cleanup_failed` until the removal succeeds. Only open objectives count toward the cap of 2,048; at the cap the
@@ -188,24 +187,21 @@ complete.
 
 To repair refused journals: stop the watcher, move `watcher-journals.sqlite`
 and its `-wal` and `-shm` files aside (never delete them), and start it again.
-The new journals start empty. The workflow journals, the funding store and
-the L1 follower's facts survive, so proofs and funding reservations may name
-fault decisions the new journals do not hold. The watcher never runs such work
-again and never exits over it: it holds each proof objective, `/readyz`
-reports `journal_decision_missing`, and `supervisor.journalDecisionMissing` in
-`/v1/status` names each held objective with its decision.
+The new journals start empty and the L1 follower's facts survive. A fault
+still in the finalized queue is detected and admitted again, and its proof
+continues from what the chain holds: the watcher keeps no record of its
+proof workflows, so nothing else needs repair. Follower pins of objectives
+that are never admitted again are left to retention. The moved-aside file is
+never read again.
 
-- A held proof objective clears once its header leaves the finalized state
-  queue: its proof, or another one, landed and is final, or the header merged.
-  A fresh detection of the same fault does not restart it.
-- A funding reservation whose decision the new journals do not hold is never
-  run. An unused one is released by the startup sweep before dispatch, which
-  returns its inputs to the wallet; a signed one is held, and settled once
-  each of its attempts is retired past release finality.
-
-Retention handles the rest. Workflow rows and follower pins of objectives
-that are never admitted again stay in place, including the workflow rows of
-released and settled reservations. The moved-aside file is never read again.
+The watcher keeps each proof's in-flight transactions in memory only and
+reads its progress from the chain on every pass. After a restart, a proof
+whose next transaction spends only wallet coins waits one wallet-only
+validity window (`fault_proof_restart_wait`), so a copy the previous process
+sent cannot land beside a new one; a transaction that spends the proof
+thread cannot land twice. The `watcher.sqlite` file at the configured
+storage path, which held the workflow record and the funding reservations of
+earlier releases, is no longer opened: it is unused and may be deleted.
 
 Every watcher SQLite file, the journals included, must sit on a local disk,
 never a network filesystem (NFS, SMB and the like): those break SQLite's file
@@ -220,21 +216,6 @@ data directory. Evidence remains pinned by event, recovery, and
 proof dependencies; this change does not delete archives. See the
 [persistence record inventory](../../docs/midgard/decisions/watcher-persistence.md)
 for consumers and retention rules.
-
-Mint-item-non-canonical proofs started by an earlier release keep a
-family-specific prepared artifact, which this release does not import. At
-start, such an objective is held as `fault_proof_objective_unreadable`, its
-detail naming the workflow id, in `/readyz` and `/v1/status`. It is never run,
-resubmitted, superseded or reclaimed, and other objectives continue. An
-unsigned reservation with no submission intent is returned to the wallet at
-start, as for any unreadable objective. Once its header leaves the finalized
-queue, it follows the unreadable-objective lifecycle: workflow rows are
-deleted only if its row was marked final, and a signed attempt's funding goes
-to the orphaned-reservation settle. Remedy: finish open mint-item proofs on
-the previous release before upgrading, or perform an authorised fresh
-deployment under [state reset rules](../../docs/agents/state-reset.md).
-Returning to the previous release after this one has started is not a
-supported path.
 
 ## Configuration and trust boundaries
 
@@ -450,11 +431,11 @@ finalized audit anchors, incident records and evidence stamps. Fault-proof
 state-queue observation, classification dispatch and proof-step submission use
 fixed authenticated inclusion depth 1. This is not a runtime configuration field
 and does not change the release finality policy or manifest digest. On rollback, invalidate cached authority, re-observe canonical
-state, reconcile outstanding submissions, then resume under fresh authority.
-Reuse suitable signed bytes or rebuild when necessary. Terminal inclusion
-releases the execution slot while the existing journal retains reconciliation
-state until anchoring. Wallet selection excludes unresolved attempts; it does
-not assume all old-fork inputs are available or hold all capital until finality.
+state from the chain, then resume under fresh authority. A transaction this
+process sent stays in its in-memory in-flight set, its wallet coins held,
+until it lands or its validity bound passes; wallet selection excludes those
+coins, and does not assume all old-fork inputs are available or hold all
+capital until finality.
 
 Local authority binds the Cardano node socket, node/genesis configuration, and
 genesis identity; the node transport sidecar (`demo/l1-node-transport`) provides
@@ -491,12 +472,12 @@ state.
 
 A watcher that loses its whole data directory in the middle of a proof
 thread, and restarts with the same keys, detects the fault again and continues
-its own thread. Its funding store no longer holds the thread output's lineage,
-so the output is accepted as its own custody only when the authenticated L1
+its own thread. It keeps no record of the thread output's lineage, so the
+output is accepted as its own custody only when the authenticated L1
 source shows it carrying this objective's computation-thread token (this
 deployment's policy, quantity 1, the only non-ADA asset) under a step datum
 whose `fraud_prover` is the watcher's funding key. Any other contract output
-without lineage stays refused.
+stays refused.
 
 ## Running with compose
 

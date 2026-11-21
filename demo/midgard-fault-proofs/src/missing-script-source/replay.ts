@@ -126,7 +126,7 @@ export const detectMissingScriptSourceReplay = async ({
   });
 };
 
-/** The journaled `missingScriptSource` workflow artifact: the retained payload,
+/** The `missingScriptSource` workflow artifact: the retained payload,
  * the predecessor ledger and the coordinate, re-planned on every admission. */
 export const MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY =
   directPurposeArtifactFamily({

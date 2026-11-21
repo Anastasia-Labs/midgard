@@ -5,18 +5,22 @@ import {
   type WorkflowActuationPermit,
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import { requireRunnableHeaderFault } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import type { WorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
+import {
+  computeFraudProofWorkflowId,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { isSqliteBusyError } from "@al-ft/midgard-fault-proofs/workflow/sqlite-busy";
 
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
-import { watcherSha256CanonicalJson } from "../storage/durable-store.canonical-json.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application.js";
-import { type WatcherInstalledWorkflowCategory } from "./fault-proof-application.production-dependencies.js";
+import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.production-dependencies.js";
 import { isWatcherFaultProofContinuationStall } from "./fault-proof-continuation-stall.js";
 import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-execution.js";
-import { readWatcherProofExecution } from "./fault-proof-objective-journal.js";
 import {
   isBeyondWatcherRollbackRecovery,
   watcherJournalCapacityReached,
+  type WatcherProofVerifiedCompletion,
 } from "./fault-proof-objective-table.js";
 import { createWatcherFaultProofProgressAuthority } from "./fault-proof-progress-authority.js";
 import {
@@ -28,8 +32,11 @@ import {
   admitWatcherProofRunnerCompletion,
   runnerOutcomeKind,
 } from "./fault-proof-supervisor.admit-runner-completion.js";
+import { watcherFaultProofJobOrder } from "./fault-proof-supervisor.compare-jobs.js";
+import { createWatcherProofMaterialsSweeps } from "./fault-proof-supervisor.proof-materials-sweep.js";
 import {
   createWatcherOpenProofDeadlines,
+  watcherProofStartDeadlinePassed,
   watcherProofStartTiming,
 } from "./fault-proof-supervisor.safe-start.js";
 import {
@@ -49,13 +56,10 @@ import {
   type WatcherJournalBusyRequeue,
 } from "./fault-proof-supervisor.validate-job.js";
 import {
-  createWatcherRestartWait,
+  createWalletOnlySend,
   type WatcherL1Clock,
 } from "./wallet-only-send-open.js";
-import {
-  isWatcherProofDecisionMissingError,
-  type WatcherDecisionHold,
-} from "./watcher-decision-hold.js";
+import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
 import { createWatcherJournalBusyHold } from "./watcher-journal-busy.js";
 import {
   isWatcherJournalCapacityError,
@@ -66,11 +70,47 @@ import {
   watcherJournalUnavailable,
 } from "./watcher-journal-database.js";
 import { watcherJournalOpener } from "./watcher-journal-database.opener.js";
-import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
+
+/** Completion checks that found our removal on the chain, short of the
+ * depth that makes it final. */
+const LANDED_AWAITING_FINALITY = new Set<string | undefined>([
+  "completion_not_final",
+  "release_finality",
+]);
+
+/** Completion checks that found no removal of ours on the chain: the target
+ * still stands, or another record ended it. */
+const NOT_LANDED = new Set<string | undefined>([
+  "target_live",
+  "terminal_not_ours",
+]);
+
+/** The completion the chain verified for `job`, bound to the removal it
+ * shows and that removal's depth. */
+const verifiedCompletion = (
+  deploymentFingerprint: string,
+  job: Pick<WatcherFaultProofJob, "category" | "headerHash" | "decisionDigest">,
+  verification: Readonly<{ terminalTxHash: string; confirmationDepth: number }>,
+): WatcherProofVerifiedCompletion => ({
+  workflowId: computeFraudProofWorkflowId({
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+    deploymentFingerprint,
+    category: job.category,
+    target: { kind: "state_queue_header", headerHash: job.headerHash },
+    decisionDigest: job.decisionDigest,
+  }),
+  terminalTxHash: verification.terminalTxHash,
+  confirmationDepth: verification.confirmationDepth,
+});
 
 export const createSupervisor = (input: {
   readonly journalRoot: string;
-  readonly workflowJournal: WatcherWorkflowJournal;
+  /** What this process sent and has not seen settle, held in memory only:
+   * whether an objective's run continues in-flight work reads it. */
+  readonly inFlight: Pick<
+    WorkflowInFlight,
+    "sending" | "forget" | "forObjective"
+  >;
   readonly deploymentFingerprint: string;
   readonly deadlineAlertHeadroomMs: number;
   readonly queueAuthenticationKey: Uint8Array;
@@ -81,12 +121,11 @@ export const createSupervisor = (input: {
   readonly exposeUnsafeRunnerForTest: boolean;
   /** Holds each open objective's L1 history past k (E1 ruling). */
   readonly proofRetention?: WatcherProofRetention;
-  /** Funding reservations held because their recorded decision is missing. */
-  readonly reservationDecisionHolds?: () => readonly WatcherDecisionHold[];
-  /** What a fresh process does around requeueing work after journal_busy. */
+  /** What a fresh process does after requeueing work after journal_busy. */
   readonly journalBusyRequeue?: WatcherJournalBusyRequeue;
-  /** Settles the funding of signed attempts whose objective was forgotten. */
-  readonly settleUnattendedFunding?: () => Promise<void>;
+  /** A bounded pass over our own threads, run by the pump once the jobs an
+   * admitted observation queued are drained; its failure is its own. */
+  readonly ownThreadSweep?: () => Promise<void>;
 }): WatcherFaultProofSupervisor | UnsafeWatcherFaultProofSupervisorForTest => {
   if (!DEPLOYMENT_FINGERPRINT.test(input.deploymentFingerprint)) {
     throw new Error(
@@ -131,35 +170,72 @@ export const createSupervisor = (input: {
       authenticationKey: input.queueAuthenticationKey,
     });
   const openDeadlines = createWatcherOpenProofDeadlines();
+  const sweeps = createWatcherProofMaterialsSweeps({
+    sweep: input.dependencies.sweepProofMaterials,
+    inFlight: input.inFlight,
+    walletOnlySend: () => walletOnlySend,
+  });
   const createAuthority = () =>
     createWatcherFaultProofProgressAuthority({
       journalRoot: input.journalRoot,
-      workflowJournal: input.workflowJournal,
       deploymentFingerprint: input.deploymentFingerprint,
       categories,
       authenticationKey: input.queueAuthenticationKey,
       retention: input.proofRetention,
+      sending: (objective) => input.inFlight.sending(objective),
+      forgetInFlight: (objective) => input.inFlight.forget(objective),
+      // Its header left the queue: whether our removal landed is the chain's
+      // to say (the completion check of `observeAtMaturity`).
+      departure: async ({ decision, actuationPermit, rollbackGeneration }) => {
+        const job = {
+          mode: "resume",
+          category: decision.category as WatcherInstalledWorkflowCategory,
+          headerHash: decision.headerHash,
+          decisionDigest: decision.decisionDigest,
+          rollbackGeneration,
+          deadline: null,
+        } as const;
+        const verification = await verifyCompleted({ job, actuationPermit });
+        if (verification.kind === "applicable") {
+          const { terminal } = verification;
+          if (terminal !== undefined)
+            sweeps.verified({ job, actuationPermit, terminal });
+          return {
+            kind: "final",
+            verified: verifiedCompletion(
+              input.deploymentFingerprint,
+              job,
+              verification,
+            ),
+          };
+        }
+        if (verification.kind === "retryable") return { kind: "unknown" };
+        if (LANDED_AWAITING_FINALITY.has(verification.reason))
+          return { kind: "landed" };
+        return {
+          kind: NOT_LANDED.has(verification.reason) ? "absent" : "unknown",
+        };
+      },
+      onDepartureStep: (decision, rollbackGeneration, step) => {
+        if (step === "completed") sweeps.completed(decision);
+        input.dependencies.departureStep?.({
+          category: decision.category as WatcherInstalledWorkflowCategory,
+          headerHash: decision.headerHash,
+          decisionDigest: decision.decisionDigest,
+          rollbackGeneration,
+          step,
+        });
+      },
       onObjectiveSettled: (objective) => {
         openDeadlines.settled(objective, progressAuthority.decisionHolds());
         dropRetry(objectiveKey(objective)); // nothing drives it again
         input.dependencies.objectiveSettled?.(objective);
       },
-      // A merged or departed header ends the race against maturity once.
-      onObjectiveDeparted: (objective) => {
-        if (openDeadlines.departed(objective))
-          input.dependencies.objectiveSettled?.(objective);
-      },
-      releaseDecisionFunding: input.dependencies.releaseDecisionFunding,
+      proofMaterials: input.dependencies.proofMaterials,
       jobInProcess: (objective) =>
         [jobs, registering, transportRetries].some((held) =>
           held.has(objectiveKey(objective)),
         ),
-      // A returning header starts a fresh execution.
-      onObjectiveRemoved: (objective) =>
-        void selectedExecutions.delete(objectiveKey(objective)),
-      // A failed sweep leaves the funding to the next start's sweep.
-      onObjectiveUnattended: () =>
-        void input.settleUnattendedFunding?.().catch(() => undefined),
     });
   let progressAuthority = createAuthority();
   let progressSerial: Promise<unknown> = Promise.resolve();
@@ -204,29 +280,17 @@ export const createSupervisor = (input: {
     actuationPermit: WorkflowActuationPermit | null;
   }>;
   const pendingUpdates = new Map<string, Update>();
-  const selectedExecutions = new Map<string, string>();
+  // The context each objective last ran in, for the most recent objectives.
   const processedContexts = new Map<string, string>();
+  const rememberContext = (key: string, context: string): void => {
+    processedContexts.delete(key);
+    processedContexts.set(key, context);
+    if (processedContexts.size > MAX_RECOVERABLE_WORKFLOWS)
+      processedContexts.delete(processedContexts.keys().next().value!);
+  };
   // Objectives whose session stalled: each yields its place to other queued
   // objectives for the next pick, then competes by deadline again.
   const yielded = new Set<string>();
-  const completedValidations = new Map<
-    string,
-    Readonly<{ validation: string; confirmationDepth: number }>
-  >();
-  const rememberCompletion = (
-    key: string,
-    validation: string,
-    confirmationDepth: number,
-  ): void => {
-    completedValidations.delete(key);
-    completedValidations.set(key, { validation, confirmationDepth });
-    if (completedValidations.size > MAX_RECOVERABLE_WORKFLOWS) {
-      const oldest = completedValidations.keys().next().value!;
-      completedValidations.delete(oldest);
-      selectedExecutions.delete(oldest);
-      processedContexts.delete(oldest);
-    }
-  };
   // One finality threshold (plan section 9: depth > k is final): a completion
   // applies only beyond rollback recovery, the depth its marker needs; one
   // verified at exactly k waits a block rather than finish unmarked with its
@@ -244,6 +308,40 @@ export const createSupervisor = (input: {
       )
       ? Object.freeze({ kind: "pending", reason: "completion_not_final" })
       : verification;
+  };
+  // At or past maturity with nothing in flight, as after a restart, no
+  // removal of ours can land any more, but one may have landed already: a
+  // landed removal completes the objective (or waits for finality), and
+  // anything else holds it by name until its header leaves the queue.
+  const observeAtMaturity = async (
+    job: WatcherFaultProofJob,
+    actuationPermit: WorkflowActuationPermit | null,
+  ): Promise<unknown> => {
+    const verification = await verifyCompleted({ job, actuationPermit });
+    if (actuationPermit !== null)
+      assertWorkflowActuationPermitIdentity({
+        permit: actuationPermit,
+        category: job.category,
+        rollbackGeneration: job.rollbackGeneration,
+      });
+    if (verification.kind === "applicable") {
+      await progressAuthority.markCompleted(
+        job,
+        verifiedCompletion(input.deploymentFingerprint, job, verification),
+      );
+      return Object.freeze({
+        kind: "completed" as const,
+        terminalTxHash: verification.terminalTxHash,
+      });
+    }
+    if (verification.kind === "retryable") return verification;
+    if (LANDED_AWAITING_FINALITY.has(verification.reason))
+      return Object.freeze({
+        kind: "pending" as const,
+        resume: "await_observation" as const,
+        reason: verification.reason,
+      });
+    throw watcherProofStartDeadlinePassed(job);
   };
   const transportRetries = new Map<
     string,
@@ -276,11 +374,10 @@ export const createSupervisor = (input: {
   void done.catch(() => undefined);
 
   // A refused journal (`journal_integrity`), one that could not be opened
-  // (`journal_unavailable`), work whose recorded decision is missing
-  // (`journal_decision_missing`) or a busy database (`journal_busy`) holds
-  // the watcher unready and never fails the process, as does an unsigned
-  // objective past its maturity (`fault_proof_start_deadline_passed`); every
-  // other failure blocks it.
+  // (`journal_unavailable`) or a busy database (`journal_busy`) holds the
+  // watcher unready and never fails the process, as does an objective past
+  // its maturity with nothing landed (`fault_proof_start_deadline_passed`);
+  // every other failure blocks it.
   const block = (error: unknown, job: WatcherFaultProofJob | null): Error => {
     const normalized =
       error instanceof Error ? error : new Error(String(error));
@@ -317,9 +414,7 @@ export const createSupervisor = (input: {
           for (const key of transportRetries.keys()) dropRetry(key);
           jobs.clear();
           pendingUpdates.clear();
-          selectedExecutions.clear();
           processedContexts.clear();
-          completedValidations.clear();
           queuedJobCount = 0;
           activeJob = null;
           activeInvocationPermit = null;
@@ -333,47 +428,20 @@ export const createSupervisor = (input: {
       });
       progressSerial = reset.catch(() => undefined);
       await reset;
-      await input.journalBusyRequeue
-        ?.releaseUnusedFunding()
-        .catch((error: unknown) => {
-          if (isSqliteBusyError(error)) throw error;
-          // As at startup, a refused or unopened journal keeps them reserved.
-          if (
-            !isWatcherJournalIntegrityError(error) &&
-            !isWatcherJournalUnavailableError(error)
-          )
-            block(error, null);
-        });
     },
     resumed: () => input.journalBusyRequeue?.wake(),
   });
 
   const now = supervisorClock(input.nowMs);
   // Built once: no requeue or later admission moves the instant it opens at.
-  const restartWait = createWatcherRestartWait(input.l1Clock, now);
+  // A run skips each wallet-only action it holds and makes the rest; a run
+  // left with only those ends in the wait's named state, and the next
+  // observation runs the objective again.
+  const walletOnlySend = createWalletOnlySend({ ...input.l1Clock, nowMs: now });
   const remainingSafeStartMs = (job: WatcherFaultProofJob): bigint =>
     BigInt(job.deadline!.latestSafeStartAtMs) - BigInt(now());
 
-  const compareJobs = (
-    left: WatcherFaultProofJob,
-    right: WatcherFaultProofJob,
-  ): number => {
-    // Deadline work first; deadline-free work keeps arrival order behind it.
-    if (left.deadline === null || right.deadline === null)
-      return left.deadline === right.deadline ? 0 : left.deadline ? -1 : 1;
-    const leftDeadline = BigInt(left.deadline.latestSafeStartAtMs);
-    const rightDeadline = BigInt(right.deadline.latestSafeStartAtMs);
-    if (leftDeadline !== rightDeadline)
-      return leftDeadline < rightDeadline ? -1 : 1;
-    const leftMaturity = BigInt(left.deadline.maturityAtMs);
-    const rightMaturity = BigInt(right.deadline.maturityAtMs);
-    if (leftMaturity !== rightMaturity)
-      return leftMaturity < rightMaturity ? -1 : 1;
-    const leftCategory = categories.indexOf(left.category);
-    const rightCategory = categories.indexOf(right.category);
-    if (leftCategory !== rightCategory) return leftCategory - rightCategory;
-    return left.headerHash.localeCompare(right.headerHash);
-  };
+  const compareJobs = watcherFaultProofJobOrder(categories);
 
   const comparePending = (left: PendingJob, right: PendingJob): number =>
     Number(yielded.has(objectiveKey(left.job))) -
@@ -404,7 +472,7 @@ export const createSupervisor = (input: {
     let failure: Error | undefined;
     try {
       // The queue may have waited while another observation completed the
-      // objective. Admission belongs immediately before funding and invocation.
+      // objective. Admission belongs immediately before invocation.
       if (actuationPermit !== null) {
         const authority = assertWorkflowActuationPermitIdentity({
           permit: actuationPermit,
@@ -420,86 +488,31 @@ export const createSupervisor = (input: {
             "proof objective changed its admitted execution authority",
           );
       }
-      const key = objectiveKey(job);
-      const execution = readWatcherProofExecution({
-        journal: input.workflowJournal,
-        deploymentFingerprint: input.deploymentFingerprint,
-        objective: job,
-        selectedWorkflowId: selectedExecutions.get(key),
-      });
-      const completed = execution?.entries.find(
-        ({ event }) => event.kind === "completed",
-      );
       // A completion marked beyond rollback recovery is final: a job queued
       // before the mark, at a later generation, neither holds its released
       // L1 history again nor verifies it again.
-      const marker =
-        completed !== undefined && execution !== undefined
-          ? progressAuthority.completionMarker(job, execution)
-          : null;
-      if (execution !== undefined) {
-        selectedExecutions.set(key, execution.workflowId);
-        if (!input.exposeUnsafeRunnerForTest && marker === null)
-          await progressAuthority.updateExecution({
-            objective: job,
-            execution,
-          });
-      }
-      if (completed !== undefined && execution !== undefined) {
-        const validationKey = `${job.rollbackGeneration}:${watcherSha256CanonicalJson(execution.entries)}`;
-        const cached = completedValidations.get(key);
-        const verification =
-          marker !== null
-            ? ({
-                kind: "applicable",
-                confirmationDepth: marker.confirmationDepth,
-              } as const)
-            : cached?.validation === validationKey
-              ? ({
-                  kind: "applicable",
-                  confirmationDepth: cached.confirmationDepth,
-                } as const)
-              : await verifyCompleted({
-                  job,
-                  execution,
-                  actuationPermit,
-                });
-        if (actuationPermit !== null)
-          assertWorkflowActuationPermitIdentity({
-            permit: actuationPermit,
-            category: job.category,
-            rollbackGeneration: job.rollbackGeneration,
-          });
-        if (verification.kind === "applicable") {
-          rememberCompletion(
-            key,
-            validationKey,
-            verification.confirmationDepth,
-          );
-          await progressAuthority.markCompleted(job, {
-            execution,
-            confirmationDepth: verification.confirmationDepth,
-          });
-          outcome = { kind: "completed", terminal: completed.event };
-        } else {
-          completedValidations.delete(key);
-          outcome =
-            verification.kind === "retryable"
-              ? verification
-              : {
-                  kind: "pending",
-                  resume: "await_observation",
-                  reason: verification.reason,
-                };
-        }
+      const marker = progressAuthority.completionMarker(job);
+      // Past the latest safe start work runs late until maturity; at
+      // maturity only what is in flight is continued, and with nothing in
+      // flight the chain is asked whether the removal landed
+      // (fault-proof-supervisor.safe-start.ts).
+      const sending = input.inFlight.sending(job);
+      const timing =
+        marker === null
+          ? watcherProofStartTiming(job, sending, BigInt(now()))
+          : undefined;
+      if (marker !== null) {
+        outcome = {
+          kind: "completed",
+          terminalTxHash:
+            "terminalTxHash" in marker ? marker.terminalTxHash : null,
+        };
+      } else if (timing === "observe") {
+        outcome = await observeAtMaturity(job, actuationPermit);
       } else {
-        // Past the latest safe start work runs late until maturity; at
-        // maturity a signed attempt is only reconciled (fault-proof-supervisor.safe-start.ts).
-        const timing = watcherProofStartTiming(job, execution, BigInt(now()));
         if (timing === "reconcile") {
           invocationPermit = await progressAuthority.reconcileExecution({
             objective: job,
-            execution: execution!,
             rollbackGeneration: job.rollbackGeneration,
           });
           activeInvocationPermit = invocationPermit;
@@ -516,15 +529,11 @@ export const createSupervisor = (input: {
           };
         }
         const admission: WatcherFaultProofExecutionAdmission = {
-          mode: execution === undefined ? "run" : "resume",
-          funding:
-            execution?.entries.some(
-              ({ event }) => event.kind === "submission_intent",
-            ) === true
-              ? "resume_only"
-              : "create_or_resume",
+          // A run continues what this process has in flight, or starts
+          // from what the chain shows.
+          mode: sending || invocationJob.deadline === null ? "resume" : "run",
           ...(timing === "on_time" ? {} : { startedLate: job.deadline! }),
-          walletOnlySend: restartWait.walletOnlySend,
+          walletOnlySend,
         };
         outcome = await input.dependencies.run({
           job: { ...invocationJob, mode: admission.mode },
@@ -532,40 +541,19 @@ export const createSupervisor = (input: {
           admission,
         });
         if (!input.exposeUnsafeRunnerForTest) {
-          const updated = readWatcherProofExecution({
-            journal: input.workflowJournal,
-            deploymentFingerprint: input.deploymentFingerprint,
-            objective: job,
-            selectedWorkflowId: selectedExecutions.get(key),
-          });
-          if (updated !== undefined) {
-            selectedExecutions.set(key, updated.workflowId);
-            await progressAuthority.updateExecution({
-              objective: job,
-              execution: updated,
-            });
-          }
           const kind = runnerOutcomeKind(outcome);
           // Not our conviction: no completion marker, only the release.
           if (kind === "resolved_by_another_record")
             await progressAuthority.markResolved(job);
-          if (kind === "completed") {
+          if (kind === "completed")
             outcome = await admitWatcherProofRunnerCompletion({
               job,
-              execution: updated,
               actuationPermit,
               verifyCompleted,
               outcome,
-              onApplicable: async (verified) => {
-                rememberCompletion(
-                  key,
-                  `${job.rollbackGeneration}:${watcherSha256CanonicalJson(verified.execution.entries)}`,
-                  verified.confirmationDepth,
-                );
-                await progressAuthority.markCompleted(job, verified);
-              },
+              onApplicable: async (verified) =>
+                await progressAuthority.markCompleted(job, verified),
             });
-          }
         }
       }
     } catch (error) {
@@ -617,7 +605,7 @@ export const createSupervisor = (input: {
     }
     // Completion releases the in-memory deduplication entry. Keep it owned
     // until the durable finish is committed so an unchanged fault cannot
-    // restart a completed runner while its reservation has already closed.
+    // restart a completed runner before its finish is recorded.
     await serializeSchedule(async () => {
       activeJob = null;
       activeInvocationPermit = null;
@@ -629,8 +617,7 @@ export const createSupervisor = (input: {
         entry.reject(failure);
         return;
       }
-      processedContexts.set(key, contextKey(job));
-      restartWait.finished(key, outcome);
+      rememberContext(key, contextKey(job));
       openDeadlines.finished(job, runnerOutcomeKind(outcome));
       if (isWatcherFaultProofContinuationStall(outcome)) yielded.add(key);
       entry.resolve(outcome);
@@ -669,16 +656,24 @@ export const createSupervisor = (input: {
     });
   };
 
+  // Set by each admitted observation; the pump runs one sweep for any number.
+  let sweepDue = false;
   const ensurePump = (): void => {
     if (pumping) return;
     pumping = true;
     pump = Promise.resolve().then(async () => {
       try {
-        while (queue.length > 0 && busy.reason() === null) {
-          queue.sort(comparePending);
-          const entry = queue.shift()!;
-          yielded.clear();
-          await runPending(entry);
+        for (;;) {
+          while (queue.length > 0 && busy.reason() === null) {
+            queue.sort(comparePending);
+            const entry = queue.shift()!;
+            yielded.clear();
+            await runPending(entry);
+          }
+          if (!sweepDue || queue.length > 0 || busy.reason() !== null) break;
+          sweepDue = false;
+          if (phase === "accepting")
+            await input.ownThreadSweep?.().catch(() => undefined);
         }
       } catch (error) {
         block(error, activeJob);
@@ -728,9 +723,6 @@ export const createSupervisor = (input: {
     }
     if (processedContexts.get(key) === contextKey(job))
       return { completion: Promise.resolve(undefined) };
-    // Held by the restart wait: the next observation after it is over admits it.
-    if (!(await restartWait.admits(key)))
-      return { completion: Promise.resolve(undefined) };
     const retry = transportRetries.get(key);
     if (retry?.timer !== undefined) {
       retry.update = { job, actuationPermit };
@@ -746,9 +738,8 @@ export const createSupervisor = (input: {
       deploymentFingerprint: input.deploymentFingerprint,
       identity,
     });
-    // Queue completion records scheduling only. The execution journal is
-    // admitted inside the worker, after it acquires ownership of this objective.
-    // At its cap of open objectives the journal refuses a new one: status
+    // Queue completion records scheduling only; the run is admitted inside
+    // the worker, after it acquires ownership of this objective. At its cap of open objectives the journal refuses a new one: status
     // reports journal_capacity and a later observation retries.
     registering.add(key);
     const registration = await (async () => {
@@ -823,13 +814,7 @@ export const createSupervisor = (input: {
     schedule(rawJob, null).then(({ completion }) => completion);
 
   const recoverExisting: UnsafeWatcherFaultProofSupervisorForTest["recoverExisting"] =
-    async (
-      decision,
-      actuationPermit,
-      deadline,
-      rollbackGeneration = "0",
-      reconciliations = [],
-    ) => {
+    async (decision, actuationPermit, deadline, rollbackGeneration = "0") => {
       if (recovery !== undefined) return await recovery;
       recovery = (async () => {
         try {
@@ -897,32 +882,8 @@ export const createSupervisor = (input: {
             );
             void scheduled.completion.catch(() => undefined);
           }
-          for (const reconciliation of reconciliations) {
-            if (
-              !existing.some(
-                (job) =>
-                  job.category === reconciliation.category &&
-                  job.headerHash === reconciliation.headerHash,
-              )
-            )
-              throw new Error(
-                "reconciliation intake has no recorded proof objective",
-              );
-            const scheduled = await schedule(
-              {
-                mode: "resume",
-                category: reconciliation.category,
-                headerHash: reconciliation.headerHash,
-                decisionDigest: reconciliation.decisionDigest,
-                rollbackGeneration,
-                deadline: null,
-              },
-              reconciliation.actuationPermit,
-            );
-            void scheduled.completion.catch(() => undefined);
-          }
           recovered = true;
-          return authorized.length + reconciliations.length;
+          return authorized.length;
         } catch (error) {
           throw block(error, null);
         }
@@ -971,6 +932,8 @@ export const createSupervisor = (input: {
             );
             void scheduled.completion.catch(() => undefined);
           }
+          sweepDue ||= input.ownThreadSweep !== undefined;
+          ensurePump();
         } catch (error) {
           if (input.dependencies.isActuationRevokedError(error)) return;
           const failure = block(error, null);
@@ -1004,9 +967,6 @@ export const createSupervisor = (input: {
         if (update.actuationPermit !== null)
           revokeWorkflowActuationPermit(update.actuationPermit, reason);
       progressAuthority.revokeAuthority(reason);
-      for (const key of completedValidations.keys())
-        selectedExecutions.delete(key);
-      completedValidations.clear();
       processedContexts.clear();
       for (const key of transportRetries.keys()) dropRetry(key);
     },
@@ -1063,7 +1023,6 @@ export const createSupervisor = (input: {
         journalCapacity: journalIntegrity === null && journalCapacity,
         journalDecisionMissing: Object.freeze([
           ...progressAuthority.decisionHolds(),
-          ...(input.reservationDecisionHolds?.() ?? []),
         ]),
         objectiveCleanupFailures: progressAuthority.cleanupFailures(),
         journalBusy: busy.reason(),
@@ -1090,6 +1049,7 @@ export const createSupervisor = (input: {
       await progressSerial;
       await scheduleSerial;
       await pump;
+      await sweeps.idle();
       if (phase !== "blocked") {
         phase = "closed";
         resolveDone();

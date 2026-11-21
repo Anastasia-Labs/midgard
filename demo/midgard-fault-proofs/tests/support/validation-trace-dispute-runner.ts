@@ -5,8 +5,6 @@ import type { ValidationTraceCaseHistory } from "../../src/validation-trace-disp
 import { withValidationTraceOwnThreadReclaim } from "../../src/validation-trace-dispute/own-thread-reclaim.js";
 import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceDisputeDeployment } from "../../src/validation-trace-dispute/transactions.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalStore } from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import type { FraudProofSignedTransactionRecovery } from "../../src/workflow/l1-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -16,6 +14,7 @@ import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrato
 import { createFraudProofWorkflowRegistry } from "../../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runFraudProofWorkflow } from "../../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "../../src/workflow/raw-l1-publication-observation.js";
+import { restrictWorkflowWallet } from "../../src/workflow/workflow-wallet.js";
 import {
   DEPLOYMENT_FINGERPRINT,
   RELEASE_FINALITY_POLICY,
@@ -26,6 +25,10 @@ import { network } from "./emulator/blueprints.js";
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { emulatorPublicationObserver } from "./install-field-carriage.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
+import {
+  type ConfirmedValidationTraceStage,
+  confirmedValidationTraceStages,
+} from "./validation-trace-confirmed-stages.js";
 import { sceneCaseHistory } from "./validation-trace-dispute-case-history.js";
 import {
   type Block,
@@ -33,19 +36,21 @@ import {
   detectOn,
   type Scene,
 } from "./validation-trace-dispute-open-scene.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./wallet-only-send-always-open.js";
+import { walletOnlySendAlwaysOpenOn } from "./wallet-only-send-always-open.js";
+import {
+  createTestWorkflowProcess,
+  type TestWorkflowProcess,
+} from "./workflow-process.js";
 
 /** The deployment the runner builds against, from the scene's contracts. */
 export const runnerDeployment = (
   scene: Scene,
-  deploymentFingerprint: string = DEPLOYMENT_FINGERPRINT,
 ): ValidationTraceDisputeDeployment => {
   const { h, chain } = scene;
   const category = h.catalogue.categories.validationTraceDispute;
   if (category === undefined)
     throw new Error("catalogue has no validation-trace category");
   return {
-    deploymentFingerprint,
     network,
     blueprint: h.realBlueprint,
     init: {
@@ -97,15 +102,24 @@ export const unobservedRemoval: ValidationTraceRemovalConfig = {
 };
 
 export type Runner = Readonly<{
-  journal: FraudProofWorkflowJournalStore;
+  /** The process the runner runs in. */
+  process: TestWorkflowProcess;
+  /** The deployment the runner builds against. */
+  deployment: ValidationTraceDisputeDeployment;
   /** One orchestrator run over `block`'s detections, then one block. */
   runOnce: (block: Block) => Promise<FraudProofWorkflowRunResult>;
+  /** The stage transactions the process sent that the emulator confirmed. */
+  confirmed: () => Promise<readonly ConfirmedValidationTraceStage[]>;
+  /** The adapter, as `wrap` rewrites it, that `block`'s runs use. */
+  adapterOf: (block: Block) => FraudProofFamilyWorkflowAdapter;
 }>;
 
 export const makeRunner = (
   scene: Scene,
   options: {
-    readonly journal?: FraudProofWorkflowJournalStore;
+    /** The process the runner runs in; by default a fresh one, so a new
+     * runner over the same scene is a restart. */
+    readonly process?: TestWorkflowProcess;
     /** By default the scene's deployment, without the one-step resolution. */
     readonly deployment?: ValidationTraceDisputeDeployment;
     /** By default the emulator's own view of each signed transaction. */
@@ -139,47 +153,76 @@ export const makeRunner = (
     lucid: h.proverLucid,
     signer: h.proverSigner,
   };
-  const journal = options.journal ?? new MemoryFraudProofWorkflowJournalStore();
+  const process = options.process ?? createTestWorkflowProcess();
   const signedRecovery =
     options.signedRecovery ?? emulatorSignedTransactionRecovery(h.emulator);
   const deployment = options.deployment ?? runnerDeployment(scene);
   const { removal } = options;
-  const adapter = createValidationTraceDisputeWorkflowAdapter({
-    lucid: prover.lucid,
-    signer: prover.signer,
-    deployment,
-    l1SlotConfig,
-    removal: removal ?? unobservedRemoval,
-    signedRecovery,
-    caseHistory: options.caseHistory ?? sceneCaseHistory(scene),
-    // A script-decode record transaction stands as the emulator shows it.
-    publications: (options.publications ?? ((observer) => observer))({
-      ...emulatorPublicationObserver(prover.lucid),
-      observeSignedTransaction: signedRecovery.observeSignedTransaction,
-      rebroadcastSignedTransaction: signedRecovery.rebroadcastSignedTransaction,
-    }),
-    // With the block's L1 view observed, the adapter is composed as the
-    // deployment composes it: the reclaim of our thread in front of it.
-    ...(removal === undefined
-      ? {}
-      : {
-          ownThreadReclaim: (base) =>
-            withValidationTraceOwnThreadReclaim({
-              base,
-              lucid: prover.lucid,
-              signer: prover.signer,
-              deployment,
-              l1For: removal.l1For,
-              signedRecovery,
-              releaseFinality: { policy: RELEASE_FINALITY_POLICY },
-            }),
-        }),
-    now: options.now ?? (() => h.emulator.now()),
-  });
-  const registry = createFraudProofWorkflowRegistry({
-    adapters: [options.wrap?.(adapter) ?? adapter],
-    launchScope: ["validationTraceDispute"],
-  });
+  const caseHistory = options.caseHistory ?? sceneCaseHistory(scene);
+  const now = options.now ?? (() => h.emulator.now());
+  const objective = (block: Block) =>
+    ({
+      category: "validationTraceDispute",
+      headerHash: block.evidence.headerHash,
+    }) as const;
+  // One adapter for each block's objective, over the signer the watcher
+  // gives it: its wallet offers no coin a transaction of the process holds.
+  const registries = new Map<
+    string,
+    Readonly<{
+      adapter: FraudProofFamilyWorkflowAdapter;
+      registry: ReturnType<typeof createFraudProofWorkflowRegistry>;
+      signer: ReturnType<typeof restrictWorkflowWallet>;
+    }>
+  >();
+  const registryFor = (block: Block) => {
+    const known = registries.get(block.evidence.headerHash);
+    if (known !== undefined) return known;
+    const signer = restrictWorkflowWallet({
+      signer: prover.signer,
+      sends: process.sends(objective(block)),
+    });
+    const built = createValidationTraceDisputeWorkflowAdapter({
+      lucid: prover.lucid,
+      signer,
+      deployment,
+      l1SlotConfig,
+      removal: removal ?? unobservedRemoval,
+      signedRecovery,
+      caseHistory,
+      // Our publications stand as the emulator shows them.
+      publications: (options.publications ?? ((observer) => observer))({
+        ...emulatorPublicationObserver(prover.lucid),
+        observeSignedTransaction: signedRecovery.observeSignedTransaction,
+        rebroadcastSignedTransaction:
+          signedRecovery.rebroadcastSignedTransaction,
+      }),
+      // With the block's L1 view observed, the adapter is composed as the
+      // deployment composes it: the reclaim of our thread in front of it.
+      ...(removal === undefined
+        ? {}
+        : {
+            ownThreadReclaim: (base) =>
+              withValidationTraceOwnThreadReclaim({
+                base,
+                lucid: prover.lucid,
+                signer,
+                deployment,
+                l1For: removal.l1For,
+                releaseFinality: { policy: RELEASE_FINALITY_POLICY },
+              }),
+          }),
+      now,
+    });
+    const adapter = options.wrap?.(built) ?? built;
+    const registry = createFraudProofWorkflowRegistry({
+      adapters: [adapter],
+      launchScope: ["validationTraceDispute"],
+    });
+    const composed = Object.freeze({ adapter, registry, signer });
+    registries.set(block.evidence.headerHash, composed);
+    return composed;
+  };
   // A block's detections are its complete replay, the same every run once it
   // decides. A replay that does not decide (one held on the evaluator) is not
   // kept, so the next run replays the block again.
@@ -197,10 +240,21 @@ export const makeRunner = (
     return detected;
   };
   return {
-    journal,
+    process,
+    deployment,
+    adapterOf: (block) => registryFor(block).adapter,
+    confirmed: async () =>
+      await confirmedValidationTraceStages({
+        emulator: h.emulator,
+        deployment,
+        sent: process.sent(),
+      }),
     runOnce: async (block) => {
+      const { registry, signer } = registryFor(block);
+      // A run starts on the wallet the watcher gives the objective.
+      signer.selectWallet(prover.lucid);
       const result = await runFraudProofWorkflow({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
+        walletOnlySend: walletOnlySendAlwaysOpenOn(prover.lucid),
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         evidence: block.evidence,
         detections: await detectionsOf(block),
@@ -208,11 +262,33 @@ export const makeRunner = (
           ? {}
           : { replayContext: block.context }),
         registry,
-        journal,
-        terminalVerifier: options.terminalVerifier ?? terminalVerifier,
+        run: process.run(objective(block)),
+        // The runner follows what it sent through the emulator's own view,
+        // at the release depth a given recovery models, also beside a
+        // given terminal verifier.
+        terminalVerifier:
+          options.terminalVerifier === undefined
+            ? {
+                ...terminalVerifier,
+                observeSignedTransaction:
+                  signedRecovery.observeSignedTransaction,
+              }
+            : options.signedRecovery === undefined
+              ? options.terminalVerifier
+              : {
+                  ...options.terminalVerifier,
+                  observeSignedTransaction:
+                    options.signedRecovery.observeSignedTransaction,
+                },
         releaseFinalityAuthority: releaseFinalityAuthority(),
-        now: () => new Date(h.emulator.now()),
+        nowMs: () => h.emulator.now(),
       });
+      // The run leaves the prover's Lucid on the wallet the run restricts to
+      // the coins no transaction of ours in flight holds. Between runs the
+      // Lucid is the test's: what a test builds or reads there itself pays
+      // from, and lists, the whole wallet. Each move of ours selects its
+      // restricted wallet again when it builds.
+      prover.signer.selectWallet(prover.lucid);
       h.emulator.awaitBlock(1);
       // A run on the emulator is microtasks only. Lucid's wasm objects are
       // freed by their finalizers, and the memory reserve's collector runs on

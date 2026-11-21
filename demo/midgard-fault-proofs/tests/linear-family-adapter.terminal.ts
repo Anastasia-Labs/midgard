@@ -115,12 +115,6 @@ export const port = (
   capture,
 });
 
-export const leaseCoordinator = {
-  acquire: async () => {
-    throw new Error("no mutation lease expected in this focused step test");
-  },
-};
-
 export const terminal = ({
   removalTxHash = txHash,
   removedOutRef = outRef("33"),
@@ -167,5 +161,4 @@ export const context = {
   identity,
   workflowId: hash("bb"),
   artifact: { prepared: true },
-  entries: [],
 } as const;

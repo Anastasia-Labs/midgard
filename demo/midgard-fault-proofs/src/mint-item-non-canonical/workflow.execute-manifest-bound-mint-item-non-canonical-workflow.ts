@@ -2,7 +2,6 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { type FamilyDeploymentContext } from "../workflow/family-definition.js";
-import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
@@ -15,6 +14,7 @@ import {
   withManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
 import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import { prepareMintItemNonCanonicalRecoveryMaterial } from "./workflow.derive-mint-item-non-canonical-authenticated-source.js";
 import {
   createMintItemNonCanonicalBoundConfig,
@@ -118,17 +118,17 @@ export type ManifestBoundMintItemNonCanonicalWorkflow =
 export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundMintItemNonCanonicalWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }) =>
   await executeManifestBoundFamilyRecovery({
     ...workflow,
     sources,
-    journal,
+    run,
     walletOnlySend,
   });

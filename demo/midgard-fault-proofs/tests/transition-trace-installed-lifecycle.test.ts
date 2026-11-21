@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -26,6 +26,7 @@ import {
   createHeaderClassifier,
   headerDecisionReplayContext,
 } from "../src/workflow/header-classifier.create-header-classifier.js";
+import type { InFlightTransaction } from "../src/workflow/in-flight.js";
 
 const hooks = vi.hoisted(() => ({
   binding: undefined as unknown,
@@ -66,7 +67,6 @@ import {
   createManifestBoundTransitionTraceWorkflow,
   runOrResumeManifestBoundTransitionTraceWorkflow,
 } from "../src/transition-trace/workflow.run-or-resume-manifest-bound-transition-trace-workflow.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
   FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
@@ -100,7 +100,6 @@ import {
 } from "./support/emulator/setup-tx.js";
 import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
-import { scratchDirectory } from "./support/scratch-directory.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   transitionTraceDepositRetainedFixture,
@@ -108,6 +107,7 @@ import {
 } from "./support/transition-trace-retained.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 // Explicit experimental payload bound; Cardano production limits are unchanged.
 const HISTORY_BOUNDS = {
   inlineLimitBytes: 512n,
@@ -210,7 +210,6 @@ describe("transition trace installed retained-history workflow", () => {
       pinStepTranscript();
       const recorder = recordCrossBlockRawEmulator();
       let clock: ReturnType<typeof vi.spyOn> | undefined;
-      let directory: string | undefined;
       let submissionIndex = 0;
       // Stacked over the recorder's layer: both see each real submission.
       const measure = observeEmulatorSubmissions((result, transaction) => {
@@ -562,8 +561,6 @@ describe("transition trace installed retained-history workflow", () => {
             item,
           ]),
         );
-        directory = (await scratchDirectory("transition-trace-installed-"))
-          .path;
         // Model the separate mutation-lease service across application restarts.
         const makeLease = (token: string) => ({
           token,
@@ -681,16 +678,27 @@ describe("transition trace installed retained-history workflow", () => {
           ...(replayContext === undefined ? {} : { replayContext }),
         };
         workflow = await createManifestBoundTransitionTraceWorkflow(config);
-        const journal = new DirectoryFraudProofWorkflowJournalStore(
-          join(directory, "journal"),
-        );
+        const objective = {
+          category: "transitionTrace",
+          headerHash: fixture.current.headerHash,
+        } as const;
+        // Every transaction any of the restarted processes sent.
+        const sent: InFlightTransaction[] = [];
+        const restartedProcess = () => {
+          const process = createTestWorkflowProcess();
+          return {
+            run: process.run(objective),
+            settle: () => sent.push(...process.sent()),
+          };
+        };
         let restarts = 0;
         let pointerChurned = false;
+        let current = restartedProcess();
         let result = await runOrResumeManifestBoundTransitionTraceWorkflow({
           walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
           workflow,
           sources,
-          journal,
+          run: current.run,
         });
         for (
           let hop = 0;
@@ -699,8 +707,9 @@ describe("transition trace installed retained-history workflow", () => {
           result.kind !== "no_fault_detected";
           hop++
         ) {
-          // Recreate the installed constructor and reopen the durable journal at
-          // every boundary; no in-memory proof or replay handle survives restart.
+          // Recreate the installed constructor and the process at every
+          // boundary; no in-memory proof, replay handle or in-flight
+          // transaction survives restart.
           restarts++;
           if (!honest && !pointerChurned) {
             const observed = await workflow.l1.observe({
@@ -826,15 +835,16 @@ describe("transition trace installed retained-history workflow", () => {
           }
           await workflowClock.advance(result);
           workflow = await createManifestBoundTransitionTraceWorkflow(config);
+          current.settle();
+          current = restartedProcess();
           result = await runOrResumeManifestBoundTransitionTraceWorkflow({
             walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
             workflow,
             sources,
-            journal: new DirectoryFraudProofWorkflowJournalStore(
-              join(directory, "journal"),
-            ),
+            run: current.run,
           });
         }
+        current.settle();
         expect(
           await workflowClock.kind(result),
           "reason" in result ? result.reason : undefined,
@@ -860,20 +870,14 @@ describe("transition trace installed retained-history workflow", () => {
           releases: lease.release.mock.calls.length,
           failures: lease.fail.mock.calls,
         }));
-        const journalRows =
-          "workflowId" in result ? await journal.load(result.workflowId) : [];
-        const intents = journalRows.flatMap(({ event }) =>
-          event.kind === "submission_intent" ? [event] : [],
-        );
-        if (timing !== null && !honest) {
+        if (timing !== null && !honest)
           expect(
-            intents.some(
-              (event) =>
-                event.actionInput.stage === "step_08" &&
-                event.actionInput.requiresMutationLease === true,
-            ),
+            sent.some(({ actionId }) => actionId.startsWith("step_08:")),
           ).toBe(true);
-        }
+        // Each action was sent once: no restart built a second copy.
+        expect(new Set(sent.map(({ actionId }) => actionId)).size).toBe(
+          sent.length,
+        );
         historyRecords.push({
           label: "installed-workflow-outcome",
           scenario: name,
@@ -882,10 +886,7 @@ describe("transition trace installed retained-history workflow", () => {
           restarts,
           pointerChurned,
           leaseState,
-          submissionIntents: intents,
-          confirmations: journalRows.flatMap(({ event }) =>
-            event.kind === "confirmed" ? [event] : [],
-          ),
+          sent: sent.map(({ actionId, txHash }) => ({ actionId, txHash })),
         });
         if (!honest) {
           expect(pointerChurned).toBe(true);
@@ -915,8 +916,6 @@ describe("transition trace installed retained-history workflow", () => {
         measure.restore();
         recorder.restore();
         vi.unstubAllGlobals();
-        if (directory !== undefined)
-          await rm(directory, { recursive: true, force: true });
       }
     },
     600000,

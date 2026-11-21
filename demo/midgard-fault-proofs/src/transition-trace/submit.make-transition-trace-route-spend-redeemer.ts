@@ -23,7 +23,7 @@ import { type FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import { type OwnOutputJournal } from "../workflow/own-outputs.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import { type TransitionDepositOpening } from "./history-opening.js";
 import {
@@ -53,7 +53,7 @@ export type SubmitTransitionTraceProofConfig = {
   readonly fieldCertificateReferenceScript?: UTxO;
   /**
    * Whether carriage the transaction reads and finds missing is built as the
-   * next turn. Off by default: a journaled workflow publishes its carriage as
+   * next turn. Off by default: a workflow publishes its carriage as
    * actions of their own, so missing carriage is an error there.
    */
   readonly publishCarriage?: boolean;
@@ -99,7 +99,7 @@ export type TransitionTraceProofBuild = {
 };
 
 export type SubmitTransitionTraceProofResult =
-  UnjournaledSubmission<TransitionTraceProofBuild>;
+  OutsideWorkflowSubmission<TransitionTraceProofBuild>;
 
 export type TransitionTraceRouteBuild = Readonly<{
   transaction: LocallyEvaluatedTransaction;
@@ -109,7 +109,7 @@ export type TransitionTraceRouteBuild = Readonly<{
 }>;
 
 export type SubmitTransitionTraceRouteResult =
-  UnjournaledSubmission<TransitionTraceRouteBuild>;
+  OutsideWorkflowSubmission<TransitionTraceRouteBuild>;
 
 export type TransitionTraceFinalBuild = Readonly<{
   inputIndex: number;
@@ -126,7 +126,7 @@ export type TransitionTraceFinalBuild = Readonly<{
 }>;
 
 export type SubmitTransitionTraceFinalResult =
-  UnjournaledSubmission<TransitionTraceFinalBuild>;
+  OutsideWorkflowSubmission<TransitionTraceFinalBuild>;
 
 export type TransitionTraceRouteSpendLayout = {
   readonly inputIndex: bigint;

@@ -11,6 +11,7 @@ import {
   outRef,
   required,
 } from "./field-preimage-length-recovery.bound.js";
+import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
 import {
   authenticatedObservation,
   retainedSource,
@@ -52,9 +53,9 @@ it.each(["dispatch", "authenticate"] as const)(
       .spyOn(submitters, target)
       .mockImplementation(async () => ({ transaction }) as never);
     const result = await recovery.transactions.capture({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
       action: required(fixture.headerHash, stage),
       artifact,
-      entries: [],
     });
     expect(result.transaction).toBe(transaction);
     expect(submit).toHaveBeenCalledOnce();

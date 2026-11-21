@@ -15,7 +15,8 @@ import {
   defineFamily,
 } from "../workflow/family-definition.family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
 import {
   MintItemStep02DatumSchema,
@@ -66,7 +67,7 @@ export const MINT_ITEM_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
         category,
         prepare: material.prepare,
         validatePreparedArtifact: material.validatePreparedArtifact,
-        capture: async ({ action, artifact, entries }) => {
+        capture: async ({ action, artifact, holder }) => {
           const input = cursorFamilyActionInput({ category, action });
           if (input.stage === "remove")
             return await captureCursorRemoval({
@@ -99,7 +100,11 @@ export const MINT_ITEM_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
           const submission = createManifestBoundMintItemNonCanonicalSubmission({
             ownOutputs: workflowFieldCarriageOwnOutputs({
               category,
-              entries,
+              materials: proofMaterialsAccess({
+                signer: config.signer,
+                lucid: config.lucid,
+                holder,
+              }),
             }),
             config,
             observe: async () =>
@@ -116,7 +121,7 @@ export const MINT_ITEM_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
               source: admitted.source,
             }),
           });
-          const { transaction } = await journaledStepTransaction(
+          const { transaction } = await workflowStepTransaction(
             await submission.submit(familyAction, admitted.evidence),
             `${category} ${familyAction}`,
           );

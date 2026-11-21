@@ -11,9 +11,9 @@ import { resolveInvalidSignatureDeploymentContracts } from "../runtime.js";
 import { buildInit } from "../submit-init.submit-init.js";
 import { buildInvalidSignatureStep01 } from "../submit-invalid-signature-step-01.js";
 import { buildInvalidSignatureStep02 } from "../submit-invalid-signature-step-02.submit-invalid-signature-step02.js";
-import {
-  type ManifestBoundLinearFamilyWorkflow,
-  type ManifestBoundLinearFamilyWorkflowConfig,
+import type {
+  ManifestBoundLinearFamilyWorkflow,
+  ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
@@ -23,15 +23,16 @@ import {
   prepareInvalidSignatureArtifact,
   WITNESS_ROLES,
 } from "./invalid-signature.admit-invalid-signature-artifact.js";
-import { type AdmittedArtifact } from "./invalid-signature.parse-address-witnesses.js";
+import type { AdmittedArtifact } from "./invalid-signature.parse-address-witnesses.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
+import { proofMaterialsAccess } from "./proof-materials-view.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
@@ -148,10 +149,14 @@ export const createTransactionPort = (
     }
     return await prepareInvalidSignatureArtifact({ evidence, classification });
   },
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const ownOutputs = workflowFieldCarriageOwnOutputs({
       category: "invalidSignature",
-      entries,
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
+      }),
     });
     const admitted = await admitWorkflowArtifact(
       artifact,
@@ -166,7 +171,7 @@ export const createTransactionPort = (
     if (input.stage === "init") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -198,7 +203,7 @@ export const createTransactionPort = (
         const forced = admitted.forced;
         return {
           transaction: (
-            await journaledStepTransaction(
+            await workflowStepTransaction(
               await buildInvalidSignatureStep01Forced({
                 lucid: config.lucid,
                 contracts: {
@@ -228,13 +233,12 @@ export const createTransactionPort = (
         throw new Error("invalid-signature accepted inclusion absent");
       const chunks = await resolveDirectFirstProofChunks({
         action,
-        lucid: config.lucid,
         address: config.signer.proofMaterialsAddress,
         proofCbor: admitted.artifact.txMembershipProofCbor,
       });
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildInvalidSignatureStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -261,7 +265,7 @@ export const createTransactionPort = (
       const carriage = await resolveFieldCarriage(config, admitted, ownOutputs);
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildInvalidSignatureStep02({
               ownOutputs,
               lucid: config.lucid,

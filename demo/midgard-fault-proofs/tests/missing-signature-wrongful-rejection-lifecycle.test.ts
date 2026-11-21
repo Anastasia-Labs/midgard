@@ -1,7 +1,3 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import {
   ledgerEd25519SignatureReady,
   midgardFieldCarriageBounds,
@@ -16,12 +12,6 @@ import * as family from "../src/missing-signature/index.js";
 import { buildMissingSignatureForcedCancel } from "../src/missing-signature/submit-forced.js";
 import { buildRemoveFraudulentBlock } from "../src/remove-fraudulent-block.build-remove-fraudulent-block.js";
 import { workflowFieldCarriageOwnOutputs } from "../src/workflow/field-carriage-prerequisite.own-carriage-claims.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import {
-  computeFraudProofWorkflowId,
-  type FraudProofWorkflowIdentity,
-  journalJsonDigest,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { unsafeCreateMissingSignatureTransactionPortForTest } from "../src/workflow/missing-signature.create-manifest-bound-missing-signature-workflow.js";
 import { createMissingSignatureFieldPrerequisite } from "../src/workflow/missing-signature.create-missing-signature-field-prerequisite.js";
 import { missingSignatureObservation } from "../src/workflow/missing-signature-state.js";
@@ -32,13 +22,16 @@ import {
   publishedCoverage,
   resetCarriagePlanRecord,
 } from "./support/carriage-plan-parity.js";
-import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import {
   network,
   setupMissingSignatureForcedScenario,
 } from "./support/missing-signature-forced-scenario.js";
 import { buildMissingSignatureForcedTransaction as transactionFor } from "./support/missing-signature-forced-shapes.js";
+import {
+  TEST_PROOF_MATERIALS_HOLDER,
+  testProofMaterials,
+} from "./support/proof-materials-holder.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 // The ledger's Ed25519 check is libsodium's, which initialises
@@ -65,168 +58,126 @@ const setupScenario = (
 ) => setupMissingSignatureForcedScenario(shape, signerIndex);
 
 describe("missingSignature wrongful rejection real lifecycle", () => {
-  it("reloads the forced journal and captures each installed runner stage, refusing mutated source and witness evidence", async () => {
+  it("restores the forced artifact and captures each installed runner stage across restarts, refusing mutated source and witness evidence", async () => {
     const s = await setupScenario();
     const artifact = missingSignatureForcedArtifact(
       s.prepared,
       s.transactionCbor,
     );
-    const directory = await mkdtemp(
-      join(tmpdir(), "missing-signature-journal-"),
-    );
-    const identity: FraudProofWorkflowIdentity = {
-      schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
-      deploymentFingerprint: "aa".repeat(32),
-      category: "missingSignature",
-      target: { kind: "state_queue_header", headerHash: s.prepared.headerHash },
-    };
-    const workflowId = computeFraudProofWorkflowId(identity);
-    try {
-      const store = new DirectoryFraudProofWorkflowJournalStore(directory);
-      const common = {
-        schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1" as const,
-        workflowId,
-        identity,
-        recordedAt: "2026-09-05T00:00:00.000Z",
-      };
-      await store.append(
-        { ...common, sequence: 0, event: { kind: "started" } },
-        0,
-      );
-      await store.append(
-        {
-          ...common,
-          sequence: 1,
-          event: {
-            kind: "prepared",
-            artifact,
-            artifactDigest: journalJsonDigest(artifact),
-          },
-        },
-        1,
-      );
-      await expect(
-        admitMissingSignatureForcedArtifact({
-          ...artifact,
-          headerHash: "ff".repeat(28),
-        }),
-      ).rejects.toThrow();
-      await expect(
-        admitMissingSignatureForcedArtifact({
-          ...artifact,
-          transactionCbor: "80",
-        }),
-      ).rejects.toThrow();
-      await expect(
-        admitMissingSignatureForcedArtifact({
-          ...artifact,
-          forcedSourceCbor: "80",
-        }),
-      ).rejects.toThrow();
-      let thread = await s.init();
-      for (const [position, ordinal] of ([1, 5, 6, 7] as const).entries()) {
-        const recovered = await new DirectoryFraudProofWorkflowJournalStore(
-          directory,
-        ).load(workflowId);
-        const prepared = recovered[1]!.event;
-        if (prepared.kind !== "prepared")
-          throw new Error("missing prepared journal entry");
-        expect(
-          (await admitMissingSignatureForcedArtifact(prepared.artifact))
-            .transactionId,
-        ).toBe(s.prepared.transactionId);
-        const port = unsafeCreateMissingSignatureTransactionPortForTest({
-          config: {
-            lucid: s.harness.proverLucid,
-            blueprint: s.harness.realBlueprint,
-            network,
-            signer: s.harness.proverSigner,
-            headerHash: s.prepared.headerHash,
-            contracts: s.harness.missingSignature,
-            category: s.harness.category,
-            catalogue: {
-              policyId: s.harness.contracts.fraudProofCatalogue.policyId,
-              spendingScriptAddress:
-                s.harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-              root: s.harness.catalogue.root,
-            },
-            referenceScripts: {
-              steps: [s.refs[0]!, s.refs[0]!, s.refs[0]!, s.refs[0]!],
-              forced: {
-                bind: s.refs[1]!,
-                signer: s.refs[2]!,
-                witness: s.refs[3]!,
-              },
-              witnesses: {
-                ...s.harness.witnessReferenceScripts,
-                computationThreadMint:
-                  s.harness.witnessReferenceScripts.computationThreadMint!,
-                fraudProofMint:
-                  s.harness.witnessReferenceScripts.fraudProofMint!,
-                phasMembershipWithdraw:
-                  s.harness.witnessReferenceScripts.phasMembershipWithdraw!,
-              },
-            },
-            stateQueueMutationLeaseCoordinator: {
-              acquire: async () => {
-                throw new Error("unexpected lease");
-              },
-            },
-            fraudProverRewardLovelace: 0n,
-            deploymentInfo: {},
-          },
-          builders: {
-            init: family.buildMissingSignatureInit,
-            step01: family.buildMissingSignatureStep01,
-            step02: family.buildMissingSignatureStep02,
-            step03: family.buildMissingSignatureStep03,
-            step04: family.buildMissingSignatureStep04,
-            remove: buildRemoveFraudulentBlock,
-          },
-        });
-        const observation = missingSignatureObservation({
+    await expect(
+      admitMissingSignatureForcedArtifact({
+        ...artifact,
+        headerHash: "ff".repeat(28),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      admitMissingSignatureForcedArtifact({
+        ...artifact,
+        transactionCbor: "80",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      admitMissingSignatureForcedArtifact({
+        ...artifact,
+        forcedSourceCbor: "80",
+      }),
+    ).rejects.toThrow();
+    let thread = await s.init();
+    for (const [position, ordinal] of ([1, 5, 6, 7] as const).entries()) {
+      // Each stage starts from a fresh port and the artifact as the
+      // evidence prepares it again.
+      const prepared = { artifact: JSON.parse(JSON.stringify(artifact)) };
+      expect(
+        (await admitMissingSignatureForcedArtifact(prepared.artifact))
+          .transactionId,
+      ).toBe(s.prepared.transactionId);
+      const port = unsafeCreateMissingSignatureTransactionPortForTest({
+        config: {
+          lucid: s.harness.proverLucid,
+          blueprint: s.harness.realBlueprint,
+          network,
+          signer: s.harness.proverSigner,
           headerHash: s.prepared.headerHash,
-          provenance: {
-            trustClass: "authenticated_cardano_l1",
-            sourceId: "emulator",
-            grade: "security",
+          contracts: s.harness.missingSignature,
+          category: s.harness.category,
+          catalogue: {
+            policyId: s.harness.contracts.fraudProofCatalogue.policyId,
+            spendingScriptAddress:
+              s.harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+            root: s.harness.catalogue.root,
           },
-          stage: {
-            kind: "step",
-            step: ordinal,
-            threadOutRef: thread,
-            stateQueueBlockOutRef: s.block.setup.fraudulentBlockOutRef,
+          referenceScripts: {
+            steps: [s.refs[0]!, s.refs[0]!, s.refs[0]!, s.refs[0]!],
+            forced: {
+              bind: s.refs[1]!,
+              signer: s.refs[2]!,
+              witness: s.refs[3]!,
+            },
+            witnesses: {
+              ...s.harness.witnessReferenceScripts,
+              computationThreadMint:
+                s.harness.witnessReferenceScripts.computationThreadMint!,
+              fraudProofMint: s.harness.witnessReferenceScripts.fraudProofMint!,
+              phasMembershipWithdraw:
+                s.harness.witnessReferenceScripts.phasMembershipWithdraw!,
+            },
           },
-        });
-        if (observation.kind !== "action_required")
-          throw new Error("missing durable action");
-        const captured = await port.capture({
-          action: observation.action,
-          artifact: prepared.artifact,
-          entries: recovered,
-        });
-        await s.record(`journal-step-${ordinal}`, () =>
-          captured.transaction.signed.submit(),
+          stateQueueMutationLeaseCoordinator: {
+            acquire: async () => {
+              throw new Error("unexpected lease");
+            },
+          },
+          fraudProverRewardLovelace: 0n,
+          deploymentInfo: {},
+        },
+        builders: {
+          init: family.buildMissingSignatureInit,
+          step01: family.buildMissingSignatureStep01,
+          step02: family.buildMissingSignatureStep02,
+          step03: family.buildMissingSignatureStep03,
+          step04: family.buildMissingSignatureStep04,
+          remove: buildRemoveFraudulentBlock,
+        },
+      });
+      const observation = missingSignatureObservation({
+        headerHash: s.prepared.headerHash,
+        provenance: {
+          trustClass: "authenticated_cardano_l1",
+          sourceId: "emulator",
+          grade: "security",
+        },
+        stage: {
+          kind: "step",
+          step: ordinal,
+          threadOutRef: thread,
+          stateQueueBlockOutRef: s.block.setup.fraudulentBlockOutRef,
+        },
+      });
+      if (observation.kind !== "action_required")
+        throw new Error("missing durable action");
+      const captured = await port.capture({
+        holder: TEST_PROOF_MATERIALS_HOLDER,
+        action: observation.action,
+        artifact: prepared.artifact,
+      });
+      await s.record(`journal-step-${ordinal}`, () =>
+        captured.transaction.signed.submit(),
+      );
+      s.harness.emulator.awaitBlock(1);
+      if (position < 3) {
+        const target = [
+          s.harness.missingSignature.forcedStep,
+          s.harness.missingSignature.forcedSigner,
+          s.harness.missingSignature.forcedWitness,
+        ][position]!;
+        const [next] = await s.harness.proverLucid.utxosAt(
+          target.spendingScriptAddress,
         );
-        s.harness.emulator.awaitBlock(1);
-        if (position < 3) {
-          const target = [
-            s.harness.missingSignature.forcedStep,
-            s.harness.missingSignature.forcedSigner,
-            s.harness.missingSignature.forcedWitness,
-          ][position]!;
-          const [next] = await s.harness.proverLucid.utxosAt(
-            target.spendingScriptAddress,
-          );
-          if (next === undefined)
-            throw new Error("missing recovered successor");
-          thread = `${next.txHash}#${next.outputIndex}`;
-        }
+        if (next === undefined) throw new Error("missing recovered successor");
+        thread = `${next.txHash}#${next.outputIndex}`;
       }
-      await s.remove();
-    } finally {
-      await rm(directory, { recursive: true, force: true });
     }
+    await s.remove();
   }, 600_000);
   it("runs registered Init, cancels every position, restarts by out-ref, proves a real signature and removes", async () => {
     const s = await setupScenario();
@@ -283,7 +234,7 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
       coverage: ["4:Certified", "7:Inline"],
     },
   ])(
-    "automatically publishes and certifies installed maximum $witnessCount witnesses/$signerCount signers with recovery",
+    "automatically publishes and certifies installed maximum $witnessCount witnesses/$signerCount signers across restarts",
     async ({ coverage, ...shape }) => {
       const s = await setupScenario(shape, BigInt(shape.signerCount - 1));
       const artifact = missingSignatureForcedArtifact(
@@ -325,10 +276,6 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
       let thread = await s.init();
       thread = await s.advance(thread, 0);
       thread = await s.advance(thread, 1);
-      const journal = createConfirmedActionJournal({
-        category: "missingSignature",
-        headerHash: s.prepared.headerHash,
-      });
       for (const ordinal of [6, 7] as const) {
         const observation = missingSignatureObservation({
           headerHash: s.prepared.headerHash,
@@ -348,52 +295,40 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
           throw new Error("missing action");
         for (let attempt = 0; attempt < 16; attempt++) {
           const next = await makePort().inspect({
+            holder: TEST_PROOF_MATERIALS_HOLDER,
             headerHash: s.prepared.headerHash,
             baseAction: observation.action,
             artifact,
-            entries: journal.entries(),
           });
           if (next.kind === "satisfied" || next.kind === "not_required") break;
           if (next.kind !== "required")
             throw new Error("unexpected pending prerequisite");
           const captured = await makePort().capture({
+            holder: TEST_PROOF_MATERIALS_HOLDER,
             headerHash: s.prepared.headerHash,
             action: next.action,
             artifact,
-            entries: journal.entries(),
           });
-          const txHash = await s.record("installed-field-prerequisite", () =>
+          await s.record("installed-field-prerequisite", () =>
             captured.transaction.signed.submit(),
           );
           s.harness.emulator.awaitBlock(1);
-          const durableRecovery = JSON.parse(
-            JSON.stringify(captured.durableRecovery),
-          );
-          expect(
-            (
-              await makePort().reconcile({
-                headerHash: s.prepared.headerHash,
-                action: next.action,
-                artifact,
-                txHash,
-                durableRecovery,
-              })
-            ).kind,
-          ).toBe("confirmed");
-          journal.confirm({ action: next.action, txHash, durableRecovery });
         }
         const resolved = await makePort().resolveAuthenticated({
+          holder: TEST_PROOF_MATERIALS_HOLDER,
           headerHash: s.prepared.headerHash,
           action: observation.action,
           artifact,
-          entries: journal.entries(),
         });
         if (resolved.requirement?.planned.plan.tier === "Certified")
           expect(resolved.certificate).toBeDefined();
-        // The step reads the carriage the prerequisite journaled.
+        // The step reads the carriage the prerequisite published.
         const carriage = workflowFieldCarriageOwnOutputs({
           category: "missingSignature",
-          entries: journal.entries(),
+          materials: testProofMaterials(
+            s.harness.proverSigner,
+            s.harness.proverLucid,
+          ),
         });
         if (ordinal === 6)
           thread = await s.advance(thread, 2, undefined, carriage);
@@ -402,9 +337,9 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
             "proven",
           );
       }
-      // The forced steps' builders, fed the journaled claims, asked for
-      // exactly the carriage slots the prerequisite required, from the
-      // prover's proof-materials address, and each found them journaled.
+      // The forced steps' builders asked for exactly the carriage slots the
+      // prerequisite required, from the prover's proof-materials address,
+      // and each found them there by content.
       expect(publishedCoverage()).toEqual(coverage);
       expect(carriageNeedsByField(carriagePlanRecord.published)).toEqual(
         carriageNeedsByField(carriagePlanRecord.required),

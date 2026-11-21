@@ -2,18 +2,20 @@
  * The script-decode record through the watcher's installed application when
  * the process stops or the prover wallet runs dry in the middle of it.
  *
- * A watcher process that stops between two journaled record actions starts
- * again over its journal and reservation store and finishes the record it
- * began: it leaves exactly the outputs an uninterrupted run leaves, so no
- * record action is taken twice. A wallet that cannot pay for the next record
- * action pauses the objective with the typed funding-shortfall reason naming
- * that record action, which says it funds from plain-ADA coins only, and a
+ * A watcher process that stops between two record actions starts again
+ * with nothing in memory and finishes the record it began from the chain:
+ * it leaves exactly the outputs an uninterrupted run leaves, so no record
+ * action is taken twice. A wallet that cannot pay for the next record
+ * action pauses the objective with the typed record-underfunded reason
+ * naming that record action, which says it funds from plain-ADA coins only, and a
  * top-up resumes it to conviction, a coin holding a token left unspent. A Walk the ledger rejects on every
  * one of its bounded attempts holds the objective instead of refitting it
  * forever.
  */
 import type { OutRef } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
+
+import { WALLET_ONLY_VALIDITY_MS } from "../src/wallet-only-validity.js";
 
 const hooks = vi.hoisted(() => ({
   binding: undefined as unknown,
@@ -52,8 +54,10 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
 });
 
 import { SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS } from "../src/script-decode/record.js";
-import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.workflow-funding-shortfall.js";
-import { SCRIPT_DECODE_RECORD_HELD } from "../src/workflow/script-decode-prerequisite.port.js";
+import {
+  SCRIPT_DECODE_RECORD_HELD,
+  SCRIPT_DECODE_RECORD_UNDERFUNDED,
+} from "../src/workflow/script-decode-prerequisite.port.js";
 import {
   drainProverToOneCoin,
   sendTokenCoin,
@@ -88,11 +92,19 @@ const POLL_CAP = 5_000;
  */
 const RECOVERY_POLL_CAP = 100;
 const RECOVERY_TURN_CAP = 10;
+/**
+ * Turns a restarted process waits out before it sends a transaction that
+ * spends only wallet coins (wallet-only-send-gate.ts): one validity window
+ * from its start, at one emulator block (20 s) a turn.
+ */
+const RESTART_WAIT_TURNS = Math.ceil(WALLET_ONLY_VALIDITY_MS / 20_000);
+/** The stops the restart row engineers, each followed by a restart. */
+const STOPS = 2;
 
 /** Whether `reason` pauses a record action until the wallet is funded. */
 const pausesRecordAction = (reason: string | undefined): reason is string =>
   reason?.startsWith(
-    `${WORKFLOW_FUNDING_SHORTFALL}: the prover wallet cannot fund script-decode-`,
+    `${SCRIPT_DECODE_RECORD_UNDERFUNDED}: the prover wallet cannot fund script_decode_`,
   ) === true;
 
 type Harness = InstalledTurnContext["harness"];
@@ -102,7 +114,7 @@ const recordAddress = (harness: Harness) =>
   scriptDecodeDeploymentOf(harness.emulator).validator.spendingScriptAddress;
 
 describe("script-decode record recovery in the installed watcher application", () => {
-  it("resumes a record its stopped process began from the journal, taking no record action twice", async () => {
+  it("resumes a record its stopped process began from the chain, taking no record action twice", async () => {
     const uninterrupted = await runInstalled(SCENARIO, hooks, {
       maxPolls: RECOVERY_POLL_CAP,
       maxTurns: RECOVERY_TURN_CAP,
@@ -113,14 +125,14 @@ describe("script-decode record recovery in the installed watcher application", (
     let engineered = false;
     const restarted = await runInstalled(SCENARIO, hooks, {
       maxPolls: RECOVERY_POLL_CAP,
-      maxTurns: RECOVERY_TURN_CAP,
+      maxTurns: RECOVERY_TURN_CAP + STOPS * RESTART_WAIT_TURNS,
       beforeTurns: ({ harness, clock }) => {
         const address = recordAddress(harness);
         const seen = new Set<string>();
         let bound = false;
         let walked = false;
         // The process stops while it waits for the Bind, and again for the
-        // first Walk: both submitted, neither yet journaled as confirmed.
+        // first Walk: both submitted, neither yet confirmed.
         return interceptSubmissions(harness.emulator, (submission) => {
           if (seen.has(submission.txHash) || !submission.paysTo(address))
             return "accept";
@@ -143,13 +155,13 @@ describe("script-decode record recovery in the installed watcher application", (
         );
         engineered = false;
         stops += 1;
-        await application.restart();
+        application.restart();
         clock.state.crashAfterPolls = clock.state.polls + RECOVERY_POLL_CAP;
       },
     });
 
     expect(restarted.convicted).toBe(true);
-    expect(stops).toBe(2);
+    expect(stops).toBe(STOPS);
     expect(restarted.footprint).toEqual(uninterrupted.footprint);
   }, 1_800_000);
 

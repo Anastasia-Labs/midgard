@@ -17,7 +17,7 @@ import {
   defineFamilyApplication,
   type FamilyCommonInfrastructure,
 } from "@al-ft/midgard-fault-proofs/workflow/family-application";
-import { MemoryFraudProofWorkflowJournalStore } from "@al-ft/midgard-fault-proofs/workflow/journal";
+import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowTerminalVerifier,
@@ -36,7 +36,7 @@ import {
   createWatcherOperationsObservability,
   type WatcherOperationsSink,
 } from "../../src/runtime/operations-observability.js";
-import { type WatcherPublicDaRequest } from "../../src/storage/public-da-client.js";
+import type { WatcherPublicDaRequest } from "../../src/storage/public-da-client.js";
 import { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
 import {
   createWatcherRetainedDaRuntime,
@@ -104,7 +104,6 @@ const deploymentIdentity = (): VerifiedWatcherDeploymentIdentity =>
 const invocation = (
   overrides: Partial<WorkflowAdapterRunnerInput> = {},
 ): WorkflowAdapterRunnerInput => ({
-  mode: "run",
   category: "doubleSpend",
   deploymentFingerprint: DEPLOYMENT,
   headerHash: "ab".repeat(28),
@@ -112,10 +111,10 @@ const invocation = (
   actuationPermit: Object.freeze({
     permitVersion: "midgard-production-workflow-actuation-permit-v1",
   }),
-  fundingReservationPermit: Object.freeze({
-    permitVersion: "midgard-production-workflow-funding-reservation-permit-v1",
+  sends: createWorkflowInFlight().forObjective({
+    category: "doubleSpend",
+    headerHash: "ab".repeat(28),
   }),
-  journal: new MemoryFraudProofWorkflowJournalStore(),
   runtimeConfigPath: "/etc/midgard/watcher-v1.json",
   walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
   ...overrides,

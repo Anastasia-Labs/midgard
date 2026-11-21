@@ -91,6 +91,11 @@ describe("objective progress transport backoff", () => {
       deploymentFingerprint: "dd".repeat(32),
       run,
       unsafeNowMsForTest: () => now,
+      // At maturity the chain is asked first: nothing of ours landed.
+      unsafeVerifyCompletedForTest: async () => ({
+        kind: "pending",
+        reason: "target_live",
+      }),
     });
     await supervisor.recoverExisting(null);
     await supervisor.unsafeScheduleForTest(job);

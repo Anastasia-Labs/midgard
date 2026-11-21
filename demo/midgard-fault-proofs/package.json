@@ -128,6 +128,10 @@
       "midgard-source": "./src/output-reference-script-decoding/index.ts",
       "import": "./dist/output-reference-script-decoding/index.js"
     },
+    "./own-thread-cancel": {
+      "midgard-source": "./src/own-thread-cancel.ts",
+      "import": "./dist/own-thread-cancel.js"
+    },
     "./prepare-da-hash-preimage": {
       "midgard-source": "./src/prepare-da-hash-preimage.ts",
       "import": "./dist/prepare-da-hash-preimage.js"
@@ -304,10 +308,6 @@
       "midgard-source": "./src/workflow/cli.ts",
       "import": "./dist/workflow/cli.js"
     },
-    "./workflow/collateral-forfeiture": {
-      "midgard-source": "./src/workflow/collateral-forfeiture.ts",
-      "import": "./dist/workflow/collateral-forfeiture.js"
-    },
     "./workflow/complete-replay": {
       "midgard-source": "./src/workflow/complete-replay.ts",
       "import": "./dist/workflow/complete-replay.js"
@@ -348,6 +348,10 @@
       "midgard-source": "./src/workflow/funding-measurements.ts",
       "import": "./dist/workflow/funding-measurements.js"
     },
+    "./workflow/funding-pause-reason": {
+      "midgard-source": "./src/workflow/funding-pause-reason.ts",
+      "import": "./dist/workflow/funding-pause-reason.js"
+    },
     "./workflow/funding-requirements": {
       "midgard-source": "./src/workflow/funding-requirements.ts",
       "import": "./dist/workflow/funding-requirements.js"
@@ -356,13 +360,13 @@
       "midgard-source": "./src/workflow/funding-requirements-test-support.ts",
       "import": "./dist/workflow/funding-requirements-test-support.js"
     },
-    "./workflow/funding-reservation-permit": {
-      "midgard-source": "./src/workflow/funding-reservation-permit.ts",
-      "import": "./dist/workflow/funding-reservation-permit.js"
-    },
     "./workflow/header-classifier": {
       "midgard-source": "./src/workflow/header-classifier.ts",
       "import": "./dist/workflow/header-classifier.js"
+    },
+    "./workflow/in-flight": {
+      "midgard-source": "./src/workflow/in-flight.ts",
+      "import": "./dist/workflow/in-flight.js"
     },
     "./workflow/input-set-uniqueness": {
       "midgard-source": "./src/workflow/input-set-uniqueness.ts",
@@ -404,6 +408,18 @@
       "midgard-source": "./src/workflow/proof-chunk-prerequisite.ts",
       "import": "./dist/workflow/proof-chunk-prerequisite.js"
     },
+    "./workflow/proof-materials-sweep-run": {
+      "midgard-source": "./src/workflow/proof-materials-sweep-run.ts",
+      "import": "./dist/workflow/proof-materials-sweep-run.js"
+    },
+    "./workflow/proof-materials-view": {
+      "midgard-source": "./src/workflow/proof-materials-view.ts",
+      "import": "./dist/workflow/proof-materials-view.js"
+    },
+    "./workflow/proof-materials-view.follower-reader": {
+      "midgard-source": "./src/workflow/proof-materials-view.follower-reader.ts",
+      "import": "./dist/workflow/proof-materials-view.follower-reader.js"
+    },
     "./workflow/raw-datum-preimage-prerequisite": {
       "midgard-source": "./src/workflow/raw-datum-preimage-prerequisite.ts",
       "import": "./dist/workflow/raw-datum-preimage-prerequisite.js"
@@ -440,17 +456,9 @@
       "midgard-source": "./src/workflow/runtime-funding-fee.ts",
       "import": "./dist/workflow/runtime-funding-fee.js"
     },
-    "./workflow/runtime-funding-policy": {
-      "midgard-source": "./src/workflow/runtime-funding-policy.ts",
-      "import": "./dist/workflow/runtime-funding-policy.js"
-    },
     "./workflow/signed-transaction-reconciliation": {
       "midgard-source": "./src/workflow/signed-transaction-reconciliation.ts",
       "import": "./dist/workflow/signed-transaction-reconciliation.js"
-    },
-    "./workflow/signed-transaction-retirement": {
-      "midgard-source": "./src/workflow/signed-transaction-retirement.ts",
-      "import": "./dist/workflow/signed-transaction-retirement.js"
     },
     "./workflow/sqlite-busy": {
       "midgard-source": "./src/workflow/sqlite-busy.ts",
@@ -467,6 +475,18 @@
     "./workflow/wallet-only-send-gate": {
       "midgard-source": "./src/workflow/wallet-only-send-gate.ts",
       "import": "./dist/workflow/wallet-only-send-gate.js"
+    },
+    "./workflow/workflow-funding-shortfall": {
+      "midgard-source": "./src/workflow/workflow-funding-shortfall.ts",
+      "import": "./dist/workflow/workflow-funding-shortfall.js"
+    },
+    "./workflow/workflow-run": {
+      "midgard-source": "./src/workflow/workflow-run.ts",
+      "import": "./dist/workflow/workflow-run.js"
+    },
+    "./workflow/workflow-wallet": {
+      "midgard-source": "./src/workflow/workflow-wallet.ts",
+      "import": "./dist/workflow/workflow-wallet.js"
     },
     "./test-support/raw-l1-terminal-fixture": {
       "midgard-source": "./tests/support/raw-l1-terminal-fixture.ts",
@@ -660,6 +680,7 @@
             "src/observer-order-invalid/index.ts",
             "src/observers-forbidden-on-untagged-network/index.ts",
             "src/output-reference-script-decoding/index.ts",
+            "src/own-thread-cancel.ts",
             "src/prepare-da-hash-preimage.ts",
             "src/prepare-double-withdraw.ts",
             "src/prepare-invalid-range.ts",
@@ -704,7 +725,6 @@
             "src/workflow/catalogue-replay.ts",
             "src/workflow/classification.ts",
             "src/workflow/cli.ts",
-            "src/workflow/collateral-forfeiture.ts",
             "src/workflow/complete-replay.ts",
             "src/workflow/completed-verification.ts",
             "src/workflow/deployment-manifest-binding.ts",
@@ -715,10 +735,11 @@
             "src/workflow/field-carriage-prerequisite.ts",
             "src/workflow/forced-rejection-reason.ts",
             "src/workflow/funding-measurements.ts",
+            "src/workflow/funding-pause-reason.ts",
             "src/workflow/funding-requirements-test-support.ts",
             "src/workflow/funding-requirements.ts",
-            "src/workflow/funding-reservation-permit.ts",
             "src/workflow/header-classifier.ts",
+            "src/workflow/in-flight.ts",
             "src/workflow/input-set-uniqueness.ts",
             "src/workflow/installed-categories.ts",
             "src/workflow/journal.ts",
@@ -729,6 +750,9 @@
             "src/workflow/own-thread-reclaim.ts",
             "src/workflow/pending-continuation.ts",
             "src/workflow/proof-chunk-prerequisite.ts",
+            "src/workflow/proof-materials-sweep-run.ts",
+            "src/workflow/proof-materials-view.follower-reader.ts",
+            "src/workflow/proof-materials-view.ts",
             "src/workflow/raw-datum-preimage-prerequisite.ts",
             "src/workflow/raw-l1-family-derivation.ts",
             "src/workflow/raw-l1-publication-observation.ts",
@@ -737,14 +761,15 @@
             "src/workflow/release-finality-policy.ts",
             "src/workflow/replay-requirements.ts",
             "src/workflow/runtime-funding-fee.ts",
-            "src/workflow/runtime-funding-policy.ts",
             "src/workflow/runtime.ts",
             "src/workflow/signed-transaction-reconciliation.ts",
-            "src/workflow/signed-transaction-retirement.ts",
             "src/workflow/sqlite-busy.ts",
             "src/workflow/superseded-attempt-read-schedule.ts",
             "src/workflow/transaction-boundary.ts",
             "src/workflow/wallet-only-send-gate.ts",
+            "src/workflow/workflow-funding-shortfall.ts",
+            "src/workflow/workflow-run.ts",
+            "src/workflow/workflow-wallet.ts",
             "--format",
             "esm",
             "--clean"

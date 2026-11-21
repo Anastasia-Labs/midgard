@@ -4,13 +4,11 @@
  * reference script is funding, a refund's tag datum included. Its in-flight
  * proof materials sit at the enterprise address of the native script
  * `sig(key)` (the proof-materials address), which only that key spends. A read of either by its full
- * address never returns an output of the other; a reservation's transaction
- * may pay and spend reserved outputs at both, but posts collateral from, and
- * returns collateral to, the funding address only.
+ * address never returns an output of the other, and the workflow's wallet
+ * offers only the funding address's coins to coin selection and collateral.
  */
 import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import {
-  CML,
   Constr,
   credentialToAddress,
   Data,
@@ -25,33 +23,14 @@ import { describe, expect, it } from "vitest";
 
 import { isPlainFundingOutput } from "../src/funding/plain-funding-output.js";
 import {
-  isProverOwnAddress,
   proofMaterialsAddress,
   proofMaterialsAddressOfFundingAddress,
   proofMaterialsScript,
 } from "../src/funding/proof-materials-address.js";
 import { resolveProverSigner } from "../src/runtime.js";
 import { assertManifestBoundWorkflowSigner } from "../src/workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
-import {
-  beginWorkflowFundingReservationAction,
-  bindWorkflowFundingReservationJournal,
-} from "../src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.js";
-import { createWorkflowFundingReservationPermit } from "../src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.js";
-import { restrictWorkflowFundingSigner } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
-import { readWorkflowRuntimeFundingPolicy } from "../src/workflow/runtime-funding-policy.js";
-import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
-import { runtimeFundingPolicyFixture } from "./helpers/runtime-funding-policy-fixture.js";
-import {
-  admittedActuation,
-  DEPLOYMENT,
-  discardingWorkflowJournal,
-  fundingAddress,
-  fundingKey,
-} from "./workflow-runtime.admitted-actuation.js";
-import {
-  runtimeFunding,
-  signedFundingTransaction,
-} from "./workflow-runtime.runtime-funding.js";
+import { restrictWorkflowWallet } from "../src/workflow/workflow-wallet.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 
 const KEY = "a7".repeat(28);
 /** A Close refund's tag: the OutputReference of the bond it refunds. */
@@ -84,16 +63,14 @@ describe("the proof-materials address", () => {
       expect(materials).toBe(SDK.midgardCekStagingAddress(network, KEY));
       expect(materials).not.toBe(funding);
       expect(proofMaterialsAddressOfFundingAddress(funding)).toBe(materials);
-      expect(isProverOwnAddress(funding, funding)).toBe(true);
-      expect(isProverOwnAddress(funding, materials)).toBe(true);
     }
     const other = credentialToAddress("Preview", {
       type: "Key",
       hash: "a8".repeat(28),
     });
-    expect(
-      isProverOwnAddress(other, proofMaterialsAddress("Preview", KEY)),
-    ).toBe(false);
+    expect(proofMaterialsAddressOfFundingAddress(other)).not.toBe(
+      proofMaterialsAddress("Preview", KEY),
+    );
   });
 
   it("is derived only from a plain enterprise key address", () => {
@@ -164,7 +141,7 @@ describe("a funding coin", () => {
 });
 
 describe("the funding and proof-materials reads", () => {
-  it("never return each other's outputs, and coin selection offers only reserved funding coins, a tagged refund included", async () => {
+  it("never return each other's outputs, and coin selection offers only funding coins, a tagged refund included", async () => {
     const prover = generateEmulatorAccount({});
     const signer = resolveProverSigner({
       network: "Custom",
@@ -201,201 +178,18 @@ describe("the funding and proof-materials reads", () => {
       label(material!),
     ]);
 
-    // A reservation holding all three: the restricted wallet funds and posts
-    // collateral from the funding coins alone.
-    const actuation = await admittedActuation();
-    const { runner, policy } = runtimeFundingPolicyFixture({
-      deploymentFingerprint: DEPLOYMENT,
-      fundingPaymentKeyHash: signer.paymentKeyHash,
-    });
-    const unused = async () => {
-      throw new Error("the action records no transition");
-    };
-    const reserved = [plain!, refund!, material!];
-    const permit = await createWorkflowFundingReservationPermit({
-      category: "doubleSpend",
-      runner,
-      policy,
-      actuationPermit: actuation.actuationPermit,
-      rollbackGeneration: "7",
-      port: {
-        load: async () =>
-          Object.freeze({
-            reservationId: "c1".repeat(32),
-            deploymentFingerprint: DEPLOYMENT,
-            decisionDigest: actuation.decisionDigest,
-            policyDigest: readWorkflowRuntimeFundingPolicy(policy).policyDigest,
-            reservationBasisDigest: "c2".repeat(32),
-            rollbackGeneration: "7",
-            revision: "0",
-            walletAddress: signer.address,
-            fundingPaymentKeyHash: signer.paymentKeyHash,
-            state: "active" as const,
-            activeInputs: Object.freeze(
-              reserved
-                .map((utxo) =>
-                  Object.freeze({
-                    outRef: label(utxo),
-                    lovelace: utxo.assets.lovelace!.toString(),
-                    assets: Object.freeze([]),
-                  }),
-                )
-                .sort((left, right) => (left.outRef < right.outRef ? -1 : 1)),
-            ),
-          }),
-        refreshIdle: unused,
-        resolveInputs: async (outRefs) =>
-          await emulator.getUtxosByOutRef(
-            outRefs.map((outRef) => {
-              const [txHash, outputIndex] = outRef.split("#");
-              return { txHash: txHash!, outputIndex: Number(outputIndex) };
-            }),
-          ),
-        resolveConfirmedInput: async () => null,
-        readPendingTransition: async () => null,
-        readLandedSupersededAttempt: async () => null,
-        readRecordedSignedTransaction: async () => null,
-        resolveProtocolInputAuthority: unused,
-        prepare: unused,
-        confirm: unused,
-        abandon: unused,
-        markConflict: unused,
-        release: unused,
-      },
-    });
-    const journal = discardingWorkflowJournal();
-    bindWorkflowFundingReservationJournal({ journal, permit });
-    await beginWorkflowFundingReservationAction({
-      journal,
-      action: { actionId: "step-one", input: { actionKind: "step-one" } },
-    });
-    restrictWorkflowFundingSigner({ signer, permit }).selectWallet(lucid);
+    // The workflow's restricted wallet funds and posts collateral from the
+    // funding coins alone.
+    const process = createTestWorkflowProcess();
+    restrictWorkflowWallet({
+      signer,
+      sends: process.sends({
+        category: "doubleSpend",
+        headerHash: "c1".repeat(32),
+      }),
+    }).selectWallet(lucid);
     expect(byLabel(await lucid.wallet().getUtxos())).toEqual(
       byLabel([plain!, refund!]),
     );
-  });
-});
-
-describe("a reservation's transaction at admission", () => {
-  const materials = proofMaterialsAddressOfFundingAddress(fundingAddress);
-  /** The reservation, its `71` coin held at the proof-materials address. */
-  const reservation = () =>
-    runtimeFunding("step-one", {
-      additionalInputs: [
-        {
-          txHash: "71".repeat(32),
-          outputIndex: 0,
-          address: materials,
-          assets: { lovelace: 3_000_000n },
-          datum: Data.to("cafe"),
-        },
-      ],
-    });
-  const admit = async (
-    shape: Omit<
-      Parameters<typeof signedFundingTransaction>[0],
-      "inputOutRefs" | "outputLovelace"
-    >,
-  ) => {
-    const runtime = await reservation();
-    expect(runtime.selected.fundingOutRefs).toContain(`${"71".repeat(32)}#0`);
-    const signed = signedFundingTransaction({
-      inputOutRefs: runtime.selected.fundingOutRefs,
-      outputLovelace: 14_800_000n,
-      ...shape,
-    });
-    return runtime.prepareTransaction({
-      action: { actionId: "step-one", input: { actionKind: "step-one" } },
-      preflight: bindWorkflowPreflightTransaction(
-        Object.freeze({ txHash: signed.toHash() }),
-        signed,
-      ),
-    });
-  };
-
-  it("spends a reserved proof-materials output and pays our proof-materials address", async () => {
-    await expect(admit({ outputAddress: materials })).resolves.toBeUndefined();
-  });
-
-  it("embeds our proof-materials lock only to spend a proof material", async () => {
-    const lock = (key: string) =>
-      CML.NativeScript.new_script_pubkey(CML.Ed25519KeyHash.from_hex(key));
-    const ours = lock(fundingKey.to_public().hash().to_hex());
-    await expect(admit({ nativeScripts: [ours] })).resolves.toBeUndefined();
-    const runtime = await reservation();
-    const signed = signedFundingTransaction({
-      inputOutRefs: runtime.selected.fundingOutRefs.filter(
-        (outRef) => outRef !== `${"71".repeat(32)}#0`,
-      ),
-      outputLovelace: 11_800_000n,
-      nativeScripts: [ours],
-    });
-    await expect(
-      runtime.prepareTransaction({
-        action: { actionId: "step-one", input: { actionKind: "step-one" } },
-        preflight: bindWorkflowPreflightTransaction(
-          Object.freeze({ txHash: signed.toHash() }),
-          signed,
-        ),
-      }),
-    ).rejects.toThrow(
-      "funding transaction embeds our proof-materials script without spending a proof material",
-    );
-    for (const nativeScripts of [[lock("a8".repeat(28))], [ours, ours]])
-      await expect(admit({ nativeScripts })).rejects.toThrow(
-        "funding transaction embeds executable script witnesses",
-      );
-  });
-
-  it("pays no other address of a key", async () => {
-    const stranger = CML.EnterpriseAddress.new(
-      0,
-      CML.Credential.new_pub_key(
-        CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x52))
-          .to_public()
-          .hash(),
-      ),
-    )
-      .to_address()
-      .to_bech32();
-    // The funding key staked to another key is not ours either.
-    const restaked = credentialToAddress(
-      "Preprod",
-      { type: "Key", hash: fundingKey.to_public().hash().to_hex() },
-      { type: "Key", hash: "a8".repeat(28) },
-    );
-    for (const outputAddress of [stranger, restaked])
-      await expect(admit({ outputAddress })).rejects.toThrow(
-        "funding output escapes the governed contract roster",
-      );
-  });
-
-  it("posts collateral from, and returns it to, the funding address only", async () => {
-    const collateral = (outRef: string, returned: bigint) => ({
-      outRefs: [outRef],
-      total: 300_000n,
-      returned,
-    });
-    await expect(
-      admit({
-        redeemerMemory: 1n,
-        collateral: collateral(`${"72".repeat(32)}#0`, 1_700_000n),
-      }),
-    ).resolves.toBeUndefined();
-    await expect(
-      admit({
-        redeemerMemory: 1n,
-        collateral: collateral(`${"71".repeat(32)}#0`, 2_700_000n),
-      }),
-    ).rejects.toThrow("funding collateral is not reserved-wallet pure Ada");
-    await expect(
-      admit({
-        redeemerMemory: 1n,
-        collateral: {
-          ...collateral(`${"72".repeat(32)}#0`, 1_700_000n),
-          returnAddress: materials,
-        },
-      }),
-    ).rejects.toThrow("funding collateral return escapes the reserved wallet");
   });
 });

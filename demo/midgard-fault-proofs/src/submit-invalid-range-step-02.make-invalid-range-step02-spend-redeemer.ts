@@ -28,7 +28,7 @@ import {
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 export type SubmitInvalidRangeStep02CliConfig = SubmitProviderConfig & {
@@ -70,7 +70,7 @@ export type InvalidRangeStep02Build = {
 };
 
 export type SubmitInvalidRangeStep02Result =
-  UnjournaledSubmission<InvalidRangeStep02Build>;
+  OutsideWorkflowSubmission<InvalidRangeStep02Build>;
 
 type InvalidRangeStep02DatumWithState = InvalidRangeStep02Datum & {
   readonly data: NonNullable<InvalidRangeStep02Datum["data"]>;

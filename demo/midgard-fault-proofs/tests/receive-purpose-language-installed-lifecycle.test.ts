@@ -1,6 +1,6 @@
 /**
  * The installed `receivePurposeLanguage` cursor actuator: complete replay
- * detects the fault, the port prepares a journaled artifact, and the cursor
+ * detects the fault, the port prepares an artifact, and the cursor
  * adapter drives the thread from a genuine Init through its 21-role graph to
  * the proof token across an emulated restart after each broadcast, over a
  * shallow and a deep predecessor ledger (every input five or more branches
@@ -10,9 +10,6 @@
  * carries no redeemer, committed after the anchor that carries its
  * predecessor ledger, yields no detection.
  */
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
@@ -36,12 +33,9 @@ import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-  journalJsonDigest,
 } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { deepSourceInputs } from "./support/direct-purpose-deep-source.js";
@@ -161,7 +155,7 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
       },
     },
   ])(
-    "captures, journals and restarts the $name through proof mint and removal",
+    "captures and restarts the $name through proof mint and removal",
     async (scenarioCase) => {
       const h = await makeDirectWalkHarness(
         RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
@@ -235,30 +229,6 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
         target: { kind: "state_queue_header", headerHash: setup.headerHash },
       };
       const workflowId = computeFraudProofWorkflowId(identity);
-      const directory = await mkdtemp(
-        join(tmpdir(), "receive-purpose-language-journal-"),
-      );
-      const append = async (event: FraudProofWorkflowJournalEvent) => {
-        const store = new DirectoryFraudProofWorkflowJournalStore(directory);
-        const entries = await store.load(workflowId);
-        await store.append(
-          {
-            schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
-            workflowId,
-            identity,
-            sequence: entries.length,
-            recordedAt: new Date().toISOString(),
-            event,
-          },
-          entries.length,
-        );
-      };
-      await append({ kind: "started" });
-      await append({
-        kind: "prepared",
-        artifact,
-        artifactDigest: journalJsonDigest(artifact),
-      });
       const threadUnit = toUnit(
         h.direct.computationThread.policyId,
         h.category.categoryId + setup.headerHash,
@@ -326,22 +296,14 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
           spec: RECEIVE_PURPOSE_LANGUAGE_CURSOR_SPEC,
           l1,
           transactions: port,
-          stateQueueMutationLeaseCoordinator: leaseCoordinator,
         });
       const stages: string[] = [];
       for (let n = 0; n < 120; n++) {
-        const store = new DirectoryFraudProofWorkflowJournalStore(directory);
-        const entries = await store.load(workflowId);
-        const restored = JSON.parse(
-          JSON.stringify(
-            entries.find((row) => row.event.kind === "prepared")!.event,
-          ),
-        );
+        const restored = JSON.parse(JSON.stringify(artifact));
         const context = {
           identity,
           workflowId,
-          artifact: restored.artifact,
-          entries,
+          artifact: restored,
         };
         const current = adapter();
         const observation = await current.observe(context);
@@ -351,50 +313,9 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
         stages.push(String(action.input.stage));
         if (action.input.stage === "remove") break;
         const preflight = await current.preflight({ ...context, action });
-        await append({
-          kind: "preflight_passed",
-          actionId: action.actionId,
-          txHash: preflight.txHash,
-          localEvaluator: preflight.localUplcEvaluation.evaluator,
-          referenceScripts: preflight.referenceScripts,
-        });
-        await append({
-          kind: "submission_intent",
-          actionId: action.actionId,
-          actionInput: action.input,
-          attempt: 1,
-          txHash: preflight.txHash,
-        });
         await current.submit({ ...context, action, preflight });
         h.emulator.awaitBlock();
         confirmed.add(preflight.txHash);
-        await append({
-          kind: "submission_ambiguous",
-          actionId: action.actionId,
-          attempt: 1,
-          txHash: preflight.txHash,
-          detail: "emulated restart after broadcast before receipt",
-        });
-        const recovered = await adapter().reconcile({
-          ...context,
-          action,
-          txHash: preflight.txHash,
-        });
-        expect(recovered).toEqual({
-          kind: "confirmed",
-          txHash: preflight.txHash,
-        });
-        await append({
-          kind: "reconciled",
-          actionId: action.actionId,
-          outcome: "confirmed",
-          txHash: preflight.txHash,
-        });
-        await append({
-          kind: "confirmed",
-          actionId: action.actionId,
-          txHash: preflight.txHash,
-        });
       }
       console.log(
         `RPL installed ${scenarioCase.name} stages`,

@@ -3,42 +3,39 @@
  * emulator (support/validation-trace-dispute-one-step-staged-drive.ts), with
  * each transaction final only `RELEASE_DEPTH` blocks under the tip: both
  * threads dispute the same step and read the same staging, and one plays on
- * to its close while the other stands mid-chain.
+ * to its close while the other, whose moves past the core the test does not
+ * let build, stands mid-chain.
  *
- * A staging output the provider does not show yet is waited on while its
- * confirmation is inside the provider's grace, and its run is staged again
- * only past it. A runner over our journal as it stood before that second
- * staging finds, of that run, only the output no move read: each run holds
- * on the one-step alarm, naming the staging that differs from the
- * commitment, and builds no move from it. That journal shows none of our
- * moves that read a staging, so the test holds the spend backs that runner
- * would take. The output no move read is spent back while a thread is held
- * mid-chain, and each output our moves read is kept while another party's
- * move holds that thread at the settle. The case's completion waits while a
- * staging output the provider does not show may still be live, and until
- * its spend back is final at release depth. */
+ * The run of a staging output the provider does not show is staged again
+ * once its staging is final, with no grace for provider lag, and each
+ * PrepareSelected move
+ * reads the new output. A fresh process started there asks first for what
+ * the process that was not stopped asks for
+ * (support/validation-trace-dispute-restart-probe.ts). The output no move
+ * read is spent back while a thread is held mid-chain, and each output our
+ * moves read is kept, by a process restarted after our move took that
+ * thread to the settle, while that move is short of release depth. The
+ * case's completion waits on no grace for a staging output the provider
+ * does not show and on no spend back's finality; once the provider shows
+ * it, it is taken back. Once those spend backs roll back after the ending,
+ * the next runs spend each output back once more, by its first spend back
+ * or one new one, and complete again. */
 import * as SDK from "@al-ft/midgard-sdk/da";
-import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
+import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   parseValidationTraceAction,
   VALIDATION_TRACE_DISPUTE_ACTION,
 } from "../src/validation-trace-dispute/actions.js";
-import { VALIDATION_TRACE_PROVIDER_GRACE_MS } from "../src/validation-trace-dispute/adapter.js";
 import {
   type ValidationTraceOneStepHolder,
   validationTraceOneStepHolder,
 } from "../src/validation-trace-dispute/one-step-holders.js";
-import { VALIDATION_TRACE_STAGING_RECLAIM } from "../src/validation-trace-dispute/one-step-staging-journal.js";
 import { VALIDATION_TRACE_STAGING_OUTSTANDING } from "../src/validation-trace-dispute/one-step-staging-sweep.js";
-import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { WorkflowActionUnbuiltError } from "../src/workflow/orchestrator.unbuilt-actions.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
-import { emulatorSignedTransactionRecovery } from "./support/emulator-signed-recovery.js";
 import {
   awaitLastSlotAtOrBefore,
   liveCase,
@@ -50,15 +47,16 @@ import {
   threadPlace,
   withLedgerParameters,
 } from "./support/validation-trace-dispute-one-step-play.js";
-import {
-  stagedDrive,
-  stagingIntents,
-} from "./support/validation-trace-dispute-one-step-staged-drive.js";
+import { stagedDrive } from "./support/validation-trace-dispute-one-step-staged-drive.js";
 import {
   hideFromProvider,
   onLedger,
 } from "./support/validation-trace-dispute-one-step-staging-ledger.js";
-import { makeRunner } from "./support/validation-trace-dispute-runner.js";
+import {
+  expectSameNextAfterRestart,
+  recordingAsks,
+} from "./support/validation-trace-dispute-restart-probe.js";
+import { expectSpentBackAgainAfterRollback } from "./support/validation-trace-dispute-staging-left-for-sweep.js";
 
 /** How many blocks under the tip a transaction is final. */
 const RELEASE_DEPTH = 4;
@@ -68,12 +66,9 @@ const RELEASE_DEPTH = 4;
  * output (about 230 bytes) does. */
 const NO_THREAD_MOVE = 1_000;
 
-/** The one-step alarm's cause when a thread's staging is not the one its
- * evidence names. */
-const DIFFERS =
-  "validation-trace staged step's staging differs from the evidence its thread committed";
-
 const drive = stagedDrive({ releaseDepth: RELEASE_DEPTH, withRemoval: true });
+/** What each observation of the process that was not stopped asks for. */
+const seen: string[] = [];
 
 /** Ends the provider's blind spot. */
 let hidden: (() => void) | undefined;
@@ -83,6 +78,9 @@ let unseen: string;
 let read: readonly string[];
 /** The thread that stands mid-chain once the other has closed. */
 let rest: Side;
+/** While set, no move of thread b from the core builds: the runner plays
+ * thread a on in the same runs, and b stands mid-chain. */
+let holdAtCore = false;
 
 const ledgerHas = (label: string) =>
   onLedger(drive.dispute().scene, parseOwnOutRef(label));
@@ -144,33 +142,88 @@ const expectSpentBack = async (label: string) => {
 };
 
 describe("validation-trace dispute runner: spending back a staged step's staging outputs while its threads play on", () => {
-  beforeAll(drive.setUp, 1_800_000);
+  beforeAll(async () => {
+    await drive.setUp();
+    drive.restart({
+      wrap: (inner) => {
+        const adapter = recordingAsks(seen)(inner);
+        return {
+          ...adapter,
+          preflight: async (context) => {
+            if (
+              holdAtCore &&
+              context.action.input.schemaVersion ===
+                VALIDATION_TRACE_DISPUTE_ACTION
+            ) {
+              const { scene, deployment, b } = drive.dispute();
+              const { consumes } = parseValidationTraceAction(context.action);
+              const [thread] =
+                consumes === null
+                  ? []
+                  : await scene.h.proverLucid.utxosByOutRef([
+                      parseOwnOutRef(consumes),
+                    ]);
+              if (
+                thread?.assets[b.unit] === 1n &&
+                thread.address ===
+                  validationTraceOneStepHolder(deployment, "core").address
+              )
+                throw new WorkflowActionUnbuiltError(
+                  context.action.actionId,
+                  "thread b stays at the core",
+                );
+            }
+            return await adapter.preflight(context);
+          },
+        };
+      },
+    });
+  }, 1_800_000);
 
   afterAll(() => {
     hidden?.();
     drive.dispute()?.recorder?.restore();
   });
 
-  it("waits on a staging output the provider does not show yet while its confirmation is inside the provider's grace, staging its run no second time", async () => {
+  it("stages the run of a staging output the provider does not show again once its staging is final at release depth, taking no grace for provider lag", async () => {
     const runs = await drive.runs();
     expect(runs.length).toBeGreaterThan(1);
-    await drive.play(async () => drive.stagings().length >= runs.length);
-    unseen = drive.stagings().at(-1)!.outRef;
+    await drive.play(
+      async () => (await drive.stagings()).length >= runs.length,
+    );
+    unseen = (await drive.stagings()).at(-1)!.outRef;
     hidden = hideFromProvider(drive.dispute().scene.h.proverLucid, unseen);
-    let played = 0;
-    await drive.play(async () => (played += 1) >= 5, 5);
-    expect(stagingIntents(drive.entries())).toHaveLength(runs.length);
-    expect(await places()).toStrictEqual(["prepare", "prepare"]);
+    // The staging is followed until it is final; the next run stages again.
+    await drive.play(
+      async () => (await drive.stagings()).length > runs.length,
+      RELEASE_DEPTH + 3,
+    );
+    expect(await drive.stagings()).toHaveLength(runs.length + 1);
     expect(ledgerHas(unseen)).toBe(true);
   }, 1_200_000);
 
-  it("stages that run again once the grace has passed, each PrepareSelected move reading the new output", async () => {
-    const { scene } = drive.dispute();
-    scene.h.emulator.awaitSlot(VALIDATION_TRACE_PROVIDER_GRACE_MS / 1_000);
-    await drive.play(async () => !(await places()).includes("prepare"), 40);
+  it("plays each PrepareSelected move reading the new output", async () => {
+    holdAtCore = true;
+    let played: readonly string[];
+    try {
+      played = await drive.play(async () => {
+        const at = await places();
+        return !at.includes("prepare") && at.includes(undefined);
+      }, 40);
+    } finally {
+      holdAtCore = false;
+    }
     const runs = await drive.runs();
-    expect(stagingIntents(drive.entries())).toHaveLength(runs.length + 1);
-    const stagings = drive.stagings();
+    const stagings = await drive.stagings();
+    expect(
+      stagings,
+      [
+        ...stagings.map(
+          ({ outRef, datumCbor }) => `${outRef} ${datumCbor.slice(-16)}`,
+        ),
+        ...played,
+      ].join("\n"),
+    ).toHaveLength(runs.length + 1);
     const again = stagings.at(-1)!;
     expect(again.datumCbor).toBe(
       stagings.find((staging) => staging.outRef === unseen)!.datumCbor,
@@ -185,76 +238,35 @@ describe("validation-trace dispute runner: spending back a staged step's staging
       expect(drive.readsOf(hash)).toEqual(expect.arrayContaining([...read]));
       expect(drive.readsOf(hash)).not.toContain(unseen);
     }
-    // One thread played on to its award and close; the other stands at the
+    // Thread a played on to its award and close; thread b stands at the
     // core.
-    const at = await places();
-    expect([...at].sort()).toStrictEqual(["core", undefined]);
-    const { a, b } = drive.dispute();
-    rest = at[0] === "core" ? a : b;
+    expect(await places(), played.join("\n")).toStrictEqual([
+      undefined,
+      "core",
+    ]);
+    rest = drive.dispute().b;
   }, 1_200_000);
 
-  it("holds each run on the one-step alarm, naming the staging that differs from the commitment, and builds no move from it, for a runner over our journal as it stood before the run was staged again, its spend backs held by the test", async () => {
+  it("asks first, after a restart, for what the process that was not stopped asks for, once one thread closed and the other stands mid-chain", async () => {
     hidden?.();
     hidden = undefined;
-    const { scene, deployment, runner } = drive.dispute();
-    const stagings = drive.stagings();
-    const { datumCbor } = stagings.find(({ outRef }) => outRef === unseen)!;
-    const again = stagings.find(
-      (staging) => staging.outRef !== unseen && staging.datumCbor === datumCbor,
-    )!;
-    // A runner of ours over our journal as it stood before that run was
-    // staged again: of that run it finds only the output no move read, live.
-    // That journal shows none of our moves that read a staging, so its sweep
-    // finds no thread that needs the outputs those moves read, and would
-    // spend them back. Each move of ours is journaled before it is sent, so
-    // only a journal store put back to an earlier state shows a runner such
-    // a journal. The test holds those spend backs as a wait, and the row pins
-    // only the alarm and that no move is built.
-    const [first] = drive.entries();
-    const entries = await runner.journal.load(first!.workflowId);
-    const cut = entries.findIndex(
-      ({ event }) => "actionId" in event && event.actionId === again.actionId,
-    );
-    expect(cut).toBeGreaterThan(0);
-    const journal = new MemoryFraudProofWorkflowJournalStore();
-    for (const entry of entries.slice(0, cut))
-      await journal.append(entry, entry.sequence);
-    const ours = makeRunner(scene, {
-      deployment,
-      journal,
-      signedRecovery: emulatorSignedTransactionRecovery(
-        scene.h.emulator,
-        RELEASE_DEPTH,
-      ),
-      // The spend backs this journal would take, held as a wait.
-      wrap: (adapter) => ({
-        ...adapter,
-        observe: async (context) => {
-          const observed = await adapter.observe(context);
-          return observed.kind === "action_required" &&
-            observed.action.input.schemaVersion ===
-              VALIDATION_TRACE_STAGING_RECLAIM
-            ? { kind: "pending", reason: "spend backs held by the test" }
-            : observed;
-        },
-      }),
-    });
+    const { scene, runner } = drive.dispute();
     expect(ledgerHas(unseen)).toBe(true);
-    const at = await places();
-    const sent = scene.l1.signedCbors.size;
-    for (let run = 0; run < 3; run += 1) {
-      const result = await ours.runOnce(scene.failing);
-      const reason = "reason" in result ? result.reason : result.kind;
-      expect(result.kind, reason).toBe("pending");
-      expect(reason).toMatch(
-        new RegExp(`^${VALIDATION_TRACE_ONE_STEP_REQUIRED}: `),
-      );
-      expect(reason).toContain(DIFFERS);
-    }
-    // No thread moved, and nothing was staged or sent: no move was built
-    // from the differing window (the spend backs being held by the test).
-    expect(await places()).toStrictEqual(at);
-    expect(scene.l1.signedCbors.size).toBe(sent);
+    // The process that was not stopped takes what it asks for; no thread
+    // move builds, so the thread stays where it stands.
+    await withLedgerParameters(
+      scene,
+      { maxTxSize: NO_THREAD_MOVE },
+      async () =>
+        await expectSameNextAfterRestart({
+          processOver: drive.processOver,
+          runner,
+          seen,
+          block: scene.failing,
+          opened: true,
+        }),
+    );
+    expect(await placeOf(rest)).toBe("core");
   }, 1_200_000);
 
   it("spends the staging output no move read back to our wallet while a thread is held mid-chain, keeping each output its moves read", async () => {
@@ -268,22 +280,13 @@ describe("validation-trace dispute runner: spending back a staged step's staging
     expect(await placeOf(rest)).toBe("core");
   }, 1_200_000);
 
-  it("keeps each staging output our moves read while another party's move holds the thread at the settle, past release depth", async () => {
-    const { scene, deployment, runner } = drive.dispute();
-    // Another party with our journal so far plays the thread to the settle,
-    // and no further.
-    const [first] = drive.entries();
-    const journal = new MemoryFraudProofWorkflowJournalStore();
-    for (const entry of await runner.journal.load(first!.workflowId))
-      await journal.append(entry, entry.sequence);
+  it("keeps each staging output our moves read, restarted after our move took the thread to the settle, while that move is short of release depth", async () => {
+    const { scene, deployment } = drive.dispute();
+    // A process of ours plays the thread to the settle, and no further.
+    // Only our key moves a thread past the core, so its move to the settle
+    // is ours, which reads the outputs until it is final at release depth.
     const settle = validationTraceOneStepHolder(deployment, "settle").address;
-    const other = makeRunner(scene, {
-      deployment,
-      journal,
-      signedRecovery: emulatorSignedTransactionRecovery(
-        scene.h.emulator,
-        RELEASE_DEPTH,
-      ),
+    drive.restart({
       wrap: (adapter) => ({
         ...adapter,
         preflight: async (context) => {
@@ -311,22 +314,29 @@ describe("validation-trace dispute runner: spending back a staged step's staging
     const ours = drive.dispute().prepared.length;
     await playThreads({
       scene,
-      runner: other,
+      runner: drive.dispute().runner,
       sides: [rest],
       until: async () => (await placeOf(rest)) === "settle",
       limit: 12,
     });
-    expect(drive.dispute().prepared.length).toBe(ours);
+    expect(drive.dispute().prepared.length).toBeGreaterThan(ours);
+    // The process stops; the next one knows nothing of that move but what
+    // the chain shows.
+    drive.restart();
     for (const label of read) expect(ledgerHas(label), label).toBe(true);
 
-    await holdFor(RELEASE_DEPTH + 2);
+    await holdFor(RELEASE_DEPTH - 2);
     for (const label of read) expect(ledgerHas(label), label).toBe(true);
     expect(await placeOf(rest)).toBe("settle");
   }, 1_200_000);
 
-  it("spends each back once the threads move on, and holds the case's completion while a staging output the provider does not show may still be live, and until its spend back is final at release depth", async () => {
+  it("spends each back once the threads move on, and ends waiting on no grace for a staging output the provider does not show and on no spend back's finality; once those spend backs roll back after the ending, the next runs spend each back once more and complete again", async () => {
     const { scene, a, b } = drive.dispute();
     const [kept, ...others] = read;
+    const outputs: readonly UTxO[] = await scene.h.proverLucid.utxosByOutRef(
+      read.map(parseOwnOutRef),
+    );
+    expect(outputs).toHaveLength(read.length);
     // The thread stands at the settle while the provider does not show an
     // output its moves read; its move from the settle reads none.
     hidden = hideFromProvider(scene.h.proverLucid, kept!);
@@ -338,7 +348,7 @@ describe("validation-trace dispute runner: spending back a staged step's staging
     );
     const awards = movesTo("award");
     expect(awards).toHaveLength(2);
-    const stagings = drive.stagings().map(({ outRef: label }) => label);
+    const stagings = (await drive.stagings()).map(({ outRef: label }) => label);
     for (const { hash } of awards)
       for (const label of stagings)
         expect(drive.readsOf(hash), label).not.toContain(label);
@@ -354,38 +364,44 @@ describe("validation-trace dispute runner: spending back a staged step's staging
       .spyOn(Date, "now")
       .mockImplementation(() => scene.h.emulator.now());
     try {
-      const held = `${VALIDATION_TRACE_STAGING_OUTSTANDING}: ${kept!} is not yet visible to the provider`;
-      await drive.play(async (_, result) => {
-        expect(["terminal_included", "completed"]).not.toContain(result.kind);
-        return result.kind === "pending" && result.reason === held;
-      }, 40);
+      const history = await drive.play(
+        async (result) =>
+          result.kind === "terminal_included" || result.kind === "completed",
+        40,
+      );
+      expect(
+        history.some((run) =>
+          run.includes(VALIDATION_TRACE_STAGING_OUTSTANDING),
+        ),
+        history.join("\n"),
+      ).toBe(false);
       for (const label of others) {
         expect(ledgerHas(label), label).toBe(false);
         await expectSpentBack(label);
       }
-      let runs = 0;
-      await drive.play(async (_, result) => {
-        expect(result.kind === "pending" && result.reason).toBe(held);
-        return (runs += 1) >= 3;
-      }, 3);
-      expect(ledgerHas(kept!)).toBe(true);
       hidden();
       hidden = undefined;
-
-      let ended: FraudProofWorkflowRunResult | undefined;
-      let endedAt = 0;
-      await drive.play(async (_, result) => {
-        if (result.kind !== "terminal_included" && result.kind !== "completed")
-          return false;
-        ended = result;
-        endedAt = scene.h.emulator.blockHeight - 1;
-        return true;
-      }, 20);
-      expect(ended).toBeDefined();
-      const reclaim = await expectSpentBack(kept!);
-      expect(endedAt - (await drive.blockOf(reclaim))).toBeGreaterThanOrEqual(
-        RELEASE_DEPTH,
-      );
+      const { runner } = drive.dispute();
+      const after: string[] = [];
+      for (let run = 0; run < 12 && ledgerHas(kept!); run += 1) {
+        const result = await runner.runOnce(scene.failing);
+        after.push(
+          "reason" in result ? `${result.kind}: ${result.reason}` : result.kind,
+        );
+      }
+      expect(ledgerHas(kept!), after.join("\n")).toBe(false);
+      // The process may have seen each spend back land final, so it may
+      // follow none of them: each output may be spent back anew.
+      await expectSpentBackAgainAfterRollback({
+        scene,
+        outputs,
+        runOnce: async () => await runner.runOnce(scene.failing),
+        describe: (result) =>
+          "reason" in result ? `${result.kind}: ${result.reason}` : result.kind,
+        ended: (result) =>
+          result.kind === "terminal_included" || result.kind === "completed",
+        renewed: read,
+      });
     } finally {
       clock.mockRestore();
     }

@@ -10,11 +10,6 @@ import "./linear-family-adapter.terminal.js";
 
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  createLocalStateQueueMutationLeaseCoordinator,
-  LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
-  LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
-} from "../src/remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import {
   type JournalJsonObject,
@@ -29,7 +24,6 @@ import {
   headerHash,
   identity,
   l1,
-  leaseCoordinator,
   outRef,
   port,
   provenance,
@@ -41,7 +35,7 @@ import {
 
 describe("production linear family adapter V1", () => {
   it.each(["fabricatedDeposit", "fabricatedWithdrawal"] as const)(
-    "persists and resumes the terminal queue lease for %s",
+    "holds the terminal queue lease for %s until its submission",
     async (category) => {
       const stage: { value: FraudProofRawL1FamilyStage } = {
         value: {
@@ -66,8 +60,6 @@ describe("production linear family adapter V1", () => {
         release: vi.fn(async () => undefined),
         fail: vi.fn(async () => undefined),
       };
-      const resume = vi.fn(async () => lease);
-      const coordinator = { acquire: async () => lease, resume };
       const observation = { ...l1(stage), category };
       const transactions = {
         ...port(async () => ({
@@ -85,30 +77,15 @@ describe("production linear family adapter V1", () => {
         category,
         l1: observation,
         transactions,
-        stateQueueMutationLeaseCoordinator: coordinator,
       });
       const preflight = await adapter.preflight(args);
-      expect(preflight.durableRecovery).toEqual({
-        stateQueueMutationLease: { token: lease.token, source: lease.source },
-      });
-      const fresh = createLinearFamilyWorkflowAdapter({
-        category,
-        l1: observation,
-        transactions,
-        stateQueueMutationLeaseCoordinator: coordinator,
-      });
-      await expect(
-        fresh.reconcile({
-          ...args,
-          txHash,
-          durableRecovery: preflight.durableRecovery,
-        }),
-      ).resolves.toMatchObject({ kind: "unknown" });
-      expect(resume).toHaveBeenCalledWith({
-        token: lease.token,
-        source: lease.source,
-      });
       expect(lease.release).not.toHaveBeenCalled();
+      await expect(adapter.submit({ ...args, preflight })).resolves.toEqual({
+        kind: "submitted",
+        txHash,
+      });
+      expect(lease.release).toHaveBeenCalledTimes(1);
+      expect(lease.fail).not.toHaveBeenCalled();
       const withoutLease = createLinearFamilyWorkflowAdapter({
         category,
         l1: observation,
@@ -116,7 +93,6 @@ describe("production linear family adapter V1", () => {
           ...transactions,
           capture: async () => ({ transaction: transaction() }),
         },
-        stateQueueMutationLeaseCoordinator: coordinator,
       });
       await expect(withoutLease.preflight(args)).rejects.toThrow(
         "topology disagreed with its mutation lease",
@@ -136,7 +112,6 @@ describe("production linear family adapter V1", () => {
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
     const original = await adapter.observe(context);
     if (original.kind !== "action_required") throw new Error("missing action");
@@ -154,7 +129,10 @@ describe("production linear family adapter V1", () => {
     expect(capture).toHaveBeenCalledExactlyOnceWith({
       action: current.action,
       artifact: context.artifact,
-      entries: context.entries,
+      holder: {
+        workflowId: context.workflowId,
+        objective: { category: "daHashPreimage", headerHash },
+      },
     });
   });
 
@@ -172,7 +150,6 @@ describe("production linear family adapter V1", () => {
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
     const observation = await adapter.observe(context);
     if (observation.kind !== "action_required") {
@@ -201,7 +178,7 @@ describe("production linear family adapter V1", () => {
     expect(capture).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts the orchestrator's journal-normalized copy of the required action", async () => {
+  it("accepts a JSON-normalized copy of the required action", async () => {
     const stage = {
       value: {
         kind: "not_started",
@@ -213,7 +190,6 @@ describe("production linear family adapter V1", () => {
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
     const observation = await adapter.observe(context);
     if (observation.kind !== "action_required") {
@@ -251,7 +227,6 @@ describe("production linear family adapter V1", () => {
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
     const required = linearFamilyObservation({
       category: "daHashPreimage",
@@ -295,7 +270,6 @@ describe("production linear family adapter V1", () => {
       transactions: port(async () => ({
         transaction: transaction({ referenceScripts: [] }),
       })),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
     await expect(
       inline.preflight({ ...context, action: required.action }),
@@ -309,7 +283,6 @@ describe("production linear family adapter V1", () => {
           signed: signed({ includedReferenceOutRef: outRef("56") }),
         }),
       })),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
     await expect(
       forged.preflight({ ...context, action: required.action }),
@@ -327,7 +300,6 @@ describe("production linear family adapter V1", () => {
         transactions: port(async () => ({
           transaction: transaction({ signed: signed({ inlineScriptKind }) }),
         })),
-        stateQueueMutationLeaseCoordinator: leaseCoordinator,
       });
       await expect(
         embedded.preflight({ ...context, action: required.action }),
@@ -356,7 +328,6 @@ describe("production linear family adapter V1", () => {
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
     await adapter.preflight({ ...context, action: required.action });
     await expect(
@@ -397,7 +368,6 @@ describe("production linear family adapter V1", () => {
         }),
         mutationLease: lease,
       })),
-      stateQueueMutationLeaseCoordinator: { acquire: async () => lease },
     });
     await expect(
       adapter.preflight({ ...context, action: required.action }),
@@ -406,44 +376,7 @@ describe("production linear family adapter V1", () => {
     expect(lease.release).not.toHaveBeenCalled();
   });
 
-  it("reconciles through a fresh adapter without an in-memory captured body", async () => {
-    const stage = {
-      value: {
-        kind: "step",
-        step: 1,
-        threadOutRef: outRef("11"),
-        stateQueueBlockOutRef: outRef("10"),
-      } as FraudProofRawL1FamilyStage,
-    };
-    const required = linearFamilyObservation({
-      category: "daHashPreimage",
-      headerHash,
-      provenance,
-      stage: stage.value,
-    });
-    if (required.kind !== "action_required") throw new Error("missing action");
-    const fresh = createLinearFamilyWorkflowAdapter({
-      category: "daHashPreimage",
-      l1: l1(stage, async (requested) => requested === txHash),
-      transactions: port(async () => ({ transaction: transaction() })),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
-    });
-    stage.value = {
-      kind: "step",
-      step: 2,
-      threadOutRef: `${txHash}#0`,
-      stateQueueBlockOutRef: outRef("10"),
-    };
-    await expect(
-      fresh.reconcile({
-        ...context,
-        action: required.action,
-        txHash,
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash });
-  });
-
-  it("persists and resumes the exact mutation lease for descendant removal", async () => {
+  it("holds the descendant-removal mutation lease until the removal is submitted, then completes without a rebuild", async () => {
     const stage = {
       value: {
         kind: "proof_token",
@@ -473,181 +406,33 @@ describe("production linear family adapter V1", () => {
         transaction: transaction(),
         mutationLease: lease,
       })),
-      stateQueueMutationLeaseCoordinator: {
-        acquire: async () => lease,
-      },
     });
     const preflight = await adapter.preflight({
       ...context,
       action: required.action,
     });
-    expect(preflight.durableRecovery).toEqual({
-      stateQueueMutationLease: {
-        token: lease.token,
-        source: lease.source,
-      },
-    });
-
-    const resumedLease = {
-      ...lease,
-      renew: vi.fn(async () => undefined),
-    };
-    const resume = vi.fn(async () => resumedLease);
-    const fresh = createLinearFamilyWorkflowAdapter({
-      category: "daHashPreimage",
-      l1: l1(stage),
-      transactions: port(async () => ({ transaction: transaction() })),
-      stateQueueMutationLeaseCoordinator: {
-        acquire: async () => resumedLease,
-        resume,
-      },
-    });
+    expect(lease.release).not.toHaveBeenCalled();
     await expect(
-      fresh.reconcile({
-        ...context,
-        action: required.action,
-        txHash,
-        durableRecovery: preflight.durableRecovery,
-      }),
-    ).resolves.toMatchObject({
-      kind: "unknown",
-      reason:
-        "Recorded signed bytes or canonical recovery source are unavailable",
-    });
-    expect(resume).toHaveBeenCalledWith({
-      token: lease.token,
-      source: lease.source,
-    });
-    expect(resumedLease.renew).toHaveBeenCalledTimes(1);
+      adapter.submit({ ...context, action: required.action, preflight }),
+    ).resolves.toEqual({ kind: "submitted", txHash });
+    expect(lease.release).toHaveBeenCalledTimes(1);
+    expect(lease.fail).not.toHaveBeenCalled();
     stage.value = { kind: "removed", terminal: terminal() };
 
-    const expiredResume = vi.fn(async () => {
-      throw new Error("old mutation lease expired after confirmed removal");
-    });
-    const expired = createLinearFamilyWorkflowAdapter({
+    const fresh = createLinearFamilyWorkflowAdapter({
       category: "daHashPreimage",
       l1: l1(stage, async () => true),
       transactions: port(async () => {
         throw new Error("must not rebuild");
       }),
-      stateQueueMutationLeaseCoordinator: {
-        acquire: async () => {
-          throw new Error("must not acquire");
-        },
-        resume: expiredResume,
-      },
     });
-    await expect(
-      expired.reconcile({
-        ...context,
-        action: required.action,
-        txHash,
-        durableRecovery: preflight.durableRecovery,
-        authorizeResubmission: async () => {
-          throw new Error("must not submit");
-        },
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash });
-    expect(expiredResume).toHaveBeenCalledTimes(1);
+    await expect(fresh.observe(context)).resolves.toEqual({
+      kind: "completed",
+      terminal: terminal(),
+    });
   });
 
-  it("resumes the local coordinator's journaled lease and refuses a node-lease journal", async () => {
-    const stage = {
-      value: {
-        kind: "proof_token",
-        fraudProofOutRef: outRef("22"),
-        stateQueueBlockOutRef: outRef("11"),
-        nextRemovalOutRef: outRef("33"),
-      } as FraudProofRawL1FamilyStage,
-    };
-    const required = linearFamilyObservation({
-      category: "daHashPreimage",
-      headerHash,
-      provenance,
-      stage: stage.value,
-    });
-    if (required.kind !== "action_required") throw new Error("missing action");
-    const coordinator = createLocalStateQueueMutationLeaseCoordinator();
-    const lease = await coordinator.acquire();
-    const adapter = createLinearFamilyWorkflowAdapter({
-      category: "daHashPreimage",
-      l1: l1(stage),
-      transactions: port(async () => ({
-        transaction: transaction(),
-        mutationLease: lease,
-      })),
-      stateQueueMutationLeaseCoordinator: coordinator,
-    });
-    const preflight = await adapter.preflight({
-      ...context,
-      action: required.action,
-    });
-    expect(preflight.durableRecovery).toEqual({
-      stateQueueMutationLease: {
-        token: LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
-        source: LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
-      },
-    });
-
-    // A restarted process: fresh adapter, fresh local coordinator.
-    const localCoordinator = createLocalStateQueueMutationLeaseCoordinator();
-    const resume = vi.fn(localCoordinator.resume!);
-    const freshCoordinator = { ...localCoordinator, resume };
-    const fresh = createLinearFamilyWorkflowAdapter({
-      category: "daHashPreimage",
-      l1: l1(stage),
-      transactions: port(async () => ({ transaction: transaction() })),
-      stateQueueMutationLeaseCoordinator: freshCoordinator,
-    });
-    await expect(
-      fresh.reconcile({
-        ...context,
-        action: required.action,
-        txHash,
-        durableRecovery: preflight.durableRecovery,
-      }),
-    ).resolves.toMatchObject({
-      kind: "unknown",
-      reason:
-        "Recorded signed bytes or canonical recovery source are unavailable",
-    });
-    expect(resume).toHaveBeenCalledWith({
-      token: LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
-      source: LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
-    });
-    await expect(resume.mock.results[0]!.value).resolves.toMatchObject({
-      token: lease.token,
-      source: lease.source,
-    });
-
-    // A journal written under a Midgard node's HTTP lease never resumes locally.
-    const nodeJournal = createLinearFamilyWorkflowAdapter({
-      category: "daHashPreimage",
-      l1: l1(stage),
-      transactions: port(async () => {
-        throw new Error("must not rebuild");
-      }),
-      stateQueueMutationLeaseCoordinator:
-        createLocalStateQueueMutationLeaseCoordinator(),
-    });
-    const refused = await nodeJournal.reconcile({
-      ...context,
-      action: required.action,
-      txHash,
-      durableRecovery: {
-        stateQueueMutationLease: {
-          token: "lease-token-1",
-          source: "http://midgard-node.test",
-        },
-      },
-    });
-    expect(refused).toMatchObject({ kind: "unknown" });
-    expect(refused.kind === "unknown" ? refused.reason : "").toContain(
-      "different coordinator",
-    );
-  });
-
-  it("rejects missing, surplus, or substituted mutation-lease authority", async () => {
+  it("rejects a removal capture without its mutation-lease authority", async () => {
     const stage = {
       value: {
         kind: "proof_token",
@@ -667,25 +452,10 @@ describe("production linear family adapter V1", () => {
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(async () => ({ transaction: transaction() })),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
     await expect(
       missing.preflight({ ...context, action: required.action }),
     ).rejects.toThrow("topology disagreed with its mutation lease");
-
-    await expect(
-      missing.reconcile({
-        ...context,
-        action: required.action,
-        txHash,
-        durableRecovery: {
-          stateQueueMutationLease: {
-            token: "substituted",
-            source: "foreign-observer",
-          },
-        },
-      }),
-    ).resolves.toMatchObject({ kind: "unknown" });
   });
 
   it("rejects category-substituted L1 or transaction ports", () => {
@@ -700,7 +470,6 @@ describe("production linear family adapter V1", () => {
         category: "daHashPreimage",
         l1: { ...l1(stage), category: "minFee" } as never,
         transactions: port(async () => ({ transaction: transaction() })),
-        stateQueueMutationLeaseCoordinator: leaseCoordinator,
       }),
     ).toThrow("ports changed identity");
     expect(() =>
@@ -711,7 +480,6 @@ describe("production linear family adapter V1", () => {
           ...port(async () => ({ transaction: transaction() })),
           category: "minFee",
         } as never,
-        stateQueueMutationLeaseCoordinator: leaseCoordinator,
       }),
     ).toThrow("ports changed identity");
   });
@@ -725,13 +493,11 @@ it("reobserves the original linear step after its successor rolls back", async (
     stateQueueBlockOutRef: outRef("10"),
   };
   const stage = { value: original };
-  let included = true;
   const capture = vi.fn(async () => ({ transaction: transaction() }));
   const adapter = createLinearFamilyWorkflowAdapter({
     category: "daHashPreimage",
-    l1: l1(stage, async () => included),
+    l1: l1(stage),
     transactions: port(capture),
-    stateQueueMutationLeaseCoordinator: leaseCoordinator,
   });
   const before = await adapter.observe(context);
   if (before.kind !== "action_required")
@@ -742,20 +508,14 @@ it("reobserves the original linear step after its successor rolls back", async (
     threadOutRef: `${txHash}#0`,
     stateQueueBlockOutRef: outRef("10"),
   };
-  await expect(
-    adapter.reconcile({ ...context, action: before.action, txHash }),
-  ).resolves.toEqual({ kind: "confirmed", txHash });
   const successor = await adapter.observe(context);
   if (successor.kind !== "action_required")
     throw new Error("missing successor action");
+  expect(successor.action.actionId).not.toBe(before.action.actionId);
   stage.value = original;
-  included = false;
   await expect(adapter.observe(context)).resolves.toEqual(before);
   await expect(
     adapter.preflight({ ...context, action: successor.action }),
   ).rejects.toThrow("differs from authenticated current L1 state");
-  await expect(
-    adapter.reconcile({ ...context, action: before.action, txHash }),
-  ).resolves.toMatchObject({ kind: "unknown" });
   expect(capture).not.toHaveBeenCalled();
 });

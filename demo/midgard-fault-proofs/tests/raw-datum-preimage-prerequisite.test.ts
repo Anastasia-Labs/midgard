@@ -19,10 +19,10 @@ import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
   type FraudProofAuthenticatedPublicationObserver,
 } from "../src/workflow/raw-l1-publication-observation.js";
-import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
 import { network } from "./support/emulator/blueprints.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
+import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
 
 const headerHash = "ab".repeat(28);
 const action: FraudProofWorkflowAction = {
@@ -32,7 +32,7 @@ const action: FraudProofWorkflowAction = {
 
 describe("raw datum preimage publication prerequisite", () => {
   it.each([15000, 4096])(
-    "publishes maximum chunks of %i bytes, re-admits recovery after restart and refuses mutations",
+    "publishes maximum chunks of %i bytes, finds them again after restart and refuses mutations",
     async (chunkBytes) => {
       const account = generateEmulatorAccount({ lovelace: 1_000_000_000n });
       const emulator = new Emulator([account], EMULATOR_PROTOCOL_PARAMETERS);
@@ -88,10 +88,6 @@ describe("raw datum preimage publication prerequisite", () => {
             : { kind: "not_found" };
         },
       };
-      const journal = createConfirmedActionJournal({
-        category: "mintAuthorization",
-        headerHash,
-      });
       const port = () =>
         createAuthenticatedRawDatumPreimagePrerequisitePort({
           category: "mintAuthorization",
@@ -104,10 +100,10 @@ describe("raw datum preimage publication prerequisite", () => {
         });
       for (let index = 0; index < count; index++) {
         const inspection = await port().inspect({
+          holder: TEST_PROOF_MATERIALS_HOLDER,
           headerHash,
           baseAction: action,
           artifact: {},
-          entries: journal.entries(),
         });
         if (inspection.kind !== "required")
           throw new Error(`missing chunk ${index}`);
@@ -116,10 +112,10 @@ describe("raw datum preimage publication prerequisite", () => {
         );
         expect(inspection.action.input.publicationIndex).toBe(index);
         const captured = await port().capture({
+          holder: TEST_PROOF_MATERIALS_HOLDER,
           headerHash,
           action: inspection.action,
           artifact: {},
-          entries: journal.entries(),
         });
         const submission = await captureEmulatorSubmission(emulator, () =>
           captured.transaction.signed.submit(),
@@ -129,36 +125,10 @@ describe("raw datum preimage publication prerequisite", () => {
         expect(
           submission.measurements[0]!.completeSignedBytes,
         ).toBeLessThanOrEqual(15_872);
-        const recovery = JSON.parse(JSON.stringify(captured.durableRecovery));
         const restarted = port();
         await expect(
-          restarted.reconcile({
-            headerHash,
-            action: inspection.action,
-            artifact: {},
-            txHash: captured.transaction.txHash,
-            durableRecovery: recovery,
-          }),
-        ).resolves.toMatchObject({
-          kind: "confirmed",
-          txHash: captured.transaction.txHash,
-        });
-        journal.confirm({
-          action: inspection.action,
-          txHash: captured.transaction.txHash,
-          durableRecovery: recovery,
-        });
-        await expect(
-          restarted.reconcile({
-            headerHash,
-            action: inspection.action,
-            artifact: {},
-            txHash: "00".repeat(32),
-            durableRecovery: recovery,
-          }),
-        ).resolves.toMatchObject({ kind: "conflict" });
-        await expect(
           restarted.capture({
+            holder: TEST_PROOF_MATERIALS_HOLDER,
             headerHash,
             action: {
               ...inspection.action,
@@ -168,15 +138,14 @@ describe("raw datum preimage publication prerequisite", () => {
               },
             },
             artifact: {},
-            entries: journal.entries(),
           }),
         ).rejects.toThrow();
       }
       const resolved = await port().resolveAuthenticated({
+        holder: TEST_PROOF_MATERIALS_HOLDER,
         headerHash,
         action,
         artifact: {},
-        entries: journal.entries(),
       });
       expect(resolved.publications.map((utxo) => utxo.datum)).toEqual(
         requirement.publicationDatums,
@@ -184,27 +153,27 @@ describe("raw datum preimage publication prerequisite", () => {
       expect(resolved.certificate).toBeUndefined();
       await expect(
         port().inspect({
+          holder: TEST_PROOF_MATERIALS_HOLDER,
           headerHash,
           baseAction: action,
           artifact: {},
-          entries: journal.entries(),
         }),
       ).resolves.toMatchObject({ kind: "satisfied" });
       confirm = false;
       await expect(
         port().resolveAuthenticated({
+          holder: TEST_PROOF_MATERIALS_HOLDER,
           headerHash,
           action,
           artifact: {},
-          entries: journal.entries(),
         }),
       ).rejects.toThrow("unauthenticated");
       await expect(
         port().inspect({
+          holder: TEST_PROOF_MATERIALS_HOLDER,
           headerHash,
           baseAction: action,
           artifact: {},
-          entries: journal.entries(),
         }),
       ).resolves.toMatchObject({ kind: "pending" });
     },

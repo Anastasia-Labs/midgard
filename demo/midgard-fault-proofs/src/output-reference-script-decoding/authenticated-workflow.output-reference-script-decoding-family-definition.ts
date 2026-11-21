@@ -1,5 +1,5 @@
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
-import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import type { UTxO } from "@lucid-evolution/lucid";
 
@@ -20,11 +20,12 @@ import {
   cursorStepContractNames,
   defineFamily,
 } from "../workflow/family-definition.family-definition.js";
-import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
+import type { FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { SCRIPT_DECODE_REFERENCE_SCRIPTS } from "../workflow/script-decode-prerequisite.deployment.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
 import { createManifestBoundOutputReferenceScriptDecodingSubmission } from "./authenticated-workflow.create-manifest-bound-output-reference-script-decoding-submission.js";
 import {
@@ -128,7 +129,7 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
         category,
         prepare: material.prepare,
         validatePreparedArtifact: material.validatePreparedArtifact,
-        capture: async ({ action, artifact, entries }) => {
+        capture: async ({ action, artifact, holder }) => {
           const input = cursorFamilyActionInput({ category, action });
           if (input.stage === "remove")
             return await captureCursorRemoval({
@@ -164,7 +165,11 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
             createManifestBoundOutputReferenceScriptDecodingSubmission({
               ownOutputs: workflowFieldCarriageOwnOutputs({
                 category,
-                entries,
+                materials: proofMaterialsAccess({
+                  signer: config.signer,
+                  lucid: config.lucid,
+                  holder,
+                }),
               }),
               config,
               observe: async () =>
@@ -182,7 +187,7 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
                   source: admitted.source,
                 }),
             });
-          const { transaction } = await journaledStepTransaction(
+          const { transaction } = await workflowStepTransaction(
             await submission.submit(familyAction, admitted.evidence),
             `${category} ${familyAction}`,
           );

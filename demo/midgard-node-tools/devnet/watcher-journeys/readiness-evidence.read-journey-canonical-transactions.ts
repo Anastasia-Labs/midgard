@@ -5,7 +5,6 @@ import { isAbsolute, join, normalize } from "node:path";
 import { createInterface } from "node:readline";
 
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
-import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { CML, coreToUtxo } from "@lucid-evolution/lucid";
 import {
   readWatcherFaultDecisionEvidence,
@@ -15,6 +14,7 @@ import {
 import { admitWatcherNativeRollForwardBlock } from "../../src/devnet-stack/native-block-admission.js";
 import { parseWatcherNativeChainSyncEvent } from "../../src/devnet-stack/native-chain-sync.exact-record.js";
 import { readJourneyArtifact } from "./artifacts.js";
+import type { JourneyChainCorrection } from "./correction.chain-correction.js";
 import type { JourneyCategory, JourneyContext } from "./fixture.js";
 
 export type JourneyEvidenceDeployment = Pick<
@@ -30,7 +30,8 @@ export type JourneyResult = {
   deploymentFingerprint: string;
   /** The address the run's watcher proved with; it is paid the reward. */
   proverAddress?: string;
-  completion: FraudProofWorkflowTerminal;
+  /** The correction the journey read from the chain at the action depth. */
+  completion: JourneyChainCorrection;
   successor: string;
   /** Whether the successor stage was reached, and on what evidence. */
   successorStage?: string;

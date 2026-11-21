@@ -41,7 +41,7 @@ import { buildTransitionTraceProof } from "./submit.submit-transition-trace-proo
 import { transitionTraceRouteDatum } from "./submit.transition-trace-route-datum.js";
 
 /**
- * The router transaction a journaled workflow submits as its own step. The
+ * The router transaction a workflow submits as its own step. The
  * proof carriage it reads must already be live unless `publishCarriage` is
  * set, when its missing publication is returned as the next turn instead.
  */

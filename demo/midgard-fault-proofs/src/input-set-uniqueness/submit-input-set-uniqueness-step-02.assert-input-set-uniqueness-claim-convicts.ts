@@ -2,7 +2,7 @@ import { type UTxO } from "@lucid-evolution/lucid";
 
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { InputSetUniquenessClaim } from "./scan.js";
 import {
@@ -35,7 +35,7 @@ export type InputSetUniquenessStep02Build = {
 };
 
 export type SubmitInputSetUniquenessStep02Result =
-  UnjournaledSubmission<InputSetUniquenessStep02Build>;
+  OutsideWorkflowSubmission<InputSetUniquenessStep02Build>;
 
 export type Step02SpendLayout = {
   readonly inputIndex: bigint;

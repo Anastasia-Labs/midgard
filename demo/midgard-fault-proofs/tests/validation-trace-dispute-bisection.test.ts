@@ -5,7 +5,7 @@
  * own turn with our midpoint, proven under our root, until both threads are
  * ReadyForOneStep on the step after their defender's last agreed state; it
  * then stops at a resumable "one-step required" state, and a fresh process
- * on the same journal makes no further move. game-v1 refuses a reveal whose
+ * makes no further move. game-v1 refuses a reveal whose
  * proof does not verify under our root, one on a thread not on our turn, and
  * one whose validity range is longer than L_d. */
 import {
@@ -16,10 +16,7 @@ import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data, type TxBuilder, type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import {
-  confirmedValidationTraceStages,
-  parseValidationTraceAction,
-} from "../src/validation-trace-dispute/actions.js";
+import { parseValidationTraceAction } from "../src/validation-trace-dispute/actions.js";
 import {
   VALIDATION_TRACE_CASE_OPEN,
   VALIDATION_TRACE_ONE_STEP_REQUIRED,
@@ -190,10 +187,10 @@ describe("validation-trace dispute runner: bisecting defended threads", () => {
       scene.failing,
       VALIDATION_TRACE_CASE_OPEN,
     );
-    if (!("entries" in result)) throw new Error("no workflow journal");
+    expect(result.kind).toBe("pending");
     // Only the moves on the threads from here on.
     prepared.length = 0;
-    const caseOutRef = confirmedValidationTraceStages(result.entries).find(
+    const caseOutRef = (await runner.confirmed()).find(
       ({ action }) => action.stage === "verify_source",
     )!.outputs[0]!.outRef;
     material = await failingMaterial(scene);
@@ -395,8 +392,7 @@ describe("validation-trace dispute runner: bisecting defended threads", () => {
       rounds += thread.round;
     }
     // One confirmed reveal of ours per round, on each thread on its own.
-    if (!("entries" in final)) throw new Error("no workflow journal");
-    const reveals = confirmedValidationTraceStages(final.entries).filter(
+    const reveals = (await runner.confirmed()).filter(
       ({ action }) => action.stage === "reveal",
     );
     expect(BigInt(reveals.length)).toBe(rounds);
@@ -409,19 +405,16 @@ describe("validation-trace dispute runner: bisecting defended threads", () => {
     expect(prepared.every(({ stage }) => stage === "reveal")).toBe(true);
   }, 1_800_000);
 
-  it("makes no further move from a fresh process on the same journal", async () => {
-    if (!("entries" in final)) throw new Error("no workflow journal");
-    const before = confirmedValidationTraceStages(final.entries).length;
+  it("makes no further move from a fresh process", async () => {
     const count = prepared.length;
-    const restarted = makeRunner(scene, { journal: runner.journal });
+    const restarted = makeRunner(scene);
     const result = await restarted.runOnce(scene.failing);
     expect(result.kind).toBe("pending");
-    if (!("reason" in result) || !("entries" in result))
-      throw new Error("no reason");
+    if (!("reason" in result)) throw new Error("no reason");
     expect(result.reason).toMatch(
       new RegExp(`^${VALIDATION_TRACE_ONE_STEP_REQUIRED}: `, "u"),
     );
-    expect(confirmedValidationTraceStages(result.entries)).toHaveLength(before);
+    expect(restarted.process.sent()).toHaveLength(0);
     expect(prepared).toHaveLength(count);
   }, 300_000);
 
@@ -430,12 +423,14 @@ describe("validation-trace dispute runner: bisecting defended threads", () => {
     let runs = 0;
     const result = await continuePendingWorkflow({
       invocation: {
-        mode: "run",
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         category: "validationTraceDispute",
         headerHash: scene.failing.evidence.headerHash,
       },
-      journal: runner.journal,
+      run: runner.process.run({
+        category: "validationTraceDispute",
+        headerHash: scene.failing.evidence.headerHash,
+      }),
       execute: async () => {
         runs += 1;
         return validationTraceRunState(await runner.runOnce(scene.failing));

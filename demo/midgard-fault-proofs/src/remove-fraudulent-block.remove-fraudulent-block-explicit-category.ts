@@ -195,17 +195,8 @@ export type StateQueueMutationLease = {
   readonly fail: (error: string) => Promise<void>;
 };
 
-export type StateQueueMutationLeaseIdentity = Pick<
-  StateQueueMutationLease,
-  "token" | "source"
->;
-
 export type StateQueueMutationLeaseCoordinator = {
   readonly acquire: () => Promise<StateQueueMutationLease>;
-  /** Reconstructs the exact journaled fencing lease; never acquires a new one. */
-  readonly resume?: (
-    identity: StateQueueMutationLeaseIdentity,
-  ) => Promise<StateQueueMutationLease>;
 };
 
 export type SubmitRemoveFraudulentBlockResult = {
@@ -237,24 +228,11 @@ export type SubmitRemoveFraudulentBlockResult = {
   } | null;
 };
 
-/**
- * Lease identity recorded by the local coordinator, the only coordination mode.
- * A journaled in-flight removal resumes only under this exact identity; a
- * journal written under a Midgard node's HTTP lease (a node URL as `source`)
- * is refused rather than silently continued.
- */
+/** Lease identity of the local coordinator, the only coordination mode. */
 export const LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE = "local";
 
 export const LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN =
   "local-retry-until-confirmed";
-
-const refuseLeaseCoordinationModeSwitch = (
-  expectedSource: string,
-  actualSource: string,
-): Error =>
-  new Error(
-    `Refusing state-queue mutation lease from a different coordinator: expected=${expectedSource} actual=${actualSource}. A journaled in-flight removal cannot switch coordination mode; a journal started by a coordinator that no longer exists must be abandoned.`,
-  );
 
 /**
  * Local state-queue mutation coordination. The prover fences no Midgard node's
@@ -262,10 +240,8 @@ const refuseLeaseCoordinationModeSwitch = (
  * non-tail removal is confirmed and the state-queue topology refetched before
  * the next one, and a peel that loses to a competing commit or merge throws.
  * Retry-until-confirmed lives in the watcher's workflow orchestrator, which
- * reconciles against authenticated L1 state and rebuilds the removal from the
- * fresh view; a bare CLI run fails on a lost race and must be re-run. The
- * identity is still journaled so a resume cannot silently pick up a removal
- * journaled under a different coordinator.
+ * follows the removal on authenticated L1 state and rebuilds it from the
+ * fresh view; a bare CLI run fails on a lost race and must be re-run.
  */
 export const createLocalStateQueueMutationLeaseCoordinator =
   (): StateQueueMutationLeaseCoordinator => {
@@ -276,23 +252,7 @@ export const createLocalStateQueueMutationLeaseCoordinator =
       release: async () => {},
       fail: async () => {},
     });
-    return {
-      acquire: async () => lease,
-      resume: async ({ token, source }) => {
-        if (source !== LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE) {
-          throw refuseLeaseCoordinationModeSwitch(
-            LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
-            source,
-          );
-        }
-        if (token !== LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN) {
-          throw new Error(
-            `Refusing state-queue mutation lease with an unknown local token: expected=${LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN} actual=${token}`,
-          );
-        }
-        return lease;
-      },
-    };
+    return { acquire: async () => lease };
   };
 
 export const requireOutputIndexByUnit = ({

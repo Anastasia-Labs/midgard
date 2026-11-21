@@ -5,7 +5,6 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 
 import { proofMaterialsAddress } from "../../src/funding/proof-materials-address.js";
-import { confirmedValidationTraceStages } from "../../src/validation-trace-dispute/actions.js";
 import { captureValidationTraceLostDefenseSlash } from "../../src/validation-trace-dispute/lost-defense-slash.js";
 import { VALIDATION_TRACE_DEFENDER_WON } from "../../src/validation-trace-dispute/threads.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
@@ -15,8 +14,10 @@ import {
   type SecondDefense,
   successorWinsItsThread,
 } from "./validation-trace-dispute-funded-moves.js";
-import type { AdapterWrap } from "./validation-trace-dispute-funded-runner.js";
-import { entriesOf } from "./validation-trace-dispute-funded-verify-source.js";
+import type {
+  AdapterWrap,
+  FundedDispute,
+} from "./validation-trace-dispute-funded-runner.js";
 
 export type TwoDefended = FundedMoves & Readonly<{ second: SecondDefense }>;
 
@@ -115,11 +116,13 @@ export const turnCollecting = async (
   throw new Error(`the run never reached ${until}: ${history.join("\n")}`);
 };
 
-/** The stages the journal confirmed, with each transaction's hash. */
-export const confirmed = (result: FraudProofWorkflowRunResult) =>
-  confirmedValidationTraceStages(entriesOf(result)).map(
-    ({ action, txHash }) => ({ stage: action.stage, txHash }),
-  );
+/** The stages the dispute's processes sent that the ledger confirmed,
+ * with each transaction's hash. */
+export const confirmed = async (dispute: FundedDispute) =>
+  (await dispute.confirmed()).map(({ action, txHash }) => ({
+    stage: action.stage,
+    txHash,
+  }));
 
 /** Another watcher's slash of the defender by the receipt at
  * `receiptOutRef`, landed; returns its hash. */
@@ -145,7 +148,6 @@ export const landForeignSlash = async (
     },
     deployment: dispute.deployment,
     removal: journey.removal.removal,
-    headerHash: scene.failing.evidence.headerHash,
     receiptOutRef,
   });
   const txHash = await transaction.signed.submit();

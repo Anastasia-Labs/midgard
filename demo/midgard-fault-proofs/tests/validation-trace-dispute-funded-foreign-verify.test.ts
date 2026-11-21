@@ -1,14 +1,12 @@
 /** The validation-trace dispute's case of ours verified by another party, under
- * the prover funding permit, on the emulator. Our funded watcher opens our
- * claim and signs our VerifySource, and its process stops before
+ * the watcher's prover funding, on the emulator. Our funded watcher opens
+ * our claim and signs our VerifySource, and its process stops before
  * broadcasting it; another party then runs VerifySource over our pending
- * claim first. The next process supersedes our VerifySource, whose wallet
- * inputs it still holds as a superseded attempt's, and plays the case our
- * Open opened: once the scene's operator defends it, our reveal, timeout and
- * thread close each build and land, spending only the thread (and case)
- * their validators fix, never those wallet inputs, and the case then closes
- * Convicted, spending the case and bond the other party's VerifySource
- * created.
+ * claim first, so our VerifySource can never land. The next process plays
+ * the case our Open opened: once the scene's operator defends it, our
+ * reveal, timeout and thread close each build and land once, and the case
+ * then closes Convicted, spending the case and bond the other party's
+ * VerifySource created.
  *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
@@ -30,7 +28,7 @@ import {
 } from "./support/validation-trace-dispute-foreign-verify.js";
 import {
   confirmedMoves,
-  moveIntents,
+  moveSends,
 } from "./support/validation-trace-dispute-funded-moves.js";
 import {
   openFundedDispute,
@@ -53,7 +51,7 @@ import {
 
 describe("validation-trace dispute case of ours verified by another party", () => {
   it(
-    "plays our Open's case to its conviction after another party verified it first, its superseded VerifySource's wallet inputs never forced into a move",
+    "plays our Open's case to its conviction after another party verified it first, its stopped VerifySource never landing",
     async () => {
       // Before the scene, so the raw L1 view has the whole history.
       const recorder = recordCrossBlockRawEmulator();
@@ -70,17 +68,17 @@ describe("validation-trace dispute case of ours verified by another party", () =
         removal: removal.removal,
       });
       try {
-        const { stoppedHex, held, material, caseOutput, bond } =
+        const { stoppedHex, material, caseOutput, bond } =
           await verifiedByAnotherParty(scene, dispute);
 
         // The next process finds the case our Open opened.
-        await dispute.restart();
+        dispute.restart();
         const opened = await turnUntil(dispute, VALIDATION_TRACE_CASE_OPEN, {
           limit: 40,
         });
         expect(opened.result.kind, opened.history.join("\n")).toBe("pending");
         expect(
-          confirmedMoves(opened.result).map(({ stage }) => stage),
+          (await confirmedMoves(dispute)).map(({ stage }) => stage),
         ).toStrictEqual(["init", "open"]);
 
         // The operator defends, reveals, then falls silent.
@@ -128,7 +126,7 @@ describe("validation-trace dispute case of ours verified by another party", () =
         );
         expect(closed.result.kind, closed.history.join("\n")).toBe("pending");
 
-        const stages = confirmedMoves(closed.result);
+        const stages = await confirmedMoves(dispute);
         expect(stages.map(({ stage }) => stage)).toStrictEqual([
           "init",
           "open",
@@ -137,28 +135,13 @@ describe("validation-trace dispute case of ours verified by another party", () =
           "close_thread",
           "close",
         ]);
-        // Our stopped VerifySource never landed, and no move spent one of
-        // the wallet inputs it held.
+        // Our stopped VerifySource never landed.
         const stoppedHash = CML.hash_transaction(
           CML.Transaction.from_cbor_hex(stoppedHex).body(),
         ).to_hex();
         expect(
           (await h.emulator.getTransactionStatus(stoppedHash)).status,
         ).not.toBe("confirmed");
-        for (const stage of ["reveal", "timeout", "close-thread"] as const)
-          for (const { txHash } of moveIntents(closed.result, stage)) {
-            const signed = scene.l1.signedCbors.get(txHash);
-            if (signed === undefined) continue;
-            const inputs = CML.Transaction.from_cbor_hex(signed)
-              .body()
-              .inputs();
-            for (let index = 0; index < inputs.len(); index += 1) {
-              const input = inputs.get(index);
-              expect(held).not.toContain(
-                `${input.transaction_id().to_hex()}#${input.index().toString()}`,
-              );
-            }
-          }
         // The case token's L1 history, its thread closed, still names the
         // other party's VerifySource as where the case and bond began.
         const caseUnit = Object.keys(caseOutput.assets).find((key) =>
@@ -181,13 +164,13 @@ describe("validation-trace dispute case of ours verified by another party", () =
           await h.emulator.getUtxosByOutRef([parseOwnOutRef(outRefOf(bond))]),
         ).toStrictEqual([]);
         for (const stage of ["reveal", "timeout", "close-thread"] as const) {
-          const landed = moveIntents(closed.result, stage).filter(
-            ({ txHash }) => scene.l1.signedCbors.has(txHash),
+          const landed = moveSends(dispute, stage).filter(({ txHash }) =>
+            scene.l1.signedCbors.has(txHash),
           );
           expect(landed).toHaveLength(1);
         }
       } finally {
-        await dispute.close();
+        recorder.restore();
       }
     },
     TIMEOUT,

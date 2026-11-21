@@ -19,8 +19,8 @@ import {
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import { workflowConfirmedTransactions } from "../workflow/own-outputs.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import { buildMinAdaInit } from "./submit-init.js";
 import { buildMinAdaTxStep01 } from "./submit-step-01.js";
 import { buildMinAdaStep01Forced } from "./submit-step-01-forced.js";
@@ -45,10 +45,14 @@ export const transactionPort = (
   category: "minAda",
   prepare: async ({ evidence, classification }) =>
     await prepareMinAdaArtifact({ evidence, classification }),
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const ownOutputs = workflowFieldCarriageOwnOutputs({
       category: "minAda",
-      entries,
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
+      }),
     });
     const admitted = await admitMinAdaArtifact(artifact);
     if (admitted.artifact.headerHash !== config.binding.definition.headerHash) {
@@ -63,7 +67,7 @@ export const transactionPort = (
     if (input.stage === "init") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildMinAdaInit({
               lucid: config.lucid,
               blueprint: config.binding.blueprint,
@@ -88,7 +92,8 @@ export const transactionPort = (
             lucid: config.lucid,
             address: config.signer.proofMaterialsAddress,
             proofCbor: admitted.prepared.txInclusion.txMembershipProofCbor,
-            ownTransactions: workflowConfirmedTransactions(entries),
+            view: config.signer.proofMaterials,
+            holder,
           })
         : [];
       if (chunks === undefined) {
@@ -96,7 +101,7 @@ export const transactionPort = (
       }
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await (async () => {
               const shared = {
                 lucid: config.lucid,
@@ -137,7 +142,7 @@ export const transactionPort = (
       const carriage = await resolveField({ ownOutputs, config, admitted });
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildMinAdaTxStep02({
               ownOutputs,
               lucid: config.lucid,
@@ -161,7 +166,7 @@ export const transactionPort = (
     if (input.stage === "step_03") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction<
+          await workflowStepTransaction<
             Awaited<ReturnType<typeof buildMinAdaStep03>>
           >(
             await buildMinAdaStep03({
@@ -181,7 +186,7 @@ export const transactionPort = (
     if (input.stage === "step_04") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildMinAdaStep04({
               lucid: config.lucid,
               contracts: config.contracts,

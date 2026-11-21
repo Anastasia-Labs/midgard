@@ -1,11 +1,11 @@
 /**
  * A proof action the prover wallet cannot pay for, through the watcher's
  * installed application, for a fault that takes no script-decode record: the
- * family's own proof transactions, funded by the shared reserved wallet.
+ * family's own proof transactions, funded by the prover wallet.
  *
  * A wallet that cannot pay for the next action pauses the objective with the
- * funding-shortfall reason, which says it funds from plain-ADA coins only, and
- * releases its reservation; a top-up resumes it to conviction. A coin holding
+ * funding-shortfall reason, which says it funds from plain-ADA coins only; a
+ * top-up resumes it to conviction. A coin holding
  * a token is never spent, whether or not it alone could have paid.
  */
 import type { OutRef } from "@lucid-evolution/lucid";
@@ -47,7 +47,7 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
   };
 });
 
-import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.workflow-funding-shortfall.js";
+import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/workflow-funding-shortfall.js";
 import {
   drainProverToOneCoin,
   sendTokenCoin,

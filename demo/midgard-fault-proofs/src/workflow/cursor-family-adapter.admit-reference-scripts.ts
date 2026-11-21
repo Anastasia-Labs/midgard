@@ -8,16 +8,14 @@ import {
   journalJsonDigest,
   normalizeJournalJson,
 } from "./journal.fraud-proof-workflow-terminal.js";
+import type { JournalJsonObject } from "./journal.js";
 import type {
-  FraudProofWorkflowJournalEntry,
-  JournalJsonObject,
-} from "./journal.js";
-import {
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowPreflight,
-  type FraudProofWorkflowReferenceScript,
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowAction,
+  FraudProofWorkflowPreflight,
+  FraudProofWorkflowReferenceScript,
 } from "./orchestrator.js";
+import type { ProofMaterialsHolder } from "./proof-materials-view.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
@@ -57,8 +55,8 @@ export interface CursorFamilyTransactionPort<
   capture(input: {
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
-    /** The workflow journal: its own carriage claims among it. */
-    readonly entries: readonly FraudProofWorkflowJournalEntry[];
+    /** The workflow and objective that find proof materials for the step. */
+    readonly holder: ProofMaterialsHolder;
   }): Promise<CursorFamilyCapturedAction>;
 }
 
@@ -134,12 +132,10 @@ export const preflightOf = ({
   category,
   action,
   transaction,
-  durableRecovery,
 }: {
   readonly category: FraudProofCatalogueCategoryName;
   readonly action: FraudProofWorkflowAction;
   readonly transaction: LocallyEvaluatedTransaction;
-  readonly durableRecovery?: JournalJsonObject;
 }): FraudProofWorkflowPreflight =>
   bindWorkflowPreflightTransaction(
     {
@@ -151,47 +147,12 @@ export const preflightOf = ({
         evaluator: LOCAL_UPLC_EVALUATOR,
       },
       referenceScripts: admitReferenceScripts({ category, transaction }),
-      ...(durableRecovery === undefined ? {} : { durableRecovery }),
     },
     transaction.signed,
   );
 
 export const cacheKey = (workflowId: string, actionId: string): string =>
   `${workflowId}\u0000${actionId}`;
-
-export const mutationLeaseRecovery = (
-  lease: StateQueueMutationLease,
-): JournalJsonObject => ({
-  stateQueueMutationLease: { token: lease.token, source: lease.source },
-});
-
-export const parseMutationLeaseRecovery = (
-  recovery: JournalJsonObject | undefined,
-): { readonly token: string; readonly source: string } | undefined => {
-  if (recovery === undefined) return undefined;
-  const value = recovery.stateQueueMutationLease;
-  if (
-    Object.keys(recovery).length !== 1 ||
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value)
-  ) {
-    throw new Error("cursor-family durable mutation lease is malformed");
-  }
-  const record = value as Readonly<Record<string, unknown>>;
-  if (
-    Object.keys(record).sort().join(",") !== "source,token" ||
-    typeof record.token !== "string" ||
-    record.token.trim() !== record.token ||
-    record.token.length === 0 ||
-    typeof record.source !== "string" ||
-    record.source.trim() !== record.source ||
-    record.source.length === 0
-  ) {
-    throw new Error("cursor-family durable mutation lease is malformed");
-  }
-  return { token: record.token, source: record.source };
-};
 
 export const requiresMutationLease = (
   action: FraudProofWorkflowAction,

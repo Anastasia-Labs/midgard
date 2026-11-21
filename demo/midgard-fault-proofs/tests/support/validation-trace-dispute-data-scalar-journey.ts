@@ -3,7 +3,8 @@
  * script takes the two steps, then fails
  * (validation-trace-dispute-data-scalar-step.ts).
  *
- * For each step a second case on the failing block commits a trace whose
+ * For each step another prover's second case on the failing block (a case
+ * naming our key is our runner's own) commits a trace whose
  * successor of that step returns the result of another leaf. Both operators
  * defend it with our trace up to that successor, so each holds the correct
  * post state. The one-step resolution carries the committed successor
@@ -23,7 +24,6 @@ import { MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES } from "@al-ft/midgard-va
 import { credentialToAddress, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, expect } from "vitest";
 
-import { confirmedValidationTraceStages } from "../../src/validation-trace-dispute/actions.js";
 import {
   VALIDATION_TRACE_CASE_CONVICTED,
   VALIDATION_TRACE_CASE_OPEN,
@@ -134,14 +134,16 @@ export type DataScalarJourney = {
   /** Set once the journey's setup has run. */
   dispute?: TwoThreadCase;
   readonly steps: Map<bigint, DataScalarStep>;
-  /** Each step's second case: the wrong successor's window, its hash and
-   * the case's two threads, each ReadyForOneStep before the resolution. */
+  /** Each step's second case, another prover's: the wrong successor's
+   * window, its hash, the case's two threads, each ReadyForOneStep before
+   * the resolution, and the dispute as that prover plays it. */
   readonly secondCases: Map<
     bigint,
     {
       window: ReturnType<typeof windowReturning>;
       committedSuccessorHash: string;
       ready: { unit: string; thread: SDK.CaseThread }[];
+      theirs: TwoThreadCase;
     }
   >;
 };
@@ -181,12 +183,18 @@ export const dataScalarJourney = ({
       const step = await dataScalarStepOf(dispute.material, tag);
       journey.steps.set(tag, step);
       const window = windowReturning(step, resultOfAnotherLeaf(step));
-      const { committedSuccessorHash, ready } = await secondCaseWithSuccessor(
-        dispute,
-        step.agreedUpTo,
-        successorHashOf(step, window),
-      );
-      journey.secondCases.set(tag, { window, committedSuccessorHash, ready });
+      const { committedSuccessorHash, ready, theirs } =
+        await secondCaseWithSuccessor(
+          dispute,
+          step.agreedUpTo,
+          successorHashOf(step, window),
+        );
+      journey.secondCases.set(tag, {
+        window,
+        committedSuccessorHash,
+        ready,
+        theirs,
+      });
     }
   }, TIMEOUT);
 
@@ -234,11 +242,11 @@ export const readiesTheSecondCases = ({
 /** The Data scalar arm refuses the second case's step of `tag`, whose
  * committed successor returns the result of another leaf. */
 export const refusesAtTheArm = async (
-  { dispute, steps, secondCases }: DataScalarJourney,
+  { steps, secondCases }: DataScalarJourney,
   tag: bigint,
 ) => {
-  const { window, ready } = secondCases.get(tag)!;
-  await resolveToTheArm(dispute!, steps.get(tag)!, window, ready[0]!);
+  const { window, ready, theirs } = secondCases.get(tag)!;
+  await resolveToTheArm(theirs, steps.get(tag)!, window, ready[0]!);
 };
 
 /** Builds, without submitting, the resolve of our thread `unit` from the
@@ -300,7 +308,7 @@ export const convictsOurCase = async (journey: DataScalarJourney) => {
   await armAcceptsOurStep(journey, first.unit, first.tag);
 
   let pastDeadline = false;
-  const { result, history } = await playThreads({
+  await playThreads({
     scene,
     runner,
     sides: [a, b],
@@ -324,11 +332,10 @@ export const convictsOurCase = async (journey: DataScalarJourney) => {
     },
     limit: 400,
   });
-  if (!("entries" in result))
-    throw new Error(`no workflow journal: ${history.join("\n")}`);
+  const stages = await runner.confirmed();
 
   // Each thread resolved through the Data scalar arm and was awarded.
-  const moves = confirmedOneStepMoves(result.entries);
+  const moves = confirmedOneStepMoves(stages);
   expect(moves.filter(({ stage }) => stage === "close_awarded")).toHaveLength(
     2,
   );
@@ -344,7 +351,7 @@ export const convictsOurCase = async (journey: DataScalarJourney) => {
   ).toHaveLength(2);
 
   // The case closed Convicted, our bond back.
-  const close = confirmedValidationTraceStages(result.entries).at(-1)!;
+  const close = stages.at(-1)!;
   expect(close.action.stage).toBe("close");
   const lucid = scene.h.proverLucid;
   expect(

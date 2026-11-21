@@ -48,7 +48,7 @@ import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
   workflowReferenceScript,
 } from "./workflow/transaction-boundary.js";
 
@@ -113,7 +113,7 @@ export type FabricatedWithdrawalStep02Build = {
 };
 
 export type SubmitFabricatedWithdrawalStep02Result =
-  UnjournaledSubmission<FabricatedWithdrawalStep02Build>;
+  OutsideWorkflowSubmission<FabricatedWithdrawalStep02Build>;
 
 type FabricatedWithdrawalStep02Layout = {
   readonly inputIndex: bigint;

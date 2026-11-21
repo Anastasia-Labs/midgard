@@ -149,7 +149,7 @@ export const detectUnusedRedeemerReplay = async ({
   });
 };
 
-/** The journaled `unusedRedeemer` workflow artifact: the retained payload, the
+/** The `unusedRedeemer` workflow artifact: the retained payload, the
  * predecessor ledger and the coordinate, re-planned on every admission. */
 export const UNUSED_REDEEMER_ARTIFACT_FAMILY = directPurposeArtifactFamily({
   label: "unusedRedeemer",

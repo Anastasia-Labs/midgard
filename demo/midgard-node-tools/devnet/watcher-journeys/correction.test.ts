@@ -4,7 +4,6 @@ import {
   CML,
   credentialToAddress,
   Data,
-  paymentCredentialOf,
   toUnit,
   type UTxO,
   utxoToCore,
@@ -408,15 +407,12 @@ const proverRewardFixture = (proverAddress: string) => {
     economics,
     completion: {
       economics: {
-        operatorCredential: "e5".repeat(28),
-        proverCredential: paymentCredentialOf(proverAddress).hash,
         operatorBondInputOutRef: bondOutRef,
         operatorBondInputLovelace: economics.requiredBondLovelace.toString(),
+        slashTxHash: slash.txHash,
         slashedLovelace: economics.slashingPenaltyLovelace.toString(),
         proverRewardOutputOutRef: `${slash.txHash}#0`,
         proverRewardLovelace: economics.fraudProverRewardLovelace.toString(),
-        removalFeeLovelace: "300000",
-        duplicateRewardAbsent: true as const,
       },
     },
     transactions: {

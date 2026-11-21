@@ -1,16 +1,14 @@
 /**
- * Field carriage for the double-spend and network-id adapters, which do not
- * yet journal the out-refs of their own publish and certify transactions.
- * Until they do, their claims are read off the publisher and certificate
- * addresses, among the outputs of the transactions their own journal
- * confirmed only: each planned publication takes the first unused ada-only
- * output of ours holding its datum, and the certificate the first output of
- * ours (by out-ref) holding exactly its datum and token. Another workflow's
- * carriage of the same content is never taken for ours.
- *
- * Every other caller claims carriage from its own signed transactions
- * (`field-opening.own-field-carriage.ts`); this module goes when these two
- * adapters do the same.
+ * Field carriage for the double-spend and network-id adapters, found by
+ * content. A planned publication at the proof-materials address is the k-th
+ * plain output holding its datum for the k-th slot holding it, found through
+ * the workflow's view, whoever paid it, since only the prover can spend there
+ * and the step checks content alone; at another address it is the first
+ * plainly shaped output holding exactly its datum (inline datum, no datum
+ * hash, no reference script, ada only). The certificate is the first output
+ * (by out-ref) at the certificate address holding exactly its datum and
+ * token, whoever paid it: the certificate policy mints the token only beside
+ * that datum checked.
  */
 import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
 import type { LucidEvolution, Network } from "@lucid-evolution/lucid";
@@ -28,11 +26,11 @@ import {
   ownOutRefLabel,
   parseOwnOutRef,
 } from "./own-outputs.js";
+import type { ProofMaterialsAccess } from "./proof-materials-view.js";
 
 /**
- * The carriage of `planned` found at its addresses among the outputs of
- * `ownTransactions`, as claims; a publication made through the journal is
- * claimed in memory.
+ * The carriage of `planned` as claims: its publications and its certificate
+ * found by content.
  */
 export const addressFieldCarriageOwnOutputs = async ({
   lucid,
@@ -40,25 +38,34 @@ export const addressFieldCarriageOwnOutputs = async ({
   publisherAddress,
   planned,
   certificatePolicyId,
-  ownTransactions,
+  materials,
 }: {
   readonly lucid: Pick<LucidEvolution, "utxosAt">;
   readonly network: Network;
   readonly publisherAddress: string;
   readonly planned: Pick<FaultProofFieldOpeningPlan, "plan">;
   readonly certificatePolicyId?: string;
-  /** The transactions the workflow's journal confirmed. */
-  readonly ownTransactions: ReadonlySet<string>;
+  /** The workflow's view of its proof-materials address. */
+  readonly materials: ProofMaterialsAccess;
 }): Promise<OwnOutputJournal> => {
   const kept = new Map<string, OwnOutputClaimed[]>();
   const slots = fieldPublicationSlots({ plan: planned.plan, publisherAddress });
-  if (slots.length > 0) {
+  if (slots.length > 0 && publisherAddress === materials.view.address) {
+    const found = await materials.view.find(
+      slots.map(({ datumCbor }) => datumCbor),
+      materials.holder,
+    );
+    for (const [index, { key }] of slots.entries()) {
+      const utxo = found[index];
+      if (utxo !== undefined)
+        kept.set(key, [Object.freeze({ outRef: ownOutRefLabel(utxo) })]);
+    }
+  } else if (slots.length > 0) {
     const candidates = await lucid.utxosAt(publisherAddress);
     const used = new Set<string>();
     for (const { key, datumCbor } of slots) {
       const match = candidates.find(
         (candidate) =>
-          ownTransactions.has(candidate.txHash) &&
           !used.has(ownOutRefLabel(candidate)) &&
           candidate.datum === datumCbor &&
           isAdaOnlyInlineDatumOutput(candidate),
@@ -79,10 +86,7 @@ export const addressFieldCarriageOwnOutputs = async ({
       certificatePolicyId,
     });
     const [first] = (await lucid.utxosAt(certificateAddress))
-      .filter(
-        (candidate) =>
-          ownTransactions.has(candidate.txHash) && slot.matches(candidate),
-      )
+      .filter((candidate) => slot.matches(candidate))
       .sort((left, right) =>
         left.txHash === right.txHash
           ? left.outputIndex - right.outputIndex
@@ -100,6 +104,7 @@ export const addressFieldCarriageOwnOutputs = async ({
       parseOwnOutRef(outRef);
       kept.set(key, [...(kept.get(key) ?? []), Object.freeze({ outRef })]);
     },
+    materials,
   });
 };
 

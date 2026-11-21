@@ -154,7 +154,8 @@ are collected.
 Fault proofs and data-availability challenges are permissionless: any funded
 watcher submits under the deployed profile. The watcher independently reads
 authenticated L1 and public DA, then builds and submits each proof step through
-its journaled workflow. A failed step is retried from that journal.
+its workflow, which reads its progress from the chain. A failed step is
+retried from what the chain holds.
 
 1. Record the header, objective, proof step, last error and any pending
    transaction hash. Reconcile a pending transaction on L1 before another

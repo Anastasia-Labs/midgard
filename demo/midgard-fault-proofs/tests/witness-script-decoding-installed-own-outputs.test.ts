@@ -2,16 +2,20 @@
  * The script-decode record through the watcher's installed application,
  * with other parties' outputs at the addresses its own outputs go to.
  *
- * The application finds its staged chunks by the out-refs its own signed
- * stage transactions gave them, never by what an output at the address
- * holds. Outputs holding the same datums in other shapes, exact copies
- * confirmed before the record or landing beside the application's own, a
- * mass of outputs, and another party's run of the same script leave the
- * record's transactions and their fees as they are with nothing planted.
- * A stopped process sends the stage transaction it signed, or reconciles the
- * one it sent; a read that lags the chunk, or a rollback that includes the
- * stage transaction again, is waited out on the same out-ref; a chunk that
- * is gone for good is staged again, replacing it, and never served by a copy.
+ * The application finds its staged chunks by content: an exact copy (the
+ * same inline datum, ada only, no datum hash, no reference script) serves
+ * as well as its own, whoever placed it, and a copy in any other shape is
+ * never taken. Outputs holding the same datums in other shapes and a mass of
+ * outputs leave the record's transactions and their fees as they are with
+ * nothing planted; an exact copy confirmed before the record is read in
+ * place of a stage of its own; another party's honest run of the same
+ * script, its run token minted by the record's own policy, is walked in
+ * place of a Bind of its own. A stage transaction a stopped process signed
+ * but never sent is built again after the restart, one copy landing, and one
+ * it sent is found on chain and never built again; a read that lags the
+ * chunk, or a rollback that includes the stage transaction again, is waited
+ * out on the same out-ref; a chunk that is gone for good is served by an
+ * exact copy on chain.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -53,7 +57,6 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
 
 import {
   emulatorWallClock,
-  kindOf,
   lagReadsOf,
   type LedgerVerdict,
   type LedgerWatch,
@@ -64,10 +67,19 @@ import {
   plantShapes,
   plantTokenCoin,
   removeOutput,
-  scriptDecodeRoles,
   stagedChunkOf,
   watchLedger,
 } from "./support/own-outputs-installed.js";
+import {
+  costOf,
+  expectOwnOutputsOnly,
+  type Harness,
+  ITEM,
+  readersOf,
+  rolesOf,
+  stagesOf,
+  withoutFirst,
+} from "./support/own-outputs-installed.script-decode-record.js";
 import {
   expectBaselineCost,
   INSTALLED_WITNESS,
@@ -75,14 +87,8 @@ import {
   runInstalled,
   stopsOnceAndRestarts,
 } from "./support/script-decode-installed-run.js";
-import {
-  delayChainScript,
-  plutusItem,
-  witnessSubject,
-} from "./support/script-decode-plutus-max-shape.js";
+import { witnessSubject } from "./support/script-decode-plutus-max-shape.js";
 
-/** An undecodable witness whose record takes one staged chunk, a Bind, a few Walks, a Finish. */
-const ITEM = plutusItem(delayChainScript(600));
 const SCENARIO = {
   ...INSTALLED_WITNESS,
   nativeTx: () => witnessSubject([ITEM]).nativeTx,
@@ -102,15 +108,6 @@ const PAST_GRACE_BLOCKS = 31;
 /** Datum-bearing outputs of the mass plant. */
 const MASS = 300;
 
-type Harness = InstalledTurnContext["harness"];
-
-const rolesOf = (harness: Harness) =>
-  scriptDecodeRoles({
-    emulator: harness.emulator,
-    materialsAddress: harness.proverSigner.proofMaterialsAddress,
-    item: ITEM,
-  });
-
 /**
  * Runs each planting step, each in blocks of its own, then waits out the
  * rest of the setup blocks.
@@ -127,51 +124,6 @@ const setUp = async (
   const used = harness.emulator.blockHeight - from;
   if (used > SETUP_BLOCKS) throw new Error("planting took too many blocks");
   harness.emulator.awaitBlock(SETUP_BLOCKS - used);
-};
-
-/** What a run's own transactions were and what they cost. */
-const costOf = (watch: LedgerWatch, harness: Harness) => {
-  const { staging, run } = rolesOf(harness);
-  return watch.ours().map((transaction) => ({
-    kind: kindOf(transaction, staging, run),
-    fee: transaction.fee,
-  }));
-};
-
-/** Every input and reference input of the application's own transactions is not another party's. */
-const expectOwnOutputsOnly = (watch: LedgerWatch) => {
-  const planted = watch.plantedOutRefs();
-  expect(planted.size).toBeGreaterThan(0);
-  const taken = watch
-    .ours()
-    .flatMap(({ inputs, referenceInputs }) => [...inputs, ...referenceInputs])
-    .filter((outRef) => planted.has(outRef));
-  expect(taken).toEqual([]);
-};
-
-/** The application's stage transactions, and the chunk each one staged. */
-const stagesOf = (watch: LedgerWatch, harness: Harness) => {
-  const { staging } = rolesOf(harness);
-  return watch.ours().flatMap((transaction) => {
-    const chunk = stagedChunkOf(transaction, staging);
-    return chunk === undefined ? [] : [{ transaction, chunk }];
-  });
-};
-
-/** The transactions that read the run's staged bytes: the Bind, then each Walk. */
-const readersOf = (watch: LedgerWatch, harness: Harness) => {
-  const { staging, run } = rolesOf(harness);
-  const kinds = watch.ours().map((transaction) => ({
-    transaction,
-    kind: kindOf(transaction, staging, run),
-  }));
-  const bind = kinds.find(({ kind }) => kind === "bind-or-finish");
-  return [
-    ...(bind === undefined ? [] : [bind.transaction]),
-    ...kinds
-      .filter(({ kind }) => kind === "walk")
-      .map(({ transaction }) => transaction),
-  ];
 };
 
 /** A run of the scenario with `plant` before the record begins, its ledger watched. */
@@ -217,7 +169,7 @@ const runWith = async (
   };
 };
 
-describe("script-decode staging found by the out-refs it published, in the installed watcher application", () => {
+describe("script-decode staging found by content, in the installed watcher application", () => {
   let baseline: Awaited<ReturnType<typeof runWith>>["cost"];
 
   it("records with nothing else at its addresses: the cost every other row matches", async () => {
@@ -227,8 +179,9 @@ describe("script-decode staging found by the out-refs it published, in the insta
     baseline = cost;
   }, 900_000);
 
-  it("finishes the record from its own outputs past other-shaped copies, a mass of outputs and another party's run", async () => {
-    const { run, watch, cost } = await runWith((harness, watch) => {
+  it("finishes the record past other-shaped copies and a mass of outputs, walking another party's run of the script in place of a Bind of its own", async () => {
+    let foreign: string | undefined;
+    const { run, watch, harness, cost } = await runWith((harness, watch) => {
       const { staging, script } = rolesOf(harness);
       const other = harness.funderLucid;
       return [
@@ -238,17 +191,26 @@ describe("script-decode staging found by the out-refs it published, in the insta
             emulator: harness.emulator,
             count: MASS,
           }),
-        () =>
-          plantForeignRun(watch, other, { emulator: harness.emulator, script }),
+        async () => {
+          const bound = await plantForeignRun(watch, other, {
+            emulator: harness.emulator,
+            script,
+          });
+          foreign = `${bound.txHash}#${bound.outputIndex.toString()}`;
+        },
       ];
     });
     expect(run.convicted).toBe(true);
-    expectOwnOutputsOnly(watch);
-    expectBaselineCost(cost, baseline);
+    const adopted = expectOwnOutputsOnly(watch, harness);
+    expect(adopted.map(({ outRef, as }) => ({ outRef, as }))).toEqual([
+      { outRef: foreign, as: "input" },
+    ]);
+    expect(stagesOf(watch, harness)).toHaveLength(1);
+    expectBaselineCost(cost, withoutFirst(baseline, "bind-or-finish"));
   }, 900_000);
 
   it("funds the record from plain coins, leaving a larger token-bearing coin at the prover address unspent", async () => {
-    const { run, watch, cost } = await runWith((harness, watch) => [
+    const { run, watch, harness, cost } = await runWith((harness, watch) => [
       () =>
         plantTokenCoin(
           watch,
@@ -257,21 +219,29 @@ describe("script-decode staging found by the out-refs it published, in the insta
         ),
     ]);
     expect(run.convicted).toBe(true);
-    expectOwnOutputsOnly(watch);
+    expect(expectOwnOutputsOnly(watch, harness)).toEqual([]);
     expectBaselineCost(cost, baseline);
   }, 900_000);
 
-  it("stages and reads its own chunk when exact copies of it were confirmed before the record began", async () => {
+  it("reads an exact copy of its chunk confirmed before the record began, staging none of its own", async () => {
     const { run, watch, harness, cost } = await runWith((harness, watch) => [
       () => plantCopies(watch, harness.funderLucid, rolesOf(harness).staging),
     ]);
     expect(run.convicted).toBe(true);
-    expectOwnOutputsOnly(watch);
-    expect(stagesOf(watch, harness)).toHaveLength(1);
-    expectBaselineCost(cost, baseline);
+    const adopted = expectOwnOutputsOnly(watch, harness);
+    expect(stagesOf(watch, harness)).toHaveLength(0);
+    const copies = new Set(adopted.map(({ outRef }) => outRef));
+    expect(adopted.every(({ as }) => as === "reference")).toBe(true);
+    const readers = readersOf(watch, harness);
+    expect(readers.length).toBeGreaterThan(0);
+    for (const reader of readers)
+      expect(reader.referenceInputs.some((outRef) => copies.has(outRef))).toBe(
+        true,
+      );
+    expectBaselineCost(cost, withoutFirst(baseline, "stage"));
   }, 900_000);
 
-  it("reads its own chunk, not an exact copy that lands in the same block and sorts before it", async () => {
+  it("stages its chunk and reads it, or an exact copy that lands in the same block and sorts before it", async () => {
     let copied = false;
     const context: { watch?: LedgerWatch; harness?: Harness } = {};
     const { run, watch, harness, cost } = await runWith(
@@ -297,12 +267,21 @@ describe("script-decode staging found by the out-refs it published, in the insta
     );
     expect(copied).toBe(true);
     expect(run.convicted).toBe(true);
-    expectOwnOutputsOnly(watch);
-    expect(stagesOf(watch, harness)).toHaveLength(1);
+    const copies = new Set(
+      expectOwnOutputsOnly(watch, harness).map(({ outRef }) => outRef),
+    );
+    const stages = stagesOf(watch, harness);
+    expect(stages).toHaveLength(1);
+    for (const reader of readersOf(watch, harness))
+      expect(
+        reader.referenceInputs.some(
+          (outRef) => outRef === stages[0]!.chunk || copies.has(outRef),
+        ),
+      ).toBe(true);
     expectBaselineCost(cost, baseline);
   }, 900_000);
 
-  it("sends the stage transaction its stopped process signed but never sent, and reads the chunk it staged", async () => {
+  it("stages the chunk again after a restart loses the stage transaction its stopped process signed but never sent, landing one copy", async () => {
     let withheld: string | undefined;
     const stopping = stopsOnceAndRestarts(POLL_CAP);
     const { run, watch, harness, cost } = await runWith(() => [], {
@@ -313,8 +292,8 @@ describe("script-decode staging found by the out-refs it published, in the insta
           stagedChunkOf(transaction, staging) === undefined
         )
           return "accept";
-        // Signed and journaled, lost before the ledger saw it; the process
-        // stops at its next poll.
+        // Signed, and lost before the ledger saw it; the process stops at
+        // its next poll, and the next one holds nothing of it.
         withheld = transaction.txHash;
         stopping.stopAtNextPoll();
         return "withhold";
@@ -324,17 +303,16 @@ describe("script-decode staging found by the out-refs it published, in the insta
     });
     expect(stopping.stops()).toBe(1);
     expect(run.convicted).toBe(true);
+    expect(withheld).toBeDefined();
     const stages = stagesOf(watch, harness);
-    expect(stages.map(({ transaction }) => transaction.txHash)).toEqual([
-      withheld,
-    ]);
+    expect(stages).toHaveLength(1);
     expect(readersOf(watch, harness)[0]!.referenceInputs).toContain(
       stages[0]!.chunk,
     );
     expectBaselineCost(cost, baseline);
   }, 900_000);
 
-  it("reconciles the stage transaction its stopped process sent, and reads the chunk it staged", async () => {
+  it("finds on chain the chunk its stopped process's sent stage transaction staged, staging it once", async () => {
     let sent: string | undefined;
     const stopping = stopsOnceAndRestarts(POLL_CAP);
     const { run, watch, harness, cost } = await runWith(() => [], {
@@ -436,7 +414,7 @@ describe("script-decode staging found by the out-refs it published, in the insta
     expectBaselineCost(cost, baseline);
   }, 900_000);
 
-  it("stages the chunk again, replacing its own, once that one is gone for good, and never reads an exact copy for it", async () => {
+  it("reads an exact copy of its chunk once its own is gone for good, staging none again", async () => {
     let removed: string | undefined;
     const { run, watch, harness } = await runWith(() => [], {
       during: ({ harness, clock }, watch) => {
@@ -473,17 +451,26 @@ describe("script-decode staging found by the out-refs it published, in the insta
     });
     expect(removed).toBeDefined();
     expect(run.convicted).toBe(true);
-    expectOwnOutputsOnly(watch);
-    const stages = stagesOf(watch, harness);
-    expect(stages.map(({ chunk }) => chunk)[0]).toBe(removed);
-    expect(stages).toHaveLength(2);
-    // Every Walk after the second stage reads the chunk it staged.
-    const second = watch.ours().indexOf(stages[1]!.transaction);
-    const later = readersOf(watch, harness)
-      .slice(1)
-      .filter((walk) => watch.ours().indexOf(walk) > second);
-    expect(later.length).toBeGreaterThan(0);
-    for (const reader of later)
-      expect(reader.referenceInputs).toContain(stages[1]!.chunk);
+    const copies = new Set(
+      expectOwnOutputsOnly(watch, harness).map(({ outRef }) => outRef),
+    );
+    expect(copies.size).toBeGreaterThan(0);
+    expect(stagesOf(watch, harness).map(({ chunk }) => chunk)).toEqual([
+      removed,
+    ]);
+    // The Bind read its own chunk; every Walk reads it or the copy.
+    const readers = readersOf(watch, harness);
+    expect(readers[0]!.referenceInputs).toContain(removed);
+    for (const reader of readers)
+      expect(
+        reader.referenceInputs.some(
+          (outRef) => outRef === removed || copies.has(outRef),
+        ),
+      ).toBe(true);
+    expect(
+      readers.some((reader) =>
+        reader.referenceInputs.some((outRef) => copies.has(outRef)),
+      ),
+    ).toBe(true);
   }, 900_000);
 });

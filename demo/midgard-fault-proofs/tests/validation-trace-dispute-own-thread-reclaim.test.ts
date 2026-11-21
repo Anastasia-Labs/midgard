@@ -93,7 +93,6 @@ const removedBlock = (
       references: {},
     } as unknown as Parameters0["deployment"],
     l1For: () => port,
-    signedRecovery: {} as Parameters0["signedRecovery"],
     releaseFinality: { policy: RELEASE_FINALITY_POLICY },
   });
   const context = {
@@ -102,7 +101,6 @@ const removedBlock = (
     },
     workflowId: "validation-trace-own-thread-reclaim",
     artifact: { headerHash: HEADER_HASH },
-    entries: [],
   } as unknown as Parameters<FraudProofFamilyWorkflowAdapter["observe"]>[0];
   return { port, adapter, context };
 };

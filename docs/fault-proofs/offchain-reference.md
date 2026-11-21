@@ -33,7 +33,7 @@ five reward accounts.
 - family preparation and proof artifact construction;
 - field publication/certification and reference-script resolution;
 - Init, step, cancel, timeout/award, and removal transaction builders;
-- durable journals, funding reservations, retry/resume, and reconciliation;
+- in-memory in-flight tracking, retry, and resume from chain state;
 - manifest-bound production runner admission.
 
 Family modules live under `src/` in `demo/midgard-fault-proofs`; use the
@@ -126,7 +126,7 @@ Release readiness requires all enabled families to have:
 
 1. a concrete public retained-DA/L1 authority;
 2. an admitted manifest-bound runner;
-3. action-specific funding and durable resume;
+3. action-specific funding and resume from chain state;
 4. exact reference-script deployment;
 5. terminal state reconciliation;
 6. emulator, real-node, and preprod acceptance.

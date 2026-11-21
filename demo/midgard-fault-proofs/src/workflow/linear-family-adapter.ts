@@ -1,10 +1,7 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import type {
-  StateQueueMutationLease,
-  StateQueueMutationLeaseCoordinator,
-} from "../remove-fraudulent-block.js";
+import type { StateQueueMutationLease } from "../remove-fraudulent-block.js";
 import { WorkflowActionChangedError } from "./action-changed.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
@@ -12,17 +9,13 @@ import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
-import type { FraudProofWorkflowJournalEntry } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
   journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
 } from "./journal.fraud-proof-workflow-terminal.js";
 import type { LinearFamilyCategory } from "./linear-family-spec.js";
-import {
-  linearFamilyObservation,
-  reconcileLinearFamilyAction,
-} from "./linear-family-state.js";
+import { linearFamilyObservation } from "./linear-family-state.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -33,7 +26,7 @@ import type {
   FraudProofWorkflowPreflight,
   FraudProofWorkflowReferenceScript,
 } from "./orchestrator.js";
-import { reconcileQueueLeaseFamily } from "./queue-lease-family-reconcile.js";
+import type { ProofMaterialsHolder } from "./proof-materials-view.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
@@ -77,7 +70,8 @@ export interface LinearFamilyTransactionPort<
   capture(input: {
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
-    readonly entries: readonly FraudProofWorkflowJournalEntry[];
+    /** The workflow and objective that find proof materials for the step. */
+    readonly holder: ProofMaterialsHolder;
   }): Promise<LinearFamilyCapturedAction>;
 }
 
@@ -169,12 +163,10 @@ const admitReferenceScripts = ({
 const preflightOf = ({
   action,
   transaction,
-  durableRecovery,
   category,
 }: {
   readonly action: FraudProofWorkflowAction;
   readonly transaction: LocallyEvaluatedTransaction;
-  readonly durableRecovery?: JournalJsonObject;
   readonly category: FraudProofCatalogueCategoryName;
 }): FraudProofWorkflowPreflight =>
   bindWorkflowPreflightTransaction(
@@ -187,47 +179,12 @@ const preflightOf = ({
         evaluator: LOCAL_UPLC_EVALUATOR,
       },
       referenceScripts: admitReferenceScripts({ transaction, category }),
-      ...(durableRecovery === undefined ? {} : { durableRecovery }),
     },
     transaction.signed,
   );
 
 const cacheKey = (workflowId: string, actionId: string): string =>
   `${workflowId}\u0000${actionId}`;
-
-const mutationLeaseRecovery = (
-  lease: StateQueueMutationLease,
-): JournalJsonObject => ({
-  stateQueueMutationLease: { token: lease.token, source: lease.source },
-});
-
-const parseMutationLeaseRecovery = (
-  recovery: JournalJsonObject | undefined,
-): { readonly token: string; readonly source: string } | undefined => {
-  if (recovery === undefined) return undefined;
-  const value = recovery.stateQueueMutationLease;
-  if (
-    Object.keys(recovery).length !== 1 ||
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value)
-  ) {
-    throw new Error("linear workflow durable mutation lease is malformed");
-  }
-  const record = value as Readonly<Record<string, unknown>>;
-  if (
-    Object.keys(record).sort().join(",") !== "source,token" ||
-    typeof record.token !== "string" ||
-    record.token.trim() !== record.token ||
-    record.token.length === 0 ||
-    typeof record.source !== "string" ||
-    record.source.trim() !== record.source ||
-    record.source.length === 0
-  ) {
-    throw new Error("linear workflow durable mutation lease is malformed");
-  }
-  return { token: record.token, source: record.source };
-};
 
 const requiresMutationLease = (
   category: LinearFamilyCategory,
@@ -249,12 +206,10 @@ export const createLinearFamilyWorkflowAdapter = <
   category,
   l1,
   transactions,
-  stateQueueMutationLeaseCoordinator,
 }: {
   readonly category: Category;
   readonly l1: FraudProofFamilyL1ObservationPort<Category>;
   readonly transactions: LinearFamilyTransactionPort<Category>;
-  readonly stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }): FraudProofFamilyWorkflowAdapter => {
   if (
     l1.portVersion !== FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT ||
@@ -265,7 +220,6 @@ export const createLinearFamilyWorkflowAdapter = <
     throw new Error(`${category} linear workflow ports changed identity`);
   }
   const prepared = new Map<string, LinearFamilyCapturedAction>();
-  const leaseByTxHash = new Map<string, StateQueueMutationLease>();
   const current = async (headerHash: string) => {
     const observed = await l1.observe({ headerHash });
     return {
@@ -311,7 +265,7 @@ export const createLinearFamilyWorkflowAdapter = <
       }
       return (await current(identity.target.headerHash)).workflow;
     },
-    preflight: async ({ identity, workflowId, artifact, action, entries }) => {
+    preflight: async ({ identity, workflowId, artifact, action }) => {
       if (
         identity.category !== category ||
         identity.target.kind !== "state_queue_header"
@@ -330,7 +284,14 @@ export const createLinearFamilyWorkflowAdapter = <
           `${category} preflight already has an outstanding captured body for this workflow action`,
         );
       }
-      const request = { action, artifact, entries };
+      const request = {
+        action,
+        artifact,
+        holder: {
+          workflowId,
+          objective: { category, headerHash: identity.target.headerHash },
+        },
+      };
       const captured = await transactions.capture(request);
       if (
         requiresMutationLease(category, action) !==
@@ -348,17 +309,12 @@ export const createLinearFamilyWorkflowAdapter = <
           action,
           transaction: captured.transaction,
           category,
-          ...(captured.mutationLease === undefined
-            ? {}
-            : {
-                durableRecovery: mutationLeaseRecovery(captured.mutationLease),
-              }),
         });
         prepared.set(key, captured);
         return preflight;
       } catch (cause) {
         await captured.mutationLease?.fail(
-          `preflight admission failed before durable intent: ${String(cause)}`,
+          `preflight admission failed before submission: ${String(cause)}`,
         );
         throw cause;
       }
@@ -374,86 +330,17 @@ export const createLinearFamilyWorkflowAdapter = <
           `${category} submit has no exact locally evaluated captured body`,
         );
       }
-      const recovery = parseMutationLeaseRecovery(preflight.durableRecovery);
-      if (
-        (captured.mutationLease === undefined) !== (recovery === undefined) ||
-        (captured.mutationLease !== undefined &&
-          (captured.mutationLease.token !== recovery?.token ||
-            captured.mutationLease.source !== recovery.source))
-      ) {
-        throw new Error(
-          `${category} cached mutation lease differs from durable intent`,
-        );
-      }
       try {
-        if (captured.mutationLease !== undefined) {
-          leaseByTxHash.set(preflight.txHash, captured.mutationLease);
-        }
         return {
           kind: "submitted",
           txHash: await submitCapturedTransaction(captured.transaction),
         };
       } finally {
         prepared.delete(key);
+        // The runner follows the submitted transaction on chain, so the
+        // lease ends with its submission.
+        await captured.mutationLease?.release();
       }
-    },
-    reconcile: async ({
-      identity,
-      action,
-      txHash,
-      durableRecovery,
-      signedTransactionCborHex,
-      authorizeResubmission,
-    }) => {
-      if (
-        identity.category !== category ||
-        identity.target.kind !== "state_queue_header"
-      ) {
-        throw new Error(`${category} reconcile changed workflow identity`);
-      }
-      const headerHash = identity.target.headerHash;
-      const recovery = parseMutationLeaseRecovery(durableRecovery);
-      if (
-        requiresMutationLease(category, action) !==
-        (recovery !== undefined)
-      ) {
-        return {
-          kind: "conflict",
-          reason: `${category} durable mutation-lease identity disagrees with removal topology`,
-        };
-      }
-      const observed = await l1.observe({
-        headerHash,
-      });
-      return await reconcileQueueLeaseFamily({
-        category,
-        ...(txHash === undefined ? {} : { txHash }),
-        ...(recovery === undefined ? {} : { recovery }),
-        coordinator: stateQueueMutationLeaseCoordinator,
-        leaseByTxHash,
-        l1,
-        ...(signedTransactionCborHex === undefined
-          ? {}
-          : { signedTransactionCborHex }),
-        ...(authorizeResubmission === undefined
-          ? {}
-          : { authorizeResubmission }),
-        read: async (recoverUnconfirmedTransaction) =>
-          await reconcileLinearFamilyAction({
-            category,
-            headerHash,
-            action,
-            ...(txHash === undefined ? {} : { txHash }),
-            provenance: observed.provenance,
-            stage: observed.stage,
-            recoverUnconfirmedTransaction,
-            transactionConfirmed: async (hash) =>
-              await l1.transactionConfirmed({
-                headerHash,
-                txHash: hash,
-              }),
-          }),
-      });
     },
   };
   return Object.freeze(adapter);

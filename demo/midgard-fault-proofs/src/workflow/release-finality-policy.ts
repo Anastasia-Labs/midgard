@@ -17,9 +17,9 @@ export type ReleaseL1FinalityPolicy = {
  * The release policy of a manifest `l1Finality` (or of any value carrying its
  * fields): the rollback fields only. The commit-event depth binds event
  * inclusion, not release. Every producer of a release identity projects
- * through here: workflow journals record the identity and recovery compares it
- * whole, so an extra field passed through structurally would make a recovered
- * workflow differ from its own deployment and wedge it.
+ * through here: a workflow binds the identity and compares it whole, so an
+ * extra field passed through structurally would make a workflow differ from
+ * its own deployment and wedge it.
  */
 export const releaseL1FinalityPolicyOf = (
   l1Finality: ReleaseL1FinalityPolicy,
@@ -101,7 +101,7 @@ export const validateVerifiedFraudProofReleaseFinalityPolicy = (
   }
   // The canonical identity is exactly the fields the digests bind; anything
   // else a producer carried structurally is unauthenticated and is dropped so
-  // it can never reach a workflow journal.
+  // it can never reach a workflow's identity.
   return Object.freeze({
     schemaVersion: value.schemaVersion,
     deploymentIdentityDigest: value.deploymentIdentityDigest,

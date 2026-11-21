@@ -9,10 +9,7 @@ import {
 } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import type {
-  FraudProofWorkflowTerminal,
-  JournalJsonObject,
-} from "../workflow/journal.js";
+import type { FraudProofWorkflowTerminal } from "../workflow/journal.js";
 import { type FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
 import type { FraudProofOwnThreads } from "../workflow/raw-l1-family-derivation.own-thread.js";
 import { type FraudProofAuthenticatedPublicationObserver } from "../workflow/raw-l1-publication-observation.js";
@@ -219,59 +216,6 @@ export const admitNetworkIdWorkflowArtifact = (
   return { direction: "accepted", prepared: preparedFromArtifact(value) };
 };
 
-export const confirmedTxHash = (
-  context: WorkflowContext,
-  actionId: string,
-): string | undefined => {
-  for (const entry of [...context.entries].reverse()) {
-    const event = entry.event;
-    if (event.kind === "confirmed" && event.actionId === actionId) {
-      return event.txHash;
-    }
-  }
-  return undefined;
-};
-
-export const latestRemovalIntent = (context: WorkflowContext) =>
-  [...context.entries]
-    .reverse()
-    .map((entry) => entry.event)
-    .find(
-      (event) =>
-        event.kind === "submission_intent" &&
-        event.actionInput.kind === "remove",
-    );
-
-export const parseMutationLeaseRecovery = (
-  recovery: JournalJsonObject | undefined,
-): { readonly token: string; readonly source: string } | undefined => {
-  if (recovery === undefined) return undefined;
-  const value = recovery.stateQueueMutationLease;
-  if (
-    Object.keys(recovery).length !== 1 ||
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value)
-  ) {
-    throw new Error(
-      "network-id durable recovery has an invalid mutation-lease shape",
-    );
-  }
-  const parsed = value as Readonly<Record<string, unknown>>;
-  if (
-    Object.keys(parsed).sort().join(",") !== "source,token" ||
-    typeof parsed.token !== "string" ||
-    parsed.token.trim() === "" ||
-    parsed.token.trim() !== parsed.token ||
-    typeof parsed.source !== "string" ||
-    parsed.source.trim() === "" ||
-    parsed.source.trim() !== parsed.source
-  ) {
-    throw new Error("network-id durable mutation-lease identity is malformed");
-  }
-  return { token: parsed.token, source: parsed.source };
-};
-
 export type NetworkIdWorkflowTerminalFacts = {
   readonly economics: FraudProofWorkflowTerminal["economics"];
   readonly observedAt: FraudProofWorkflowTerminal["observedAt"];
@@ -280,10 +224,8 @@ export type NetworkIdWorkflowTerminalFacts = {
 export interface NetworkIdRawL1ObservationPort {
   readonly publications?: FraudProofAuthenticatedPublicationObserver;
   /**
-   * Canonical recovery of a journaled signed transaction (mempool, inclusion,
-   * expiry). Reconciliation reports a submitted transaction as absent only
-   * through this port; without it an unconfirmed submission stays unresolved
-   * rather than being abandoned and rebuilt.
+   * Where an exact signed transaction stands on the canonical chain
+   * (mempool, inclusion, expiry).
    */
   observeSignedTransaction?(
     input: SignedWorkflowTransaction,

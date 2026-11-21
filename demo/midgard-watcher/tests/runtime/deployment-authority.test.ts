@@ -202,3 +202,33 @@ describe("signed deployment and release rule-bundle acquisition", () => {
     ).rejects.toThrow("path traverses a symlink");
   });
 });
+
+describe("the deployment-authority fixture", () => {
+  it("isolates mutable deployment-authority fixture clones around one admitted base", () => {
+    const first = makeWatcherDeploymentAuthorityFixture();
+    const second = makeWatcherDeploymentAuthorityFixture();
+    const firstManifest = first.signedIdentity.manifest as Record<
+      string,
+      unknown
+    >;
+    const firstAppliedScripts = first.policy.appliedScriptHashes as Record<
+      string,
+      string
+    >;
+
+    firstManifest.network = "Mainnet";
+    firstAppliedScripts.hubOracleMint = "ff".repeat(28);
+    (
+      first.contracts.hubOracleMint as unknown as Record<string, unknown>
+    ).scriptHash = "ee".repeat(28);
+
+    expect(second.signedIdentity.manifest.network).toBe("Preprod");
+    expect(second.policy.appliedScriptHashes.hubOracleMint).not.toBe(
+      firstAppliedScripts.hubOracleMint,
+    );
+    expect(second.contracts.hubOracleMint!.scriptHash).not.toBe(
+      first.contracts.hubOracleMint!.scriptHash,
+    );
+    expect(first.result).toBe(second.result);
+  });
+});

@@ -18,11 +18,11 @@ import {
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { selectFeeInput } from "../src/step-support.js";
-import { WorkflowFundingReservationUnavailableError } from "../src/workflow/funding-reservation-permit.workflow-funding-reservation-port.js";
 import {
   asWorkflowFundingShortfall,
   WorkflowFundingShortfallError,
-} from "../src/workflow/funding-reservation-permit.workflow-funding-shortfall.js";
+  WorkflowFundingUnavailableError,
+} from "../src/workflow/workflow-funding-shortfall.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 
 const ACTION = "init:00#0";
@@ -47,7 +47,7 @@ const walletWith = async (lovelace: bigint) => {
 const expectShortfall = (failure: unknown) => {
   const classified = asWorkflowFundingShortfall(ACTION, failure);
   expect(classified).toBeInstanceOf(WorkflowFundingShortfallError);
-  expect(classified).toBeInstanceOf(WorkflowFundingReservationUnavailableError);
+  expect(classified).toBeInstanceOf(WorkflowFundingUnavailableError);
 };
 
 const buildFailure = async (build: () => Promise<unknown>) => {

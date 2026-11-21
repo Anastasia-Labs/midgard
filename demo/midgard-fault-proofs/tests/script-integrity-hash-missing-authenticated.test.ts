@@ -12,10 +12,7 @@ import {
 } from "../src/script-integrity-hash-missing/staged-plan.js";
 import type { ManifestBoundScriptIntegrityHashMissingWorkflowConfig } from "../src/script-integrity-hash-missing/v1.js";
 import { SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC } from "../src/script-integrity-hash-missing/v1.js";
-import {
-  cursorFamilyObservation,
-  reconcileCursorFamilyAction,
-} from "../src/workflow/cursor-family-state.js";
+import { cursorFamilyObservation } from "../src/workflow/cursor-family-state.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
@@ -64,54 +61,22 @@ describe("scriptIntegrityHashMissing package-owned production V1", () => {
     expect(exactKeys).not.toContain("evidence" as never);
   });
 
-  it("content-addresses every self-loop and rejects transaction substitution", async () => {
+  it("content-addresses every self-loop", () => {
     const first = actionFor(4, outRef("40"));
     const intended = hash("41");
-    await expect(
-      reconcileCursorFamilyAction({
-        spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
-        headerHash,
-        action: first,
-        txHash: intended,
-        provenance,
-        stage: step(4, `${intended}#0`),
-        transactionConfirmed: async () => true,
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash: intended });
     const resumed = actionFor(4, `${intended}#0`);
     expect(resumed.actionId).not.toBe(first.actionId);
-    await expect(
-      reconcileCursorFamilyAction({
-        spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
-        headerHash,
-        action: first,
-        txHash: intended,
-        provenance,
-        stage: step(4, `${hash("42")}#0`),
-        transactionConfirmed: async () => true,
-      }),
-    ).resolves.toMatchObject({ kind: "conflict" });
+    expect(resumed.input.stage).toBe(first.input.stage);
   });
 
-  it("admits only the permanent-mint successor before removal", async () => {
-    const action = actionFor(7, outRef("70"));
-    const txHash = hash("71");
-    await expect(
-      reconcileCursorFamilyAction({
-        spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
-        headerHash,
-        action,
-        txHash,
-        provenance,
-        stage: {
-          kind: "proof_token",
-          fraudProofOutRef: `${txHash}#1`,
-          stateQueueBlockOutRef: outRef("10"),
-          nextRemovalOutRef: outRef("72"),
-        },
-        transactionConfirmed: async () => true,
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash });
+  it("admits only the permanent-mint successor before removal", () => {
+    expect(SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC.successors[7]).toEqual([
+      "proof_token",
+    ]);
+    expect(actionFor(7, outRef("70")).input).toMatchObject({
+      stage: "step_07",
+      ordinal: 7,
+    });
   });
 
   it("reproduces the 224+224 budget-24 cursor chain deterministically", () => {

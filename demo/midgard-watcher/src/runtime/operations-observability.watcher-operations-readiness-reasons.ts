@@ -20,31 +20,14 @@ export const WATCHER_OPERATIONS_READINESS_REASONS = Object.freeze([
   /** The journals could not be opened; `supervisor.journalUnavailable` names
    * the failure. Held while the open is retried; clears once it succeeds. */
   "journal_unavailable",
-  /** Proof work names a decision the journal does not hold;
-   * `supervisor.journalDecisionMissing` lists each. Held, never run again;
-   * each clears once its header leaves the finalized queue. */
-  "journal_decision_missing",
-  /** A fault-proof objective's header matured before it signed any attempt
-   * (past its latest safe start it still runs, late); it is listed in
+  /** A fault-proof objective's header matured with no removal of ours landed
+   * and nothing of ours in flight (past its latest safe start it still runs, late); it is listed in
    * `supervisor.journalDecisionMissing` with this `readiness` and the detail
    * `<category>/<headerHash>`. Held, never run again, the process up; clears
    * once its header leaves the finalized queue. */
   "fault_proof_start_deadline_passed",
-  /** Startup could not read a fault-proof objective's workflow rows (a
-   * corrupt row, a foreign execution, a storage error); it is listed in
-   * `supervisor.journalDecisionMissing` with this `readiness` and the detail
-   * `<category>/<headerHash>: <failure>`. Held, never run again, the process
-   * up; clears once its header leaves the finalized queue, which forgets its
-   * rows. */
-  "fault_proof_objective_unreadable",
-  /** A funding reservation no workflow will drive again holds signed
-   * attempts that are not retired past release finality; it is listed in
-   * `supervisor.journalDecisionMissing` with this `readiness`, and its
-   * detail names the reservation. Its `proof_submission_failure` alert is
-   * active meanwhile. Clears once its attempts' own signed bytes show each
-   * one retired past release finality and the reservation is released. */
-  "prover_funding_orphaned_reservation",
-  /** A released or final objective's workflow rows could not be deleted
+  /** A released or final objective's rows in watcher-journals.sqlite could
+   * not be deleted
    * (its rows stay and keep their slot under the objective cap);
    * `supervisor.objectiveCleanupFailures` lists each with its failure. Every
    * admission retries; clears once the removal succeeds. */

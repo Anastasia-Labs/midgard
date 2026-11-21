@@ -3,8 +3,6 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import { JourneyTransportError } from "./transport-failure.js";
 
@@ -16,9 +14,8 @@ export const WATCHER_CONTAINER_PROCESS_CONFIG_PATH =
  * The read-only evidence reader, run by the watcher image's own Node in its
  * working directory. It reads the paths the watcher actually runs with from
  * its mounted process configuration, opens the decision journal through the
- * image's exported `readWatcherFaultDecisionEvidence` and the workflow
- * journal as a read-only SQLite connection, and prints one JSON envelope
- * carrying the configuration's digest. A read that fails prints the failure
+ * image's exported `readWatcherFaultDecisionEvidence`, and prints one JSON
+ * envelope carrying the configuration's digest. A read that fails prints the failure
  * as its envelope instead, with SQLite's result code when it has one, so the
  * host tells a named failure from a busy journal (`errcode` 5). Its one
  * argument is the request.
@@ -27,7 +24,6 @@ export const WATCHER_EVIDENCE_READER_SCRIPT = `
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 
 const request = JSON.parse(process.argv[process.argv.length - 1]);
 const read = async (config) => {
@@ -40,23 +36,6 @@ const read = async (config) => {
       deploymentFingerprint: request.deploymentFingerprint,
       launchScope: request.launchScope,
     });
-  }
-  if (request.read === "workflow-rows") {
-    const path = config.watcherConfig.storage.path;
-    if (!existsSync(path)) return [];
-    const store = new DatabaseSync(path, { readOnly: true });
-    try {
-      const table = store
-        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'watcher_workflow_journal_v1'")
-        .get();
-      if (table === undefined) return [];
-      const byHeader = request.headerHash === undefined ? "" : " AND header_hash = ?";
-      return store
-        .prepare("SELECT header_hash, workflow_id, body FROM watcher_workflow_journal_v1 WHERE category = ?" + byHeader + " ORDER BY header_hash, workflow_id, sequence")
-        .all(...(request.headerHash === undefined ? [request.category] : [request.category, request.headerHash]));
-    } finally {
-      store.close();
-    }
   }
   throw new Error("Unknown watcher evidence read");
 };
@@ -79,19 +58,12 @@ try {
 `;
 
 /** One evidence read, as the reader script receives it. */
-export type WatcherEvidenceRequest =
-  | Readonly<{
-      read: "decisions";
-      processConfigPath: string;
-      deploymentFingerprint: string;
-      launchScope: readonly string[];
-    }>
-  | Readonly<{
-      read: "workflow-rows";
-      processConfigPath: string;
-      category: FraudProofCatalogueCategoryName;
-      headerHash?: string;
-    }>;
+export type WatcherEvidenceRequest = Readonly<{
+  read: "decisions";
+  processConfigPath: string;
+  deploymentFingerprint: string;
+  launchScope: readonly string[];
+}>;
 
 /**
  * Runs the reader script with Node inside the watcher's own container and
@@ -156,41 +128,21 @@ export const composeWatcherEvidenceExec =
       );
     });
 
-type WorkflowRow = { header_hash: string; workflow_id: string; body: string };
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** A workflow row's journaled entry, or `undefined` when it is not a JSON object. */
-const parseWorkflowRowBody = (
-  body: string,
-): Record<string, unknown> | undefined => {
-  try {
-    const entry: unknown = JSON.parse(body);
-    return isRecord(entry) ? entry : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
 const DECISIONS = new Set(["healthy", "unprovable", "fault_detected"]);
 
-/** What a journey reads from its watcher's journals, wherever they live. */
+/** What a journey reads from its watcher's decision journal, wherever it lives. */
 export type JourneyWatcherEvidence = Readonly<{
   readDecisions(): Promise<readonly HeaderDecision[]>;
-  /** The workflow rows for each header of `category`, or of one header. */
-  readWorkflowRows(
-    category: FraudProofCatalogueCategoryName,
-    headerHash?: string,
-  ): Promise<ReadonlyMap<string, readonly FraudProofWorkflowJournalEntry[]>>;
 }>;
 
 /**
- * Reads a running watcher's decision and workflow journals through `exec`.
- * Every answer must come from the watcher whose mounted process configuration
- * is byte-for-byte the host's `hostProcessConfigPath`, and every decision and
- * workflow row must belong to `deploymentFingerprint`; each row's entry must
- * name its own workflow, the category read and its row's header.
+ * Reads a running watcher's decision journal through `exec`. Every answer
+ * must come from the watcher whose mounted process configuration is
+ * byte-for-byte the host's `hostProcessConfigPath`, and every decision must
+ * belong to `deploymentFingerprint`.
  */
 export const createWatcherEvidenceReader = (input: {
   exec: WatcherEvidenceExec;
@@ -256,60 +208,6 @@ export const createWatcherEvidenceReader = (input: {
             "The stack watcher returned a decision outside this deployment",
           );
       return Object.freeze(decisions as HeaderDecision[]);
-    },
-    readWorkflowRows: async (category, headerHash) => {
-      const rows = await read({
-        read: "workflow-rows",
-        processConfigPath,
-        category,
-        ...(headerHash === undefined ? {} : { headerHash }),
-      });
-      const byHeader = new Map<string, FraudProofWorkflowJournalEntry[]>();
-      const workflows = new Map<string, string>();
-      for (const row of rows) {
-        if (
-          !isRecord(row) ||
-          typeof row.header_hash !== "string" ||
-          typeof row.workflow_id !== "string" ||
-          typeof row.body !== "string" ||
-          (headerHash !== undefined && row.header_hash !== headerHash)
-        )
-          throw new Error(
-            "The stack watcher returned a malformed workflow row",
-          );
-        const {
-          header_hash: header,
-          workflow_id: workflowId,
-          body,
-        } = row as WorkflowRow;
-        const entry = parseWorkflowRowBody(body);
-        if (
-          entry?.workflowId !== workflowId ||
-          !isRecord(entry.identity) ||
-          entry.identity.category !== category ||
-          !isRecord(entry.identity.target) ||
-          entry.identity.target.headerHash !== header
-        )
-          throw new Error(
-            "The stack watcher returned a malformed workflow row",
-          );
-        if (
-          entry.identity.deploymentFingerprint !== input.deploymentFingerprint
-        )
-          throw new Error(
-            "The stack watcher returned a workflow row outside this deployment",
-          );
-        const known = workflows.get(header);
-        if (known !== undefined && known !== workflowId)
-          throw new Error(
-            `Header ${header} has more than one ${category} workflow`,
-          );
-        workflows.set(header, workflowId);
-        const entries = byHeader.get(header) ?? [];
-        entries.push(entry as unknown as FraudProofWorkflowJournalEntry);
-        byHeader.set(header, entries);
-      }
-      return byHeader;
     },
   });
 };

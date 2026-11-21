@@ -108,17 +108,10 @@ const port = (
   capture,
 });
 
-const leaseCoordinator = {
-  acquire: async () => {
-    throw new Error("no mutation lease expected in this focused scan test");
-  },
-};
-
 const context = {
   identity,
   workflowId: hash("bb"),
   artifact: { prepared: true },
-  entries: [],
 } as const;
 
 const step04 = (threadOutRef: string): FraudProofRawL1FamilyStage => ({
@@ -141,7 +134,6 @@ describe("production missing-signature adapter V1", () => {
     const firstProcess = createMissingSignatureWorkflowAdapter({
       l1: l1(stage, confirmed),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
     const firstObservation = await firstProcess.observe(context);
     if (firstObservation.kind !== "action_required") {
@@ -168,15 +160,7 @@ describe("production missing-signature adapter V1", () => {
     const secondProcess = createMissingSignatureWorkflowAdapter({
       l1: l1(stage, confirmed),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
-    await expect(
-      secondProcess.reconcile({
-        ...context,
-        action: firstObservation.action,
-        txHash: txHashes[0],
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash: txHashes[0] });
     const secondObservation = await secondProcess.observe(context);
     if (secondObservation.kind !== "action_required") {
       throw new Error("expected second scan action");
@@ -184,6 +168,9 @@ describe("production missing-signature adapter V1", () => {
     expect(secondObservation.action.actionId).not.toBe(
       firstObservation.action.actionId,
     );
+    expect(secondObservation.action.input).toMatchObject({
+      threadOutRef: `${txHashes[0]}#0`,
+    });
     const secondPreflight = await secondProcess.preflight({
       ...context,
       action: secondObservation.action,
@@ -201,15 +188,21 @@ describe("production missing-signature adapter V1", () => {
     const thirdProcess = createMissingSignatureWorkflowAdapter({
       l1: l1(stage, confirmed),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
-    await expect(
-      thirdProcess.reconcile({
-        ...context,
-        action: secondObservation.action,
-        txHash: txHashes[1],
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash: txHashes[1] });
+    const thirdObservation = await thirdProcess.observe(context);
+    if (thirdObservation.kind !== "action_required") {
+      throw new Error("expected third scan action");
+    }
+    expect(thirdObservation.action.input).toMatchObject({
+      threadOutRef: `${txHashes[1]}#1`,
+    });
+    expect(
+      new Set([
+        firstObservation.action.actionId,
+        secondObservation.action.actionId,
+        thirdObservation.action.actionId,
+      ]).size,
+    ).toBe(3);
     expect(capture).toHaveBeenCalledTimes(2);
   });
 
@@ -222,7 +215,6 @@ describe("production missing-signature adapter V1", () => {
     const adapter = createMissingSignatureWorkflowAdapter({
       l1: l1(stage, confirmed),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
     const observation = await adapter.observe(context);
     if (observation.kind !== "action_required")
@@ -245,7 +237,6 @@ describe("production missing-signature adapter V1", () => {
           signed: signed({ txHash: hash("42"), inlineScript: true }),
         }),
       })),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
     await expect(
       inline.preflight({ ...context, action: observation.action }),
@@ -261,7 +252,6 @@ describe("production missing-signature adapter V1", () => {
           }),
         }),
       })),
-      stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
     await expect(
       forged.preflight({ ...context, action: observation.action }),
@@ -277,7 +267,6 @@ describe("production missing-signature adapter V1", () => {
         transactions: port(async () => ({
           transaction: transaction(hash("42")),
         })),
-        stateQueueMutationLeaseCoordinator: leaseCoordinator,
       }),
     ).toThrow("ports changed identity");
   });

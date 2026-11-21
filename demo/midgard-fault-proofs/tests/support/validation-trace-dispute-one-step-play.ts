@@ -7,7 +7,6 @@
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import {
-  confirmedValidationTraceStages,
   parseValidationTraceAction,
   VALIDATION_TRACE_DISPUTE_ACTION,
   validationTraceActionId,
@@ -18,10 +17,11 @@ import {
   type ValidationTraceOneStepHolder,
 } from "../../src/validation-trace-dispute/one-step-holders.js";
 import type { ValidationTraceDisputeDeployment } from "../../src/validation-trace-dispute/transactions.js";
-import type { FraudProofWorkflowJournalEntry } from "../../src/workflow/journal.js";
+import type { InFlightTransaction } from "../../src/workflow/in-flight.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.js";
 import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
+import type { ConfirmedValidationTraceStage } from "./validation-trace-confirmed-stages.js";
 import type { Defender } from "./validation-trace-dispute-defend.js";
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
 import type { Runner } from "./validation-trace-dispute-runner.js";
@@ -183,11 +183,12 @@ const ONE_STEP_STAGES: readonly ValidationTraceStage[] = [
   "close_awarded",
 ];
 
-/** The confirmed one-step stages, as [stage, consumed, landed]. */
+/** The confirmed one-step stages among `stages`, as [stage, consumed,
+ * landed]. */
 export const confirmedOneStepMoves = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
+  stages: readonly ConfirmedValidationTraceStage[],
 ) =>
-  confirmedValidationTraceStages(entries)
+  stages
     .filter(({ action }) => ONE_STEP_STAGES.includes(action.stage))
     .map(({ action, txHash }) => ({
       stage: action.stage,
@@ -195,15 +196,15 @@ export const confirmedOneStepMoves = (
       txHash,
     }));
 
-/** The journaled submission intents for the action spending `consumes`. */
-export const intentsFor = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
+/** The transactions among `sent` for the move of `stage` spending
+ * `consumes`, oldest first. */
+export const sendsFor = (
+  sent: readonly InFlightTransaction[],
   stage: ValidationTraceStage,
   consumes: string,
-) =>
-  entries.flatMap(({ event }) =>
-    event.kind === "submission_intent" &&
-    event.actionId === validationTraceActionId({ stage, consumes })
-      ? [{ attempt: event.attempt, txHash: event.txHash }]
-      : [],
-  );
+) => {
+  const actionId = validationTraceActionId({ stage, consumes });
+  return sent
+    .filter((each) => each.actionId === actionId)
+    .map(({ txHash }) => ({ txHash }));
+};

@@ -28,8 +28,8 @@ import {
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import { workflowConfirmedTransactions } from "../workflow/own-outputs.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import {
   admitNativeScriptDecodingWorkflowArtifact,
   prepareNativeScriptDecodingWorkflowArtifact,
@@ -119,10 +119,14 @@ export const createNativeScriptDecodingTransactionPort = (
       ...args,
       replayContext: config.replayContext,
     }),
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const ownOutputs = workflowFieldCarriageOwnOutputs({
       category: "nativeScriptDecoding",
-      entries,
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
+      }),
     });
     const a = await admitNativeScriptDecodingWorkflowArtifact(artifact);
     if (a.current.headerHash !== config.binding.definition.headerHash)
@@ -149,7 +153,7 @@ export const createNativeScriptDecodingTransactionPort = (
       });
     return {
       transaction: (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await (async () => {
             if (input.stage === "init") {
               return await buildInit({
@@ -197,7 +201,8 @@ export const createNativeScriptDecodingTransactionPort = (
                       lucid: config.lucid,
                       address: config.signer.proofMaterialsAddress,
                       proofCbor: inclusion.txMembershipProofCbor,
-                      ownTransactions: workflowConfirmedTransactions(entries),
+                      view: config.signer.proofMaterials,
+                      holder,
                     }),
                     referenceScriptUtxo: config.references.steps[0],
                     witnessReferenceScripts: config.references.witnesses,

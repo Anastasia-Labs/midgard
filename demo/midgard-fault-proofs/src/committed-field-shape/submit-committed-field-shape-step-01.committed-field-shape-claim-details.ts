@@ -9,7 +9,7 @@ import {
 
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import {
   committedFieldShapeStepLabel,
@@ -39,7 +39,7 @@ export type CommittedFieldShapeStep01Build = {
 };
 
 export type SubmitCommittedFieldShapeStep01Result =
-  UnjournaledSubmission<CommittedFieldShapeStep01Build>;
+  OutsideWorkflowSubmission<CommittedFieldShapeStep01Build>;
 
 /**
  * The slot a claim names, its witness-set hash, and — when the claim spells a

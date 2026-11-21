@@ -10,7 +10,6 @@ import "./action-changed.js";
 import "./actuation-permit.js";
 import "./classification.js";
 import "./complete-replay.js";
-import "./funding-reservation-permit.js";
 import "./journal.js";
 import "./l1-source.js";
 import "./release-finality-policy.js";
@@ -30,7 +29,6 @@ export {
   type FraudProofWorkflowAction,
   type FraudProofWorkflowObservation,
   type FraudProofWorkflowPreflight,
-  type FraudProofWorkflowReconcileResult,
   type FraudProofWorkflowReferenceScript,
   type FraudProofWorkflowRegistry,
   type FraudProofWorkflowSubmitResult,
@@ -42,15 +40,9 @@ export {
   FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   type FraudProofWorkflowRunResult,
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
-export {
-  createFraudProofWorkflowRegistry,
-  FraudProofWorkflowArtifactEnvelopeError,
-  requireFraudProofWorkflowArtifactEnvelope,
-} from "./orchestrator.immutable-fraud-proof-workflow-registry.js";
+export { createFraudProofWorkflowRegistry } from "./orchestrator.immutable-fraud-proof-workflow-registry.js";
 export { normalizeWorkflowTerminal } from "./orchestrator.normalize-workflow-terminal.js";
-export { readSignedAttempt } from "./orchestrator.read-signed-attempt.js";
 export {
-  resumeRecordedFraudProofWorkflow,
   runDaHashPreimageWorkflowFromRetainedDa,
   runFraudProofWorkflow,
 } from "./orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";

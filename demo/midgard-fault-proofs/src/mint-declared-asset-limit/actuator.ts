@@ -17,7 +17,7 @@ import {
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   admitMintDeclaredAssetLimitArtifact,
@@ -137,7 +137,7 @@ const capture = async (
   label: string,
 ): Promise<MintDeclaredAssetLimitCapturedAction> =>
   Object.freeze({
-    transaction: (await journaledStepTransaction(built, label)).transaction,
+    transaction: (await workflowStepTransaction(built, label)).transaction,
   });
 
 /**

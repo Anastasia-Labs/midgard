@@ -43,7 +43,7 @@ import {
 import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 import {
@@ -84,7 +84,7 @@ export type ValueNotPreservedStep04Build = {
 };
 
 export type SubmitValueNotPreservedStep04Result =
-  UnjournaledSubmission<ValueNotPreservedStep04Build>;
+  OutsideWorkflowSubmission<ValueNotPreservedStep04Build>;
 
 type Step04SpendLayout = {
   readonly inputIndex: bigint;

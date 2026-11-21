@@ -13,7 +13,6 @@ import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { validationTraceThreadTokenName } from "../src/validation-trace-dispute/case-history.js";
 import { awaitingValidationTraceCounterparty } from "../src/validation-trace-dispute/waiting.js";
@@ -57,8 +56,8 @@ describe("validation-trace dispute runner: waiting on the counterparty", () => {
       scene.failing,
       VALIDATION_TRACE_CASE_OPEN,
     );
-    if (!("entries" in result)) throw new Error("no workflow journal");
-    const verify = confirmedValidationTraceStages(result.entries).find(
+    expect(result.kind).toBe("pending");
+    const verify = (await runner.confirmed()).find(
       ({ action }) => action.stage === "verify_source",
     );
     caseOutRef = verify!.outputs[0]!.outRef;
@@ -89,12 +88,14 @@ describe("validation-trace dispute runner: waiting on the counterparty", () => {
     let runs = 0;
     const result = await continuePendingWorkflow({
       invocation: {
-        mode: "run",
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         category: "validationTraceDispute",
         headerHash: scene.failing.evidence.headerHash,
       },
-      journal: runner.journal,
+      run: runner.process.run({
+        category: "validationTraceDispute",
+        headerHash: scene.failing.evidence.headerHash,
+      }),
       execute: async () => {
         runs += 1;
         return awaitingValidationTraceCounterparty(

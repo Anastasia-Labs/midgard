@@ -19,12 +19,12 @@ import {
   structuredDataPublicationPlan,
   structuredDataTreeData,
 } from "../src/workflow/structured-data-preimage.js";
-import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
 import { network } from "./support/emulator/blueprints.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
+import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
 
-it("journals bounded structured Data publications and re-admits every exact output after restart", async () => {
+it("publishes bounded structured Data and re-admits every exact output after restart", async () => {
   const account = generateEmulatorAccount({ lovelace: 5_000_000_000n });
   const emulator = new Emulator([account], EMULATOR_PROTOCOL_PARAMETERS);
   const lucid = await Lucid(emulator, network);
@@ -63,10 +63,6 @@ it("journals bounded structured Data publications and re-admits every exact outp
     input: { category: "withdrawalMistag", stage: "step_03" },
   };
   const headerHash = "ab".repeat(28);
-  const journal = createConfirmedActionJournal({
-    category: "withdrawalMistag",
-    headerHash,
-  });
   const port = () =>
     createAuthenticatedRawDatumPreimagePrerequisitePort({
       category: "withdrawalMistag",
@@ -91,45 +87,41 @@ it("journals bounded structured Data publications and re-admits every exact outp
     });
   for (let i = 0; i < requirement.publicationDatums.length; i++) {
     const inspected = await port().inspect({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
       headerHash,
       baseAction: action,
       artifact: {},
-      entries: journal.entries(),
     });
     if (inspected.kind !== "required")
       throw new Error("missing structured publication action");
     const captured = await port().capture({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
       headerHash,
       action: inspected.action,
       artifact: {},
-      entries: journal.entries(),
     });
-    const recovery = JSON.parse(JSON.stringify(captured.durableRecovery));
     const sent = await captureEmulatorSubmission(emulator, () =>
       captured.transaction.signed.submit(),
     );
     emulator.awaitBlock();
     expect(sent.measurement.completeSignedBytes).toBeLessThanOrEqual(15872);
-    expect(
-      await port().reconcile({
-        headerHash,
-        action: inspected.action,
-        artifact: {},
-        txHash: captured.transaction.txHash,
-        durableRecovery: recovery,
-      }),
-    ).toEqual({ kind: "confirmed", txHash: captured.transaction.txHash });
-    journal.confirm({
-      action: inspected.action,
-      txHash: captured.transaction.txHash,
-      durableRecovery: recovery,
-    });
   }
+  // A restarted port finds every publication by content and builds none.
+  expect(
+    (
+      await port().inspect({
+        holder: TEST_PROOF_MATERIALS_HOLDER,
+        headerHash,
+        baseAction: action,
+        artifact: {},
+      })
+    ).kind,
+  ).toBe("satisfied");
   const resolved = await port().resolveAuthenticated({
+    holder: TEST_PROOF_MATERIALS_HOLDER,
     headerHash,
     action,
     artifact: {},
-    entries: journal.entries(),
   });
   expect(resolved.publications.map((output) => output.datum)).toEqual(
     requirement.publicationDatums,
@@ -152,10 +144,10 @@ it("journals bounded structured Data publications and re-admits every exact outp
   });
   await expect(
     altered.inspect({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
       headerHash,
       baseAction: action,
       artifact: {},
-      entries: [],
     }),
   ).rejects.toThrow("publication identities changed");
 });

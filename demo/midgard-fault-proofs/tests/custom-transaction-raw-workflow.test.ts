@@ -9,11 +9,7 @@ import {
   MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
   OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import {
-  journalJsonDigest,
-  type JournalJsonObject,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import type { JournalJsonObject } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -35,6 +31,7 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 
 const categories = [
   "mintDeclaredAssetLimit",
@@ -118,26 +115,21 @@ const fixtureFor = async (category: Category) => {
     async (routed: WorkflowRawFamilyEvidence) =>
       await prepare(category, routed),
   );
+  const observe = vi.fn<FraudProofFamilyWorkflowAdapter["observe"]>(
+    async () => ({
+      kind: "pending",
+      reason: "local raw preparation boundary",
+    }),
+  );
   const adapter: FraudProofFamilyWorkflowAdapter = {
     adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
     category,
     safety: FRAUD_PROOF_WORKFLOW_SAFETY,
     prepare: forbidden,
     prepareRaw,
-    validatePreparedRawArtifact: async ({ routed, artifact }) => {
-      if (
-        journalJsonDigest(await prepare(category, routed)) !==
-        journalJsonDigest(artifact)
-      )
-        throw new Error("raw saved artifact changed");
-    },
-    observe: async () => ({
-      kind: "pending",
-      reason: "local raw preparation boundary",
-    }),
+    observe,
     preflight: forbidden,
     submit: forbidden,
-    reconcile: forbidden,
   };
   const workflow = {
     binding: {
@@ -150,85 +142,62 @@ const fixtureFor = async (category: Category) => {
     terminalVerifier: terminalVerifierOf(forbidden),
     releaseFinalityAuthority,
   };
-  const journal = new MemoryFraudProofWorkflowJournalStore();
-  const execute = () =>
-    category === "mintDeclaredAssetLimit"
+  // Each call is a fresh process: a restart holds nothing in memory.
+  const execute = () => {
+    const run = createTestWorkflowProcess().run({
+      category,
+      headerHash: fixture.headerHash,
+    });
+    return category === "mintDeclaredAssetLimit"
       ? executeManifestBoundMintDeclaredAssetLimitWorkflow({
           workflow,
           sources,
-          journal,
+          run,
+          walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         } as unknown as Parameters<
           typeof executeManifestBoundMintDeclaredAssetLimitWorkflow
         >[0])
       : executeManifestBoundObserversForbiddenWorkflow({
           workflow,
           sources,
-          journal,
+          run,
+          walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         } as unknown as Parameters<
           typeof executeManifestBoundObserversForbiddenWorkflow
         >[0]);
+  };
   return {
     workflow,
     observation,
     sources,
-    journal,
     execute,
     prepareRaw,
+    observe,
     forbidden,
+    headerHash: fixture.headerHash,
   };
 };
 
 it.each(categories)(
-  "%s admits the exact raw retained route and revalidates its prepared artifact",
+  "%s admits the exact raw retained route and prepares it again after a restart",
   async (category) => {
     const fixture = await fixtureFor(category);
     const result = await fixture.execute();
     expect(result.kind).toBe("pending");
     if (result.kind !== "pending")
       throw new Error("raw fixture did not enter common workflow");
-    const entries = await fixture.journal.load(result.workflowId);
-    expect(entries[1]?.event.kind).toBe("prepared");
     expect(fixture.prepareRaw).toHaveBeenCalledOnce();
+    const artifact = fixture.observe.mock.calls[0]![0].artifact;
+    expect(artifact).toEqual(await fixture.prepareRaw.mock.results[0]!.value);
+    expect(fixture.observe.mock.calls[0]![0].identity).toMatchObject({
+      category,
+      target: { kind: "state_queue_header", headerHash: fixture.headerHash },
+    });
     expect(fixture.forbidden).not.toHaveBeenCalled();
     expect((await fixture.execute()).kind).toBe("pending");
-    expect(fixture.prepareRaw).toHaveBeenCalledOnce();
-    const changed = new MemoryFraudProofWorkflowJournalStore();
-    for (const entry of entries) {
-      if (entry.event.kind !== "prepared") {
-        await changed.append(entry, entry.sequence);
-        continue;
-      }
-      const family = entry.event.artifact.familyArtifact as JournalJsonObject;
-      const artifact = {
-        ...entry.event.artifact,
-        familyArtifact: { ...family, detectionId: "changed" },
-      };
-      await changed.append(
-        {
-          ...entry,
-          event: {
-            kind: "prepared",
-            artifact,
-            artifactDigest: journalJsonDigest(artifact),
-          },
-        },
-        entry.sequence,
-      );
-    }
-    const executeChanged =
-      category === "mintDeclaredAssetLimit"
-        ? executeManifestBoundMintDeclaredAssetLimitWorkflow
-        : executeManifestBoundObserversForbiddenWorkflow;
-    await expect(
-      executeChanged({
-        ...fixture,
-        workflow: fixture.workflow,
-        journal: changed,
-      } as unknown as Parameters<
-        typeof executeManifestBoundMintDeclaredAssetLimitWorkflow
-      >[0] &
-        Parameters<typeof executeManifestBoundObserversForbiddenWorkflow>[0]),
-    ).rejects.toThrow("raw saved artifact changed");
+    expect(fixture.prepareRaw).toHaveBeenCalledTimes(2);
+    expect(fixture.observe.mock.calls.at(-1)![0].artifact).toEqual(artifact);
+    expect(fixture.forbidden).not.toHaveBeenCalled();
   },
 );
 
@@ -258,7 +227,10 @@ it.each(categories)(
           adapters: [adapter],
           launchScope: [other],
         }),
-        journal: fixture.journal,
+        run: createTestWorkflowProcess().run({
+          category: other,
+          headerHash: fixture.headerHash,
+        }),
         terminalVerifier: fixture.workflow.terminalVerifier,
         releaseFinalityAuthority,
       }),

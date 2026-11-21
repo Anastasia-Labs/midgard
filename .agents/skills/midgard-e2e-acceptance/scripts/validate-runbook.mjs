@@ -489,7 +489,6 @@ for (const flag of [
   "--state-correction-blueprint <path>",
   "--state-correction-catalogue <path>",
   "--state-correction-parameters <path>",
-  "--state-correction-workflow-journal <directory>",
   "--state-correction-l1-observation <path>",
   "--state-correction-recovery-observation <path>",
   "--state-correction-final-snapshot <path>",

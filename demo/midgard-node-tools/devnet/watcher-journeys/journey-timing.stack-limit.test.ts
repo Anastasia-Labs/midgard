@@ -158,8 +158,8 @@ describe("an attached stack's per-family time limit", () => {
   // Operator-2's node is stopped through the fault phase, so nobody defends
   // the case the watcher opens; the case validator lets it close Convicted
   // only past its defense deadline, the side clock C plus the longest move
-  // validity range L_d after the case starts (validation-case-v1), and the
-  // watcher journals nothing while it waits.
+  // validity range L_d after the case starts (validation-case-v1), and
+  // nothing of ours lands while it waits.
   it("leaves validationTraceDispute's undefended case out of its limit, which pauses for the correction", () => {
     const cadence = { ...preprod, actionDepth: 1 };
     const generic = journeyTimingForCategory("zeroInput", cadence);
@@ -171,10 +171,9 @@ describe("an attached stack's per-family time limit", () => {
       profile.dispute_side_clock_ms + profile.dispute_max_validity_range_ms;
     // One day and two minutes on the rehearsal profile.
     expect(defenseWindowMs).toBe(86_520_000);
-    // The window the progress gate holds the journal's silence open for,
-    // from the case's start; the Close then gets the watcher's quiet bound.
-    // The family's limit does not run during the correction, so the window
-    // takes no share of it.
+    // The window the watcher awaits its counterparty through, from the
+    // case's start. The family's limit does not run during the correction,
+    // so the window takes no share of it.
     expect(timing.allowances.undefendedCaseMs).toBe(defenseWindowMs);
     expect(timing.transactionAllowanceMs).toBe(generic.transactionAllowanceMs);
     expect(timing.journeyTimeoutMs).toBe(generic.journeyTimeoutMs);

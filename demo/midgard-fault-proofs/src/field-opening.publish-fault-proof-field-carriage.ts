@@ -27,6 +27,7 @@ import {
   readOwnOutputs,
   resolveOwnOutputs,
 } from "./workflow/own-outputs.js";
+import { withContentFoundCarriage } from "./workflow/proof-materials-view.carriage-claims.js";
 
 /**
  * The key and transaction count of a carriage plan's prerequisites: its
@@ -178,10 +179,12 @@ export const faultProofFieldOpening = ({
  * it needs the certificate minting policy from the deployment and a fault-proof
  * step builder holds no such role.
  *
- * Each publication is a slot of `ownOutputs`: one of our earlier outputs for
- * the slot that is still live is reused; otherwise the slot's publication is
- * built, and its out-ref, taken from our signed body, is claimed before it is
- * returned. Two chunks with the same bytes are two slots and take two outputs.
+ * Each publication is a slot of `ownOutputs`: an output with the slot's
+ * content found through the workflow's proof-materials view, or one of our
+ * earlier outputs for the slot, that is still live is reused; otherwise the
+ * slot's publication is built, and its out-ref, taken from our signed body,
+ * is claimed before it is returned. Two chunks with the same bytes are two
+ * slots and take two outputs.
  */
 export const publishFaultProofFieldCarriage = async ({
   lucid,
@@ -214,16 +217,22 @@ export const publishFaultProofFieldCarriage = async ({
     plan: planned.plan,
     publisherAddress,
   });
+  const claimed = await withContentFoundCarriage(
+    ownOutputs,
+    slots.map(({ key, datumCbor }) => ({
+      key,
+      address: publisherAddress,
+      datumCbor,
+    })),
+  );
   const live = await readOwnOutputs(
     lucidOwnOutputReader(lucid),
-    slots.flatMap(({ key }) =>
-      ownOutputs.claims(key).map(({ outRef }) => outRef),
-    ),
+    slots.flatMap(({ key }) => claimed.claims(key).map(({ outRef }) => outRef)),
   );
   const published: UTxO[] = [];
   for (const [index, publication] of publications.entries()) {
     const { key, slot, datumCbor } = slots[index]!;
-    const existing = [...ownOutputs.claims(key)]
+    const existing = [...claimed.claims(key)]
       .reverse()
       .map(({ outRef }) => live.get(outRef))
       .find((utxo) => utxo !== undefined && slot.matches(utxo));
@@ -262,8 +271,9 @@ export const publishFaultProofFieldCarriage = async ({
 };
 
 /**
- * Our live publications of a plan, in plan order, read by their claimed
- * out-refs; undefined when any slot has none.
+ * Our live publications of a plan, in plan order: found by content through
+ * the workflow's proof-materials view, or read by their claimed out-refs;
+ * undefined when any slot has none.
  */
 export const resolveFaultProofFieldCarriagePublications = async ({
   lucid,
@@ -276,11 +286,17 @@ export const resolveFaultProofFieldCarriagePublications = async ({
   readonly planned: Pick<FaultProofFieldOpeningPlan, "plan">;
   readonly ownOutputs: OwnOutputJournal;
 }): Promise<readonly UTxO[] | undefined> => {
+  const claimed = await withContentFoundCarriage(
+    ownOutputs,
+    fieldPublicationSlots({ plan: planned.plan, publisherAddress }).map(
+      ({ key, datumCbor }) => ({ key, address: publisherAddress, datumCbor }),
+    ),
+  );
   const resolution = await resolveOwnOutputs({
     slots: fieldPublicationSlotClaims({
       plan: planned.plan,
       publisherAddress,
-      ownOutputs,
+      ownOutputs: claimed,
     }),
     read: lucidOwnOutputReader(lucid),
   });

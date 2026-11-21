@@ -5,13 +5,14 @@ import {
   sameJson,
   TX_HASH,
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import type { JournalJsonObject } from "./journal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAdapterContext,
   type FraudProofWorkflowPreflight,
 } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
+import { workflowProofMaterialsHolder } from "./proof-materials-view.holder.js";
 import {
   isScriptDecodePrerequisiteAction,
   SCRIPT_DECODE_PREREQUISITE,
@@ -30,9 +31,9 @@ const cacheKey = (workflowId: string, actionId: string): string =>
 
 /**
  * Records the script decode a family's proof needs before its first proof
- * action: each Stage, Bind, Walk and Finish is a journaled action of the
- * workflow, funded, submitted, reconciled and resumed like any other. No
- * base action is preflighted while the record is incomplete.
+ * action: each Stage, Bind, Walk and Finish is an action of the workflow,
+ * funded, submitted and followed like any other. No base action is
+ * preflighted while the record is incomplete.
  */
 export const withScriptDecodePrerequisite = <
   Category extends FraudProofCatalogueCategoryName,
@@ -56,11 +57,14 @@ export const withScriptDecodePrerequisite = <
   }
   const prepared = new Map<
     string,
-    Readonly<{
-      transaction: LocallyEvaluatedTransaction;
-      durableRecovery: JournalJsonObject;
-    }>
+    Readonly<{ transaction: LocallyEvaluatedTransaction }>
   >();
+  // How many times this process sent a record action: the process's
+  // in-flight set counts them, and a restart starts the count again.
+  const attemptsOf =
+    (context: FraudProofWorkflowAdapterContext) =>
+    (actionId: string): number =>
+      context.attempts?.(actionId) ?? 0;
   const headerOf = (
     target: Parameters<
       FraudProofFamilyWorkflowAdapter["preflight"]
@@ -96,22 +100,39 @@ export const withScriptDecodePrerequisite = <
     observe: async (context) => {
       const observed = await base.observe(context);
       if (
-        context.reconciliationOnly === true ||
         observed.kind !== "action_required" ||
         context.identity.target.kind !== "state_queue_header"
       ) {
         return observed;
       }
+      const holder = workflowProofMaterialsHolder(context);
+      // A workflow under reconciliation-only authority builds nothing, but
+      // what its record stages stays out of every sweep.
+      if (context.reconciliationOnly === true) {
+        await prerequisite.need({
+          holder,
+          baseAction: observed.action,
+          artifact: context.artifact,
+        });
+        return observed;
+      }
       const inspection = await prerequisite.inspect({
         headerHash: context.identity.target.headerHash,
+        holder,
         baseAction: observed.action,
         artifact: context.artifact,
-        entries: context.entries,
+        attempts: attemptsOf(context),
       });
       // A held action is still the one required: its preflight pauses the
       // workflow until a fresh observation instead of polling the hold.
       if (inspection.kind === "required" || inspection.kind === "held") {
-        return { kind: "action_required", action: inspection.action };
+        return {
+          kind: "action_required",
+          action: inspection.action,
+          ...(inspection.absentAt === undefined
+            ? {}
+            : { absentAt: inspection.absentAt }),
+        };
       }
       return inspection.kind === "pending"
         ? { kind: "pending", reason: inspection.reason }
@@ -122,9 +143,10 @@ export const withScriptDecodePrerequisite = <
       if (!isScriptDecodePrerequisiteAction(context.action)) {
         const inspection = await prerequisite.inspect({
           headerHash,
+          holder: workflowProofMaterialsHolder(context),
           baseAction: context.action,
           artifact: context.artifact,
-          entries: context.entries,
+          attempts: attemptsOf(context),
         });
         if (
           inspection.kind === "required" ||
@@ -145,9 +167,10 @@ export const withScriptDecodePrerequisite = <
       }
       const inspection = await prerequisite.inspect({
         headerHash,
+        holder: workflowProofMaterialsHolder(context),
         baseAction: observed.action,
         artifact: context.artifact,
-        entries: context.entries,
+        attempts: attemptsOf(context),
       });
       if (
         inspection.kind === "held" &&
@@ -169,9 +192,10 @@ export const withScriptDecodePrerequisite = <
       prepared.delete(key);
       const captured = await prerequisite.capture({
         headerHash,
+        holder: workflowProofMaterialsHolder(context),
         action: context.action,
         artifact: context.artifact,
-        entries: context.entries,
+        attempts: attemptsOf(context)(context.action.actionId),
       });
       if (
         !TX_HASH.test(captured.transaction.txHash) ||
@@ -200,7 +224,6 @@ export const withScriptDecodePrerequisite = <
             evaluator: LOCAL_UPLC_EVALUATOR,
           },
           referenceScripts: captured.transaction.referenceScripts,
-          durableRecovery: captured.durableRecovery,
         } satisfies FraudProofWorkflowPreflight,
         captured.transaction.signed,
       );
@@ -213,8 +236,7 @@ export const withScriptDecodePrerequisite = <
       const captured = prepared.get(key);
       if (
         captured === undefined ||
-        captured.transaction.txHash !== context.preflight.txHash ||
-        !sameJson(captured.durableRecovery, context.preflight.durableRecovery)
+        captured.transaction.txHash !== context.preflight.txHash
       ) {
         throw new Error(
           `${category} script decode prerequisite has no exact captured body`,
@@ -228,32 +250,6 @@ export const withScriptDecodePrerequisite = <
       } finally {
         prepared.delete(key);
       }
-    },
-    reconcile: async (context) => {
-      if (!isScriptDecodePrerequisiteAction(context.action)) {
-        return await base.reconcile(context);
-      }
-      if (context.identity.target.kind !== "state_queue_header") {
-        return {
-          kind: "conflict",
-          reason: `${category} script decode prerequisite changed target`,
-        };
-      }
-      return await prerequisite.reconcile({
-        headerHash: context.identity.target.headerHash,
-        ...(context.signedTransactionCborHex === undefined
-          ? {}
-          : { signedTransactionCborHex: context.signedTransactionCborHex }),
-        ...(context.authorizeResubmission === undefined
-          ? {}
-          : { authorizeResubmission: context.authorizeResubmission }),
-        action: context.action,
-        artifact: context.artifact,
-        ...(context.txHash === undefined ? {} : { txHash: context.txHash }),
-        ...(context.durableRecovery === undefined
-          ? {}
-          : { durableRecovery: context.durableRecovery }),
-      });
     },
   };
   return Object.freeze(adapter);

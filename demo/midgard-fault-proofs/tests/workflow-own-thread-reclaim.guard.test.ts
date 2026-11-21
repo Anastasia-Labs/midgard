@@ -1,21 +1,18 @@
-/** The edges of reclaiming our thread on a header another record removed.
- * The cancel waits until the removal itself is past rollback recovery, so a
- * rollback that drops the removal leaves the run as it was. The run resolves
- * only once its cancel is past rollback recovery, not a block earlier. And
- * the orchestrator itself refuses to resolve while the adapter still sees a
- * thread of ours, wrapped or not: two runs on our key that both opened a
- * thread on one header end with the second one's thread back in our
- * wallet, never stranded. */
+/** The edges of reclaiming our thread on a removed header. The cancel waits
+ * until the removal itself is past rollback recovery, so a rollback that
+ * drops the removal leaves the run as it was. The run resolves only once its
+ * cancel is past rollback recovery, not a block earlier. And the
+ * orchestrator itself refuses to resolve against another prover's record
+ * while the adapter still sees a thread of ours, wrapped or not. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import { FraudProofResolvedByAnotherRecordError } from "../src/workflow/resolved-by-another-record.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
   canonicalEvidence,
   makeAdapter,
   PROOF_TX_HASH,
-  REMOVAL_TX_HASH,
   run,
   terminal,
 } from "./workflow.make-adapter.js";
@@ -24,7 +21,6 @@ import {
   decorate,
   expectReclaimedThenResolved,
   FINAL_DEPTH,
-  kinds,
   type Ledger,
   OUR_THREAD,
   reclaimPort,
@@ -36,25 +32,21 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** `makeAdapter`'s family on a header a sibling run on our key convicted:
- * its own proof never lands, and once `convicted()` it observes the
- * sibling's completed record, its removal at depth `depth()`. */
-const siblingConvicted = (
-  convicted: () => boolean,
+/** `makeAdapter`'s family on a header removed against our key's record,
+ * its removal at depth `depth()`. */
+const convictedOnOurKey = (
   depth: () => number = () => FINAL_DEPTH,
 ): FraudProofFamilyWorkflowAdapter => {
   const base = makeAdapter();
   return {
     ...base,
     observe: async (context) => {
-      if (!convicted())
-        return { kind: "pending", reason: "our thread awaits its next step" };
-      const sibling = terminal(String(context.artifact.headerHash));
+      const record = terminal(String(context.artifact.headerHash));
       return {
         kind: "completed",
         terminal: {
-          ...sibling,
-          observedAt: { ...sibling.observedAt, confirmationDepth: depth() },
+          ...record,
+          observedAt: { ...record.observedAt, confirmationDepth: depth() },
         },
       };
     },
@@ -74,14 +66,18 @@ const unwrappedSeeing = (
 describe("workflow: reclaim edges on a header another record removed", () => {
   it("still waits on our cancel one block short of release finality", async () => {
     const evidence = await canonicalEvidence();
-    const journal = new MemoryFraudProofWorkflowJournalStore();
-    const ledger = chain();
+    const process = createTestWorkflowProcess();
+    const ledger = await chain();
     const port = reclaimPort(ledger);
     const adapter = decorate(removedByAnotherProver(ledger), port);
-    expect((await run({ evidence, adapter, journal })).kind).toBe("pending");
+    expect(
+      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
+    ).toBe("pending");
     expect(port.submit).toHaveBeenCalledTimes(1);
     ledger.land(FINAL_DEPTH - 1);
-    expect(await run({ evidence, adapter, journal })).toMatchObject({
+    expect(
+      await run({ evidence, adapter, process, chain: ledger.l1 }),
+    ).toMatchObject({
       kind: "pending",
       reason: expect.stringContaining(
         `reclaim ${ledger.reclaimTx} of our thread ${OUR_THREAD} awaits release finality`,
@@ -89,15 +85,16 @@ describe("workflow: reclaim edges on a header another record removed", () => {
     });
     ledger.land(FINAL_DEPTH);
     expectReclaimedThenResolved(
-      await run({ evidence, adapter, journal }),
+      await run({ evidence, adapter, process, chain: ledger.l1 }),
       resolution,
+      ledger,
     );
   });
 
   it("sends no cancel until the removal itself is past rollback recovery", async () => {
     const evidence = await canonicalEvidence();
-    const journal = new MemoryFraudProofWorkflowJournalStore();
-    const ledger = chain();
+    const process = createTestWorkflowProcess();
+    const ledger = await chain();
     const port = reclaimPort(ledger);
     let depth = 1;
     const adapter = decorate(
@@ -109,7 +106,9 @@ describe("workflow: reclaim edges on a header another record removed", () => {
       port,
     );
     for (depth of [1, FINAL_DEPTH - 1])
-      expect(await run({ evidence, adapter, journal })).toMatchObject({
+      expect(
+        await run({ evidence, adapter, process, chain: ledger.l1 }),
+      ).toMatchObject({
         kind: "pending",
         reason: expect.stringContaining(
           `header removal awaits release finality before our thread ${OUR_THREAD} is reclaimed`,
@@ -118,29 +117,31 @@ describe("workflow: reclaim edges on a header another record removed", () => {
     expect(port.preflight).not.toHaveBeenCalled();
     expect(port.submit).not.toHaveBeenCalled();
     depth = FINAL_DEPTH;
-    expect((await run({ evidence, adapter, journal })).kind).toBe("pending");
+    expect(
+      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
+    ).toBe("pending");
     expect(port.submit).toHaveBeenCalledTimes(1);
     ledger.land(FINAL_DEPTH);
-    expectReclaimedThenResolved(await run({ evidence, adapter, journal }), {
-      ...resolution,
-      confirmationDepth: FINAL_DEPTH,
-    });
+    expectReclaimedThenResolved(
+      await run({ evidence, adapter, process, chain: ledger.l1 }),
+      { ...resolution, confirmationDepth: FINAL_DEPTH },
+      ledger,
+    );
   });
 
-  it("sends no cancel while a sibling run's removal is one block short of release finality", async () => {
+  it("sends no cancel while the removal against our key's record is one block short of release finality, then completes", async () => {
     const evidence = await canonicalEvidence();
-    const journal = new MemoryFraudProofWorkflowJournalStore();
-    const ledger = chain();
+    const process = createTestWorkflowProcess();
+    const ledger = await chain();
     const port = reclaimPort(ledger);
     let depth = FINAL_DEPTH - 1;
     const adapter = decorate(
-      siblingConvicted(
-        () => true,
-        () => depth,
-      ),
+      convictedOnOurKey(() => depth),
       port,
     );
-    expect(await run({ evidence, adapter, journal })).toMatchObject({
+    expect(
+      await run({ evidence, adapter, process, chain: ledger.l1 }),
+    ).toMatchObject({
       kind: "pending",
       reason: expect.stringContaining(
         `header removal awaits release finality before our thread ${OUR_THREAD} is reclaimed`,
@@ -149,178 +150,110 @@ describe("workflow: reclaim edges on a header another record removed", () => {
     expect(port.preflight).not.toHaveBeenCalled();
     expect(port.submit).not.toHaveBeenCalled();
     depth = FINAL_DEPTH;
-    expect((await run({ evidence, adapter, journal })).kind).toBe("pending");
+    expect(
+      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
+    ).toBe("pending");
     expect(port.submit).toHaveBeenCalledTimes(1);
     ledger.land(FINAL_DEPTH);
-    expectReclaimedThenResolved(await run({ evidence, adapter, journal }), {
-      removalTxHash: REMOVAL_TX_HASH,
-      referencedProofTokenOutRef: `${PROOF_TX_HASH}#0`,
-      confirmationDepth: FINAL_DEPTH,
+    expect(
+      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
+    ).toBe("completed");
+    expect(ledger.threads()).toEqual({
+      spends: [expect.objectContaining({ txHash: ledger.reclaimTx })],
     });
   });
 
   it("carries on with the run when a rollback drops the removal before release finality", async () => {
     const evidence = await canonicalEvidence();
-    const journal = new MemoryFraudProofWorkflowJournalStore();
-    const ledger = chain();
+    const process = createTestWorkflowProcess();
+    const ledger = await chain();
     const port = reclaimPort(ledger);
     let removed = true;
+    // Our own next step stays in flight: the run holds on it, as it would
+    // on a real chain, before anything else of ours could follow it.
     const base = removedByAnotherProver(
       ledger,
       () => removed,
       () => 1,
+      false,
     );
     const adapter = decorate(base, port);
-    expect((await run({ evidence, adapter, journal })).kind).toBe("pending");
+    expect(
+      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
+    ).toBe("pending");
     // The removal is rolled back and never re-lands: the header is live
     // again, our thread still stands, and the run takes its own next step.
     removed = false;
-    const resumed = await run({ evidence, adapter, journal });
-    if (!("entries" in resumed)) throw new Error("the run kept no journal");
+    const resumed = await run({
+      evidence,
+      adapter,
+      process,
+      chain: ledger.l1,
+    });
     expect(port.preflight).not.toHaveBeenCalled();
     expect(port.submit).not.toHaveBeenCalled();
     expect(ledger.threads().standing?.threadOutRef).toBe(OUR_THREAD);
     expect(base.submit).toHaveBeenCalled();
-    expect(
-      resumed.entries.some(
-        ({ event }) =>
-          event.kind === "submission_intent" && event.txHash === PROOF_TX_HASH,
-      ),
-    ).toBe(true);
-    expect(kinds(resumed.entries)).not.toContain("stalled");
+    expect(process.sent().map(({ txHash }) => txHash)).toContain(PROOF_TX_HASH);
+    expect(resumed.kind).not.toBe("stalled");
     expect(resumed.kind).not.toBe("resolved_by_another_record");
   });
 
-  it.each([
-    {
-      path: "another prover's record",
-      // The family's stage derivation does not see this thread.
-      base: (): FraudProofFamilyWorkflowAdapter => ({
-        ...makeAdapter(),
-        observe: async () => {
-          throw new FraudProofResolvedByAnotherRecordError(resolution);
-        },
-      }),
+  /** Another prover's record removed the header; the family's stage
+   * derivation does not see our thread. */
+  const removedByAnother = (): FraudProofFamilyWorkflowAdapter => ({
+    ...makeAdapter(),
+    observe: async () => {
+      throw new FraudProofResolvedByAnotherRecordError(resolution);
     },
-    {
-      path: "a sibling run's record",
-      base: () => siblingConvicted(() => true),
-    },
-  ])(
-    "holds under the operator's alarm, never resolving, while an unwrapped adapter still sees our thread ($path)",
-    async ({ base }) => {
-      const evidence = await canonicalEvidence();
-      const journal = new MemoryFraudProofWorkflowJournalStore();
-      const ledger = chain();
-      const adapter = unwrappedSeeing(base(), ledger);
-      for (let pass = 0; pass < 2; pass += 1)
-        expect(await run({ evidence, adapter, journal })).toMatchObject({
-          kind: "pending",
-          resumeOnObservation: true,
-          namedState: {
-            name: "fraud-proof-thread-reclaim-unavailable",
-            alarm: true,
-          },
-          reason: expect.stringContaining(
-            `our thread ${OUR_THREAD} still holds funds on the removed header and cannot be reclaimed: no reclaim is wired in front of this family's workflow`,
-          ),
-        });
-      // Once our thread is gone, the resolution goes through.
-      ledger.land(FINAL_DEPTH);
-      expect((await run({ evidence, adapter, journal })).kind).toBe(
-        "resolved_by_another_record",
-      );
-    },
-  );
+  });
 
-  it.each([
-    {
-      path: "another prover's record",
-      base: (): FraudProofFamilyWorkflowAdapter => ({
-        ...makeAdapter(),
-        observe: async () => {
-          throw new FraudProofResolvedByAnotherRecordError(resolution);
-        },
-      }),
-    },
-    {
-      path: "a sibling run's record",
-      base: () => siblingConvicted(() => true),
-    },
-  ])(
-    "holds under the operator's alarm, never resolving, while the adapter cannot list our threads ($path)",
-    async ({ base }) => {
-      const evidence = await canonicalEvidence();
-      const journal = new MemoryFraudProofWorkflowJournalStore();
-      // No view of our threads at all: nothing says none of ours stands.
-      const { observeOwnThreads, ...blind } = base();
-      void observeOwnThreads;
-      for (let pass = 0; pass < 3; pass += 1)
-        expect(await run({ evidence, adapter: blind, journal })).toMatchObject({
-          kind: "pending",
-          resumeOnObservation: true,
-          namedState: {
-            name: "fraud-proof-own-threads-unobservable",
-            alarm: true,
-          },
-          reason: expect.stringContaining(
-            "cannot list our threads on the removed header, so none of them can be shown to be spent: this family's workflow has no view of our threads",
-          ),
-        });
-    },
-  );
-
-  it("two runs on our key open threads on one header: one convicts, the other cancels its thread before resolving", async () => {
+  it("holds under the operator's alarm, never resolving, while an unwrapped adapter still sees our thread", async () => {
     const evidence = await canonicalEvidence();
-    const first = new MemoryFraudProofWorkflowJournalStore();
-    const second = new MemoryFraudProofWorkflowJournalStore();
-    const firstThread = chain({
-      thread: `${"e1".repeat(32)}#0`,
-      reclaimTx: "e2".repeat(32),
-    });
-    const secondThread = chain({
-      thread: `${"e3".repeat(32)}#0`,
-      reclaimTx: "e4".repeat(32),
-    });
-    // The first run's own proof consumes its thread.
-    firstThread.state.standing = false;
-    const firstPort = reclaimPort(firstThread);
-    const convicting = decorate(makeAdapter(), firstPort);
-    let convicted = false;
-    const secondPort = reclaimPort(secondThread);
-    const following = decorate(
-      siblingConvicted(() => convicted),
-      secondPort,
-    );
-
+    const process = createTestWorkflowProcess();
+    const ledger = await chain();
+    const adapter = unwrappedSeeing(removedByAnother(), ledger);
+    for (let pass = 0; pass < 2; pass += 1)
+      expect(
+        await run({ evidence, adapter, process, chain: ledger.l1 }),
+      ).toMatchObject({
+        kind: "pending",
+        resumeOnObservation: true,
+        namedState: {
+          name: "fraud-proof-thread-reclaim-unavailable",
+          alarm: true,
+        },
+        reason: expect.stringContaining(
+          `our thread ${OUR_THREAD} still holds funds on the removed header and cannot be reclaimed: no reclaim is wired in front of this family's workflow`,
+        ),
+      });
+    // Once our thread is gone, the resolution goes through.
+    ledger.land(FINAL_DEPTH);
     expect(
-      (await run({ evidence, adapter: following, journal: second })).kind,
-    ).toBe("pending");
-    let won = await run({ evidence, adapter: convicting, journal: first });
-    for (let pass = 0; pass < 4 && won.kind === "pending"; pass += 1)
-      won = await run({ evidence, adapter: convicting, journal: first });
-    expect(won.kind).toBe("completed");
-    expect(firstPort.submit).not.toHaveBeenCalled();
-    convicted = true;
+      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
+    ).toBe("resolved_by_another_record");
+  });
 
-    // The second run sees the first run's record, never its own: its thread
-    // comes back to our wallet before it may resolve.
-    expect(
-      (await run({ evidence, adapter: following, journal: second })).kind,
-    ).toBe("pending");
-    expect(secondPort.submit).toHaveBeenCalledTimes(1);
-    expect(secondPort.preflight).toHaveBeenCalledWith(
-      expect.objectContaining({ threadOutRef: secondThread.thread }),
-    );
-    secondThread.land(FINAL_DEPTH);
-    expectReclaimedThenResolved(
-      await run({ evidence, adapter: following, journal: second }),
-      {
-        removalTxHash: REMOVAL_TX_HASH,
-        referencedProofTokenOutRef: `${PROOF_TX_HASH}#0`,
-        confirmationDepth: FINAL_DEPTH,
-      },
-      secondThread,
-    );
+  it("holds under the operator's alarm, never resolving, while the adapter cannot list our threads", async () => {
+    const evidence = await canonicalEvidence();
+    const process = createTestWorkflowProcess();
+    const ledger = await chain();
+    // No view of our threads at all: nothing says none of ours stands.
+    const { observeOwnThreads, ...blind } = removedByAnother();
+    void observeOwnThreads;
+    for (let pass = 0; pass < 3; pass += 1)
+      expect(
+        await run({ evidence, adapter: blind, process, chain: ledger.l1 }),
+      ).toMatchObject({
+        kind: "pending",
+        resumeOnObservation: true,
+        namedState: {
+          name: "fraud-proof-own-threads-unobservable",
+          alarm: true,
+        },
+        reason: expect.stringContaining(
+          "cannot list our threads on the removed header, so none of them can be shown to be spent: this family's workflow has no view of our threads",
+        ),
+      });
   });
 });

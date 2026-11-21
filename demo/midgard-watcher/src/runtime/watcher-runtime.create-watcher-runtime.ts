@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { proofMaterialsAddressOfFundingAddress } from "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
+import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk/core";
 
 import { createWatcherAvailabilityRuntime } from "../availability/runtime.create-watcher-availability-runtime.js";
@@ -12,27 +13,30 @@ import { createWatcherFaultDecisionBridge } from "../fault-proofs/fault-decision
 import type { WatcherFaultDecisionBridge } from "../fault-proofs/fault-decision-bridge.selected-target.js";
 import { validateWatcherFaultDecisionJournalConfiguration } from "../fault-proofs/fault-decision-journal.create-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../fault-proofs/fault-proof-application.js";
-import { type WatcherFaultProofApplication } from "../fault-proofs/fault-proof-application.production-dependencies.js";
+import type { WatcherFaultProofApplication } from "../fault-proofs/fault-proof-application.production-dependencies.js";
 import { createWatcherFaultProofExecution } from "../fault-proofs/fault-proof-execution.js";
 import {
   createWatcherFaultProofSupervisor,
   watcherDeadlineAlertHeadroomMs,
 } from "../fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import type { WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.validate-job.js";
-import { createWatcherProtocolParameterRuntimeAuthority } from "../funding/prover-funding.js";
-import type { WatcherSqliteProverFundingReservationStoreRuntime } from "../funding/sqlite-prover-funding-reservation-store.js";
+import {
+  createWatcherOwnThreadSweep,
+  watcherOwnThreadCancellerSource,
+} from "../fault-proofs/own-thread-sweep.js";
 import { deriveWatcherNativeGenesisIdentity } from "../l1/native-chain-sync.derive-watcher-native-genesis-identity.js";
 import { watcherAvailabilityTransactionPins } from "../l1-follower/availability-pins.js";
 import {
   openWatcherDeploymentFollower,
+  watcherComputationThreadPolicyId,
   watcherFollowedScripts,
 } from "../l1-follower/deployment-follower.js";
-import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
+import type { WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
 import { createWatcherQueueHeaderSource } from "../l1-follower/observation.js";
 import { watcherReplayCheckpointPrecedesInit } from "../l1-follower/replay-source.js";
-import { type WatcherUserEvents } from "../l1-follower/user-events.js";
+import type { WatcherUserEvents } from "../l1-follower/user-events.js";
 import { bindWatcherRetainedDaOperations } from "../storage/retained-da-runtime.js";
-import { type WatcherRetainedDaOperationsBinding } from "../storage/retained-da-runtime.retained-da-request-permits.js";
+import type { WatcherRetainedDaOperationsBinding } from "../storage/retained-da-runtime.retained-da-request-permits.js";
 import { assertWatcherL1SlotConfigMatchesDeployment } from "./custom-network.js";
 import {
   readWatcherUserEventScriptBinding,
@@ -43,7 +47,7 @@ import {
   watcherDeploymentAppliedScriptHashes,
   watcherDeploymentReleaseFinalityPolicy,
 } from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";
-import { type WatcherOperationsHttpServer } from "./operations-http.js";
+import type { WatcherOperationsHttpServer } from "./operations-http.js";
 import {
   createWatcherOperationsSink,
   createWatcherOperationsView,
@@ -51,13 +55,9 @@ import {
   watcherDaBondPoolReporter,
 } from "./operations-observability.js";
 import { refusePermanently } from "./permanent-refusal.js";
-import { type WatcherProcessConfig } from "./process-config.js";
-import { type WatcherStartupOperations } from "./startup-operations.js";
-import { type WatcherStartup } from "./startup-progress.js";
-import {
-  openWatcherProverFundingRuntime,
-  recheckFundingDecisionHolds,
-} from "./watcher-prover-funding-runtime.js";
+import type { WatcherProcessConfig } from "./process-config.js";
+import type { WatcherStartupOperations } from "./startup-operations.js";
+import type { WatcherStartup } from "./startup-progress.js";
 import { closeWatcherAllocatedResources } from "./watcher-runtime.close-allocated-resources.js";
 import { createWatcherRuntimeLifecycle } from "./watcher-runtime.create-lifecycle.js";
 import {
@@ -66,7 +66,8 @@ import {
   watcherFollowerStarted,
 } from "./watcher-runtime.decision-driver.js";
 import { createWatcherL1Readiness } from "./watcher-runtime.l1-readiness.js";
-import { type WatcherRuntime } from "./watcher-runtime.launch-checks.js";
+import { watcherL1SourceReports } from "./watcher-runtime.l1-source-reports.js";
+import type { WatcherRuntime } from "./watcher-runtime.launch-checks.js";
 import { watcherObservationSourceId } from "./watcher-runtime.observation-source-id.js";
 import {
   prepareWatcherRuntimeAuthority,
@@ -113,7 +114,6 @@ export const startWatcherRuntime = async (
     localL1Source,
     rollbackAuthenticationKey,
     fundingProfileOverlay,
-    sqlite,
   } = await prepareWatcherRuntimeAuthority(input, startup);
   const watcherConfig = input.config.watcherConfig;
 
@@ -128,9 +128,6 @@ export const startWatcherRuntime = async (
     bound.operationsHttp;
   let retainedDaOperationsBinding:
     | WatcherRetainedDaOperationsBinding
-    | undefined;
-  let proverFundingStore:
-    | WatcherSqliteProverFundingReservationStoreRuntime
     | undefined;
   let readinessTimer: ReturnType<typeof setInterval> | undefined;
   let unsubscribeL1: (() => void)[] = [];
@@ -148,9 +145,7 @@ export const startWatcherRuntime = async (
       operationsHttp: () => operationsHttp,
       faultProofSupervisor: () => faultProofSupervisor,
       allocatedFaultProofApplication: () => allocatedFaultProofApplication,
-      proverFundingStore: () => proverFundingStore,
       userEvents: () => userEvents,
-      sqlite: () => sqlite,
     });
   };
 
@@ -211,16 +206,17 @@ export const startWatcherRuntime = async (
       input.config.workflowJournalDirectory,
       operationsSink,
     );
+    const followedDeployment = {
+      contractScriptHashes:
+        watcherDeploymentAppliedScriptHashes(deploymentIdentity),
+      blueprint: JSON.parse(Buffer.from(blueprintBytes).toString("utf8")),
+    };
     const activeFollower = openWatcherDeploymentFollower({
       authority,
       storePath: `${watcherConfig.storage.path}.l1-follower.sqlite`,
       automaticRecoveryMaxDepth: releaseFinality.automaticRecoveryMaxDepth,
       origin: watcherConfig.l1.origin,
-      followedScripts: watcherFollowedScripts({
-        contractScriptHashes:
-          watcherDeploymentAppliedScriptHashes(deploymentIdentity),
-        blueprint: JSON.parse(Buffer.from(blueprintBytes).toString("utf8")),
-      }),
+      followedScripts: watcherFollowedScripts(followedDeployment),
       node: {
         binaryPath: input.config.l1NodeTransportBinaryPath,
         socketPath: localL1Source.chainSync.socketPath,
@@ -238,7 +234,7 @@ export const startWatcherRuntime = async (
       log: (line) => process.stderr.write(`${line}\n`),
     });
     follower = activeFollower;
-    const { store, rawReads, transport, provider } = activeFollower;
+    const { store, rawReads, provider } = activeFollower;
     const replay = replayHost.bind(activeFollower);
     userEvents = replay.userEvents;
     unsubscribeL1.push(replay.close);
@@ -257,40 +253,33 @@ export const startWatcherRuntime = async (
         operationsSink,
       });
 
-    const fundingRuntime = await openWatcherProverFundingRuntime({
-      path: watcherConfig.storage.path,
-      authenticationKey: rollbackAuthenticationKey,
-      deploymentIdentity,
-      createProtocolParameters: () =>
-        startup("protocol_parameters", ({ retryL1Read }) =>
-          retryL1Read(() =>
-            createWatcherProtocolParameterRuntimeAuthority({
-              deploymentIdentity,
-              query: () => transport.query({ query: "protocol_params" }),
-            }),
-          ),
-        ),
-      launchScope: faultProofApplication.installedCategories,
-      journalRoot: input.config.workflowJournalDirectory,
-      observeSignedTransaction: activeFollower.observeSignedTransaction,
-      alertSink: operationsSink,
-      blueprintBytes,
+    // What this process sent and has not seen settle, and the wallet coins
+    // its builds and its other actions hold: in memory only, one per process.
+    const inFlight = createWorkflowInFlight();
+    const walletLeases = Object.freeze({
+      heldOutRefs: inFlight.heldOutRefs,
+      holdWalletInputs: inFlight.holdWalletInputs,
     });
-    proverFundingStore = fundingRuntime.store;
-
     const execution = createWatcherFaultProofExecution({
       application: faultProofApplication,
-      fundingFactory: fundingRuntime.factory,
-      walletAddress: proverWalletAddress,
-      provider,
-      workflowJournal: fundingRuntime.store.journal,
+      inFlight,
       runtimeConfigPath: input.config.watcherRuntimeConfigPath,
       deploymentFingerprint: deploymentIdentity.manifestId,
       operationsSink,
     });
+    const ownThreads = createWatcherOwnThreadSweep({
+      store,
+      policyId: watcherComputationThreadPolicyId(followedDeployment),
+      finalDepth: releaseFinality.automaticRecoveryMaxDepth + 2,
+      openCanceller: watcherOwnThreadCancellerSource(
+        faultProofApplication,
+        walletLeases,
+      ),
+      log: (line) => process.stderr.write(`watcher own threads: ${line}\n`),
+    });
     const activeSupervisor = createWatcherFaultProofSupervisor({
       journalRoot: input.config.workflowJournalDirectory,
-      workflowJournal: fundingRuntime.store.journal,
+      inFlight,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs: watcherDeadlineAlertHeadroomMs(
         watcherConfig.deadlines,
@@ -302,20 +291,29 @@ export const startWatcherRuntime = async (
       },
       execution,
       proofRetention: activeFollower.proofRetention,
-      reservationDecisionHolds: fundingRuntime.factory.decisionHolds,
-      journalBusyRequeue: {
-        releaseUnusedFunding: () => fundingRuntime.factory.releaseUnused(),
-        wake: () => decisionDriver?.wake(),
-      },
-      settleUnattendedFunding: () => fundingRuntime.factory.settleUnattended(),
-      releaseDecisionFunding: async ({ decisionDigest }) =>
-        await fundingRuntime.factory.releaseUnusedDecision(decisionDigest),
+      journalBusyRequeue: { wake: () => decisionDriver?.wake() },
+      ownThreadSweep: ownThreads.pass,
+      proofMaterials: faultProofApplication.proofMaterials,
+      sweepProofMaterials: async ({ job, ...sweep }) =>
+        await faultProofApplication.sweepProofMaterials({
+          ...sweep,
+          category: job.category,
+          headerHash: job.headerHash,
+          decisionDigest: job.decisionDigest,
+          runtimeConfigPath: input.config.watcherRuntimeConfigPath,
+        }),
     });
     faultProofSupervisor = activeSupervisor;
+    // The proof-materials first pass completes once the roster's floor is
+    // lifted: the follower's own first pass at tip.
+    faultProofApplication.proofMaterials?.passAtTip(
+      activeFollower.proofRetention.lifted,
+    );
 
     const l1 = createWatcherL1Readiness({
       follower: activeFollower,
       driver: () => decisionDriver,
+      proofMaterials: faultProofApplication.proofMaterials,
     });
     const refreshFollowerReadiness = (): void => void l1.refresh();
     const operations = createWatcherOperationsView(recorder, {
@@ -329,7 +327,10 @@ export const startWatcherRuntime = async (
       retainedDaTransportStatus:
         faultProofApplication.retainedDaTransportStatus,
       l1Readiness: () => [...l1.read(), ...execution.readiness()],
-      l1Degradations: l1.degradations,
+      l1Degradations: () => [
+        ...l1.degradations(),
+        ...ownThreads.degradations(),
+      ],
       replayRefusals: replay.refusals.status,
     });
     const headerSource = createWatcherQueueHeaderSource(store, {
@@ -372,7 +373,7 @@ export const startWatcherRuntime = async (
       journalDirectory: input.config.workflowJournalDirectory,
       authenticationKey: rollbackAuthenticationKey,
       maximumClassificationConcurrency: 16,
-      walletLeases: fundingRuntime.store.store,
+      walletLeases,
       operationsSink,
       perHeaderAlerts: [...perHeaderAlerts, retainedDaOperationsBinding],
       daFetchAlert: retainedDaOperationsBinding,
@@ -403,35 +404,13 @@ export const startWatcherRuntime = async (
               depth,
             }),
         },
-        onDecided: (tip) => {
-          const observedAtMs = BigInt(Date.now()).toString();
-          operationsSink.recordL1Source({
-            sourceIdentityDigest,
-            sourceMode: "local_node",
-            status: "consistent",
-            blockHash: tip.nativePoint.blockHash,
-            blockNo: tip.nativePoint.blockNo,
-            slot: tip.nativePoint.slot,
-            observedAtMs,
-          });
-          operationsSink.setAlert({
-            code: "chain_rollback",
-            subjectDigest: sourceIdentityDigest,
-            active: false,
-            observedAtMs,
-          });
-          refreshFollowerReadiness();
-        },
         // Once per generation, whether the driver heard the rewind or pulled it
         // from the rollback log (before it subscribed, or left by a stop).
-        onRewind: () => {
-          operationsSink.setAlert({
-            code: "chain_rollback",
-            subjectDigest: sourceIdentityDigest,
-            active: true,
-            observedAtMs: BigInt(Date.now()).toString(),
-          });
-        },
+        ...watcherL1SourceReports({
+          operationsSink,
+          sourceIdentityDigest,
+          refresh: refreshFollowerReadiness,
+        }),
         retryDelayMs: watcherConfig.l1.requestTimeoutMs,
         log: (line) => process.stderr.write(`watcher decisions: ${line}\n`),
       },
@@ -441,13 +420,7 @@ export const startWatcherRuntime = async (
       },
     );
     decisionDriver = activeDriver;
-    unsubscribeL1.push(
-      activeFollower.onChange(refreshFollowerReadiness),
-      recheckFundingDecisionHolds(
-        fundingRuntime.factory,
-        activeFollower.onChange,
-      ),
-    );
+    unsubscribeL1.push(activeFollower.onChange(refreshFollowerReadiness));
     readinessTimer = setInterval(
       refreshFollowerReadiness,
       L1_READINESS_REFRESH_MS,

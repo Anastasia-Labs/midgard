@@ -20,10 +20,6 @@ import {
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
-  type ConfirmedValidationTraceStage,
-  confirmedValidationTraceStages,
-} from "../src/validation-trace-dispute/actions.js";
-import {
   VALIDATION_TRACE_CASE_CONVICTED,
   VALIDATION_TRACE_CASE_OPEN,
 } from "../src/validation-trace-dispute/adapter.js";
@@ -36,11 +32,6 @@ import {
   validationTraceFraudProofUnit,
 } from "../src/validation-trace-dispute/close.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
-import { CURSOR_FAMILY_ACTION } from "../src/workflow/cursor-family-state.js";
-import type {
-  FraudProofWorkflowJournalEntry,
-  JournalJsonObject,
-} from "../src/workflow/journal.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
@@ -48,6 +39,7 @@ import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.
 import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
+import type { ConfirmedValidationTraceStage } from "./support/validation-trace-confirmed-stages.js";
 import {
   BOND_LOVELACE,
   type Scene,
@@ -77,8 +69,8 @@ const outRefOf = (utxo: UTxO) =>
 const liveAt = async (outRef: string): Promise<UTxO | undefined> =>
   (await scene.h.proverLucid.utxosByOutRef([parseOwnOutRef(outRef)]))[0];
 
-/** Each block a removal adapter was built for, in order: one build per
- * block's L1 view. */
+/** Each block an L1 view was taken for, in order: one per removal adapter
+ * built, and one per read of our threads ahead of a completion. */
 const removalViews: string[] = [];
 /** The runner's adapter and the context it last observed. */
 let lastObserved:
@@ -93,14 +85,13 @@ let lastObserved:
 /** The confirmed close, once the runner has closed the case. */
 let closed: ConfirmedValidationTraceStage;
 
-/** The shared remove stage's journaled intents. */
-const removalIntents = (entries: readonly FraudProofWorkflowJournalEntry[]) =>
-  entries.flatMap(({ event }) =>
-    event.kind === "submission_intent" &&
-    event.actionInput.schemaVersion === CURSOR_FAMILY_ACTION
-      ? [event]
-      : [],
-  );
+/** The shared remove stage's sends, each with the record it removes
+ * against (`remove:<next>:<record>:<block>`). */
+const removalSends = () =>
+  runner.process
+    .sent()
+    .filter(({ actionId }) => actionId.startsWith("remove:"))
+    .map(({ actionId }) => ({ fraudProofOutRef: actionId.split(":")[2] }));
 
 describe("validation-trace dispute runner: conviction of an undefended case", () => {
   beforeAll(async () => {
@@ -132,16 +123,12 @@ describe("validation-trace dispute runner: conviction of an undefended case", ()
       scene.failing,
       VALIDATION_TRACE_CASE_OPEN,
     );
-    if (!("entries" in result)) throw new Error("no workflow journal");
-    const prepared = result.entries.find(
-      ({ event }) => event.kind === "prepared",
-    );
-    if (prepared?.event.kind !== "prepared") throw new Error("no artifact");
-    // The journal keeps the family artifact inside the workflow envelope.
+    expect(result.kind).toBe("pending");
+    // The family artifact the run prepared, as the adapter observes it.
     artifact = parseValidationTraceDisputeArtifact(
-      prepared.event.artifact.familyArtifact as JournalJsonObject,
+      lastObserved!.context.artifact,
     );
-    verified = confirmedValidationTraceStages(result.entries).find(
+    verified = (await runner.confirmed()).find(
       ({ action }) => action.stage === "verify_source",
     )!;
   }, 1_800_000);
@@ -201,8 +188,7 @@ describe("validation-trace dispute runner: conviction of an undefended case", ()
       deployment,
       artifact.headerHash,
     );
-    if (!("entries" in result)) throw new Error("no workflow journal");
-    const close = confirmedValidationTraceStages(result.entries).find(
+    const close = (await runner.confirmed()).find(
       ({ action }) => action.stage === "close",
     )!;
     closed = close;
@@ -264,7 +250,7 @@ describe("validation-trace dispute runner: conviction of an undefended case", ()
 
     // The block is still in the queue, and no removal was sent.
     expect(result.reason).toContain("not yet seen");
-    expect(removalIntents(result.entries)).toEqual([]);
+    expect(removalSends()).toEqual([]);
     await expectStateQueueHeaderOrder({
       lucid: h.proverLucid,
       contracts: h.contracts,
@@ -318,21 +304,20 @@ describe("validation-trace dispute runner: conviction of an undefended case", ()
     expect(await liveAt(record)).toBeDefined();
     // Each removal peels one block, the two descendants first, each against
     // our record.
-    const intents = removalIntents(result.entries);
-    expect(intents).toHaveLength(3);
-    for (const intent of intents)
-      expect(intent.actionInput).toMatchObject({
-        stage: "remove",
-        fraudProofOutRef: record,
-      });
+    const sends = removalSends();
+    expect(sends).toHaveLength(3);
+    for (const send of sends)
+      expect(send).toStrictEqual({ fraudProofOutRef: record });
     // The completed removal's adapter is forgotten: each later observation
     // builds its own from the L1 view, as after a restart, and forgets it.
+    // Each also reads our threads from the L1 view before the completion
+    // reaches the run, whoever on our key made the record.
     const built = removalViews.length;
     for (let again = 0; again < 2; again += 1)
       expect(
         await lastObserved!.adapter.observe(lastObserved!.context),
       ).toMatchObject({ kind: "completed" });
-    expect(removalViews).toHaveLength(built + 2);
+    expect(removalViews).toHaveLength(built + 2 * 2);
     expect(new Set(removalViews)).toStrictEqual(new Set([artifact.headerHash]));
   }, 900_000);
 });

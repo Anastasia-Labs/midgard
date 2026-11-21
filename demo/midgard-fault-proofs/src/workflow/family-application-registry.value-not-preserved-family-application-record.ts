@@ -100,11 +100,11 @@ export const MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD =
         await createManifestBoundMissingSignatureWorkflow(config),
         config,
       ),
-    execute: async ({ workflow, sources, journal, walletOnlySend }) =>
+    execute: async ({ workflow, sources, run, walletOnlySend }) =>
       await runOrResumeManifestBoundMissingSignatureWorkflow({
         workflow,
         sources,
-        journal,
+        run,
         walletOnlySend,
       }),
     bindsDecisionDigest: false,
@@ -159,11 +159,11 @@ export const NETWORK_ID_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
     });
   },
   constructWorkflow: createManifestBoundNetworkIdWorkflow,
-  execute: async ({ workflow, sources, journal, walletOnlySend }) =>
+  execute: async ({ workflow, sources, run, walletOnlySend }) =>
     await runOrResumeManifestBoundNetworkIdWorkflow({
       workflow,
       sources,
-      journal,
+      run,
       walletOnlySend,
     }),
   bindsDecisionDigest: false,
@@ -223,11 +223,11 @@ export const VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD =
         await createManifestBoundValueConservationWorkflow(config),
         config,
       ),
-    execute: async ({ workflow, sources, journal, walletOnlySend }) =>
+    execute: async ({ workflow, sources, run, walletOnlySend }) =>
       await runOrResumeManifestBoundValueConservationWorkflow({
         workflow,
         sources,
-        journal,
+        run,
         walletOnlySend,
       }),
     bindsDecisionDigest: false,

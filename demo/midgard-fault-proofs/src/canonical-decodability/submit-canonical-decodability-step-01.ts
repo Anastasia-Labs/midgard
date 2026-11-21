@@ -61,7 +61,7 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { CanonicalDecodabilityContracts } from "./contracts.js";
 import { deriveCanonicalDecodabilityNextOutput } from "./derive-canonical-decodability-next-output.js";
@@ -97,7 +97,7 @@ export type CanonicalDecodabilityStep01Build = {
 };
 
 export type SubmitCanonicalDecodabilityStep01Result =
-  UnjournaledSubmission<CanonicalDecodabilityStep01Build>;
+  OutsideWorkflowSubmission<CanonicalDecodabilityStep01Build>;
 
 export const buildCanonicalDecodabilityStep01 = async ({
   lucid,

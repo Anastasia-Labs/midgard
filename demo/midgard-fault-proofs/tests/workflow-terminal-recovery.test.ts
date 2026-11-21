@@ -4,7 +4,6 @@ import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
 } from "../src/workflow/family-l1-observation.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
@@ -16,8 +15,10 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
 import { noSignedRead } from "./support/terminal-verifier.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
   canonicalEvidence,
+  chainOf,
   makeAdapter,
   run,
   terminalVerifier,
@@ -104,7 +105,6 @@ const verify = async (
     candidate: stored,
     releaseFinality,
     artifact: {},
-    entries: [],
   });
 };
 
@@ -180,7 +180,8 @@ it("refuses to start a workflow whose terminal verifier cannot read a signed att
     await run({
       evidence,
       adapter: { ...adapter, observe },
-      journal: new MemoryFraudProofWorkflowJournalStore(),
+      chain: chainOf(adapter),
+      process: createTestWorkflowProcess(),
       verifier,
     });
   await expect(

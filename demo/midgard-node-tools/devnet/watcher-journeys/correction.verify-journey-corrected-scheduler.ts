@@ -1,7 +1,3 @@
-import { existsSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
-
-import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   CML,
@@ -11,14 +7,9 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import {
-  WATCHER_PREFLIGHT_STALL_RETRY_BUDGET_MS,
-  WATCHER_PREFLIGHT_STALL_RETRY_DELAY_MS,
-} from "midgard-watcher";
 import { expect } from "vitest";
 
 import { queueEndOutput } from "./state-queue-root-anchor.js";
-import type { JourneyWatcherEvidence } from "./watcher-evidence-reader.js";
 
 export const transactionOutputs = (transaction: CML.Transaction) => {
   const txHash = CML.hash_transaction(transaction.body());
@@ -186,146 +177,4 @@ export const verifyJourneyCorrectedScheduler = async (
     });
   }
   return next[0]!;
-};
-
-/** The workflow rows the watcher store holds for each header of `category`,
- * read over a second connection; none before the watcher created them. */
-export const readJourneyWorkflowRows = (
-  watcherStorePath: string,
-  category: SDK.FraudProofCatalogueCategoryName,
-  headerHash?: string,
-): ReadonlyMap<string, readonly FraudProofWorkflowJournalEntry[]> => {
-  const byHeader = new Map<string, FraudProofWorkflowJournalEntry[]>();
-  if (!existsSync(watcherStorePath)) return byHeader;
-  const store = new DatabaseSync(watcherStorePath);
-  try {
-    const table = store
-      .prepare(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'watcher_workflow_journal_v1'",
-      )
-      .get();
-    if (table === undefined) return byHeader;
-    const rows = store
-      .prepare(
-        `SELECT header_hash, workflow_id, body FROM watcher_workflow_journal_v1
-         WHERE category = ?${headerHash === undefined ? "" : " AND header_hash = ?"}
-         ORDER BY header_hash, workflow_id, sequence`,
-      )
-      .all(
-        ...(headerHash === undefined ? [category] : [category, headerHash]),
-      ) as { header_hash: string; workflow_id: string; body: string }[];
-    const workflows = new Map<string, Set<string>>();
-    for (const row of rows) {
-      const ids = workflows.get(row.header_hash) ?? new Set<string>();
-      ids.add(row.workflow_id);
-      workflows.set(row.header_hash, ids);
-      const entries = byHeader.get(row.header_hash) ?? [];
-      entries.push(JSON.parse(row.body) as FraudProofWorkflowJournalEntry);
-      byHeader.set(row.header_hash, entries);
-    }
-    for (const ids of workflows.values())
-      expect(ids.size).toBeLessThanOrEqual(1);
-    return byHeader;
-  } finally {
-    store.close();
-  }
-};
-
-/**
- * Where a watcher's workflow rows are read: the journey watcher's store on
- * this host, or an attached stack watcher's evidence reader.
- */
-export type JourneyWorkflowStore =
-  | string
-  | Pick<JourneyWatcherEvidence, "readWorkflowRows">;
-
-export const readJourneyWorkflowEntries = async ({
-  watcherStore,
-  category,
-  headerHash,
-}: {
-  watcherStore: JourneyWorkflowStore;
-  category: SDK.FraudProofCatalogueCategoryName;
-  headerHash: string;
-}): Promise<readonly FraudProofWorkflowJournalEntry[]> =>
-  (typeof watcherStore === "string"
-    ? readJourneyWorkflowRows(watcherStore, category, headerHash)
-    : await watcherStore.readWorkflowRows(category, headerHash)
-  ).get(headerHash) ?? [];
-
-/**
- * How long a workflow may keep journaling `stalled` before the attempt fails.
- *
- * The orchestrator journals a stall as a diagnostic and retries every pass.
- * The watcher observes the state queue at its action depth while preflight
- * builds against the live chain, so a header the queue re-created in that
- * window (a DA attestation moves the header output) stalls preflight until
- * the re-creating block reaches that depth; the next pass then binds the live
- * output.
- * The watcher itself resumes such a preflight stall every
- * `WATCHER_PREFLIGHT_STALL_RETRY_DELAY_MS` for up to its retry budget, so the
- * journey allows the whole budget plus one delay before calling it a failure.
- */
-export const JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS =
-  WATCHER_PREFLIGHT_STALL_RETRY_BUDGET_MS +
-  WATCHER_PREFLIGHT_STALL_RETRY_DELAY_MS;
-
-export const journeyIntentRecovery = (
-  records: readonly FraudProofWorkflowJournalEntry[],
-) => {
-  const latest = new Map<
-    string,
-    { txHash: string; outcome: "pending" | "confirmed" | "not_found" }
-  >();
-  for (const { event } of records) {
-    if (event.kind === "submission_intent") {
-      latest.set(event.actionId, { txHash: event.txHash, outcome: "pending" });
-    } else if (event.kind === "reconciled" || event.kind === "confirmed") {
-      const intent = latest.get(event.actionId);
-      if (intent === undefined || intent.txHash !== event.txHash) continue;
-      // Reconciled inclusion precedes funding acknowledgment and the actual
-      // confirmed event; keep its recovery allowance until that handoff ends.
-      if (event.kind === "confirmed") intent.outcome = "confirmed";
-      else if (event.outcome !== "confirmed") intent.outcome = event.outcome;
-    }
-  }
-  return { latest };
-};
-
-/**
- * A retained failure is history. A new stall fails the current attempt unless
- * the workflow is still retrying inside the allowance or already moved past
- * it; without an allowance every new stall fails immediately.
- */
-export const journeyWorkflowUpdates = (
-  records: readonly FraudProofWorkflowJournalEntry[],
-  baseline: readonly FraudProofWorkflowJournalEntry[],
-  reported = baseline.length - 1,
-  stall?: { readonly now: number; readonly allowanceMs: number },
-) => {
-  expect(records.slice(0, baseline.length)).toEqual(baseline);
-  const updates = records.filter(({ sequence }) => sequence > reported);
-  const failure = updates.find(({ event }) => event.kind === "stalled")?.event;
-  if (failure?.kind !== "stalled") return updates;
-  let trailingStart = records.length;
-  while (
-    trailingStart > 0 &&
-    records[trailingStart - 1]!.event.kind === "stalled"
-  )
-    trailingStart -= 1;
-  const trailing = records.slice(trailingStart);
-  if (stall === undefined)
-    throw new Error(`Workflow stalled: ${failure.reason}`);
-  if (trailing.length === 0) return updates;
-  const since = Date.parse(trailing[0]!.recordedAt);
-  const latest = trailing[trailing.length - 1]!.event;
-  if (
-    !Number.isFinite(since) ||
-    stall.now - since > stall.allowanceMs ||
-    latest.kind !== "stalled"
-  )
-    throw new Error(
-      `Workflow stalled: ${latest.kind === "stalled" ? latest.reason : failure.reason}`,
-    );
-  return updates;
 };

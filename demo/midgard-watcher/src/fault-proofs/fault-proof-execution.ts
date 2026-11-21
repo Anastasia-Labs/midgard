@@ -1,24 +1,15 @@
 import {
   assertWorkflowActuationPermitIdentity,
   FraudProofL1CheckpointChangedError,
-  FraudProofL1UnavailableError,
-  type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
   isSqliteBusyError,
   isWorkflowActuationRevokedError,
   type WalletOnlySend,
   type WorkflowActuationPermit,
   type WorkflowActuationRevokedError,
-  type WorkflowAdapterRunner,
-  type WorkflowFundingReservationPermit,
 } from "@al-ft/midgard-fault-proofs";
-import { type UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import type { WorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 
-import {
-  assertWatcherProverFundingAuthorityFactory,
-  type WatcherProverFundingAuthorityFactory,
-} from "../funding/prover-funding-authority.watcher-prover-funding-authority-factory.js";
-import { WatcherProverFundingUnavailableError } from "../funding/prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import { watcherSha256CanonicalJson } from "../storage/durable-store.canonical-json.js";
@@ -26,7 +17,6 @@ import { isWatcherRetainedDaTransportUnavailable } from "../storage/retained-da-
 import type {
   WatcherCompletedFaultProofVerification,
   WatcherFaultProofApplication,
-  WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.js";
 import * as stall from "./fault-proof-continuation-stall.js";
 import {
@@ -34,9 +24,9 @@ import {
   l1RefusalOf,
   WATCHER_FAULT_PROOF_L1_REFUSED,
 } from "./fault-proof-execution-holds.js";
-import { holdWatcherFaultProofOnFunding } from "./fault-proof-funding-hold.js";
 import { createWatcherFaultProofObjectiveAlerts } from "./fault-proof-objective-alerts.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
+import type { WatcherFaultProofDepartureStep } from "./fault-proof-progress-authority.types.js";
 import {
   holdsReadiness,
   quarantineCause,
@@ -50,12 +40,10 @@ import type {
 } from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
 import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
-import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
 
-/** Chosen by the supervisor after reloading and validating the durable journal. */
+/** Chosen by the supervisor for one run. */
 export type WatcherFaultProofExecutionAdmission = Readonly<{
   mode: "run" | "resume";
-  funding: "create_or_resume" | "resume_only";
   /** The deadline whose latest safe start the run is past, before or after
    * maturity (a reconciling run's job carries none). */
   startedLate?: WatcherFaultProofDeadline;
@@ -65,7 +53,7 @@ export type WatcherFaultProofExecutionAdmission = Readonly<{
 export type WatcherFaultProofExecutionOutcome =
   | Readonly<{ kind: "completed" | "terminal_included"; result: unknown }>
   /** The header was removed against a record this objective's run did not
-   * create, with every signed attempt of the run settled: the objective is
+   * create, with every transaction the run sent settled: the objective is
    * done, but not as our conviction. */
   | Readonly<{ kind: "resolved_by_another_record"; result: unknown }>
   | stall.WatcherFaultProofPendingOutcome
@@ -81,11 +69,12 @@ export type WatcherFaultProofExecutionOutcome =
     }>;
 
 export type WatcherFaultProofExecution = Readonly<{
+  /** Rechecks the objective's completion on L1; `terminal` is a runner's
+   * fresh result, absent when only the chain says what completed. */
   verifyCompleted(input: {
     readonly job: WatcherFaultProofJob;
     readonly actuationPermit: WorkflowActuationPermit;
-    readonly entries: readonly FraudProofWorkflowJournalEntry[];
-    readonly terminal: FraudProofWorkflowTerminal;
+    readonly terminal?: FraudProofWorkflowTerminal;
   }): Promise<
     | WatcherCompletedFaultProofVerification
     | Readonly<{ kind: "pending"; reason: string }>
@@ -103,7 +92,7 @@ export type WatcherFaultProofExecution = Readonly<{
    * `fault_proof_resubmission_required`, `fault_proof_continuation_stalled`,
    * `prover_funding_unavailable`, `fault_proof_objective_quarantined`,
    * `validation_trace_replay_held`), until a run or completion check
-   * meets something else, a stalled one's later run journals progress, or it
+   * meets something else, a stalled one's later run makes progress, or it
    * is settled.
    */
   readiness(): readonly Readonly<{ reason: string; detail: string }>[];
@@ -113,131 +102,36 @@ export type WatcherFaultProofExecution = Readonly<{
    * or completion check would clear its hold: this does.
    */
   objectiveSettled(objective: WatcherProofObjective): void;
+  /** Records the proof step an objective whose header left the queue takes
+   * from the chain alone: no run happens for it. */
+  departureStep(step: WatcherFaultProofDepartureStep): void;
 }>;
 
-// Only this adapter's read-only provider failures get transport retry; runner
-// exceptions and authentication errors do not. As an L1 unavailability, the
-// workflow hands it back from any step instead of stalling on it.
-class FundingProviderTransportUnavailable extends FraudProofL1UnavailableError {}
-
-const readFundingProvider = async <T>(read: () => Promise<T>): Promise<T> => {
-  try {
-    return await read();
-  } catch (error) {
-    const cause = error instanceof TypeError ? error.cause : undefined;
-    if (
-      cause instanceof Error &&
-      "code" in cause &&
-      typeof cause.code === "string" &&
-      [
-        "UND_ERR_SOCKET",
-        "UND_ERR_CONNECT_TIMEOUT",
-        "ECONNRESET",
-        "ECONNREFUSED",
-        "EPIPE",
-        "ETIMEDOUT",
-      ].includes(cause.code)
-    )
-      throw new FundingProviderTransportUnavailable(
-        "Local-node funding input query is temporarily unavailable",
-        { cause: error },
-      );
-    throw error;
-  }
-};
-const parseWatcherProverFundingOutRef = (
-  outRef: string,
-): Readonly<{ txHash: string; outputIndex: number }> => {
-  const match = /^([0-9a-f]{64})#(0|[1-9][0-9]*)$/u.exec(outRef);
-  if (match === null)
-    throw new Error("prover funding output reference is not canonical");
-  return Object.freeze({ txHash: match[1]!, outputIndex: Number(match[2]!) });
-};
-
-export type WatcherProverFundingUtxoProvider = Readonly<{
-  getUtxos(address: string): Promise<UTxO[]>;
-  getUtxosByOutRef(
-    outRefs: readonly Readonly<{ txHash: string; outputIndex: number }>[],
-  ): Promise<UTxO[]>;
-}>;
-
-/**
- * Application-supervisor permit mint. The supervisor binds the exact admitted
- * decision digest, actuation permit, and rollback generation to a fresh
- * atomically reserved slice of the live prover wallet; the fault-proof
- * application can neither mint nor substitute this authority. All wallet and
- * protocol-input resolution goes through the same follower-backed L1
- * authority the runners execute against.
- */
-export const mintWatcherProverFundingReservationPermit = async (input: {
-  readonly category: WatcherInstalledWorkflowCategory;
-  readonly runner: WorkflowAdapterRunner;
-  readonly factory: WatcherProverFundingAuthorityFactory;
-  readonly actuationPermit: WorkflowActuationPermit;
-  readonly rollbackGeneration: string;
-  readonly decisionDigest: string;
-  readonly walletAddress: string;
-  readonly provider: WatcherProverFundingUtxoProvider;
-  readonly reservationMode?: "create_or_resume" | "resume_only";
-}): Promise<WorkflowFundingReservationPermit> => {
-  assertWatcherProverFundingAuthorityFactory(input.factory);
-  return await input.factory.create({
-    category: input.category,
-    runner: input.runner,
-    actuationPermit: input.actuationPermit,
-    rollbackGeneration: input.rollbackGeneration,
-    decisionDigest: input.decisionDigest,
-    walletAddress: input.walletAddress,
-    reservationMode: input.reservationMode,
-    readWalletUtxos: async () =>
-      await readFundingProvider(() =>
-        input.provider.getUtxos(input.walletAddress),
-      ),
-    resolveInputs: async (outRefs) =>
-      await readFundingProvider(() =>
-        input.provider.getUtxosByOutRef(
-          outRefs.map(parseWatcherProverFundingOutRef),
-        ),
-      ),
-    resolveProtocolInputAuthority: async ({
-      deploymentIdentity,
-      outRef,
-      semanticRole,
-    }) => {
-      const resolved = await readFundingProvider(() =>
-        input.provider.getUtxosByOutRef([
-          parseWatcherProverFundingOutRef(outRef),
-        ]),
-      );
-      if (resolved.length !== 1)
-        throw new Error(
-          "prover funding protocol input is not a unique live local-node output",
-        );
-      return Object.freeze({
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        outRef,
-        semanticRole,
-        resolvedOutputCborHex: utxoToCore(resolved[0]!)
-          .output()
-          .to_canonical_cbor_hex(),
-      });
-    },
+/** The identity a proof step of the objective's turn is recorded under. */
+const proofActionIdentity = ({
+  category,
+  headerHash,
+  decisionDigest,
+  rollbackGeneration,
+}: Omit<WatcherFaultProofDepartureStep, "step">): string =>
+  watcherSha256CanonicalJson({
+    category,
+    headerHash,
+    decisionDigest,
+    rollbackGeneration,
   });
-};
 
-/** Executes one admitted turn. Scheduling, fresh journal admission, and retries
- * belong to the supervisor; this adapter owns funding, invocation and cleanup. */
+/** Executes one admitted turn. Scheduling and retries belong to the
+ * supervisor; this adapter owns invocation and its holds. */
 export const createWatcherFaultProofExecution = (dependencies: {
   readonly application: Readonly<{
     runners: Partial<WatcherFaultProofApplication["runners"]>;
     runOrResume: WatcherFaultProofApplication["runOrResume"];
     verifyCompleted: WatcherFaultProofApplication["verifyCompleted"];
   }>;
-  readonly fundingFactory: WatcherProverFundingAuthorityFactory;
-  readonly walletAddress: string;
-  readonly provider: WatcherProverFundingUtxoProvider;
-  /** The per-proof workflow journal in watcher.sqlite. */
-  readonly workflowJournal: WatcherWorkflowJournal;
+  /** The process's one in-flight set: what each objective sent, and the
+   * wallet coins its builds and the process's other actions hold. */
+  readonly inFlight: WorkflowInFlight;
   /** Forwarded to the shared workflow runner, whose contract carries it; the
    * watcher's loader runs on the configuration startup admitted. */
   readonly runtimeConfigPath: string;
@@ -277,7 +171,15 @@ export const createWatcherFaultProofExecution = (dependencies: {
       settle();
       alerts.settled(objective);
     },
-    verifyCompleted: async ({ job, actuationPermit, entries, terminal }) => {
+    departureStep: ({ step, ...action }) =>
+      dependencies.operationsSink.recordProofStep({
+        decisionDigest: action.decisionDigest,
+        stage: "terminal",
+        actionIdentityDigest: proofActionIdentity(action),
+        status: step,
+        updatedAtMs: Date.now().toString(),
+      }),
+    verifyCompleted: async ({ job, actuationPermit, terminal }) => {
       const identity = assertWorkflowActuationPermitIdentity({
         permit: actuationPermit,
         category: job.category,
@@ -291,26 +193,13 @@ export const createWatcherFaultProofExecution = (dependencies: {
         throw new Error(
           "completed proof verification changed its admitted objective",
         );
-      const executionIdentity = entries[0]?.identity;
-      if (
-        executionIdentity?.decisionDigest === undefined ||
-        executionIdentity.deploymentFingerprint !==
-          identity.deploymentFingerprint ||
-        executionIdentity.category !== job.category ||
-        executionIdentity.target.kind !== "state_queue_header" ||
-        executionIdentity.target.headerHash !== job.headerHash
-      )
-        throw new Error(
-          "completed proof verification changed its durable execution identity",
-        );
       const settle = quarantineSettlement(holds, job, dependencies);
       try {
         const verification = await dependencies.application.verifyCompleted({
           category: job.category,
           headerHash: job.headerHash,
-          decisionDigest: executionIdentity.decisionDigest,
-          entries,
-          terminal,
+          decisionDigest: job.decisionDigest,
+          ...(terminal === undefined ? {} : { terminal }),
         });
         holds.delete(objectiveOf(job));
         return verification;
@@ -332,12 +221,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
     },
     execute: async ({ job, actuationPermit, admission }) => {
       const { category, headerHash, decisionDigest } = job;
-      const actionIdentityDigest = watcherSha256CanonicalJson({
-        category,
-        headerHash,
-        decisionDigest,
-        rollbackGeneration: job.rollbackGeneration,
-      });
+      const actionIdentityDigest = proofActionIdentity(job);
       const record = (
         status: Parameters<
           WatcherOperationsSink["recordProofStep"]
@@ -355,8 +239,8 @@ export const createWatcherFaultProofExecution = (dependencies: {
       // Any outcome but a refusal, resubmission or quarantine ends the hold.
       let held: ReturnType<typeof holdOnRefusal>;
       const settleQuarantine = quarantineSettlement(holds, job, dependencies);
-      // Set while the objective's own funding and run are in hand: a failure
-      // there quarantines this objective alone (fault-proof-quarantine.ts).
+      // Set while the objective's own run is in hand: a failure there
+      // quarantines this objective alone (fault-proof-quarantine.ts).
       let objectiveWork = false;
       const quarantine = (cause: string) => {
         held = { kind: "pending", reason: cause };
@@ -381,10 +265,8 @@ export const createWatcherFaultProofExecution = (dependencies: {
           authority.headerHash !== headerHash ||
           authority.decisionDigest !== decisionDigest ||
           admission.mode !== job.mode ||
-          (admission.funding === "resume_only" &&
-            admission.mode !== "resume") ||
           (authority.authority === "reconciliation" &&
-            admission.funding !== "resume_only")
+            admission.mode !== "resume")
         )
           throw new Error(
             "fault-proof execution admission changed its objective or authority",
@@ -396,31 +278,13 @@ export const createWatcherFaultProofExecution = (dependencies: {
           );
         objectiveWork = true;
         alerts.started(job, admission.startedLate);
-        const fundingReservationPermit =
-          await mintWatcherProverFundingReservationPermit({
-            category,
-            runner,
-            factory: dependencies.fundingFactory,
-            actuationPermit,
-            rollbackGeneration: job.rollbackGeneration,
-            decisionDigest,
-            walletAddress: dependencies.walletAddress,
-            provider: dependencies.provider,
-            reservationMode: admission.funding,
-          });
         const result = await dependencies.application.runOrResume({
-          mode: admission.mode,
           category,
           deploymentFingerprint: dependencies.deploymentFingerprint,
           headerHash,
           decisionDigest,
           actuationPermit,
-          fundingReservationPermit,
-          // A fresh store per invocation: the permits bind to this object.
-          journal: dependencies.workflowJournal.forObjective({
-            category,
-            headerHash,
-          }),
+          sends: dependencies.inFlight.forObjective({ category, headerHash }),
           runtimeConfigPath: dependencies.runtimeConfigPath,
           walletOnlySend: admission.walletOnlySend,
           onProgress: stall.releaseWatcherFaultProofStallOnProgress(holds, job),
@@ -484,7 +348,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           record("cancelled");
           return { kind: "authority_revoked", error };
         }
-        // The supervisor holds the objective (journal_decision_missing), or
+        // The supervisor holds the objective by name, or
         // holds on a busy database and requeues it (journal_busy).
         if (
           isWatcherProofDecisionMissingError(error) ||
@@ -498,11 +362,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           record("reconciling");
           return { ...held, resume: "await_observation" };
         }
-        if (
-          error instanceof FraudProofL1CheckpointChangedError ||
-          error instanceof WatcherProverFundingUnavailableError
-        ) {
-          held = holdWatcherFaultProofOnFunding(holds, job, error);
+        if (error instanceof FraudProofL1CheckpointChangedError) {
           record("reconciling");
           return {
             kind: "pending",
@@ -520,7 +380,6 @@ export const createWatcherFaultProofExecution = (dependencies: {
         // provider, or found this watcher's own DA node not up yet, waits and
         // runs again; it says nothing about the fault.
         if (
-          error instanceof FundingProviderTransportUnavailable ||
           isWatcherL1TransientFailure(error) ||
           isWatcherRetainedDaTransportUnavailable(error)
         ) {
@@ -545,9 +404,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
       } finally {
         if (held === undefined) holds.delete(objectiveOf(job));
         alerts.funding(job, holds);
-        alerts.collateral(job);
         settleQuarantine();
-        await dependencies.fundingFactory.releaseUnused({ actuationPermit });
       }
     },
   });

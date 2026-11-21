@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { installWorkflowApplicationRegistry } from "../src/workflow/adapters.js";
 import { runFraudProofWorkflowCli } from "../src/workflow/cli.js";
+import { createWorkflowInFlight } from "../src/workflow/in-flight.js";
 import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
@@ -20,13 +21,12 @@ import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-
 import {
   admittedActuation,
   DEPLOYMENT,
-  directoryJournal,
 } from "./workflow-runtime.admitted-actuation.js";
 import {
   doubleSpendRecord,
   loadedRuntime,
   recoverableDoubleSpendWorkflow,
-} from "./workflow-runtime.slash-funding-fixture.js";
+} from "./workflow-runtime.loaded-runtime.js";
 
 const paths: string[] = [];
 afterEach(async () => {
@@ -50,89 +50,30 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
   throw new Error("the expected state was not reached");
 };
 
-type Entry = Readonly<{ event: Readonly<Record<string, unknown>> }>;
-
-/** A record session's journal as the orchestrator writes it: every poll of
- * an unconfirmed transaction appends a pending reconciliation; a
- * confirmation is progress. */
-const recordJournal = () => {
-  const entries: Entry[] = [
-    { event: { kind: "submitted", actionId: "walk", txHash: "aa" } },
-  ];
+/** A session's pending results as the orchestrator returns them: each poll
+ * names the action whose transaction it awaits. Awaiting a new action is
+ * progress; awaiting the same one again, however often its transaction is
+ * rebuilt, is not. */
+const pendingSession = () => {
+  let awaiting = "walk";
+  const resubmitted: string[] = [];
+  const pending = () => ({
+    kind: "pending",
+    reason: `transaction for ${awaiting} is pending`,
+    awaitingActionId: awaiting,
+  });
   return {
-    entries,
-    pollPending: () => {
-      entries.push({
-        event: { kind: "reconciled", actionId: "walk", outcome: "pending" },
-      });
-      return {
-        kind: "pending",
-        reason: "transaction for walk is pending",
-        entries: [...entries],
-      };
-    },
-    /** The last attempt expired unseen; the same action is submitted again. */
+    resubmitted,
+    pollPending: pending,
+    /** The last attempt expired unseen; the same action is sent again. */
     resubmit: () => {
-      const attempt = entries.filter(
-        ({ event }) => event.kind === "submitted",
-      ).length;
-      const txHash = (attempt + 1).toString(16).padStart(2, "0");
-      entries.push(
-        {
-          event: { kind: "reconciled", actionId: "walk", outcome: "not_found" },
-        },
-        { event: { kind: "signed_attempt_retired", txHash: "aa" } },
-        { event: { kind: "preflight_passed", actionId: "walk", txHash } },
-        {
-          event: {
-            kind: "submission_intent",
-            actionId: "walk",
-            attempt: attempt + 1,
-            txHash,
-          },
-        },
-        {
-          event: {
-            kind: "submitted",
-            actionId: "walk",
-            attempt: attempt + 1,
-            txHash,
-          },
-        },
-      );
-      return {
-        kind: "pending",
-        reason: "transaction for walk is pending",
-        entries: [...entries],
-      };
+      resubmitted.push(awaiting);
+      return pending();
     },
-    /** The next action is preflighted, intended and submitted. */
-    startAction: (actionId: string) => {
-      entries.push(
-        { event: { kind: "preflight_passed", actionId, txHash: "cc" } },
-        {
-          event: {
-            kind: "submission_intent",
-            actionId,
-            attempt: 1,
-            txHash: "cc",
-          },
-        },
-        { event: { kind: "submitted", actionId, attempt: 1, txHash: "cc" } },
-      );
-      return {
-        kind: "pending",
-        reason: `transaction for ${actionId} is pending`,
-        entries: [...entries],
-      };
-    },
-    confirm: (actionId: string) => {
-      entries.push({ event: { kind: "confirmed", actionId, txHash: "bb" } });
-      return {
-        kind: "pending",
-        reason: `transaction for ${actionId} is pending`,
-        entries: [...entries],
-      };
+    /** The session moves on and awaits `actionId`. */
+    await: (actionId: string) => {
+      awaiting = actionId;
+      return pending();
     },
   };
 };
@@ -156,20 +97,21 @@ const runnerFor = async (
     }),
     loadRuntime: async () => loadedRuntime(actuation, { close }),
   });
-  const journalDirectory = await scratch();
+  const inFlight = createWorkflowInFlight();
   let sessions = 0;
-  const runOrResume = async (mode: "run" | "resume") => {
+  const runOrResume = async () => {
     if (sessions++ > 0) actuation = await admittedActuation();
     return await runner.runOrResume({
       walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
-      mode,
       category: "doubleSpend",
       deploymentFingerprint: DEPLOYMENT,
       headerHash: actuation.headerHash,
       decisionDigest: actuation.decisionDigest,
       actuationPermit: actuation.actuationPermit,
-      fundingReservationPermit: actuation.fundingReservationPermit,
-      journal: directoryJournal(journalDirectory),
+      sends: inFlight.forObjective({
+        category: "doubleSpend",
+        headerHash: actuation.headerHash,
+      }),
       runtimeConfigPath: "/etc/midgard/runtime.json",
       onProgress,
     });
@@ -213,11 +155,11 @@ const queueBehindStall = async (later: boolean) => {
       observationRevision: revision,
       deadline: deadline(headerHash, blockTimeMs),
     }) as const;
-  const journal = recordJournal();
+  const session = pendingSession();
   let secondConvicted = false;
   const completed = { kind: "completed", workflowId: "first-objective" };
   const execute = vi.fn(async () =>
-    secondConvicted ? completed : journal.pollPending(),
+    secondConvicted ? completed : session.pollPending(),
   );
   const first = await runnerFor(execute);
   const order: string[] = [];
@@ -229,7 +171,7 @@ const queueBehindStall = async (later: boolean) => {
       return { kind: "completed", result: { kind: "completed" } };
     }
     order.push("first");
-    const result = (await first.runOrResume("run")) as {
+    const result = (await first.runOrResume()) as {
       kind: string;
       reason?: string;
     };
@@ -274,11 +216,11 @@ const queueBehindStall = async (later: boolean) => {
 describe("bounded pending continuation", () => {
   it("hands a pending that never confirms back as a typed stall within its bound, and closes the session", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-    const journal = recordJournal();
-    const execute = vi.fn(async () => journal.pollPending());
+    const session = pendingSession();
+    const execute = vi.fn(async () => session.pollPending());
     const onProgress = vi.fn();
     const runner = await runnerFor(execute, onProgress);
-    const running = settledFlag(runner.runOrResume("run"));
+    const running = settledFlag(runner.runOrResume());
     await vi.advanceTimersByTimeAsync(0);
     expect(execute).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(WORKFLOW_CONTINUATION_QUIET_BOUND_MS);
@@ -302,14 +244,14 @@ describe("bounded pending continuation", () => {
 
   it("stalls on the clock when every poll is slow, long before the poll backstop", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-    const journal = recordJournal();
+    const session = pendingSession();
     // Each poll's L1 reads take 9 s, so one poll ends every 10 s.
     const execute = vi.fn(async () => {
       vi.setSystemTime(Date.now() + 9_000);
-      return journal.pollPending();
+      return session.pollPending();
     });
     const runner = await runnerFor(execute);
-    const running = settledFlag(runner.runOrResume("run"));
+    const running = settledFlag(runner.runOrResume());
     for (let poll = 0; poll < 200 && !running.settled; poll++)
       await vi.advanceTimersByTimeAsync(1_000);
     await waitFor(() => running.settled);
@@ -326,14 +268,14 @@ describe("bounded pending continuation", () => {
 
   it("stalls on the poll backstop when the clock stands still", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-    const journal = recordJournal();
+    const session = pendingSession();
     const frozenAtMs = Date.now();
     const execute = vi.fn(async () => {
       vi.setSystemTime(frozenAtMs);
-      return journal.pollPending();
+      return session.pollPending();
     });
     const runner = await runnerFor(execute);
-    const running = settledFlag(runner.runOrResume("run"));
+    const running = settledFlag(runner.runOrResume());
     const polls = WORKFLOW_CONTINUATION_QUIET_BOUND_POLLS;
     for (let poll = 0; poll < polls + 100 && !running.settled; poll++)
       await vi.advanceTimersByTimeAsync(1_000);
@@ -341,108 +283,98 @@ describe("bounded pending continuation", () => {
     expect(running.value).toMatchObject({
       resumeOnObservation: true,
       reason: expect.stringContaining(
-        `no journaled progress for 0 ms over ${polls.toString()} polls`,
+        `no progress for 0 ms over ${polls.toString()} polls`,
       ),
     });
     expect(execute).toHaveBeenCalledTimes(polls + 1);
   });
 
-  it.each([undefined, "reconciliation failed for walk: provider unavailable"])(
-    "stalls within its bound when the same action is accepted, expires unseen and is resubmitted every window (diagnostic %j)",
-    async (diagnostic) => {
-      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-      const journal = recordJournal();
-      // Never included: every 3 min the attempt is retired and resubmitted,
-      // after any diagnostic, of which only the first is news.
-      const execute = vi.fn(async () => {
-        if (execute.mock.calls.length % 180 !== 0) return journal.pollPending();
-        const stall = { event: { kind: "stalled", reason: diagnostic } };
-        if (diagnostic !== undefined) journal.entries.push(stall);
-        return journal.resubmit();
-      });
-      const news = diagnostic === undefined ? 0 : 1;
-      const boundMs = WORKFLOW_CONTINUATION_QUIET_BOUND_MS + news * 180_000;
-      const onProgress = vi.fn();
-      const runner = await runnerFor(execute, onProgress);
-      const startedAtMs = Date.now();
-      const running = settledFlag(runner.runOrResume("run"));
-      await vi.advanceTimersByTimeAsync(boundMs);
-      await waitFor(() => running.settled);
-      expect(Date.now() - startedAtMs).toBeLessThanOrEqual(boundMs);
-      expect(running.value).toMatchObject({
-        kind: "pending",
-        resumeOnObservation: true,
-        reason: expect.stringContaining(
-          FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
-        ),
-      });
-      const submitted = journal.entries.filter(
-        ({ event }) => event.kind === "submitted",
-      );
-      expect(submitted.length).toBeGreaterThan(5);
-      expect(onProgress).toHaveBeenCalledTimes(news);
-      expect(runner.close).toHaveBeenCalledOnce();
-    },
-  );
-
-  it("keeps a session that journals progress past the bound until it completes", async () => {
+  it("stalls within its bound when the same action is accepted, expires unseen and is resubmitted every window", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-    const journal = recordJournal();
-    // One confirmation every 20 polls, for three bounds' worth of time. Every
-    // confirmation is progress, even one of an action confirmed before.
+    const session = pendingSession();
+    // Never included: every 3 min the attempt expires and the same action
+    // is sent again.
+    const execute = vi.fn(async () =>
+      execute.mock.calls.length % 180 !== 0
+        ? session.pollPending()
+        : session.resubmit(),
+    );
+    const boundMs = WORKFLOW_CONTINUATION_QUIET_BOUND_MS;
+    const onProgress = vi.fn();
+    const runner = await runnerFor(execute, onProgress);
+    const startedAtMs = Date.now();
+    const running = settledFlag(runner.runOrResume());
+    await vi.advanceTimersByTimeAsync(boundMs);
+    await waitFor(() => running.settled);
+    expect(Date.now() - startedAtMs).toBeLessThanOrEqual(boundMs);
+    expect(running.value).toMatchObject({
+      kind: "pending",
+      resumeOnObservation: true,
+      reason: expect.stringContaining(
+        FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
+      ),
+    });
+    expect(session.resubmitted.length).toBeGreaterThan(5);
+    expect(onProgress).not.toHaveBeenCalled();
+    expect(runner.close).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a session that makes progress past the bound until it completes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const session = pendingSession();
+    // A new action awaited every 20 polls, for three bounds' worth of time.
     const polls = (3 * WORKFLOW_CONTINUATION_QUIET_BOUND_MS) / 1_000;
-    const completed = { kind: "completed", workflowId: "long-record" };
+    const completed = { kind: "completed", workflowId: "long-workflow" };
     const execute = vi.fn(async () =>
       execute.mock.calls.length > polls
         ? completed
         : execute.mock.calls.length % 20 === 0
-          ? journal.confirm("walk")
-          : journal.pollPending(),
+          ? session.await(`walk-${execute.mock.calls.length.toString()}`)
+          : session.pollPending(),
     );
     const onProgress = vi.fn();
     const runner = await runnerFor(execute, onProgress);
-    const running = settledFlag(runner.runOrResume("run"));
+    const running = settledFlag(runner.runOrResume());
     await vi.advanceTimersByTimeAsync(polls * 1_000 + 1_000);
     await waitFor(() => running.settled);
     expect(running.value).toBe(completed);
     expect(execute).toHaveBeenCalledTimes(polls + 1);
-    // Each confirmation is reported as it lands, before the session ends.
+    // Each new action is reported as it is awaited, before the session ends.
     expect(onProgress).toHaveBeenCalledTimes(polls / 20);
   });
 
-  it("counts a new action's first submission as progress, so a session that moves on to it is not stalled", async () => {
+  it("counts a new action awaited as progress, so a session that moves on to it is not stalled", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-    const journal = recordJournal();
-    // The first action confirms at once; the next is submitted at minute 20
-    // and confirms at minute 45, 25 min later but 45 min after the first.
+    const session = pendingSession();
+    // The first action is awaited from the start, the next from minute 20
+    // and a third from minute 45: 25 min apart, but 45 min after the first.
     const minute = 60;
     const polls = 46 * minute;
-    const completed = { kind: "completed", workflowId: "two-actions" };
+    const completed = { kind: "completed", workflowId: "three-actions" };
     const execute = vi.fn(async () => {
       const poll = execute.mock.calls.length;
       if (poll > polls) return completed;
-      if (poll === 2) return journal.confirm("walk");
-      if (poll === 20 * minute) return journal.startAction("seal");
-      if (poll === 45 * minute) return journal.confirm("seal");
-      return journal.pollPending();
+      if (poll === 20 * minute) return session.await("seal");
+      if (poll === 45 * minute) return session.await("close");
+      return session.pollPending();
     });
     const onProgress = vi.fn();
     const runner = await runnerFor(execute, onProgress);
-    const running = settledFlag(runner.runOrResume("run"));
+    const running = settledFlag(runner.runOrResume());
     await vi.advanceTimersByTimeAsync(polls * 1_000 + 1_000);
     await waitFor(() => running.settled);
     expect(running.value).toBe(completed);
     expect(execute).toHaveBeenCalledTimes(polls + 1);
-    expect(onProgress).toHaveBeenCalledTimes(3);
+    expect(onProgress).toHaveBeenCalledTimes(2);
   });
 
   it("keeps its bound when the progress callback throws", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-    const journal = recordJournal();
+    const session = pendingSession();
     const execute = vi.fn(async () =>
       execute.mock.calls.length === 2
-        ? journal.confirm("walk")
-        : journal.pollPending(),
+        ? session.await("seal")
+        : session.pollPending(),
     );
     const onProgress = vi.fn(() => {
       throw new Error("alarm hook failed");
@@ -450,7 +382,7 @@ describe("bounded pending continuation", () => {
     const runner = await runnerFor(execute, onProgress);
     const running = settledFlag(
       runner
-        .runOrResume("run")
+        .runOrResume()
         .catch((error: unknown) => ({ rejected: String(error) })),
     );
     await vi.advanceTimersByTimeAsync(
@@ -481,15 +413,16 @@ describe("bounded pending continuation", () => {
     await expect(
       runFraudProofWorkflowCli({
         walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
-        mode: "run",
         category: "doubleSpend",
         deploymentFingerprint: DEPLOYMENT,
         headerHash: actuation.headerHash,
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
-        fundingReservationPermit: actuation.fundingReservationPermit,
-        journal: directoryJournal(await scratch()),
         runtimeConfigPath: "/etc/midgard/runtime.json",
+        sends: createWorkflowInFlight().forObjective({
+          category: "doubleSpend",
+          headerHash: actuation.headerHash,
+        }),
         onProgress,
         applicationRegistry: installWorkflowApplicationRegistry({
           deploymentFingerprint: DEPLOYMENT,

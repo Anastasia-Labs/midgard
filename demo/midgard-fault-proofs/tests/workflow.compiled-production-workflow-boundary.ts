@@ -1,9 +1,5 @@
 import "./workflow.q51-w-o4-resumable-workflow.js";
 
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   credentialToAddress,
@@ -24,14 +20,11 @@ import {
   WORKFLOW_ADAPTER_RUNNER,
 } from "../src/workflow/adapters.js";
 import {
-  directoryWorkflowJournal,
   runFraudProofWorkflowCli,
   workflowReadinessReport,
 } from "../src/workflow/cli.js";
 import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import { requireManifestBoundReferenceScriptUtxo } from "../src/workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
-import { WORKFLOW_FUNDING_RESERVATION_PERMIT } from "../src/workflow/funding-reservation-permit.workflow-funding-reservation-port.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runFraudProofWorkflowFromRetainedDa } from "../src/workflow/orchestrator.run-fraud-proof-workflow-from-retained-da.js";
@@ -41,6 +34,7 @@ import {
   buildCanonicalBlockFixture,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
   DEPLOYMENT_FINGERPRINT,
   makeAdapter,
@@ -359,7 +353,10 @@ describe("compiled production workflow boundary", () => {
         sources: [source],
         replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
         registry,
-        journal: new MemoryFraudProofWorkflowJournalStore(),
+        run: createTestWorkflowProcess().run({
+          category: "doubleSpend",
+          headerHash: fixture.headerHash,
+        }),
         terminalVerifier,
         releaseFinalityAuthority: releaseFinalityAuthority(),
       }),
@@ -447,8 +444,8 @@ describe("compiled production workflow boundary", () => {
     });
   });
 
-  it("parses run/resume journal identity flags in the compiled CLI", () => {
-    const parsed = parseArgs([
+  it("parses run/resume workflow identity flags in the compiled CLI, refusing the retired journal directory", () => {
+    const argv = [
       "node",
       "midgard-fault-proofs",
       "resume-workflow",
@@ -458,51 +455,42 @@ describe("compiled production workflow boundary", () => {
       DEPLOYMENT_FINGERPRINT,
       "--header-hash",
       "f8".repeat(28),
-      "--workflow-journal-dir",
-      "/tmp/midgard-workflow-test",
       "--workflow-runtime-config",
       "/etc/midgard/fraud-proof-runtime-v1.json",
-    ]);
-    expect(parsed).toMatchObject({
+    ];
+    expect(parseArgs(argv)).toMatchObject({
       command: "resume-workflow",
       fraudCategory: "doubleSpend",
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       headerHash: "f8".repeat(28),
-      workflowJournalDir: "/tmp/midgard-workflow-test",
       workflowRuntimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
     });
+    expect(() =>
+      parseArgs([...argv, "--workflow-journal-dir", "/tmp/midgard-workflow"]),
+    ).toThrow("Unknown argument: --workflow-journal-dir");
   });
 
-  it("fails closed before opening a journal or accepting evidence", async () => {
-    const root = await mkdtemp(join(tmpdir(), "midgard-fp-cli-"));
-    const journalDirectory = join(root, "must-not-be-created");
-    try {
-      await expect(
-        runFraudProofWorkflowCli({
-          walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
-          mode: "run",
+  it("fails closed on a missing adapter before accepting evidence", async () => {
+    const headerHash = "f8".repeat(28);
+    await expect(
+      runFraudProofWorkflowCli({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
+        category: "invalidRange",
+        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        headerHash,
+        decisionDigest: "f9".repeat(32),
+        actuationPermit: {
+          permitVersion: WORKFLOW_ACTUATION_PERMIT,
+        },
+        // The CLI demands the permit and the in-flight set before it looks
+        // at adapters, so both are present: this test is about the
+        // missing-adapter refusal, not the refusal that precedes it.
+        sends: createTestWorkflowProcess().sends({
           category: "invalidRange",
-          deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-          headerHash: "f8".repeat(28),
-          decisionDigest: "f9".repeat(32),
-          actuationPermit: {
-            permitVersion: WORKFLOW_ACTUATION_PERMIT,
-          },
-          // The CLI demands both permits before it looks at adapters, so both
-          // are present: this test is about the missing-adapter refusal, not
-          // the permit refusal that precedes it.
-          fundingReservationPermit: {
-            permitVersion: WORKFLOW_FUNDING_RESERVATION_PERMIT,
-          },
-          journal: directoryWorkflowJournal(journalDirectory, ""),
-          runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
+          headerHash,
         }),
-      ).rejects.toBeInstanceOf(MissingWorkflowAdaptersError);
-      await expect(
-        import("node:fs/promises").then(({ stat }) => stat(journalDirectory)),
-      ).rejects.toMatchObject({ code: "ENOENT" });
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+        runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
+      }),
+    ).rejects.toBeInstanceOf(MissingWorkflowAdaptersError);
   });
 });

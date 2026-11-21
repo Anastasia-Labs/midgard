@@ -3,7 +3,7 @@ import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import { mintAuthorizationSubmitError } from "./submit-common.js";
 
@@ -30,7 +30,7 @@ export type MintAuthorizationStep04Build = {
 };
 
 export type SubmitMintAuthorizationStep04Result =
-  UnjournaledSubmission<MintAuthorizationStep04Build>;
+  OutsideWorkflowSubmission<MintAuthorizationStep04Build>;
 
 /** The input field the thread's state names: field 1, then field 0. */
 export const step04ScanField = (

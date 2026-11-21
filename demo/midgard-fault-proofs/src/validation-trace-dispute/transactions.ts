@@ -1,12 +1,10 @@
 /** The open step's three transactions, each built, locally evaluated and
- * signed from the prover wallet, and returned unsubmitted with the durable
- * recovery that names the outputs of ours it leaves; and
- * what the close (close.ts) shares with them. */
+ * signed from the prover wallet, and returned unsubmitted; and what the
+ * close (close.ts) shares with them. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
-  Data,
   type LucidEvolution,
   type Network,
   type Script,
@@ -27,15 +25,12 @@ import type {
 import { buildResolvedInit } from "../submit-init.submit-resolved-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { grantValidationDisputeFundingAuthority } from "../workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
 import { ownOutRefLabel, parseOwnOutRef } from "../workflow/own-outputs.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import {
   type LocallyEvaluatedTransaction,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
-import { validationTraceRecovery } from "./actions.js";
 import type { ValidationTraceDisputeArtifact } from "./artifact.js";
 import type { ValidationTraceCanonicalDecodeHolder } from "./one-step-canonical-decode.js";
 import type { ValidationTraceFieldCertificates } from "./one-step-carriage.js";
@@ -126,8 +121,6 @@ export type ValidationTraceOneStepReferences = Readonly<{
 
 /** The deployment the open step builds against. */
 export type ValidationTraceDisputeDeployment = Readonly<{
-  /** The deployment VerifySource's funding authority is bound to. */
-  deploymentFingerprint: string;
   network: Network;
   blueprint: unknown;
   /** Init's contracts; the first step is the dispute opener. */
@@ -199,7 +192,6 @@ export type ValidationTraceDisputeDeployment = Readonly<{
 
 export type CapturedValidationTraceStage = Readonly<{
   transaction: LocallyEvaluatedTransaction;
-  durableRecovery: JournalJsonObject;
 }>;
 
 export type StageInput = Readonly<{
@@ -320,7 +312,7 @@ export const captureValidationTraceInit = async ({
     deployment,
     artifact.headerHash,
   );
-  const { transaction } = await journaledStepTransaction(
+  const { transaction } = await workflowStepTransaction(
     await buildResolvedInit({
       lucid,
       blueprint: deployment.blueprint,
@@ -341,16 +333,6 @@ export const captureValidationTraceInit = async ({
   );
   return {
     transaction,
-    durableRecovery: validationTraceRecovery({
-      stage: "init",
-      transaction,
-      slots: [
-        {
-          address: deployment.chain.opener.spendingScriptAddress,
-          unit: validationTraceThreadUnit(deployment, artifact.headerHash),
-        },
-      ],
-    }),
   };
 };
 
@@ -398,16 +380,6 @@ export const captureValidationTraceOpen = async ({
   ]);
   return {
     transaction,
-    durableRecovery: validationTraceRecovery({
-      stage: "open",
-      transaction,
-      slots: [
-        {
-          address: chain.source.spendingScriptAddress,
-          unit: validationTraceThreadUnit(deployment, artifact.headerHash),
-        },
-      ],
-    }),
   };
 };
 
@@ -426,72 +398,36 @@ export const captureValidationTraceVerifySource = async ({
   const caseConfig = await caseConfigUtxo(lucid, deployment);
   signer.selectWallet(lucid);
   const validFrom = lucid.slotToUnixTime(lucid.currentSlot());
-  const { tx, opening } = SDK.appendValidationSourceVerification(
-    lucid.newTx(),
-    {
-      contracts: {
-        source: chain.source,
-        case: chain.case,
-        disputeBond: chain.disputeBond,
-      },
-      computationThreadPolicyId:
-        deployment.init.contracts.computationThread.policyId,
-      sourceReferenceScript: references.source,
-      caseReferenceScript: references.case,
-      caseConfig,
-      opener,
-      challengerTerminal: artifact.terminal,
-      challengerTerminalProof: artifact.terminalProof,
-      agreedInitialState: artifact.initialState,
-      bondLovelace: deployment.bondLovelace,
-      validFrom,
-      validTo: validFrom + MAX_RANGE_MS,
-      slots: lucid,
+  const { tx } = SDK.appendValidationSourceVerification(lucid.newTx(), {
+    contracts: {
+      source: chain.source,
+      case: chain.case,
+      disputeBond: chain.disputeBond,
     },
-  );
+    computationThreadPolicyId:
+      deployment.init.contracts.computationThread.policyId,
+    sourceReferenceScript: references.source,
+    caseReferenceScript: references.case,
+    caseConfig,
+    opener,
+    challengerTerminal: artifact.terminal,
+    challengerTerminalProof: artifact.terminalProof,
+    agreedInitialState: artifact.initialState,
+    bondLovelace: deployment.bondLovelace,
+    validFrom,
+    validTo: validFrom + MAX_RANGE_MS,
+    slots: lucid,
+  });
   const unsigned = await tx.complete({
     localUPLCEval: true,
     ...(await plainWalletInputs(lucid)),
   });
   const signed = await unsigned.sign.withWallet().complete();
-  const openerLovelace = opener.assets.lovelace ?? 0n;
-  grantValidationDisputeFundingAuthority({
-    signed,
-    deploymentFingerprint: deployment.deploymentFingerprint,
-    headerHash: artifact.headerHash,
-    opener,
-    bond: {
-      address: chain.disputeBond.spendingScriptAddress,
-      unit: opening.bondMarkerUnit,
-      lovelace: deployment.bondLovelace,
-      datumCborHex: Data.to(opening.bond, SDK.DisputeBond),
-    },
-    caseOutput: {
-      address: chain.case.spendingScriptAddress,
-      unit: opening.caseUnit,
-      floorLovelace: SDK.VALIDATION_CASE_FLOOR_LOVELACE,
-      lovelace:
-        openerLovelace > SDK.VALIDATION_CASE_FLOOR_LOVELACE
-          ? openerLovelace
-          : SDK.VALIDATION_CASE_FLOOR_LOVELACE,
-    },
-  });
   const transaction = captured(signed, [
     { role: "validation-trace-source", utxo: references.source },
     { role: "validation-case", utxo: references.case },
   ]);
   return {
     transaction,
-    durableRecovery: validationTraceRecovery({
-      stage: "verify_source",
-      transaction,
-      slots: [
-        { address: chain.case.spendingScriptAddress, unit: opening.caseUnit },
-        {
-          address: chain.disputeBond.spendingScriptAddress,
-          unit: opening.bondMarkerUnit,
-        },
-      ],
-    }),
   };
 };

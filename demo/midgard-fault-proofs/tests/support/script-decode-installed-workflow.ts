@@ -2,19 +2,13 @@
  * The watcher's installed fault-proof application, driven turn by turn over
  * a real emulator deployment of a script-decoding family.
  *
- * Every turn is what the watcher does for one admitted objective: the real
- * watcher prover-funding authority reserves the prover wallet in the
- * production SQLite store and mints the funding permit, and the registry's
- * admitted runner (`WORKFLOW_RUNNER_FACTORIES`) loads the runtime, restricts
- * the prover signer to that permit and runs or resumes the journaled
- * workflow from its directory. Only the manifest is stood in for: the
+ * Every turn is what the watcher does for one admitted objective: the
+ * registry's admitted runner (`WORKFLOW_RUNNER_FACTORIES`) loads the
+ * runtime and runs the workflow over the watcher process's in-flight set,
+ * which a restart empties. Only the manifest is stood in for: the
  * binding is the emulator deployment's (the calling test mocks the manifest
  * binding and the L1 observation port with it).
  */
-import { readdir, rm } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
-
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Lucid,
@@ -26,20 +20,22 @@ import {
   watcherDeploymentReleaseFinalityAuthority,
 } from "midgard-watcher";
 import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture.build-watcher-deployment-authority-fixture";
-import { recordWatcherFaultDecision } from "midgard-watcher/tests/support/installed-prover-funding-recovery";
 
+import { WALLET_ONLY_VALIDITY_MS } from "../../src/wallet-only-validity.js";
 import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import { familyStepContractNames } from "../../src/workflow/family-definition.family-definition.js";
 import { createFraudProofFamilyRawL1ObservationPort } from "../../src/workflow/family-l1-observation.js";
-import { restrictWorkflowFundingSigner } from "../../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
 import { authenticatedStateQueueObservationDigest } from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import { classifyHeader } from "../../src/workflow/header-classifier.classify-header.js";
 import { createHeaderClassifier } from "../../src/workflow/header-classifier.create-header-classifier.js";
+import type { InFlightTransaction } from "../../src/workflow/in-flight.js";
 import {
   WORKFLOW_RUNNER_FACTORIES,
   WORKFLOW_RUNTIME_CONFIG,
 } from "../../src/workflow/runtime.js";
 import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.deployment.js";
+import type { WalletOnlySend } from "../../src/workflow/wallet-only-send-gate.js";
+import { restrictWorkflowWallet } from "../../src/workflow/workflow-wallet.js";
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -50,19 +46,16 @@ import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.pub
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
+import { emulatorManifestProtocolParameters } from "./emulator-protocol-parameters.js";
 import { deployHarnessFieldGrammarCertificate } from "./field-grammar-certificate-deployment-fixture.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
-import { scratchDirectory } from "./scratch-directory.js";
 import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
-import {
-  emulatorProtocolParameterAuthority,
-  openInstalledProverFunding,
-} from "./script-decode-installed-funding.js";
 import {
   fixtureLeaseCoordinator,
   FixtureRetainedDaSource,
 } from "./script-decode-installed-host.js";
 import { walletOnlySendAlwaysOpenOn } from "./wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./workflow-process.js";
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
 type Recorder = ReturnType<typeof recordCrossBlockRawEmulator>;
@@ -81,11 +74,6 @@ export type InstalledFamily = Parameters<typeof familyStepContractNames>[0] &
 
 const COLLATERAL_OUTPUT_LOVELACE = 2_000_000_000n;
 const RUNTIME_CONFIG_PATH = "/installed/script-decode-runtime.json";
-/** Deployed step names the watcher roster keeps although they end so. */
-const ROSTERED_MINT_OR_WITHDRAW = new Set([
-  "fraudProofValueNotPreservedUnionMint",
-  "fraudProofDoubleWithdraw",
-]);
 
 /**
  * Publishes the family's remaining references and commits the block whose
@@ -138,7 +126,7 @@ export const commitScriptDecodeBlock = async ({
     subject: { kind: "normal", nativeTx },
   });
   // An operator funds the watcher wallet with a dedicated collateral output
-  // beside its funding: the reservation never spends collateral as funding.
+  // beside its funding.
   const split = await harness.proverLucid
     .newTx()
     .pay.ToAddress(harness.proverSigner.address, {
@@ -199,10 +187,6 @@ export const installScriptDecodeApplication = async ({
   const releaseEconomics = await watcherDeploymentReleaseEconomicsAuthority(
     identity,
   ).verifyForWorkflow({ deploymentFingerprint: fingerprint });
-  const protocolParameters = await emulatorProtocolParameterAuthority(
-    identity,
-    harness.proverLucid,
-  );
   const deploymentInfo = buildRemovalDeploymentInfo(
     contracts,
     harness.catalogue,
@@ -239,7 +223,7 @@ export const installScriptDecodeApplication = async ({
     contractEntries: deploymentInfo.contracts,
     releaseFinality,
     releaseEconomics,
-    cardanoProtocolParameters: protocolParameters.snapshot,
+    cardanoProtocolParameters: emulatorManifestProtocolParameters(emulator),
     catalogue: {
       policyId: contracts.fraudProofCatalogue.policyId,
       spendingScriptAddress:
@@ -338,16 +322,15 @@ export const installScriptDecodeApplication = async ({
   const slotConfig = harness.proverLucid.config().slotConfig;
   const stateQueueMutationLeaseCoordinator = fixtureLeaseCoordinator();
   const signer = harness.proverSigner;
-  // The watcher's journal root, under home as its SQLite stores refuse /tmp:
-  // the decision journal and the reservation store with the workflow journal.
-  const scratch = await scratchDirectory("script-decode-installed-", homedir());
-  const directory = scratch.path;
-  await recordWatcherFaultDecision(directory, decision);
   /**
-   * The watcher process's in-memory part: the admitted runner and the open
-   * reservation store. Booting again over the same directory is a restart.
+   * The watcher process: the admitted runner, the process's in-flight set and
+   * its restart wait. Booting again is a restart. The first process starts on
+   * a chain nothing of ours was sent on, so its wait is already over; a
+   * restarted one sends nothing that spends only wallet coins until one
+   * wallet-only validity window has passed on the emulator's clock, so a
+   * copy the stopped process sent can no longer land beside a rebuilt one.
    */
-  const boot = async () => {
+  const boot = (restarted: boolean) => {
     const runner = WORKFLOW_RUNNER_FACTORIES[category](
       async ({ invocation }) => {
         // The watcher's loader body (`buildCommonInfrastructure`).
@@ -358,12 +341,9 @@ export const installScriptDecodeApplication = async ({
         // it from the manifest (a bare emulator Lucid starts its mapping now).
         const lucid = await Lucid(emulator, "Custom", { slotConfig });
         const restricted =
-          execution.fundingReservationPermit === undefined
+          execution.sends === undefined
             ? signer
-            : restrictWorkflowFundingSigner({
-                signer,
-                permit: execution.fundingReservationPermit,
-              });
+            : restrictWorkflowWallet({ signer, sends: execution.sends });
         restricted.selectWallet(lucid);
         return {
           schemaVersion: WORKFLOW_RUNTIME_CONFIG,
@@ -395,104 +375,53 @@ export const installScriptDecodeApplication = async ({
         } as never;
       },
     );
-    const funding = await openInstalledProverFunding({
-      emulator,
-      identity,
-      category,
+    const alwaysOpen = walletOnlySendAlwaysOpenOn(harness.proverLucid);
+    const notBeforeMs = emulator.now() + WALLET_ONLY_VALIDITY_MS;
+    const walletOnlySend: WalletOnlySend = restarted
+      ? Object.freeze({
+          open: () => emulator.now() >= notBeforeMs,
+          latestValidToSlot: alwaysOpen.latestValidToSlot,
+        })
+      : alwaysOpen;
+    return {
       runner,
-      economics: releaseEconomics,
-      protocolParameters,
-      fundingPaymentKeyHash: signer.paymentKeyHash,
-      walletAddress: signer.address,
-      computationThreadPolicyId: contracts.computationThread.policyId,
-      scriptHashes: Object.fromEntries([
-        ...Object.entries(deploymentInfo.contracts)
-          .filter(
-            ([name]) =>
-              ROSTERED_MINT_OR_WITHDRAW.has(name) ||
-              !(name.endsWith("Mint") || name.endsWith("Withdraw")),
-          )
-          .map(([name, entry]) => [
-            name,
-            (entry as { readonly scriptHash: string }).scriptHash,
-          ]),
-        [SCRIPT_DECODE_SPEND_ROLE, scriptDecode.validator.spendingScriptHash],
-        // The manifest's certificate spend member: the same validator as its
-        // mint, which the legacy deployment info names only as a mint.
-        [
-          "fieldPreimageCertificateSpend",
-          contracts.fieldPreimageCertificate.policyId,
-        ],
-        ["fieldGrammarCertificateSpend", committed.fieldGrammar.policyId],
-      ]),
-      referenceUtxos: [
-        ...roster.values(),
-        ...Object.values(committed.removal.published),
-      ],
-      directory,
-      journalRoot: directory,
-    });
-    return { runner, funding } as const;
+      process: createTestWorkflowProcess(),
+      walletOnlySend,
+    } as const;
   };
-  let instance = await boot();
-  let turns = 0;
+  let instance = boot(false);
+  /** What earlier processes sent, oldest first. */
+  const before: InFlightTransaction[] = [];
   /** One watcher application turn for the objective. */
-  const turn = async () => {
-    const fundingReservationPermit = await instance.funding.mintPermit({
-      actuationPermit: permit,
-      decisionDigest: decision.decisionDigest,
-    });
-    const mode = turns === 0 ? "run" : "resume";
-    turns += 1;
-    return (await instance.runner.runOrResume({
-      mode,
+  const turn = async () =>
+    (await instance.runner.runOrResume({
       category,
       deploymentFingerprint: fingerprint,
       headerHash,
       decisionDigest: decision.decisionDigest,
       actuationPermit: permit,
-      fundingReservationPermit,
-      journal: instance.funding.workflowJournal.forObjective({
-        category,
-        headerHash,
-      }),
+      sends: instance.process.sends({ category, headerHash }),
       runtimeConfigPath: RUNTIME_CONFIG_PATH,
-      walletOnlySend: walletOnlySendAlwaysOpenOn(harness.proverLucid),
+      walletOnlySend: instance.walletOnlySend,
     })) as {
       readonly kind: string;
       readonly reason?: string;
       readonly resumeOnObservation?: true;
     };
-  };
   return {
     decision,
     l1,
     fingerprint,
     turn,
-    /** Stops the watcher process and starts another over its durable state. */
-    restart: async () => {
-      instance.funding.close();
-      instance = await boot();
+    /** Stops the watcher process and starts another, which holds nothing
+     * the stopped one had in flight. */
+    restart: () => {
+      before.push(...instance.process.sent());
+      instance = boot(true);
     },
-    /** Restarts over an emptied data directory, as after a lost disk: the
-     * watcher detects the fault again, and only the chain keeps the
-     * objective's progress. */
-    loseDataDirectory: async () => {
-      instance.funding.close();
-      for (const name of await readdir(directory))
-        await rm(join(directory, name), { recursive: true, force: true });
-      await recordWatcherFaultDecision(directory, decision);
-      turns = 0;
-      instance = await boot();
-    },
-    readReservations: async () => await instance.funding.readReservations(),
-    /** The entries the workflow journal holds. */
-    journalEntries: async () =>
-      instance.funding.workflowJournal.readExecution({ category, headerHash })
-        ?.entries.length ?? 0,
-    close: async () => {
-      instance.funding.close();
-      await scratch.remove();
-    },
+    /** Every transaction the watcher sent for the objective, across
+     * restarts, oldest first. */
+    sent: () => Object.freeze([...before, ...instance.process.sent()]),
+    close: async () => undefined,
   } as const;
 };

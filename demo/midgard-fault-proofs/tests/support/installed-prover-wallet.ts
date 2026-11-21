@@ -17,8 +17,7 @@ const ADA = 1_000_000n;
 /**
  * The most collateral any of the watcher's transactions may post on the
  * emulator deployment (its slash penalty's collateral): the plain ada the
- * prover wallet must hold in its largest coins before the watcher reserves
- * any of it.
+ * prover wallet must hold in its largest coins to post it.
  */
 export const COLLATERAL_LINE = 750n * ADA;
 
@@ -56,8 +55,8 @@ export const drainProver = async (harness: Harness, fundingLovelace: bigint) =>
 
 /**
  * Leaves the prover wallet `lovelace` of plain ada in one coin, everything
- * else going to the funder. Below {@link COLLATERAL_LINE} the watcher
- * reserves nothing from it until a top-up.
+ * else going to the funder. Below {@link COLLATERAL_LINE} the wallet cannot
+ * post the watcher's largest collateral until a top-up.
  */
 export const drainProverToOneCoin = async (
   harness: Harness,

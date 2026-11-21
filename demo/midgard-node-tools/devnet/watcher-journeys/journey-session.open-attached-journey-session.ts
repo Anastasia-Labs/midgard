@@ -1,4 +1,3 @@
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE } from "midgard-node/transactions/operators/funding-preflight";
 import {
@@ -10,7 +9,6 @@ import { trustNodeTls } from "../../src/full-stack/node-tls.js";
 import type { JourneyOperator2Node } from "./deployment-source.js";
 import type { JourneyCategory } from "./fixture.js";
 import { JOURNEY_USER_EVENT_LOVELACE } from "./history-event-staging.js";
-import { captureJourneyWorkflowBaseline } from "./journey-session.capture-journey-workflow-baseline.js";
 import { openJourneySessionCore } from "./journey-session.open-journey-session-core.js";
 import { readJourneyOperations } from "./operations.js";
 import {
@@ -289,8 +287,6 @@ export const openAttachedJourneySession = async (
       evidence,
       /** The drill's hold on operator-2's node; see `operator-pause.ts`. */
       operator2,
-      captureWorkflowBaseline: (category: FraudProofCatalogueCategoryName) =>
-        captureJourneyWorkflowBaseline(evidence, category),
       assertHealthy,
       /** Whether the session has closed, as it does after a failed family. */
       isClosed,

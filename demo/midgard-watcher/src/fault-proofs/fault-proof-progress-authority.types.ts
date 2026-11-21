@@ -6,11 +6,11 @@ import type {
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherProofCleanupFailure } from "./fault-proof-objective-cleanup.js";
+import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import type {
-  WatcherProofExecution,
-  WatcherProofObjective,
-} from "./fault-proof-objective-journal.js";
-import type { WatcherProofCompletionMarker } from "./fault-proof-objective-table.js";
+  WatcherProofCompletionMarker,
+  WatcherProofVerifiedCompletion,
+} from "./fault-proof-objective-table.js";
 import type { WatcherFaultProofDeadline } from "./fault-proof-supervisor.js";
 import type { WatcherDecisionHold } from "./watcher-decision-hold.js";
 
@@ -48,9 +48,8 @@ export type WatcherDecisionSupersedeRequest = Readonly<{
  *   category and header (the bridge checks this before asking);
  * - `objective_held`: its objective is held (decision missing, unreadable);
  * - `job_pending`: a job of its objective is queued or active;
- * - `submission_unresolved`: a signed attempt of its execution is neither
- *   confirmed nor failed yet;
- * - `funding_in_use`: a funding reservation of it is bound to a run;
+ * - `submission_unresolved`: a transaction this process sent for it can
+ *   still land;
  * - `cleanup_failed`: its rows could not be deleted; retried next pass.
  */
 export type WatcherDecisionSupersedeHoldReason =
@@ -58,7 +57,6 @@ export type WatcherDecisionSupersedeHoldReason =
   | "objective_held"
   | "job_pending"
   | "submission_unresolved"
-  | "funding_in_use"
   | "cleanup_failed";
 
 export type WatcherDecisionSupersession =
@@ -84,41 +82,77 @@ export type WatcherFaultProofProgressAuthority = Readonly<{
   /** Holds an objective whose execution names a missing decision. */
   holdObjective(hold: WatcherDecisionHold): Promise<void>;
   /** Records the completion; one verified beyond rollback recovery is
-   * marked, and pruned with its workflow rows once its job is done. */
+   * marked, and pruned once its job is done. */
   markCompleted(
     objective: WatcherProofObjective,
-    verified?: Readonly<{
-      execution: WatcherProofExecution;
-      confirmationDepth: number;
-    }>,
+    verified?: WatcherProofVerifiedCompletion,
   ): Promise<void>;
   /** Ends an objective whose header was removed against a record its run
    * did not create. No completion marker is written: it is not our
    * conviction. The objective is released as a departed one is, and
-   * forgotten with its workflow rows once its job is done. */
+   * forgotten once its job is done. */
   markResolved(objective: WatcherProofObjective): Promise<void>;
-  /** The objective's marker when it matches this exact execution: verified
-   * beyond rollback recovery, so final and never verified or held again. */
+  /** The objective's marker: verified beyond rollback recovery, so final and
+   * never verified or held again. */
   completionMarker(
     objective: WatcherProofObjective,
-    execution: WatcherProofExecution,
   ): WatcherProofCompletionMarker | null;
-  updateExecution(input: {
-    readonly objective: WatcherProofObjective;
-    readonly execution: WatcherProofExecution;
-  }): Promise<void>;
   /**
    * Replaces the prior decision when nothing of it is in flight: releases
-   * its unused prover funding, forgets its workflow rows and its decision
-   * row, then records a fresh fault as a live decision. Anything in flight
-   * holds it unchanged; a later call supersedes it once that clears.
+   * its unused prover funding, forgets its rows and its decision row, then
+   * records a fresh fault as a live decision. Anything in flight holds it
+   * unchanged; a later call supersedes it once that clears.
    */
   supersede(
     request: WatcherDecisionSupersedeRequest,
   ): Promise<WatcherDecisionSupersession>;
+  /** The reconciliation permit of an admitted objective whose transactions
+   * this process sent can still land: it lets a run continue those, and
+   * nothing more. */
   reconcileExecution(input: {
     readonly objective: WatcherProofObjective;
-    readonly execution: WatcherProofExecution;
     readonly rollbackGeneration: string;
   }): Promise<WorkflowActuationPermit>;
+}>;
+
+/** The proof step of an objective whose header left the queue, from the
+ * chain alone: `confirmed` once our removal is seen landed, `completed`
+ * once it is final, `cancelled` when one seen landed is gone and no removal
+ * of ours stands. */
+export type WatcherProofDepartureStep = "confirmed" | "completed" | "cancelled";
+
+/** That step, with the objective and rollback generation it is of. */
+export type WatcherFaultProofDepartureStep = Readonly<{
+  category: string;
+  headerHash: string;
+  decisionDigest: string;
+  rollbackGeneration: string;
+  step: WatcherProofDepartureStep;
+}>;
+
+/** The process's proof-materials roster: the objectives each admission
+ * returns to drive, and each objective that is no longer driven. */
+export type WatcherProofMaterialsRoster = Readonly<{
+  admitted(objectives: readonly WatcherProofObjective[]): void;
+  released(objective: WatcherProofObjective): void;
+}>;
+
+/** What the progress authority tells its owner about its objectives. */
+export type WatcherFaultProofProgressListeners = Readonly<{
+  /** Told when an objective stops being driven (`objectiveSettled`). */
+  onObjectiveSettled?: (objective: WatcherProofObjective) => void;
+  /** Whether a job of the objective is queued, running or handed over in
+   * this process; its rows stay while it is. */
+  jobInProcess?: (objective: WatcherProofObjective) => boolean;
+  /** Told when the objective's rows are deleted. */
+  onObjectiveRemoved?: (objective: WatcherProofObjective) => void;
+  /** Told as an admission reaches its final return: its observation and the
+   * contexts it returns. */
+  onAdmitted?: (
+    observation: WatcherAuthenticatedStateQueueObservation,
+    contexts: readonly WatcherFaultProofProgressContext[],
+  ) => void;
+  /** Told each objective admitted, and each the listeners above report no
+   * longer driven: settled, removed or forgotten. */
+  proofMaterials?: WatcherProofMaterialsRoster;
 }>;

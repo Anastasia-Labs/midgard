@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   driveProvenCorrectionRemoval,
-  excludeReservedFunding,
+  excludeHeldWalletCoins,
   type HoldWalletInputs,
 } from "../src/proven-correction-removal.js";
 import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
@@ -89,14 +89,14 @@ const otherCaller = async (fixture: ProvedDoubleSpendFixture) => {
   const lucid = await Lucid(fixture.emulator, "Custom", {
     slotConfig: fixture.proverLucid.config().slotConfig,
   });
-  // A funding reservation of another action holds the larger coin.
-  const reserved = `${fundingTxHash}#0`;
+  // An in-flight transaction of a workflow holds the larger coin.
+  const held = `${fundingTxHash}#0`;
   return {
     lucid,
-    reserved,
-    signer: excludeReservedFunding({
+    held,
+    signer: excludeHeldWalletCoins({
       signer,
-      reservedOutRefs: async () => [reserved],
+      heldOutRefs: () => [held],
     }),
   };
 };
@@ -256,13 +256,13 @@ describe("driving a proven fraud-proof correction from L1", () => {
       fraudProofAssetName: fixture.step04Result.fraudProofAssetName,
     });
 
-    const { lucid, reserved, result: started } = await finish(fixture, lock);
+    const { lucid, held, result: started } = await finish(fixture, lock);
     if (started.kind !== "proven") throw new Error(started.kind);
     expect(started.fraudProofOutRef).toBe(outRefLabel(fixture.fraudProofUtxo));
     const removed = await started.removal;
     expect(removed.fraudProver).toBe(fixture.proverPaymentKeyHash);
-    // Paid from the caller's unreserved coin; the reserved one is untouched.
-    const [txHash, outputIndex] = reserved.split("#");
+    // Paid from the caller's unheld coin; the held one is untouched.
+    const [txHash, outputIndex] = held.split("#");
     expect(
       await lucid.utxosByOutRef([
         { txHash: txHash!, outputIndex: Number(outputIndex) },
@@ -283,11 +283,11 @@ describe("driving a proven fraud-proof correction from L1", () => {
     const { fixture, lock } = await interruptedRemoval();
     const before = await lockDatum(fixture);
     const wallet = walletEvents(fixture, (outRefs) =>
-      outRefs.length === 0 ? undefined : new Error("prover coin is reserved"),
+      outRefs.length === 0 ? undefined : new Error("prover coin is held"),
     );
     const { result: started } = await finish(fixture, lock, wallet);
     if (started.kind !== "proven") throw new Error(started.kind);
-    await expect(started.removal).rejects.toThrow("prover coin is reserved");
+    await expect(started.removal).rejects.toThrow("prover coin is held");
     expect(wallet.events).toEqual([]);
     expect(await lockDatum(fixture)).toEqual(before);
     await expectStateQueueHeaderOrder({

@@ -46,7 +46,7 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { DoubleWithdrawContracts } from "./contracts.js";
 import {
@@ -96,7 +96,7 @@ export type DoubleWithdrawStep02Build = {
 };
 
 export type SubmitDoubleWithdrawStep02Result =
-  UnjournaledSubmission<DoubleWithdrawStep02Build>;
+  OutsideWorkflowSubmission<DoubleWithdrawStep02Build>;
 
 export const buildDoubleWithdrawStep02 = async ({
   lucid,

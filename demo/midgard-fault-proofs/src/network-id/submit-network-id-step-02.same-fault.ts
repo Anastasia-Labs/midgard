@@ -3,7 +3,7 @@ import { type UTxO } from "@lucid-evolution/lucid";
 
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { PreparedNetworkIdAcceptedForced } from "./accepted-forced.js";
 import type { PreparedNetworkIdProof } from "./prepare.js";
@@ -67,4 +67,4 @@ export type NetworkIdStep02Build = {
 };
 
 export type SubmitNetworkIdStep02Result =
-  UnjournaledSubmission<NetworkIdStep02Build>;
+  OutsideWorkflowSubmission<NetworkIdStep02Build>;

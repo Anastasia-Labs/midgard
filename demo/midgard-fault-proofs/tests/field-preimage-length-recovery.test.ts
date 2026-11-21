@@ -29,13 +29,10 @@ import "../src/workflow/family-application.apply-family-application-record.js";
 import "../src/workflow/family-l1-observation.js";
 import "../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
 import "../src/workflow/field-carriage-prerequisite.with-field-carriage-prerequisite.js";
-import "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
-import "../src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.js";
 import "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import "../src/workflow/header-classifier.classify-header.js";
 import "../src/workflow/header-classifier.create-header-classifier.js";
 import "../src/workflow/journal.fraud-proof-workflow-terminal.js";
-import "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import "../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import "../src/workflow/raw-l1-publication-observation.js";
@@ -44,10 +41,6 @@ import "../src/workflow/runtime.js";
 import "./helpers/canonical-block-evidence-fixture.js";
 import "./support/family-common-infrastructure.js";
 import "./field-preimage-length-recovery.bound.js";
-
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { afterEach, expect, it, vi } from "vitest";
@@ -67,7 +60,6 @@ import {
 import { COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.replay-context-identity.js";
 import { FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { defineFamilyApplication } from "../src/workflow/family-application.assert-family-definition-roster.js";
-import { unsafeCreateWorkflowFundingReservationPermitForTest } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
 import {
   authenticatedStateQueueObservationDigest,
   HEADER_CLASSIFIER,
@@ -76,14 +68,10 @@ import {
 } from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
 import { createHeaderClassifier } from "../src/workflow/header-classifier.create-header-classifier.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
   journalJsonDigest,
-  type JournalJsonObject,
   normalizeJournalJson,
 } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.js";
@@ -113,8 +101,10 @@ import {
   emptyRosterReferenceScriptResolver,
   familyCommonInfrastructureForTest,
 } from "./support/family-common-infrastructure.js";
+import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -145,12 +135,12 @@ it("readmits exact raw proof material after durable JSON roundtrip and clears re
   ).rejects.toThrow("differs from freshly authenticated");
   await expect(
     restarted.transactions.capture({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
       action: required(headerHash, {
         kind: "not_started",
         stateQueueBlockOutRef: outRef("66"),
       }),
       artifact,
-      entries: [],
     }),
   ).rejects.toThrow("not freshly authenticated");
 });
@@ -187,9 +177,9 @@ it.each(["init", "dispatch", "authenticate", "finalize"] as const)(
       .spyOn(submitters, target)
       .mockImplementation(async () => ({ transaction }) as never);
     const result = await recovery.transactions.capture({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
       action: required(headerHash, stage),
       artifact,
-      entries: [],
     });
     expect(result.transaction).toBe(transaction);
     expect(submit).toHaveBeenCalledOnce();
@@ -212,9 +202,9 @@ it("rejects a mismatched physical branch and yields a changed selected header be
   const artifact = await recovery.transactions.prepareRaw!(routed);
   await expect(
     recovery.transactions.capture({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
       action: required(headerHash, stage.value),
       artifact,
-      entries: [],
     }),
   ).rejects.toThrow("changed proof direction");
   const action = required(headerHash, {
@@ -224,7 +214,11 @@ it("rejects a mismatched physical branch and yields a changed selected header be
   stage.value = { kind: "not_started", stateQueueBlockOutRef: outRef("88") };
   const submit = vi.spyOn(submitters, "buildFieldPreimageLengthInit");
   await expect(
-    recovery.transactions.capture({ action, artifact, entries: [] }),
+    recovery.transactions.capture({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
+      action,
+      artifact,
+    }),
   ).rejects.toBeInstanceOf(WorkflowActionChangedError);
   expect(submit).not.toHaveBeenCalled();
 });
@@ -233,11 +227,9 @@ it.each([
   "reconciliation-only",
   "fresh authorizing decision",
   "wrong authorizing decision",
-] as const)("resumes retained field removal through %s", async (mode) => {
-  const directory = await mkdtemp(
-    join(tmpdir(), "field-length-shared-recovery-"),
-  );
-  try {
+] as const)(
+  "completes a removal the chain already holds, after a restart, through %s",
+  async (mode) => {
     const nativeFixture = await rawFixture();
     const routed = await material(nativeFixture);
     const headerHash = routed.evidence.prepared.headerHash;
@@ -351,84 +343,6 @@ it.each([
       decisionDigest: decision.decisionDigest,
     };
     const workflowId = computeFraudProofWorkflowId(identity);
-    const artifact: JournalJsonObject = {
-      evidenceBinding: {
-        route: "authenticated_raw_family",
-        category,
-        headerHash,
-        payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
-        payloadSha256: routed.evidence.payloadSha256,
-        l1BlockHash:
-          authenticatedHeaderObservation(nativeFixture).chainPoint.blockHash,
-        l1Slot:
-          authenticatedHeaderObservation(
-            nativeFixture,
-          ).chainPoint.slot.toString(),
-      },
-      releaseFinality,
-      familyArtifact,
-    };
-    const removeAction = required(headerHash, {
-      kind: "proof_token",
-      stateQueueBlockOutRef: outRef("66"),
-      fraudProofOutRef: `${proofHash}#0`,
-      nextRemovalOutRef: outRef("66"),
-    });
-    const events: FraudProofWorkflowJournalEvent[] = [
-      { kind: "started" },
-      {
-        kind: "prepared",
-        artifact,
-        artifactDigest: journalJsonDigest(artifact),
-      },
-    ];
-    for (const [actionId, txHash, input] of [
-      ["proof", proofHash, { stage: "step_04" }],
-      [removeAction.actionId, removalHash, removeAction.input],
-    ] as const) {
-      events.push(
-        {
-          kind: "preflight_passed",
-          actionId,
-          txHash,
-          localEvaluator: "local-uplc-test",
-          referenceScripts: [],
-        },
-        {
-          kind: "submission_intent",
-          actionId,
-          txHash,
-          actionInput: input,
-          attempt: 1,
-        },
-        { kind: "submitted", actionId, txHash, attempt: 1 },
-      );
-      if (txHash === proofHash || mode !== "reconciliation-only")
-        events.push(
-          { kind: "reconciled", actionId, txHash, outcome: "confirmed" },
-          { kind: "confirmed", actionId, txHash },
-        );
-    }
-    if (mode !== "reconciliation-only")
-      events.push({
-        kind: "terminal_included",
-        terminal,
-        terminalDigest: journalJsonDigest(normalizeJournalJson(terminal)),
-      });
-    const store = new DirectoryFraudProofWorkflowJournalStore(directory);
-    for (const [sequence, event] of events.entries())
-      await store.append(
-        {
-          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-          workflowId,
-          identity,
-          sequence,
-          recordedAt: "2026-09-14T00:00:00.000Z",
-          event,
-        },
-        sequence,
-      );
-    const originalEntries = await store.load(workflowId);
     const freshDecision =
       mode === "reconciliation-only" ? decision : await classify(31);
     const controller =
@@ -437,7 +351,6 @@ it.each([
             decision,
             deploymentFingerprint,
             rollbackGeneration: "0",
-            entries: originalEntries,
           })
         : createWorkflowActuationPermitController({
             decision: freshDecision,
@@ -471,12 +384,13 @@ it.each([
         verifyForWorkflow: async () => releaseFinality,
       },
     };
-    if (mode !== "reconciliation-only")
-      fixture.observeHeader.mockResolvedValue(
-        authenticatedHeaderObservation(nativeFixture, {
-          confirmationDepth: 31,
-        }),
-      );
+    // With nothing stored, every mode reads the header again to prepare from
+    // its evidence; reconciliation-only authority reads as a fresh one does.
+    fixture.observeHeader.mockResolvedValue(
+      authenticatedHeaderObservation(nativeFixture, {
+        confirmationDepth: 31,
+      }),
+    );
     const close = vi.fn(async () => undefined);
     const runner = createManifestBoundWorkflowRunner({
       record: defineFamilyApplication({
@@ -518,34 +432,26 @@ it.each([
         };
       },
     });
+    // A restarted process: nothing is in flight and nothing is held.
+    const process = createTestWorkflowProcess();
     const resume = async () =>
       (await runner.runOrResume({
         walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
-        mode: "resume",
         category,
         deploymentFingerprint,
         headerHash,
         decisionDigest: freshDecision.decisionDigest,
         actuationPermit: controller.permit,
-        fundingReservationPermit:
-          unsafeCreateWorkflowFundingReservationPermitForTest({
-            category,
-            actuationPermit: controller.permit,
-            deploymentFingerprint,
-            decisionDigest: freshDecision.decisionDigest,
-            rollbackGeneration: "0",
-          }),
-        journal: new DirectoryFraudProofWorkflowJournalStore(directory),
+        sends: process.sends({ category, headerHash }),
         runtimeConfigPath: "/fixture/field-runtime.json",
       })) as FraudProofWorkflowRunResult;
     if (mode !== "reconciliation-only") {
       const run = resume();
       if (mode === "wrong authorizing decision") {
         await expect(run).rejects.toThrow(
-          "journal actuation permit changed decision digest",
+          "run actuation permit changed decision digest",
         );
         expect(fixture.observeHeader).not.toHaveBeenCalled();
-        expect(await store.load(workflowId)).toEqual(originalEntries);
       } else {
         await expect(run).resolves.toMatchObject({
           kind: "terminal_included",
@@ -553,37 +459,15 @@ it.each([
           identity,
         });
         expect(fixture.observeHeader).toHaveBeenCalledOnce();
-        const entries = await store.load(workflowId);
-        expect(entries.slice(0, originalEntries.length)).toEqual(
-          originalEntries,
-        );
-        expect(
-          entries.every(
-            (entry) =>
-              entry.workflowId === workflowId &&
-              entry.identity.decisionDigest === decision.decisionDigest,
-          ),
-        ).toBe(true);
-        expect(
-          entries.filter(({ event }) => event.kind === "submission_intent"),
-        ).toHaveLength(2);
       }
+      expect(process.sent()).toEqual([]);
       expect(close).toHaveBeenCalledOnce();
       return;
     }
     const result = await resume();
     expect(result.kind).toBe("terminal_included");
-    expect(fixture.observeHeader).not.toHaveBeenCalled();
-    expect(
-      (await store.load(workflowId)).filter(
-        ({ event }) => event.kind === "submission_intent",
-      ),
-    ).toHaveLength(2);
-    expect(
-      (await store.load(workflowId)).some(
-        ({ event }) => event.kind === "completed",
-      ),
-    ).toBe(false);
+    expect(fixture.observeHeader).toHaveBeenCalledOnce();
+    expect(process.sent()).toEqual([]);
     stage.value = {
       kind: "removed",
       terminal: {
@@ -592,8 +476,7 @@ it.each([
       },
     };
     expect((await resume()).kind).toBe("completed");
-    expect(fixture.observeHeader).not.toHaveBeenCalled();
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
+    expect(fixture.observeHeader).toHaveBeenCalledTimes(2);
+    expect(process.sent()).toEqual([]);
+  },
+);

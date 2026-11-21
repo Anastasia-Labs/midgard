@@ -2,8 +2,8 @@
  * The validation-trace dispute's funding under the watcher's prover funding,
  * on the emulator. A wallet the operator empties once Init has landed pauses
  * the objective at Open on the funding-shortfall hold, with the
- * prover-funding alarm, on every observation until a top-up, releases what
- * the paused attempt held, and then Opens and VerifySources. Coins at the
+ * prover-funding alarm, on every observation until a top-up, and then Opens
+ * and VerifySources. Coins at the
  * prover's funding address that carry a token or a reference script are
  * never spent and never offered as collateral, even when each is larger than
  * every plain coin; a refund the chain tags with a datum is money, and funds
@@ -28,9 +28,9 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
-import { isWorkflowFundingPauseReason } from "../src/workflow/funding-reservation-permit.is-workflow-funding-pause-reason.js";
-import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.workflow-funding-shortfall.js";
+import { isWorkflowFundingPauseReason } from "../src/workflow/funding-pause-reason.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
+import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/workflow-funding-shortfall.js";
 import {
   drainProver,
   drainProverToOneCoin,
@@ -103,70 +103,62 @@ const recordSubmitted = (emulator: Emulator) => {
 
 let scene: Scene;
 
-describe("validation-trace dispute funding under the prover funding permit", () => {
+describe("validation-trace dispute funding under the prover funding", () => {
   beforeEach(async () => {
     scene = await setUpScene();
   }, TIMEOUT);
 
   it(
-    "pauses Open on the funding-shortfall hold when the wallet empties after Init, releases the reservation, and opens after a top-up",
+    "pauses Open on the funding-shortfall hold when the wallet empties after Init, and opens after a top-up",
     async () => {
       const { h } = scene;
       await drainProver(h as never, FUNDED);
       const dispute = await openFundedDispute(scene);
-      try {
-        // Init lands; then the operator moves all but one 3 ada coin out of
-        // the wallet, below the collateral line: Open cannot be paid from it.
-        const init = await dispute.turn();
-        expect("reason" in init && init.reason).toContain(
-          "validation-trace-init:first",
-        );
-        await drainProverToOneCoin(h as never, 3n * ADA);
-        const paused = await turnUntil(dispute, WORKFLOW_FUNDING_SHORTFALL);
-        expect(paused.result.kind, paused.history.join("\n")).toBe("pending");
-        if (paused.result.kind !== "pending") return;
-        expect(paused.result.reason).toContain(
-          "cannot fund validation-trace-open:",
-        );
-        expect(isWorkflowFundingPauseReason(paused.result.reason)).toBe(true);
-        expect(confirmedStages(paused.result)).toStrictEqual(["init"]);
-        const holds = new Map<string, { reason: string; detail: string }>();
-        holdWatcherFaultProofOnFunding(
-          holds,
-          {
-            category: "validationTraceDispute",
-            headerHash: dispute.decision.headerHash,
-          } as never,
-          paused.result.reason,
-        );
-        expect([...holds.values()].map(({ reason }) => reason)).toStrictEqual([
-          WATCHER_PROVER_FUNDING_UNAVAILABLE,
-        ]);
-        const reservations = await dispute.readReservations();
-        expect(reservations.length).toBeGreaterThan(0);
-        for (const reservation of reservations)
-          expect(reservation).toMatchObject({ activeInputs: [] });
+      // Init lands; then the operator moves all but one 3 ada coin out of
+      // the wallet, below the collateral line: Open cannot be paid from it.
+      const init = await dispute.turn();
+      expect("reason" in init && init.reason).toContain(
+        "validation-trace-init:first",
+      );
+      await drainProverToOneCoin(h as never, 3n * ADA);
+      const paused = await turnUntil(dispute, WORKFLOW_FUNDING_SHORTFALL);
+      expect(paused.result.kind, paused.history.join("\n")).toBe("pending");
+      if (paused.result.kind !== "pending") return;
+      expect(paused.result.reason).toContain(
+        "cannot fund validation-trace-open:",
+      );
+      expect(isWorkflowFundingPauseReason(paused.result.reason)).toBe(true);
+      expect(await confirmedStages(dispute)).toStrictEqual(["init"]);
+      const holds = new Map<string, { reason: string; detail: string }>();
+      holdWatcherFaultProofOnFunding(
+        holds,
+        {
+          category: "validationTraceDispute",
+          headerHash: dispute.decision.headerHash,
+        } as never,
+        paused.result.reason,
+      );
+      expect([...holds.values()].map(({ reason }) => reason)).toStrictEqual([
+        WATCHER_PROVER_FUNDING_UNAVAILABLE,
+      ]);
 
-        // Paused, not abandoned: the next observation pauses again until the
-        // wallet is funded.
-        const again = await dispute.turn();
-        expect(again).toMatchObject({ kind: "pending" });
-        expect("reason" in again && again.reason).toContain(
-          WORKFLOW_FUNDING_SHORTFALL,
-        );
+      // Paused, not abandoned: the next observation pauses again until the
+      // wallet is funded.
+      const again = await dispute.turn();
+      expect(again).toMatchObject({ kind: "pending" });
+      expect("reason" in again && again.reason).toContain(
+        WORKFLOW_FUNDING_SHORTFALL,
+      );
 
-        await topUpProver(h as never, BOND_LOVELACE + FLOOR + 100n * ADA);
-        const { result, history } = await turnUntil(
-          dispute,
-          VALIDATION_TRACE_CASE_OPEN,
-        );
-        expect(result.kind, history.join("\n")).toBe("pending");
-        expect((await caseAndBond(scene, result)).bond.assets.lovelace).toBe(
-          BOND_LOVELACE,
-        );
-      } finally {
-        await dispute.close();
-      }
+      await topUpProver(h as never, BOND_LOVELACE + FLOOR + 100n * ADA);
+      const { result, history } = await turnUntil(
+        dispute,
+        VALIDATION_TRACE_CASE_OPEN,
+      );
+      expect(result.kind, history.join("\n")).toBe("pending");
+      expect((await caseAndBond(scene, dispute)).bond.assets.lovelace).toBe(
+        BOND_LOVELACE,
+      );
     },
     TIMEOUT,
   );
@@ -181,7 +173,7 @@ describe("validation-trace dispute funding under the prover funding permit", () 
         // One plain coin for Init and Open, not VerifySource besides.
         await drainProverToOneCoin(
           h as never,
-          BOND_LOVELACE + FLOOR + (await dispute.walletMoveReserve()),
+          BOND_LOVELACE + FLOOR + dispute.walletMoveReserve(),
         );
         const address = h.proverSigner.address;
         // Each shaped coin alone could pay VerifySource's bond.
@@ -215,7 +207,7 @@ describe("validation-trace dispute funding under the prover funding permit", () 
         expect(paused.result.reason).toContain(
           "cannot fund validation-trace-verify-source:",
         );
-        expect(confirmedStages(paused.result)).toStrictEqual(["init", "open"]);
+        expect(await confirmedStages(dispute)).toStrictEqual(["init", "open"]);
 
         // The top-up is two refunds as a dispute's Close pays them: tagged
         // with the out-ref they release, one inline, one by its hash.
@@ -245,7 +237,7 @@ describe("validation-trace dispute funding under the prover funding permit", () 
           VALIDATION_TRACE_CASE_OPEN,
         );
         expect(result.kind, history.join("\n")).toBe("pending");
-        expect(confirmedStages(result)).toStrictEqual([
+        expect(await confirmedStages(dispute)).toStrictEqual([
           "init",
           "open",
           "verify_source",
@@ -269,7 +261,6 @@ describe("validation-trace dispute funding under the prover funding permit", () 
         ).toHaveLength(2);
       } finally {
         recorded?.restore();
-        await dispute.close();
       }
     },
     TIMEOUT,

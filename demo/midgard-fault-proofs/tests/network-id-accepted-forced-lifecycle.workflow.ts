@@ -118,7 +118,6 @@ export const runAcceptedForcedAdapter = async ({
       identity,
       workflowId: "a2".repeat(32),
       artifact: JSON.parse(JSON.stringify(artifact)),
-      entries: [],
     };
     const observed = await adapter.observe(context);
     expect(observed.kind).toBe("action_required");
@@ -158,14 +157,8 @@ export const runAcceptedForcedAdapter = async ({
     expect(submitted.kind).toBe("submitted");
     if (submitted.kind !== "submitted")
       throw new Error("adapter submission was not confirmed by emulator");
+    // The next fresh adapter reads the confirmed step from L1.
     await harness.proverLucid.awaitTx(submitted.txHash);
-    expect(
-      await adapter.reconcile({
-        ...context,
-        action: observed.action,
-        txHash: submitted.txHash,
-      }),
-    ).toMatchObject({ kind: "confirmed", txHash: submitted.txHash });
   }
   const proofUnit = `${harness.networkId.fraudProof.policyId}${harness.category.categoryId}${prepared.headerHash}`;
   const stateQueueUnit = `${harness.contracts.stateQueue.policyId}${STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${prepared.headerHash}`;

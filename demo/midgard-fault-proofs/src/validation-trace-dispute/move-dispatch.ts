@@ -9,10 +9,9 @@
 import type * as SDK from "@al-ft/midgard-sdk/da";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { ValidationDisputeWalletMoveUnfundedError } from "../workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
-import { isWorkflowFundingShortfall } from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import { isFraudProofL1WaitError } from "../workflow/l1-source.js";
 import { WorkflowActionUnbuiltError } from "../workflow/orchestrator.unbuilt-actions.js";
+import { isWorkflowFundingShortfall } from "../workflow/workflow-funding-shortfall.js";
 import {
   validationTraceActionId,
   type ValidationTraceStage,
@@ -40,6 +39,7 @@ import {
 } from "./threads.js";
 import { type CapturedValidationTraceStage, ours } from "./transactions.js";
 import { validationTraceMoveDeadlineMs } from "./wallet-move-unfunded.js";
+import { ValidationDisputeWalletMoveUnfundedError } from "./wallet-move-unfunded-alarm.js";
 
 type ThreadMove = Readonly<{
   stage: ValidationTraceStage;
@@ -175,8 +175,7 @@ const namedMove = async (input: {
 
 /**
  * The operator's alarm on the `stage` move on `threadOutRef` of our case
- * that our wallet cannot fund, `cause` being why: before the move is built,
- * when its reservation cannot be funded, as when its build is short.
+ * that our wallet cannot fund, `cause` being why: its build is short.
  */
 export const validationTraceThreadMoveUnfunded = async (
   input: Parameters<typeof namedMove>[0] & { readonly cause: unknown },

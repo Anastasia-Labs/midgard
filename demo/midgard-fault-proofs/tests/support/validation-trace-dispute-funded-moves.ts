@@ -4,7 +4,7 @@
  * operator defends it with a scripted trace and reveals, and the watcher
  * plays the thread. Each move the watcher builds is captured with the
  * thread (and case) it spends while they are still live, so a test can
- * walk the funding permit over the exact signed bytes it admitted.
+ * read the exact signed bytes and what they spent.
  */
 import {
   CML,
@@ -13,7 +13,12 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { confirmedValidationTraceStages } from "../../src/validation-trace-dispute/actions.js";
+import {
+  isValidationTraceMove,
+  parseValidationTraceAction,
+  VALIDATION_TRACE_DISPUTE_ACTION,
+  type ValidationTraceStage,
+} from "../../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
 import {
@@ -25,8 +30,6 @@ import {
   validationTraceChallengerDeadlineMs,
   validationTraceDefenderDeadlineMs,
 } from "../../src/validation-trace-dispute/threads.js";
-import { readValidationDisputeMoveAuthority } from "../../src/workflow/funding-reservation-permit.assert-validation-dispute-move.js";
-import type { ValidationDisputeMoveAuthority } from "../../src/workflow/funding-reservation-permit.validation-dispute-move-authority.js";
 import type { FraudProofWorkflowAction } from "../../src/workflow/orchestrator.js";
 import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
@@ -45,7 +48,6 @@ import {
 } from "./validation-trace-dispute-funded-runner.js";
 import {
   caseAndBond,
-  entriesOf,
   FUNDED,
 } from "./validation-trace-dispute-funded-verify-source.js";
 import {
@@ -76,7 +78,8 @@ import {
 /** One move the watcher built, with what it spends as it was then. */
 export type CapturedMove = Readonly<{
   signed: TxSigned;
-  authority: ValidationDisputeMoveAuthority;
+  /** The move's stage. */
+  kind: ValidationTraceStage;
   action: FraudProofWorkflowAction;
   thread: UTxO;
   caseInput: UTxO | undefined;
@@ -92,7 +95,7 @@ export type FundedMoves = Readonly<{
   trace: ScriptedTrace;
   /** The case output our VerifySource left, as it was before the Defend. */
   caseOrigin: UTxO;
-  /** The pending claim our Open left, which every move's authority binds. */
+  /** The pending claim our Open left. */
   opener: UTxO;
   /** The defender's thread token. */
   unit: string;
@@ -121,8 +124,18 @@ export const recordedOutput = (scene: Scene, outRef: string): UTxO => {
   };
 };
 
-/** Records into `moves` each thread move the adapter signs, with what it
- * spends as it was then. */
+/** The inputs a signed transaction spends, as out-refs. */
+const spentOutRefs = (signed: TxSigned): readonly string[] => {
+  const inputs = signed.toTransaction().body().inputs();
+  return Array.from({ length: inputs.len() }, (_, index) => {
+    const input = inputs.get(index);
+    return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+  });
+};
+
+/** Records into `moves` each thread move the adapter signs, with the
+ * thread it spends and, for a close into the case, the case, as they were
+ * then. */
 export const captureMoves =
   (scene: Scene, moves: CapturedMove[]): AdapterWrap =>
   (adapter) => ({
@@ -130,34 +143,40 @@ export const captureMoves =
     preflight: async (context) => {
       const preflight = await adapter.preflight(context);
       const signed = workflowPreflightTransaction(preflight);
-      const authority =
-        signed === undefined
-          ? null
-          : readValidationDisputeMoveAuthority(signed);
-      if (authority === null) return preflight;
-      const [spent, caseInput] = await scene.h.emulator.getUtxosByOutRef([
-        parseOwnOutRef(authority.threadOutRef),
-        ...(authority.caseOutRef === null
-          ? []
-          : [parseOwnOutRef(authority.caseOutRef)]),
-      ]);
+      // The shared remove stage's action is not a move.
+      if (
+        signed === undefined ||
+        context.action.input.schemaVersion !== VALIDATION_TRACE_DISPUTE_ACTION
+      )
+        return preflight;
+      const { stage, consumes } = parseValidationTraceAction(context.action);
+      if (!isValidationTraceMove(stage) || stage === "slash_lost_defense")
+        return preflight;
+      const spent = await scene.h.emulator.getUtxosByOutRef(
+        spentOutRefs(signed).map(parseOwnOutRef),
+      );
+      const thread = spent.find((utxo) => outRefOf(utxo) === consumes);
+      if (thread === undefined)
+        throw new Error(`the ${stage} move spends no live thread`);
       moves.push({
-        signed: signed!,
-        authority,
+        signed,
+        kind: stage,
         action: context.action,
-        thread: spent!,
-        caseInput,
+        thread,
+        caseInput: spent.find(
+          (utxo) => utxo.address === scene.chain.case.spendingScriptAddress,
+        ),
       });
       return preflight;
     },
   });
 
 /** The pending claim our confirmed Open left, as it was before VerifySource. */
-export const ourOpener = (
+export const ourOpener = async (
   scene: Scene,
-  result: Awaited<ReturnType<FundedDispute["turn"]>>,
-): UTxO => {
-  const open = confirmedValidationTraceStages(entriesOf(result)).find(
+  dispute: FundedDispute,
+): Promise<UTxO> => {
+  const open = (await dispute.confirmed()).find(
     ({ action }) => action.stage === "open",
   );
   if (open === undefined) throw new Error("no Open was confirmed");
@@ -166,7 +185,7 @@ export const ourOpener = (
 
 type FundedOptions = Pick<
   NonNullable<Parameters<typeof openFundedDispute>[1]>,
-  "liveParameters"
+  "caseHistory"
 > & {
   /** Rewrites the convicted block's removal the watcher runs with. */
   readonly rewriteRemoval?: (
@@ -230,12 +249,11 @@ const openFundedCase = async (
   const dispute = await openFundedDispute(scene, {
     ...options,
     removal: rewriteRemoval?.(removal.removal) ?? removal.removal,
-    removalScripts: removal.published,
   });
   const opened = await turnUntil(dispute, VALIDATION_TRACE_CASE_OPEN);
   if (opened.result.kind !== "pending")
     throw new Error(`the case did not open: ${opened.history.join("\n")}`);
-  const { caseOutput } = await caseAndBond(scene, opened.result);
+  const { caseOutput } = await caseAndBond(scene, dispute);
   const material = await failingMaterial(scene);
   const trace = scriptedTrace(
     material,
@@ -256,7 +274,7 @@ const openFundedCase = async (
     defender,
     trace,
     caseOrigin: caseOutput,
-    opener: ourOpener(scene, opened.result),
+    opener: await ourOpener(scene, dispute),
     unit: threadUnitOf(scene, thread!),
     moves,
     capture,
@@ -342,34 +360,24 @@ export const playFundedMovesToClose = async (journey: FundedMoves) => {
     throw new Error(`no thread close: ${closed.history.join("\n")}`);
 };
 
-/** The stages the journal confirmed, with the out-refs each left. */
-export const confirmedMoves = (
-  result: Awaited<ReturnType<FundedDispute["turn"]>>,
-) =>
-  confirmedValidationTraceStages(entriesOf(result)).map(
-    ({ action, outputs }) => ({
-      stage: action.stage,
-      outputs: outputs.map(({ outRef }) => outRef),
-    }),
-  );
+/** The stages the dispute's processes sent that the ledger confirmed,
+ * with the out-refs each left. */
+export const confirmedMoves = async (dispute: FundedDispute) =>
+  (await dispute.confirmed()).map(({ action, outputs }) => ({
+    stage: action.stage,
+    outputs: outputs.map(({ outRef }) => outRef),
+  }));
 
-/** The submission intents the journal recorded for actions of `stage`. */
-export const moveIntents = (
-  result: Awaited<ReturnType<FundedDispute["turn"]>>,
+/** The transactions the dispute's processes sent for actions of `stage`,
+ * oldest first. */
+export const moveSends = (
+  dispute: FundedDispute,
   stage: "reveal" | "timeout" | "close-thread",
 ) =>
-  entriesOf(result).flatMap(({ event }) =>
-    event.kind === "submission_intent" &&
-    event.actionId.startsWith(`validation-trace-${stage}:`)
-      ? [
-          {
-            actionId: event.actionId,
-            attempt: event.attempt,
-            txHash: event.txHash,
-          },
-        ]
-      : [],
-  );
+  dispute
+    .sent()
+    .filter(({ actionId }) => actionId.startsWith(`validation-trace-${stage}:`))
+    .map(({ actionId, txHash }) => ({ actionId, txHash }));
 
 /** The prover wallet's outputs, by out-ref. */
 export const walletOutRefs = async ({ scene }: FundedMoves) =>

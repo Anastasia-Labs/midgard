@@ -1,7 +1,7 @@
 import { type SubmitProviderConfig } from "./runtime.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 export type SubmitZeroInputStep01CliConfig = SubmitProviderConfig & {
@@ -49,7 +49,7 @@ export type ZeroInputStep01Build = {
 };
 
 export type SubmitZeroInputStep01Result =
-  UnjournaledSubmission<ZeroInputStep01Build>;
+  OutsideWorkflowSubmission<ZeroInputStep01Build>;
 
 export type ZeroInputStep01Layout = {
   readonly inputIndex: bigint;

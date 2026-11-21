@@ -316,6 +316,12 @@ export {
   type RetainedPin,
 } from "./store/pin.js";
 export {
+  livePlainOutputsByDatumIn,
+  livePlainOutputsExceptDatumsIn,
+  type PlainDatumRequest,
+  type PlainOutputsRead,
+} from "./store/plain-outputs.js";
+export {
   CHECKPOINT_INTERVAL,
   type PruneFloorLag,
   type PruneResult,

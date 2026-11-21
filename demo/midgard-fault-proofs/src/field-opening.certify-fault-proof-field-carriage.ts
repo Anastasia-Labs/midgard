@@ -1,4 +1,5 @@
-import { type MidgardFieldCarriagePlan } from "@al-ft/midgard-core";
+import type { MidgardFieldCarriagePlan } from "@al-ft/midgard-core";
+import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk/core";
 import { buildUnsignedFieldPreimageCertificationProgram } from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
@@ -9,14 +10,14 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { type PrerequisiteTurn } from "./fault-proof-turn.js";
+import type { PrerequisiteTurn } from "./fault-proof-turn.js";
 import {
   fieldCertificateSlotOf,
   lucidOwnOutputReader,
 } from "./field-opening.own-field-carriage.js";
-import { type FaultProofFieldOpeningPlan } from "./field-opening.plan-fault-proof-field-opening.js";
+import type { FaultProofFieldOpeningPlan } from "./field-opening.plan-fault-proof-field-opening.js";
 import { fieldCarriagePlanTransactions } from "./field-opening.publish-fault-proof-field-carriage.js";
-import { type ResolvedProverSigner } from "./runtime.js";
+import type { ResolvedProverSigner } from "./runtime.js";
 import { finishStep } from "./step-completion.js";
 import { walletOnlyValidTo } from "./wallet-only-validity.js";
 import {
@@ -39,8 +40,13 @@ export const fieldPreimageCertificateAddress = ({
   });
 
 /**
- * Our live tier-3 certificate for this opening, read by the out-ref claimed
- * for it in `ownOutputs`; undefined when there is none.
+ * The live tier-3 certificate for this opening: the one read by the out-ref
+ * claimed for it in `ownOutputs`, and otherwise, for a workflow (whose
+ * `ownOutputs` carries its proof-materials access and keeps no claims
+ * across a restart), the first output by out-ref at the certificate address
+ * holding exactly this opening's datum and token, whoever minted it: the
+ * certificate policy mints the token only beside that datum checked.
+ * Undefined when there is none.
  */
 export const resolveFaultProofFieldPreimageCertificate = async ({
   lucid,
@@ -49,26 +55,43 @@ export const resolveFaultProofFieldPreimageCertificate = async ({
   certificatePolicyId,
   ownOutputs,
 }: {
-  readonly lucid: Pick<LucidEvolution, "utxosByOutRef">;
+  readonly lucid: Pick<LucidEvolution, "utxosByOutRef" | "utxosAtWithUnit">;
   readonly network: Network;
   readonly planned: Pick<FaultProofFieldOpeningPlan, "plan">;
   readonly certificatePolicyId: string;
   readonly ownOutputs: OwnOutputJournal;
 }): Promise<UTxO | undefined> => {
   if (planned.plan.tier !== "Certified") return undefined;
+  const certificateAddress = fieldPreimageCertificateAddress({
+    network,
+    certificatePolicyId,
+  });
   const { key, slot } = fieldCertificateSlotOf({
     plan: planned.plan,
-    certificateAddress: fieldPreimageCertificateAddress({
-      network,
-      certificatePolicyId,
-    }),
+    certificateAddress,
     certificatePolicyId,
   });
   const resolution = await resolveOwnOutputs({
     slots: [{ slot, claims: ownOutputs.claims(key) }],
     read: lucidOwnOutputReader(lucid),
   });
-  return resolution.kind === "ready" ? resolution.utxos[0] : undefined;
+  if (resolution.kind === "ready") return resolution.utxos[0];
+  if (ownOutputs.materials === undefined) return undefined;
+  const [first] = (
+    await lucid.utxosAtWithUnit(
+      certificateAddress,
+      `${certificatePolicyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`,
+    )
+  )
+    .filter((candidate) => slot.matches(candidate))
+    .sort((left, right) =>
+      left.txHash === right.txHash
+        ? left.outputIndex - right.outputIndex
+        : left.txHash < right.txHash
+          ? -1
+          : 1,
+    );
+  return first;
 };
 
 /**
@@ -160,9 +183,9 @@ export const certifyFaultProofFieldCarriage = async ({
 };
 
 /**
- * The certificate a step's opening references: ours, already live for this
- * exact opening (claimed in `ownOutputs` by an earlier certify), and
- * otherwise the transaction that mints one, claimed there.
+ * The certificate a step's opening references: the live one
+ * `resolveFaultProofFieldPreimageCertificate` finds for this exact opening,
+ * and otherwise the transaction that mints one, claimed in `ownOutputs`.
  */
 export const reuseOrCertifyFaultProofFieldCarriage = async ({
   certificateReferenceScriptUtxo,

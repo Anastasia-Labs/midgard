@@ -27,10 +27,6 @@ import {
   ensureJourneyWatcherSecrets,
   journeyWatcherKeySources,
 } from "./journey-secrets.js";
-import {
-  WATCHER_FAILED_CLOSED_EXIT_CODE,
-  WATCHER_RESTART_LIMIT,
-} from "./journey-session.capture-journey-workflow-baseline.js";
 import { openJourneySessionCore } from "./journey-session.open-journey-session-core.js";
 import { JOURNEY_FINALITY_DEPTH, loadJourneyContext } from "./live-context.js";
 import { journeyNativeNodeQuery } from "./native-node.js";
@@ -48,6 +44,12 @@ import type { SignedCommitAttempt } from "./signed-commit-reconciliation.js";
 import { readSignedTransactionRecovery } from "./signed-transaction-recovery.js";
 import { createWatcherProgress } from "./watcher-progress.js";
 import { verifyJourneyWorkflowBindings } from "./workflow-binding-preflight.js";
+
+/** The exit code of a watcher that failed closed. */
+const WATCHER_FAILED_CLOSED_EXIT_CODE = 70;
+
+/** How many times a journey restarts a watcher that failed closed. */
+const WATCHER_RESTART_LIMIT = 12;
 
 /** One immutable deployment and service lifetime, explicitly owned by its suite. */
 export const openJourneySession = async (runDirectory: string) => {

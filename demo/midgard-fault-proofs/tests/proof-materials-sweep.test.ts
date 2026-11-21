@@ -1,239 +1,67 @@
 /**
- * The sweep of an ended workflow's proof materials: it takes only the
- * materials of transactions its own journal confirmed, spends them back in
- * pages of at most `PROOF_MATERIALS_SWEEP_PAGE_INPUTS`, each paying one
- * plain coin to the funding address with no collateral, and holds the
- * ending until each sweep is final at release depth. A sweep that does not
- * build, or is not yet final, holds the ending rather than changing it.
+ * The sweep of proof materials no live workflow needs, at a workflow's end:
+ * whatever the process's view says no live workflow needs and no live thread
+ * pins, whoever paid it, spent back in pages of at most
+ * `PROOF_MATERIALS_SWEEP_PAGE_INPUTS`, each paying one plain coin to the
+ * funding address with no collateral; the ending is never held, not on a
+ * sweep's finality nor on a page that does not build. An output two workflows
+ * need is swept by the last to end; a copy of another shape is never adopted.
  */
-import { Proof } from "@al-ft/midgard-sdk/core";
-import {
-  Data,
-  Emulator,
-  generateEmulatorAccount,
-  Lucid,
-  type LucidEvolution,
-  paymentCredentialOf,
-} from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { isPlainFundingOutput } from "../src/funding/plain-funding-output.js";
-import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
-import { splitProofIntoChunkDatums } from "../src/proof-chunk-carriage.js";
-import { resolvePublishedProofChunks } from "../src/publish-proof-chunks.js";
-import type { FraudProofWorkflowAdapterContext } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
-import type {
-  FraudProofFamilyWorkflowAdapter,
-  FraudProofWorkflowAction,
-  FraudProofWorkflowObservation,
-} from "../src/workflow/orchestrator.js";
+import * as actuationAuthority from "../src/workflow/actuation-permit.js";
+import type { FraudProofWorkflowObservation } from "../src/workflow/orchestrator.js";
 import {
-  PROOF_MATERIALS_SWEEP_OUTSTANDING,
+  assertProofMaterialsSweepOutput,
   PROOF_MATERIALS_SWEEP_PAGE_INPUTS,
-  proofMaterialsSweepInputs,
 } from "../src/workflow/proof-materials-sweep.action.js";
 import {
-  lucidProofMaterialsSweepPort,
-  withProofMaterialsSweep,
-} from "../src/workflow/proof-materials-sweep.js";
-import type { SignedTransactionRecoveryObservation } from "../src/workflow/signed-transaction-reconciliation.js";
+  PROOF_MATERIALS_SWEEP_FIRST_PASS_PENDING,
+  type ProofMaterialsObjective,
+} from "../src/workflow/proof-materials-view.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
-
-const ADA = 1_000_000n;
-const FINAL_DEPTH = 10;
-
-/**
- * A prover whose funding address (its enterprise key address) holds plain
- * coins, and a funder (the same key's base wallet) that pays materials to
- * its proof-materials address.
- */
-const prover = async () => {
-  const account = generateEmulatorAccount({ lovelace: 20_000n * ADA });
-  const emulator = new Emulator([account], EMULATOR_PROTOCOL_PARAMETERS);
-  const funder = await Lucid(emulator, "Custom");
-  funder.selectWallet.fromSeed(account.seedPhrase);
-  const lucid = await Lucid(emulator, "Custom");
-  lucid.selectWallet.fromSeed(account.seedPhrase, {
-    addressType: "Enterprise",
-  });
-  const fundingAddress = await lucid.wallet().address();
-  const keyHash = paymentCredentialOf(fundingAddress).hash;
-  const materialsAddress = proofMaterialsAddress("Custom", keyHash);
-  const submit = async (
-    by: LucidEvolution,
-    build: (tx: ReturnType<LucidEvolution["newTx"]>) => typeof tx,
-  ) => {
-    const signed = await (await build(by.newTx()).complete()).sign
-      .withWallet()
-      .complete();
-    const txHash = await signed.submit();
-    emulator.awaitBlock();
-    return txHash;
-  };
-  await submit(funder, (tx) =>
-    tx.pay.ToAddress(fundingAddress, { lovelace: 5_000n * ADA }),
-  );
-  /** One transaction paying `count` materials, as a workflow's chunks. */
-  const publish = async (count: number, fill: string) =>
-    await submit(funder, (tx) => {
-      let paying = tx;
-      for (let index = 0; index < count; index += 1)
-        paying = paying.pay.ToAddressWithData(
-          materialsAddress,
-          {
-            kind: "inline",
-            value: Data.to(`${fill}${index.toString(16).padStart(4, "0")}`),
-          },
-          { lovelace: 2n * ADA },
-        );
-      return paying;
-    });
-  return {
-    emulator,
-    lucid,
-    fundingAddress,
-    materialsAddress,
-    publish,
-    at: async (address: string) => await emulator.getUtxos(address),
-  };
-};
-
-/** Journal entries of a workflow that confirmed each of `txHashes`. */
-const confirmedEntries = (txHashes: readonly string[]) =>
-  txHashes.flatMap((txHash, index) => [
-    {
-      recordedAt: new Date(0).toISOString(),
-      sequence: index * 2,
-      event: {
-        kind: "submission_intent",
-        actionId: `publish:${index}`,
-        actionInput: { stage: "publish" },
-        txHash,
-      },
-    },
-    {
-      recordedAt: new Date(0).toISOString(),
-      sequence: index * 2 + 1,
-      event: { kind: "confirmed", actionId: `publish:${index}`, txHash },
-    },
-  ]);
-
-/** A base family that ends as `ending`. */
-const endingAs = (
-  ending: FraudProofWorkflowObservation,
-): FraudProofFamilyWorkflowAdapter =>
-  ({
-    category: "doubleSpend",
-    observe: async () => ending,
-  }) as never;
-
-const CONFLICT: FraudProofWorkflowObservation = {
-  kind: "conflict",
-  reason: "a rollback replaced the thread",
-};
-const completedAt = (confirmationDepth: number) =>
-  ({
-    kind: "completed",
-    terminal: { observedAt: { confirmationDepth } },
-  }) as never as FraudProofWorkflowObservation;
-
-/**
- * The sweep over `scene`'s prover, `included` saying where each signed
- * sweep stands: included and final unless it says otherwise.
- */
-const sweeping = (
-  scene: Awaited<ReturnType<typeof prover>>,
-  ending: FraudProofWorkflowObservation,
-  included: (txHash: string) => "final" | "shallow" | "absent" = () => "final",
-) =>
-  withProofMaterialsSweep({
-    base: endingAs(ending),
-    final: (depth) => depth >= FINAL_DEPTH,
-    port: () =>
-      lucidProofMaterialsSweepPort({
-        lucid: scene.lucid,
-        fundingAddress: scene.fundingAddress,
-        observeSignedTransaction: async (input) => {
-          const where = included(input.transactionHash);
-          return {
-            ...input,
-            status: where === "absent" ? "pending" : "included",
-            ...(where === "absent"
-              ? {}
-              : {
-                  inclusionPoint: {
-                    blockNo: where === "final" ? "1" : "9",
-                  },
-                }),
-            releaseFinalPoint: { blockNo: "5" },
-          } as never as SignedTransactionRecoveryObservation;
-        },
-      }),
-  });
-
-const contextOf = (
-  entries: readonly object[],
-  extra: Partial<FraudProofWorkflowAdapterContext> = {},
-): FraudProofWorkflowAdapterContext =>
-  ({
-    identity: { category: "doubleSpend" },
-    workflowId: "workflow-a",
-    artifact: {},
-    entries,
-    ...extra,
-  }) as never;
-
-/** Builds and lands the sweep `action`, journaling it into `entries`. */
-const landSweep = async (
-  scene: Awaited<ReturnType<typeof prover>>,
-  adapter: FraudProofFamilyWorkflowAdapter,
-  entries: object[],
-  action: FraudProofWorkflowAction,
-) => {
-  const preflight = await adapter.preflight({
-    ...contextOf(entries),
-    action,
-  } as never);
-  const signed = workflowPreflightTransaction(preflight)!;
-  const txHash = await signed.submit();
-  scene.emulator.awaitBlock();
-  entries.push(
-    {
-      recordedAt: new Date(0).toISOString(),
-      sequence: entries.length,
-      event: {
-        kind: "submission_intent",
-        actionId: action.actionId,
-        actionInput: action.input,
-        txHash,
-        durableRecovery: { signedTransactionCborHex: signed.toCBOR() },
-      },
-    },
-    {
-      recordedAt: new Date(0).toISOString(),
-      sequence: entries.length + 1,
-      event: { kind: "confirmed", actionId: action.actionId, txHash },
-    },
-  );
-  return { signed, txHash };
-};
+import {
+  actionOf,
+  ADA,
+  completedAt,
+  CONFLICT,
+  contextOf,
+  datumOf,
+  FINAL_DEPTH,
+  HEADER_A,
+  HEADER_B,
+  holderOf,
+  label,
+  PENDING,
+  prover,
+  submitSweep,
+  sweeping,
+  sweptOutRefs,
+  viewOf,
+} from "./support/proof-materials-sweep-scene.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
+import {
+  canonicalEvidence,
+  createFixtureChain,
+  makeAdapter,
+  run,
+} from "./workflow.make-adapter.js";
 
 describe("the proof-materials sweep", () => {
-  it("spends back only its own workflow's materials, paying one plain coin to funding, and leaves another workflow's live", async () => {
+  it("spends back what no live workflow needs, paying one plain coin to funding, and leaves a needed output live", async () => {
     const scene = await prover();
-    const ours = await scene.publish(3, "aa");
-    const theirs = await scene.publish(2, "aa");
-    const entries: object[] = confirmedEntries([ours]);
-    const adapter = sweeping(scene, CONFLICT);
+    const unneeded = await scene.publish(3, "aa");
+    const needed = await scene.publish(2, "ab");
+    const view = viewOf(scene);
+    view.need(holderOf("workflow-b", HEADER_B), needed.datums);
+    const adapter = sweeping(scene, view, CONFLICT);
 
-    const observed = await adapter.observe(contextOf(entries));
-    expect(observed.kind).toBe("action_required");
-    const action = (observed as { action: FraudProofWorkflowAction }).action;
-    expect(
-      proofMaterialsSweepInputs(action).map((outRef) => outRef.split("#")[0]),
-    ).toEqual([ours, ours, ours]);
-    const { signed, txHash } = await landSweep(scene, adapter, entries, action);
+    const action = actionOf(await adapter.observe(contextOf()));
+    const txHashes = sweptOutRefs(action).map((outRef) => outRef.split("#")[0]);
+    expect(txHashes).toEqual(Array(3).fill(unneeded.txHash));
+    const { signed, txHash } = await submitSweep(scene, adapter, action);
 
     const body = signed.toTransaction().body();
     expect(body.collateral_inputs()).toBeUndefined();
@@ -245,29 +73,26 @@ describe("the proof-materials sweep", () => {
     expect(paid!.datum ?? paid!.datumHash).toBeUndefined();
     expect(paid!.assets.lovelace).toBe(6n * ADA - body.fee());
     const left = await scene.at(scene.materialsAddress);
-    expect(left.map((utxo) => utxo.txHash)).toEqual([theirs, theirs]);
-    // Swept and final: the ending goes through unchanged.
-    expect(await adapter.observe(contextOf(entries))).toEqual(CONFLICT);
+    expect(left.map((utxo) => utxo.txHash)).toEqual([
+      needed.txHash,
+      needed.txHash,
+    ]);
+    // Nothing more to sweep: the ending goes through unchanged.
+    expect(await adapter.observe(contextOf())).toEqual(CONFLICT);
   }, 300_000);
 
   it("pages more materials than one sweep holds across sweeps of at most a page each", async () => {
     const scene = await prover();
     const count = PROOF_MATERIALS_SWEEP_PAGE_INPUTS + 30;
-    const ours = await scene.publish(count, "bb");
-    const entries: object[] = confirmedEntries([ours]);
-    const adapter = sweeping(scene, completedAt(FINAL_DEPTH));
+    await scene.publish(count, "bb");
+    const adapter = sweeping(scene, viewOf(scene), completedAt(FINAL_DEPTH));
     const pages: number[] = [];
 
     for (let turn = 0; turn < 3; turn += 1) {
-      const observed = await adapter.observe(contextOf(entries));
+      const observed = await adapter.observe(contextOf());
       if (observed.kind !== "action_required") break;
-      pages.push(proofMaterialsSweepInputs(observed.action).length);
-      const { signed } = await landSweep(
-        scene,
-        adapter,
-        entries,
-        observed.action,
-      );
+      pages.push(sweptOutRefs(observed.action).length);
+      const { signed } = await submitSweep(scene, adapter, observed.action);
       const transaction = signed.toTransaction();
       expect(transaction.body().outputs().len()).toBe(1);
       // A full page, with its one sig(key) lock and signature, stays within
@@ -280,78 +105,62 @@ describe("the proof-materials sweep", () => {
 
     expect(pages).toEqual([PROOF_MATERIALS_SWEEP_PAGE_INPUTS, 30]);
     expect(await scene.at(scene.materialsAddress)).toEqual([]);
-    expect(await adapter.observe(contextOf(entries))).toEqual(
+    expect(await adapter.observe(contextOf())).toEqual(
       completedAt(FINAL_DEPTH),
     );
   }, 600_000);
 
   it("sweeps nothing before the workflow has ended, or before a completed ending is final", async () => {
     const scene = await prover();
-    const ours = await scene.publish(1, "cc");
-    const entries = confirmedEntries([ours]);
-    const pending: FraudProofWorkflowObservation = {
-      kind: "pending",
-      reason: "the thread is moving",
-    };
+    await scene.publish(1, "cc");
+    const view = viewOf(scene);
 
-    expect(await sweeping(scene, pending).observe(contextOf(entries))).toEqual(
-      pending,
+    expect(await sweeping(scene, view, PENDING).observe(contextOf())).toEqual(
+      PENDING,
     );
     expect(
-      await sweeping(scene, completedAt(FINAL_DEPTH - 1)).observe(
-        contextOf(entries),
+      await sweeping(scene, view, completedAt(FINAL_DEPTH - 1)).observe(
+        contextOf(),
       ),
     ).toEqual(completedAt(FINAL_DEPTH - 1));
   }, 300_000);
 
-  it("holds the ending while a sweep does not build or is not yet final, and never changes it", async () => {
+  it("never holds the ending: not while a sweep waits for its block, and not on a page that does not build", async () => {
     const scene = await prover();
-    const ours = await scene.publish(1, "dd");
-    const entries: object[] = confirmedEntries([ours]);
-    const first = await sweeping(scene, CONFLICT).observe(contextOf(entries));
-    const action = (first as { action: FraudProofWorkflowAction }).action;
+    await scene.publish(1, "dd");
+    const view = viewOf(scene);
+    const adapter = sweeping(scene, view, CONFLICT);
+    const action = actionOf(await adapter.observe(contextOf()));
 
-    const unbuilt = await sweeping(scene, CONFLICT).observe(
-      contextOf(entries, { unbuiltActionIds: new Set([action.actionId]) }),
-    );
-    expect(unbuilt).toMatchObject({
-      kind: "pending",
-      reason: expect.stringContaining(PROOF_MATERIALS_SWEEP_OUTSTANDING),
-    });
+    // A page that does not build is the run's alarm; the ending goes
+    // through, and the material is still there for a later sweep.
+    expect(
+      await adapter.observe(
+        contextOf({ unbuiltActionIds: new Set([action.actionId]) }),
+      ),
+    ).toEqual(CONFLICT);
 
-    const { txHash } = await landSweep(
-      scene,
-      sweeping(scene, CONFLICT),
-      entries,
-      action,
-    );
-    const shallow = await sweeping(scene, CONFLICT, () => "shallow").observe(
-      contextOf(entries),
-    );
-    expect(shallow).toMatchObject({
-      kind: "pending",
-      reason: expect.stringContaining(`the sweep ${txHash} is not yet final`),
-    });
-    expect(await sweeping(scene, CONFLICT).observe(contextOf(entries))).toEqual(
-      CONFLICT,
-    );
+    // A sweep in the mempool keeps its page out of every other sweep, and
+    // the ending goes through without waiting for its block.
+    await submitSweep(scene, adapter, action, { land: false });
+    expect(await adapter.observe(contextOf())).toEqual(CONFLICT);
+    expect(
+      await sweeping(scene, view, CONFLICT).observe(
+        contextOf({}, "workflow-b", HEADER_B),
+      ),
+    ).toEqual(CONFLICT);
+    scene.emulator.awaitBlock();
+    expect(await scene.at(scene.materialsAddress)).toEqual([]);
   }, 300_000);
 
   it("sweeps a workflow under reconciliation-only authority too, with no funding coin", async () => {
     const scene = await prover();
-    const ours = await scene.publish(2, "ee");
-    const entries: object[] = confirmedEntries([ours]);
-    const adapter = sweeping(scene, CONFLICT);
+    await scene.publish(2, "ee");
+    const adapter = sweeping(scene, viewOf(scene), CONFLICT);
+    const context = contextOf({ reconciliationOnly: true });
 
-    const observed = await adapter.observe(
-      contextOf(entries, { reconciliationOnly: true }),
-    );
-    expect(observed.kind).toBe("action_required");
-    const action = (observed as { action: FraudProofWorkflowAction }).action;
-    const preflight = await adapter.preflight({
-      ...contextOf(entries, { reconciliationOnly: true }),
-      action,
-    } as never);
+    const action = actionOf(await adapter.observe(context));
+    const preflight = await adapter.preflight({ ...context, action } as never);
     const inputs = workflowPreflightTransaction(preflight)!
       .toTransaction()
       .body()
@@ -363,59 +172,177 @@ describe("the proof-materials sweep", () => {
         `${input.transaction_id().to_hex()}#${input.index().toString()}`,
       );
     }
-    expect(spent.sort()).toEqual([...proofMaterialsSweepInputs(action)]);
+    expect(spent.sort()).toEqual([...sweptOutRefs(action)]);
   }, 300_000);
 
-  it("never lets one workflow adopt another's proof chunk, and the other's sweep leaves its own intact", async () => {
+  it("takes the sweep through the runner under reconciliation-only authority, which admits it by its kind", async () => {
     const scene = await prover();
-    const proofCbor = Data.to([{ Branch: { skip: 0n, neighbors: "" } }], Proof);
-    const [datum] = splitProofIntoChunkDatums(proofCbor);
-    const pay = async () => {
-      const signed = await (
-        await scene.lucid
-          .newTx()
-          .pay.ToAddressWithData(
-            scene.materialsAddress,
-            { kind: "inline", value: datum! },
-            { lovelace: 2n * ADA },
-          )
-          .complete()
-      ).sign
-        .withWallet()
-        .complete();
-      const txHash = await signed.submit();
-      scene.emulator.awaitBlock();
-      return txHash;
+    await scene.publish(2, "ef");
+    const evidence = await canonicalEvidence();
+    const process = createTestWorkflowProcess();
+    const view = viewOf(scene);
+    const sends = process.sends({
+      category: "doubleSpend",
+      headerHash: evidence.headerHash,
+    });
+    sends.installProofMaterialsView(view);
+    sends.installSweepWallet({
+      lucid: scene.lucid,
+      fundingAddress: scene.fundingAddress,
+      view,
+    });
+    const chain = createFixtureChain();
+    // The header rolled back: the family's thread ended in a conflict.
+    const adapter = {
+      ...makeAdapter({ chain }),
+      observe: async () => CONFLICT,
     };
-    const workflowA = await pay();
-    const resolve = async (own: readonly string[]) =>
-      await resolvePublishedProofChunks({
-        lucid: scene.lucid,
-        address: scene.materialsAddress,
-        proofCbor,
-        ownTransactions: new Set(own),
-      });
+    const readonly = vi
+      .spyOn(actuationAuthority, "workflowRunIsReconciliationOnly")
+      .mockReturnValue(true);
+    try {
+      // The sweep goes out and the ending goes through without waiting for
+      // its block.
+      const ended = {
+        kind: "stalled",
+        reason: "chain conflict: a rollback replaced the thread",
+      };
+      expect(await run({ evidence, adapter, process, chain })).toMatchObject(
+        ended,
+      );
+      const [sweep] = process.sent();
+      expect(sweep?.actionId).toMatch(/^proof-materials-sweep:/u);
+      expect(adapter.preflight).not.toHaveBeenCalled();
+      scene.emulator.awaitBlock();
+      chain.land(sweep!.txHash);
+      expect(await scene.at(scene.materialsAddress)).toEqual([]);
+      expect(
+        (await scene.at(scene.fundingAddress)).filter(
+          ({ txHash }) => txHash === sweep!.txHash,
+        ),
+      ).toHaveLength(1);
+      expect(await run({ evidence, adapter, process, chain })).toMatchObject(
+        ended,
+      );
+      expect(process.sent()).toHaveLength(1);
+    } finally {
+      readonly.mockRestore();
+    }
+  }, 300_000);
 
-    // B confirmed no publication: A's chunk with the same bytes is not B's.
-    expect(await resolve([])).toBeUndefined();
-    const workflowB = await pay();
-    expect(
-      (await resolve([workflowB]))!.map(({ utxo }) => utxo.txHash),
-    ).toEqual([workflowB]);
-
-    // A's sweep spends A's chunk alone; B's chunk still serves B.
-    const entries: object[] = confirmedEntries([workflowA]);
-    const adapter = sweeping(scene, CONFLICT);
-    const observed = await adapter.observe(contextOf(entries));
-    await landSweep(
-      scene,
-      adapter,
-      entries,
-      (observed as { action: FraudProofWorkflowAction }).action,
+  it("leaves a byte-identical chunk two workflows share to the last of them to end", async () => {
+    const scene = await prover();
+    const shared = await scene.publish(1, "f0");
+    const view = viewOf(scene);
+    // Both workflows find the one output by its content.
+    const [foundByA] = await view.find(
+      shared.datums,
+      holderOf("workflow-a", HEADER_A),
     );
-    expect(await resolve([workflowA])).toBeUndefined();
+    const [foundByB] = await view.find(
+      shared.datums,
+      holderOf("workflow-b", HEADER_B),
+    );
+    expect(label(foundByA!)).toBe(`${shared.txHash}#0`);
+    expect(label(foundByB!)).toBe(label(foundByA!));
+
+    // A ends first: B still needs the chunk, so A sweeps nothing.
+    expect(await sweeping(scene, view, CONFLICT).observe(contextOf())).toEqual(
+      CONFLICT,
+    );
+    expect((await scene.at(scene.materialsAddress)).map(label)).toEqual([
+      `${shared.txHash}#0`,
+    ]);
+
+    // B ends last and sweeps it.
+    const contextB = contextOf({}, "workflow-b", HEADER_B);
+    const adapterB = sweeping(scene, view, CONFLICT);
+    const action = actionOf(await adapterB.observe(contextB));
+    expect(sweptOutRefs(action)).toEqual([`${shared.txHash}#0`]);
+    await submitSweep(scene, adapterB, action, { context: contextB });
+    expect(await scene.at(scene.materialsAddress)).toEqual([]);
+  }, 300_000);
+
+  it("never adopts or sweeps a planted copy with a token, a reference script or a datum hash, and the ending is not held on them", async () => {
+    const scene = await prover();
+    const datum = datumOf("f1", 0);
+    const misshapen = await scene.plantMisshapen(datum);
+    const view = viewOf(scene);
+    expect(await view.find([datum], holderOf("workflow-a", HEADER_A))).toEqual([
+      undefined,
+    ]);
+
+    // A plain ada-only output a third party sent is swept with ours; the
+    // planted copies stay, so the sweep's one output is a plain coin.
+    const thirdParty = await scene.publish(1, "f2");
+    const adapter = sweeping(scene, view, CONFLICT);
+    const action = actionOf(await adapter.observe(contextOf()));
+    expect(sweptOutRefs(action)).toEqual([`${thirdParty.txHash}#0`]);
+    const { signed } = await submitSweep(scene, adapter, action);
+    expect(() =>
+      assertProofMaterialsSweepOutput(signed, scene.fundingAddress),
+    ).not.toThrow();
+    expect(await adapter.observe(contextOf())).toEqual(CONFLICT);
     expect(
-      (await resolve([workflowB]))!.map(({ utxo }) => utxo.txHash),
-    ).toEqual([workflowB]);
+      (await scene.at(scene.materialsAddress))
+        .map((utxo) => utxo.txHash)
+        .sort(),
+    ).toEqual([...misshapen].sort());
+  }, 300_000);
+
+  it("never selects a staging output a live thread pins", async () => {
+    const scene = await prover();
+    const staged = await scene.publish(2, "f3");
+    const view = viewOf(scene);
+    const pinned = `${staged.txHash}#1`;
+    view.need(holderOf("dispute", HEADER_B), [], [pinned]);
+    const adapter = sweeping(scene, view, CONFLICT);
+
+    const action = actionOf(await adapter.observe(contextOf()));
+    expect(sweptOutRefs(action)).toEqual([`${staged.txHash}#0`]);
+    await submitSweep(scene, adapter, action);
+    expect(await adapter.observe(contextOf())).toEqual(CONFLICT);
+    expect((await scene.at(scene.materialsAddress)).map(label)).toEqual([
+      pinned,
+    ]);
+  }, 300_000);
+
+  it("after a restart sweeps nothing until the first pass at the tip is done and every live objective has observed", async () => {
+    const scene = await prover();
+    await scene.publish(1, "f4");
+    let live: readonly ProofMaterialsObjective[] | undefined = undefined;
+    const view = viewOf(scene, () => live);
+    const objective = (headerHash: string) => ({
+      category: "doubleSpend",
+      headerHash,
+    });
+    const adapterA = sweeping(scene, view, CONFLICT);
+    let observedB: FraudProofWorkflowObservation = PENDING;
+    const adapterB = sweeping(scene, view, () => observedB);
+
+    // No pass at the tip yet: the live objectives are not known.
+    expect(await adapterA.observe(contextOf())).toEqual(CONFLICT);
+    expect(view.readiness()).toEqual({
+      open: false,
+      reason: PROOF_MATERIALS_SWEEP_FIRST_PASS_PENDING,
+    });
+
+    // The pass is done with two objectives live; B has not observed.
+    live = [objective(HEADER_A), objective(HEADER_B)];
+    expect(await adapterA.observe(contextOf())).toEqual(CONFLICT);
+    expect(view.readiness()).toMatchObject({
+      open: false,
+      reason: expect.stringContaining(HEADER_B),
+    });
+    expect((await scene.at(scene.materialsAddress)).length).toBe(1);
+
+    // Once B has observed, the next ending sweeps.
+    const contextB = contextOf({}, "workflow-b", HEADER_B);
+    expect(await adapterB.observe(contextB)).toEqual(PENDING);
+    expect(view.readiness()).toEqual({ open: true });
+    observedB = CONFLICT;
+    const action = actionOf(await adapterB.observe(contextB));
+    await submitSweep(scene, adapterB, action, { context: contextB });
+    expect(await scene.at(scene.materialsAddress)).toEqual([]);
   }, 300_000);
 });

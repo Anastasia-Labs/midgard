@@ -1,4 +1,4 @@
-import type { Cursor, PinResult, SqlTx } from "@al-ft/midgard-l1-follower";
+import type { PinResult, SqlTx } from "@al-ft/midgard-l1-follower";
 
 import { recordsUnitHistory, stateQueueNodeUnitPattern } from "./projection.js";
 import {
@@ -7,6 +7,18 @@ import {
   type WatcherProofRetentionStore,
 } from "./proof-retention.block-depth.js";
 import { eventRowStateIn } from "./proof-retention.events.js";
+import {
+  type HistoryState,
+  historyState,
+  unpruned,
+} from "./proof-retention.history-state.js";
+import {
+  createUnownedHoldRelease,
+  lockCursorIn,
+  releasePinIn,
+  type WatcherUnownedHoldsInput,
+} from "./proof-retention.unowned.js";
+import type { WatcherProofRosterRetention } from "./proof-roster-retention.js";
 import { headerPrunedIn, unitPrunedIn } from "./pruned-keys.js";
 import {
   WATCHER_DEPARTED_HEADERS_TABLE,
@@ -69,6 +81,10 @@ import type { WatcherL1Degradation } from "./tx-inputs.js";
 export const L1_PROOF_HISTORY_PRUNED = "l1_proof_history_pruned";
 /** An open objective whose user event pruning removed before a hold held it. */
 export const L1_PROOF_EVENT_PRUNED = "l1_proof_event_pruned";
+/** Holds no objective owns that the last pass at tip kept (informational). */
+export const L1_PROOF_HOLDS_UNOWNED = "l1_proof_holds_unowned";
+/** Of those, the holds a live held unit keeps (informational). */
+export const L1_PROOF_HOLDS_UNOWNED_LIVE = "l1_proof_holds_unowned_live";
 
 export type WatcherProofRetentionTarget = Readonly<{
   category: string;
@@ -146,6 +162,23 @@ export type WatcherProofRetention = Readonly<{
     headerHash: string,
     events: readonly WatcherProofEventRef[],
   ): Promise<WatcherProofEventHoldResult>;
+  /**
+   * Whether an admission over the observation at `point`, at its final
+   * return, completed a pass at tip (`WatcherProofRosterRetention`).
+   */
+  passAtTip(
+    point: Readonly<{ slot: string; blockHash: string }>,
+  ): Promise<boolean>;
+  /** Whether a pass at tip has lifted the roster's floor in this process
+   * (`WatcherProofRosterRetention.lifted`). */
+  lifted(): boolean;
+  /**
+   * Releases the holds no objective owns (`createUnownedHoldRelease`); a
+   * no-op until a pass at tip has lifted the roster's floor.
+   */
+  releaseUnowned(
+    input: WatcherUnownedHoldsInput,
+  ): Promise<readonly WatcherProofRetentionTarget[]>;
   /** Every held target, header order. */
   pinned(): Promise<readonly WatcherProofRetentionTarget[]>;
   /** A block's depth on the follower's chain (`followerBlockDepth`). */
@@ -164,80 +197,21 @@ const headerBytes = (headerHash: string): Buffer => {
   return Buffer.from(headerHash, "hex");
 };
 
-type KeyedTable = Readonly<{ table: string; column: string }>;
-
-/**
- * Whether a prune step has reached part of a header's or unit's rows: some
- * row of `key` is closed at or before the slot pruning has reached and no
- * pin holds it. Such a row survives only inside a budget-cut prune step,
- * whose sibling rows may already be deleted, so the rows are not a whole
- * history. The unpinned raw reads apply the same test.
- */
-export const partlyPrunedIn = async (
-  tx: SqlTx,
-  prunedThroughSlot: number,
-  key: Buffer,
-  rows: readonly KeyedTable[],
-): Promise<boolean> => {
-  for (const { table, column } of rows) {
-    const closed = await tx.query(
-      `SELECT 1 AS one FROM ${table} WHERE ${column} = ? AND to_slot IS NOT NULL AND to_slot <= ? LIMIT 1`,
-      [key, prunedThroughSlot],
-    );
-    if (closed.length > 0) return true;
-  }
-  return false;
-};
-
-/**
- * How a header's or unit's rows stand under the cursor lock:
- * - `held`: a pin row already holds them;
- * - `pruned`: a prune step has reached part of them (`partlyPrunedIn`), or
- *   deleted some (`pruned`, the key's record);
- * - `none`: no rows at all;
- * - `whole`: no prune step has reached any of them.
- */
-type HistoryState = "held" | "pruned" | "none" | "whole";
-
-const historyState = async (
-  tx: SqlTx,
-  cursor: Cursor,
-  key: Buffer,
-  held: KeyedTable,
-  rows: readonly [KeyedTable, ...KeyedTable[]],
-  pruned: (tx: SqlTx, key: Buffer) => Promise<boolean>,
-): Promise<HistoryState> => {
-  const holds = await tx.query(
-    `SELECT 1 AS one FROM ${held.table} WHERE ${held.column} = ? LIMIT 1`,
-    [key],
-  );
-  if (holds.length > 0) return "held";
-  if (await pruned(tx, key)) return "pruned";
-  const present = await tx.query(
-    `SELECT 1 AS one FROM ${rows[0].table} WHERE ${rows[0].column} = ? LIMIT 1`,
-    [key],
-  );
-  if (present.length === 0) return "none";
-  return (await partlyPrunedIn(tx, cursor.prunedThroughSlot, key, rows))
-    ? "pruned"
-    : "whole";
-};
-
-/** Whether no prune step has run since the store's origin. */
-const unpruned = (cursor: Cursor): boolean =>
-  cursor.prunedThroughSlot <= cursor.origin.slot;
-
 /**
  * `unitHistoryPolicies` are the policies whose units' histories the
  * projection records (`watcherUnitHistoryPolicies`): the units a unit row
  * holds. `stateQueuePolicyId` names the node units a header pin holds (each
- * header's own).
+ * header's own). `roster` is the store's proof roster floor, and
+ * `fraudProofSpend` the deployment's fraud-proof spend script hash, whose
+ * live units keep no hold (`createUnownedHoldRelease`).
  */
 export const createWatcherProofRetention = (
   store: WatcherProofRetentionStore,
   options: Readonly<{
     unitHistoryPolicies: ReadonlySet<string>;
     stateQueuePolicyId: string;
+    roster: WatcherProofRosterRetention;
+    fraudProofSpend: string;
   }>,
 ): WatcherProofRetention => {
   const nodeUnit = stateQueueNodeUnitPattern(options.stateQueuePolicyId);
@@ -260,6 +234,21 @@ export const createWatcherProofRetention = (
         [header],
       )
     ).length > 0;
+  const forget = (
+    { category, headerHash }: WatcherProofRetentionTarget,
+    last: boolean,
+  ): void => {
+    pruned.delete(`${category}:${headerHash}`);
+    if (!last) return;
+    for (const key of [...pruned.keys()])
+      if (key.startsWith(`${headerHash}#`)) pruned.delete(key);
+    for (const key of [...prunedEvents.keys()])
+      if (key.startsWith(`${headerHash}@`)) prunedEvents.delete(key);
+  };
+  const unowned = createUnownedHoldRelease(store, {
+    securityParameter: store.securityParameter,
+    fraudProofSpend: options.fraudProofSpend,
+  });
   return Object.freeze({
     ...followerBlockDepth(store),
     securityParameter: store.securityParameter,
@@ -301,42 +290,25 @@ export const createWatcherProofRetention = (
     release: async ({ category, headerHash }) => {
       const header = headerBytes(headerHash);
       const last = await store.transaction("write", async (tx) => {
-        // A prune step holds the cursor row for its whole transaction, and
-        // its record hooks read the pins before its deletes run. Taking the
-        // row first commits this release before such a step or after it,
-        // never between its hooks and its deletes, as `pinRetainedIn` does.
-        await tx.query(
-          `SELECT 1 AS one FROM l1_follower_cursor${store.dialect.lockClause("update")}`,
-        );
-        await tx.query(
-          `DELETE FROM ${WATCHER_PROOF_PINS_TABLE} WHERE header_hash = ? AND category = ?`,
-          [header, category],
-        );
-        for (const table of [
-          WATCHER_PROOF_PIN_UNITS_TABLE,
-          WATCHER_PROOF_PIN_EVENTS_TABLE,
-        ])
-          await tx.query(
-            `DELETE FROM ${table} WHERE header_hash = ? AND NOT EXISTS (SELECT 1 FROM ${WATCHER_PROOF_PINS_TABLE} p WHERE p.header_hash = ?)`,
-            [header, header],
-          );
-        return (
-          (
-            await tx.query(
-              `SELECT 1 AS one FROM ${WATCHER_PROOF_PINS_TABLE} WHERE header_hash = ? LIMIT 1`,
-              [header],
-            )
-          ).length === 0
-        );
+        await lockCursorIn(tx, store);
+        return releasePinIn(tx, header, category);
       });
-      pruned.delete(`${category}:${headerHash}`);
-      if (last) {
-        for (const key of [...pruned.keys()])
-          if (key.startsWith(`${headerHash}#`)) pruned.delete(key);
-        for (const key of [...prunedEvents.keys()])
-          if (key.startsWith(`${headerHash}@`)) prunedEvents.delete(key);
-      }
+      forget({ category, headerHash }, last);
     },
+    passAtTip: async ({ slot, blockHash }) => {
+      const observed = await store.pointStatus({
+        slot: Number(slot),
+        hash: Buffer.from(blockHash, "hex"),
+      });
+      return options.roster.passAtTip(
+        observed.kind === "canonical" ? observed.height : null,
+      );
+    },
+    lifted: () => options.roster.lifted(),
+    releaseUnowned: (input) =>
+      options.roster.lifted()
+        ? unowned.release(input, forget)
+        : Promise.resolve([]),
     holdUnits: async (headerHash, units) => {
       const header = headerBytes(headerHash);
       if (units.length === 0) return { kind: "held" };
@@ -472,15 +444,36 @@ export const createWatcherProofRetention = (
       })),
     degradations: () => {
       const removed = [...pruned.values()];
-      return removed.length === 0
-        ? []
-        : [
-            {
-              reason: L1_PROOF_HISTORY_PRUNED,
-              count: removed.length,
-              detail: `${removed.length.toString()} open proof(s) lost history to pruning before a pin held it; first: ${removed[0]!} (its captures refuse; clears when the objective is released)`,
-            },
-          ];
+      const { unowned: kept, live } = unowned.counts();
+      return [
+        ...(removed.length === 0
+          ? []
+          : [
+              {
+                reason: L1_PROOF_HISTORY_PRUNED,
+                count: removed.length,
+                detail: `${removed.length.toString()} open proof(s) lost history to pruning before a pin held it; first: ${removed[0]!} (its captures refuse; clears when the objective is released)`,
+              },
+            ]),
+        ...(kept === 0
+          ? []
+          : [
+              {
+                reason: L1_PROOF_HOLDS_UNOWNED,
+                count: kept,
+                detail: `${kept.toString()} history hold(s) no proof objective owns are kept: their header or a held unit has not settled past completion depth (informational)`,
+              },
+            ]),
+        ...(live === 0
+          ? []
+          : [
+              {
+                reason: L1_PROOF_HOLDS_UNOWNED_LIVE,
+                count: live,
+                detail: `${live.toString()} of the holds no proof objective owns are kept by a live held unit (informational)`,
+              },
+            ]),
+      ];
     },
     readiness: () => {
       const removed = [...prunedEvents.values()];

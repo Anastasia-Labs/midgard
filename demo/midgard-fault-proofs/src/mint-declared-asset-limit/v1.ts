@@ -2,7 +2,7 @@ import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
 import { MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
@@ -20,9 +20,8 @@ import {
   type ManifestBoundFamilyWorkflow,
 } from "../workflow/family-definition.family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
-import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
+import type { FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
-import type { FraudProofWorkflowJournalStore } from "../workflow/journal.fraud-proof-workflow-journal-event.js";
 import { journalJsonDigest } from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
@@ -31,8 +30,10 @@ import {
   createFraudProofWorkflowRegistry,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
-import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   createMintDeclaredAssetLimitActuator,
   type MintDeclaredAssetLimitActuatorAction,
@@ -201,13 +202,17 @@ const createTransactionPort = (
     },
     prepare: async ({ evidence }) =>
       await prepareMintDeclaredAssetLimitForcedArtifact(evidence),
-    capture: async ({ action, artifact, entries }) =>
+    capture: async ({ action, artifact, holder }) =>
       await actuator.capture({
         action: action.input as unknown as MintDeclaredAssetLimitActuatorAction,
         artifact,
         ownOutputs: workflowFieldCarriageOwnOutputs({
           category: CATEGORY,
-          entries,
+          materials: proofMaterialsAccess({
+            signer: context.signer,
+            lucid: context.lucid,
+            holder,
+          }),
         }),
       }),
   };
@@ -433,19 +438,18 @@ const currentAction = async ({
 export const executeManifestBoundMintDeclaredAssetLimitWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundMintDeclaredAssetLimitWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   if (
-    workflowActuationAuthorizingDecisionDigest(journal) !==
-    workflow.decisionDigest
+    workflowActuationAuthorizingDecisionDigest(run) !== workflow.decisionDigest
   )
-    throw new Error("mintDeclaredAssetLimit journal changed decision digest");
+    throw new Error("mintDeclaredAssetLimit run changed decision digest");
   const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
   });
@@ -458,7 +462,7 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflow = async ({
       adapters: [workflow.adapter],
       launchScope: [CATEGORY],
     }),
-    journal,
+    run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     walletOnlySend,

@@ -1,94 +1,76 @@
-/** A mint-item header removed against a record this run did not create,
- * a sibling run's on our key or another prover's, while a thread of ours
- * still stands on it. The run cancels that thread back to our wallet as a
- * journaled move, waits out rollback recovery, and only then resolves by
- * another record, reporting the reclaim as a reclaim and never as our
- * conviction. */
+/** A mint-item header removed against another prover's record while a
+ * thread of ours still stands on it. The run cancels that thread back to our wallet, waits
+ * out rollback recovery, and only then resolves by another record,
+ * reporting the reclaim as a reclaim and never as our conviction. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import * as funding from "../src/workflow/funding-reservation-permit.js";
 import {
   expectReclaimedThenResolved,
   FINAL_DEPTH,
   fixture,
   OUR_THREAD,
-  RECLAIM_TX,
-  REMOVAL,
-  SIBLING_PROOF,
 } from "./support/mint-item-own-thread-reclaim.fixture.js";
 
 afterEach(() => vi.restoreAllMocks());
 
 describe("mint-item: our thread on a header another record removed", () => {
-  it.each(["sibling", "other"] as const)(
-    "reclaims our thread before resolving on a removal against the %s record",
-    async (removedBy) => {
-      const f = fixture();
-      f.removedBy.kind = removedBy;
-      const port = f.port();
-      const removal =
-        removedBy === "sibling"
-          ? {
-              removalTxHash: REMOVAL,
-              referencedProofTokenOutRef: `${SIBLING_PROOF}#0`,
-              confirmationDepth: FINAL_DEPTH,
-            }
-          : f.resolution;
-      await expect(f.execute(port)).resolves.toMatchObject({
-        kind: "pending",
-        reason: expect.stringContaining(`reclaim:${OUR_THREAD}`),
-      });
-      expect(port.preflight).toHaveBeenCalledWith(
-        expect.objectContaining({ threadOutRef: OUR_THREAD, step: 2 }),
-      );
-      expect(port.submit).toHaveBeenCalledTimes(1);
-      // A restart before it lands: a fresh port, nothing rebuilt or resent.
-      const restarted = f.port();
-      await expect(f.execute(restarted)).resolves.toMatchObject({
-        kind: "pending",
-      });
-      // Landed, still within rollback recovery: not yet resolved.
-      f.land(1);
-      await expect(f.execute(restarted)).resolves.toMatchObject({
-        kind: "pending",
-        reason: expect.stringMatching(/awaits release finality/u),
-      });
-      f.land(FINAL_DEPTH);
-      expectReclaimedThenResolved(await f.execute(restarted), removal);
-      expect(restarted.preflight).not.toHaveBeenCalled();
-      expect(restarted.submit).not.toHaveBeenCalled();
-      expect(f.release).not.toHaveBeenCalled();
-    },
-  );
+  it("reclaims our thread before resolving on another prover's removal, sending the same cancel again after a restart", async () => {
+    const f = await fixture();
+    f.removedBy.kind = "other";
+    const port = f.port();
+    const removal = f.resolution;
+    await expect(f.execute(port)).resolves.toMatchObject({
+      kind: "pending",
+      reason: expect.stringContaining(`reclaim:${OUR_THREAD}`),
+    });
+    expect(port.preflight).toHaveBeenCalledWith(
+      expect.objectContaining({ threadOutRef: OUR_THREAD, step: 2 }),
+    );
+    expect(port.submit).toHaveBeenCalledTimes(1);
+    // A restart before it lands: a fresh process and port, on a chain
+    // where our thread still stands, send the same cancel again.
+    f.restart();
+    const restarted = f.port();
+    await expect(f.execute(restarted)).resolves.toMatchObject({
+      kind: "pending",
+    });
+    expect(restarted.submit).toHaveBeenCalledTimes(1);
+    expect(f.sent().map(({ txHash }) => txHash)).toEqual([f.reclaimTx]);
+    // Landed, still within rollback recovery: not yet resolved.
+    f.land(1);
+    await expect(f.execute(restarted)).resolves.toMatchObject({
+      kind: "pending",
+      reason:
+        "the header was removed against another record; a transaction this process sent for it can still land",
+    });
+    // Both spend the same thread: exactly one lands.
+    f.land(FINAL_DEPTH);
+    expectReclaimedThenResolved(await f.execute(restarted), removal, f);
+    expect(restarted.submit).toHaveBeenCalledTimes(1);
+  });
 
-  it.each(["sibling", "other"] as const)(
-    "still waits on our cancel one block short of release finality on the %s record",
-    async (removedBy) => {
-      const f = fixture();
-      f.removedBy.kind = removedBy;
-      const port = f.port();
-      await expect(f.execute(port)).resolves.toMatchObject({
-        kind: "pending",
-        reason: expect.stringContaining(`reclaim:${OUR_THREAD}`),
-      });
-      f.land(FINAL_DEPTH - 1);
-      await expect(f.execute(port)).resolves.toMatchObject({
-        kind: "pending",
-        reason: expect.stringContaining(
-          `reclaim ${RECLAIM_TX} of our thread ${OUR_THREAD} awaits release finality`,
-        ),
-      });
-      f.land(FINAL_DEPTH);
-      await expect(f.execute(port)).resolves.toMatchObject({
-        kind: "resolved_by_another_record",
-      });
-    },
-  );
+  it("still waits on our cancel one block short of release finality on another prover's removal", async () => {
+    const f = await fixture();
+    f.removedBy.kind = "other";
+    const port = f.port();
+    await expect(f.execute(port)).resolves.toMatchObject({
+      kind: "pending",
+      reason: expect.stringContaining(`reclaim:${OUR_THREAD}`),
+    });
+    f.land(FINAL_DEPTH - 1);
+    await expect(f.execute(port)).resolves.toMatchObject({
+      kind: "pending",
+      reason:
+        "the header was removed against another record; a transaction this process sent for it can still land",
+    });
+    f.land(FINAL_DEPTH);
+    expectReclaimedThenResolved(await f.execute(port), f.resolution, f);
+  });
 
-  it.each(["sibling", "other"] as const)(
-    "sends no cancel while the %s record's removal is short of release finality",
+  it.each(["own", "other"] as const)(
+    "sends no cancel while the removal against the %s record is short of release finality",
     async (removedBy) => {
-      const f = fixture();
+      const f = await fixture();
       f.removedBy.kind = removedBy;
       const port = f.port();
       for (const depth of [1, FINAL_DEPTH - 1]) {
@@ -111,48 +93,8 @@ describe("mint-item: our thread on a header another record removed", () => {
     },
   );
 
-  it.each(["sibling", "other"] as const)(
-    "names the funding permit's refusal of our cancel on the %s record, and sends it once the cause is gone",
-    async (removedBy) => {
-      const f = fixture();
-      f.removedBy.kind = removedBy;
-      const port = f.port();
-      const refusal = "thread reclaim differs from its exact binding";
-      const prepare = vi
-        .spyOn(funding, "prepareWorkflowFundingReservationTransaction")
-        .mockRejectedValueOnce(new Error(refusal))
-        .mockRejectedValueOnce(new Error(refusal));
-      for (let pass = 0; pass < 2; pass += 1)
-        await expect(f.execute(port)).resolves.toMatchObject({
-          kind: "pending",
-          resumeOnObservation: true,
-          namedState: {
-            name: "fraud-proof-thread-reclaim-refused",
-            alarm: true,
-          },
-          reason: expect.stringContaining(
-            `the funding permit refused the cancel of our thread ${OUR_THREAD}; it is built again at the next observation: ${refusal}`,
-          ),
-        });
-      expect(port.submit).not.toHaveBeenCalled();
-      expect(
-        f.entries.some(
-          ({ event }) =>
-            event.kind === "submission_intent" &&
-            event.actionId === `reclaim:${OUR_THREAD}`,
-        ),
-      ).toBe(false);
-      await expect(f.execute(port)).resolves.toMatchObject({
-        kind: "pending",
-        reason: expect.stringContaining(`reclaim:${OUR_THREAD}`),
-      });
-      expect(prepare).toHaveBeenCalledTimes(3);
-      expect(port.submit).toHaveBeenCalledTimes(1);
-    },
-  );
-
   it("resolves at once when another prover's record removed the header and no thread of ours stands", async () => {
-    const f = fixture({ stepsTaken: 0 });
+    const f = await fixture({ stepsTaken: 0 });
     f.removedBy.kind = "other";
     const port = f.port();
     const outcome = await f.execute(port);
@@ -165,8 +107,8 @@ describe("mint-item: our thread on a header another record removed", () => {
   });
 
   it("holds under the named alarm, never resolving, while our thread stands and no cancel is wired", async () => {
-    for (const removedBy of ["sibling", "other"] as const) {
-      const f = fixture();
+    for (const removedBy of ["own", "other"] as const) {
+      const f = await fixture();
       f.removedBy.kind = removedBy;
       for (const reclaim of [
         { ...f.port(), unavailable: () => "no cancel script is deployed" },
@@ -187,7 +129,7 @@ describe("mint-item: our thread on a header another record removed", () => {
   });
 
   it("never resolves while our threads on the removed header cannot be listed", async () => {
-    const f = fixture({ stepsTaken: 0 });
+    const f = await fixture({ stepsTaken: 0 });
     f.removedBy.kind = "other";
     // No list of our threads at all: held under the named alarm.
     for (let pass = 0; pass < 2; pass += 1)
@@ -214,8 +156,5 @@ describe("mint-item: our thread on a header another record removed", () => {
       await expect(f.execute(unreadable)).rejects.toThrow(
         "our threads' L1 view is unreachable",
       );
-    expect(f.entries.some(({ event }) => event.kind === "completed")).toBe(
-      false,
-    );
   });
 });

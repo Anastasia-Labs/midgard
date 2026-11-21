@@ -3,7 +3,8 @@
  * of our trace that computes it, our window over that step with its post
  * state returning another root of the constant, and a second case on the
  * failing block that commits that other post state and stands, on each of
- * its two threads, at the start of the one-step resolution. */
+ * its two threads, at the start of the one-step resolution. The second case
+ * is another prover's: a case naming our key is our runner's own. */
 import {
   asArray,
   asBigInt,
@@ -22,8 +23,14 @@ import {
 import type * as SDK from "@al-ft/midgard-sdk/da";
 import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import type { ValidationTraceSteps } from "@al-ft/midgard-validation/validation-machine";
-import { CML, type UTxO } from "@lucid-evolution/lucid";
+import {
+  CML,
+  generateEmulatorAccount,
+  Lucid,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
+import { resolveProverSigner } from "../../src/runtime.js";
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
 import { validationTraceMoveWindow } from "../../src/validation-trace-dispute/move-builders.js";
 import { completeValidationTraceMove } from "../../src/validation-trace-dispute/move-fee.js";
@@ -39,6 +46,7 @@ import {
   plutusItem,
 } from "./script-decode-plutus-max-shape.js";
 import { FlatBits, program } from "./script-decode-walk-shapes.js";
+import { network } from "./submit-init-emulator-shared.js";
 import type { Defender } from "./validation-trace-dispute-defend.js";
 import {
   challengerEntersResolution,
@@ -50,6 +58,7 @@ import {
 import type { TwoThreadCase } from "./validation-trace-dispute-one-step-case.js";
 import { threadPlace } from "./validation-trace-dispute-one-step-play.js";
 import {
+  BOND_LOVELACE,
   initAndOpen,
   verifySource,
 } from "./validation-trace-dispute-open-scene.js";
@@ -294,6 +303,10 @@ export const hopFrom =
     const { scene, deployment } = dispute;
     const { utxo } = await place(dispute, unit);
     const lucid = scene.h.proverLucid;
+    // Our runs leave the shared Lucid on the wallet a run restricts to the
+    // coins no transaction of ours in flight holds; a hop built here,
+    // outside the runner, pays from the whole wallet.
+    scene.h.proverSigner.selectWallet(lucid);
     const prover = scene.h.proverSigner.paymentKeyHash;
     const reference = validationTraceOneStepHolder(
       deployment,
@@ -337,18 +350,51 @@ export const secondCaseAtTheStep = async (
     ),
   );
 
-/** Opens a second case on the failing block whose trace agrees with ours up
- * to `agreedUpTo` and commits `successorHash` after it, has both operators
- * defend it with our trace up to our successor, bisects both threads to
- * ReadyForOneStep on that step and enters the resolution on each. Returns
- * the committed successor's hash and each thread as it stood
- * ReadyForOneStep. */
-export const secondCaseWithSuccessor = async (
+/** `dispute` as another prover plays it: a wallet and key of its own over
+ * the same emulator, funded from ours for one case's bond and its moves. */
+const anotherProversDispute = async (
   dispute: TwoThreadCase,
+): Promise<TwoThreadCase> => {
+  const { h } = dispute.scene;
+  const signer = resolveProverSigner({
+    network,
+    walletSeedPhrase: generateEmulatorAccount({ lovelace: 0n }).seedPhrase,
+  });
+  // Our runs leave the shared Lucid on the wallet a run restricts to its
+  // plain unheld coins; the funding pays from the whole wallet.
+  h.proverSigner.selectWallet(h.proverLucid);
+  const funding = await h.proverLucid
+    .newTx()
+    .pay.ToAddress(signer.address, { lovelace: BOND_LOVELACE + 500_000_000n })
+    .pay.ToAddress(signer.address, { lovelace: 500_000_000n })
+    .complete({ localUPLCEval: true });
+  await h.proverLucid.awaitTx(
+    await (await funding.sign.withWallet().complete()).submit(),
+  );
+  const lucid = await Lucid(h.emulator, "Custom");
+  signer.selectWallet(lucid);
+  return {
+    ...dispute,
+    scene: {
+      ...dispute.scene,
+      h: { ...h, proverLucid: lucid, proverSigner: signer },
+    },
+  };
+};
+
+/** Has another prover open a second case on the failing block whose trace
+ * agrees with ours up to `agreedUpTo` and commits `successorHash` after it,
+ * has both operators defend it with our trace up to our successor, bisects
+ * both threads to ReadyForOneStep on that step and enters the resolution on
+ * each. Returns the committed successor's hash, each thread as it stood
+ * ReadyForOneStep, and the dispute as that prover plays it. */
+export const secondCaseWithSuccessor = async (
+  ours: TwoThreadCase,
   agreedUpTo: number,
   successorHash: Buffer,
 ) => {
-  const { scene, material, a, b } = dispute;
+  const theirs = await anotherProversDispute(ours);
+  const { scene, material, a, b } = theirs;
   const committed = committedTrace(material, agreedUpTo, successorHash);
   const lucid = scene.h.proverLucid;
   const { opener } = await initAndOpen(scene, scene.failing, {
@@ -409,5 +455,9 @@ export const secondCaseWithSuccessor = async (
     ready.push({ unit: threadUnitOf(scene, thread), thread: threadOf(thread) });
     await landWith(lucid, await challengerEntersResolution(scene, thread));
   }
-  return { committedSuccessorHash: successorHash.toString("hex"), ready };
+  return {
+    committedSuccessorHash: successorHash.toString("hex"),
+    ready,
+    theirs,
+  };
 };

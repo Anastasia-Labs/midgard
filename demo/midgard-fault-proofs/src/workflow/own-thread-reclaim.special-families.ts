@@ -75,14 +75,6 @@ const withExtendedChainOwnThreadReclaim = ({
       witnessReferenceScripts,
       l1: {
         observeOwnThreads: async (input) => await l1.observeOwnThreads!(input),
-        observeSignedTransaction: async (input) =>
-          await l1.observeSignedTransaction!(input),
-        ...(l1.rebroadcastSignedTransaction === undefined
-          ? {}
-          : {
-              rebroadcastSignedTransaction: async (input) =>
-                await l1.rebroadcastSignedTransaction!(input),
-            }),
       },
     }),
   });

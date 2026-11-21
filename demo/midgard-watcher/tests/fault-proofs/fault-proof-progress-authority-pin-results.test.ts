@@ -1,10 +1,6 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
-
 import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import { afterEach, describe, expect, it } from "vitest";
 
-import * as DecisionJournal from "../../src/fault-proofs/fault-decision-journal.js";
 import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { createWatcherFaultProofProgressAuthority } from "../../src/fault-proofs/fault-proof-progress-authority.js";
 import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";
@@ -12,23 +8,20 @@ import type {
   WatcherProofPinResult,
   WatcherProofRetention,
 } from "../../src/l1-follower/proof-retention.js";
-import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
-  cleanupFundingRecoveryFixtures,
+  cleanupClassifiedFaultFixtures,
   deploymentIdentity,
-} from "../support/fault-proof-funding-fixture.sources-for.js";
+  setupClassifiedFaultFixture,
+} from "../support/classified-fault-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { inFlightOf } from "../support/in-flight-fixture.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
-import { testStorageRoot } from "../support/test-storage-root.js";
-import {
-  emptyWorkflowJournal,
-  TEST_JOURNAL_KEY,
-} from "../support/watcher-journal-fixture.js";
+import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
-// Each place the progress authority pins an objective keeps the pin's
-// result: a pin pruning beat leaves the objective open and is retried on
-// every new observation; a pin that holds is never retried.
-afterEach(cleanupFundingRecoveryFixtures);
+// Admitting a fault pins its objective and keeps the pin's result: a pin
+// pruning beat leaves the objective open and is retried on every new
+// observation; a pin that holds is never retried.
+afterEach(cleanupClassifiedFaultFixtures);
 
 type PinKind = WatcherProofPinResult["kind"];
 
@@ -49,67 +42,27 @@ const scripted = (...results: PinKind[]) => {
   return { retention, pins, released };
 };
 
-const observationAt = (
-  revision: number,
-  header?: Parameters<typeof progressObservation>[0]["header"],
-) =>
-  progressObservation({
-    deploymentFingerprint: deploymentIdentity.manifestId,
-    revision,
-    ...(header === undefined ? {} : { header }),
-  });
-
-/** A watcher restarting over one recorded, unfinished objective. */
-const restartWith = async (retention: WatcherProofRetention) => {
-  const fixture = await setupFundingRecoveryFixture(false);
-  const authority = createWatcherFaultProofProgressAuthority({
-    journalRoot: fixture.journalRoot,
-    workflowJournal: fixture.workflowJournal,
-    deploymentFingerprint: deploymentIdentity.manifestId,
-    categories: installedLaunchScope(fixture.old.launchScope),
-    authenticationKey: TEST_JOURNAL_KEY,
-    retention,
-  });
-  return { fixture, authority };
-};
-const restart = async (...results: PinKind[]) => {
-  const recorded = scripted(...results);
-  return { ...(await restartWith(recorded.retention)), ...recorded };
-};
-
-const roots: string[] = [];
-afterEach(async () => {
-  for (const root of roots.splice(0))
-    await rm(root, { recursive: true, force: true });
-});
 /** A watcher whose live writer recorded one fault no objective holds yet. */
 const newFaultWith = async (retention: WatcherProofRetention) => {
-  const fixture = await setupFundingRecoveryFixture();
-  const journalRoot = await mkdtemp(
-    join(testStorageRoot, ".watcher-progress-pin-results-"),
-  );
-  roots.push(journalRoot);
-  const writer = await DecisionJournal.openWatcherFaultDecisionJournal({
-    directory: journalRoot,
-    deploymentFingerprint: deploymentIdentity.manifestId,
-    launchScope: installedLaunchScope(fixture.old.launchScope),
-    authenticationKey: TEST_JOURNAL_KEY,
-  });
-  await writer.appendLiveDecision(fixture.old);
+  const fixture = await setupClassifiedFaultFixture();
   const authority = createWatcherFaultProofProgressAuthority({
-    journalRoot,
-    workflowJournal: emptyWorkflowJournal(),
+    journalRoot: fixture.journalRoot,
     deploymentFingerprint: deploymentIdentity.manifestId,
     categories: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
     retention,
+    ...inFlightOf(),
   });
   const header = {
     header: fixture.fixture.header,
     headerHash: fixture.old.headerHash,
   };
   const admit = (revision: number) => {
-    const observation = observationAt(revision, header);
+    const observation = progressObservation({
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      revision,
+      header,
+    });
     return authority.admit({
       observation,
       rollbackGeneration: "1",
@@ -127,61 +80,6 @@ const newFaultWith = async (retention: WatcherProofRetention) => {
 };
 
 describe("proof progress keeps every pin result", () => {
-  it.each([
-    ["pinned", 1],
-    ["already_pruned", 2],
-  ] as const)(
-    "restoring an objective at startup: %s is retried on a new observation %d time(s) in all",
-    async (result, pins) => {
-      const test = await restart(result);
-      await test.authority.admit({
-        observation: observationAt(1),
-        rollbackGeneration: "2",
-      });
-      expect(test.pins).toHaveLength(1);
-      await test.authority.admit({
-        observation: observationAt(2),
-        rollbackGeneration: "2",
-      });
-      expect(test.pins).toHaveLength(pins);
-      expect(test.released).toEqual([]);
-      expect(test.authority.unfinishedCount()).toBe(1);
-    },
-  );
-
-  it.each([
-    ["pinned", 2],
-    ["already_pruned", 3],
-  ] as const)(
-    "adopting an execution update: %s is retried on a new observation %d time(s) in all",
-    async (result, pins) => {
-      const test = await restart("pinned", result);
-      const old = test.fixture.old;
-      await test.authority.admit({
-        observation: observationAt(1),
-        rollbackGeneration: "2",
-      });
-      // Completed without a verified marker: unindexed, still held.
-      await test.authority.markCompleted(old);
-      expect(test.released).toEqual([]);
-      await test.authority.updateExecution({
-        objective: old,
-        execution: {
-          workflowId: test.fixture.initial.workflowId,
-          entries: test.fixture.originalEntries,
-        },
-      });
-      expect(test.pins).toHaveLength(2);
-      await test.authority.admit({
-        observation: observationAt(2),
-        rollbackGeneration: "2",
-      });
-      expect(test.pins).toHaveLength(pins);
-      expect(test.released).toEqual([]);
-      expect(test.authority.unfinishedCount()).toBe(1);
-    },
-  );
-
   it.each([
     ["pinned", 1],
     ["already_pruned", 2],
@@ -208,13 +106,10 @@ describe("proof progress keeps every pin result", () => {
   );
 
   it("stops retrying once a retried pin holds", async () => {
-    const test = await restart("already_pruned", "pinned");
-    for (const revision of [1, 2, 3, 4])
-      await test.authority.admit({
-        observation: observationAt(revision),
-        rollbackGeneration: "2",
-      });
-    expect(test.pins).toHaveLength(2);
+    const recorded = scripted("already_pruned", "pinned");
+    const test = await newFaultWith(recorded.retention);
+    for (const revision of [1, 2, 3, 4]) await test.admit(revision);
+    expect(recorded.pins).toHaveLength(2);
     expect(test.authority.unfinishedCount()).toBe(1);
   });
 });
@@ -254,45 +149,6 @@ const gated = () => {
 
 describe("proof progress hands out an objective's context only after its pin answered", () => {
   const KINDS = ["pinned", "already_pruned"] as const;
-
-  it.each(KINDS)(
-    "restoring an objective at startup (answered %s)",
-    async (kind) => {
-      const pins = gated();
-      const test = await restartWith(pins.retention);
-      const contexts = test.authority.admit({
-        observation: observationAt(1),
-        rollbackGeneration: "2",
-      });
-      await pins.answer(contexts, kind);
-      expect(await contexts).toMatchObject([
-        { decision: { decisionDigest: test.fixture.old.decisionDigest } },
-      ]);
-    },
-  );
-
-  it.each(KINDS)("adopting an execution update (answered %s)", async (kind) => {
-    const pins = gated();
-    const test = await restartWith(pins.retention);
-    const first = test.authority.admit({
-      observation: observationAt(1),
-      rollbackGeneration: "2",
-    });
-    await pins.answer(first, "pinned");
-    await first;
-    await test.authority.markCompleted(test.fixture.old);
-    const permit = test.authority.reconcileExecution({
-      objective: test.fixture.old,
-      execution: {
-        workflowId: test.fixture.initial.workflowId,
-        entries: test.fixture.originalEntries,
-      },
-      rollbackGeneration: "2",
-    });
-    await pins.answer(permit, kind);
-    expect(await permit).toBeDefined();
-    expect(test.authority.unfinishedCount()).toBe(1);
-  });
 
   it.each(KINDS)("admitting a new fault (answered %s)", async (kind) => {
     const pins = gated();

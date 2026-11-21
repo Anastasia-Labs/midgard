@@ -1,68 +1,23 @@
-import { mkdtemp, rm } from "node:fs/promises";
-
-import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
 import {
-  assertWorkflowJournalActuation,
-  bindWorkflowActuationJournal,
+  assertWorkflowRunActuation,
+  bindWorkflowRunActuation,
   createWorkflowReconciliationPermitController,
+  workflowRunIsReconciliationOnly,
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import type { HeaderFaultDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import {
-  computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowJournalEvent,
   journalJsonDigest,
-  MemoryFraudProofWorkflowJournalStore,
   normalizeJournalJson,
 } from "@al-ft/midgard-fault-proofs/workflow/journal";
-import {
-  FRAUD_PROOF_WORKFLOW_ADAPTER,
-  FRAUD_PROOF_WORKFLOW_SAFETY,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-  resumeRecordedFraudProofWorkflow,
-} from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
-import {
-  computeFraudProofReleaseFinalityPolicyDigest,
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-} from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
-import { describe, expect, it, vi } from "vitest";
+import { createWorkflowRun } from "@al-ft/midgard-fault-proofs/workflow/workflow-run";
+import { describe, expect, it } from "vitest";
 
-import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
-import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
-import { progressObservation } from "../support/fault-proof-progress-observation.js";
-import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
-import { storelessProofRetention } from "../support/proof-retention.js";
-import {
-  emptyWorkflowJournal,
-  recordObjectives,
-  TEST_JOURNAL_KEY,
-} from "../support/watcher-journal-fixture.js";
 
 const DEPLOYMENT = "dd".repeat(32),
-  HEADER = "aa".repeat(28),
-  TX = "bb".repeat(32);
-const policy = {
-  confirmationDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
-  automaticRecoveryMaxDepth: 2160,
-  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
-} as const;
-const releaseFinality = {
-  schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: DEPLOYMENT,
-  blueprintHash: "ee".repeat(32),
-  policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
-  policy,
-};
-const fixture = (): {
-  decision: HeaderFaultDecision;
-  entries: FraudProofWorkflowJournalEntry[];
-} => {
+  HEADER = "aa".repeat(28);
+const fixture = (): { decision: HeaderFaultDecision } => {
   const envelope = {
     schemaVersion: "midgard-production-header-decision-v1",
     classifierVersion: "midgard-production-header-classifier-v1",
@@ -88,213 +43,57 @@ const fixture = (): {
     ...envelope,
     decisionDigest: journalJsonDigest(normalizeJournalJson(envelope)),
   };
-  const identity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: DEPLOYMENT,
-    category: "transitionTrace",
-    target: { kind: "state_queue_header", headerHash: HEADER },
-    decisionDigest: decision.decisionDigest,
-  } as const;
-  const artifact = {
-    releaseFinality,
-    evidenceBinding: {
-      route: "canonical_block",
-      headerHash: HEADER,
-      payloadEnvelopeSha256: decision.payloadEnvelopeSha256,
-      payloadSha256: decision.payloadSha256,
-      l1BlockHash: "17".repeat(32),
-      l1Slot: "42",
-    },
-    familyArtifact: { test: true },
-  };
-  const events: FraudProofWorkflowJournalEvent[] = [
-    { kind: "started" },
-    { kind: "prepared", artifact, artifactDigest: journalJsonDigest(artifact) },
-    {
-      kind: "preflight_passed",
-      actionId: "remove",
-      txHash: TX,
-      localEvaluator: "lucid-local-uplc",
-      referenceScripts: [],
-    },
-    {
-      kind: "submission_intent",
-      actionId: "remove",
-      actionInput: { stage: "remove" },
-      attempt: 1,
-      txHash: TX,
-    },
-  ];
-  const entries = events.map((event, sequence) => ({
-    schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-    identity,
-    workflowId: computeFraudProofWorkflowId(identity),
-    recordedAt: "2026-09-10T00:00:00.000Z",
-    sequence,
-    event,
-  }));
-  return { decision, entries };
+  return { decision };
 };
 
-describe("existing signed workflow recovery authority", () => {
-  it("schedules an exact target-absent journal without a new-start deadline and refuses every spend", async () => {
-    const root = await mkdtemp("/var/tmp/midgard-reconciliation-test-");
-    const { decision, entries } = fixture();
-    // The queue records the objective before its workflow journal exists.
-    recordObjectives(root, [
-      { category: "transitionTrace", headerHash: HEADER },
-    ]);
-    const decisionJournal = await unsafeOpenWatcherFaultDecisionJournalForTest({
-      directory: root,
-      deploymentFingerprint: DEPLOYMENT,
-      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-      authenticationKey: TEST_JOURNAL_KEY,
-    });
-    await decisionJournal.unsafeAppendDecisionEnvelopeForTest(decision);
-    const workflowJournal = emptyWorkflowJournal();
-    const journal = workflowJournal.forObjective({
-      category: "transitionTrace",
-      headerHash: HEADER,
-    });
-    for (const entry of entries) await journal.append(entry, entry.sequence);
+describe("reconciliation-only workflow authority", () => {
+  it("lets a run bound to it observe and verify its terminal, refuses every build and send, and refuses everything once revoked", () => {
+    const { decision } = fixture();
     const controller = createWorkflowReconciliationPermitController({
       decision,
-      entries,
       deploymentFingerprint: DEPLOYMENT,
       rollbackGeneration: "0",
     });
-    bindWorkflowActuationJournal({
-      journal,
+    const run = createWorkflowRun(
+      createWorkflowInFlight().forObjective({
+        category: "transitionTrace",
+        headerHash: HEADER,
+      }),
+    );
+    bindWorkflowRunActuation({
+      run,
       permit: controller.permit,
       decisionDigest: decision.decisionDigest,
       deploymentFingerprint: DEPLOYMENT,
       category: "transitionTrace",
       headerHash: HEADER,
     });
+    expect(workflowRunIsReconciliationOnly(run)).toBe(true);
     const check = (
       checkpoint: Parameters<
-        typeof assertWorkflowJournalActuation
+        typeof assertWorkflowRunActuation
       >[0]["checkpoint"],
     ) =>
-      assertWorkflowJournalActuation({
-        journal,
+      assertWorkflowRunActuation({
+        run,
         deploymentFingerprint: DEPLOYMENT,
         category: "transitionTrace",
         headerHash: HEADER,
         checkpoint,
       });
-    let ran = 0;
-    const supervisor = createWatcherFaultProofSupervisor({
-      reservationDecisionHolds: () => [],
-      proofRetention: storelessProofRetention,
-      journalRoot: root,
-      workflowJournal,
-      deploymentFingerprint: DEPLOYMENT,
-      deadlineAlertHeadroomMs:
-        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
-      queueAuthenticationKey: new Uint8Array(32).fill(0xa5),
-      l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
-      execution: {
-        verifyCompleted: async () => {
-          throw new Error("unexpected completed execution");
-        },
-        execute: async ({ job }) => {
-          expect(job.deadline).toBeNull();
-          check("before_reconcile");
-          check("before_terminal_verify");
-          expect(() => check("before_preflight")).toThrow(
-            "existing_signed_workflow_only",
-          );
-          expect(() => check("before_submit")).toThrow(
-            "existing_signed_workflow_only",
-          );
-          ran++;
-          return {
-            kind: "pending",
-            resume: "await_observation",
-            reason: "retained signed attempt",
-          };
-        },
-      },
-    });
-    try {
-      await expect(
-        supervisor.requestProgress({
-          observation: progressObservation({
-            deploymentFingerprint: DEPLOYMENT,
-          }),
-          rollbackGeneration: "0",
-        }),
-      ).resolves.toBeUndefined();
-      await supervisor.close();
-      expect(ran).toBe(1);
-      controller.revoke("native_chain_rollback");
-      expect(() => check("before_reconcile")).toThrow("native_chain_rollback");
-    } finally {
-      await supervisor.close();
-      await rm(root, { recursive: true, force: true });
-    }
+    check("before_observe");
+    check("before_terminal_verify");
+    expect(() => check("before_preflight")).toThrow(
+      "existing_signed_workflow_only",
+    );
+    expect(() => check("before_submit")).toThrow(
+      "existing_signed_workflow_only",
+    );
+    controller.revoke("native_chain_rollback");
+    expect(() => check("before_observe")).toThrow("native_chain_rollback");
   });
-  it("uses the existing adapter and recorded evidence without replay, observation, preparation, or submission", async () => {
-    const { decision, entries } = fixture();
-    const journal = new MemoryFraudProofWorkflowJournalStore();
-    for (const entry of entries) await journal.append(entry, entry.sequence);
-    const controller = createWorkflowReconciliationPermitController({
-      decision,
-      entries,
-      deploymentFingerprint: DEPLOYMENT,
-      rollbackGeneration: "0",
-    });
-    bindWorkflowActuationJournal({
-      journal,
-      permit: controller.permit,
-      decisionDigest: decision.decisionDigest,
-      deploymentFingerprint: DEPLOYMENT,
-      category: "transitionTrace",
-      headerHash: HEADER,
-    });
-    const forbidden = vi.fn(async (): Promise<never> => {
-      throw new Error("new execution forbidden");
-    });
-    const reconcile = vi.fn(async () => ({
-      kind: "pending" as const,
-      txHash: TX,
-    }));
-    const result = await resumeRecordedFraudProofWorkflow({
-      deploymentFingerprint: DEPLOYMENT,
-      category: "transitionTrace",
-      headerHash: HEADER,
-      journal,
-      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
-      adapter: {
-        adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
-        category: "transitionTrace",
-        safety: FRAUD_PROOF_WORKFLOW_SAFETY,
-        prepare: forbidden,
-        observe: forbidden,
-        preflight: forbidden,
-        submit: forbidden,
-        reconcile,
-      },
-      terminalVerifier: {
-        verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-        verify: forbidden,
-        observeSignedTransaction: forbidden,
-      },
-      releaseFinalityAuthority: {
-        authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
-        verifyForWorkflow: async () => releaseFinality,
-      },
-    });
-    expect(result.kind).toBe("pending");
-    expect(reconcile).toHaveBeenCalledOnce();
-    expect(forbidden).not.toHaveBeenCalled();
-    if (result.kind !== "pending")
-      throw new Error("expected pending recorded transaction");
-    expect(result.entries.slice(0, entries.length)).toEqual(entries);
-  });
-  it("rejects missing signed intent, substituted evidence, and foreign deployment", () => {
-    const { decision, entries } = fixture();
+  it("rejects substituted evidence and a foreign deployment", () => {
+    const { decision } = fixture();
     const mint = (
       changes: Partial<
         Parameters<typeof createWorkflowReconciliationPermitController>[0]
@@ -302,19 +101,15 @@ describe("existing signed workflow recovery authority", () => {
     ) =>
       createWorkflowReconciliationPermitController({
         decision,
-        entries,
         deploymentFingerprint: DEPLOYMENT,
         rollbackGeneration: "0",
         ...changes,
       });
-    expect(() => mint({ entries: entries.slice(0, 3) })).toThrow(
-      "exact existing signed workflow",
-    );
     expect(() => mint({ deploymentFingerprint: "ff".repeat(32) })).toThrow(
-      "exact existing signed workflow",
+      "exact classified fault",
     );
     expect(() =>
       mint({ decision: { ...decision, payloadSha256: "fe".repeat(32) } }),
-    ).toThrow("exact existing signed workflow");
+    ).toThrow("exact classified fault");
   });
 });

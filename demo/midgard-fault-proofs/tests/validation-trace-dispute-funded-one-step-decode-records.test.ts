@@ -1,25 +1,18 @@
 /** The decode records a validation-trace dispute makes before Init, on a
  * deployment that drives CEK script selections, under the watcher's prover
- * funding. A watcher with no publication observer refuses to run the
- * dispute at all, signing nothing, and the funding permit of one whose
- * roster does not govern the script-decode contract refuses the decode
- * record that pays to it: the workflow stalls there, signing nothing more,
- * and the case does not open. The same watcher, observing publications and
- * governing the contract, records the decode of the script our trace
- * selects and then opens the case.
+ * funding: the watcher records the decode of the script our trace selects
+ * and then opens the case.
  *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import type { ValidationTraceOneStepReferences } from "../src/validation-trace-dispute/transactions.js";
-import { SCRIPT_DECODE_SPEND_ROLE } from "../src/workflow/script-decode-prerequisite.deployment.js";
 import { drainProver } from "./support/installed-prover-wallet.js";
 import {
   type AdapterWrap,
-  type FundedDispute,
   openFundedDispute,
   turnUntil,
 } from "./support/validation-trace-dispute-funded-runner.js";
@@ -38,7 +31,6 @@ import {
 
 let scene: Scene;
 let oneStep: ValidationTraceOneStepReferences;
-const opened: FundedDispute[] = [];
 
 /** A watcher over the scene, with `options`. */
 const open = async (
@@ -46,25 +38,7 @@ const open = async (
     NonNullable<Parameters<typeof openFundedDispute>[1]>,
     "oneStep"
   > = {},
-) => {
-  const dispute = await openFundedDispute(scene, { ...options, oneStep });
-  opened.push(dispute);
-  return dispute;
-};
-
-/** The prover's outputs at its funding and proof-materials addresses. */
-const walletOutRefs = async () =>
-  (
-    await Promise.all(
-      [
-        scene.h.proverSigner.address,
-        scene.h.proverSigner.proofMaterialsAddress,
-      ].map(async (address) => await scene.h.emulator.getUtxos(address)),
-    )
-  )
-    .flat()
-    .map(({ txHash, outputIndex }) => `${txHash}#${outputIndex.toString()}`)
-    .sort();
+) => await openFundedDispute(scene, { ...options, oneStep });
 
 /** Records the stage of each action a watcher preflights into `order`. */
 const recordOrder =
@@ -78,7 +52,7 @@ const recordOrder =
     },
   });
 
-describe("validation-trace dispute decode records before Init under the prover funding permit", () => {
+describe("validation-trace dispute decode records before Init under the prover funding", () => {
   beforeAll(async () => {
     // Published before the scene's blocks, so the publications take none of
     // the source verification's window from the failing block's end.
@@ -93,57 +67,8 @@ describe("validation-trace dispute decode records before Init under the prover f
     await drainProver(scene.h as never, FUNDED);
   }, 1_800_000);
 
-  afterAll(async () => {
-    for (const dispute of opened) await dispute.close();
-  });
-
-  it("refuses to run the dispute without a publication observer, signing nothing", async () => {
-    const before = await walletOutRefs();
-    const dispute = await open({ publications: false });
-    await expect(dispute.turn()).rejects.toThrow(
-      /^validation-trace script-decode records need a publication observer$/u,
-    );
-    expect(await walletOutRefs()).toStrictEqual(before);
-  }, 600_000);
-
   it(
-    "stalls the decode record whose output the roster does not govern, under a roster without the script-decode contract: it signs nothing more and the case does not open",
-    async () => {
-      const dispute = await open({
-        roster: (hashes) =>
-          Object.fromEntries(
-            Object.entries(hashes).filter(
-              ([name]) => name !== SCRIPT_DECODE_SPEND_ROLE,
-            ),
-          ),
-      });
-      const order: string[] = [];
-      const reasons: string[] = [];
-      let stalledAt: string[] | undefined;
-      for (let turn = 0; turn < 6; turn += 1) {
-        const result = await dispute.turn(recordOrder(order));
-        reasons.push(
-          "reason" in result ? `${result.kind}: ${result.reason}` : result.kind,
-        );
-        if (result.kind === "stalled") stalledAt ??= await walletOutRefs();
-      }
-      const stalls = reasons.filter((reason) => reason.startsWith("stalled"));
-      expect(stalls.length, reasons.join("\n")).toBeGreaterThan(0);
-      for (const reason of stalls)
-        expect(reason).toMatch(
-          /^stalled: funding reservation failed for script-decode-bind:.*funding output escapes the governed contract roster$/u,
-        );
-      expect(order).not.toContain("init");
-      expect(
-        reasons.some((reason) => reason.includes(VALIDATION_TRACE_CASE_OPEN)),
-      ).toBe(false);
-      expect(await walletOutRefs()).toStrictEqual(stalledAt);
-    },
-    TIMEOUT,
-  );
-
-  it(
-    "records the decode of the script our trace selects, then opens the case, once the watcher observes publications and governs the contract",
+    "records the decode of the script our trace selects, then opens the case",
     async () => {
       const order: string[] = [];
       const dispute = await open();

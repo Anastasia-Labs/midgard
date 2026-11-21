@@ -475,8 +475,8 @@ newest refusal's detail.
 ### MidgardWatcherProofSubmissionFailure
 
 **Meaning.** The watcher could not land a fault-proof transaction
-(`proof_submission_failure` alert): a submission failed, an objective was
-quarantined, or a funding reservation was orphaned. A quarantine's alert
+(`proof_submission_failure` alert): a submission failed or an objective was
+quarantined. A quarantine's alert
 clears once the objective leaves quarantine: a run meets another outcome, or
 the objective settles, including when its header leaves the observed queue
 between retries. A settled objective is not retried.
@@ -501,11 +501,10 @@ names why:
 
 | `reason`                              | What holds it                                                                | What clears it                               |
 | ------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------- |
-| `fault_proof_continuation_stalled`    | A run journaled no progress within its continuation bound                    | A later run that journals progress           |
+| `fault_proof_continuation_stalled`    | A run made no progress within its continuation bound                         | A later run that makes progress              |
 | `fault_proof_objective_quarantined`   | A run stalled or met an integrity error of its own; retried on a backoff     | Another outcome, or its objective settling   |
 | `fault_proof_resubmission_required`   | The next action needs a fresh submission under reconciliation-only authority | See escalation                               |
-| `fault_proof_start_deadline_passed`   | The objective's header matured before it signed any attempt                  | Its header leaving the finalized state queue |
-| `prover_funding_orphaned_reservation` | A reservation no workflow will drive holds attempts not yet retired          | Its attempts retired past release finality   |
+| `fault_proof_start_deadline_passed`   | The header matured with nothing of ours landed or in flight                  | Its header leaving the finalized state queue |
 | `fault_proof_l1_refused:<reason>`     | The L1 source refused a read the proof needs (for example pruned history)    | The next run whose reads the source answers  |
 
 **First checks.** `l1Readiness` and `supervisor.journalDecisionMissing` in
@@ -556,69 +555,6 @@ and `remainingSafeStartMs` count the paused objective.
 **Escalate** when the alert stays active after a top-up, or when
 [MidgardWatcherProofStartedLate](#midgardwatcherproofstartedlate) fires with
 it.
-
-### MidgardWatcherProverCollateralForfeited
-
-**Meaning.** A fault-proof attempt landed on L1 failing phase 2, so the chain
-took the collateral it posted (`prover_collateral_forfeited` alert, one
-subject per objective). The watcher evaluated the scripts locally before it
-submitted, so local evaluation and the chain disagreed. The watcher accounts
-for it at the tip: the objective's journal records the attempt and the
-collateral taken, the reservation drops those coins and holds the collateral
-return instead, and the workflow goes on with a re-signed attempt. The watcher
-log has one error line per such attempt, naming the objective, the attempt
-and the collateral. A rollback that drops the landing undoes all of it and
-clears the alert; so does the objective settling. The alert is informational:
-it does not hold readiness.
-
-**First checks.**
-
-```bash
-curl -s "$OPS/v1/diagnostics?kind=alert"
-```
-
-The `prover_collateral_forfeited` log line names the attempt's transaction;
-look it up on an L1 explorer to see which script failed.
-
-**Action.** Keep the watcher running and preserve its state directory. Top up
-the prover wallet if the loss leaves it short
-([MidgardWatcherProverFundingUnavailable](#midgardwatcherproverfundingunavailable)).
-
-**Escalate** always: a script that passed local evaluation and failed on
-chain is a defect in the watcher, its cost model or its protocol parameters.
-
-### MidgardWatcherProverCollateralAccountingFailed
-
-**Meaning.** The watcher could not record, in an objective's prover
-reservation, the collateral that an attempt's phase-2-invalid landing took,
-or give it back after a rollback dropped that landing
-(`prover_collateral_accounting_failed` alert, one subject per objective). The
-reservation's pool may disagree with the chain until it succeeds. The
-objective's journal records the failure once; the watcher reads the attempt
-again later and retries, and the objective goes on meanwhile. The watcher log
-has one error line per failure, naming the objective, the attempt and the
-error. The alert clears once every such attempt is accounted for, a later
-read leaves nothing to account, or the attempt retires or lands as its
-action's result; so does the objective settling. It holds readiness while it
-stands.
-
-**First checks.**
-
-```bash
-curl -s "$OPS/v1/status"
-curl -s "$OPS/v1/diagnostics?kind=alert"
-```
-
-The `prover_collateral_accounting_failed` log line names the error. A provider
-or L1 source that did not answer, a chain that moved under the read and a busy
-database never raise this alert: the watcher retries those as it retries any
-other read. Any other L1 read failure clears on a later retry once the provider
-answers.
-
-**Action.** Keep the watcher running and preserve its state directory.
-
-**Escalate** when the alert stays active across retries: any other error is a
-defect in the watcher's reservation accounting.
 
 ### MidgardWatcherProofStartedLate
 

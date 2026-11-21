@@ -69,7 +69,7 @@ import {
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 
 export type Step02Build = {
@@ -103,7 +103,7 @@ export type Step02Build = {
   readonly publishedChunkOutRefs: readonly string[];
 };
 
-export type SubmitStep02Result = UnjournaledSubmission<Step02Build>;
+export type SubmitStep02Result = OutsideWorkflowSubmission<Step02Build>;
 
 type Step02Layout = {
   readonly inputIndex: bigint;

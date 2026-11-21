@@ -21,13 +21,10 @@ import {
 } from "@al-ft/midgard-sdk/state-queue";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
-import { boundDataPublicationPlan } from "./bound-data-publication.js";
 import {
-  BOUND_DATA_PUBLICATION_PREREQUISITE,
   exact,
   FIELD_CARRIAGE_PREREQUISITE,
   type FieldCarriageRequirement,
-  OUT_REF,
   outRef,
   type PreimageCarriageRequirement,
   RAW_DATUM_PREIMAGE_PREREQUISITE,
@@ -35,35 +32,22 @@ import {
   type Requirement,
   sha256,
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
-import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import type { JournalJsonObject } from "./journal.fraud-proof-workflow-terminal.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import { rawDatumPreimagePublicationPlan } from "./raw-datum-preimage.js";
 
 export const requirementIdentity = (
   requirement: PreimageCarriageRequirement,
 ): Requirement => {
   if ("kind" in requirement) {
-    const planned =
-      requirement.kind === "bound_data_publication"
-        ? boundDataPublicationPlan(requirement)
-        : rawDatumPreimagePublicationPlan(requirement);
+    const planned = rawDatumPreimagePublicationPlan(requirement);
     return Object.freeze({
       ...requirement,
       planned,
       identitySha256: sha256(
         JSON.stringify({
           kind: requirement.kind,
-          ...(requirement.kind === "bound_data_publication"
-            ? {
-                publicationAddress: requirement.publicationAddress,
-                sourceIdentity: normalizeJournalJson(
-                  requirement.sourceIdentity,
-                ),
-              }
-            : { preimageHex: requirement.preimageHex }),
+          preimageHex: requirement.preimageHex,
           publicationDatums: planned.publicationDatums,
           publicationDigests: planned.publicationDigests,
         }),
@@ -216,9 +200,7 @@ export const PUBLICATION_ENCODINGS = [
 export type PublicationEncoding = (typeof PUBLICATION_ENCODINGS)[number];
 
 const publicationEncoding = (requirement: Requirement): PublicationEncoding =>
-  "kind" in requirement &&
-  (requirement.kind === "structured_data_preimage" ||
-    requirement.kind === "bound_data_publication")
+  "kind" in requirement && requirement.kind === "structured_data_preimage"
     ? "structured_data"
     : "nothing_but_bytes";
 
@@ -232,27 +214,6 @@ export const publishedContentDigest = (
       : fieldPreimagePublicationBytes(datumCbor),
   ).toString("hex");
 
-/**
- * The out-ref a publication or certificate action replaces: its predecessor's
- * output, gone while the transaction that created it stays on chain. Absent
- * on a first publication or certification, so their identities never change.
- */
-export const carriageReplacementOutRef = (
-  action: FraudProofWorkflowAction,
-): string | undefined => {
-  const value = action.input.replacementOutRef;
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !OUT_REF.test(value))
-    throw new Error(
-      "field carriage replacement changed its exact previous output",
-    );
-  return value;
-};
-
-export const carriageReplacementSuffix = (
-  outRef: string | undefined,
-): string => (outRef === undefined ? "" : `:replace:${outRef}`);
-
 export const publicationAction = <
   Category extends FraudProofCatalogueCategoryName,
 >({
@@ -260,38 +221,27 @@ export const publicationAction = <
   baseAction,
   requirement,
   publicationIndex,
-  replacementOutRef,
 }: {
   readonly category: Category;
   readonly baseAction: FraudProofWorkflowAction;
   readonly requirement: Requirement;
   readonly publicationIndex: number;
-  readonly replacementOutRef?: string;
 }): FraudProofWorkflowAction =>
   Object.freeze({
-    actionId: `publish-${"kind" in requirement ? (requirement.kind === "bound_data_publication" ? "bound-data" : "raw-datum-preimage") : "field-carriage"}:${baseAction.actionId}:${requirement.identitySha256}:${publicationIndex.toString()}${carriageReplacementSuffix(replacementOutRef)}`,
+    actionId: `publish-${"kind" in requirement ? "raw-datum-preimage" : "field-carriage"}:${baseAction.actionId}:${requirement.identitySha256}:${publicationIndex.toString()}`,
     input: Object.freeze({
       schemaVersion:
         "kind" in requirement
-          ? requirement.kind === "bound_data_publication"
-            ? BOUND_DATA_PUBLICATION_PREREQUISITE
-            : RAW_DATUM_PREIMAGE_PREREQUISITE
+          ? RAW_DATUM_PREIMAGE_PREREQUISITE
           : FIELD_CARRIAGE_PREREQUISITE,
       category,
       stage: "publish_field_carriage",
       forAction: frozenBaseAction(baseAction),
       requirementSha256: requirement.identitySha256,
       publicationIndex,
-      ...(replacementOutRef === undefined ? {} : { replacementOutRef }),
       publicationEncoding: publicationEncoding(requirement),
       publicationDigest: requirement.publicationDigests[publicationIndex]!,
       datumCborSha256: sha256(requirement.publicationDatums[publicationIndex]!),
-      ...("kind" in requirement && requirement.kind === "bound_data_publication"
-        ? {
-            publicationAddress: requirement.publicationAddress,
-            sourceIdentity: requirement.sourceIdentity,
-          }
-        : {}),
     }),
   });
 
@@ -301,22 +251,19 @@ export const certificateAction = <
   category,
   baseAction,
   requirement,
-  replacementOutRef,
 }: {
   readonly category: Category;
   readonly baseAction: FraudProofWorkflowAction;
   readonly requirement: Requirement;
-  readonly replacementOutRef?: string;
 }): FraudProofWorkflowAction =>
   Object.freeze({
-    actionId: `certify-field-carriage:${baseAction.actionId}:${requirement.identitySha256}${carriageReplacementSuffix(replacementOutRef)}`,
+    actionId: `certify-field-carriage:${baseAction.actionId}:${requirement.identitySha256}`,
     input: Object.freeze({
       schemaVersion: FIELD_CARRIAGE_PREREQUISITE,
       category,
       stage: "certify_field_carriage",
       forAction: frozenBaseAction(baseAction),
       requirementSha256: requirement.identitySha256,
-      ...(replacementOutRef === undefined ? {} : { replacementOutRef }),
       certificateDatumCborSha256: sha256(requirement.certificateDatumCbor!),
       certificateUnit: requirement.certificateUnit!,
     }),
@@ -326,11 +273,10 @@ export const isCarriagePrerequisiteAction = (
   action: FraudProofWorkflowAction,
   rawDatum: boolean,
 ): boolean =>
-  (action.input.schemaVersion === BOUND_DATA_PUBLICATION_PREREQUISITE ||
-    action.input.schemaVersion ===
-      (rawDatum
-        ? RAW_DATUM_PREIMAGE_PREREQUISITE
-        : FIELD_CARRIAGE_PREREQUISITE)) &&
+  action.input.schemaVersion ===
+    (rawDatum
+      ? RAW_DATUM_PREIMAGE_PREREQUISITE
+      : FIELD_CARRIAGE_PREREQUISITE) &&
   (action.input.stage === "publish_field_carriage" ||
     action.input.stage === "certify_field_carriage");
 
@@ -348,7 +294,7 @@ export const parseBaseAction = (
   };
 };
 
-/** Exact journal action shape, including the explicit bound-publication context. */
+/** Exact action shape. */
 export const carriageActionInputKeys = (
   action: FraudProofWorkflowAction,
 ): readonly string[] =>
@@ -360,15 +306,9 @@ export const carriageActionInputKeys = (
         "forAction",
         "requirementSha256",
         "publicationIndex",
-        ...(action.input.replacementOutRef === undefined
-          ? []
-          : ["replacementOutRef"]),
         "publicationEncoding",
         "publicationDigest",
         "datumCborSha256",
-        ...(action.input.schemaVersion === BOUND_DATA_PUBLICATION_PREREQUISITE
-          ? ["publicationAddress", "sourceIdentity"]
-          : []),
       ]
     : [
         "schemaVersion",
@@ -376,9 +316,6 @@ export const carriageActionInputKeys = (
         "stage",
         "forAction",
         "requirementSha256",
-        ...(action.input.replacementOutRef === undefined
-          ? []
-          : ["replacementOutRef"]),
         "certificateDatumCborSha256",
         "certificateUnit",
       ];

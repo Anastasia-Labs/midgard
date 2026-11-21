@@ -5,7 +5,7 @@ import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.cert
 import type { FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-proof-field-opening.js";
 import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
 import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
-import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { buildInit } from "../submit-init.submit-init.js";
 import { buildReferenceInputNoIdxStep01 } from "../submit-reference-input-no-idx-step-01.js";
@@ -13,10 +13,10 @@ import { buildReferenceInputNoIdxStep02 } from "../submit-reference-input-no-idx
 import { buildReferenceInputNoIdxStep03 } from "../submit-reference-input-no-idx-step-03.js";
 import { buildReferenceInputNoIdxStep04 } from "../submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
-import {
-  type FieldPreimageCertificateBinding,
-  type ManifestBoundLinearFamilyWorkflow,
-  type ManifestBoundLinearFamilyWorkflowConfig,
+import type {
+  FieldPreimageCertificateBinding,
+  ManifestBoundLinearFamilyWorkflow,
+  ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
@@ -24,9 +24,10 @@ import {
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
 import { exactJournalRecord } from "./native-index-artifact.js";
-import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
+import { proofMaterialsAccess } from "./proof-materials-view.js";
 import {
   admitReferenceInputNoIdxArtifact,
   type AssemblyContext,
@@ -35,7 +36,7 @@ import {
   WITNESS_ROLES,
 } from "./reference-input-no-idx.admit-reference-input-no-idx-artifact.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
@@ -160,10 +161,14 @@ export const createTransactionPort = (
       evidence,
       classification,
     }),
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const ownOutputs = workflowFieldCarriageOwnOutputs({
       category: "referenceInputNoIdx",
-      entries,
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
+      }),
     });
     const admitted = admitReferenceInputNoIdxArtifact(
       artifact,
@@ -178,7 +183,7 @@ export const createTransactionPort = (
     if (input.stage === "init") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -210,13 +215,12 @@ export const createTransactionPort = (
           : admitted.artifact.producingTx.txMembershipProofCbor;
       const chunks = await resolveDirectFirstProofChunks({
         action,
-        lucid: config.lucid,
         address: config.signer.proofMaterialsAddress,
         proofCbor,
       });
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await (async () => {
               const common = {
                 lucid: config.lucid,
@@ -254,7 +258,7 @@ export const createTransactionPort = (
       const carriage = await resolveField(config, plan, ownOutputs);
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await (async () => {
               const common = {
                 lucid: config.lucid,

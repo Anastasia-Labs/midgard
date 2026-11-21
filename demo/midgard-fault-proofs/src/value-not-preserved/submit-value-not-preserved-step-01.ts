@@ -67,7 +67,7 @@ import {
 import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 import {
@@ -104,7 +104,7 @@ export type ValueNotPreservedStep01Build = {
 };
 
 export type SubmitValueNotPreservedStep01Result =
-  UnjournaledSubmission<ValueNotPreservedStep01Build>;
+  OutsideWorkflowSubmission<ValueNotPreservedStep01Build>;
 
 export const buildValueNotPreservedStep01 = async ({
   lucid,

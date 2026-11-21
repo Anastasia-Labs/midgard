@@ -53,7 +53,6 @@ export {
   type RemoveFraudulentBlockExplicitCategory,
   type StateQueueMutationLease,
   type StateQueueMutationLeaseCoordinator,
-  type StateQueueMutationLeaseIdentity,
   type SubmitRemoveFraudulentBlockResult,
 } from "./remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 export {

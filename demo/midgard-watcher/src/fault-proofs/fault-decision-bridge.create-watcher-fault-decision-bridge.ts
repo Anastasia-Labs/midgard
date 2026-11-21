@@ -6,7 +6,6 @@ import { authenticatedStateQueueObservationDigest } from "@al-ft/midgard-fault-p
 import { GENESIS_HEADER_HASH, Header } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { WatcherWalletLeases } from "../funding/prover-funding-reservation.js";
 import { assertWatcherStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherQueueHeaderSource } from "../l1-follower/observation.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
@@ -22,7 +21,10 @@ import type { WatcherFaultDecisionJournal } from "./fault-decision-journal.exact
 import { openWatcherFaultDecisionJournal } from "./fault-decision-journal.js";
 import { assertWatcherFaultProofApplication } from "./fault-proof-application.build-common-infrastructure.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application.js";
-import { type WatcherFaultProofApplication } from "./fault-proof-application.production-dependencies.js";
+import type {
+  WatcherFaultProofApplication,
+  WatcherWalletLeases,
+} from "./fault-proof-application.production-dependencies.js";
 import {
   watcherFaultProofDeadline,
   type WatcherFaultProofSupervisor,
@@ -43,7 +45,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
   /** The 32-byte key the fault-proof journals' rows are authenticated with. */
   readonly authenticationKey: Uint8Array;
   readonly maximumClassificationConcurrency: number;
-  /** The prover wallet's coins funding reservations lease or removals hold. */
+  /** The prover wallet's coins the process's transactions in flight hold. */
   readonly walletLeases: WatcherWalletLeases;
   readonly operationsSink?: WatcherOperationsSink;
   /** The per-header alerts raised outside the bridge, every one of them. */

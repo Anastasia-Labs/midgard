@@ -15,6 +15,7 @@ import {
   type OwnOutputJournal,
   resolveOwnOutputs,
 } from "../workflow/own-outputs.js";
+import { withContentFoundCarriage } from "../workflow/proof-materials-view.carriage-claims.js";
 import {
   readTransitionProof,
   transitionProofCbor,
@@ -93,13 +94,15 @@ export const resolveTransitionTraceByteCarriage = async ({
 };
 /**
  * The carriage at `address`, the prover's proof-materials address, for each
- * of `datums`, in order: the live output of ours `ownOutputs` claims for
- * datum `i` under its publication claim key (the key a workflow journals its
- * own chunk publications under). Only an ada-only output with the datum
- * inline serves: an output that also carries a reference script or other
- * assets holds the same bytes but makes the step that reads it pay for more
- * than the chunk. Another workflow's output with the same bytes is never
- * taken for ours. With `publish`, the first chunk we hold no live output for
+ * of `datums`, in order: the output with datum `i`'s bytes that the
+ * workflow's proof-materials view finds (the k-th copy for the k-th
+ * occurrence, whoever paid it, since only the prover can spend it), or else
+ * the live output `ownOutputs` claims for datum `i` under its publication
+ * claim key (the key a workflow claims its own chunk publications under).
+ * Only an ada-only output with the datum inline serves: an output that also
+ * carries a reference script or other assets holds the same bytes but makes
+ * the step that reads it pay for more than the chunk. With `publish`, the
+ * first chunk we hold no live output for
  * is claimed and returned as a publication turn that pays it to that address;
  * without it, a missing chunk is an error. The publication spends only wallet
  * coins and carries the wallet-only validity window (`walletOnlyValidTo`).
@@ -121,17 +124,25 @@ export const resolveTransitionTraceDataCarriage = async ({
     key: fieldPublicationClaimKey(index, datum),
     slot: inlineDatumCarriageSlot(address, datum),
   }));
+  const claimed = await withContentFoundCarriage(
+    ownOutputs,
+    slots.map(({ key }, index) => ({
+      key,
+      address,
+      datumCbor: datums[index]!,
+    })),
+  );
   const resolved = await resolveOwnOutputs({
     slots: slots.map(({ key, slot }) => ({
       slot,
-      claims: ownOutputs.claims(key),
+      claims: claimed.claims(key),
     })),
     read: lucidOwnOutputReader(lucid),
   });
   if (resolved.kind === "ready") return resolved.utxos;
   if (!publish)
     throw new Error(
-      "transition-trace proof carriage requires a journaled chunk publication",
+      "transition-trace proof carriage requires a claimed chunk publication",
     );
   const { key, slot } = slots[resolved.ordinal]!;
   const signed = await (

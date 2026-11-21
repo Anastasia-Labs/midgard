@@ -6,30 +6,27 @@
  * healthy until the deadline passes. A defended thread of ours waits the same
  * way on its defender's move, until the defender's clock runs out.
  *
- * Eleven other states are named for readiness, so a session hands its turn
+ * Ten other states are named for readiness, so a session hands its turn
  * back at once instead of polling into a continuation stall: a thread that
  * needs a one-step resolution the runner does not drive, a move of ours that
  * does not build, a thread lost, a case a defender won, a move whose fee
- * would pass the funding permit's per-transaction fee ceiling, a thread
- * whose history does not decide its pending item step, a move our wallet
+ * would pass the runtime funding policy's per-transaction fee ceiling, a
+ * thread whose history does not decide its pending item step, a move our wallet
  * cannot fund before its deadline, a thread of ours we hold no trace for, a
- * case whose open threads discovery cannot all find, a case closed with no
- * valid claim, and staging outputs of ours a thread holds under
- * reconciliation-only authority past its case's expiry. All but the thread
- * lost, the defender's win and the case with no valid claim are alarms. */
+ * case whose open threads discovery cannot all find, and a case closed with
+ * no valid claim. All but the thread lost, the defender's win and the case
+ * with no valid claim are alarms. */
 import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
 } from "@al-ft/midgard-core";
 import type * as SDK from "@al-ft/midgard-sdk/da";
 
-import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import type {
   FraudProofWorkflowNamedState,
   FraudProofWorkflowRunResult,
 } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { VALIDATION_TRACE_MOVE_FEE_OVER_CAP } from "./move-fee.js";
-import { VALIDATION_TRACE_STAGING_HELD_PAST_EXPIRY } from "./one-step-staging-sweep.js";
 import {
   VALIDATION_TRACE_CASE_CONTESTED,
   VALIDATION_TRACE_DEFENDER_WON,
@@ -41,6 +38,7 @@ import {
   VALIDATION_TRACE_THREAD_COUNT_HOLD,
   VALIDATION_TRACE_THREAD_LOST,
 } from "./threads.js";
+import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "./wallet-move-unfunded-alarm.js";
 
 /** Our case exists and nobody has defended it yet. */
 export const VALIDATION_TRACE_CASE_OPEN = "validation-trace-case-open";
@@ -122,8 +120,8 @@ export const awaitingValidationTraceCounterparty = (
  * does not build is retried at each observation, and is lost at its
  * deadline unless the operator acts; a lost thread has no move of ours
  * left, a case a defender won has none either; a wallet-paid move whose fee
- * would pass the funding permit's per-transaction fee ceiling cannot be
- * sent at all, a thread whose history does not decide its pending item step
+ * would pass the runtime funding policy's per-transaction fee ceiling
+ * cannot be sent at all, a thread whose history does not decide its pending item step
  * cannot move on, and a move our wallet cannot fund waits on a top-up,
  * retried at each observation, before its deadline passes. A thread on our
  * move that commits a trace we do not hold (material-hold) cannot be moved,
@@ -131,11 +129,8 @@ export const awaitingValidationTraceCounterparty = (
  * of open threads differs from the threads found (thread-count-hold), one
  * not found may be on our turn with a deadline nobody can name. A case with no open thread and no valid
  * claim (case-contested) runs no clock of ours, and its outcome is fixed
- * whoever closes it. Staging outputs a thread of ours holds under
- * reconciliation-only authority past its case's expiry stay locked until
- * another party closes the case or the thread leaves its holder
- * (staging-held-past-expiry). The operator must see all but the thread
- * lost, the defender's win and the contested case.
+ * whoever closes it. The operator must see all but the thread lost, the
+ * defender's win and the contested case.
  */
 const NAMED_STATES: readonly FraudProofWorkflowNamedState[] = Object.freeze([
   Object.freeze({ name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: true }),
@@ -148,10 +143,6 @@ const NAMED_STATES: readonly FraudProofWorkflowNamedState[] = Object.freeze([
   Object.freeze({ name: VALIDATION_TRACE_MATERIAL_HOLD, alarm: true }),
   Object.freeze({ name: VALIDATION_TRACE_THREAD_COUNT_HOLD, alarm: true }),
   Object.freeze({ name: VALIDATION_TRACE_CASE_CONTESTED, alarm: false }),
-  Object.freeze({
-    name: VALIDATION_TRACE_STAGING_HELD_PAST_EXPIRY,
-    alarm: true,
-  }),
 ]);
 
 /**

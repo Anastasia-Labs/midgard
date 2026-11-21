@@ -1,20 +1,12 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import { WorkflowActionChangedError } from "./action-changed.js";
-// The leaf module, not the barrel: the barrel can still be evaluating when
-// the assembly loads this class, and a class must extend a defined value.
-import { WorkflowFundingReservationUnavailableError } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
-import type {
-  FraudProofWorkflowJournalEntry,
-  JournalJsonObject,
-} from "./journal.js";
-import type {
-  FraudProofWorkflowAction,
-  FraudProofWorkflowReconcileResult,
-} from "./orchestrator.js";
+import type { JournalJsonObject } from "./journal.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import type { ProofMaterialsHolder } from "./proof-materials-view.js";
 import type { SCRIPT_DECODE_PREREQUISITE } from "./script-decode-prerequisite.actions.js";
-import type { SignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
 import type { LocallyEvaluatedTransaction } from "./transaction-boundary.js";
+import { WorkflowFundingUnavailableError } from "./workflow-funding-shortfall.js";
 
 /** The reason prefix of a record the prover cannot advance on its own. */
 export const SCRIPT_DECODE_RECORD_HELD = "script-decode-record-held" as const;
@@ -29,7 +21,7 @@ export const SCRIPT_DECODE_RECORD_UNDERFUNDED =
  * Record transactions are funded from plain-ADA coins only, and the reason
  * says so: a coin holding a token is never spent.
  */
-export class ScriptDecodeRecordUnderfundedError extends WorkflowFundingReservationUnavailableError {
+export class ScriptDecodeRecordUnderfundedError extends WorkflowFundingUnavailableError {
   constructor(
     readonly stage: string,
     override readonly cause: unknown,
@@ -70,15 +62,22 @@ export type ScriptDecodeItemForAction = (
 export type ScriptDecodeInspection =
   | { readonly kind: "not_required" | "satisfied" }
   | { readonly kind: "pending"; readonly reason: string }
-  | { readonly kind: "required"; readonly action: FraudProofWorkflowAction }
+  | {
+      readonly kind: "required";
+      readonly action: FraudProofWorkflowAction;
+      /** Where the record and its runs were read absent, for a bind. */
+      readonly absentAt?: readonly string[];
+    }
   | {
       /**
-       * `action` was rejected on all its bounded attempts: the record holds
-       * there, pausing until a fresh observation, and submits it no more.
+       * `action` did not land on any of the bounded attempts this process
+       * made: the record holds there, pausing until a fresh observation, and
+       * submits it no more.
        */
       readonly kind: "held";
       readonly action: FraudProofWorkflowAction;
       readonly reason: string;
+      readonly absentAt?: readonly string[];
     };
 
 export interface ScriptDecodePrerequisitePort<
@@ -86,30 +85,32 @@ export interface ScriptDecodePrerequisitePort<
 > {
   readonly portVersion: typeof SCRIPT_DECODE_PREREQUISITE;
   readonly category: Category;
-  inspect(input: {
-    readonly headerHash: string;
+  /**
+   * Registers what the step of `baseAction` stages with `holder`, so no
+   * sweep takes it while the workflow builds nothing.
+   */
+  need(input: {
+    readonly holder: ProofMaterialsHolder;
     readonly baseAction: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
-    readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<void>;
+  inspect(input: {
+    readonly headerHash: string;
+    /** The workflow that finds the staged chunks, and its objective. */
+    readonly holder: ProofMaterialsHolder;
+    readonly baseAction: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+    /** Submissions this process made of an action that is required again. */
+    readonly attempts: (actionId: string) => number;
   }): Promise<ScriptDecodeInspection>;
   capture(input: {
     readonly headerHash: string;
+    readonly holder: ProofMaterialsHolder;
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
-    readonly entries: readonly FraudProofWorkflowJournalEntry[];
+    /** Submissions this process made of `action` so far. */
+    readonly attempts: number;
   }): Promise<{
     readonly transaction: LocallyEvaluatedTransaction;
-    readonly durableRecovery: JournalJsonObject;
   }>;
-  reconcile(input: {
-    readonly headerHash: string;
-    readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
-    readonly txHash?: string;
-    readonly durableRecovery?: JournalJsonObject;
-    readonly signedTransactionCborHex?: string;
-    readonly authorizeResubmission?: (
-      input: SignedWorkflowTransaction,
-    ) => Promise<void>;
-  }): Promise<FraudProofWorkflowReconcileResult>;
 }

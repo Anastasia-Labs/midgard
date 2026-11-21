@@ -16,9 +16,14 @@ import { addressCredentials } from "../decode/output.js";
 import type { SqlTx, TransactionOptions } from "../sql/backend.js";
 import { datumByHashIn } from "../store/datum.js";
 import type { FactStore } from "../store/fact-store.js";
+import {
+  livePlainOutputsByDatumIn,
+  livePlainOutputsExceptDatumsIn,
+  type PlainOutputsRead,
+} from "../store/plain-outputs.js";
 import { isTrackedOutput } from "../store/qualify.js";
 import * as reads from "../store/reads.js";
-import type { OutputSummary, OutRef, StoredOutput } from "../types.js";
+import type { Cursor, OutputSummary, OutRef, StoredOutput } from "../types.js";
 import {
   L1AwaitTxTimeoutError,
   L1CarriagePendingError,
@@ -34,7 +39,20 @@ import {
   outRefKey,
   toOutRef,
 } from "./ledger-provider.js";
-import { holdsUnit, splitUnit, utxoSubject } from "./utxo.js";
+import { addressBytes, holdsUnit, splitUnit, utxoSubject } from "./utxo.js";
+
+/**
+ * Plain outputs read in one snapshot of the facts, with that snapshot's
+ * point: `generation:slot:hash` of the follower's cursor. Any applied block
+ * or rewind gives another point.
+ */
+export type PlainOutputsAnswer = Readonly<{
+  point: string;
+  utxos: readonly UTxO[];
+}>;
+
+const cursorPoint = ({ point, generation }: Cursor): string =>
+  `${generation.toString()}:${point.slot.toString()}:${point.hash.toString("hex")}`;
 
 export type L1FollowerProviderOptions = Readonly<{
   /** The role's fact store: tracked outputs, qualifying txs, blocks. */
@@ -229,26 +247,124 @@ export class L1FollowerProvider extends LedgerProvider {
     query: string,
   ): Promise<readonly Readonly<{ outRef: OutRef; output: OutputSummary }>[]> {
     const subject = utxoSubject(addressOrCredential);
-    const tracked = this.#store.trackedSet();
     if (subject.by === "payment_credential") {
-      if (!tracked.paymentCredentials.has(subject.hash.toString("hex")))
+      if (
+        !this.#store
+          .trackedSet()
+          .paymentCredentials.has(subject.hash.toString("hex"))
+      )
         throw new L1ProviderScopeError(
           query,
           `payment credential ${subject.hash.toString("hex")} is not tracked`,
         );
       return await this.#factsUtxos(subject);
     }
-    const payment = addressCredentials(subject.address).payment;
+    return await this.#factsUtxos(this.#trackedAddress(subject.address, query));
+  }
+
+  /**
+   * For each requested inline datum (hex), the first `limit` plain outputs
+   * (ada only, no datum hash, no reference script) live at the follower's
+   * tip at the tracked `address` with exactly that datum, by out-ref,
+   * skipping `excluded`; with the point of the snapshot they were read at.
+   */
+  async plainOutputsByDatum({
+    address,
+    requests,
+    excluded = [],
+  }: Readonly<{
+    address: Address;
+    requests: readonly Readonly<{ datum: string; limit: number }>[];
+    excluded?: readonly LucidOutRef[];
+  }>): Promise<PlainOutputsAnswer> {
+    const { address: bytes } = this.#trackedAddress(
+      addressBytes(address),
+      "plainOutputsByDatum",
+    );
+    return await this.#plainRead((tx) =>
+      livePlainOutputsByDatumIn(tx, this.#store.dialect, {
+        address: bytes,
+        requests: requests.map(({ datum, limit }) => ({
+          datum: Buffer.from(datum, "hex"),
+          limit,
+        })),
+        excluded: excluded.map(toOutRef),
+      }),
+    );
+  }
+
+  /**
+   * The first `limit` plain outputs live at the follower's tip at the
+   * tracked `address`, by out-ref, whose inline datum (if any) is none of
+   * `datums` (hex), skipping `excluded`; with the point of the snapshot.
+   */
+  async plainOutputsExceptDatums({
+    address,
+    datums,
+    excluded = [],
+    limit,
+  }: Readonly<{
+    address: Address;
+    datums: readonly string[];
+    excluded?: readonly LucidOutRef[];
+    limit: number;
+  }>): Promise<PlainOutputsAnswer> {
+    const { address: bytes } = this.#trackedAddress(
+      addressBytes(address),
+      "plainOutputsExceptDatums",
+    );
+    return await this.#plainRead((tx) =>
+      livePlainOutputsExceptDatumsIn(tx, this.#store.dialect, {
+        address: bytes,
+        datums: datums.map((datum) => Buffer.from(datum, "hex")),
+        excluded: excluded.map(toOutRef),
+        limit,
+      }),
+    );
+  }
+
+  /**
+   * The point a plain-output read made now would report (`PlainOutputsAnswer`),
+   * from the cursor alone; refuses before initialization.
+   */
+  async factsPoint(): Promise<string> {
+    const cursor = await this.#read((tx) =>
+      reads.tipIn(tx, this.#store.dialect),
+    );
+    if (cursor === null)
+      throw new L1ProviderTransientError("follower", "not_initialized");
+    return cursorPoint(cursor);
+  }
+
+  /** The tracked address `address`; refuses one the role does not track. */
+  #trackedAddress(
+    address: Buffer,
+    query: string,
+  ): Readonly<{ by: "address"; address: Buffer }> {
+    const tracked = this.#store.trackedSet();
+    const payment = addressCredentials(address).payment;
     if (
-      tracked.addresses.has(subject.address.toString("hex")) ||
+      tracked.addresses.has(address.toString("hex")) ||
       (payment !== null &&
         tracked.paymentCredentials.has(payment.hash.toString("hex")))
     )
-      return await this.#factsUtxos(subject);
+      return { by: "address", address };
     throw new L1ProviderScopeError(
       query,
-      `address ${subject.address.toString("hex")} is not tracked`,
+      `address ${address.toString("hex")} is not tracked`,
     );
+  }
+
+  async #plainRead(
+    run: (tx: SqlTx) => Promise<PlainOutputsRead>,
+  ): Promise<PlainOutputsAnswer> {
+    const result = await this.#read(run);
+    if (result.kind !== "ok")
+      throw new L1ProviderTransientError("follower", result.kind);
+    return Object.freeze({
+      point: cursorPoint(result.cursor),
+      utxos: result.utxos.map(lucidUtxo),
+    });
   }
 
   /** Live tracked outputs at the follower's tip; refuses before initialization. */

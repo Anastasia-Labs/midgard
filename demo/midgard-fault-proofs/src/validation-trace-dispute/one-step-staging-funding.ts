@@ -1,7 +1,5 @@
-/** Our staging of a staged builtin step's operands under the prover
- * funding permit (workflow/funding-reservation-permit.validation-dispute-
- * staging-authority.ts): each staging, and each spend back, signed with the
- * authority the permit admits it by. A staging that does not build for want
+/** Our staging of a staged builtin step's operands: each staging, and each
+ * spend back, signed from our wallet. A staging that does not build for want
  * of our wallet's ada raises the operator's alarm, naming the case, the
  * thread and the deadline, and what the rest of the step needs from our
  * wallet: the runs still to stage, the step's loop hops our wallet pays,
@@ -26,16 +24,15 @@ import { Effect, Either } from "effect";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { walletOnlyValidTo } from "../wallet-only-validity.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { grantValidationDisputeStagingAuthority } from "../workflow/funding-reservation-permit.validation-dispute-staging-authority.js";
-import { ValidationDisputeWalletMoveUnfundedError } from "../workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
-import { isWorkflowFundingShortfall } from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
-import { confirmedValidationTraceStages } from "./actions.js";
-import { parseValidationTraceDisputeArtifact } from "./artifact.js";
+import { isWorkflowFundingShortfall } from "../workflow/workflow-funding-shortfall.js";
+import type { ValidationTraceCaseHistory } from "./case-history.js";
 import { validationTraceCaseReads } from "./case-reads.js";
+import type { ValidationTraceOwnViewOf } from "./own-view.js";
 import { validationTraceCaseExpiryMs } from "./threads.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 import { validationTraceMoveDeadlineMs } from "./wallet-move-unfunded.js";
+import { ValidationDisputeWalletMoveUnfundedError } from "./wallet-move-unfunded-alarm.js";
 
 /** A run to stage, with what the rest of its step needs. */
 export type ValidationTraceStagingStep = Readonly<{
@@ -75,15 +72,22 @@ export const validationTraceStagingSigner = ({
   lucid,
   signer,
   deployment,
+  caseHistory,
+  ownView,
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
   readonly deployment: ValidationTraceDisputeDeployment;
+  /** Where each case's threads are read from. */
+  readonly caseHistory: ValidationTraceCaseHistory;
+  readonly ownView: ValidationTraceOwnViewOf;
 }) => {
-  const { ourCase } = validationTraceCaseReads({ lucid, signer, deployment });
-  const headerHashOf = (context: FraudProofWorkflowAdapterContext) =>
-    parseValidationTraceDisputeArtifact(context.artifact).headerHash;
-
+  const { ourCase } = validationTraceCaseReads({
+    lucid,
+    signer,
+    deployment,
+    caseHistory,
+  });
   /** What `step`, its run included, still needs from our wallet, for the
    * operator's alarm: each run's deposit and the fee of a full-size
    * transaction for each run, and the fee of a full-size transaction at the
@@ -126,10 +130,7 @@ export const validationTraceStagingSigner = ({
     context: FraudProofWorkflowAdapterContext,
     threadOutRef: string,
   ) => {
-    const found = await ourCase(
-      parseValidationTraceDisputeArtifact(context.artifact),
-      confirmedValidationTraceStages(context.entries),
-    );
+    const found = await ourCase(ownView(context), threadOutRef);
     if (found === undefined)
       throw new WorkflowActionChangedError(
         "validation-trace staging has no case of ours to play",
@@ -187,19 +188,13 @@ export const validationTraceStagingSigner = ({
       }
       const { outputIndex } = midgardCekStagingOutRef(unsigned, step.run);
       const signed = await unsigned.sign.withWallet().complete();
-      grantValidationDisputeStagingAuthority({
-        signed,
-        deploymentFingerprint: deployment.deploymentFingerprint,
-        headerHash: headerHashOf(context),
-        shape: { datumCborHex: step.run.datumCbor },
-      });
       return { signed, outputIndex };
     },
 
     /** The signed spend back of the staging output `output`, which no
      * thread in `pins` pins. */
     reclaim: async (
-      context: FraudProofWorkflowAdapterContext,
+      _context: FraudProofWorkflowAdapterContext,
       output: UTxO,
       pins: MidgardCekStagingPins,
     ) => {
@@ -210,12 +205,6 @@ export const validationTraceStagingSigner = ({
         }),
       );
       const signed = await unsigned.sign.withWallet().complete();
-      grantValidationDisputeStagingAuthority({
-        signed,
-        deploymentFingerprint: deployment.deploymentFingerprint,
-        headerHash: headerHashOf(context),
-        shape: { output },
-      });
       return signed;
     },
   };

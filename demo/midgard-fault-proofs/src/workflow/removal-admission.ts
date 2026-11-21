@@ -6,18 +6,18 @@ import type {
 } from "../remove-fraudulent-block.js";
 import type { LocallyEvaluatedTransaction } from "./transaction-boundary.js";
 
-/** A built removal a journaled adapter accepted, with the lease it holds. */
+/** A built removal a workflow adapter accepted, with the lease it holds. */
 export type AdmittedRemovalTransaction = Readonly<{
   transaction: LocallyEvaluatedTransaction;
   mutationLease?: StateQueueMutationLease;
 }>;
 
 /**
- * Runs a journaled adapter's check of a built removal. When the check refuses
+ * Runs a workflow adapter's check of a built removal. When the check refuses
  * the transaction, the state-queue mutation lease the build took is failed
  * with the refusal before it is rethrown, so no lease outlives a removal that
  * is never submitted. Otherwise returns the transaction and the lease, which
- * the adapter retains across its durable intent and submission.
+ * the adapter retains across its submission.
  */
 export const admitRemovalTransaction = async (
   built: RemoveFraudulentBlockBuild,

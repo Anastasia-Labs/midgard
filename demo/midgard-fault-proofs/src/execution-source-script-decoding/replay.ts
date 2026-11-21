@@ -119,7 +119,7 @@ export const detectExecutionSourceScriptDecodingReplay = async ({
   });
 };
 
-/** The journaled `executionSourceScriptDecoding` workflow artifact: the retained
+/** The `executionSourceScriptDecoding` workflow artifact: the retained
  * payload, the predecessor ledger and the coordinate, re-planned on every
  * admission. */
 export const EXECUTION_SOURCE_SCRIPT_DECODING_ARTIFACT_FAMILY =

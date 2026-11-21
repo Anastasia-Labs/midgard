@@ -21,7 +21,7 @@ import { parseHex, requireRecord } from "./json-file.js";
 import { type SubmitProviderConfig } from "./runtime.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 /** Human-readable family label used in every local failure message. */
@@ -237,7 +237,7 @@ export type FabricatedWithdrawalStep01Build = {
 };
 
 export type SubmitFabricatedWithdrawalStep01Result =
-  UnjournaledSubmission<FabricatedWithdrawalStep01Build>;
+  OutsideWorkflowSubmission<FabricatedWithdrawalStep01Build>;
 
 export type FabricatedWithdrawalStep01Layout = {
   readonly inputIndex: bigint;

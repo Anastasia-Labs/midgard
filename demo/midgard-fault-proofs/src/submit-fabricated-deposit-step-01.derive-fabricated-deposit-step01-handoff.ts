@@ -20,7 +20,7 @@ import { parseHex, requireRecord } from "./json-file.js";
 import { type SubmitProviderConfig } from "./runtime.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 /** Human-readable family label used in every local failure message. */
@@ -214,7 +214,7 @@ export type FabricatedDepositStep01Build = {
 };
 
 export type SubmitFabricatedDepositStep01Result =
-  UnjournaledSubmission<FabricatedDepositStep01Build>;
+  OutsideWorkflowSubmission<FabricatedDepositStep01Build>;
 
 export type FabricatedDepositStep01Layout = {
   readonly inputIndex: bigint;

@@ -3,7 +3,6 @@ import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { type FamilyDeploymentContext } from "../workflow/family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
-import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
@@ -16,6 +15,7 @@ import {
   withManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
 import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   createFieldItemWidthIllegalBoundConfig,
   FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
@@ -119,17 +119,17 @@ export type ManifestBoundFieldItemWidthIllegalWorkflow =
 export const executeManifestBoundFieldItemWidthIllegalWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundFieldItemWidthIllegalWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly walletOnlySend: WalletOnlySend;
 }) =>
   await executeManifestBoundFamilyRecovery({
     ...workflow,
     sources,
-    journal,
+    run,
     walletOnlySend,
   });

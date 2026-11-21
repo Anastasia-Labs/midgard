@@ -1,13 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import {
-  chmod,
-  copyFile,
-  mkdir,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -16,17 +9,14 @@ import {
   HEADER_CLASSIFIER,
   HEADER_DECISION,
 } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import { FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "midgard-watcher";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
-import { captureJourneyWorkflowBaseline } from "./journey-session.js";
 import {
   composeWatcherEvidenceExec,
   createWatcherEvidenceReader,
 } from "./watcher-evidence-reader.js";
 import {
-  appendWorkflow,
   directories,
   FINGERPRINT,
   localExec,
@@ -106,71 +96,10 @@ const writeDecisions = (
 };
 
 describe("watcher evidence reader", () => {
-  it("reads the same workflow rows and baseline as the journey watcher's own store", async () => {
-    const watcher = await recordedWatcher();
-    const reader = watcher.reader();
-    expect(await reader.readWorkflowRows("doubleSpend")).toEqual(new Map());
-    const first = "12".repeat(28);
-    const second = "34".repeat(28);
-    await appendWorkflow(watcher.storePath, "doubleSpend", first, 2);
-    await appendWorkflow(watcher.storePath, "doubleSpend", second, 1);
-    await appendWorkflow(watcher.storePath, "mintAuthorization", first, 1);
-    for (const category of ["doubleSpend", "mintAuthorization"] as const)
-      expect(await captureJourneyWorkflowBaseline(reader, category)).toEqual(
-        await captureJourneyWorkflowBaseline(watcher.storePath, category),
-      );
-    const one = await reader.readWorkflowRows("doubleSpend", second);
-    expect([...one.keys()]).toEqual([second]);
-    expect(one.get(second)).toHaveLength(1);
-  });
-
-  it("fails on a journaled workflow of another deployment", async () => {
-    const watcher = await recordedWatcher();
-    await appendWorkflow(watcher.storePath, "doubleSpend", "12".repeat(28), 1);
-    await appendWorkflow(
-      watcher.storePath,
-      "doubleSpend",
-      "34".repeat(28),
-      1,
-      "cd".repeat(32),
-    );
-    await expect(
-      watcher.reader().readWorkflowRows("doubleSpend"),
-    ).rejects.toThrow(/workflow row outside this deployment/u);
-  });
-
-  it("opens a live WAL store read-only, leaving its files as they were", async () => {
-    const watcher = await recordedWatcher();
-    const live = join(watcher.root, "live.sqlite");
-    const first = "12".repeat(28);
-    const second = "34".repeat(28);
-    await appendWorkflow(live, "doubleSpend", first, 1);
-    // The watcher holds its store open: the next workflow stays in the WAL.
-    const writer = new DatabaseSync(live);
-    try {
-      writer.prepare("SELECT count(*) FROM sqlite_master").get();
-      await appendWorkflow(live, "doubleSpend", second, 1);
-      await copyFile(live, watcher.storePath);
-      await copyFile(`${live}-wal`, `${watcher.storePath}-wal`);
-    } finally {
-      writer.close();
-    }
-    const files = [watcher.storePath, `${watcher.storePath}-wal`];
-    const before = await Promise.all(files.map((path) => readFile(path)));
-    expect(before[1].length).toBeGreaterThan(0);
-    const rows = await watcher.reader().readWorkflowRows("doubleSpend");
-    expect([...rows.keys()]).toEqual([first, second]);
-    expect(await Promise.all(files.map((path) => readFile(path)))).toEqual(
-      before,
-    );
-  });
-
-  it("reads an absent journal or store as empty without creating it", async () => {
+  it("reads an absent journal as empty without creating it", async () => {
     const watcher = await recordedWatcher();
     const reader = watcher.reader();
     expect(await reader.readDecisions()).toEqual([]);
-    expect(await reader.readWorkflowRows("doubleSpend")).toEqual(new Map());
-    expect(existsSync(watcher.storePath)).toBe(false);
     expect(
       existsSync(join(watcher.journalDirectory, "watcher-journals.sqlite")),
     ).toBe(false);
@@ -214,9 +143,6 @@ describe("watcher evidence reader", () => {
     await expect(reader.readDecisions()).rejects.toThrow(
       /another process configuration/u,
     );
-    await expect(reader.readWorkflowRows("doubleSpend")).rejects.toThrow(
-      /another process configuration/u,
-    );
   });
 
   it("refuses malformed or foreign evidence in the reader's output", async () => {
@@ -236,9 +162,6 @@ describe("watcher evidence reader", () => {
       await expect(answering(output).readDecisions()).rejects.toThrow(
         /evidence/u,
       );
-      await expect(
-        answering(output).readWorkflowRows("doubleSpend"),
-      ).rejects.toThrow(/evidence/u);
     }
     for (const decision of [
       rawFaultDecision("56".repeat(28), "cd".repeat(32)),
@@ -249,66 +172,6 @@ describe("watcher evidence reader", () => {
       await expect(
         answering(envelope([decision])).readDecisions(),
       ).rejects.toThrow(/outside this deployment/u);
-    const header = "78".repeat(28);
-    const identity = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-      deploymentFingerprint: FINGERPRINT,
-      category: "doubleSpend",
-      target: { kind: "state_queue_header", headerHash: header },
-    };
-    const row = (
-      workflowId: string,
-      body: unknown = { workflowId, identity },
-    ) => ({
-      header_hash: header,
-      workflow_id: workflowId,
-      body: typeof body === "string" ? body : JSON.stringify(body),
-    });
-    await expect(
-      answering(
-        envelope([
-          row("a", {
-            workflowId: "a",
-            identity: { ...identity, deploymentFingerprint: "cd".repeat(32) },
-          }),
-        ]),
-      ).readWorkflowRows("doubleSpend"),
-    ).rejects.toThrow(/workflow row outside this deployment/u);
-    for (const body of [
-      { workflowId: "a" },
-      { workflowId: "b", identity },
-      {
-        workflowId: "a",
-        identity: { ...identity, category: "mintAuthorization" },
-      },
-      {
-        workflowId: "a",
-        identity: {
-          ...identity,
-          target: { kind: "state_queue_header", headerHash: "90".repeat(28) },
-        },
-      },
-      { workflowId: "a", identity: { ...identity, target: null } },
-      "not json",
-      "[]",
-    ])
-      await expect(
-        answering(envelope([row("a", body)])).readWorkflowRows("doubleSpend"),
-      ).rejects.toThrow(/malformed workflow row/u);
-    await expect(
-      answering(envelope([row("a"), row("b")])).readWorkflowRows("doubleSpend"),
-    ).rejects.toThrow(/more than one doubleSpend workflow/u);
-    await expect(
-      answering(envelope([row("a")])).readWorkflowRows(
-        "doubleSpend",
-        "90".repeat(28),
-      ),
-    ).rejects.toThrow(/malformed workflow row/u);
-    await expect(
-      answering(envelope([{ ...row("a"), body: 1 }])).readWorkflowRows(
-        "doubleSpend",
-      ),
-    ).rejects.toThrow(/malformed workflow row/u);
   });
 
   it("execs into the project's watcher service by project name alone", async () => {

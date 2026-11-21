@@ -6,7 +6,9 @@ import {
   FraudProofL1UnavailableError,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { assertWorkflowActuationPermitIdentity } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import { WorkflowFundingUnavailableError } from "@al-ft/midgard-fault-proofs/workflow/workflow-funding-shortfall";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS,
@@ -17,12 +19,6 @@ import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher
 import { WatcherRetainedDaTransportUnavailableError } from "../../src/storage/retained-da-transport-unavailable.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
-import {
-  cleanupFundingRecoveryFixtures,
-  walletAddress,
-} from "../support/fault-proof-funding-fixture.sources-for.js";
-
-afterEach(cleanupFundingRecoveryFixtures);
 
 const setup = setupFaultProofExecution;
 
@@ -30,49 +26,58 @@ const setup = setupFaultProofExecution;
 const DEADLINE = 1_767_225_600_000;
 const AWAITING = `validationTraceDispute awaiting counterparty until ${DEADLINE.toString()}`;
 
-describe("supervisor execution adapter with durable funding", () => {
-  it("restores the signed objective without querying fresh wallet inputs", async () => {
+describe("supervisor execution adapter", () => {
+  it("resumes the objective through its runner with the objective's own in-flight sends", async () => {
     const test = await setup();
-    const before = await test.fixture.records();
     expect(await test.execution.execute(test.input)).toMatchObject({
       kind: "pending",
       resume: "await_observation",
     });
-    expect(test.getUtxos).not.toHaveBeenCalled();
-    expect(test.getUtxosByOutRef).not.toHaveBeenCalled();
     expect(test.runOrResume).toHaveBeenCalledOnce();
-    expect((await test.fixture.records())[0]!.reservationId).toBe(
-      before[0]!.reservationId,
+    const [invocation] = test.runOrResume.mock.calls[0]!;
+    expect(invocation).toMatchObject({
+      category: "doubleSpend",
+      headerHash: test.input.job.headerHash,
+      decisionDigest: test.input.job.decisionDigest,
+      actuationPermit: test.controller.permit,
+      walletOnlySend: test.input.admission.walletOnlySend,
+    });
+    // The same part of the process's one in-flight set, run after run.
+    expect(invocation.sends).toBe(
+      test.inFlight.forObjective({
+        category: "doubleSpend",
+        headerHash: test.input.job.headerHash,
+      }),
     );
     expect(test.setAlert).not.toHaveBeenCalled();
   });
 
-  it("returns revoked authority before funding or runner work", async () => {
+  it("returns revoked authority before runner work", async () => {
     const test = await setup();
-    const before = await test.fixture.records();
     test.controller.revoke("new rollback generation");
     expect(await test.execution.execute(test.input)).toMatchObject({
       kind: "authority_revoked",
     });
-    expect(test.getUtxos).not.toHaveBeenCalled();
     expect(test.runOrResume).not.toHaveBeenCalled();
-    expect(await test.fixture.records()).toEqual(before);
     expect(test.setAlert).not.toHaveBeenCalled();
   });
 
   it("returns revoked authority when the decision is revoked while the run reads the chain", async () => {
     const test = await setup();
-    const journal = test.fixture.objectiveJournal();
-    const before = await journal.load(test.fixture.initial.workflowId);
-    test.fixture.chain.mockImplementation(async (txHash) => {
+    test.runOrResume.mockImplementationOnce(async (invocation) => {
       test.controller.revoke("new rollback generation");
-      return { kind: "confirmed", txHash };
+      // The run's next permit check, as at its next chain read.
+      assertWorkflowActuationPermitIdentity({
+        permit: invocation.actuationPermit,
+        category: invocation.category,
+        rollbackGeneration: "2",
+      });
+      throw new Error("a revoked run must not continue");
     });
     expect(await test.execution.execute(test.input)).toMatchObject({
       kind: "authority_revoked",
     });
     expect(test.runOrResume).toHaveBeenCalledOnce();
-    expect(await journal.load(test.fixture.initial.workflowId)).toEqual(before);
     expect(test.setAlert).not.toHaveBeenCalled();
   });
 
@@ -102,7 +107,6 @@ describe("supervisor execution adapter with durable funding", () => {
       result.kind === "stalled" ? "pending" : result.kind,
     );
     expect(test.setAlert).not.toHaveBeenCalled();
-    expect(test.getUtxos).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -138,7 +142,6 @@ describe("supervisor execution adapter with durable funding", () => {
     "waits on a fresh observation while a dispute awaits its counterparty $name",
     async ({ nowMs, responseDeadline, holds }) => {
       const test = await setup();
-      const before = await test.fixture.records();
       vi.useFakeTimers({ toFake: ["Date"], now: nowMs });
       const logged: string[] = [];
       const stderr = vi
@@ -174,7 +177,6 @@ describe("supervisor execution adapter with durable funding", () => {
         expect.objectContaining({ status: "reconciling" }),
       );
       expect(test.setAlert).not.toHaveBeenCalled();
-      expect(await test.fixture.records()).toEqual(before);
     },
   );
 
@@ -204,9 +206,9 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(test.execution.readiness()).toEqual([]);
   });
 
-  it("names a stalled session on readiness and logs it at error level until a later run journals progress", async () => {
+  it("names a stalled session on readiness and logs it at error level until a later run makes progress", async () => {
     const test = await setup();
-    const reason = `${FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED}: no journaled progress for 1800000 ms over 1800 polls; last pending: transaction for walk is pending`;
+    const reason = `${FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED}: no progress for 1800000 ms over 1800 polls; last pending: transaction for walk is pending`;
     const detail = `doubleSpend/${test.input.job.headerHash}: ${reason}`;
     test.runOrResume.mockResolvedValueOnce({
       kind: "pending",
@@ -234,8 +236,8 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(logged).toContain(
       `${JSON.stringify({ packageName: "midgard-watcher", level: "error", ...stalled })}\n`,
     );
-    // The next run waits on L1 at first, then its first journaled progress
-    // clears the alarm before the run ends.
+    // The next run waits on L1 at first, then its first progress clears the
+    // alarm before the run ends.
     const during: unknown[] = [];
     const progressThenPend = async (invocation: WorkflowAdapterRunnerInput) => {
       during.push(test.execution.readiness());
@@ -261,12 +263,12 @@ describe("supervisor execution adapter with durable funding", () => {
   });
 
   it("returns structured read-only provider transport failures for bounded backoff", async () => {
-    const test = await setup(true);
-    const before = await test.fixture.records();
+    const test = await setup();
     const cause = Object.assign(new Error("socket reset"), {
       code: "ECONNRESET",
     });
-    test.getUtxos.mockRejectedValueOnce(
+    // The run's wallet read met the transport failure.
+    test.runOrResume.mockRejectedValueOnce(
       new TypeError("fetch failed", { cause }),
     );
     const outcome = await test.execution.execute({
@@ -279,16 +281,17 @@ describe("supervisor execution adapter with durable funding", () => {
       resume: "backoff",
       retryAfterMs: 1000,
     });
-    expect(test.getUtxos).toHaveBeenCalledOnce();
-    expect(test.runOrResume).not.toHaveBeenCalled();
-    expect(await test.fixture.records()).toEqual(before);
+    expect(test.runOrResume).toHaveBeenCalledOnce();
     expect(test.setAlert).not.toHaveBeenCalled();
   });
 
   it("keeps initial funding scarcity pending without a failed-submission alert", async () => {
-    const test = await setup(true);
-    const before = await test.fixture.records();
-    test.getUtxos.mockResolvedValueOnce([]);
+    const test = await setup();
+    test.runOrResume.mockResolvedValueOnce({
+      kind: "pending",
+      resumeOnObservation: true,
+      reason: new WorkflowFundingUnavailableError().message,
+    });
     const outcome = await test.execution.execute({
       ...test.input,
       job: { ...test.input.job, mode: "run" },
@@ -298,35 +301,10 @@ describe("supervisor execution adapter with durable funding", () => {
       kind: "pending",
       resume: "await_observation",
     });
-    expect(test.runOrResume).not.toHaveBeenCalled();
-    expect(await test.fixture.records()).toEqual(before);
     // A funding pause, never a failed submission.
     expect(
       test.setAlert.mock.calls.map(([{ code, active }]) => ({ code, active })),
     ).toEqual([{ code: "prover_funding_unavailable", active: true }]);
-  });
-
-  it("backs off raw-source reconciliation outages without changing signed attempts or submitting", async () => {
-    const test = await setup();
-    const before = await test.fixture.records();
-    const entries = await test.fixture.journal.load(
-      test.fixture.initial.workflowId,
-    );
-    vi.mocked(test.fixture.adapter.reconcile).mockRejectedValueOnce(
-      new FraudProofL1UnavailableError("the follower has no cursor yet"),
-    );
-    expect(await test.execution.execute(test.input)).toMatchObject({
-      kind: "retryable",
-      resume: "backoff",
-      retryAfterMs: 1000,
-    });
-    expect(test.fixture.adapter.submit).not.toHaveBeenCalled();
-    expect(test.getUtxos).not.toHaveBeenCalled();
-    expect(test.setAlert).not.toHaveBeenCalled();
-    expect(await test.fixture.records()).toEqual(before);
-    expect(
-      await test.fixture.journal.load(test.fixture.initial.workflowId),
-    ).toEqual(entries);
   });
 
   it.each([
@@ -352,56 +330,28 @@ describe("supervisor execution adapter with durable funding", () => {
   ] as const)(
     "waits on %s met while building the next move, run after run",
     async (_label, failure, waiting) => {
-      const test = await setup(true);
-      // Plain coins a fresh reservation funds the move from.
-      test.fixture.walletUtxos.push(
-        ...[0, 1, 2, 3].map((outputIndex) => ({
-          txHash: "a1".repeat(32),
-          outputIndex,
-          address: walletAddress,
-          assets: { lovelace: 2_000_000_000n },
-        })),
-      );
-      test.getUtxosByOutRef.mockImplementation(async (...args: unknown[]) => {
-        const [refs] = args as [
-          readonly { txHash: string; outputIndex: number }[],
-        ];
-        return test.fixture.walletUtxos.filter((utxo) =>
-          refs.some(
-            ({ txHash, outputIndex }) =>
-              utxo.txHash === txHash && utxo.outputIndex === outputIndex,
-          ),
-        );
-      });
-      vi.mocked(test.fixture.adapter.observe).mockResolvedValue({
-        kind: "action_required",
-        action: { actionId: "step", input: { actionKind: "proof.step" } },
-      });
-      vi.mocked(test.fixture.adapter.preflight).mockImplementation(async () => {
-        throw failure();
-      });
-      // A run admitted to fund a fresh move.
+      const test = await setup();
+      // A run admitted to build a fresh move.
       const input = {
         ...test.input,
         job: { ...test.input.job, mode: "run" },
         admission: test.runAdmission,
       } as const;
-      let before: unknown;
+      test.runOrResume.mockImplementation(async () => {
+        throw failure();
+      });
       for (let run = 1; run <= 3; run += 1) {
         expect(await test.execution.execute(input)).toMatchObject(waiting);
-        expect(test.fixture.adapter.preflight).toHaveBeenCalledTimes(run);
-        // The first run reserves the move's inputs; no later run moves them.
-        if (run === 1) before = await test.fixture.records();
-        else expect(await test.fixture.records()).toEqual(before);
+        expect(test.runOrResume).toHaveBeenCalledTimes(run);
       }
-      expect(test.fixture.adapter.submit).not.toHaveBeenCalled();
+      // Nothing was sent, so the objective holds no in-flight transaction.
+      expect(
+        test.inFlight.sending({
+          category: "doubleSpend",
+          headerHash: test.input.job.headerHash,
+        }),
+      ).toBe(false);
       expect(test.setAlert).not.toHaveBeenCalled();
-      const events = (
-        await test.fixture.journal.load(test.fixture.initial.workflowId)
-      ).map(({ event }) => event);
-      expect(events).not.toContainEqual(
-        expect.objectContaining({ actionId: "step" }),
-      );
     },
   );
 
@@ -429,7 +379,6 @@ describe("supervisor execution adapter with durable funding", () => {
     "backs off %s from the provider layer without submitting",
     async (_label, failure) => {
       const test = await setup();
-      const before = await test.fixture.records();
       // The error escapes the workflow as the provider raised it.
       test.runOrResume.mockRejectedValueOnce(failure());
       expect(await test.execution.execute(test.input)).toMatchObject({
@@ -437,44 +386,36 @@ describe("supervisor execution adapter with durable funding", () => {
         resume: "backoff",
         retryAfterMs: 1000,
       });
-      expect(test.fixture.adapter.submit).not.toHaveBeenCalled();
       expect(test.setAlert).not.toHaveBeenCalled();
-      expect(await test.fixture.records()).toEqual(before);
     },
   );
 
-  it("passes a missing recorded decision to the supervisor's hold without a failure alert", async () => {
+  it("passes a held objective to the supervisor's hold without a failure alert", async () => {
     const test = await setup();
-    const before = await test.fixture.records();
     const missing = new WatcherProofDecisionMissingError({
       kind: "objective",
       category: "doubleSpend",
-      headerHash: test.fixture.old.headerHash,
-      decisionDigest: test.fixture.old.decisionDigest,
-      detail: "workflow recovery has no unique original fault decision",
+      headerHash: test.fresh.headerHash,
+      decisionDigest: test.fresh.decisionDigest,
+      detail: `doubleSpend/${test.fresh.headerHash}`,
+      readiness: "fault_proof_start_deadline_passed",
     });
     test.runOrResume.mockRejectedValueOnce(missing);
     await expect(test.execution.execute(test.input)).rejects.toBe(missing);
     expect(test.setAlert).not.toHaveBeenCalled();
-    expect(await test.fixture.records()).toEqual(before);
   });
 
-  it("backs off completed verification transport outages without funding or journal changes", async () => {
+  it("backs off completed verification transport outages", async () => {
     const test = await setup();
-    const entries = await test.fixture.journal.load(
-      test.fixture.initial.workflowId,
-    );
-    const before = await test.fixture.records();
     test.verifyCompleted.mockRejectedValueOnce(
       new FraudProofL1UnavailableError("the follower has no cursor yet"),
     );
     const request = {
       job: test.input.job,
       actuationPermit: test.controller.permit,
-      entries,
       terminal: fundingTerminal(
-        test.fixture.old.headerHash,
-        test.fixture.transactionHash,
+        test.fresh.headerHash,
+        "aa".repeat(32),
         "bb".repeat(32),
       ),
     };
@@ -483,12 +424,7 @@ describe("supervisor execution adapter with durable funding", () => {
       resume: "backoff",
       retryAfterMs: 1000,
     });
-    expect(test.getUtxos).not.toHaveBeenCalled();
     expect(test.runOrResume).not.toHaveBeenCalled();
-    expect(await test.fixture.records()).toEqual(before);
-    expect(
-      await test.fixture.journal.load(test.fixture.initial.workflowId),
-    ).toEqual(entries);
     test.verifyCompleted.mockRejectedValueOnce(
       new Error("authenticated terminal mismatch"),
     );

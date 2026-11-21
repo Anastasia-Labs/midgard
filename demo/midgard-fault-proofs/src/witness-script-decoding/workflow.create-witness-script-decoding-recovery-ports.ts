@@ -28,7 +28,8 @@ import type { FieldCarriageRequirement } from "../workflow/field-carriage-prereq
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
 import { type WitnessScriptDecodingJournalEntry } from "./witness-script-decoding.js";
 import { createManifestBoundWitnessScriptDecodingSubmission } from "./workflow.create-manifest-bound-witness-script-decoding-submission.js";
@@ -160,7 +161,7 @@ export const createWitnessScriptDecodingRecoveryPorts = (
     category,
     prepare: material.prepare,
     validatePreparedArtifact: material.validatePreparedArtifact,
-    capture: async ({ action, artifact, entries }) => {
+    capture: async ({ action, artifact, holder }) => {
       const input = cursorFamilyActionInput({ category, action });
       if (input.stage === "remove")
         return await captureCursorRemoval({
@@ -193,7 +194,11 @@ export const createWitnessScriptDecodingRecoveryPorts = (
       const submission = createManifestBoundWitnessScriptDecodingSubmission({
         ownOutputs: workflowFieldCarriageOwnOutputs({
           category,
-          entries,
+          materials: proofMaterialsAccess({
+            signer: config.signer,
+            lucid: config.lucid,
+            holder,
+          }),
         }),
         config,
         observe: async () =>
@@ -210,7 +215,7 @@ export const createWitnessScriptDecodingRecoveryPorts = (
           source: admitted.source,
         }),
       });
-      const { transaction } = await journaledStepTransaction(
+      const { transaction } = await workflowStepTransaction(
         await submission.submit(familyAction, admitted.evidence),
         `${category} ${familyAction}`,
       );

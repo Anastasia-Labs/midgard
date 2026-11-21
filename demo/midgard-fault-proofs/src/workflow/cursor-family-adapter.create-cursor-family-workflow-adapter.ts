@@ -1,9 +1,5 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
-import type {
-  StateQueueMutationLease,
-  StateQueueMutationLeaseCoordinator,
-} from "../remove-fraudulent-block.js";
 import { WorkflowActionChangedError } from "./action-changed.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import {
@@ -11,8 +7,6 @@ import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyCapturedAction,
   type CursorFamilyTransactionPort,
-  mutationLeaseRecovery,
-  parseMutationLeaseRecovery,
   preflightOf,
   requiresMutationLease,
   sameJson,
@@ -20,7 +14,6 @@ import {
 import {
   cursorFamilyObservation,
   type CursorFamilySpec,
-  reconcileCursorFamilyAction,
 } from "./cursor-family-state.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
@@ -35,11 +28,10 @@ import {
   type FraudProofWorkflowAction,
   type FraudProofWorkflowObservation,
 } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
-import { reconcileQueueLeaseFamily } from "./queue-lease-family-reconcile.js";
 import { submitCapturedTransaction } from "./transaction-boundary.js";
 
 /**
- * Crash-safe mechanics for explicitly specified bounded-step state
+ * Workflow mechanics for explicitly specified bounded-step state
  * machines. This is not a production admission factory: each family must
  * still provide a fixed manifest-bound transaction port and admitted replay.
  */
@@ -49,13 +41,11 @@ export const createCursorFamilyWorkflowAdapter = <
   spec,
   l1,
   transactions,
-  stateQueueMutationLeaseCoordinator,
   refineAction,
 }: {
   readonly spec: CursorFamilySpec<Category>;
   readonly l1: FraudProofFamilyL1ObservationPort<Category>;
   readonly transactions: CursorFamilyTransactionPort<Category>;
-  readonly stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   /** Family grammar fields derived from this same authenticated observation.
    * Canonical cursor identity and spent references cannot be overridden. */
   readonly refineAction?: (input: {
@@ -76,7 +66,6 @@ export const createCursorFamilyWorkflowAdapter = <
     throw new Error(`${category} cursor-family ports changed identity`);
   }
   const prepared = new Map<string, CursorFamilyCapturedAction>();
-  const leaseByTxHash = new Map<string, StateQueueMutationLease>();
   const current = async (
     headerHash: string,
     artifact: JournalJsonObject,
@@ -184,7 +173,7 @@ export const createCursorFamilyWorkflowAdapter = <
         await current(identity.target.headerHash, artifact, reconciliationOnly)
       ).workflow;
     },
-    preflight: async ({ identity, workflowId, artifact, action, entries }) => {
+    preflight: async ({ identity, workflowId, artifact, action }) => {
       if (
         identity.category !== category ||
         identity.target.kind !== "state_queue_header"
@@ -209,7 +198,10 @@ export const createCursorFamilyWorkflowAdapter = <
       const captured = await transactions.capture({
         action,
         artifact,
-        entries,
+        holder: {
+          workflowId,
+          objective: { category, headerHash: identity.target.headerHash },
+        },
       });
       if (
         requiresMutationLease(action) !==
@@ -227,17 +219,12 @@ export const createCursorFamilyWorkflowAdapter = <
           category,
           action,
           transaction: captured.transaction,
-          ...(captured.mutationLease === undefined
-            ? {}
-            : {
-                durableRecovery: mutationLeaseRecovery(captured.mutationLease),
-              }),
         });
         prepared.set(key, captured);
         return preflight;
       } catch (cause) {
         await captured.mutationLease?.fail(
-          `preflight admission failed before durable intent: ${String(cause)}`,
+          `preflight admission failed before submission: ${String(cause)}`,
         );
         throw cause;
       }
@@ -251,80 +238,17 @@ export const createCursorFamilyWorkflowAdapter = <
       ) {
         throw new Error(`${category} submit has no exact captured body`);
       }
-      const recovery = parseMutationLeaseRecovery(preflight.durableRecovery);
-      if (
-        (captured.mutationLease === undefined) !== (recovery === undefined) ||
-        (captured.mutationLease !== undefined &&
-          (captured.mutationLease.token !== recovery?.token ||
-            captured.mutationLease.source !== recovery.source))
-      ) {
-        throw new Error(`${category} cached lease differs from durable intent`);
-      }
       try {
-        if (captured.mutationLease !== undefined) {
-          leaseByTxHash.set(preflight.txHash, captured.mutationLease);
-        }
         return {
           kind: "submitted",
           txHash: await submitCapturedTransaction(captured.transaction),
         };
       } finally {
         prepared.delete(key);
+        // The runner follows the submitted transaction on chain, so the
+        // lease ends with its submission.
+        await captured.mutationLease?.release();
       }
-    },
-    reconcile: async ({
-      identity,
-      action,
-      txHash,
-      durableRecovery,
-      signedTransactionCborHex,
-      authorizeResubmission,
-    }) => {
-      if (
-        identity.category !== category ||
-        identity.target.kind !== "state_queue_header"
-      ) {
-        throw new Error(`${category} reconcile changed workflow identity`);
-      }
-      const headerHash = identity.target.headerHash;
-      const recovery = parseMutationLeaseRecovery(durableRecovery);
-      if (requiresMutationLease(action) !== (recovery !== undefined)) {
-        return {
-          kind: "conflict",
-          reason: `${category} durable lease disagrees with removal topology`,
-        };
-      }
-      const observed = await l1.observe({ headerHash });
-      return await reconcileQueueLeaseFamily({
-        category,
-        ...(txHash === undefined ? {} : { txHash }),
-        ...(recovery === undefined ? {} : { recovery }),
-        coordinator: stateQueueMutationLeaseCoordinator,
-        leaseByTxHash,
-        l1,
-        ...(signedTransactionCborHex === undefined
-          ? {}
-          : { signedTransactionCborHex }),
-        ...(authorizeResubmission === undefined
-          ? {}
-          : { authorizeResubmission }),
-        read: async (recoverUnconfirmedTransaction) =>
-          await reconcileCursorFamilyAction({
-            spec,
-            headerHash,
-            action,
-            ...(txHash === undefined ? {} : { txHash }),
-            provenance: observed.provenance,
-            stage: observed.stage,
-            recoverUnconfirmedTransaction,
-            transactionConfirmed: async (hash, removal) =>
-              await l1.transactionConfirmed({
-                headerHash,
-                txHash: hash,
-                ...(removal === undefined ? {} : { removal }),
-              }),
-          }),
-      });
     },
   };
   return Object.freeze(adapter);

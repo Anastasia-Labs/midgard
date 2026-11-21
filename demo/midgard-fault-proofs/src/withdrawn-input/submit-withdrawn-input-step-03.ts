@@ -32,7 +32,7 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
@@ -54,7 +54,7 @@ export type WithdrawnInputStep03Build = {
 };
 
 export type SubmitWithdrawnInputStep03Result =
-  UnjournaledSubmission<WithdrawnInputStep03Build>;
+  OutsideWorkflowSubmission<WithdrawnInputStep03Build>;
 
 export const buildWithdrawnInputStep03 = async ({
   lucid,

@@ -20,12 +20,10 @@ import "./retained-da.js";
 import "./stage-timing.js";
 import "./workflow-binding-preflight.js";
 import "./watcher-evidence-reader.js";
-import "./journey-session.capture-journey-workflow-baseline.js";
 import "./journey-session.open-journey-session-core.js";
 import "./journey-session.open-journey-session.js";
 import "./journey-session.open-attached-journey-session.js";
 import "./journey-session.types.js";
-export { captureJourneyWorkflowBaseline } from "./journey-session.capture-journey-workflow-baseline.js";
 export {
   assertAttachedWatcherStatus,
   openAttachedJourneySession,

@@ -54,7 +54,6 @@ import { submitTransitionTraceProofFromCborFile } from "./submit-transition-trac
 import { submitZeroInputStep01FromFiles } from "./submit-zero-input-step-01.submit-zero-input-step01-from-files.js";
 import { submitZeroInputStep02FromFiles } from "./submit-zero-input-step-02.submit-zero-input-step02-v1.js";
 import {
-  directoryWorkflowJournal,
   runFraudProofWorkflowCli,
   workflowReadinessReport,
 } from "./workflow/cli.js";
@@ -84,11 +83,9 @@ export const main = async (): Promise<void> => {
     if (args.workflowRuntimeConfigPath === undefined)
       throw new Error(`Missing required --workflow-runtime-config.\n${usage}`);
     await runFraudProofWorkflowCli({
-      mode: args.command === "run-workflow" ? "run" : "resume",
       category: args.fraudCategory,
       deploymentFingerprint: args.deploymentFingerprint,
       headerHash: args.headerHash,
-      journal: directoryWorkflowJournal(args.workflowJournalDir, usage),
       runtimeConfigPath: args.workflowRuntimeConfigPath,
       walletOnlySend,
     });

@@ -71,22 +71,41 @@ const carries = (
   return false;
 };
 
-/** Our runner over the same journal, restarted against a source that lags:
- * a case history that has not yet seen the Defend opening the standing
+/** Our runner restarted in a fresh process against a source that lags: a
+ * case history that has not yet seen the Defend opening the standing
  * thread, or a publication observer that does not yet authenticate our
  * publication though the provider shows it. */
 const lagging = (lag: "thread" | "publication") => {
-  const { scene, deployment, runner, caseUnit } = dispute;
+  const { scene, deployment, caseUnit } = dispute;
   const authentic = sceneCaseHistory(scene);
   return makeRunner(scene, {
     deployment,
-    journal: runner.journal,
     caseHistory: {
       transactions: async (input) => {
         const transactions = await authentic.transactions(input);
         return lag === "thread" && input.caseUnit === caseUnit
           ? transactions.filter((transaction) => !carries(open, transaction))
           : transactions;
+      },
+      // The capture our own view reads lags the same way: none of its
+      // histories shows a transaction carrying the standing thread.
+      snapshot: async (input) => {
+        const captured = await authentic.snapshot!(input);
+        if (lag !== "thread") return captured;
+        const transactions = captured.transactions.filter(
+          (transaction) => !carries(open, transaction),
+        );
+        const seen = new Set(transactions.map(({ txHash }) => txHash));
+        return {
+          ...captured,
+          transactions,
+          history: captured.history.map((entry) => ({
+            ...entry,
+            transactionHashes: entry.transactionHashes.filter((txHash) =>
+              seen.has(txHash),
+            ),
+          })),
+        };
       },
     },
     publications: (observer) => ({

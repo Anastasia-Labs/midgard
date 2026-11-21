@@ -13,7 +13,6 @@ import { describe, expect, it } from "vitest";
 import { buildInit } from "../src/submit-init.submit-init.js";
 import { createDoubleSpendRawL1ObservationPort } from "../src/workflow/double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
 import type { ManifestBoundDoubleSpendWorkflow } from "../src/workflow/double-spend-adapter.preflight-of.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
@@ -39,12 +38,15 @@ import {
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { emulatorSignedTransactionRecovery } from "./support/emulator-signed-recovery.js";
+import { ownThreadCancellerOf } from "./support/own-thread-canceller.js";
 import {
   expectResolvedWithReclaim,
   walletLovelace,
 } from "./support/own-thread-reclaim-expectations.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
   DEPLOYMENT_FINGERPRINT,
   makeAdapter,
@@ -207,7 +209,7 @@ const scene = async () => {
         ...port,
         observeSignedTransaction: async () => {
           throw new Error(
-            "no signed bytes are recorded without a funding reservation",
+            "the workflow follows its sends through the terminal verifier",
           );
         },
       },
@@ -218,28 +220,29 @@ const scene = async () => {
     },
     adapter: base,
   } as unknown as ManifestBoundDoubleSpendWorkflow);
-  const journal = new MemoryFraudProofWorkflowJournalStore();
+  // One watcher process across every run of the scene.
+  const process = createTestWorkflowProcess();
   const run = async (): Promise<FraudProofWorkflowRunResult> =>
     await runAdmittedFraudProofWorkflow({
       walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       category: "doubleSpend",
       headerHash,
-      evidenceBinding: {
-        route: "canonical_block",
-        headerHash,
-        payloadEnvelopeSha256: "77".repeat(32),
-        payloadSha256: "78".repeat(32),
-        l1BlockHash: "79".repeat(32),
-        l1Slot: "1",
-      },
       prepareFamilyArtifact: async () => ({}),
       registry: createFraudProofWorkflowRegistry({
         adapters: [workflow.adapter],
         launchScope: ["doubleSpend"],
       }),
-      journal,
-      terminalVerifier,
+      run: process.run({ category: "doubleSpend", headerHash }),
+      // The workflow follows each send of ours by where it stands at the
+      // emulator's tip, final once it is past the release horizon.
+      terminalVerifier: {
+        ...terminalVerifier,
+        observeSignedTransaction: emulatorSignedTransactionRecovery(
+          h.emulator,
+          FINAL_DEPTH,
+        ).observeSignedTransaction,
+      },
       releaseFinality,
     });
   return {
@@ -302,8 +305,97 @@ describe("double-spend: our thread on a header another record removed", () => {
       });
 
       s.h.emulator.awaitBlock(FINAL_DEPTH);
-      expectResolvedWithReclaim(await s.run(), thread, reclaimTxHash);
+      expectResolvedWithReclaim(
+        await s.run(),
+        thread.threadOutRef,
+        reclaimTxHash,
+      );
       expect(sent).toHaveLength(1);
+    } finally {
+      s.restore();
+    }
+  }, 900_000);
+
+  it("the workflow's reclaim and the header-free cancel of one thread: one lands, the other settles quietly", async () => {
+    const s = await scene();
+    try {
+      s.h.emulator.awaitBlock(FINAL_DEPTH);
+      s.removalAt.depth = FINAL_DEPTH;
+      const { standing } = await s.port.observeOwnThreads({
+        headerHash: s.headerHash,
+      });
+      const thread = standing!;
+      const sent: string[] = [];
+      const submit = s.h.emulator.submitTx.bind(s.h.emulator);
+      s.h.emulator.submitTx = async (cbor: string) => {
+        sent.push(cbor);
+        return await submit(cbor);
+      };
+      const before = await walletLovelace(s.h.proverLucid);
+      expect((await s.run()).kind).toBe("pending");
+      expect(sent).toHaveLength(1);
+
+      // The sweep reaches the same thread while the reclaim is pending. The
+      // chain still shows the thread and the reclaim holds the wallet's one
+      // fee coin, so this attempt is left for a later one; nothing is sent.
+      const { canceller } = ownThreadCancellerOf(s.h);
+      const subject = {
+        threadOutRef: thread.threadOutRef,
+        categoryId: s.h.catalogue.categories.doubleSpend.categoryId,
+        paymentScriptHash:
+          s.h.contracts.fraudProofContracts.doubleSpend.steps[0]!
+            .spendingScriptHash,
+      };
+      expect(
+        await canceller.cancel({ subject, stillDue: async () => true }),
+      ).toMatchObject({ kind: "unfunded" });
+      expect(sent).toHaveLength(1);
+
+      s.h.emulator.awaitBlock();
+      const reclaim = CML.Transaction.from_cbor_hex(sent[0]!);
+      expect(await walletLovelace(s.h.proverLucid)).toBe(
+        before + BigInt(thread.lovelace) - reclaim.body().fee(),
+      );
+      // Once it has landed, the later attempt finds the thread gone.
+      expect(
+        await canceller.cancel({ subject, stillDue: async () => true }),
+      ).toEqual({ kind: "spent_elsewhere" });
+      expect(sent).toHaveLength(1);
+    } finally {
+      s.restore();
+    }
+  }, 900_000);
+
+  it("the header-free cancel landing first leaves the workflow nothing to send", async () => {
+    const s = await scene();
+    try {
+      s.h.emulator.awaitBlock(FINAL_DEPTH);
+      s.removalAt.depth = FINAL_DEPTH;
+      const { standing } = await s.port.observeOwnThreads({
+        headerHash: s.headerHash,
+      });
+      const { canceller } = ownThreadCancellerOf(s.h);
+      expect(
+        await canceller.cancel({
+          subject: {
+            threadOutRef: standing!.threadOutRef,
+            categoryId: s.h.catalogue.categories.doubleSpend.categoryId,
+            paymentScriptHash:
+              s.h.contracts.fraudProofContracts.doubleSpend.steps[0]!
+                .spendingScriptHash,
+          },
+          stillDue: async () => true,
+        }),
+      ).toMatchObject({ kind: "submitted" });
+      s.h.emulator.awaitBlock(FINAL_DEPTH);
+      const sent: string[] = [];
+      s.h.emulator.submitTx = async (cbor: string) => {
+        sent.push(cbor);
+        throw new Error("the workflow has nothing of ours to send");
+      };
+      const result = await s.run();
+      expect(sent).toEqual([]);
+      expect(result).toMatchObject({ kind: "resolved_by_another_record" });
     } finally {
       s.restore();
     }

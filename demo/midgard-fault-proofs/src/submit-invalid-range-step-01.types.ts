@@ -6,7 +6,7 @@ import {
 import { type SubmitProviderConfig } from "./runtime.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 export type SubmitInvalidRangeStep01CliConfig = SubmitProviderConfig & {
@@ -52,7 +52,7 @@ export type InvalidRangeStep01Build = {
 };
 
 export type SubmitInvalidRangeStep01Result =
-  UnjournaledSubmission<InvalidRangeStep01Build>;
+  OutsideWorkflowSubmission<InvalidRangeStep01Build>;
 
 export type InvalidRangeStep01Layout = {
   readonly inputIndex: bigint;

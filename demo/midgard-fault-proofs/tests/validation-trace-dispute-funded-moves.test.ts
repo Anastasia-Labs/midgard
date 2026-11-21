@@ -1,7 +1,6 @@
 /** The validation-trace dispute's thread moves under the watcher's prover
  * funding, on the emulator. A defender opens a thread on our case with a
- * scripted trace and reveals. Our reveal lands under the funding permit,
- * and when the defender answers it before the watcher looks again, the
+ * scripted trace and reveals. Our reveal lands, and when the defender answers it before the watcher looks again, the
  * watcher still confirms that reveal from its own signed bytes and makes
  * its next one. The defender then goes silent: once its clock ends the
  * watcher times the thread out and closes it into our case, minting the
@@ -10,9 +9,9 @@
  * block's operator, is not slashed by that receipt before the case closes.
  * A move whose fee fits under
  * the per-move cap is paid from the thread it spends; the timeout, priced
- * over the cap, is paid entirely from our plain-Ada wallet through the
- * funding permit, and its successor keeps all of the thread's lovelace. The
- * wallet otherwise lends plain-Ada collateral only, from its reserved coins.
+ * over the cap, is paid entirely from our plain-Ada wallet, and its
+ * successor keeps all of the thread's lovelace. The wallet otherwise lends
+ * plain-Ada collateral only.
  *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
@@ -35,7 +34,7 @@ import {
   confirmedMoves,
   type FundedMoves,
   liveFundedThread,
-  moveIntents,
+  moveSends,
   openDefendedFundedCase,
   passDefenderDeadline,
   recordedOutput,
@@ -69,7 +68,7 @@ const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
 
 const hashesOf = (kind: string) =>
   journey.moves
-    .filter(({ authority }) => authority.kind === kind)
+    .filter((move) => move.kind === kind)
     .map(({ signed }) => signed.toHash());
 
 /** A move under the cap spends no wallet output from before the first
@@ -104,7 +103,7 @@ const expectWalletOnlyLendsCollateral = () => {
   }
 };
 
-describe("validation-trace dispute thread moves under the prover funding permit", () => {
+describe("validation-trace dispute thread moves under the watcher's prover funding", () => {
   beforeAll(async () => {
     journey = await openDefendedFundedCase();
     wallet = await walletOutRefs(journey);
@@ -152,17 +151,16 @@ describe("validation-trace dispute thread moves under the prover funding permit"
       const reveals = hashesOf("reveal");
       expect(reveals).toHaveLength(2);
       expect(
-        confirmedMoves(result).filter(({ stage }) => stage === "reveal"),
+        (await confirmedMoves(dispute)).filter(
+          ({ stage }) => stage === "reveal",
+        ),
       ).toStrictEqual(
         reveals.map((hash) => ({ stage: "reveal", outputs: [`${hash}#0`] })),
       );
-      // One signed attempt per reveal, nothing sent again.
+      // One signed transaction per reveal, nothing sent again.
       expect(
-        moveIntents(result, "reveal").map(({ attempt, txHash }) => [
-          attempt,
-          txHash,
-        ]),
-      ).toStrictEqual(reveals.map((hash) => [1, hash]));
+        moveSends(dispute, "reveal").map(({ txHash }) => txHash),
+      ).toStrictEqual(reveals);
       expect(dispute.rebroadcasts).toStrictEqual([]);
       const live = await liveFundedThread(journey);
       expect(live.txHash).toBe(reveals[1]);
@@ -206,13 +204,14 @@ describe("validation-trace dispute thread moves under the prover funding permit"
       const [close] = hashesOf("close_thread");
       // With its only thread closed and its defense deadline passed, the
       // case closes Convicted; no slash by the thread's receipt precedes it.
+      const confirmed = await confirmedMoves(dispute);
+      expect(confirmed.map(({ stage }) => stage).slice(-3)).toStrictEqual([
+        "timeout",
+        "close_thread",
+        "close",
+      ]);
       expect(
-        confirmedMoves(result)
-          .map(({ stage }) => stage)
-          .slice(-3),
-      ).toStrictEqual(["timeout", "close_thread", "close"]);
-      expect(
-        confirmedMoves(result).filter(
+        confirmed.filter(
           ({ stage }) => stage === "timeout" || stage === "close_thread",
         ),
       ).toStrictEqual([
@@ -221,19 +220,16 @@ describe("validation-trace dispute thread moves under the prover funding permit"
       ]);
       expect(
         [
-          ...moveIntents(result, "timeout"),
-          ...moveIntents(result, "close-thread"),
-        ].map(({ attempt, txHash }) => [attempt, txHash]),
-      ).toStrictEqual([
-        [1, timeout],
-        [1, close],
-      ]);
+          ...moveSends(dispute, "timeout"),
+          ...moveSends(dispute, "close-thread"),
+        ].map(({ txHash }) => txHash),
+      ).toStrictEqual([timeout, close]);
       const { chain } = scene;
       expect(await liveThread(scene, unit)).toBeUndefined();
       const closeOutputs = Array.from(
         {
           length: journey.moves
-            .find(({ authority }) => authority.kind === "close_thread")!
+            .find(({ kind }) => kind === "close_thread")!
             .signed.toTransaction()
             .body()
             .outputs()
@@ -287,9 +283,12 @@ describe("validation-trace dispute thread moves under the prover funding permit"
           (silent.assets.lovelace ?? 0n) - closeFee.paid - RECEIPT_LOVELACE,
       });
       expect(leftover!.datum).toBe(Data.to(new Constr(0, [timeout!, 0n])));
-      expect(
-        journey.moves.map(({ authority }) => authority.kind),
-      ).toStrictEqual(["reveal", "reveal", "timeout", "close_thread"]);
+      expect(journey.moves.map(({ kind }) => kind)).toStrictEqual([
+        "reveal",
+        "reveal",
+        "timeout",
+        "close_thread",
+      ]);
       expect(
         journey.moves.map(({ thread }) => outRefOf(thread)).slice(2),
       ).toStrictEqual([outRefOf(silent), `${timeout!}#0`]);
@@ -325,7 +324,7 @@ describe("validation-trace dispute thread moves under the prover funding permit"
       reportFit(
         `funded ${kind}`,
         journey.moves
-          .filter(({ authority }) => authority.kind === kind)
+          .filter((move) => move.kind === kind)
           .map(({ signed }) => signed.toCBOR()),
       );
   });

@@ -216,7 +216,6 @@ describe("validation-trace dispute runner: removal of a block whose operator was
       signer,
       deployment,
       removal: removal!.removal,
-      headerHash,
       receiptOutRef: outRefOf(receipt!),
     });
     const inputs = transaction.signed.toTransaction().body().inputs();

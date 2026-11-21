@@ -66,7 +66,9 @@ export const digestOf = (datumCbor: string) =>
  * under the tip when given, read at each observation, else at the tip. */
 export const fundedStagingScene = ({
   releaseDepth,
-}: { readonly releaseDepth?: () => number } = {}) => {
+}: {
+  readonly releaseDepth?: () => number;
+} = {}) => {
   const at = {} as {
     scene: Scene;
     dispute: FundedDispute;
@@ -106,13 +108,12 @@ export const fundedStagingScene = ({
     await drainProver(scene.h as never, FUNDED);
     at.dispute = await openFundedDispute(scene, {
       oneStep: oneStep!,
-      liveParameters: true,
       ...(releaseDepth === undefined ? {} : { releaseDepth }),
     });
     const opened = await turnUntil(at.dispute, VALIDATION_TRACE_CASE_OPEN);
     if (opened.result.kind !== "pending")
       throw new Error(`the case did not open: ${opened.history.join("\n")}`);
-    const { caseOutput, bond } = await caseAndBond(scene, opened.result);
+    const { caseOutput, bond } = await caseAndBond(scene, at.dispute);
     at.bond = bond;
     at.caseUnit = Object.keys(caseOutput.assets).find((unit) =>
       unit.startsWith(scene.chain.case.policyId),

@@ -13,9 +13,9 @@
  * reference reads our publications of it (carried-field.ts), and
  * a staged builtin step's operands are staged before it (one-step-staging.ts).
  * The staging sits in front of our thread's reclaim (own-thread-reclaim.ts).
- * Every output of ours is claimed by out-ref from our own signed body before
- * submission and read back by that out-ref; chain state, not the journal's
- * idea of the step, decides the next action. A thread move needs the claim
+ * Our own outputs are read from the chain (own-view.chain.ts), with the
+ * runner's in-flight transactions in front of it; chain state decides the
+ * next action. A thread move needs the claim
  * material, which each run reads back as it prepares or validates its
  * artifact. */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
@@ -31,7 +31,6 @@ import {
   type FraudProofWorkflowAdapterContext,
   type FraudProofWorkflowObservation,
 } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
-import { readOwnOutputs } from "../workflow/own-outputs.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "../workflow/raw-l1-publication-observation.js";
 import {
   bindWorkflowPreflightTransaction,
@@ -41,12 +40,9 @@ import {
   submitCapturedTransaction,
 } from "../workflow/transaction-boundary.js";
 import {
-  confirmedValidationTraceStages,
-  isClaimedOutput,
   parseValidationTraceAction,
   validationTraceAction,
 } from "./actions.js";
-import { validationTraceArtifactOf } from "./artifact.js";
 import { validationTraceCarriedFields } from "./carried-field.js";
 import type { ValidationTraceCaseHistory } from "./case-history.js";
 import { validationTraceCaseOrigin } from "./case-origin.js";
@@ -64,7 +60,11 @@ import {
   isValidationTraceBuildPassedOn,
 } from "./move-dispatch.js";
 import { validationTraceStaging } from "./one-step-staging.js";
-import { validationTraceReconcile } from "./reconcile.js";
+import { validationTraceChainOwnView } from "./own-view.chain.js";
+import type {
+  ValidationTraceOwnView,
+  ValidationTraceOwnViewOf,
+} from "./own-view.js";
 import {
   createValidationTraceRemoval,
   VALIDATION_TRACE_CASE_CONVICTED,
@@ -75,7 +75,7 @@ import {
   heldClaimBuildAlarm,
   validationTraceStageUnbuilt,
 } from "./stage-unbuilt.js";
-import { observeValidationTraceThreads } from "./thread-observation.js";
+import { observeValidationTraceCase } from "./thread-observation.js";
 import {
   type CapturedValidationTraceStage,
   captureValidationTraceInit,
@@ -85,18 +85,9 @@ import {
 } from "./transactions.js";
 import { validationTraceUnfunded } from "./unfunded-move.js";
 import { validationTraceArtifactCheck } from "./validated-artifact.js";
-import {
-  validationTraceCaseOpenReason,
-  validationTraceDefenseDeadlineMs,
-} from "./waiting.js";
-
 const CATEGORY = "validationTraceDispute" as const;
 
-import {
-  VALIDATION_TRACE_DEFENDER_WON,
-  validationTraceCaseExpiryMs,
-} from "./threads.js";
-
+import { VALIDATION_TRACE_DEFENDER_WON } from "./threads.js";
 export {
   VALIDATION_TRACE_CASE_CONTESTED,
   VALIDATION_TRACE_DEFENDER_WON,
@@ -110,12 +101,6 @@ export { VALIDATION_TRACE_CASE_OPEN } from "./waiting.js";
 
 export { VALIDATION_TRACE_CASE_CONVICTED };
 
-/**
- * How long an output of ours the provider does not show after its
- * transaction was confirmed is taken for provider lag rather than spent.
- */
-export const VALIDATION_TRACE_PROVIDER_GRACE_MS = 10 * 60_000;
-
 export const createValidationTraceDisputeWorkflowAdapter = ({
   lucid,
   signer,
@@ -127,6 +112,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   publications,
   ownThreadReclaim,
   now = Date.now,
+  ownView: viewOf,
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
@@ -146,6 +132,8 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     adapter: FraudProofFamilyWorkflowAdapter,
   ) => FraudProofFamilyWorkflowAdapter;
   readonly now?: () => number;
+  /** Where the family reads its own state; when omitted, the chain. */
+  readonly ownView?: ValidationTraceOwnViewOf;
 }): FraudProofFamilyWorkflowAdapter => {
   if (
     deployment.init.contracts.steps[0].spendingScriptHash !==
@@ -162,6 +150,9 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     held: claimHeld,
   });
   const materialOf = (headerHash: string) => materials.get(headerHash);
+  const ownView =
+    viewOf ??
+    validationTraceChainOwnView({ lucid, signer, deployment, caseHistory });
   const own = { lucid, signer, deployment };
   const withHistory = { ...own, caseHistory };
   const removalStage = createValidationTraceRemoval({ ...own, removal });
@@ -171,37 +162,20 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     publications,
     signedRecovery,
     materialOf,
+    ownView,
   });
-  const recent = (confirmedAt: string): boolean =>
-    now() - Date.parse(confirmedAt) < VALIDATION_TRACE_PROVIDER_GRACE_MS;
-  const { recordAt, ourCase, isContested } = validationTraceCaseReads(own);
+  const { recordAt, ourCases, ourCase } = validationTraceCaseReads(withHistory);
   const staging = validationTraceStaging({
-    ...own,
+    ...withHistory,
     signedRecovery,
     materialOf,
-    recent,
-    now,
-    caseExpiresAtMs: async (context) => {
-      const found = await ourCase(
-        validationTraceArtifactOf(context),
-        confirmedValidationTraceStages(context.entries),
-      );
-      return found === undefined
-        ? undefined
-        : validationTraceCaseExpiryMs(found.caseDatum);
-    },
+    ownView,
   });
-  const read = (outRefs: readonly string[]) =>
-    readOwnOutputs((refs) => lucid.utxosByOutRef([...refs]), outRefs);
-
   const observe = async (
     context: FraudProofWorkflowAdapterContext,
   ): Promise<FraudProofWorkflowObservation> => {
-    const stages = confirmedValidationTraceStages(context.entries);
-    const live = await read(
-      stages.flatMap(({ outputs }) => outputs.map(({ outRef }) => outRef)),
-    );
-    const next = await observeNext(context, stages, live);
+    const view = ownView(context);
+    const next = await observeNext(context, view);
     // A defender who lost a thread of ours is slashed by its receipt only
     // once nothing else is left: after the conviction's removal, or once a
     // defender's win ends the case for us. It never holds up a thread move,
@@ -213,10 +187,9 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     if (!settled) return next;
     const slash = await dueValidationTraceLostDefenseSlash({
       ...own,
-      headerHash: validationTraceArtifactOf(context).headerHash,
+      headerHash: view.artifact().headerHash,
       deadlines,
-      stages,
-      live,
+      receipts: await view.receipts(),
       skipped: context.unbuiltActionIds,
       now: now(),
     });
@@ -228,20 +201,16 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
 
   const observeNext = async (
     context: FraudProofWorkflowAdapterContext,
-    stages: ReturnType<typeof confirmedValidationTraceStages>,
-    live: Awaited<ReturnType<typeof read>>,
+    view: ValidationTraceOwnView,
   ): Promise<FraudProofWorkflowObservation> => {
-    const artifact = validationTraceArtifactOf(context);
-    const newestFirst = [...stages].reverse();
-    const liveClaim = (stage: (typeof stages)[number]["action"]["stage"]) =>
-      newestFirst
-        .filter((confirmed) => confirmed.action.stage === stage)
-        .map(({ outputs }) => outputs[0]!)
-        .find((claim) => isClaimedOutput(claim, live.get(claim.outRef)));
-    const record = liveClaim("close");
-    if (record !== undefined)
-      return await removalStage.convicted(context, record);
-    const opener = liveClaim("open");
+    const artifact = view.artifact();
+    // Read before the removal's view: once it is complete, these play out.
+    const live = await ourCases(view);
+    const record = await view.record();
+    const convicted = record && (await removalStage.convicted(context, record));
+    if (convicted && (convicted.kind !== "completed" || live.length === 0))
+      return convicted;
+    const opener = await view.pendingClaim();
     if (opener !== undefined)
       return {
         kind: "action_required",
@@ -250,7 +219,10 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
           consumes: opener.outRef,
         }),
       };
-    const thread = liveClaim("init");
+    // One case of ours per block: a thread at the opener while a case of
+    // ours stands, or once one stood, is not opened into a second.
+    const opened = (await view.cases()).length > 0;
+    const thread = opened ? undefined : await view.thread();
     if (thread !== undefined)
       return {
         kind: "action_required",
@@ -259,59 +231,48 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
           consumes: thread.outRef,
         }),
       };
-    // The case our Open opened, whoever verified it.
-    const found = await ourCase(artifact, stages);
-    if (found !== undefined)
-      return isContested(found.caseDatum)
-        ? await observeValidationTraceThreads({
-            ...own,
-            caseHistory,
-            headerHash: artifact.headerHash,
-            caseUnit: found.caseUnit,
-            caseOutRef: found.outRef,
-            caseDatum: found.caseDatum,
-            now: now(),
-            material: materials.get(artifact.headerHash),
-            skipped: context.unbuiltActionIds,
-          })
-        : // Nobody has defended it: it closes once its deadline has passed.
-          now() > validationTraceDefenseDeadlineMs(found.caseDatum)
-          ? {
-              kind: "action_required",
-              action: validationTraceAction({
-                stage: "close",
-                consumes: found.outRef,
-              }),
-            }
-          : {
-              kind: "pending",
-              reason: validationTraceCaseOpenReason(found),
-            };
+    // Each live case of ours, whoever verified it, the nearest deadline
+    // first: the first with a step to take takes it, so no case of ours
+    // waits on another's wait.
+    let waiting: FraudProofWorkflowObservation | undefined;
+    for (const found of live) {
+      const observed = await observeValidationTraceCase({
+        ...withHistory,
+        headerHash: artifact.headerHash,
+        caseUnit: found.caseUnit,
+        caseOutRef: found.outRef,
+        caseDatum: found.caseDatum,
+        now: now(),
+        material: materials.get(artifact.headerHash),
+        skipped: context.unbuiltActionIds,
+      });
+      if (observed.kind !== "pending") return observed;
+      waiting ??= observed;
+    }
+    if (waiting !== undefined) return waiting;
     // Our Open opened the case, whoever verified or closed it: the record
     // names the claim's prover, us.
-    const opened = newestFirst.some(({ action }) => action.stage === "open");
     if (opened) {
       const recorded = await recordAt(artifact.headerHash);
       if (recorded !== undefined)
         return await removalStage.convicted(context, recorded);
     }
-    const newest = newestFirst[0];
-    if (newest !== undefined && recent(newest.confirmedAt))
+    const unseen = await view.unseen();
+    if (unseen !== undefined)
       return {
         kind: "pending",
-        reason: `validation-trace transaction ${newest.txHash} is not yet visible to the provider`,
+        reason: `validation-trace transaction ${unseen} is not yet visible to the provider`,
       };
     if (opened)
       return {
         kind: "conflict",
         reason: "validation-trace case is closed without this workflow's close",
       };
-    const replaced = newestFirst.find(({ action }) => action.stage === "init");
     return {
       kind: "action_required",
       action: validationTraceAction({
         stage: "init",
-        consumes: replaced?.outputs[0]!.outRef ?? null,
+        consumes: (await view.replacedThread()) ?? null,
       }),
     };
   };
@@ -320,7 +281,8 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     context: FraudProofWorkflowAdapterContext,
     action: ReturnType<typeof parseValidationTraceAction>,
   ): Promise<CapturedValidationTraceStage> => {
-    const input = { ...own, artifact: validationTraceArtifactOf(context) };
+    const view = ownView(context);
+    const input = { ...own, artifact: view.artifact() };
     let found: Awaited<ReturnType<typeof ourCase>> = undefined;
     try {
       switch (action.stage) {
@@ -348,7 +310,6 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
           return await captureValidationTraceLostDefenseSlash({
             ...own,
             removal,
-            headerHash: input.artifact.headerHash,
             receiptOutRef: action.consumes!,
             deadlineMs: async () =>
               await deadlines.ofReceipt(
@@ -357,10 +318,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
               ),
           });
       }
-      found = await ourCase(
-        input.artifact,
-        confirmedValidationTraceStages(context.entries),
-      );
+      found = await ourCase(view, action.consumes!);
       if (found === undefined)
         throw new WorkflowActionChangedError(
           `validation-trace ${action.stage} has no case of ours to play`,
@@ -380,7 +338,6 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
             caseUnit: found.caseUnit,
           }).bondOutRef,
           caseOutRef: found.outRef,
-          caseOpenerOutRef: found.openerOutRef,
         });
       return await captureValidationTraceThreadMove({
         caseDatum: found.caseDatum,
@@ -389,7 +346,6 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
           ...input,
           threadOutRef: action.consumes!,
           caseUnit: found.caseUnit,
-          caseOpenerOutRef: found.openerOutRef,
           material: materials.get(input.artifact.headerHash),
           fieldCarriage: async () => await copy.of(context, action),
           staging: staging.lookup(context),
@@ -417,19 +373,23 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     category: CATEGORY,
     safety: FRAUD_PROOF_WORKFLOW_SAFETY,
     prepare: async ({ evidence, replayContext, classification }) =>
-      await prepareValidationTraceArtifact({
-        evidence,
-        context: replayContext,
-        classification,
-        l1SlotConfig,
-        onMaterial: (material) => {
-          artifactCheck.prepared(evidence.headerHash);
-          materials.set(evidence.headerHash, material);
-        },
-      }).catch(claimHeld(evidence.headerHash)),
+      await artifactCheck.prepare(
+        { evidence, replayContext, classification },
+        async () =>
+          await prepareValidationTraceArtifact({
+            evidence,
+            context: replayContext,
+            classification,
+            l1SlotConfig,
+            onMaterial: (material) => {
+              artifactCheck.prepared(evidence.headerHash);
+              materials.set(evidence.headerHash, material);
+            },
+          }).catch(claimHeld(evidence.headerHash)),
+      ),
     validatePreparedArtifact: artifactCheck.check,
     observe,
-    unfunded: validationTraceUnfunded({ lucid, deadlines, ourCase }),
+    unfunded: validationTraceUnfunded({ lucid, deadlines, ourCase, ownView }),
     preflight: async (context) => {
       const { action, workflowId } = context;
       const parsed = parseValidationTraceAction(action);
@@ -443,9 +403,9 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         );
       const key = `${workflowId}\u0000${action.actionId}`;
       // A capture that never reached submit is replaced: submit sends only
-      // the body whose hash the journaled preflight names.
+      // the body whose hash the preflight names.
       prepared.delete(key);
-      const { transaction, durableRecovery } = await capture(context, parsed);
+      const { transaction } = await capture(context, parsed);
       if (transaction.referenceScripts.length === 0)
         throw new Error(
           `validation-trace ${parsed.stage} used no published reference script`,
@@ -464,7 +424,6 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
             evaluator: LOCAL_UPLC_EVALUATOR,
           },
           referenceScripts: transaction.referenceScripts,
-          durableRecovery,
         },
         transaction.signed,
       );
@@ -487,13 +446,10 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         prepared.delete(key);
       }
     },
-    reconcile: validationTraceReconcile({ signedRecovery, read }),
   };
   const routed = withValidationTraceScriptDecodeRecords({
     base: copy.wrap(Object.freeze(removalStage.route(adapter))),
     ...own,
-    publications,
-    now,
     materialOf,
   });
   return staging.wrap(ownThreadReclaim?.(routed) ?? routed);

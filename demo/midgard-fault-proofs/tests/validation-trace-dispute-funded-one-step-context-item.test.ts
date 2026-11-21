@@ -7,10 +7,10 @@
  * read the pending item step from the thread's own L1 history.
  *
  * A watcher stopped after signing a hop at the shared chain and before its
- * bytes reach the ledger offers only those bytes again until they expire,
- * then makes a single re-signed attempt: exactly one move spends the
- * thread. A history that pays the thread to the chain's entry other than
- * once holds the run under a named alarm with nothing signed, and the run
+ * bytes reach the ledger is started again, holding nothing of the stopped
+ * process: it builds the hop again from the chain, and exactly one move
+ * spends the thread. A history that pays the thread to the chain's entry
+ * other than once holds the run under a named alarm with nothing signed, and the run
  * goes on once the history is whole again: the thread is awarded and closes
  * into our case.
  *
@@ -18,7 +18,7 @@
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import type {
@@ -56,8 +56,8 @@ import {
 } from "./support/validation-trace-dispute-one-step.js";
 import {
   confirmedOneStepMoves,
-  intentsFor,
   playThreads,
+  sendsFor,
   type Side,
 } from "./support/validation-trace-dispute-one-step-play.js";
 import {
@@ -107,10 +107,14 @@ const paysEntry = ({ bodyCbor }: ValidationTraceCaseTransaction) => {
 };
 
 /** The authentic history, with the thread's own history misstated as
- * `misstate` says. */
+ * `misstate` says; the raw L1 capture the chain view reads stays
+ * authentic. */
 const misstated = (
   authentic: ValidationTraceCaseHistory,
 ): ValidationTraceCaseHistory => ({
+  ...(authentic.snapshot === undefined
+    ? {}
+    : { snapshot: authentic.snapshot.bind(authentic) }),
   transactions: async (input) => {
     const transactions = await authentic.transactions(input);
     if (misstate === undefined || input.caseUnit !== side.unit)
@@ -125,7 +129,7 @@ const misstated = (
   },
 });
 
-describe("validation-trace dispute one-step resolution through the redeemer item step under the prover funding permit", () => {
+describe("validation-trace dispute one-step resolution through the redeemer item step under the watcher's prover funding", () => {
   beforeAll(async () => {
     // Published before the scene's blocks, so the publications take none of
     // the source verification's window from the failing block's end, and
@@ -140,13 +144,12 @@ describe("validation-trace dispute one-step resolution through the redeemer item
     await drainProver(scene.h as never, FUNDED);
     dispute = await openFundedDispute(scene, {
       oneStep: oneStep!,
-      liveParameters: true,
       caseHistory: misstated,
     });
     const opened = await turnUntil(dispute, VALIDATION_TRACE_CASE_OPEN);
     if (opened.result.kind !== "pending")
       throw new Error(`the case did not open: ${opened.history.join("\n")}`);
-    const { caseOutput } = await caseAndBond(scene, opened.result);
+    const { caseOutput } = await caseAndBond(scene, dispute);
     const defender = sceneOperator(scene);
     const trace = scriptedTrace(await failingMaterial(scene), AGREED_UP_TO);
     const threadOutRef = await defendScripted(
@@ -161,49 +164,40 @@ describe("validation-trace dispute one-step resolution through the redeemer item
     side = { defender, trace, unit: threadUnitOf(scene, thread!) };
   }, 1_800_000);
 
-  afterAll(async () => {
-    await dispute?.close();
-  });
-
   it(
-    "supersedes a hop at the shared item chain, stopped after signing and before broadcast, with one re-signed attempt once its bytes expire: exactly one move spends the thread",
+    "builds the hop at the shared item chain again after a stop between signing and broadcast: exactly one move spends the thread, the next process's own",
     async () => {
       await playTo("redeemerItemTraversalNormalizer");
       const stop = await stopBeforeBroadcastAt(
         "redeemerItemTraversalNormalizer",
       );
-      await dispute.restart();
-      const { result, history } = await playThreads({
+      dispute.restart();
+      const { history } = await playThreads({
         scene,
         runner: turns(),
         sides: [side],
-        until: async (run) => confirmsSpendOf(run, stop.consumes),
+        until: async () => await confirmsSpendOf(dispute, stop.consumes),
         limit: 20,
       });
-      if (!("entries" in result)) throw new Error("no workflow journal");
-      const spends = confirmedOneStepMoves(result.entries).filter(
+      const spends = confirmedOneStepMoves(await dispute.confirmed()).filter(
         (move) => move.consumes === stop.consumes,
       );
       expect(spends, history.join("\n")).toHaveLength(1);
-      // Only the stopped process's exact bytes are ever offered again.
-      expect(dispute.rebroadcasts.length).toBeGreaterThan(0);
-      for (const offered of dispute.rebroadcasts)
-        expect(offered).toBe(stop.hex);
-      const intents = intentsFor(result.entries, "resolve", stop.consumes);
-      expect(intents.map(({ attempt }) => attempt)).toStrictEqual([1, 2]);
-      expect(intents[0]!.txHash).toBe(stop.hash);
-      expect(intents[1]!.txHash).not.toBe(stop.hash);
-      expect(spends[0]!.txHash).toBe(intents[1]!.txHash);
-      // The re-signed attempt, which read the pending item step from the
+      // The next process knows nothing of the stopped bytes: it rebroadcasts
+      // nothing and sends the hop it builds from the chain, which may be the
+      // very same transaction.
+      expect(dispute.rebroadcasts).not.toContain(stop.hex);
+      const sends = sendsFor(dispute.sent(), "resolve", stop.consumes);
+      expect(sends).toHaveLength(2);
+      expect(sends[0]!.txHash).toBe(stop.hash);
+      expect(spends[0]!.txHash).toBe(sends[1]!.txHash);
+      // The next process's hop, which read the pending item step from the
       // thread's history again, moved the thread along the chain.
       expect(recordedOutput(scene, `${spends[0]!.txHash}#0`).address).toBe(
         holderAddress("redeemerItemOuterNormalizer"),
       );
       const { emulator } = scene.h;
       await expect(emulator.submitTx(stop.hex)).rejects.toThrow();
-      expect((await emulator.getTransactionStatus(stop.hash)).status).not.toBe(
-        "confirmed",
-      );
     },
     TIMEOUT,
   );
@@ -249,9 +243,8 @@ describe("validation-trace dispute one-step resolution through the redeemer item
         scene,
         runner: turns(),
         sides: [side],
-        until: async (run) =>
-          "entries" in run &&
-          confirmedOneStepMoves(run.entries).some(
+        until: async () =>
+          confirmedOneStepMoves(await dispute.confirmed()).some(
             ({ stage }) => stage === "close_awarded",
           ),
         limit: 40,

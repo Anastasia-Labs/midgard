@@ -1,8 +1,8 @@
 /** The funded watcher's turns over one defended thread's one-step
  * resolution, on the emulator: each move it builds captured, the thread
  * found wherever it stands, played to a holder, and the watcher process
- * stopped at the submit of the move it signs at a holder, once its intent is
- * durable and before its bytes reach the ledger. */
+ * stopped at the submit of the move it signs at a holder, before its bytes
+ * reach the ledger. */
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import { parseValidationTraceAction } from "../../src/validation-trace-dispute/actions.js";
@@ -10,7 +10,6 @@ import {
   validationTraceOneStepContracts,
   type ValidationTraceOneStepHolder,
 } from "../../src/validation-trace-dispute/one-step-holders.js";
-import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
 import {
   type CapturedMove,
@@ -31,13 +30,12 @@ import type { Scene } from "./validation-trace-dispute-open-scene.js";
 export const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
-/** Whether the journal `result` holds confirms a move spending `consumes`. */
-export const confirmsSpendOf = (
-  result: FraudProofWorkflowRunResult,
+/** Whether the ledger confirms a move of `dispute`'s spending `consumes`. */
+export const confirmsSpendOf = async (
+  dispute: FundedDispute,
   consumes: string,
 ) =>
-  "entries" in result &&
-  confirmedOneStepMoves(result.entries).some(
+  confirmedOneStepMoves(await dispute.confirmed()).some(
     (move) => move.consumes === consumes,
   );
 
@@ -90,8 +88,8 @@ export const fundedOneStepTurns = ({
 
   /**
    * Stops the watcher process at the submit of the move it signs for the
-   * thread at `holder`, once its intent is durable and before its bytes
-   * reach the ledger. The stopped turn never returns.
+   * thread at `holder`, before its bytes reach the ledger. The stopped turn
+   * never returns.
    */
   const stopBeforeBroadcastAt = async (
     holder: ValidationTraceOneStepHolder,

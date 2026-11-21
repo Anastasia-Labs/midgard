@@ -23,14 +23,13 @@ import {
   createDoubleSpendAuthenticatedL1TerminalVerifier,
   createDoubleSpendL1ObservationPort,
 } from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
-import {
-  type DoubleSpendWorkflowReferenceScripts,
-  type ManifestBoundDoubleSpendWorkflow,
-  type ManifestBoundDoubleSpendWorkflowConfig,
-  type ObservedDoubleSpendWorkflowAdapterConfig,
+import type {
+  DoubleSpendWorkflowReferenceScripts,
+  ManifestBoundDoubleSpendWorkflow,
+  ManifestBoundDoubleSpendWorkflowConfig,
+  ObservedDoubleSpendWorkflowAdapterConfig,
 } from "./double-spend-adapter.preflight-of.js";
 import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import type { FraudProofFamilyWorkflowAdapter } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import {
@@ -38,7 +37,8 @@ import {
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
-import { type WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WorkflowRun } from "./workflow-run.js";
 
 /**
  * Strict production construction. Every contract, network, category,
@@ -156,7 +156,7 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
   deploymentFingerprint,
   observation,
   sources,
-  journal,
+  run,
   adapterConfig,
   releaseFinalityAuthority,
   adapter: bound,
@@ -167,7 +167,7 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
   readonly deploymentFingerprint: string;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly adapterConfig: ObservedDoubleSpendWorkflowAdapterConfig;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   /** The adapter to run, in place of the bare one over `adapterConfig`. */
@@ -187,7 +187,7 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
       adapters: [adapter],
       launchScope: ["doubleSpend"],
     }),
-    journal,
+    run,
     releaseFinalityAuthority,
     terminalVerifier: createDoubleSpendAuthenticatedL1TerminalVerifier(
       adapterConfig.l1,
@@ -202,14 +202,14 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
 export const runOrResumeManifestBoundDoubleSpendWorkflow = async ({
   workflow,
   sources,
-  journal,
+  run,
   maxSubmissionAttempts,
   maxActions,
   walletOnlySend,
 }: {
   readonly workflow: ManifestBoundDoubleSpendWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly run: WorkflowRun;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
   readonly walletOnlySend: WalletOnlySend;
@@ -231,7 +231,7 @@ export const runOrResumeManifestBoundDoubleSpendWorkflow = async ({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,
     sources,
-    journal,
+    run,
     adapterConfig: workflow.adapterConfig,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     // The workflow's own adapter, with any reclaim of our threads in front.

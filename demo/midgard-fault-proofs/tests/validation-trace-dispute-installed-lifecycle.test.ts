@@ -6,13 +6,16 @@
  * the watcher's classifier, and the runner opens its case, verifies the
  * source, waits out the undefended case, convicts, and removes the block's
  * descendants and then the block itself, slashing its operator's bond under
- * the deployment's finalized manifest; an honest block whose script passes
- * is never attacked.
+ * the deployment's finalized manifest, across a watcher restart while the
+ * defender's window is open; an honest block whose script passes is never
+ * attacked.
  */
 import * as SDK from "@al-ft/midgard-sdk/da";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+import { confirmedValidationTraceStages } from "./support/validation-trace-confirmed-stages.js";
 
 const hooks = vi.hoisted(() => ({
   bind: undefined as unknown as (input: {
@@ -54,20 +57,15 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
   };
 });
 
-import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { validationTraceFraudProofUnit } from "../src/validation-trace-dispute/close.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
-import { CURSOR_FAMILY_ACTION } from "../src/workflow/cursor-family-state.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { emulatorSignedTransactionRecovery } from "./support/emulator-signed-recovery.js";
 import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
-import { scratchDirectory } from "./support/scratch-directory.js";
 import { scriptDecodeDeploymentOf } from "./support/script-decode-emulator.js";
 import { installApplicationClock } from "./support/script-decode-installed-host.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
@@ -81,6 +79,7 @@ import {
   setUpInstalledScene,
 } from "./support/validation-trace-dispute-installed-scene.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./support/workflow-process.js";
 
 /** A run polls once per emulator block; one turn of the dispute stays well
  * inside this, and a run that never returns stops here instead. */
@@ -107,13 +106,6 @@ const replacedIn = (value: unknown, as: (utxo: UTxO) => string): unknown =>
             replacedIn(inner, as),
           ]),
         );
-
-const submissionIntents = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
-) =>
-  entries.flatMap(({ event }) =>
-    event.kind === "submission_intent" ? [event] : [],
-  );
 
 const queue = (hashes: readonly string[]) =>
   expectStateQueueHeaderOrder({
@@ -168,21 +160,18 @@ describe("validation-trace dispute through the installed watcher application", (
     expect(decision.decision).toBe("healthy");
     const sent = recorder.signedCbors.size;
     const { workflow } = await app.apply(scene.passing, decision);
-    const scratch = await scratchDirectory("validation-trace-honest-");
-    try {
-      const result = (await app.record.execute({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
-        workflow,
-        sources: app.sources,
-        journal: new DirectoryFraudProofWorkflowJournalStore(scratch.path),
-        mode: "run",
-      })) as FraudProofWorkflowRunResult;
-      expect(result.kind).toBe("no_fault_detected");
-      if ("entries" in result)
-        expect(submissionIntents(result.entries)).toEqual([]);
-    } finally {
-      await scratch.remove();
-    }
+    const process = createTestWorkflowProcess();
+    const result = (await app.record.execute({
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
+      workflow,
+      sources: app.sources,
+      run: process.run({
+        category: "validationTraceDispute",
+        headerHash: scene.passing.evidence.headerHash,
+      }),
+    })) as FraudProofWorkflowRunResult;
+    expect(result.kind).toBe("no_fault_detected");
+    expect(process.sent()).toEqual([]);
     expect(recorder.signedCbors.size).toBe(sent);
     await queue([
       scene.failing.evidence.header.prevHeaderHash,
@@ -216,6 +205,9 @@ describe("validation-trace dispute through the installed watcher application", (
       expect(opened.responseDeadline).toBe(
         validationTraceDefenseDeadlineMs(Data.from(caseUtxo!.datum!, SDK.Case)),
       );
+      // The watcher restarts while the defender's window is open: the next
+      // turn finds the open case on chain.
+      app.restart();
       // No defender answers: the deadline passes.
       h.emulator.awaitSlot(
         lucid.unixTimeToSlot(opened.responseDeadline) - lucid.currentSlot() + 1,
@@ -251,12 +243,23 @@ describe("validation-trace dispute through the installed watcher application", (
           history.at(-1),
         ).toContain(result.kind);
       }
-      if (!("entries" in result)) throw new Error("no journal");
-      const stages = confirmedValidationTraceStages(result.entries).map(
-        ({ action }) => action.stage,
+      const sent = app.sent();
+      const confirmed = await confirmedValidationTraceStages({
+        emulator: h.emulator,
+        deployment,
+        sent,
+      });
+      expect(confirmed.map(({ action }) => action.stage)).toEqual([
+        "init",
+        "open",
+        "verify_source",
+        "close",
+      ]);
+      // The restart sent no stage again.
+      expect(new Set(sent.map(({ actionId }) => actionId)).size).toBe(
+        sent.length,
       );
-      expect(stages).toEqual(["init", "open", "verify_source", "close"]);
-      const close = confirmedValidationTraceStages(result.entries).at(-1)!;
+      const close = confirmed.at(-1)!;
       const record = close.outputs[0]!.outRef;
       const [recorded] = await lucid.utxosByOutRef([parseOwnOutRef(record)]);
       const proofUnit = validationTraceFraudProofUnit(
@@ -273,16 +276,14 @@ describe("validation-trace dispute through the installed watcher application", (
       ).toBe(h.proverSigner.paymentKeyHash);
       // Each removal peels one block against our record: the two
       // descendants, then the convicted block.
-      const intents = submissionIntents(result.entries);
-      const removals = intents.filter(
-        ({ actionInput }) => actionInput.schemaVersion === CURSOR_FAMILY_ACTION,
+      // A remove action names the block it removes after the record it
+      // removes against: `remove:<next>:<record>:<block>`.
+      const removals = sent.filter(({ actionId }) =>
+        actionId.startsWith("remove:"),
       );
       expect(removals).toHaveLength(3);
-      for (const removal of removals)
-        expect(removal.actionInput).toMatchObject({
-          stage: "remove",
-          fraudProofOutRef: record,
-        });
+      for (const { actionId } of removals)
+        expect(actionId.split(":")[2]).toBe(record);
       await queue([scene.failing.evidence.header.prevHeaderHash]);
       // The block's removal slashed its operator: the bond it spent was an
       // active operator's node, now gone, and our reward is at our key.
@@ -311,13 +312,14 @@ describe("validation-trace dispute through the installed watcher application", (
       );
 
       // Every transaction the dispute sent, as it landed.
-      const measured = intents.map(({ txHash, actionInput }) => {
+      const measured = sent.map(({ txHash, actionId }) => {
+        const stage = actionId.split(":")[0]!;
         const cbor = recorder.signedCbors.get(txHash);
-        expect(cbor, `${String(actionInput.stage)} was sent`).toBeDefined();
+        expect(cbor, `${stage} was sent`).toBeDefined();
         const { completeSignedBytes, executionMemory, executionSteps } =
           measureCompleteSignedTransaction(cbor!);
         return {
-          stage: String(actionInput.stage),
+          stage,
           completeSignedBytes,
           executionMemory: executionMemory.toString(),
           executionSteps: executionSteps.toString(),

@@ -39,12 +39,12 @@ import type {
 } from "./remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import { submitRemoveFraudulentBlock } from "./remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "./runtime.js";
-import { balanceCbor } from "./workflow/funding-reservation-permit.apply-transition.js";
 import {
   type LocallyEvaluatedTransaction,
   workflowTransactionCollateralInputOutRefs,
   workflowTransactionInputOutRefs,
 } from "./workflow/transaction-boundary.js";
+import { balanceCbor } from "./workflow/workflow-wallet.js";
 
 /** A fraud-proof correction: the queued header a proven record convicts,
  * and that record's asset name. */
@@ -97,27 +97,28 @@ const namesCorrection = (
 };
 
 /**
- * A signer whose wallet offers every coin except those `reservedOutRefs`
- * names, read afresh on each wallet read: an action outside any funding
- * reservation never spends, or sits as collateral on, a coin a reservation
- * holds. Signing and submission go to the original wallet.
+ * A signer whose wallet offers every coin except those `heldOutRefs` names,
+ * read afresh on each wallet read: an action outside any workflow never
+ * spends, or sits as collateral on, a coin a workflow's in-flight
+ * transaction or build holds. Signing and submission go to the original
+ * wallet.
  */
-export const excludeReservedFunding = ({
+export const excludeHeldWalletCoins = ({
   signer,
-  reservedOutRefs,
+  heldOutRefs,
 }: {
   readonly signer: ResolvedProverSigner;
-  readonly reservedOutRefs: () => Promise<readonly string[]>;
+  readonly heldOutRefs: () => readonly string[];
 }): ResolvedProverSigner =>
   Object.freeze({
     ...signer,
     selectWallet: (lucid: LucidEvolution): void => {
       signer.selectWallet(lucid);
       const original = lucid.wallet();
-      const unreserved = async () => {
-        const reserved = new Set(await reservedOutRefs());
+      const unheld = async () => {
+        const held = new Set(heldOutRefs());
         return (await original.getUtxos()).filter(
-          (utxo) => !reserved.has(outRefLabel(utxo)),
+          (utxo) => !held.has(outRefLabel(utxo)),
         );
       };
       const addressHex = CML.Address.from_bech32(signer.address).to_hex();
@@ -125,8 +126,8 @@ export const excludeReservedFunding = ({
         getNetworkId: async () =>
           CML.Address.from_bech32(signer.address).to_raw_bytes()[0]! & 0x0f,
         getUtxos: async () =>
-          (await unreserved()).map((utxo) => utxoToCore(utxo).to_cbor_hex()),
-        getBalance: async () => balanceCbor(await unreserved()),
+          (await unheld()).map((utxo) => utxoToCore(utxo).to_cbor_hex()),
+        getBalance: async () => balanceCbor(await unheld()),
         getUsedAddresses: async () => [addressHex],
         getUnusedAddresses: async () => [],
         getChangeAddress: async () => addressHex,
@@ -152,7 +153,7 @@ export const excludeReservedFunding = ({
     },
   });
 
-/** Holds wallet coins outside any funding reservation until `untilMs`
+/** Holds wallet coins for an action outside any workflow until `untilMs`
  * (wall clock) or the returned release; throws when one is taken. */
 export type HoldWalletInputs = (input: {
   readonly outRefs: readonly string[];

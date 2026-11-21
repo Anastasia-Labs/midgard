@@ -3,14 +3,18 @@
  * each transaction final only `RELEASE_DEPTH` blocks under the tip: with
  * both threads of our case closed and each staging output still live,
  * another prover removes the block against its own record while a thread
- * another run on our key Inited stands at the opener, and our runner is
- * started again over its journal once the cancel has landed and before the
- * spend backs are final.
+ * an earlier process of ours Inited stands at the opener, and our runner is
+ * started again, holding nothing in memory, once the cancel has landed and
+ * before the spend backs are final.
  *
- * Read from L1, the thread is cancelled and each staging output spent back
- * to our wallet by exactly one transaction the ledger took, the cancel
- * first, and our run ends resolved by their record only once all of it is
- * final. */
+ * Read from L1, our run, its case open, opens no second case from that
+ * thread: the thread is cancelled and each staging output spent back to our
+ * wallet by exactly one transaction the ledger took, the cancel first, and
+ * our run ends resolved by their record once the cancel is past rollback
+ * recovery. The ending waits on no spend back's finality: once each spend
+ * back rolls back, our next runs spend each output back again by its
+ * original spend back, the same signed bytes, sign nothing new for the
+ * outputs, and end resolved by their record again. */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
@@ -30,7 +34,7 @@ describe("validation-trace dispute runner: a staged step's staging and a thread 
 
   afterAll(other.tearDown);
 
-  it("cancels the thread and spends each staging output back once each over a restart, the cancel first, and ends resolved by their record once all of it is final", async () => {
+  it("cancels the thread and spends each staging output back once each over a restart, the cancel first, ends resolved by their record once the cancel is final, and spends the outputs back again, the same bytes, once those spend backs roll back", async () => {
     const stagings = await other.playToClose();
     const theirRecord = await other.removeByTheirs();
     const runs: OurRun[] = [];
@@ -61,12 +65,12 @@ describe("validation-trace dispute runner: a staged step's staging and a thread 
     expect(observedAt - cancel.block).toBeGreaterThanOrEqual(
       RELEASE_FINALITY_POLICY.automaticRecoveryMaxDepth,
     );
-    const intents = other.spendBackIntents(resolved.entries);
+    const sends = other.spendBackSends();
     for (const outRef of stagings) {
       const { hash, block } = await other.expectSpentBack(outRef);
-      expect([...(intents.get(outRef) ?? [])], outRef).toStrictEqual([hash]);
+      expect([...(sends.get(outRef) ?? [])], outRef).toStrictEqual([hash]);
       expect(block, outRef).toBeGreaterThan(cancel.block);
-      expect(observedAt - block, outRef).toBeGreaterThanOrEqual(RELEASE_DEPTH);
     }
+    await other.spentBackAgainAfterRollback();
   }, 1_800_000);
 });

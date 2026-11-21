@@ -42,7 +42,6 @@ describe("network-id field carriage gone from L1 after scheduling", () => {
         identity: workflowIdentity(prepared.headerHash),
         workflowId: h32(0x51),
         artifact: harness.artifact,
-        entries: harness.entries(),
         action: selected.action,
       }),
     ).rejects.toBeInstanceOf(WorkflowActionChangedError);
@@ -66,7 +65,6 @@ describe("network-id field carriage gone from L1 after scheduling", () => {
         identity: workflowIdentity(prepared.headerHash),
         workflowId: h32(0x51),
         artifact: harness.artifact,
-        entries: harness.entries(),
         action: selected.action,
       }),
     ).rejects.toBeInstanceOf(WorkflowActionChangedError);
@@ -113,7 +111,6 @@ describe("network-id field carriage gone from L1 after scheduling", () => {
         identity: workflowIdentity(headerHash),
         workflowId: h32(0x51),
         artifact,
-        entries: harness.entries(),
         action: selected.action,
       }),
     ).rejects.toBeInstanceOf(WorkflowActionChangedError);

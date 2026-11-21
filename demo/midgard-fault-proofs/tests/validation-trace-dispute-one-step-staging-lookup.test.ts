@@ -1,8 +1,8 @@
-/** Where our journal shows a staged step's operands staged, as our plan
+/** Where our own view shows a staged step's operands staged, as our plan
  * reads it (one-step-staging.ts `lookup`): of the live staging outputs at
  * their confirmation depth, those a resolve move of ours read first, and,
  * past the PrepareSelected move, the staging whose evidence that move
- * committed, from our journal when it is no longer live; and a wait on the
+ * committed, from our own view when it is no longer live; and a wait on the
  * L1 source when it cannot say how deep a staging output stands. */
 import {
   midgardCekStagingAddress,
@@ -17,13 +17,13 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { VALIDATION_TRACE_DISPUTE_ACTION } from "../src/validation-trace-dispute/actions.js";
 import { validationTraceStaging } from "../src/validation-trace-dispute/one-step-staging.js";
-import { VALIDATION_TRACE_STAGING } from "../src/validation-trace-dispute/one-step-staging-journal.js";
-import {
-  FraudProofL1UnavailableError,
-  type FraudProofSignedTransactionRecovery,
-} from "../src/workflow/l1-source.js";
+import type {
+  ValidationTraceResolveReader,
+  ValidationTraceStagingOutput,
+} from "../src/validation-trace-dispute/one-step-staging-journal.js";
+import type { ValidationTraceOwnViewOf } from "../src/validation-trace-dispute/own-view.js";
+import { FraudProofL1UnavailableError } from "../src/workflow/l1-source.js";
 
 const ours = generateEmulatorAccount({ lovelace: 0n });
 const KEY = paymentCredentialOf(ours.address).hash;
@@ -88,68 +88,45 @@ const transaction = ({
   return { cbor, hash: CML.hash_transaction(body).to_hex() };
 };
 
-const confirmed = (
-  actionId: string,
-  actionInput: Record<string, unknown>,
-  { hash }: { hash: string },
-  durableRecovery: Record<string, unknown>,
-) => [
-  {
-    event: {
-      kind: "submission_intent",
-      actionId,
-      actionInput,
-      durableRecovery,
-      attempt: 1,
-      txHash: hash,
+/** One staging of every run, from made-up inputs `seed` on: its staging
+ * outputs as our own view shows them, in run order. */
+const stagingOf = (seed: number) => {
+  const stagings: ValidationTraceStagingOutput[] = RUNS.map(
+    ({ datumCbor }, run) => {
+      const tx = transaction({
+        seed: seed + run,
+        address: STAGING,
+        datum: datumCbor,
+      });
+      return {
+        run: `${datumCbor.slice(0, 8)}${run.toString()}`,
+        txHash: tx.hash,
+        outRef: `${tx.hash}#0`,
+        datumCbor,
+        thread: undefined,
+        threadUnit: undefined,
+      };
     },
-  },
-  { event: { kind: "confirmed", actionId, txHash: hash } },
-];
-
-/** One staging of every run, the `generation`th, from made-up inputs
- * `seed` on: its transactions and its staging outputs in run order. */
-const stagingOf = (generation: number, seed: number) => {
-  const staged = RUNS.map(({ datumCbor }, run) => ({
-    datumCbor,
-    tx: transaction({ seed: seed + run, address: STAGING, datum: datumCbor }),
-  }));
-  return {
-    outRefs: staged.map(({ tx }) => `${tx.hash}#0`),
-    entries: staged.flatMap(({ datumCbor, tx }, run) =>
-      confirmed(
-        `validation-trace-stage:${datumCbor.slice(0, 8)}${run.toString()}:${generation.toString()}`,
-        {
-          schemaVersion: VALIDATION_TRACE_STAGING,
-          category: "validationTraceDispute",
-          stage: "stage_operands",
-          run: `${datumCbor.slice(0, 8)}${run.toString()}`,
-        },
-        tx,
-        { signedTransactionCborHex: tx.cbor, outRef: `${tx.hash}#0` },
-      ),
-    ),
-  };
+  );
+  return { outRefs: stagings.map(({ outRef }) => outRef), stagings };
 };
 
 /** A confirmed resolve move of ours reading `reads`. */
-const readerOf = (reads: readonly string[], seed: number) => {
+const readerOf = (
+  reads: readonly string[],
+  seed: number,
+): ValidationTraceResolveReader => {
   const tx = transaction({ seed, reads });
-  return confirmed(
-    `validation-trace-resolve:${seed.toString()}`,
-    {
-      schemaVersion: VALIDATION_TRACE_DISPUTE_ACTION,
-      category: "validationTraceDispute",
-      stage: "resolve",
-      consumes: `${"77".repeat(32)}#${seed.toString()}`,
-    },
-    tx,
-    { validationTrace: { signedTransactionCborHex: tx.cbor } },
-  );
+  return {
+    txHash: tx.hash,
+    signed: tx.cbor,
+    reads: new Set(reads),
+    outputs: [],
+  };
 };
 
-const first = stagingOf(0, 0x100);
-const second = stagingOf(1, 0x200);
+const first = stagingOf(0x100);
+const second = stagingOf(0x200);
 const datumOf = new Map(
   [first, second].flatMap(({ outRefs }) =>
     outRefs.map((outRef, run) => [outRef, RUNS[run]!.datumCbor] as const),
@@ -170,23 +147,27 @@ const resultOn = (outRefs: readonly string[]) =>
     }),
   );
 
-/** Our lookup over a journal holding both stagings, each read by a resolve
- * move of ours (the second the later), with `live` the outputs the ledger
- * still holds and `observe` where each staging transaction stands. */
+/** Our lookup over an own view showing both stagings, each read by a
+ * resolve move of ours (the second the later), with `live` the outputs the
+ * ledger still holds, the provider showing each staging transaction 100
+ * blocks deep, or, when `uncounted`, confirmed at a depth it cannot say. */
 const lookupOver = ({
   live = [...first.outRefs, ...second.outRefs],
-  observe = async () => ({
-    status: "included" as const,
-    inclusionPoint: { blockNo: "1" },
-    canonicalPoint: { blockNo: "100" },
-    releaseFinalPoint: { blockNo: "100" },
-  }),
+  uncounted = false,
 }: {
   readonly live?: readonly string[];
-  readonly observe?: () => Promise<unknown>;
+  readonly uncounted?: boolean;
 } = {}) => {
   const lucid = {
-    config: () => ({ network: "Custom" }),
+    config: () => ({
+      network: "Custom",
+      provider: {
+        getTransactionStatus: async () => ({
+          status: "confirmed",
+          confirmation: { confirmations: uncounted ? undefined : 100 },
+        }),
+      },
+    }),
     utxosByOutRef: async (
       refs: readonly { txHash: string; outputIndex: number }[],
     ): Promise<UTxO[]> =>
@@ -205,29 +186,27 @@ const lookupOver = ({
           : [];
       }),
   };
+  const ownView: ValidationTraceOwnViewOf = () =>
+    ({
+      stagings: async () => ({
+        stagings: [...first.stagings, ...second.stagings],
+        readers: [readerOf(first.outRefs, 1), readerOf(second.outRefs, 2)],
+      }),
+      inFlight: async () => [],
+    }) as never;
   const staging = validationTraceStaging({
     lucid: lucid as never,
     signer: { paymentKeyHash: KEY, address: ours.address } as never,
     deployment: {} as never,
-    signedRecovery: {
-      observeSignedTransaction: observe,
-    } as unknown as FraudProofSignedTransactionRecovery,
+    caseHistory: {} as never,
+    signedRecovery: {} as never,
     materialOf: () => undefined,
-    recent: () => false,
-    now: Date.now,
-    caseExpiresAtMs: async () => undefined,
+    ownView,
   });
-  return staging.lookup({
-    entries: [
-      ...first.entries,
-      ...readerOf(first.outRefs, 1),
-      ...second.entries,
-      ...readerOf(second.outRefs, 2),
-    ],
-  } as never);
+  return staging.lookup({} as never);
 };
 
-describe("where our journal shows a staged step's operands staged", () => {
+describe("where our own view shows a staged step's operands staged", () => {
   it("names the staging the latest resolve move of ours read", async () => {
     expect(RUNS.length).toBeGreaterThan(1);
     expect(await lookupOver()(OPERANDS)).toEqual(resultOn(second.outRefs));
@@ -245,7 +224,7 @@ describe("where our journal shows a staged step's operands staged", () => {
     );
   });
 
-  it("names, past the PrepareSelected move, the staging its evidence names from our journal once an output of it is no longer live, and no other", async () => {
+  it("names, past the PrepareSelected move, the staging its evidence names from our own view once an output of it is no longer live, and no other", async () => {
     const named = (outRefs: readonly string[]) => {
       const text = JSON.stringify(resultOn(outRefs));
       return (staging: unknown) => JSON.stringify(staging) === text;
@@ -266,11 +245,8 @@ describe("where our journal shows a staged step's operands staged", () => {
   });
 
   it("waits on the L1 source when it cannot say how deep a staging output stands", async () => {
-    const unavailable = new FraudProofL1UnavailableError(
-      "the follower is not ready",
-    );
     await expect(
-      lookupOver({ observe: () => Promise.reject(unavailable) })(OPERANDS),
-    ).rejects.toBe(unavailable);
+      lookupOver({ uncounted: true })(OPERANDS),
+    ).rejects.toBeInstanceOf(FraudProofL1UnavailableError);
   });
 });

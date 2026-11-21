@@ -59,7 +59,6 @@ export const resolveChunks = async ({
 }) => {
   const chunks = await resolveDirectFirstProofChunks({
     action,
-    lucid: config.lucid,
     address: config.signer.proofMaterialsAddress,
     proofCbor,
   });

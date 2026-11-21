@@ -13,8 +13,7 @@
 import { type TxSigned } from "@lucid-evolution/lucid";
 
 import { WALLET_ONLY_VALIDITY_MS } from "../wallet-only-validity.js";
-import { stateForJournal } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
-import { isReservedFundingAddressInput } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
+import type { WorkflowSends } from "./in-flight.js";
 import type { FraudProofWorkflowPreflight } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { FraudProofWorkflowNamedState } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import {
@@ -28,9 +27,7 @@ import {
  * a later admission never moves the instant `open` turns true at.
  *
  * Both members answer on the caller's clock, the one its wallet builds
- * bounds on (`walletOnlyValidTo`) and its restart wait is measured on. The
- * runner's `now` is the journal's timestamp clock, so the check never reads
- * it.
+ * bounds on (`walletOnlyValidTo`) and its restart wait is measured on.
  */
 export type WalletOnlySend = Readonly<{
   /** Whether this process may send a transaction that spends only wallet
@@ -42,23 +39,22 @@ export type WalletOnlySend = Readonly<{
   latestValidToSlot: () => number;
 }>;
 
-/** The bound clock of a process that binds no funding reservation: none of
- * its runs spends a wallet coin (`spendsOnlyWalletCoins`), so no bound is
- * ever checked against it. */
-export const latestValidToSlotWithoutFundingReservation = (): never => {
+/** The bound clock of a process whose wallet is not restricted: none of its
+ * runs lists a wallet coin (`spendsOnlyWalletCoins`), so no bound is ever
+ * checked against it. */
+export const latestValidToSlotWithoutRestrictedWallet = (): never => {
   throw new Error(
-    "no slot clock: this process binds no funding reservation, so it checks no wallet-only upper bound",
+    "no slot clock: this process restricts no wallet, so it checks no wallet-only upper bound",
   );
 };
 
-/** The restart wait of a process that follows no L1 chain and binds no
- * funding reservation: open once the clock is one window past
- * `startedAtMs`. */
+/** The restart wait of a process that follows no L1 chain and restricts no
+ * wallet: open once the clock is one window past `startedAtMs`. */
 export const clockOnlyWalletOnlySend = (
   startedAtMs: number,
 ): WalletOnlySend => ({
   open: () => Date.now() >= startedAtMs + WALLET_ONLY_VALIDITY_MS,
-  latestValidToSlot: latestValidToSlotWithoutFundingReservation,
+  latestValidToSlot: latestValidToSlotWithoutRestrictedWallet,
 });
 
 /** The named state of an action held by the restart wait. Not an alarm: it
@@ -73,41 +69,29 @@ export const faultProofRestartWaitReason = (actionId: string): string =>
   `${FAULT_PROOF_RESTART_WAIT}: ${actionId} spends only wallet coins and waits until one validity window has passed since this process started`;
 
 /**
- * Whether every input of the signed body of `preflight` is a wallet coin of
- * the workflow's funding reservation: a reserved input whose resolved
- * address is the reservation's wallet address
- * (`isReservedFundingAddressInput`). A reserved output at the
- * proof-materials address is a specific output of ours, not a wallet coin;
- * so is any input the reservation does not hold (a thread, a certificate, a
- * staging output, a script output).
+ * Whether every input of the signed body of `preflight` is a wallet coin: a
+ * plain coin at the prover's funding address that the objective's
+ * restricted wallet listed for the build (`workflow-wallet.ts`). An output
+ * at the proof-materials address is a specific output of ours, not a wallet
+ * coin; so is any other input (a thread, a certificate, a staging output, a
+ * script output).
  *
- * The reservation was resolved when the action began
- * (`beginWorkflowFundingReservationAction`), so this reads no L1 state.
- *
- * With no funding reservation bound to `journal`, no input is a wallet coin,
- * so neither the restart wait nor the validity-bound check applies. That is
- * sound because production always binds one: `runFraudProofWorkflowCli`
- * (`cli.ts`) refuses to run without a funding reservation permit, and the
- * manifest-bound runtime (`runtime.ts`) binds that permit to the journal
- * before any family runs. Whatever replaces the reservation must keep
- * supplying the wallet-coin set.
+ * The wallet was listed while the action was built, so this reads no L1
+ * state. A run whose wallet is not restricted lists no wallet coin, so
+ * neither the restart wait nor the validity-bound check applies; production
+ * always restricts it (`runtime.ts`).
  */
 export const spendsOnlyWalletCoins = ({
-  journal,
+  sends,
   preflight,
 }: {
-  readonly journal: object;
+  readonly sends: WorkflowSends;
   readonly preflight: FraudProofWorkflowPreflight;
 }): boolean => {
-  const state = stateForJournal(journal);
-  if (state === undefined) return false;
   const signed = workflowPreflightTransaction(preflight);
   if (signed === undefined) return false;
   const inputs = workflowTransactionInputOutRefs(signed);
-  return (
-    inputs.length > 0 &&
-    inputs.every((outRef) => isReservedFundingAddressInput(state, outRef))
-  );
+  return inputs.length > 0 && inputs.every(sends.isWalletCoin);
 };
 
 /** A wallet-only transaction with no upper validity bound, or one later

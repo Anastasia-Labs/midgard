@@ -29,11 +29,7 @@ import "../src/workflow/deployment-manifest-binding.assert-deployment-info-match
 import "../src/workflow/detection-subject.js";
 import "../src/workflow/double-spend-adapter.create-double-spend-constrained-workflow-adapter.js";
 import "../src/workflow/double-spend-adapter.create-manifest-bound-double-spend-workflow.js";
-import "../src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.js";
-import "../src/workflow/funding-reservation-permit.workflow-funding-reservation-port.js";
-import "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import "../src/workflow/journal.fraud-proof-workflow-terminal.js";
-import "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import "../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";

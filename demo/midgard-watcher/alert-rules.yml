@@ -58,7 +58,7 @@ groups:
 
       - alert: MidgardWatcherProofHeld
         expr: >-
-          midgard_watcher_readiness_reason{reason=~"fault_proof_resubmission_required|fault_proof_continuation_stalled|fault_proof_objective_quarantined|fault_proof_start_deadline_passed|prover_funding_orphaned_reservation|fault_proof_l1_refused:.*"} > 0
+          midgard_watcher_readiness_reason{reason=~"fault_proof_resubmission_required|fault_proof_continuation_stalled|fault_proof_objective_quarantined|fault_proof_start_deadline_passed|fault_proof_l1_refused:.*"} > 0
         labels:
           severity: critical
         annotations:
@@ -74,26 +74,6 @@ groups:
         annotations:
           summary: "Watcher {{ $labels.instance }} cannot fund a fault proof"
           runbook: "docs/operations/alerts.md#midgardwatcherproverfundingunavailable"
-
-      - alert: MidgardWatcherProverCollateralForfeited
-        # A proof attempt landed failing phase 2 and the chain took its
-        # collateral: local script evaluation disagreed with the chain.
-        expr: midgard_watcher_active_alerts{code="prover_collateral_forfeited"} > 0
-        labels:
-          severity: warning
-        annotations:
-          summary: "Watcher {{ $labels.instance }} lost prover collateral to a failed script"
-          runbook: "docs/operations/alerts.md#midgardwatcherprovercollateralforfeited"
-
-      - alert: MidgardWatcherProverCollateralAccountingFailed
-        # The prover reservation could not account for an attempt's
-        # forfeited or returned collateral; the accounting is retried.
-        expr: midgard_watcher_active_alerts{code="prover_collateral_accounting_failed"} > 0
-        labels:
-          severity: warning
-        annotations:
-          summary: "Watcher {{ $labels.instance }} could not account for prover collateral"
-          runbook: "docs/operations/alerts.md#midgardwatcherprovercollateralaccountingfailed"
 
       - alert: MidgardWatcherProofStartedLate
         # A fault proof runs after its latest safe start; it must land

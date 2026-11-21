@@ -1,9 +1,9 @@
 /** A thread of ours on a header removed against a record this run did not
  * create, as the orchestrator rows see it: the chain our L1 port reads, a
  * cancel port over it, and `makeAdapter`'s family with its header removed. */
+import { isFinal } from "@al-ft/midgard-l1-follower/heads";
 import { expect, vi } from "vitest";
 
-import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowPreflight,
@@ -13,7 +13,10 @@ import {
   withOwnThreadReclaim,
 } from "../src/workflow/own-thread-reclaim.with-own-thread-reclaim.js";
 import { FraudProofResolvedByAnotherRecordError } from "../src/workflow/resolved-by-another-record.js";
+import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
+import { signedWorkflowTransactionFixture } from "./support/signed-workflow-transaction.js";
 import {
+  createFixtureChain,
   makeAdapter,
   REFERENCE_OUT_REF,
   REFERENCE_SCRIPT_HASH,
@@ -24,7 +27,6 @@ import {
 export const FINAL_DEPTH =
   RELEASE_FINALITY_POLICY.automaticRecoveryMaxDepth + 2;
 export const OUR_THREAD = `${"d7".repeat(32)}#1`;
-export const RECLAIM_TX = "d8".repeat(32);
 export const THREAD_LOVELACE = "9000000";
 
 export const resolution = {
@@ -33,29 +35,34 @@ export const resolution = {
   confirmationDepth: FINAL_DEPTH,
 };
 
-export const kinds = (entries: readonly FraudProofWorkflowJournalEntry[]) =>
-  entries.map(({ event }) => event.kind);
-
 /** The chain as our L1 port reads it: our thread standing until its cancel
- * lands, then that cancel at its depth. */
-export const chain = ({
+ * lands, then that cancel at its depth. `l1` is the same chain as the run
+ * follows its sent transactions on. */
+export const chain = async ({
   thread = OUR_THREAD,
-  reclaimTx = RECLAIM_TX,
 }: {
   readonly thread?: string;
-  readonly reclaimTx?: string;
 } = {}) => {
   const state: {
     standing: boolean;
     reclaimDepth: number | undefined;
   } = { standing: true, reclaimDepth: undefined };
+  const reclaim = await signedWorkflowTransactionFixture();
+  const reclaimTx = reclaim.input.transactionHash;
+  const l1 = createFixtureChain();
   return {
     state,
     thread,
     reclaimTx,
+    reclaimSigned: reclaim.signed,
+    l1,
     land: (depth: number) => {
       state.standing = false;
       state.reclaimDepth = depth;
+      l1.land(reclaimTx);
+      if (!isFinal(depth, { securityParameter: FINAL_DEPTH - 1 }))
+        l1.reversible.add(reclaimTx);
+      else l1.reversible.delete(reclaimTx);
     },
     threads: () => ({
       ...(state.standing
@@ -81,25 +88,28 @@ export const chain = ({
   };
 };
 
-export type Ledger = ReturnType<typeof chain>;
+export type Ledger = Awaited<ReturnType<typeof chain>>;
 
 /** A cancel port over `ledger`, as one process instance holds it. */
 export const reclaimPort = (
   ledger: Ledger,
   preflight: OwnThreadReclaimPort["preflight"] = async ({ actionId }) =>
-    ({
-      actionId,
-      txHash: ledger.reclaimTx,
-      scriptExecution: "reference_scripts",
-      localUplcEvaluation: { status: "passed", evaluator: "uplc-v1" },
-      referenceScripts: [
-        {
-          role: "family-step-cancel",
-          outRef: REFERENCE_OUT_REF,
-          scriptHash: REFERENCE_SCRIPT_HASH,
-        },
-      ],
-    }) satisfies FraudProofWorkflowPreflight,
+    bindWorkflowPreflightTransaction(
+      {
+        actionId,
+        txHash: ledger.reclaimTx,
+        scriptExecution: "reference_scripts",
+        localUplcEvaluation: { status: "passed", evaluator: "uplc-v1" },
+        referenceScripts: [
+          {
+            role: "family-step-cancel",
+            outRef: REFERENCE_OUT_REF,
+            scriptHash: REFERENCE_SCRIPT_HASH,
+          },
+        ],
+      } satisfies FraudProofWorkflowPreflight,
+      ledger.reclaimSigned,
+    ),
 ) => ({
   observe: vi.fn(async () => ledger.threads()),
   preflight: vi.fn(preflight),
@@ -116,8 +126,10 @@ export const removedByAnotherProver = (
   ledger: Ledger,
   removed: () => boolean = () => true,
   depth: () => number = () => FINAL_DEPTH,
+  /** Whether the family's own submissions land at once. */
+  lands = true,
 ): FraudProofFamilyWorkflowAdapter => {
-  const adapter = makeAdapter();
+  const adapter = makeAdapter({ chain: ledger.l1, lands });
   return {
     ...adapter,
     observe: async (context) => {
@@ -144,27 +156,26 @@ export const decorate = (
     releaseFinality: { policy: RELEASE_FINALITY_POLICY },
   });
 
+/** Resolved against `expected` once our thread on `ledger` is reclaimed by
+ * exactly one landed cancel, and never as our conviction. */
 export const expectReclaimedThenResolved = (
   outcome: Awaited<ReturnType<typeof run>>,
   expected: typeof resolution,
-  ledger?: Ledger,
+  ledger: Ledger,
 ) => {
   expect(outcome.kind).toBe("resolved_by_another_record");
   if (outcome.kind !== "resolved_by_another_record")
     throw new Error("not resolved");
   expect(outcome.resolution).toEqual(expected);
-  const thread = ledger?.thread ?? OUR_THREAD;
-  expect(outcome.reclaimed).toEqual([
-    {
-      actionId: `reclaim:${thread}`,
-      txHash: ledger?.reclaimTx ?? RECLAIM_TX,
-      threadOutRef: thread,
-      lovelace: THREAD_LOVELACE,
-    },
+  const { standing, spends } = ledger.threads();
+  expect(standing).toBeUndefined();
+  expect(spends).toEqual([
+    expect.objectContaining({
+      txHash: ledger.reclaimTx,
+      threadOutRef: ledger.thread,
+    }),
   ]);
-  // A reclaim is never our conviction: no terminal, no completion.
+  // A reclaim is never our conviction: no terminal.
   expect("terminal" in outcome).toBe(false);
-  expect(kinds(outcome.entries)).not.toContain("completed");
-  expect(kinds(outcome.entries)).not.toContain("terminal_included");
   return outcome;
 };

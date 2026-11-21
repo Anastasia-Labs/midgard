@@ -417,11 +417,10 @@ export const publishPhaseYieldReferences = async (
 export const oneStepDeployment = (
   scene: Scene,
   oneStep: ValidationTraceOneStepReferences,
-  deploymentFingerprint?: string,
   fieldPreimageCertificate?: ValidationTraceFieldPreimageCertificate,
   fieldGrammarCertificate?: ValidationTraceFieldGrammarCertificate,
 ): ValidationTraceDisputeDeployment => {
-  const deployment = runnerDeployment(scene, deploymentFingerprint);
+  const deployment = runnerDeployment(scene);
   return {
     ...deployment,
     ...(fieldPreimageCertificate === undefined

@@ -53,7 +53,7 @@ import {
   publishFaultProofFieldCarriage,
 } from "../field-opening.publish-fault-proof-field-carriage.js";
 import { stepWalletFunding } from "../funding/plain-funding-output.js";
-import { type ResolvedProverSigner } from "../runtime.js";
+import type { ResolvedProverSigner } from "../runtime.js";
 import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
@@ -63,7 +63,7 @@ import {
 } from "../workflow/own-outputs.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
@@ -152,7 +152,7 @@ export type ValueNotPreservedStep03Build = {
 };
 
 export type SubmitValueNotPreservedStep03Result =
-  UnjournaledSubmission<ValueNotPreservedStep03Build>;
+  OutsideWorkflowSubmission<ValueNotPreservedStep03Build>;
 
 export const buildValueNotPreservedStep03 = async ({
   lucid,

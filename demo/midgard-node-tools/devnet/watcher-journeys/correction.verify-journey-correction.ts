@@ -1,13 +1,5 @@
-import { join } from "node:path";
-
-import type {
-  FraudProofWorkflowJournalEntry,
-  FraudProofWorkflowTerminal,
-} from "@al-ft/midgard-fault-proofs/workflow/journal";
-import {
-  journaledProgress,
-  WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
-} from "@al-ft/midgard-fault-proofs/workflow/pending-continuation";
+import { WORKFLOW_CONTINUATION_QUIET_BOUND_MS } from "@al-ft/midgard-fault-proofs/workflow/pending-continuation";
+import { isSafe } from "@al-ft/midgard-l1-follower/heads";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
@@ -19,24 +11,19 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { writeJourneyArtifact } from "./artifacts.js";
-import type { JourneyCounterpartyWait } from "./correction.journey-progress-clock.js";
+import type {
+  JourneyChainCorrection,
+  JourneyCorrectionChain,
+} from "./correction.chain-correction.js";
+import { verifyJourneyComputationThreadAbsent } from "./correction.verify-journey-computation-thread-absent.js";
 import {
-  verifyJourneyComputationThreadAbsent,
-  verifyJourneyWorkflowTransactions,
-} from "./correction.verify-journey-computation-thread-absent.js";
-import {
-  JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
-  journeyIntentRecovery,
-  type JourneyWorkflowStore,
-  journeyWorkflowUpdates,
-  readJourneyWorkflowEntries,
   transactionOutputs,
   verifyJourneyCorrectedScheduler,
   verifyJourneyCorrectedTail,
 } from "./correction.verify-journey-corrected-scheduler.js";
 import {
   journeyStartDeadlinePassed,
+  journeyTargetHolds,
   type JourneyWatcherStartStatus,
 } from "./correction.watcher-start-deadline.js";
 import type { loadJourneyContext } from "./live-context.js";
@@ -65,10 +52,8 @@ export type JourneyTransactions = {
 /** One output of a valid confirmed transaction, by `txHash#index`. */
 const readJourneyOutput = async (
   transactions: JourneyTransactions,
-  outRef: string | null,
+  outRef: string,
 ) => {
-  if (outRef === null)
-    throw new Error("Expected an actual economic output reference");
   const [txHash, index] = outRef.split("#");
   const observed = await transactions.transaction(txHash!);
   const tx = CML.Transaction.from_cbor_hex(observed.cbor);
@@ -96,7 +81,7 @@ export const verifyJourneyProverReward = async ({
       number | bigint
     >
   >;
-  completion: Pick<FraudProofWorkflowTerminal, "economics">;
+  completion: Pick<JourneyChainCorrection, "economics">;
   proverAddress: string;
   transactions: JourneyTransactions;
 }) => {
@@ -125,29 +110,23 @@ export const verifyJourneyProverReward = async ({
       return `${value.transaction_id().to_hex()}#${value.index()}`;
     }),
   ).toContain(completion.economics.operatorBondInputOutRef);
-  expect(completion.economics).toMatchObject({
-    operatorBondInputLovelace: economics.requiredBondLovelace.toString(),
-    slashedLovelace: economics.slashingPenaltyLovelace.toString(),
-    proverRewardLovelace: economics.fraudProverRewardLovelace.toString(),
-  });
 };
 
-/** Shared acceptance assertions for every installed automatic workflow. */
+/**
+ * Shared acceptance assertions for every installed automatic workflow. The
+ * correction is read from the chain: the watcher keeps its in-flight state
+ * in memory and no record of it on disk. Progress is the transactions of
+ * ours that land; the watcher's `/v1/status` holds say when it stopped.
+ */
 export const verifyJourneyCorrection = async ({
   context,
   transactions,
-  watcherStore,
+  chain,
   watcherStatus,
-  directory,
   category,
   headerHash,
   predecessorHeaderHash,
-  workflowBaseline,
   actionDepth,
-  resumeAllowanceMs,
-  counterpartyWait,
-  reconciliationAllowanceMs,
-  stallAllowanceMs = JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
   operatorVkey,
   proverAddress,
   requireLive,
@@ -157,42 +136,21 @@ export const verifyJourneyCorrection = async ({
   context: JourneyCorrectionContext;
   /** Where the confirmed bytes of the workflow's transactions are read. */
   transactions: JourneyTransactions;
-  /** Where the watcher's workflow rows are read. */
-  watcherStore: JourneyWorkflowStore;
+  /** The family's landed transactions and correction, read from chain. */
+  chain: JourneyCorrectionChain;
   /**
-   * The watcher's `/v1/status`, read on each poll while the workflow has
-   * signed no step: once the watcher can no longer start this proof, the
-   * correction fails at once, naming why.
+   * The watcher's `/v1/status`, read on each poll. Before anything of ours
+   * lands, the correction fails at once when the watcher can no longer start
+   * this proof. At any time it fails at once on a hold by which the watcher
+   * gave up on it, and on a pausing hold that outlasts the watcher's quiet
+   * bound with nothing of ours landing.
    */
   watcherStatus?: () => Promise<JourneyWatcherStartStatus>;
-  directory: string;
   category: SDK.FraudProofCatalogueCategoryName;
   headerHash: string;
   predecessorHeaderHash: string;
-  workflowBaseline: readonly FraudProofWorkflowJournalEntry[];
-  /** Depth the watcher acts at; the completed terminal must be this deep. */
+  /** Depth the watcher acts at; the removal must be this deep. */
   actionDepth: number;
-  /**
-   * A retained workflow's allowance to re-observe its target before the
-   * watcher's quiet bound starts: the journey's automatic-decision
-   * allowance. Without it, the quiet bound applies from the start.
-   */
-  resumeAllowanceMs?: number;
-  /**
-   * The family's legitimate silent wait on its counterparty, when its
-   * journal shows one: the journal may then stay silent until that wait's
-   * deadline plus the watcher's quiet bound for the move the deadline
-   * enables. Before the wait begins and after it ends, the quiet bound
-   * applies.
-   */
-  counterpartyWait?: JourneyCounterpartyWait;
-  /**
-   * Existing release-depth window for resolving an outstanding signed
-   * intent; while one is pending, the longer of it and the quiet bound
-   * applies.
-   */
-  reconciliationAllowanceMs?: number;
-  stallAllowanceMs?: number;
   operatorVkey: string;
   /**
    * The watcher's prover wallet, which the reward must pay: on a devnet the
@@ -207,124 +165,73 @@ export const verifyJourneyCorrection = async ({
     timeoutMs?: number,
   ): Promise<T>;
   stage<T>(name: string, action: () => Promise<T>): Promise<T>;
-}) => {
+}): Promise<
+  Readonly<{
+    completion: JourneyChainCorrection;
+    /** Whether the chain already held the correction at the first read. */
+    alreadyCorrected: boolean;
+  }>
+> => {
   const { deployment, provider } = context;
-  let reported = workflowBaseline.length - 1;
-  let reportedStall: string | undefined;
-  // The correction is judged by the watcher's own continuation rule
-  // (`continuePendingWorkflow`): the workflow fails once its journal reaches
-  // no new milestone (`journaledProgress`) for the watcher's quiet bound.
-  // A family may take any number of transactions; one that keeps
-  // resubmitting or abandoning the same action reaches no milestone, so the
-  // quiet bound ends it. The clock starts here, after the harness launched
-  // the watcher and saw its decision, as each watcher session's quiet clock
-  // starts at that session's start.
-  let progress = journaledProgress({ entries: workflowBaseline });
-  let progressAt = Date.now();
-  let awaitingResumeProgress = workflowBaseline.length > 0;
-  const completion = await poll(
+  const target = { category, headerHash };
+  const reported = new Set<string>();
+  let polls = 0;
+  let paused: Readonly<{ reasons: string; since: number }> | undefined;
+  const corrected = await poll(
     "confirmed proof and correction",
     async () => {
       requireLive();
-      const records = await readJourneyWorkflowEntries({
-        watcherStore,
-        category,
-        headerHash,
-      });
-      if (
-        watcherStatus !== undefined &&
-        !records.some(({ event }) => event.kind === "submission_intent")
-      ) {
-        const passed = journeyStartDeadlinePassed(await watcherStatus(), {
-          category,
-          headerHash,
-        });
-        if (passed !== undefined) throw new Error(passed);
-      }
-      const journaled = journaledProgress({ entries: records });
-      if (journaled > progress) {
-        progress = journaled;
-        progressAt = Date.now();
-        awaitingResumeProgress = false;
-      }
-      const quietBoundMs =
-        awaitingResumeProgress && resumeAllowanceMs !== undefined
-          ? resumeAllowanceMs + WORKFLOW_CONTINUATION_QUIET_BOUND_MS
-          : WORKFLOW_CONTINUATION_QUIET_BOUND_MS;
-      const pendingIntent = [
-        ...journeyIntentRecovery(records).latest.values(),
-      ].some(({ outcome }) => outcome === "pending");
-      const allowanceMs =
-        pendingIntent && reconciliationAllowanceMs !== undefined
-          ? Math.max(quietBoundMs, reconciliationAllowanceMs)
-          : quietBoundMs;
-      if (Date.now() - progressAt > allowanceMs) {
-        const lastAction = [...records]
-          .reverse()
-          .find(({ event }) => "actionId" in event)?.event;
-        const last =
-          lastAction !== undefined && "actionId" in lastAction
-            ? `last action ${lastAction.actionId}`
-            : "no action journaled";
-        const waitDeadline = await counterpartyWait?.(records);
-        if (waitDeadline === undefined)
-          throw new Error(
-            `Workflow made no journaled progress for ${allowanceMs.toString()} ms (${progress.toString()} milestones, ${last})`,
-          );
-        if (Date.now() > waitDeadline + WORKFLOW_CONTINUATION_QUIET_BOUND_MS)
-          throw new Error(
-            `Workflow made no journaled progress within ${WORKFLOW_CONTINUATION_QUIET_BOUND_MS.toString()} ms of its counterparty wait's deadline ${waitDeadline.toString()} (${progress.toString()} milestones, ${last})`,
-          );
-      }
-      for (const { sequence, event } of journeyWorkflowUpdates(
-        records,
-        workflowBaseline,
-        reported,
-        { now: Date.now(), allowanceMs: stallAllowanceMs },
-      )) {
-        if (event.kind === "submitted" || event.kind === "confirmed")
-          console.info(`Live proof: ${event.kind} ${event.actionId}`);
-        if (event.kind === "stalled" && event.reason !== reportedStall) {
-          reportedStall = event.reason;
-          console.info(`Live proof: stalled, retrying: ${event.reason}`);
+      polls += 1;
+      const landed = await chain.landed();
+      let landedNew = false;
+      for (const txHash of landed)
+        if (!reported.has(txHash)) {
+          reported.add(txHash);
+          landedNew = true;
+          console.info(`Live proof: landed ${txHash}`);
         }
-        reported = sequence;
+      if (watcherStatus !== undefined) {
+        const status = await watcherStatus();
+        if (landed.size === 0) {
+          const passed = journeyStartDeadlinePassed(status, target);
+          if (passed !== undefined) throw new Error(passed);
+        }
+        const holds = journeyTargetHolds(status, target);
+        if (holds.fatal.length > 0)
+          throw new Error(
+            `The watcher gave up on ${category}/${headerHash}: ${holds.fatal.join("; ")}`,
+          );
+        const reasons = holds.pausing.join(",");
+        // A landing of ours, or another set of holds, restarts the pause's
+        // clock at this read; no hold clears it.
+        if (reasons === "") paused = undefined;
+        else if (landedNew || paused?.reasons !== reasons)
+          paused = { reasons, since: Date.now() };
+        else if (
+          Date.now() - paused.since >
+          WORKFLOW_CONTINUATION_QUIET_BOUND_MS
+        )
+          throw new Error(
+            `The watcher held ${category}/${headerHash} under ${reasons} for over ${WORKFLOW_CONTINUATION_QUIET_BOUND_MS.toString()} ms with nothing of ours landing`,
+          );
       }
-      const terminal = [...records]
-        .reverse()
-        .find(
-          ({ event }) =>
-            event.kind === "terminal_included" || event.kind === "completed",
-        )?.event;
-      if (
-        terminal?.kind !== "terminal_included" &&
-        terminal?.kind !== "completed"
-      )
-        return undefined;
-      await verifyJourneyWorkflowTransactions(records, (txHash) =>
-        transactions.transaction(txHash),
-      );
-      expect(terminal.terminal).toMatchObject({
-        category,
-        headerHash: headerHash,
-        correction: { fraudulentHeaderAbsent: true },
-        proofToken: { retainedAtFinalState: true },
-      });
+      const completion = await chain.correction();
+      if (completion === undefined) return undefined;
       // Completion is inclusion at the action depth. Release finality is the
       // separate anchor the finalized evidence stamp waits for.
-      expect(
-        terminal.terminal.observedAt.confirmationDepth,
-      ).toBeGreaterThanOrEqual(actionDepth);
-      await writeJourneyArtifact(
-        join(directory, "completed-workflow.json"),
-        records,
-      );
-      return terminal.terminal;
+      if (
+        !isSafe(completion.observedAt.confirmationDepth, {
+          confirmationDepth: actionDepth,
+        })
+      )
+        return undefined;
+      return { completion, alreadyCorrected: polls === 1 };
     },
-    // Only the journal's progress ends a correction; the family's own time
-    // limit does not run while it waits (`journeyFamilyDeadline`).
+    // Only the watcher's own verdicts end a correction; the family's own
+    // time limit does not run while it waits (`journeyFamilyDeadline`).
     Number.POSITIVE_INFINITY,
   );
+  const { completion } = corrected;
   const { contracts } = deployment;
   const headerUnit = (hash: string) =>
     toUnit(
@@ -332,7 +239,7 @@ export const verifyJourneyCorrection = async ({
       SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + hash,
     );
   await stage("independent corrected-state observations", async () => {
-    const readOutput = (outRef: string | null) =>
+    const readOutput = (outRef: string) =>
       readJourneyOutput(transactions, outRef);
     await verifyJourneyProverReward({
       economics: deployment.manifest.economics,
@@ -458,5 +365,5 @@ export const verifyJourneyCorrection = async ({
     expect(locks).toHaveLength(1);
     expect(Data.from(locks[0]!.datum!, SDK.CorrectionLockDatum)).toBe("Idle");
   });
-  return completion;
+  return corrected;
 };

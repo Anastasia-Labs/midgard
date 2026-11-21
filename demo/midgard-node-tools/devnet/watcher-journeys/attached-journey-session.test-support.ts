@@ -12,11 +12,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-} from "@al-ft/midgard-fault-proofs/workflow/journal";
-import {
   Emulator,
   generateEmulatorAccount,
   Lucid,
@@ -24,7 +19,6 @@ import {
 import type { DaPayloadsDB } from "midgard-node/database/index";
 import { parseManifestFixture } from "midgard-node/tests/da-payload-libp2p-producer.manifest-fixture";
 import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture";
-import { openWatcherWorkflowStoreForTest } from "midgard-watcher/tests/support/watcher-workflow-store";
 import { expect } from "vitest";
 
 import type { JourneyCategory } from "./fixture.js";
@@ -459,29 +453,3 @@ export const liveStatus = () => ({
   readinessReasons: ["l1_follower_catching_up"],
   l1Readiness: [{ reason: "l1_follower_catching_up", detail: "block 7" }],
 });
-
-/** A `started` row of a doubleSpend workflow on `headerHash`, in `storePath`. */
-export const seedWorkflowStarted = async (
-  storePath: string,
-  headerHash: string,
-) => {
-  const identity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: fingerprint,
-    category: "doubleSpend" as const,
-    target: { kind: "state_queue_header" as const, headerHash },
-  };
-  const workflows = openWatcherWorkflowStoreForTest(storePath);
-  await workflows.forObjective({ category: "doubleSpend", headerHash }).append(
-    {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-      workflowId: computeFraudProofWorkflowId(identity),
-      identity,
-      sequence: 0,
-      recordedAt: "2026-10-29T00:00:00.000Z",
-      event: { kind: "started" },
-    },
-    0,
-  );
-  workflows.close();
-};

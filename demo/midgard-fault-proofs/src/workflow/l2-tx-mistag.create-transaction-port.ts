@@ -36,7 +36,7 @@ import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
@@ -147,7 +147,7 @@ const createTransactionPort = (
     if (input.stage === "init") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildL2TxMistagInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -171,13 +171,12 @@ const createTransactionPort = (
     if (input.stage === "step_01") {
       const chunks = await resolveDirectFirstProofChunks({
         action,
-        lucid: config.lucid,
         address: config.signer.proofMaterialsAddress,
         proofCbor: admitted.artifact.txMembershipProofCbor,
       });
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildL2TxMistagStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -203,7 +202,7 @@ const createTransactionPort = (
     if (input.stage === "step_02") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildL2TxMistagStep02({
               lucid: config.lucid,
               contracts: config.contracts,

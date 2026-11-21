@@ -68,18 +68,18 @@ const linearFamilyExecute = (
   WidenedLinearWorkflow
 >["execute"] =>
   category === "daHashPreimage"
-    ? async ({ workflow, sources, journal, walletOnlySend }) =>
+    ? async ({ workflow, sources, run, walletOnlySend }) =>
         await runOrResumeManifestBoundDaHashPreimageWorkflow({
           workflow: workflow as ManifestBoundDaHashPreimageWorkflow,
           sources,
-          journal,
+          run,
           walletOnlySend,
         })
-    : async ({ workflow, sources, journal, walletOnlySend }) =>
+    : async ({ workflow, sources, run, walletOnlySend }) =>
         await runOrResumeManifestBoundFamilyWorkflow({
           workflow,
           sources,
-          journal,
+          run,
           walletOnlySend,
         });
 
@@ -238,11 +238,11 @@ export const DOUBLE_SPEND_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
     withDoubleSpendOwnThreadReclaim(
       await createManifestBoundDoubleSpendWorkflow(config),
     ),
-  execute: async ({ workflow, sources, journal, walletOnlySend }) =>
+  execute: async ({ workflow, sources, run, walletOnlySend }) =>
     await runOrResumeManifestBoundDoubleSpendWorkflow({
       workflow,
       sources,
-      journal,
+      run,
       walletOnlySend,
     }),
   bindsDecisionDigest: false,

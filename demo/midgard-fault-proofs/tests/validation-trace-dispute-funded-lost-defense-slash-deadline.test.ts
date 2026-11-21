@@ -12,7 +12,6 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
 import {
   validationTraceCaseBondUnlockMs,
   validationTraceCaseStartedAt,
@@ -26,7 +25,7 @@ import {
   VALIDATION_TRACE_MOVE_UNBUILT,
 } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
-import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
+import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/validation-trace-dispute/wallet-move-unfunded-alarm.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { drainProverToOneCoin } from "./support/installed-prover-wallet.js";
 import {
@@ -49,7 +48,6 @@ import {
 import type { AdapterWrap } from "./support/validation-trace-dispute-funded-runner.js";
 import {
   ADA,
-  entriesOf,
   TIMEOUT,
 } from "./support/validation-trace-dispute-funded-verify-source.js";
 
@@ -80,9 +78,9 @@ const stopsCleanly = async (journey: TwoDefended) => {
       kind: "pending",
       namedState: { name: VALIDATION_TRACE_DEFENDER_WON, alarm: false },
     });
-    expect(confirmed(result).map(({ stage }) => stage)).not.toContain(
-      "slash_lost_defense",
-    );
+    expect(
+      (await confirmed(journey.dispute)).map(({ stage }) => stage),
+    ).not.toContain("slash_lost_defense");
   }
   // Nobody slashed the defender: its node stands.
   expect(await defenderNodes(journey)).toHaveLength(1);
@@ -144,22 +142,18 @@ describe("the deadline of the slash of a defender who lost a thread of our case"
       const journey = await openTwoDefendedFundedCase({
         rewriteRemoval: unpublishedActiveOperators,
       });
-      try {
-        const [node] = await defenderNodes(journey);
-        const unlock = nodeBondUnlock(node!)!;
-        const { result } = await playToDefenderWon(
-          journey,
-          undefined,
-          VALIDATION_TRACE_MOVE_UNBUILT,
-        );
-        expect(validationTraceRunState(result)).toMatchObject({
-          namedState: { name: VALIDATION_TRACE_MOVE_UNBUILT, alarm: true },
-        });
-        passUnlock(journey, unlock);
-        await stopsCleanly(journey);
-      } finally {
-        await journey.dispute.close();
-      }
+      const [node] = await defenderNodes(journey);
+      const unlock = nodeBondUnlock(node!)!;
+      const { result } = await playToDefenderWon(
+        journey,
+        undefined,
+        VALIDATION_TRACE_MOVE_UNBUILT,
+      );
+      expect(validationTraceRunState(result)).toMatchObject({
+        namedState: { name: VALIDATION_TRACE_MOVE_UNBUILT, alarm: true },
+      });
+      passUnlock(journey, unlock);
+      await stopsCleanly(journey);
     },
     TIMEOUT,
   );
@@ -168,49 +162,45 @@ describe("the deadline of the slash of a defender who lost a thread of our case"
     "raises no alarm for a slash our wallet could not fund once the defender's bond unlock has passed, and stops under defender-won",
     async () => {
       const journey = await openTwoDefendedFundedCase();
-      try {
-        const [node] = await defenderNodes(journey);
-        const unlock = nodeBondUnlock(node!)!;
-        // The ledger's collateral rate rises past what the wallet holds once
-        // our close of the thread is sent, before the slash it settles.
-        const { emulator } = journey.scene.h;
-        const parameters = emulator.protocolParameters;
-        let raised = false;
-        const costly: AdapterWrap = (adapter) => ({
-          ...adapter,
-          submit: async (input) => {
-            const submitted = await adapter.submit(input);
-            if (input.action.actionId.startsWith(CLOSE_THREAD)) {
-              raised = true;
-              emulator.protocolParameters = {
-                ...parameters,
-                collateralPercentage: 1_000_000,
-              };
-            }
-            return submitted;
-          },
-        });
-        const { result, history } = await playToDefenderWon(
-          journey,
-          costly,
-          VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
-        );
-        expect(raised, history.join("\n")).toBe(true);
-        expect(validationTraceRunState(result)).toMatchObject({
-          namedState: {
-            name: VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
-            alarm: true,
-          },
-        });
-        expect("reason" in result && result.reason).toContain(
-          `, which must land before its deadline ${unlock.toString()}, the defender's bond unlock;`,
-        );
-        // The rate stays raised: a slash proposed again would alarm again.
-        passUnlock(journey, unlock);
-        await stopsCleanly(journey);
-      } finally {
-        await journey.dispute.close();
-      }
+      const [node] = await defenderNodes(journey);
+      const unlock = nodeBondUnlock(node!)!;
+      // The ledger's collateral rate rises past what the wallet holds once
+      // our close of the thread is sent, before the slash it settles.
+      const { emulator } = journey.scene.h;
+      const parameters = emulator.protocolParameters;
+      let raised = false;
+      const costly: AdapterWrap = (adapter) => ({
+        ...adapter,
+        submit: async (input) => {
+          const submitted = await adapter.submit(input);
+          if (input.action.actionId.startsWith(CLOSE_THREAD)) {
+            raised = true;
+            emulator.protocolParameters = {
+              ...parameters,
+              collateralPercentage: 1_000_000,
+            };
+          }
+          return submitted;
+        },
+      });
+      const { result, history } = await playToDefenderWon(
+        journey,
+        costly,
+        VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
+      );
+      expect(raised, history.join("\n")).toBe(true);
+      expect(validationTraceRunState(result)).toMatchObject({
+        namedState: {
+          name: VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
+          alarm: true,
+        },
+      });
+      expect("reason" in result && result.reason).toContain(
+        `, which must land before its deadline ${unlock.toString()}, the defender's bond unlock;`,
+      );
+      // The rate stays raised: a slash proposed again would alarm again.
+      passUnlock(journey, unlock);
+      await stopsCleanly(journey);
     },
     TIMEOUT,
   );
@@ -219,47 +209,44 @@ describe("the deadline of the slash of a defender who lost a thread of our case"
     "raises the slash's alarm, naming its deadline, the defender's bond unlock, when our wallet runs below the collateral line before the slash",
     async () => {
       const journey = await openTwoDefendedFundedCase();
-      try {
-        const [node] = await defenderNodes(journey);
-        const unlock = nodeBondUnlock(node!)!;
-        // Once our close of the thread is sent, the operator leaves one coin
-        // below the collateral line, before the slash it settles.
-        let drained = false;
-        const draining: AdapterWrap = (adapter) => ({
-          ...adapter,
-          submit: async (input) => {
-            const submitted = await adapter.submit(input);
-            if (!drained && input.action.actionId.startsWith(CLOSE_THREAD)) {
-              drained = true;
-              await drainProverToOneCoin(journey.scene.h as never, 1n * ADA);
-            }
-            return submitted;
-          },
-        });
-        const { result, history } = await playToDefenderWon(
-          journey,
-          draining,
-          VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
-        );
-        expect(drained, history.join("\n")).toBe(true);
-        expect(validationTraceRunState(result)).toMatchObject({
-          namedState: {
-            name: VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
-            alarm: true,
-          },
-        });
-        expect("reason" in result && result.reason).toContain(
-          `, which must land before its deadline ${unlock.toString()}, the defender's bond unlock;`,
-        );
-        expect("reason" in result && result.reason).toContain(
-          "insufficient plain-Ada collateral",
-        );
-        expect(confirmed(result).map(({ stage }) => stage)).not.toContain(
-          "slash_lost_defense",
-        );
-      } finally {
-        await journey.dispute.close();
-      }
+      const [node] = await defenderNodes(journey);
+      const unlock = nodeBondUnlock(node!)!;
+      // Once our close of the thread is sent, the operator leaves one coin
+      // below the collateral line, before the slash it settles.
+      let drained = false;
+      const draining: AdapterWrap = (adapter) => ({
+        ...adapter,
+        submit: async (input) => {
+          const submitted = await adapter.submit(input);
+          if (!drained && input.action.actionId.startsWith(CLOSE_THREAD)) {
+            drained = true;
+            await drainProverToOneCoin(journey.scene.h as never, 1n * ADA);
+          }
+          return submitted;
+        },
+      });
+      const { result, history } = await playToDefenderWon(
+        journey,
+        draining,
+        VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
+      );
+      expect(drained, history.join("\n")).toBe(true);
+      expect(validationTraceRunState(result)).toMatchObject({
+        namedState: {
+          name: VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
+          alarm: true,
+        },
+      });
+      expect("reason" in result && result.reason).toContain(
+        `, which must land before its deadline ${unlock.toString()}, the defender's bond unlock;`,
+      );
+      // The wallet's own refusal names the collateral it cannot cover.
+      expect("reason" in result && result.reason).toMatch(
+        /cover the required \d+ Lovelace collateral/u,
+      );
+      expect(
+        (await confirmed(journey.dispute)).map(({ stage }) => stage),
+      ).not.toContain("slash_lost_defense");
     },
     TIMEOUT,
   );
@@ -271,107 +258,127 @@ describe("the deadline of the slash of a defender who lost a thread of our case"
         rewriteRemoval: unpublishedActiveOperators,
       });
       const { scene, dispute } = journey;
-      try {
-        const { result } = await playToDefenderWon(
-          journey,
-          undefined,
-          VALIDATION_TRACE_MOVE_UNBUILT,
-        );
-        const stages = confirmedValidationTraceStages(entriesOf(result));
-        const receiptOutRef = stages
-          .find(({ action }) => action.stage === "close_thread")!
-          .outputs.find(({ role }) => role === "receipt")!.outRef;
-        const [receipt] = await scene.h.proverLucid.utxosByOutRef([
-          {
-            txHash: receiptOutRef.slice(0, 64),
-            outputIndex: Number(receiptOutRef.slice(65)),
-          },
-        ]);
-        const lucid = rewritingNodes(scene.h.proverLucid, noUnlock);
-        const headerHash = scene.failing.evidence.headerHash;
-        const caseUnit = caseUnitOf(journey);
-        const bound = validationTraceCaseBondUnlockMs(
-          validationTraceCaseStartedAt({
-            transactions: await dispute.caseHistory.transactions({
-              headerHash,
-              caseUnit,
-            }),
+      await playToDefenderWon(
+        journey,
+        undefined,
+        VALIDATION_TRACE_MOVE_UNBUILT,
+      );
+      const stages = await dispute.confirmed();
+      const receiptOutRef = stages
+        .find(({ action }) => action.stage === "close_thread")!
+        .outputs.find(({ role }) => role === "receipt")!.outRef;
+      const [receipt] = await scene.h.proverLucid.utxosByOutRef([
+        {
+          txHash: receiptOutRef.slice(0, 64),
+          outputIndex: Number(receiptOutRef.slice(65)),
+        },
+      ]);
+      const lucid = rewritingNodes(scene.h.proverLucid, noUnlock);
+      const headerHash = scene.failing.evidence.headerHash;
+      const caseUnit = caseUnitOf(journey);
+      const bound = validationTraceCaseBondUnlockMs(
+        validationTraceCaseStartedAt({
+          transactions: await dispute.caseHistory.transactions({
+            headerHash,
             caseUnit,
           }),
-        );
-        const warned: string[] = [];
-        const due = async (
-          caseHistory: typeof dispute.caseHistory,
-          now: number,
-        ) =>
+          caseUnit,
+        }),
+      );
+      const warned: string[] = [];
+      const due = async (
+        caseHistory: typeof dispute.caseHistory,
+        now: number,
+      ) =>
+        await dueValidationTraceLostDefenseSlash({
+          lucid,
+          signer: scene.h.proverSigner as never,
+          deployment: dispute.deployment,
+          headerHash,
+          deadlines: validationTraceLostDefenseSlashDeadlines({
+            lucid,
+            deployment: dispute.deployment,
+            caseHistory,
+            warn: (message) => warned.push(message),
+          }),
+          receipts: [{ outRef: outRefOf(receipt!), utxo: receipt! }],
+          now,
+        });
+      // The case's bound stands for the unlock the node does not name.
+      expect(await due(dispute.caseHistory, bound - 1)).toMatchObject({
+        kind: "due",
+      });
+      expect(await due(dispute.caseHistory, bound)).toBeUndefined();
+      expect(warned).toStrictEqual([]);
+      // The read holds the receipt alongside the case token, and returns
+      // the case token's history alone.
+      const asked: Parameters<typeof dispute.caseHistory.transactions>[0][] =
+        [];
+      const recording: typeof dispute.caseHistory = {
+        transactions: async (input) => {
+          asked.push(input);
+          return await dispute.caseHistory.transactions(input);
+        },
+      };
+      expect(await due(recording, bound - 1)).toMatchObject({ kind: "due" });
+      const receiptUnit = Object.keys(receipt!.assets).find((unit) =>
+        unit.startsWith(dispute.deployment.chain.award.policyId),
+      );
+      expect(receiptUnit).toBeDefined();
+      expect(asked[0]).toStrictEqual({
+        headerHash,
+        caseUnit,
+        alongside: [receiptUnit],
+      });
+      const hashes = (
+        transactions: readonly Readonly<{ txHash: string }>[],
+      ): string[] => transactions.map(({ txHash }) => txHash);
+      expect(
+        hashes(await dispute.caseHistory.transactions(asked[0]!)),
+      ).toStrictEqual(
+        hashes(
+          await dispute.caseHistory.transactions({ headerHash, caseUnit }),
+        ),
+      );
+      // A node whose datum cannot be read stands on the case's bound too,
+      // logged once.
+      const garbled = validationTraceLostDefenseSlashDeadlines({
+        lucid: rewritingNodes(scene.h.proverLucid, () => Data.to(0n)),
+        deployment: dispute.deployment,
+        caseHistory: dispute.caseHistory,
+        warn: (message) => warned.push(message),
+      });
+      for (let read = 0; read < 2; read += 1)
+        expect(await garbled.ofReceipt(headerHash, receiptOutRef)).toBe(bound);
+      expect(warned).toHaveLength(1);
+      expect(warned[0]).toContain("the defender's bond unlock cannot be read");
+      warned.length = 0;
+      // With the case's history unreadable, no deadline is known.
+      const deadlines = validationTraceLostDefenseSlashDeadlines({
+        lucid,
+        deployment: dispute.deployment,
+        caseHistory: {
+          transactions: async () => {
+            throw new Error("the case history is unreachable");
+          },
+        } as never,
+        warn: (message) => warned.push(message),
+      });
+      for (let read = 0; read < 2; read += 1)
+        expect(
           await dueValidationTraceLostDefenseSlash({
             lucid,
             signer: scene.h.proverSigner as never,
             deployment: dispute.deployment,
             headerHash,
-            deadlines: validationTraceLostDefenseSlashDeadlines({
-              lucid,
-              deployment: dispute.deployment,
-              caseHistory,
-              warn: (message) => warned.push(message),
-            }),
-            stages,
-            live: new Map([[outRefOf(receipt!), receipt!]]),
-            now,
-          });
-        // The case's bound stands for the unlock the node does not name.
-        expect(await due(dispute.caseHistory, bound - 1)).toMatchObject({
-          kind: "due",
-        });
-        expect(await due(dispute.caseHistory, bound)).toBeUndefined();
-        expect(warned).toStrictEqual([]);
-        // A node whose datum cannot be read stands on the case's bound too,
-        // logged once.
-        const garbled = validationTraceLostDefenseSlashDeadlines({
-          lucid: rewritingNodes(scene.h.proverLucid, () => Data.to(0n)),
-          deployment: dispute.deployment,
-          caseHistory: dispute.caseHistory,
-          warn: (message) => warned.push(message),
-        });
-        for (let read = 0; read < 2; read += 1)
-          expect(await garbled.ofReceipt(headerHash, receiptOutRef)).toBe(
-            bound,
-          );
-        expect(warned).toHaveLength(1);
-        expect(warned[0]).toContain(
-          "the defender's bond unlock cannot be read",
-        );
-        warned.length = 0;
-        // With the case's history unreadable, no deadline is known.
-        const deadlines = validationTraceLostDefenseSlashDeadlines({
-          lucid,
-          deployment: dispute.deployment,
-          caseHistory: {
-            transactions: async () => {
-              throw new Error("the case history is unreachable");
-            },
-          } as never,
-          warn: (message) => warned.push(message),
-        });
-        for (let read = 0; read < 2; read += 1)
-          expect(
-            await dueValidationTraceLostDefenseSlash({
-              lucid,
-              signer: scene.h.proverSigner as never,
-              deployment: dispute.deployment,
-              headerHash,
-              deadlines,
-              stages,
-              live: new Map([[outRefOf(receipt!), receipt!]]),
-              now: 0,
-            }),
-          ).toBeUndefined();
-        expect(warned).toHaveLength(1);
-        expect(warned[0]).toContain(`by receipt ${receiptOutRef}:`);
-        expect(warned[0]).toContain("the case history is unreachable");
-      } finally {
-        await dispute.close();
-      }
+            deadlines,
+            receipts: [{ outRef: outRefOf(receipt!), utxo: receipt! }],
+            now: 0,
+          }),
+        ).toBeUndefined();
+      expect(warned).toHaveLength(1);
+      expect(warned[0]).toContain(`by receipt ${receiptOutRef}:`);
+      expect(warned[0]).toContain("the case history is unreachable");
     },
     TIMEOUT,
   );
@@ -381,50 +388,46 @@ describe("the deadline of the slash of a defender who lost a thread of our case"
     async () => {
       const journey = await openTwoDefendedFundedCase();
       const { dispute } = journey;
-      try {
-        await successorWinsItsThread(journey);
-        let stopped!: () => void;
-        const stop = new Promise<void>((resolve) => {
-          stopped = resolve;
-        });
-        const foreign: string[] = [];
-        const stopAtSubmit: AdapterWrap = (adapter) => ({
-          ...adapter,
-          submit: async (input) => {
-            if (!input.action.actionId.startsWith(SLASH))
-              return await adapter.submit(input);
-            foreign.push(
-              await landForeignSlash(
-                journey,
-                input.action.actionId.slice(SLASH.length),
-              ),
-            );
-            stopped();
-            return await new Promise<never>(() => undefined);
-          },
-        });
-        await Promise.race([
-          stop,
-          turnCollecting(journey, stopAtSubmit).then(({ history }) => {
-            throw new Error(
-              `the process ended before submit: ${history.join("\n")}`,
-            );
-          }),
-        ]);
-        expect(foreign).toHaveLength(1);
-        await dispute.restart();
-        const { result, alarms, history } = await turnCollecting(journey);
-        expect(alarms, history.join("\n")).toStrictEqual([]);
-        expect(validationTraceRunState(result)).toMatchObject({
-          namedState: { name: VALIDATION_TRACE_DEFENDER_WON, alarm: false },
-        });
-        expect(confirmed(result).map(({ stage }) => stage)).not.toContain(
-          "slash_lost_defense",
-        );
-        expect(await defenderNodes(journey)).toStrictEqual([]);
-      } finally {
-        await dispute.close();
-      }
+      await successorWinsItsThread(journey);
+      let stopped!: () => void;
+      const stop = new Promise<void>((resolve) => {
+        stopped = resolve;
+      });
+      const foreign: string[] = [];
+      const stopAtSubmit: AdapterWrap = (adapter) => ({
+        ...adapter,
+        submit: async (input) => {
+          if (!input.action.actionId.startsWith(SLASH))
+            return await adapter.submit(input);
+          foreign.push(
+            await landForeignSlash(
+              journey,
+              input.action.actionId.slice(SLASH.length),
+            ),
+          );
+          stopped();
+          return await new Promise<never>(() => undefined);
+        },
+      });
+      await Promise.race([
+        stop,
+        turnCollecting(journey, stopAtSubmit).then(({ history }) => {
+          throw new Error(
+            `the process ended before submit: ${history.join("\n")}`,
+          );
+        }),
+      ]);
+      expect(foreign).toHaveLength(1);
+      dispute.restart();
+      const { result, alarms, history } = await turnCollecting(journey);
+      expect(alarms, history.join("\n")).toStrictEqual([]);
+      expect(validationTraceRunState(result)).toMatchObject({
+        namedState: { name: VALIDATION_TRACE_DEFENDER_WON, alarm: false },
+      });
+      expect(
+        (await confirmed(journey.dispute)).map(({ stage }) => stage),
+      ).not.toContain("slash_lost_defense");
+      expect(await defenderNodes(journey)).toStrictEqual([]);
     },
     TIMEOUT,
   );

@@ -16,9 +16,9 @@ import {
   type InputSetUniqueScanState,
 } from "../input-set-uniqueness/wrongful-rejection.js";
 import { fetchUtxoByOutRef, parseOutRef } from "../runtime.js";
-import {
-  type ManifestBoundLinearFamilyWorkflow,
-  type ManifestBoundLinearFamilyWorkflowConfig,
+import type {
+  ManifestBoundLinearFamilyWorkflow,
+  ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import { admitAnyInputSetUniquenessArtifact } from "./input-set-uniqueness.admit-input-set-uniqueness-forced-artifact.js";
@@ -37,7 +37,8 @@ import {
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { proofMaterialsAccess } from "./proof-materials-view.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 
 export const createTransactionPort = (
   config: BoundConfig,
@@ -49,10 +50,14 @@ export const createTransactionPort = (
       evidence,
       classification,
     }),
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const ownOutputs = workflowFieldCarriageOwnOutputs({
       category: "inputSetUniqueness",
-      entries,
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
+      }),
     });
     const admitted = admitAnyInputSetUniquenessArtifact(
       artifact,
@@ -65,7 +70,7 @@ export const createTransactionPort = (
     if (input.stage === "init") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildInputSetUniquenessInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -90,7 +95,7 @@ export const createTransactionPort = (
       if (admitted.sourceKind === "forced") {
         return Object.freeze({
           transaction: (
-            await journaledStepTransaction(
+            await workflowStepTransaction(
               await buildInputSetUniquenessForcedStep01({
                 lucid: config.lucid,
                 contracts: config.contracts,
@@ -108,13 +113,12 @@ export const createTransactionPort = (
       }
       const chunks = await resolveDirectFirstProofChunks({
         action,
-        lucid: config.lucid,
         address: config.signer.proofMaterialsAddress,
         proofCbor: admitted.artifact.tx.txMembershipProofCbor,
       });
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildInputSetUniquenessStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -151,7 +155,7 @@ export const createTransactionPort = (
       );
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildInputSetUniquenessStep02({
               ownOutputs,
               lucid: config.lucid,
@@ -195,7 +199,7 @@ export const createTransactionPort = (
       );
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildInputSetUniquenessStep03({
               ownOutputs,
               lucid: config.lucid,
@@ -255,7 +259,7 @@ export const createTransactionPort = (
       ) {
         return Object.freeze({
           transaction: (
-            await journaledStepTransaction(
+            await workflowStepTransaction(
               await buildInputSetUniquenessStep04Finalize({
                 lucid: config.lucid,
                 contracts: config.contracts,
@@ -281,7 +285,7 @@ export const createTransactionPort = (
       );
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildInputSetUniquenessStep04Advance({
               ownOutputs,
               lucid: config.lucid,

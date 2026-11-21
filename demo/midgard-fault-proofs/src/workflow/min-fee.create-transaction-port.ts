@@ -10,10 +10,10 @@ import { buildMinFeeStep01Forced } from "../submit-min-fee-forced-step-01.js";
 import { buildMinFeeInit } from "../submit-min-fee-init.js";
 import { buildMinFeeStep01 } from "../submit-min-fee-step-01.js";
 import { buildMinFeeStep02 } from "../submit-min-fee-step-02.js";
-import {
-  type LinearFamilyFieldCarriageRequirement,
-  type ManifestBoundLinearFamilyWorkflow,
-  type ManifestBoundLinearFamilyWorkflowConfig,
+import type {
+  LinearFamilyFieldCarriageRequirement,
+  ManifestBoundLinearFamilyWorkflow,
+  ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
 import type { FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
 import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
@@ -38,7 +38,8 @@ import {
 } from "./min-fee.parse-artifact.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { proofMaterialsAccess } from "./proof-materials-view.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 
 const resolveFieldCarriages = async (
   config: BoundConfig,
@@ -110,10 +111,14 @@ export const createTransactionPort = (
       categoryId: config.category.categoryId,
     });
   },
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const ownOutputs = workflowFieldCarriageOwnOutputs({
       category: "minFee",
-      entries,
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
+      }),
     });
     const admitted = await admitWorkflowArtifact(
       artifact,
@@ -126,7 +131,7 @@ export const createTransactionPort = (
     if (input.stage === "init") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildMinFeeInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -151,7 +156,7 @@ export const createTransactionPort = (
       if (admitted.forced !== null)
         return Object.freeze({
           transaction: (
-            await journaledStepTransaction(
+            await workflowStepTransaction(
               await buildMinFeeStep01Forced({
                 lucid: config.lucid,
                 contracts: config.contracts,
@@ -168,13 +173,12 @@ export const createTransactionPort = (
         });
       const chunks = await resolveDirectFirstProofChunks({
         action,
-        lucid: config.lucid,
         address: config.signer.proofMaterialsAddress,
         proofCbor: admitted.artifact.txMembershipProofCbor,
       });
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildMinFeeStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -205,7 +209,7 @@ export const createTransactionPort = (
       );
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildMinFeeStep02({
               ownOutputs,
               lucid: config.lucid,

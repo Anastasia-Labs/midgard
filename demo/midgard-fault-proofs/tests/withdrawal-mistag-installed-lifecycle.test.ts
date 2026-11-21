@@ -1,6 +1,3 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { inspect } from "node:util";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -18,12 +15,9 @@ import { WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/com
 import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import { WITHDRAWAL_MISTAG_CURSOR_SPEC } from "../src/workflow/cursor-family-spec.js";
 import { createFraudProofFamilyRawL1ObservationPort } from "../src/workflow/family-l1-observation.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-  journalJsonDigest,
 } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   createAuthenticatedRawDatumPreimagePrerequisitePort,
@@ -93,7 +87,7 @@ describe("withdrawalMistag installed cursor actuator", () => {
       outputBytes: 16384,
     },
   ])(
-    "captures, journals and restarts $name through proof mint and removal",
+    "captures and restarts $name through proof mint and removal",
     async (scenario) => {
       const recorder = recordCrossBlockRawEmulator();
       let clock: ReturnType<typeof vi.spyOn> | undefined;
@@ -282,30 +276,6 @@ describe("withdrawalMistag installed cursor actuator", () => {
           target: { kind: "state_queue_header", headerHash: setup.headerHash },
         };
         const workflowId = computeFraudProofWorkflowId(identity);
-        const directory = await mkdtemp(
-          join(tmpdir(), "withdrawal-mistag-journal-"),
-        );
-        const append = async (event: FraudProofWorkflowJournalEvent) => {
-          const store = new DirectoryFraudProofWorkflowJournalStore(directory);
-          const entries = await store.load(workflowId);
-          await store.append(
-            {
-              schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
-              workflowId,
-              identity,
-              sequence: entries.length,
-              recordedAt: new Date().toISOString(),
-              event,
-            },
-            entries.length,
-          );
-        };
-        await append({ kind: "started" });
-        await append({
-          kind: "prepared",
-          artifact,
-          artifactDigest: journalJsonDigest(artifact),
-        });
         const proofUnit = toUnit(
           h.withdrawalMistag.fraudProof.policyId,
           h.category.categoryId + setup.headerHash,
@@ -318,22 +288,14 @@ describe("withdrawalMistag installed cursor actuator", () => {
               spec: WITHDRAWAL_MISTAG_CURSOR_SPEC,
               l1,
               transactions: port,
-              stateQueueMutationLeaseCoordinator: leaseCoordinator,
             }),
           });
         for (let n = 0; n < 30; n++) {
-          const store = new DirectoryFraudProofWorkflowJournalStore(directory);
-          const entries = await store.load(workflowId);
-          const restored = JSON.parse(
-            JSON.stringify(
-              entries.find((row) => row.event.kind === "prepared")!.event,
-            ),
-          );
+          const restored = JSON.parse(JSON.stringify(artifact));
           const context = {
             identity,
             workflowId,
-            artifact: restored.artifact,
-            entries,
+            artifact: restored,
           };
           const current = adapter();
           const observation = await current.observe(context);
@@ -347,61 +309,15 @@ describe("withdrawalMistag installed cursor actuator", () => {
                 `${String(action.input.stage)}: ${inspect(error, { depth: 8 })}`,
               );
             });
-          await append({
-            kind: "preflight_passed",
-            actionId: action.actionId,
-            txHash: preflight.txHash,
-            localEvaluator: preflight.localUplcEvaluation.evaluator,
-            referenceScripts: preflight.referenceScripts,
-          });
-          await append({
-            kind: "submission_intent",
-            actionId: action.actionId,
-            actionInput: action.input,
-            durableRecovery: preflight.durableRecovery,
-            attempt: 1,
-            txHash: preflight.txHash,
-          });
           await current.submit({ ...context, action, preflight });
           h.emulator.awaitBlock();
-          await append({
-            kind: "submission_ambiguous",
-            actionId: action.actionId,
-            attempt: 1,
-            txHash: preflight.txHash,
-            detail: "emulated restart after broadcast before receipt",
-          });
-          const persisted = (await store.load(workflowId))
-            .map((row) => row.event)
-            .reverse()
-            .find(
-              (event) =>
-                event.kind === "submission_intent" &&
-                event.actionId === action.actionId,
+          const landed = await h.emulator.getTransactionStatus(
+            preflight.txHash,
+          );
+          if (landed.status !== "confirmed")
+            throw new Error(
+              `${String(action.input.stage)}: submitted transaction did not land`,
             );
-          if (persisted?.kind !== "submission_intent")
-            throw new Error("missing persisted intent");
-          const recovered = await adapter().reconcile({
-            durableRecovery: persisted.durableRecovery,
-            ...context,
-            action,
-            txHash: preflight.txHash,
-          });
-          expect(recovered).toEqual({
-            kind: "confirmed",
-            txHash: preflight.txHash,
-          });
-          await append({
-            kind: "reconciled",
-            actionId: action.actionId,
-            outcome: "confirmed",
-            txHash: preflight.txHash,
-          });
-          await append({
-            kind: "confirmed",
-            actionId: action.actionId,
-            txHash: preflight.txHash,
-          });
           if (action.input.stage === "remove") break;
         }
         expect(

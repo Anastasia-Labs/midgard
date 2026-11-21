@@ -8,12 +8,11 @@
  * publishes it again should it go missing before the move that needs it
  * lands. Threads of one case at steps carrying the same field read the
  * same publications. A publication is spent back by our key once our
- * workflow is done (a resolution by another record goes through only once
- * each spend back is final at release depth), or once a move that reads it
+ * workflow is done (a resolution by another record goes through once each
+ * live publication is spent back), or once a move that reads it
  * as a reference input, and leaves its thread past every move that reads
  * it, is final at release depth while no thread of the case past the
- * boundary has a move reading it: only while our funding reservation still
- * holds it, when funding signs. A certificate stays where its policy sends
+ * boundary has a move reading it. A certificate stays where its policy sends
  * it. In front of them, the field grammar certificates our steps read an
  * item through (one-step-field-grammar-certify.ts). */
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
@@ -24,16 +23,10 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import { createAuthenticatedFieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
 import {
   createRawCommittedFieldCarriagePlan,
-  FIELD_CARRIAGE_PREREQUISITE,
   type PreimageCarriageRequirement,
-  RAW_DATUM_PREIMAGE_PREREQUISITE,
 } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import { withFieldCarriagePrerequisite } from "../workflow/field-carriage-prerequisite.js";
-import { recordedCarriageRecovery } from "../workflow/field-carriage-prerequisite.recorded-carriage-recovery.js";
-import type {
-  FraudProofWorkflowJournalEntry,
-  JournalJsonObject,
-} from "../workflow/journal.js";
+import type { JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type {
@@ -41,18 +34,15 @@ import type {
   FraudProofWorkflowAction,
   FraudProofWorkflowObservation,
 } from "../workflow/orchestrator.js";
+import { workflowProofMaterialsHolder } from "../workflow/proof-materials-view.holder.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "../workflow/raw-l1-publication-observation.js";
 import {
-  confirmedValidationTraceStages,
   parseValidationTraceAction,
   VALIDATION_TRACE_DISPUTE_ACTION,
   validationTraceAction,
 } from "./actions.js";
-import {
-  parseValidationTraceDisputeArtifact,
-  validationTraceArtifactOf,
-} from "./artifact.js";
+import { parseValidationTraceDisputeArtifact } from "./artifact.js";
 import type { ValidationTraceCaseHistory } from "./case-history.js";
 import { validationTraceCaseReads } from "./case-reads.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
@@ -64,15 +54,14 @@ import { validationTraceFieldGrammarCertification } from "./one-step-field-gramm
 import { validationTraceOneStepHolder } from "./one-step-holders.js";
 import { validationTraceCarriedField } from "./one-step-moves.js";
 import {
-  confirmedIntents,
-  validationTraceResolveReaders,
-} from "./one-step-staging-journal.js";
-import {
   finalAtReleaseDepth,
   type OwnKeyActions,
-  ownKeySignedBytes,
   withOwnKeyActions,
 } from "./own-key-actions.js";
+import type {
+  ValidationTraceOwnPublication,
+  ValidationTraceOwnViewOf,
+} from "./own-view.js";
 import { validationTraceResolvingOutRefs } from "./thread-observation.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
@@ -103,30 +92,6 @@ const reclaimAction = (outRef: string): FraudProofWorkflowAction =>
 const label = ({ txHash, outputIndex }: UTxO): string =>
   `${txHash}#${outputIndex.toString()}`;
 
-type Publication = Readonly<{ outRef: string; datumCbor: string }>;
-
-/** From the journal's confirmed actions: each publication either
- * prerequisite left. */
-const journaled = (entries: readonly FraudProofWorkflowJournalEntry[]) => {
-  const left = new Map<string, Publication>();
-  for (const schema of [
-    RAW_DATUM_PREIMAGE_PREREQUISITE,
-    FIELD_CARRIAGE_PREREQUISITE,
-  ])
-    for (const intent of confirmedIntents(entries, schema)) {
-      const { category, stage } = intent.actionInput;
-      if (category !== CATEGORY || stage !== "publish_field_carriage") continue;
-      const { outRef, datumCbor } = recordedCarriageRecovery({
-        category: CATEGORY,
-        action: { actionId: intent.actionId, input: intent.actionInput },
-        txHash: intent.txHash,
-        value: intent.durableRecovery,
-      });
-      left.set(outRef, { outRef, datumCbor });
-    }
-  return [...left.values()];
-};
-
 /**
  * Our publications of the field each move of our threads reads by
  * reference, and `wrap`, which publishes them before those moves and spends
@@ -140,6 +105,7 @@ export const validationTraceCarriedFields = ({
   publications,
   signedRecovery,
   materialOf,
+  ownView,
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
@@ -151,6 +117,8 @@ export const validationTraceCarriedFields = ({
   readonly materialOf: (
     headerHash: string,
   ) => ValidationTraceClaimMaterial | undefined;
+  /** Where our publications and our case are read from. */
+  readonly ownView: ValidationTraceOwnViewOf;
 }) => {
   const { fieldPreimageCertificate: certificate } = deployment;
   /** The requirement of the move `action` names, if it reads a field by
@@ -222,8 +190,8 @@ export const validationTraceCarriedFields = ({
     { port: port(false), raw: false },
   ] as const;
 
-  /** Our publications of the field the move of `action` reads, as our
-   * journal shows them published. */
+  /** Our publications of the field the move of `action` reads, as the
+   * field-carriage prerequisite shows them published. */
   const of = async (
     context: FraudProofWorkflowAdapterContext,
     action: Parameters<typeof validationTraceAction>[0],
@@ -231,11 +199,10 @@ export const validationTraceCarriedFields = ({
     for (const { port } of ports) {
       if (port === undefined) continue;
       const resolved = await port.resolveAuthenticated({
-        headerHash: parseValidationTraceDisputeArtifact(context.artifact)
-          .headerHash,
+        headerHash: ownView(context).artifact().headerHash,
+        holder: workflowProofMaterialsHolder(context),
         action: validationTraceAction(action),
         artifact: context.artifact,
-        entries: context.entries,
       });
       if (resolved.requirement === null) continue;
       return Object.freeze({
@@ -249,52 +216,56 @@ export const validationTraceCarriedFields = ({
   };
 
   const certification = validationTraceFieldGrammarCertification({
-    ...{ lucid, signer, deployment, caseHistory, signedRecovery, materialOf },
+    ...{ lucid, signer, deployment, caseHistory, materialOf },
+    ownView,
     carriageOf: async (context, consumes) =>
       await of(context, { stage: "resolve", consumes }),
   });
 
-  const { ourCase } = validationTraceCaseReads({ lucid, signer, deployment });
-  /** The outputs a move of a thread of our case past the boundary reads to
-   * carry its field; undefined while that cannot be told. */
+  const { ourCases } = validationTraceCaseReads({
+    lucid,
+    signer,
+    deployment,
+    caseHistory,
+  });
+  /** The outputs a move of a thread of any case of ours past the boundary
+   * reads to carry its field; undefined while that cannot be told. */
   const stillNamed = async (
     context: FraudProofWorkflowAdapterContext,
   ): Promise<ReadonlySet<string> | undefined> => {
-    const artifact = validationTraceArtifactOf(context);
-    const found = await ourCase(
-      artifact,
-      confirmedValidationTraceStages(context.entries),
-    );
-    if (found === undefined) return new Set();
-    const outRefs = await validationTraceResolvingOutRefs({
-      lucid,
-      signer,
-      deployment,
-      caseHistory,
-      headerHash: artifact.headerHash,
-      caseUnit: found.caseUnit,
-      caseDatum: found.caseDatum,
-    });
-    if (outRefs === undefined) return undefined;
+    const view = ownView(context);
+    const artifact = view.artifact();
     const named = new Set<string>();
-    for (const consumes of outRefs) {
-      const carriage = await of(context, { stage: "resolve", consumes }).catch(
-        () => null,
-      );
-      if (carriage === null) return undefined;
-      for (const utxo of carriage === undefined ? [] : carriageReads(carriage))
-        named.add(label(utxo));
+    for (const found of await ourCases(view)) {
+      const outRefs = await validationTraceResolvingOutRefs({
+        lucid,
+        signer,
+        deployment,
+        caseHistory,
+        headerHash: artifact.headerHash,
+        caseUnit: found.caseUnit,
+        caseDatum: found.caseDatum,
+      });
+      if (outRefs === undefined) return undefined;
+      for (const consumes of outRefs) {
+        const carriage = await of(context, {
+          stage: "resolve",
+          consumes,
+        }).catch(() => null);
+        if (carriage === null) return undefined;
+        for (const utxo of carriage === undefined
+          ? []
+          : carriageReads(carriage))
+          named.add(label(utxo));
+      }
     }
     return named;
   };
 
-  /** The live publication of ours `publication`, unless funding no longer
-   * holds it. */
+  /** The live publication of ours `publication`. */
   const spendable = async (
-    publication: Publication,
+    publication: ValidationTraceOwnPublication,
   ): Promise<UTxO | undefined> => {
-    if (signer.reservedFunding?.().includes(publication.outRef) === false)
-      return undefined;
     const [utxo] = await lucid.utxosByOutRef([
       parseOutRefLabel(publication.outRef),
     ]);
@@ -329,9 +300,10 @@ export const validationTraceCarriedFields = ({
     context: FraudProofWorkflowAdapterContext,
     done: boolean,
   ): Promise<UTxO | undefined> => {
-    const left = journaled(context.entries);
+    const view = ownView(context);
+    const left = await view.publications();
     if (left.length === 0) return undefined;
-    const readers = validationTraceResolveReaders(context.entries).filter(
+    const readers = (await view.resolveReads()).filter(
       ({ outputs }) => !outputs.some(({ address }) => stillRead.has(address)),
     );
     let named: Promise<ReadonlySet<string> | undefined> | undefined;
@@ -382,28 +354,17 @@ export const validationTraceCarriedFields = ({
         : undefined,
     // Resolved by another record, our workflow is done, and no thread of
     // our case is left to read a publication: that resolution is read only
-    // before the case opens or once it has closed. Each publication is
-    // spent back, and final at release depth, before it resolves.
+    // before the case opens or once it has closed. Each publication the
+    // chain shows live is spent back before it resolves; the resolution
+    // waits on no spend back's finality, since a spend back a rollback
+    // drops leaves a plain output a later proof-materials sweep takes.
     resolved: async (context) => {
       const next = spendBack(await reclaimable(context, true));
       if (next !== undefined) return next;
       const outstanding: string[] = [];
-      for (const publication of journaled(context.entries))
+      for (const publication of await ownView(context).publications())
         if ((await spendable(publication)) !== undefined)
           outstanding.push(`${publication.outRef} does not spend back`);
-      for (const { txHash, durableRecovery } of confirmedIntents(
-        context.entries,
-        VALIDATION_TRACE_COPY_RECLAIM,
-      )) {
-        const signed = ownKeySignedBytes(durableRecovery);
-        if (
-          signed === undefined ||
-          !(await finalAtReleaseDepth(signedRecovery, txHash, signed))
-        )
-          outstanding.push(
-            `the spend back ${txHash} is not yet final at release depth`,
-          );
-      }
       return outstanding.length === 0
         ? undefined
         : {
@@ -444,7 +405,6 @@ export const validationTraceCarriedFields = ({
       withOwnKeyActions({
         base: wrapped,
         own,
-        signedRecovery,
         label: "copy reclaim",
       }),
     );

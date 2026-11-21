@@ -7,10 +7,11 @@
  * thread through the CEK resolver, the core step binder, the compute arm and
  * the settle to the award, then closes it into our case with the defender's
  * lost-defense receipt; the case waits for its defense deadline. A process
- * stopped at a resolution move after its broadcast lands those same bytes on
- * resume and sends nothing again. The boundary refuses a PrepareResolution whose resolver
- * index is not its pre-state phase's, and the CEK resolver refuses a
- * PrepareSelected whose claimed successor is not ours. */
+ * stopped at a resolution move after its broadcast, followed by a fresh
+ * process, leaves exactly one move spending that thread. The boundary
+ * refuses a PrepareResolution whose resolver index is not its pre-state
+ * phase's, and the CEK resolver refuses a PrepareSelected whose claimed
+ * successor is not ours. */
 import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
@@ -19,10 +20,7 @@ import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import {
-  confirmedValidationTraceStages,
-  parseValidationTraceAction,
-} from "../src/validation-trace-dispute/actions.js";
+import { parseValidationTraceAction } from "../src/validation-trace-dispute/actions.js";
 import {
   VALIDATION_TRACE_CASE_OPEN,
   VALIDATION_TRACE_ONE_STEP_REQUIRED,
@@ -45,10 +43,10 @@ import {
   type ValidationTraceOneStepPlan,
 } from "../src/validation-trace-dispute/one-step-plan.js";
 import type { ValidationTraceDisputeDeployment } from "../src/validation-trace-dispute/transactions.js";
-import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { confirmedValidationTraceStages } from "./support/validation-trace-confirmed-stages.js";
 import { sceneOperator } from "./support/validation-trace-dispute-defend.js";
 import {
   expectRealMoveFee,
@@ -61,7 +59,6 @@ import {
 import {
   capturePrepared,
   confirmedOneStepMoves,
-  intentsFor,
   isPendingFor,
   playThreads,
   type PreparedMove,
@@ -85,6 +82,7 @@ import {
   threadOf,
   threadUnitOf,
 } from "./support/validation-trace-dispute-scripted-defender.js";
+import type { TestWorkflowProcess } from "./support/workflow-process.js";
 
 /** The defender's last agreed state: the next step is a CEK compute step. */
 const AGREED_UP_TO = 116;
@@ -103,6 +101,9 @@ let readyOutRef: string;
 let readyThread: SDK.CaseThread;
 /** Each transaction the runners with the one-step resolution signed. */
 const prepared: PreparedMove[] = [];
+/** Every process the runners ran in, a restart's fresh one after the one it
+ * replaced. */
+const processes: TestWorkflowProcess[] = [];
 /** The moves the full drive confirmed, in order. */
 let driven: ReturnType<typeof confirmedOneStepMoves> = [];
 
@@ -115,12 +116,32 @@ const place = async () => {
   return found;
 };
 
-/** A runner with the one-step resolution over the shared journal. */
+/** The stage transactions any of the processes sent that the emulator
+ * confirmed. */
+const confirmedStages = async () =>
+  await confirmedValidationTraceStages({
+    emulator: scene.h.emulator,
+    deployment,
+    sent: processes.flatMap((process) => process.sent()),
+  });
+
+/** A runner with the one-step resolution in the current runner's process, or
+ * in a fresh process when `restart`. */
 const oneStepRunner = (
   wrap: (
     adapter: FraudProofFamilyWorkflowAdapter,
   ) => FraudProofFamilyWorkflowAdapter = capturePrepared(prepared),
-): Runner => makeRunner(scene, { journal: runner.journal, deployment, wrap });
+  restart = false,
+): Runner => {
+  const next = makeRunner(
+    scene,
+    restart
+      ? { deployment, wrap }
+      : { process: runner.process, deployment, wrap },
+  );
+  if (!processes.includes(next.process)) processes.push(next.process);
+  return next;
+};
 
 /** Runs until the thread stands at `holder`. */
 const advanceTo = async (holder: ValidationTraceOneStepHolder) =>
@@ -182,8 +203,7 @@ const hopFrom =
 
 /**
  * Stops a process at the submit of the next resolution move it signs, once
- * its intent is durable and its bytes have reached the ledger. The stopped
- * run never returns.
+ * its bytes have reached the ledger. The stopped run never returns.
  */
 const stopAfterResolveBroadcast = async (): Promise<
   Readonly<{ hash: string; consumes: string }>
@@ -223,48 +243,39 @@ const stopAfterResolveBroadcast = async (): Promise<
   return signed;
 };
 
-/** Whether the journal `result` holds confirms a move spending `consumes`. */
-const confirmsSpendOf = (
-  result: FraudProofWorkflowRunResult,
-  consumes: string,
-) =>
-  "entries" in result &&
-  confirmedOneStepMoves(result.entries).some(
+/** Whether any process's confirmed moves include one spending `consumes`. */
+const confirmsSpendOf = async (consumes: string) =>
+  confirmedOneStepMoves(await confirmedStages()).some(
     (move) => move.consumes === consumes,
   );
 
-/** A fresh process over the stopped one's journal, run until a move spending
- * the stopped move's thread is confirmed; returns its journal's view. */
+/** A fresh process after the stopped one, run until a move spending the
+ * stopped move's thread is confirmed; returns the move that landed. */
 const resume = async (consumes: string) => {
-  runner = oneStepRunner();
-  const { result, history } = await playThreads({
+  runner = oneStepRunner(capturePrepared(prepared), true);
+  const { history } = await playThreads({
     scene,
     runner,
     sides: [side],
-    until: async (run) => confirmsSpendOf(run, consumes),
+    until: async () => await confirmsSpendOf(consumes),
     limit: 10,
   });
-  if (!("entries" in result)) throw new Error("no workflow journal");
-  const moves = confirmedOneStepMoves(result.entries).filter(
+  const moves = confirmedOneStepMoves(await confirmedStages()).filter(
     (move) => move.consumes === consumes,
   );
   // Exactly one move spent the stopped move's thread.
   expect(moves, history.join("\n")).toHaveLength(1);
   expect(outRefOf((await place()).utxo)).not.toBe(consumes);
-  return { entries: result.entries, landed: moves[0]!.txHash };
+  return moves[0]!.txHash;
 };
 
 describe("validation-trace dispute runner: one-step resolution of a CEK compute step", () => {
   beforeAll(async () => {
     scene = await setUpScene();
     runner = makeRunner(scene);
-    const { result } = await runUntil(
-      runner,
-      scene.failing,
-      VALIDATION_TRACE_CASE_OPEN,
-    );
-    if (!("entries" in result)) throw new Error("no workflow journal");
-    const caseOutRef = confirmedValidationTraceStages(result.entries).find(
+    processes.push(runner.process);
+    await runUntil(runner, scene.failing, VALIDATION_TRACE_CASE_OPEN);
+    const caseOutRef = (await runner.confirmed()).find(
       ({ action }) => action.stage === "verify_source",
     )!.outputs[0]!.outRef;
     material = await failingMaterial(scene);
@@ -359,25 +370,28 @@ describe("validation-trace dispute runner: one-step resolution of a CEK compute 
     expect(outRefOf((await place()).utxo)).toBe(outRefOf(before.utxo));
   }, 600_000);
 
-  it("lands the same signed resolution move after a stop between its broadcast and its landing, sending nothing again", async () => {
+  it("lands exactly one resolution move spending the thread after a stop between a move's broadcast and its landing", async () => {
     const stop = await stopAfterResolveBroadcast();
-    const { entries, landed } = await resume(stop.consumes);
-    expect(landed).toBe(stop.hash);
-    expect(intentsFor(entries, "resolve", stop.consumes)).toStrictEqual([
-      { attempt: 1, txHash: stop.hash },
-    ]);
+    const landed = await resume(stop.consumes);
+    const offered = [
+      stop.hash,
+      ...runner.process
+        .sent()
+        .filter(({ actionId }) => actionId.endsWith(`:${stop.consumes}`))
+        .map(({ txHash }) => txHash),
+    ];
+    expect(offered).toContain(landed);
   }, 600_000);
 
   it("drives the thread from ReadyForOneStep through the CEK compute step to the award and closes it into our case with the defender's lost-defense receipt, then waits for the case's defense deadline", async () => {
-    const { result, history } = await playThreads({
+    const { history } = await playThreads({
       scene,
       runner,
       sides: [side],
       until: async (run) => isPendingFor(run, VALIDATION_TRACE_CASE_OPEN),
       limit: 30,
     });
-    if (!("entries" in result)) throw new Error("no workflow journal");
-    driven = confirmedOneStepMoves(result.entries);
+    driven = confirmedOneStepMoves(await confirmedStages());
     expect(
       driven.map(({ stage }) => stage),
       history.join("\n"),

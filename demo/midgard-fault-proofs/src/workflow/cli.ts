@@ -14,24 +14,8 @@ import {
   workflowAdapterRunner,
   type WorkflowApplicationRegistry,
 } from "./adapters.js";
-import type { WorkflowFundingReservationPermit } from "./funding-reservation-permit.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "./journal.directory-fraud-proof-workflow-journal-store.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.fraud-proof-workflow-journal-event.js";
+import type { WorkflowSends } from "./in-flight.js";
 import type { WalletOnlySend } from "./wallet-only-send-gate.js";
-
-/** The standalone command's journal: a directory store, whose construction
- * is side-effect free; the directory is created only by an actual append
- * after a complete adapter has admitted canonical evidence. */
-export const directoryWorkflowJournal = (
-  directory: string | undefined,
-  usage: string,
-): FraudProofWorkflowJournalStore => {
-  if (directory === undefined)
-    throw new Error(`Missing required --workflow-journal-dir.\n${usage}`);
-  if (directory.trim().length === 0)
-    throw new Error("--workflow-journal-dir must not be empty");
-  return new DirectoryFraudProofWorkflowJournalStore(directory);
-};
 
 export const workflowReadinessReport = (
   launchScope: readonly FraudProofCatalogueCategoryName[] = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -68,30 +52,26 @@ export const workflowReadinessReport = (
  * evidence still comes exclusively from authenticated L1 and public DA.
  */
 export const runFraudProofWorkflowCli = async ({
-  mode,
   category,
   deploymentFingerprint,
   headerHash,
-  journal,
   runtimeConfigPath,
   decisionDigest,
   actuationPermit,
-  fundingReservationPermit,
+  sends,
   onProgress,
   applicationRegistry,
   walletOnlySend,
 }: {
-  readonly mode: "run" | "resume";
   readonly category: FraudProofCatalogueCategoryName;
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
-  /** The durable journal the objective's workflow appends to. */
-  readonly journal: FraudProofWorkflowJournalStore;
   readonly runtimeConfigPath: string;
   /** Opaque authority minted from the admitted classifier decision. */
   readonly decisionDigest?: string;
   readonly actuationPermit?: WorkflowActuationPermit;
-  readonly fundingReservationPermit?: WorkflowFundingReservationPermit;
+  /** The objective's part of the application's in-flight set. */
+  readonly sends?: WorkflowSends;
   readonly onProgress?: () => void;
   /** Application-installed only after signed deployment identity admission. */
   readonly applicationRegistry?: WorkflowApplicationRegistry;
@@ -116,23 +96,21 @@ export const runFraudProofWorkflowCli = async ({
   if (
     decisionDigest === undefined ||
     actuationPermit === undefined ||
-    fundingReservationPermit === undefined
+    sends === undefined
   ) {
     throw new Error(
-      "production workflow actuation requires admitted decision and funding reservation permits from the application supervisor",
+      "production workflow actuation requires an admitted decision, its actuation permit and the in-flight set from the application supervisor",
     );
   }
   assertWorkflowAdaptersReady([category], applicationRegistry);
   return await workflowAdapterRunner(category, applicationRegistry).runOrResume(
     {
-      mode,
       category,
       deploymentFingerprint,
       headerHash,
       decisionDigest,
       actuationPermit,
-      fundingReservationPermit,
-      journal,
+      sends,
       runtimeConfigPath,
       ...(onProgress === undefined ? {} : { onProgress }),
       walletOnlySend,

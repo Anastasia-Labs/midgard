@@ -2,7 +2,7 @@ import type { MintAuthorizationStep03State } from "@al-ft/midgard-sdk/fraud-proo
 
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import { mintAuthorizationStepLabel } from "./submit-common.js";
 
@@ -25,4 +25,4 @@ export type MintAuthorizationStep02Build = {
 };
 
 export type SubmitMintAuthorizationStep02Result =
-  UnjournaledSubmission<MintAuthorizationStep02Build>;
+  OutsideWorkflowSubmission<MintAuthorizationStep02Build>;

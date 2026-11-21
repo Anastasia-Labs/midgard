@@ -10,7 +10,6 @@ import {
   context,
   identity,
   l1,
-  noLeaseCoordinator,
   outRef,
   port,
   required,
@@ -36,7 +35,6 @@ describe("authenticated family action refinement", () => {
       spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(capture),
-      stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
       refineAction,
     });
     const observed = await adapter.observe(context);
@@ -59,7 +57,6 @@ describe("authenticated family action refinement", () => {
       spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(async () => ({ transaction: transaction() })),
-      stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
       refineAction,
     });
     await expect(adapter.observe(context)).rejects.toThrow(
@@ -80,13 +77,11 @@ it("reobserves the original self-loop cursor after its successor rolls back", as
     stateQueueBlockOutRef: outRef("10"),
   };
   const stage = { value: original };
-  let included = true;
   const capture = vi.fn(async () => ({ transaction: transaction() }));
   const adapter = createCursorFamilyWorkflowAdapter({
     spec: THIRTEEN_STEP_CURSOR_SPEC,
-    l1: l1(stage, async () => included),
+    l1: l1(stage),
     transactions: port(capture),
-    stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
   });
   const before = await adapter.observe(context);
   if (before.kind !== "action_required")
@@ -97,21 +92,15 @@ it("reobserves the original self-loop cursor after its successor rolls back", as
     threadOutRef: `${txHash}#0`,
     stateQueueBlockOutRef: outRef("10"),
   };
-  await expect(
-    adapter.reconcile({ ...context, action: before.action, txHash }),
-  ).resolves.toEqual({ kind: "confirmed", txHash });
   const successor = await adapter.observe(context);
   if (successor.kind !== "action_required")
     throw new Error("missing successor action");
+  expect(successor.action.actionId).not.toBe(before.action.actionId);
   stage.value = original;
-  included = false;
   await expect(adapter.observe(context)).resolves.toEqual(before);
   await expect(
     adapter.preflight({ ...context, action: successor.action }),
   ).rejects.toThrow("differs from authenticated current L1 state");
-  await expect(
-    adapter.reconcile({ ...context, action: before.action, txHash }),
-  ).resolves.toMatchObject({ kind: "unknown" });
   expect(capture).not.toHaveBeenCalled();
 });
 
@@ -133,71 +122,37 @@ describe("transition terminal queue mutation lease", () => {
     release: vi.fn(async () => undefined),
     fail: vi.fn(async () => undefined),
   });
-  it("journals and resumes the terminal marker lease through pending and confirmed states", async () => {
+  it("captures the terminal marker under its lease and ends the lease with the submission", async () => {
     const stage = { value: terminalStage() };
-    const firstLease = makeLease();
-    const make = (lease: ReturnType<typeof makeLease>) =>
-      createCursorFamilyWorkflowAdapter({
-        spec: TRANSITION_TRACE_CURSOR_SPEC,
-        l1: {
-          ...l1(stage, async () => true),
-          category: "transitionTrace" as const,
-        },
-        transactions: {
-          portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-          category: "transitionTrace" as const,
-          prepare: async () => ({}),
-          capture: async () => ({
-            transaction: transaction(),
-            mutationLease: lease,
-          }),
-        },
-        refineAction: async () => ({ requiresMutationLease: true }),
-        stateQueueMutationLeaseCoordinator: {
-          acquire: async () => lease,
-          resume: async () => lease,
-        },
-      });
-    const first = make(firstLease);
-    const observed = await first.observe(transitionContext);
+    const lease = makeLease();
+    const adapter = createCursorFamilyWorkflowAdapter({
+      spec: TRANSITION_TRACE_CURSOR_SPEC,
+      l1: { ...l1(stage), category: "transitionTrace" as const },
+      transactions: {
+        portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+        category: "transitionTrace" as const,
+        prepare: async () => ({}),
+        capture: async () => ({
+          transaction: transaction(),
+          mutationLease: lease,
+        }),
+      },
+      refineAction: async () => ({ requiresMutationLease: true }),
+    });
+    const observed = await adapter.observe(transitionContext);
     if (observed.kind !== "action_required")
       throw new Error("missing terminal action");
     const action = observed.action;
-    const preflight = await first.preflight({ ...transitionContext, action });
-    expect(preflight.durableRecovery).toEqual({
-      stateQueueMutationLease: {
-        token: firstLease.token,
-        source: firstLease.source,
-      },
-    });
-    const resumedLease = makeLease();
-    const fresh = make(resumedLease);
+    const preflight = await adapter.preflight({ ...transitionContext, action });
+    expect(preflight).toMatchObject({ actionId: action.actionId, txHash });
+    expect(lease.release).not.toHaveBeenCalled();
     await expect(
-      fresh.reconcile({
-        ...transitionContext,
-        action,
-        txHash,
-        durableRecovery: preflight.durableRecovery,
-      }),
-    ).resolves.toEqual({ kind: "pending", txHash });
-    expect(resumedLease.renew).toHaveBeenCalledOnce();
-    stage.value = {
-      kind: "proof_token",
-      fraudProofOutRef: `${txHash}#0`,
-      stateQueueBlockOutRef: `${txHash}#1`,
-      nextRemovalOutRef: `${txHash}#1`,
-    };
-    await expect(
-      fresh.reconcile({
-        ...transitionContext,
-        action,
-        txHash,
-        durableRecovery: preflight.durableRecovery,
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash });
-    expect(resumedLease.release).toHaveBeenCalledOnce();
+      adapter.submit({ ...transitionContext, action, preflight }),
+    ).resolves.toEqual({ kind: "submitted", txHash });
+    expect(lease.release).toHaveBeenCalledOnce();
+    expect(lease.fail).not.toHaveBeenCalled();
   });
-  it("refuses a terminal capture or journal that omits its mutation lease", async () => {
+  it("refuses a terminal capture that omits its mutation lease", async () => {
     const stage = { value: terminalStage() };
     const capture = vi.fn(async () => ({ transaction: transaction() }));
     const adapter = createCursorFamilyWorkflowAdapter({
@@ -210,7 +165,6 @@ describe("transition terminal queue mutation lease", () => {
         capture,
       },
       refineAction: async () => ({ requiresMutationLease: true }),
-      stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
     });
     const observed = await adapter.observe(transitionContext);
     if (observed.kind !== "action_required")
@@ -218,16 +172,6 @@ describe("transition terminal queue mutation lease", () => {
     await expect(
       adapter.preflight({ ...transitionContext, action: observed.action }),
     ).rejects.toThrow(/lease/);
-    await expect(
-      adapter.reconcile({
-        ...transitionContext,
-        action: observed.action,
-        txHash,
-      }),
-    ).resolves.toMatchObject({
-      kind: "conflict",
-      reason: expect.stringContaining("lease"),
-    });
     const changed = {
       ...observed.action,
       input: { ...observed.action.input, requiresMutationLease: false },

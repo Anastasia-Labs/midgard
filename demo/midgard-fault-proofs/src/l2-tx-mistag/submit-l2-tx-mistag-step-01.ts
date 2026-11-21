@@ -50,7 +50,7 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { L2TxMistagContracts } from "./contracts.js";
 import {
@@ -83,7 +83,7 @@ export type L2TxMistagStep01Build = {
 };
 
 export type SubmitL2TxMistagStep01Result =
-  UnjournaledSubmission<L2TxMistagStep01Build>;
+  OutsideWorkflowSubmission<L2TxMistagStep01Build>;
 
 export const buildL2TxMistagStep01 = async ({
   lucid,

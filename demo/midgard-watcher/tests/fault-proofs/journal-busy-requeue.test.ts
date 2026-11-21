@@ -1,12 +1,9 @@
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import {
-  bindWorkflowActuationJournal,
-  createWorkflowActuationPermitController,
-} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import type { WorkflowAdapterRunnerInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
 import { verifyCompletedFraudProofWorkflow } from "@al-ft/midgard-fault-proofs/workflow/completed-verification";
-import { bindWorkflowFundingReservationJournal } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
-import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
+import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
+import { WORKFLOW_RUNNER_FACTORIES } from "@al-ft/midgard-fault-proofs/workflow/runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
@@ -17,15 +14,14 @@ import {
   closeWatcherJournalDatabase,
   openWatcherJournalDatabase,
 } from "../../src/fault-proofs/watcher-journal-database.js";
-import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
-  cleanupFundingRecoveryFixtures,
+  cleanupClassifiedFaultFixtures,
   deploymentIdentity,
-  walletAddress,
-} from "../support/fault-proof-funding-fixture.sources-for.js";
+  setupClassifiedFaultFixture,
+} from "../support/classified-fault-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
-import { completedTerminalWriter } from "../support/funding-recovery-completed-terminal.js";
+import { landedRemoval } from "../support/landed-removal.js";
 import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
@@ -115,99 +111,55 @@ beforeEach(() => {
 });
 afterEach(async () => {
   for (const close of closers.splice(0).reverse()) await close();
-  await cleanupFundingRecoveryFixtures();
+  await cleanupClassifiedFaultFixtures();
 });
 
-const deferred = () => {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  closers.push(resolve);
-  return { promise, resolve };
-};
-
 const setup = async () => {
-  const fixture = await setupFundingRecoveryFixture(
-    false,
-    false,
-    false,
-    BigInt(Date.now()),
-  );
-  // Open with neither a queue row nor a workflow journal: the progress
+  const fixture = await setupClassifiedFaultFixture({
+    headerEndTime: BigInt(Date.now()),
+  });
+  // Open with neither a queue row nor a decision of its own: the progress
   // authority's startup forgets it, a write.
   recordObjectives(fixture.journalRoot, [
     { category: "doubleSpend", headerHash: "ab".repeat(28) },
   ]);
-  const { raw, writeTerminal } = await completedTerminalWriter(fixture);
+  // Every run lands our removal, which the chain shows beyond k.
+  const landed = await landedRemoval(fixture);
   const verifyCompleted = vi.fn(verifyCompletedFraudProofWorkflow);
   let beforeRun = async (): Promise<void> => undefined;
   const runOrResume = vi.fn(async (invocation: WorkflowAdapterRunnerInput) => {
     await beforeRun();
-    const bound = bindWorkflowFundingReservationJournal({
-      journal: bindWorkflowActuationJournal({
-        journal: fixture.objectiveJournal(),
-        permit: invocation.actuationPermit,
-        category: "doubleSpend",
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        headerHash: fixture.old.headerHash,
-        decisionDigest: invocation.decisionDigest,
-      }),
-      permit: invocation.fundingReservationPermit,
-    });
-    await fixture.run(bound);
-    await writeTerminal();
-    return { kind: "completed" };
+    return landed.completed(invocation.decisionDigest);
+  });
+  const runner = WORKFLOW_RUNNER_FACTORIES.doubleSpend(async () => {
+    throw new Error("the busy tests never build through the runner");
   });
   const setAlert = vi.fn();
 
-  // One watcher process: its funding factory, supervisor and readiness. As
-  // in the runtime, the requeue sweeps the same factory the runs fund from.
-  const start = (
-    wake: () => void = () => undefined,
-    beforeSweep: () => Promise<void> = async () => undefined,
-  ) => {
-    const fundingFactory = fixture.fundingFactory();
+  // One watcher process: its in-flight set, supervisor and readiness. The
+  // requeue wakes the decision driver once the hold clears.
+  const start = (wake: () => void = () => undefined) => {
+    const inFlight = createWorkflowInFlight();
     const supervisor = createWatcherFaultProofSupervisor({
-      reservationDecisionHolds: fundingFactory.decisionHolds,
       proofRetention: storelessProofRetention,
       journalRoot: fixture.journalRoot,
-      workflowJournal: fixture.workflowJournal,
+      inFlight,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: TEST_JOURNAL_KEY,
       l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
-      journalBusyRequeue: {
-        releaseUnusedFunding: async () => {
-          await beforeSweep();
-          await fundingFactory.releaseUnused();
-        },
-        wake,
-      },
+      journalBusyRequeue: { wake },
       execution: createWatcherFaultProofExecution({
         application: {
-          runners: { doubleSpend: fixture.runner },
+          runners: { doubleSpend: runner },
           runOrResume,
-          verifyCompleted: async ({ entries, terminal, decisionDigest }) =>
-            verifyCompleted({
-              binding: raw.binding,
-              entries,
-              terminal,
-              decisionDigest,
-              authority: {
-                authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-                capture: async () => raw.snapshot,
-              },
-            }),
+          verifyCompleted: landed.verifyCompleted(
+            async () => landed.raw.snapshot,
+            verifyCompleted,
+          ),
         },
-        fundingFactory,
-        walletAddress,
-        provider: {
-          getUtxos: async () => fixture.walletUtxos,
-          getUtxosByOutRef: async () => [],
-        },
-        workflowJournal: fixture.workflowJournal,
+        inFlight,
         runtimeConfigPath: "/unused-journal-busy-test.json",
         deploymentFingerprint: deploymentIdentity.manifestId,
         operationsSink: { recordProofStep: vi.fn(), setAlert },
@@ -252,15 +204,11 @@ const setup = async () => {
       .sort();
   const queueStates = () => states("fault_proof_queue");
   // What a resume after the busy settles to: comparable across fixtures.
-  const outcome = async (
-    supervisor: ReturnType<typeof start>["supervisor"],
-  ) => ({
-    runs: runOrResume.mock.calls.map(([invocation]) => invocation.mode),
+  const outcome = (supervisor: ReturnType<typeof start>["supervisor"]) => ({
+    runs: runOrResume.mock.calls.length,
     verifications: verifyCompleted.mock.calls.length,
     queue: queueStates(),
     objectives: states("fault_proof_objectives"),
-    reservations: (await fixture.records()).map(({ state }) => state).sort(),
-    submits: vi.mocked(fixture.adapter.submit).mock.calls.length,
     unfinished: supervisor.status().unfinishedObjectiveCount,
     holds: supervisor.status().journalDecisionMissing.length,
     alerts: setAlert.mock.calls.filter(
@@ -347,19 +295,11 @@ const runs = (test: Awaited<ReturnType<typeof setup>>) =>
 const resumeInProcess = async (busy: Busy) => {
   const test = await setup();
   const lock = armBusy(test, busy);
-  const held = deferred();
-  const assertionsDone = deferred();
   const wakes = vi.fn();
-  const watcher = test.start(
-    () => {
-      wakes();
-      void watcher.supervisor.requestProgress(test.request);
-    },
-    async () => {
-      held.resolve();
-      await assertionsDone.promise;
-    },
-  );
+  const watcher = test.start(() => {
+    wakes();
+    void watcher.supervisor.requestProgress(test.request);
+  });
   await watcher.supervisor.requestProgress(test.request);
   await untilHeld(watcher);
 
@@ -378,14 +318,11 @@ const resumeInProcess = async (busy: Busy) => {
   expect(runs(test)).toBe(runsWhenHeld);
   expect(test.queueStates()).toEqual(HELD_QUEUE_STATE[busy]);
 
-  // The backoff elapses into the requeue, which waits here until the lock
-  // is gone; then the decision driver is woken and dispatches again.
-  await held.promise;
-  expect((await watcher.readyz()).reasons).toContain("journal_busy");
+  // Once the lock is gone, the next requeue after the backoff succeeds;
+  // then the decision driver is woken and dispatches again.
   lock.release();
-  assertionsDone.resolve();
   await vi.waitFor(() => expect(wakes).toHaveBeenCalledOnce(), {
-    timeout: 10_000,
+    timeout: 40_000,
   });
   await vi.waitFor(() => expect(test.queueStates()).toEqual(["finished"]), {
     timeout: 20_000,
@@ -394,11 +331,11 @@ const resumeInProcess = async (busy: Busy) => {
   expect(watcher.supervisor.status().journalBusy).toBeNull();
   expect((await watcher.readyz()).reasons).not.toContain("journal_busy");
   expect(watcher.failed()).toBeUndefined();
-  return await test.outcome(watcher.supervisor);
+  return test.outcome(watcher.supervisor);
 };
 
 /** Restart: the busy process stops at the hold; a new one starts from the
- * same durable state, as the runtime does (funding sweep, then dispatch). */
+ * same durable state, with nothing in flight, as the runtime does. */
 const resumeAfterRestart = async (busy: Busy) => {
   const test = await setup();
   const lock = armBusy(test, busy);
@@ -409,8 +346,6 @@ const resumeAfterRestart = async (busy: Busy) => {
   await first.supervisor.close();
   lock.release();
   closeWatcherJournalDatabase(test.fixture.journalRoot);
-  await test.fixture.restartStore();
-  await test.fixture.fundingFactory().releaseUnused();
   const second = test.start();
   await second.supervisor.requestProgress(test.request);
   await vi.waitFor(() => expect(test.queueStates()).toEqual(["finished"]), {
@@ -418,7 +353,7 @@ const resumeAfterRestart = async (busy: Busy) => {
   });
   await waitForFaultProofSupervisorIdle(second.supervisor);
   expect(second.failed()).toBeUndefined();
-  return await test.outcome(second.supervisor);
+  return test.outcome(second.supervisor);
 };
 
 describe("journal_busy holds the watcher and requeues its work in process", () => {
@@ -435,10 +370,10 @@ describe("journal_busy holds the watcher and requeues its work in process", () =
       // and the objective marker.
       expect(inProcess).toMatchObject(
         {
-          initialize: { runs: ["resume"], verifications: 1 },
-          markStarted: { runs: ["resume"], verifications: 1 },
-          midRun: { runs: ["resume", "resume"], verifications: 1 },
-          markFinished: { runs: ["resume"], verifications: 1 },
+          initialize: { runs: 1, verifications: 1 },
+          markStarted: { runs: 1, verifications: 1 },
+          midRun: { runs: 2, verifications: 1 },
+          markFinished: { runs: 1, verifications: 1 },
         }[busy],
       );
       expect(inProcess.objectives).toEqual(["marked"]);

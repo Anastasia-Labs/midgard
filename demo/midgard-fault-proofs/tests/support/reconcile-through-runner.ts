@@ -3,8 +3,6 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import { DaLibp2pRetainedDaSource } from "../../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
 import type { WorkflowActuationPermit } from "../../src/workflow/actuation-permit.js";
 import { defineFamilyApplication } from "../../src/workflow/family-application.assert-family-definition-roster.js";
-import { unsafeCreateWorkflowFundingReservationPermitForTest } from "../../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
-import type { FraudProofWorkflowJournalStore } from "../../src/workflow/journal.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowRunResult,
@@ -20,12 +18,13 @@ import {
   familyCommonInfrastructureForTest,
 } from "./family-common-infrastructure.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./wallet-only-send-always-open.js";
+import { createTestWorkflowProcess } from "./workflow-process.js";
 
 /**
- * Resumes a saved workflow under its reconciliation permit through the
- * manifest-bound runner, the only path to recorded-workflow recovery. The
- * record supplies the family's recovery surface; fresh execution and retained
- * DA are refused.
+ * Runs a workflow under its reconciliation permit through the manifest-bound
+ * runner, as a restarted process with nothing in flight does. The record
+ * supplies the family's recovery surface; fresh execution and retained DA
+ * are refused.
  */
 export const prepareReconcileThroughRunner = ({
   category,
@@ -33,7 +32,6 @@ export const prepareReconcileThroughRunner = ({
   headerHash,
   decisionDigest,
   permit,
-  store,
   surface,
 }: Readonly<{
   category: FraudProofCatalogueCategoryName;
@@ -41,23 +39,15 @@ export const prepareReconcileThroughRunner = ({
   headerHash: string;
   decisionDigest: string;
   permit: WorkflowActuationPermit;
-  store: Pick<FraudProofWorkflowJournalStore, "load" | "append">;
   surface: Readonly<{
     adapter: FraudProofFamilyWorkflowAdapter;
     terminalVerifier: FraudProofWorkflowTerminalVerifier;
     releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   }>;
 }>): (() => Promise<FraudProofWorkflowRunResult>) => {
-  // Reserved now, as the host does before it invokes the runner: a permit
-  // revoked after this point is refused by the runner itself.
-  const fundingReservationPermit =
-    unsafeCreateWorkflowFundingReservationPermitForTest({
-      category,
-      actuationPermit: permit,
-      deploymentFingerprint,
-      decisionDigest,
-      rollbackGeneration: "0",
-    });
+  // The invocation is ready now: a permit revoked after this point is
+  // refused by the runner itself.
+  const sends = createTestWorkflowProcess().sends({ category, headerHash });
   const runner = createManifestBoundWorkflowRunner({
     record: defineFamilyApplication({
       category,
@@ -102,24 +92,17 @@ export const prepareReconcileThroughRunner = ({
   return async () =>
     (await runner.runOrResume({
       walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
-      mode: "resume",
       category,
       deploymentFingerprint,
       headerHash,
       decisionDigest,
       actuationPermit: permit,
-      fundingReservationPermit,
-      // A fresh view of the saved journal: each run binds its own.
-      journal: {
-        load: async (workflowId: string) => await store.load(workflowId),
-        append: async (...entry: Parameters<typeof store.append>) =>
-          await store.append(...entry),
-      },
+      sends,
       runtimeConfigPath: "/fixture/reconciliation-runtime.json",
     })) as FraudProofWorkflowRunResult;
 };
 
-/** Prepares and at once runs a saved workflow's reconciliation. */
+/** Prepares and at once runs a workflow's reconciliation. */
 export const reconcileThroughRunner = async (
   ...input: Parameters<typeof prepareReconcileThroughRunner>
 ): Promise<FraudProofWorkflowRunResult> =>

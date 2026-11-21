@@ -419,9 +419,8 @@ The thirteen subsequent anchored passes used inclusion-based progression:
 For inclusion-based families, `result.json` records functional checks, while
 `finalized-evidence-stamp.json` establishes the release-depth anchor. A result may
 still say `terminal-included-awaiting-anchor` after its separate stamp is written.
-Keep `pending-evidence-stamp.json`, `completed-workflow.json`,
-`finalized-workflow.json`, `native-chain.ndjson`, and `timings.ndjson` together
-with the attempt logs. Registration or local verification is not live acceptance.
+Keep `pending-evidence-stamp.json`, `native-chain.ndjson`, and `timings.ndjson`
+together with the attempt logs. Registration or local verification is not live acceptance.
 The newly registered `fabricatedDeposit`, `fabricatedWithdrawal`,
 `withdrawalMistag` and `doubleWithdraw` fixtures have no completed live verdict
 on this deployment.
@@ -1028,9 +1027,9 @@ runner call owns and closes its own session.
 The watcher starts against the retained journey head before staging when one
 exists, or against the first staged target otherwise. Its original readiness
 header is a startup binding; subsequent classification observes the current
-queue. Before staging each family, the runner captures existing workflow journal
-prefixes. That baseline distinguishes retained completion from work the live
-observer performs during staging and preserves the resumed progress clock.
+queue. The watcher keeps no record of its workflows: the correction wait reads
+each family's progress and correction from the chain, and the watcher's own
+verdicts from its `/v1/status`.
 Fixture wallets keep their existing Base addresses, while prover wallets use
 Enterprise addresses for funding and keep proof materials at the Enterprise
 address of the native script `sig(payment key)`, which no fixture wallet
@@ -1039,12 +1038,11 @@ payment key; the session requires no wallet pause API.
 
 New session artifacts live under `work/journeys/sessions/session-*`: process
 configuration, binding preflight, `start.log`, restart records, session
-`timings.ndjson`, and the shared `native-chain.ndjson`. Persistent watcher,
-availability and workflow state remains in `work/journeys/runtime`.
+`timings.ndjson`, and the shared `native-chain.ndjson`. The watcher's decision
+journals and availability state remain in `work/journeys/runtime`.
 Each family keeps its own staging, correction, successor, result and timing
 artifacts. Its `session.json` identifies the session, process, configuration,
-binding receipt and native evidence path; `workflow-baseline.json` records the
-captured prefixes. Results and finalized stamps point to the actual recorder
+binding receipt and native evidence path. Results and finalized stamps point to the actual recorder
 path. Historical per-family native files remain evidence for their original
 attempts and are not rewritten to resemble shared-session runs.
 
@@ -1544,52 +1542,37 @@ validity, consensus or confirmation depth.
 Every other automatic family uses the same cadence formula over a finite generic
 plan of twenty-four dependent transactions, which bounds the largest installed
 proof chain with margin; a family that needs more must publish an audited plan
-instead of widening the bound. Because that bound is loose, the correction stage
-also fails as soon as the workflow journal records no durable progress (anything
-other than a per-block reconciliation) for one transaction allowance: twice the
-expected confirmation time plus preparation and RPC. Without an unresolved signed
-intent, a fresh or progressing family fails within one action allowance if
-progress stops. A retained workflow first gets 900 seconds to re-observe its
-target and produce new durable progress; repeated pending reconciliation records
-cannot reset that initial clock. The whole family
-cap remains in force. The journey tolerates journaled stalls for the watcher's
-whole preflight retry budget plus one retry delay. Poll deadlines use a monotonic
-clock, and a resumed attempt preserves its entire pre-launch journal prefix while treating newly recorded
-failures as failures of the current attempt.
-
-An unresolved signed intent receives at least the existing finalized-evidence
-window for exceptional reconciliation, rather than expiring the ordinary action
-clock while a reference spend becomes stable. Repeated pending observations do
-not reset this bounded clock. The first `not_found` outcome matching an exact
-action ID and transaction hash counts once as durable progress; replacement
-then returns to the ordinary action allowance. Duplicate or mismatched outcomes
-cannot extend the deadline, and the whole correction cap remains unchanged.
-Final transaction authentication omits only an exact intent durably abandoned
-this way, including when its replacement binds a different output reference;
-confirmed submissions remain subject to the existing checks.
+instead of widening the bound. Because that bound is loose, the correction wait
+also ends at the watcher's own verdicts on the objective, which it reads from the
+`l1Readiness` holds of `/v1/status`. A hold by which the watcher gives up
+(`fault_proof_continuation_stalled`, `fault_proof_counterparty_deadline_passed`,
+`fault_proof_resubmission_required`) fails the wait at once. A pausing hold
+(funding, replay, quarantine or an L1 refusal) fails it once it persists for the
+watcher's continuation quiet bound with no transaction of ours landing; a
+landing or a cleared hold restarts that clock. A silence the watcher does not
+call a stall, such as a defense window, keeps the wait open. A transaction of
+ours is any output at the prover's address created since the fault's header:
+every transaction the watcher signs pays its fee from that wallet and returns
+change to it. The whole family cap remains in force.
 
 Fault staging, the proof chain, the honest successor commitment, and healthy
-processing advance on authenticated inclusion. The production journal records
-`terminal_included` for provisional completion and `completed` only once the
-terminal is deeper than the automatic recovery horizon. Rollback invalidates
-cached authority; the worker re-observes current state and reconciles submitted
-attempts before retrying or rebuilding. A suitable signed transaction can be
-rebroadcast under fresh authority. The existing chain index and submission
-journal supply recovery state; no per-family inverse workflow is required.
+processing advance on authenticated inclusion. The watcher reads its progress
+from the chain on every pass and holds its in-flight transactions in memory.
+Rollback invalidates cached authority; the worker re-observes current state
+before retrying or rebuilding. The chain index supplies recovery state; no
+per-family inverse workflow is required.
 
 The harness persists `pending-evidence-stamp.json` before its inclusion-based
-`result.json`. The shared watcher continues reconciliation across families and
-restart. At each family boundary the harness stamps pending requests whose last
-`terminal_included` (or an existing `completed`) its own native recorder
-authenticates at the release depth (`l1Finality.confirmationDepth`): the recorder
+`result.json`. The shared watcher continues across families and restart. At each
+family boundary the harness reads each pending request's correction from the
+chain again (proof token, removal and slash) and stamps it once its own native
+recorder authenticates it at the release depth (`l1Finality.confirmationDepth`): the recorder
 must have replayed enough canonical blocks to establish the proof-token, removal,
-and honest-successor depths. The journey does not await `completed`. Only the
-last selected family waits for all remaining stamps before stopping services.
-`finalized-evidence-stamp.json` records the release policy digest, the terminal
-and its journal kind (`terminalKind`; absent in older stamps, meaning
-`completed`), stamp time, and independent native evidence path;
-`finalized-workflow.json` retains its validated journal. A reauthenticated
-terminal may have a different inclusion point after rollback.
+and honest-successor depths. Only the last selected family waits for all
+remaining stamps before stopping services. `finalized-evidence-stamp.json`
+records the release policy digest, the correction the chain held, stamp time,
+and independent native evidence path. A reauthenticated correction may have a
+different inclusion point after rollback.
 A historical completed proof can resume its unfinished honest-successor stage
 against the authenticated current retained head when it has no prepared successor.
 The original fault and removal evidence stay unchanged, and a separate
@@ -1602,19 +1585,12 @@ latency separately. A provisional result is insufficient for finalized release
 evidence until its stamp exists.
 
 Test the authority transition through the actual follower callbacks: history
-advance, authenticated queue removal, and subsequent workflow reconciliation.
-Removal may restrict authority to checking the exact recorded transaction and
+advance, authenticated queue removal, and the workflow's next read of the chain.
+Removal may restrict authority to checking the exact landed transaction and
 terminal result. It must not authorize another submission. A real rollback or
-lost canonical authority still revokes reconciliation. Restart tests must pass
-through the supervisor queue as well as the workflow runner; a queue job marked
-finished does not establish that its transaction journal completed.
-
-Each funding change (preparation, confirmation, supersession, adoption,
-conflict and the final release) commits with the workflow journal entries it
-implies, in one watcher.sqlite transaction. Crash tests stop the process before
-that transaction and after its commit, and reopen the store before going on: a
-preparation is pending with its preflight and intent, or neither; a final
-release is released with its completion, or neither.
+lost canonical authority still revokes it. Restart tests must pass through the
+supervisor queue as well as the workflow runner; a queue job marked finished
+does not establish that its correction landed.
 
 The real-node `transaction-recovery-live.test.ts` gate (since deleted) read a
 never-submitted expired transaction, valid transactions absent from the node's

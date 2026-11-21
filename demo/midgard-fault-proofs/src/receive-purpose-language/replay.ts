@@ -122,7 +122,7 @@ export const detectReceivePurposeLanguageReplay = async ({
   });
 };
 
-/** The journaled `receivePurposeLanguage` workflow artifact: the retained
+/** The `receivePurposeLanguage` workflow artifact: the retained
  * payload, the predecessor ledger and the coordinate, re-planned on every
  * admission. */
 export const RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY =

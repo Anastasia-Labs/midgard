@@ -19,6 +19,7 @@ import {
   type FraudProofRawL1ScopeRole,
   type FraudProofRawL1Snapshot,
   type FraudProofRawL1SnapshotRequest,
+  type FraudProofRawL1Transaction,
   HEX_28,
   OUT_REF,
   RAW_L1_SCOPE_ROLES,
@@ -71,11 +72,15 @@ export const admitFraudProofRawL1Snapshot = ({
   request,
   releaseFinality,
   observationDepth = "release_finality",
+  admitted,
 }: {
   readonly value: unknown;
   readonly request: FraudProofRawL1SnapshotRequest;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly observationDepth?: FraudProofL1ObservationDepth;
+  /** Transactions admitted before, by hash, whose exact bytes need no
+   * decoding again (admitFraudProofRawL1Transaction). */
+  readonly admitted?: ReadonlyMap<string, FraudProofRawL1Transaction>;
 }): FraudProofRawL1Snapshot => {
   const minimumConfirmationDepth =
     observationDepth === "inclusion"
@@ -336,6 +341,7 @@ export const admitFraudProofRawL1Snapshot = ({
       candidate,
       `raw L1 snapshot transactions[${index.toString()}]`,
       minimumConfirmationDepth,
+      admitted,
     ),
   );
   if (

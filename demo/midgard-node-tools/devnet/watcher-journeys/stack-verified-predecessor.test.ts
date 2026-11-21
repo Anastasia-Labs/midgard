@@ -385,7 +385,6 @@ describe("the check before each family", () => {
 
   it("checks a family whose directory holds only what is written before any fault work", async () => {
     const { run, calls } = await family({
-      "workflow-baseline.json": {},
       "timing-plan.json": {},
       "timings.ndjson": {},
       "failure.json": {},

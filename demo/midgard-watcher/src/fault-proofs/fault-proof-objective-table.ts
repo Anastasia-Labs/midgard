@@ -1,12 +1,8 @@
 import { isFinal } from "@al-ft/midgard-l1-follower/heads";
 
-import { watcherSha256CanonicalJson } from "../storage/durable-store.canonical-json.js";
 import { MAX_RECORDS as MAX_DECISIONS } from "./fault-decision-journal.exact-record.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
-import type {
-  WatcherProofExecution,
-  WatcherProofObjective,
-} from "./fault-proof-objective-journal.js";
+import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import {
   WatcherJournalCapacityError,
   type WatcherJournalDatabase,
@@ -19,16 +15,18 @@ import {
 
 /**
  * The proof objective table (ticket W2, L2): one row per objective, written
- * when its first job is queued, before its execution has any workflow row.
- * Startup lists these rows instead of scanning the workflow journal.
+ * when its first job is queued. Startup lists these rows; only a marked one
+ * says anything about the objective's progress, and every other one is
+ * forgotten, since a live fault admits its objective again and its run
+ * reads what it did from the chain.
  *
  * - `open`: the objective holds unfinished work. Only open rows count toward
  *   the cap, and reaching it is a readiness condition, never an exit.
  * - `completed`: its completion was verified, but not yet beyond rollback
- *   recovery, so the next start verifies it again.
+ *   recovery.
  * - `marked`: its completion was verified beyond rollback recovery; the row
- *   records which execution; once its job is done the row and its workflow
- *   rows are pruned, by the next release pass or the next start.
+ *   records the removal transaction; once its job is done the row is
+ *   pruned, by the next release pass or the next start.
  */
 const JOURNAL = "fault_proof_objectives" satisfies WatcherJournalName;
 
@@ -36,11 +34,24 @@ export const MAX_OPEN_OBJECTIVES = 2_048;
 
 export type WatcherProofObjectiveState = "open" | "completed" | "marked";
 
-export type WatcherProofCompletionMarker = Readonly<{
+/** A completion verified beyond rollback recovery. It binds the removal
+ * transaction the chain shows; a row written before that binding names a
+ * digest of the run's stored record instead (`journalDigest`) and counts as
+ * a marker all the same. */
+export type WatcherProofCompletionMarker = Readonly<
+  {
+    workflowId: string;
+    confirmationDepth: number;
+    recoveryDepth: string;
+  } & ({ terminalTxHash: string } | { journalDigest: string })
+>;
+
+/** The completion a marker records: the run's workflow, the removal
+ * transaction the chain shows and that transaction's confirmation depth. */
+export type WatcherProofVerifiedCompletion = Readonly<{
   workflowId: string;
-  journalDigest: string;
+  terminalTxHash: string;
   confirmationDepth: number;
-  recoveryDepth: string;
 }>;
 
 export type WatcherProofObjectiveRow = Readonly<{
@@ -99,46 +110,37 @@ export const watcherProofObjectiveRecorded = (
     watcherObjectiveScope(objective.category, objective.headerHash),
   ) !== undefined;
 
-/** The completion marker for this exact completed execution, or null when
- * the completion is not yet beyond rollback recovery. */
+/** The completion marker for this verified completion, or null when it is
+ * not yet beyond rollback recovery. */
 const completionMarker = (
-  execution: WatcherProofExecution,
-  confirmationDepth: number,
+  verified: WatcherProofVerifiedCompletion,
   securityParameter: number,
 ): WatcherProofCompletionMarker | null =>
-  execution.entries.at(-1)?.event.kind === "completed" &&
-  isBeyondWatcherRollbackRecovery(confirmationDepth, securityParameter)
+  isBeyondWatcherRollbackRecovery(verified.confirmationDepth, securityParameter)
     ? Object.freeze({
-        workflowId: execution.workflowId,
-        journalDigest: watcherSha256CanonicalJson(execution.entries),
-        confirmationDepth,
+        workflowId: verified.workflowId,
+        terminalTxHash: verified.terminalTxHash,
+        confirmationDepth: verified.confirmationDepth,
         recoveryDepth: securityParameter.toString(),
       })
     : null;
 
 /** Records a verified completion; one verified beyond rollback recovery
  * (deeper than k, the follower's `securityParameter`) is marked with its
- * execution, so it is never run or verified again and is pruned. The
+ * removal transaction, so it is never run or verified again and is pruned. The
  * supervisor's completion check applies the same threshold, so every
  * completion it finishes is marked unless the write fails. Without a k
  * nothing is marked. True once the row holds a marker. */
 export const completeWatcherProofObjective = (
   database: WatcherJournalDatabase,
   objective: WatcherProofObjective,
-  verified?: Readonly<{
-    execution: WatcherProofExecution;
-    confirmationDepth: number;
-  }>,
+  verified?: WatcherProofVerifiedCompletion,
   securityParameter?: number,
 ): boolean => {
   const marker =
     verified === undefined || securityParameter === undefined
       ? null
-      : completionMarker(
-          verified.execution,
-          verified.confirmationDepth,
-          securityParameter,
-        );
+      : completionMarker(verified, securityParameter);
   const scope = watcherObjectiveScope(objective.category, objective.headerHash);
   return database.transaction((tx) => {
     const current = tx.row(JOURNAL, scope);
@@ -158,28 +160,17 @@ export const completeWatcherProofObjective = (
   });
 };
 
-/** True only for a marker bound to this exact completed execution whose
- * recorded confirmation depth is beyond rollback recovery under the current
- * k: the depth alone decides, so a marker written under a smaller k that is
- * not that deep, or one checked without a k, is verified again. The k a
- * marker was written under (`recoveryDepth`) is a record only. */
+/** True only for a marker whose recorded confirmation depth is beyond
+ * rollback recovery under the current k: the depth alone decides, so a
+ * marker written under a smaller k that is not that deep, or one checked
+ * without a k, is verified again. The k a marker was written under
+ * (`recoveryDepth`) is a record only. */
 export const watcherProofMarkerMatches = (
   marker: WatcherProofCompletionMarker,
-  execution: WatcherProofExecution | undefined,
   securityParameter: number | undefined,
-): boolean => {
-  if (execution === undefined || securityParameter === undefined) return false;
-  const expected = completionMarker(
-    execution,
-    marker.confirmationDepth,
-    securityParameter,
-  );
-  return (
-    expected !== null &&
-    expected.workflowId === marker.workflowId &&
-    expected.journalDigest === marker.journalDigest
-  );
-};
+): boolean =>
+  securityParameter !== undefined &&
+  isBeyondWatcherRollbackRecovery(marker.confirmationDepth, securityParameter);
 
 const parseRow = (
   body: unknown,
@@ -190,7 +181,16 @@ const parseRow = (
   const value = body as {
     category?: unknown;
     headerHash?: unknown;
-    marker?: Partial<Record<keyof WatcherProofCompletionMarker, unknown>>;
+    marker?: Partial<
+      Record<
+        | "workflowId"
+        | "terminalTxHash"
+        | "journalDigest"
+        | "confirmationDepth"
+        | "recoveryDepth",
+        unknown
+      >
+    >;
   };
   const marker = value.marker;
   if (
@@ -202,7 +202,8 @@ const parseRow = (
     (state === "marked") !== (marker !== undefined) ||
     (marker !== undefined &&
       (typeof marker.workflowId !== "string" ||
-        typeof marker.journalDigest !== "string" ||
+        (typeof marker.terminalTxHash !== "string") ===
+          (typeof marker.journalDigest !== "string") ||
         typeof marker.confirmationDepth !== "number" ||
         typeof marker.recoveryDepth !== "string"))
   )
@@ -245,13 +246,12 @@ export const listWatcherProofObjectives = (
   );
 };
 
-/** The objective's completion marker when its row holds one that matches
- * this exact execution under the current k (`watcherProofMarkerMatches`),
- * else null. A row that does not parse refuses the journals. */
+/** The objective's completion marker when its row holds one beyond rollback
+ * recovery under the current k (`watcherProofMarkerMatches`), else null. A
+ * row that does not parse refuses the journals. */
 export const matchingWatcherProofMarker = (
   database: WatcherJournalDatabase,
   objective: WatcherProofObjective,
-  execution: WatcherProofExecution,
   securityParameter: number | undefined,
   categories: readonly WatcherInstalledWorkflowCategory[],
 ): WatcherProofCompletionMarker | null => {
@@ -264,17 +264,14 @@ export const matchingWatcherProofMarker = (
     new Set<string>(categories),
     (detail) => database.refuse(JOURNAL, detail),
   );
-  return marker !== null &&
-    watcherProofMarkerMatches(marker, execution, securityParameter)
+  return marker !== null && watcherProofMarkerMatches(marker, securityParameter)
     ? marker
     : null;
 };
 
 /**
  * Deletes the objective's row and its queued jobs in one commit; a prune
- * also deletes its fault decisions, a supersede the one `decision` row. The
- * caller first deletes the workflow rows, so a crash before this commit
- * leaves a row whose execution is gone, which the next start forgets again.
+ * also deletes its fault decisions, a supersede the one `decision` row.
  */
 export const forgetWatcherProofObjective = (
   database: WatcherJournalDatabase,

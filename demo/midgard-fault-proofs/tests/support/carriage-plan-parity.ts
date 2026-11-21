@@ -80,7 +80,7 @@ export const recordingFieldCarriagePrerequisite = (
       ...config,
       requirementForAction: async (input) => {
         const required = await config.requirementForAction(input);
-        // A raw-datum or bound-data requirement names its kind; a field
+        // A raw-datum requirement names its kind; a field
         // requirement does not.
         if (required !== null && !("kind" in required))
           carriagePlanRecord.required.push({

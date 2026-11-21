@@ -18,9 +18,7 @@ import { writeWatcherRuntimeProcessConfig } from "../support/watcher-runtime-pro
 /** The node: down for every read until the test brings it up. */
 const node = vi.hoisted(() => ({
   readinessDown: true,
-  queriesDown: true,
   readinessReads: 0,
-  queries: 0,
 }));
 
 const nodeDown = () =>
@@ -61,13 +59,6 @@ vi.mock("../../src/l1-follower/deployment-follower.js", () => ({
     provider: {},
     proofRetention: {},
     faultProofL1: {},
-    transport: {
-      query: async () => {
-        node.queries += 1;
-        if (node.queriesDown) throw nodeDown();
-        throw new Error("protocol parameters are malformed");
-      },
-    },
     close: async () => undefined,
   }),
 }));
@@ -82,7 +73,8 @@ vi.mock("../../src/runtime/watcher-runtime.replayed-ledger.js", () => ({
     }),
   }),
 }));
-// The workflow readiness stage, reduced to its L1 read.
+// The workflow readiness stage, reduced to its L1 read: once the node
+// answers, the read it gets is malformed.
 vi.mock("../../src/runtime/watcher-runtime.prepare-services.js", () => ({
   prepareWatcherRuntimeWorkflows: async (
     _input: unknown,
@@ -99,13 +91,7 @@ vi.mock("../../src/runtime/watcher-runtime.prepare-services.js", () => ({
       retryL1Read(async () => {
         node.readinessReads += 1;
         if (node.readinessDown) throw nodeDown();
-        return {
-          faultProofApplication: {
-            installedCategories: [],
-            close: async () => undefined,
-          },
-          faultProofReadiness: [],
-        };
+        throw new Error("fault-proof readiness is malformed");
       }),
     ),
 }));
@@ -114,12 +100,7 @@ const directories: string[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
-  Object.assign(node, {
-    readinessDown: true,
-    queriesDown: true,
-    readinessReads: 0,
-    queries: 0,
-  });
+  Object.assign(node, { readinessDown: true, readinessReads: 0 });
   await Promise.all(
     directories
       .splice(0)
@@ -187,52 +168,43 @@ describe("watcher startup readiness", () => {
       (error: unknown) => (settled = error),
     );
 
-    // The protocol parameters read reports the node's outage as its own.
-    for (const [stage, reads, error] of [
-      ["workflow_readiness", () => node.readinessReads, nodeDown().message],
-      [
-        "protocol_parameters",
-        () => node.queries,
-        "Current local funding parameters are temporarily unavailable",
-      ],
-    ] as const) {
-      await vi.waitFor(
-        async () => {
-          expect(reads()).toBeGreaterThanOrEqual(2);
-          expect(await probe(config, "/readyz")).toEqual({
-            status: 503,
-            body: {
-              ready: false,
-              reasons: [`startup:${stage}`],
-              l1: [],
-              startup: {
-                stage,
-                outcome: "pending",
-                error,
-                retryAfterMs: expect.any(Number),
-              },
+    // The workflow readiness stage reports the node's outage as its own.
+    const stage = "workflow_readiness";
+    await vi.waitFor(
+      async () => {
+        expect(node.readinessReads).toBeGreaterThanOrEqual(2);
+        expect(await probe(config, "/readyz")).toEqual({
+          status: 503,
+          body: {
+            ready: false,
+            reasons: [`startup:${stage}`],
+            l1: [],
+            startup: {
+              stage,
+              outcome: "pending",
+              error: nodeDown().message,
+              retryAfterMs: expect.any(Number),
             },
-          });
-        },
-        { timeout: 20_000, interval: 50 },
-      );
-      // The liveness probe answers while the stage waits.
-      expect(await probe(config, "/v1/status")).toMatchObject({
-        status: 200,
-        body: { readinessReasons: [`startup:${stage}`] },
-      });
-      expect(settled).toBeUndefined();
-      expect(exit).not.toHaveBeenCalled();
-      node.readinessDown = false;
-    }
+          },
+        });
+      },
+      { timeout: 20_000, interval: 50 },
+    );
+    // The liveness probe answers while the stage waits.
+    expect(await probe(config, "/v1/status")).toMatchObject({
+      status: 200,
+      body: { readinessReasons: [`startup:${stage}`] },
+    });
+    expect(settled).toBeUndefined();
+    expect(exit).not.toHaveBeenCalled();
+    node.readinessDown = false;
 
     // A failure that is not an L1 transient, and not one a restart may
     // clear, holds: the server stays up naming `startup_failed`.
-    node.queriesDown = false;
     await starting;
     expect(settled).toBeInstanceOf(WatcherStartupHeldError);
     expect(((settled as Error).cause as Error).message).toBe(
-      "protocol parameters are malformed",
+      "fault-proof readiness is malformed",
     );
     expect(await probe(config, "/readyz")).toEqual({
       status: 503,
@@ -241,9 +213,9 @@ describe("watcher startup readiness", () => {
         reasons: ["startup_failed"],
         l1: [],
         startup: {
-          stage: "protocol_parameters",
+          stage: "workflow_readiness",
           outcome: "failed",
-          error: "protocol parameters are malformed",
+          error: "fault-proof readiness is malformed",
         },
       },
     });

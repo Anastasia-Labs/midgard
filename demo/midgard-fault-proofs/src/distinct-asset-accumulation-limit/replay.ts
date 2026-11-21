@@ -133,7 +133,7 @@ export const detectDistinctAssetAccumulationLimitReplay = async ({
   });
 };
 
-/** The journaled `distinctAssetAccumulationLimit` workflow artifact: the
+/** The `distinctAssetAccumulationLimit` workflow artifact: the
  * retained payload, the predecessor ledger and the coordinate, re-planned on
  * every admission. */
 export const DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY =

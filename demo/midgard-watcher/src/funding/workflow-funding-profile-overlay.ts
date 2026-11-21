@@ -231,8 +231,8 @@ export const watcherWorkflowFundingProfiles = ({
   return (
     category: FraudProofCatalogueCategoryName,
   ): WorkflowFundingRequirements | undefined =>
-    // Install every runner at startup. Funding is required when a category
-    // requests a reservation, so missing measurements do not stop observation.
+    // Install every runner at startup. Nothing at runtime reads the
+    // measurements, so missing ones do not stop observation.
     overlay === undefined || overlay.profiles[category] === undefined
       ? undefined
       : workflowFundingProfileFromOverlay({ overlay, category });

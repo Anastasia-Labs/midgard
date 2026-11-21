@@ -1,53 +1,19 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, expect, it } from "vitest";
 
-import {
-  computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
-} from "@al-ft/midgard-fault-proofs/workflow/journal";
-import { describe, expect, it, vi } from "vitest";
-
-import { verifyJourneyCorrection } from "./correction.js";
+import { pollChainCorrection } from "./correction.chain-progress.test-support.js";
 import type { JourneyWatcherStartStatus } from "./correction.watcher-start-deadline.js";
-import { workflowLoad } from "./correction-recovery.test-support.js";
 
 const headerHash = "34".repeat(28);
-const identity = {
-  schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  deploymentFingerprint: "12".repeat(32),
-  category: "transitionTrace",
-  target: { kind: "state_queue_header", headerHash },
-} as const;
-const entry = (
-  sequence: number,
-  event: FraudProofWorkflowJournalEntry["event"],
-): FraudProofWorkflowJournalEntry => ({
-  schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  workflowId: computeFraudProofWorkflowId(identity),
-  identity,
-  sequence,
-  recordedAt: "2026-11-10T05:00:00.000Z",
-  event,
-});
-const started = [entry(0, { kind: "started" })];
-const signed = [
-  ...started,
-  entry(1, {
-    kind: "submission_intent",
-    actionId: "init",
-    actionInput: {},
-    attempt: 1,
-    txHash: "ab".repeat(32),
-  }),
-];
+const category = "validationTraceDispute";
+/** Nothing of ours has landed yet. */
+const started: readonly string[] = [];
+/** The workflow's first transaction has landed. */
+const signed = ["ab".repeat(32)];
 
 /** A stack watcher's queued job for the journey's header. */
 const job = {
   mode: "run",
-  category: "transitionTrace",
+  category,
   headerHash,
   decisionDigest: "56".repeat(32),
   rollbackGeneration: "0",
@@ -86,96 +52,61 @@ const held = status({
   journalDecisionMissing: [
     {
       kind: "objective",
-      category: "transitionTrace",
+      category,
       headerHash,
       decisionDigest: "56".repeat(32),
-      detail: `transitionTrace/${headerHash}`,
+      detail: `${category}/${headerHash}`,
       readiness: "fault_proof_start_deadline_passed",
     },
   ],
 });
 
-const observationsEnded = new Error("observations ended");
-
 /** The proof wait over these observations, each one poll; counts status reads. */
 const proofWait = async (
   observations: readonly {
-    records: readonly FraudProofWorkflowJournalEntry[];
+    landed: readonly string[];
     watcher: JourneyWatcherStartStatus;
   }[],
-) => {
-  const directory = await mkdtemp(join(tmpdir(), "journey-start-deadline-"));
-  const load = workflowLoad();
-  const now = vi.spyOn(Date, "now").mockReturnValue(0);
-  let current = observations[0]!.watcher;
-  let statusReads = 0;
-  type Input = Parameters<typeof verifyJourneyCorrection>[0];
-  try {
-    await verifyJourneyCorrection({
-      context: { deployment: {}, provider: {} } as Input["context"],
-      transactions: {} as Input["transactions"],
-      watcherStore: load.store,
-      watcherStatus: async () => {
-        statusReads += 1;
-        return current;
-      },
-      proverAddress: "addr_test1unused",
-      directory,
-      category: "transitionTrace",
-      headerHash,
-      predecessorHeaderHash: "78".repeat(28),
-      workflowBaseline: started,
-      actionDepth: 1,
-      operatorVkey: "90".repeat(28),
-      requireLive: () => undefined,
-      stage: async (_name, action) => await action(),
-      poll: async (_name, action) => {
-        for (const observation of observations) {
-          current = observation.watcher;
-          load.serve(observation.records);
-          expect(await action()).toBeUndefined();
-        }
-        throw observationsEnded;
-      },
-    });
-  } finally {
-    now.mockRestore();
-    await rm(directory, { recursive: true, force: true });
-  }
-  return statusReads;
-};
+) =>
+  (
+    await pollChainCorrection(
+      observations.map((observation, index) => ({ at: index, ...observation })),
+    )
+  ).statusReads;
+
+const observationsEnded = /: observations ended$/u;
 
 describe("the proof wait and the watcher's latest safe start", () => {
   it("fails at once, naming it, when the watcher holds the objective past its safe start", async () => {
     await expect(
-      proofWait([{ records: started, watcher: held }]),
+      proofWait([{ landed: started, watcher: held }]),
     ).rejects.toThrow(
-      `fault_proof_start_deadline_passed for transitionTrace/${headerHash}`,
+      `fault_proof_start_deadline_passed for ${category}/${headerHash}`,
     );
   });
 
   it("fails at once when the safe start passed with the job queued and nothing signed", async () => {
     await expect(
-      proofWait([{ records: started, watcher: status({}) }]),
+      proofWait([{ landed: started, watcher: status({}) }]),
     ).rejects.toThrow(/latest safe start.*remainingSafeStartMs -1/su);
   });
 
   it("keeps waiting on a job that is already running when its safe start passes", async () => {
     await expect(
       proofWait([
-        { records: started, watcher: status({ activeJob: job }) },
-        { records: started, watcher: status({ activeJob: job }) },
+        { landed: started, watcher: status({ activeJob: job }) },
+        { landed: started, watcher: status({ activeJob: job }) },
       ]),
-    ).rejects.toBe(observationsEnded);
+    ).rejects.toThrow(observationsEnded);
   });
 
-  it("keeps waiting once the workflow has signed a step, which the watcher still reconciles", async () => {
+  it("keeps waiting once a transaction of ours has landed", async () => {
     await expect(
       proofWait([
-        { records: signed, watcher: held },
-        { records: signed, watcher: status({}) },
+        { landed: signed, watcher: held },
+        { landed: signed, watcher: status({}) },
       ]),
-    ).rejects.toBe(observationsEnded);
+    ).rejects.toThrow(observationsEnded);
   });
 
   it("keeps waiting while a restarted watcher answers its startup status", async () => {
@@ -187,10 +118,10 @@ describe("the proof wait and the watcher's latest safe start", () => {
     } as unknown as JourneyWatcherStartStatus;
     await expect(
       proofWait([
-        { records: started, watcher: startup },
-        { records: started, watcher: startup },
+        { landed: started, watcher: startup },
+        { landed: started, watcher: startup },
       ]),
-    ).rejects.toBe(observationsEnded);
+    ).rejects.toThrow(observationsEnded);
   });
 
   it("ignores another header's hold and a safe start that has not passed", async () => {
@@ -198,29 +129,29 @@ describe("the proof wait and the watcher's latest safe start", () => {
     await expect(
       proofWait([
         {
-          records: started,
+          landed: started,
           watcher: status({
             earliestDeadlineJob: { ...job, headerHash: other },
             journalDecisionMissing: [
               {
                 kind: "objective",
-                category: "transitionTrace",
+                category,
                 headerHash: other,
                 decisionDigest: "56".repeat(32),
-                detail: `transitionTrace/${other}`,
+                detail: `${category}/${other}`,
                 readiness: "fault_proof_start_deadline_passed",
               },
             ],
           }),
         },
         {
-          records: started,
+          landed: started,
           watcher: status({
             deadlineHealth: "safe",
             remainingSafeStartMs: "1",
           }),
         },
       ]),
-    ).rejects.toBe(observationsEnded);
+    ).rejects.toThrow(observationsEnded);
   });
 });

@@ -28,7 +28,7 @@ import {
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 export type SubmitZeroInputStep02CliConfig = SubmitProviderConfig & {
@@ -76,7 +76,7 @@ export type ZeroInputStep02Build = {
 };
 
 export type SubmitZeroInputStep02Result =
-  UnjournaledSubmission<ZeroInputStep02Build>;
+  OutsideWorkflowSubmission<ZeroInputStep02Build>;
 
 type ZeroInputStep02DatumWithState = ZeroInputStep02Datum & {
   readonly data: NonNullable<ZeroInputStep02Datum["data"]>;

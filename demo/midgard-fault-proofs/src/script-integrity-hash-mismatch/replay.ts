@@ -132,7 +132,7 @@ export const detectScriptIntegrityHashMismatchReplay = async ({
   });
 };
 
-/** The journaled `scriptIntegrityHashMismatch` workflow artifact: the retained
+/** The `scriptIntegrityHashMismatch` workflow artifact: the retained
  * payload, the predecessor ledger and the coordinate, re-planned on every
  * admission. */
 export const SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY =

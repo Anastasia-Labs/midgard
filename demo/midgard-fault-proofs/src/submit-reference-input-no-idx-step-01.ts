@@ -70,7 +70,7 @@ import {
 } from "./witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 export type SubmitReferenceInputNoIdxStep01CliConfig = SubmitProviderConfig & {
@@ -115,7 +115,7 @@ export type ReferenceInputNoIdxStep01Build = {
 };
 
 export type SubmitReferenceInputNoIdxStep01Result =
-  UnjournaledSubmission<ReferenceInputNoIdxStep01Build>;
+  OutsideWorkflowSubmission<ReferenceInputNoIdxStep01Build>;
 
 type ReferenceInputNoIdxStep01Layout = {
   readonly inputIndex: bigint;

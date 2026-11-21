@@ -10,7 +10,7 @@ import {
 } from "./runtime.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "./workflow/transaction-boundary.js";
 
 /** Prepared spend-inputs preimage produced by `prepare-input-no-idx`. */
@@ -127,7 +127,7 @@ export type InputNoIdxStep02Build = {
 };
 
 export type SubmitInputNoIdxStep02Result =
-  UnjournaledSubmission<InputNoIdxStep02Build>;
+  OutsideWorkflowSubmission<InputNoIdxStep02Build>;
 
 export type InputNoIdxStep02Layout = {
   readonly inputIndex: bigint;

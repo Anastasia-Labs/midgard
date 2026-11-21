@@ -44,8 +44,8 @@ import {
   executeManifestBoundProtectedOutputSignerMissingWorkflow,
   type ManifestBoundProtectedOutputSignerMissingWorkflow,
 } from "../protected-output-signer-missing/authenticated-workflow.run-or-resume-manifest-bound-protected-output-signer-missing-workflow.js";
-import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { type ResolvedProverSigner } from "../runtime.js";
+import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import type { ResolvedProverSigner } from "../runtime.js";
 import type { ManifestBoundTransactionOutputNonCanonicalWorkflowConfig } from "../transaction-output-non-canonical/workflow.create-transaction-output-non-canonical-recovery-ports.js";
 import {
   createManifestBoundTransactionOutputNonCanonicalWorkflow,
@@ -86,9 +86,9 @@ import {
 } from "./family-application-registry.resolve-roster-parts.js";
 import type { FamilyCategory } from "./family-definition.family-adapter-arm.js";
 import { familyStepContractNames } from "./family-definition.family-definition.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import type { FraudProofL1Source } from "./l1-source.js";
-import { type WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WorkflowRun } from "./workflow-run.js";
 
 /**
  * The config key a family on the authenticated certificate shape reads each
@@ -155,7 +155,7 @@ export const authenticatedCertificateFamilyApplicationRecord = <
       execute: (input: {
         readonly workflow: Workflow;
         readonly sources: readonly RetainedDaPayloadSource[];
-        readonly journal: FraudProofWorkflowJournalStore;
+        readonly run: WorkflowRun;
         readonly walletOnlySend: WalletOnlySend;
       }) => Promise<unknown>;
     }>,
@@ -205,8 +205,8 @@ export const authenticatedCertificateFamilyApplicationRecord = <
         ...infrastructureFields(infrastructure),
       }) as Config,
     constructWorkflow: family.constructWorkflow,
-    execute: async ({ workflow, sources, journal, walletOnlySend }) =>
-      await family.execute({ workflow, sources, journal, walletOnlySend }),
+    execute: async ({ workflow, sources, run, walletOnlySend }) =>
+      await family.execute({ workflow, sources, run, walletOnlySend }),
     bindsDecisionDigest: true,
   });
 };
@@ -323,7 +323,7 @@ export const cursorFamilyApplicationRecord = <
       execute: (input: {
         readonly workflow: Workflow;
         readonly sources: readonly RetainedDaPayloadSource[];
-        readonly journal: FraudProofWorkflowJournalStore;
+        readonly run: WorkflowRun;
         readonly walletOnlySend: WalletOnlySend;
       }) => Promise<unknown>;
     }>,

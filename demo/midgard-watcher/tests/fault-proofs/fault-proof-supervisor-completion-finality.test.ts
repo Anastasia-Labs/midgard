@@ -1,17 +1,11 @@
 import { mkdtemp, rm } from "node:fs/promises";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { listWatcherProofObjectives } from "../../src/fault-proofs/fault-proof-objective-table.js";
 import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
-import {
-  classifyDoubleSpend,
-  deploymentIdentity,
-  writeExecution,
-} from "../support/completed-proof-journal-fixture.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
@@ -29,7 +23,7 @@ vi.mock("../../src/fault-proofs/fault-proof-application.js", async (load) => {
 });
 
 // A marker write that fails once, as a database error leaves it: the next
-// job for the same execution then reaches the cached validation.
+// job for the same objective verifies it again.
 const marking = vi.hoisted(() => ({ failures: 0 }));
 vi.mock(
   "../../src/fault-proofs/fault-proof-objective-table.js",
@@ -65,33 +59,38 @@ afterEach(async () => {
 
 const K = storelessProofRetention.securityParameter;
 
-/** A supervisor over a completed execution whose completion check answers
- * applicable at `confirmationDepth`, run for `rounds` observations. */
+const HEADER_HASH = "91".repeat(28);
+const DECISION_DIGEST = "92".repeat(32);
+
+/** A supervisor at maturity over an objective with nothing in flight, whose
+ * completion check answers applicable at `confirmationDepth` (the chain
+ * shows the removal landed), observed for `rounds` observations. */
 const complete = async (confirmationDepth: number, rounds: number) => {
   const root = await mkdtemp("/var/tmp/midgard-fault-supervisor-finality-");
   directories.push(root);
-  const decision = await classifyDoubleSpend();
-  const workflowJournal = await writeExecution(root, decision, true);
   const released: string[] = [];
   const verifyCompleted = vi.fn(
-    async () => ({ kind: "applicable", confirmationDepth }) as const,
+    async () =>
+      ({
+        kind: "applicable",
+        confirmationDepth,
+        terminalTxHash: "bb".repeat(32),
+      }) as const,
   );
   const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
     journalRoot: root,
-    workflowJournal,
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    deploymentFingerprint: "dd".repeat(32),
+    unsafeNowMsForTest: () => MIDGARD_RETENTION_WINDOW.maturityMs + 1,
     run: async () => {
-      throw new Error("a completed execution never runs");
+      throw new Error(
+        "an objective at maturity with nothing in flight never runs",
+      );
     },
     unsafeVerifyCompletedForTest: verifyCompleted,
     unsafeProofRetentionForTest: {
       ...storelessProofRetention,
       release: async ({ headerHash }) => void released.push(headerHash),
     },
-  });
-  const controller = createWorkflowActuationPermitController({
-    decision,
-    rollbackGeneration: "3",
   });
   const rows = () =>
     listWatcherProofObjectives(
@@ -106,30 +105,23 @@ const complete = async (confirmationDepth: number, rounds: number) => {
     }));
   const states: ReturnType<typeof rows>[] = [];
   for (let round = 0; round < rounds; round += 1) {
-    if (round === 0)
-      await supervisor.recoverExisting(
-        decision,
-        controller.permit,
-        Object.freeze({
-          headerHash: decision.headerHash,
-          headerBlockTimeMs: "0",
-          maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
-          latestSafeStartAtMs: (
-            MIDGARD_RETENTION_WINDOW.maturityMs -
-            MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs
-          ).toString(),
-        }),
-        "3",
-      );
-    else
-      await supervisor.unsafeScheduleForTest({
-        mode: "resume",
-        category: "doubleSpend",
-        headerHash: decision.headerHash,
-        decisionDigest: decision.decisionDigest,
-        rollbackGeneration: "3",
-        observationRevision: String(round),
-      });
+    await supervisor.unsafeScheduleForTest({
+      mode: "run",
+      category: "doubleSpend",
+      headerHash: HEADER_HASH,
+      decisionDigest: DECISION_DIGEST,
+      rollbackGeneration: "3",
+      observationRevision: String(round),
+      deadline: Object.freeze({
+        headerHash: HEADER_HASH,
+        headerBlockTimeMs: "0",
+        maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
+        latestSafeStartAtMs: (
+          MIDGARD_RETENTION_WINDOW.maturityMs -
+          MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs
+        ).toString(),
+      }),
+    });
     await vi.waitFor(() => {
       expect(supervisor.status().activeJob).toBeNull();
       expect(supervisor.status().queuedJobCount).toBe(0);
@@ -166,14 +158,14 @@ describe("fault-proof supervisor completion finality", () => {
     expect(outcome.released.length).toBeGreaterThan(0);
   }, 60_000);
 
-  it("marks from the cached validation with its verified depth after a failed marker write", async () => {
+  it("marks with its verified depth on the next job after a failed marker write", async () => {
     marking.failures = 1;
     const outcome = await complete(K + 1, 2);
     expect(outcome.states).toEqual([
       [{ state: "open", depth: null }],
       [{ state: "marked", depth: K + 1 }],
     ]);
-    expect(outcome.verifyCompleted).toHaveBeenCalledOnce();
+    expect(outcome.verifyCompleted).toHaveBeenCalledTimes(2);
     expect(outcome.released.length).toBeGreaterThan(0);
   }, 60_000);
 });

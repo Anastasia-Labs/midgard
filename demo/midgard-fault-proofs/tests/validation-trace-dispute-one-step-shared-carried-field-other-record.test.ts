@@ -8,19 +8,23 @@
  * deadlines that prover removes the block against its own record, and the
  * removal goes past rollback recovery before our run is let on. Our run then
  * reads the block as removed against another record: it spends the
- * publication back by key, and ends resolved by that record only once the
- * spend back is final at release depth (carried-field.ts). */
+ * publication back by key and ends resolved by that record, waiting on no
+ * spend back's finality (carried-field.ts). The process follows that spend
+ * back until it is final: once it rolls back after the ending, the next
+ * runs send it again, the same signed bytes, sign nothing new for the
+ * publication, and end resolved by that record again. */
 import * as SDK from "@al-ft/midgard-sdk/da";
-import { Data, generateEmulatorAccount, Lucid } from "@lucid-evolution/lucid";
+import {
+  Data,
+  generateEmulatorAccount,
+  Lucid,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
-import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
-import {
-  VALIDATION_TRACE_COPY_OUTSTANDING,
-  VALIDATION_TRACE_COPY_RECLAIM,
-} from "../src/validation-trace-dispute/carried-field.js";
+import { VALIDATION_TRACE_COPY_RECLAIM } from "../src/validation-trace-dispute/carried-field.js";
 import { VALIDATION_TRACE_SCRIPT_SOURCES_REDEEMER_INLINE_MAX_PREIMAGE_BYTES } from "../src/validation-trace-dispute/one-step-phase-evidence.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
@@ -28,7 +32,6 @@ import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrat
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { network } from "./support/emulator/blueprints.js";
 import {
-  blockOf,
   copiesOf,
   expectReclaimedByKey,
   readersOf,
@@ -49,6 +52,7 @@ import {
   type Runner,
   runUntil,
 } from "./support/validation-trace-dispute-runner.js";
+import { expectSpentBackAgainAfterRollback } from "./support/validation-trace-dispute-staging-left-for-sweep.js";
 import { RELEASE_FINALITY_POLICY } from "./workflow.make-adapter.js";
 
 const BYTES =
@@ -69,6 +73,8 @@ let dispute: TwoThreadCase;
 let theirs: Runner;
 let theirCase: string;
 let copy: string;
+/** Our publication as it stood before its spend back. */
+let copyOutput: UTxO;
 /** Whether the test lets our spend back of the publication go. */
 let released = false;
 let clock: { readonly mockRestore: () => void } | undefined;
@@ -170,13 +176,8 @@ describe("validation-trace dispute runner: a publication two threads read, once 
       wrap: () => holding,
     });
     theirs = await anotherProver();
-    const { result } = await runUntil(
-      theirs,
-      dispute.scene.failing,
-      VALIDATION_TRACE_CASE_OPEN,
-    );
-    if (!("entries" in result)) throw new Error("no workflow journal");
-    theirCase = confirmedValidationTraceStages(result.entries).find(
+    await runUntil(theirs, dispute.scene.failing, VALIDATION_TRACE_CASE_OPEN);
+    theirCase = (await theirs.confirmed()).find(
       ({ action }) => action.stage === "verify_source",
     )!.outputs[0]!.outRef;
   }, 1_800_000);
@@ -202,23 +203,23 @@ describe("validation-trace dispute runner: a publication two threads read, once 
     copy = copies[0]!;
     expect(readersOf(scene, copy)).toHaveLength(2);
     expect(spenderOf(scene, copy)).toBeUndefined();
+    const [output] = await scene.h.proverLucid.utxosByOutRef([
+      parseOwnOutRef(copy),
+    ]);
+    expect(output).toBeDefined();
+    copyOutput = output!;
   }, 1_800_000);
 
-  it("spends the publication back by key and ends resolved by their record only once the spend back is final at release depth", async () => {
+  it("spends the publication back by key, ends resolved by their record, and spends it back again, the same bytes, once that spend back rolls back after the ending", async () => {
     const theirRecord = await removeByTheirs();
     released = true;
     const { scene, runner } = dispute;
-    const runs: { result: FraudProofWorkflowRunResult; observedAt: number }[] =
-      [];
+    const runs: FraudProofWorkflowRunResult[] = [];
     let resolved: FraudProofWorkflowRunResult | undefined;
     while (resolved === undefined) {
-      expect(
-        runs.length,
-        runs.map(({ result }) => describeRun(result)).join("\n"),
-      ).toBeLessThan(60);
-      const observedAt = scene.h.emulator.blockHeight;
+      expect(runs.length, runs.map(describeRun).join("\n")).toBeLessThan(60);
       const result = await runner.runOnce(scene.failing);
-      runs.push({ result, observedAt });
+      runs.push(result);
       if (result.kind === "resolved_by_another_record") resolved = result;
     }
     if (resolved.kind !== "resolved_by_another_record")
@@ -227,17 +228,12 @@ describe("validation-trace dispute runner: a publication two threads read, once 
     const spender = spenderOf(scene, copy);
     expect(spender, "the publication is spent back").toBeDefined();
     expectReclaimedByKey(scene, spender!);
-    const { observedAt } = runs.at(-1)!;
-    expect(
-      observedAt - (await blockOf(scene, spender!.hash)),
-    ).toBeGreaterThanOrEqual(RELEASE_DEPTH);
-    // Our run waited on the spend back before it let the resolution go.
-    expect(
-      runs.some(
-        ({ result }) =>
-          result.kind === "pending" &&
-          result.reason.startsWith(VALIDATION_TRACE_COPY_OUTSTANDING),
-      ),
-    ).toBe(true);
+    await expectSpentBackAgainAfterRollback({
+      scene,
+      outputs: [copyOutput],
+      runOnce: async () => await runner.runOnce(scene.failing),
+      describe: describeRun,
+      ended: (result) => result.kind === "resolved_by_another_record",
+    });
   }, 1_800_000);
 });

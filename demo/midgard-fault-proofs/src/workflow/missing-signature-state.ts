@@ -6,7 +6,6 @@ import {
 import type {
   FraudProofWorkflowAction,
   FraudProofWorkflowObservation,
-  FraudProofWorkflowReconcileResult,
 } from "./orchestrator.js";
 import type { FraudProofRawL1FamilyStage } from "./raw-l1-family-derivation.js";
 
@@ -15,7 +14,6 @@ export const MISSING_SIGNATURE_ACTION =
 
 const CATEGORY = "missingSignature" as const;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
-const TX_HASH = /^[0-9a-f]{64}$/u;
 
 const canonicalOutRef = (value: string, label: string): string => {
   if (!OUT_REF.test(value)) {
@@ -23,11 +21,6 @@ const canonicalOutRef = (value: string, label: string): string => {
   }
   return value;
 };
-
-const transactionHashOf = (outRef: string): string => outRef.split("#")[0]!;
-
-const outputBelongsToTransaction = (outRef: string, txHash: string): boolean =>
-  transactionHashOf(outRef) === txHash;
 
 const admitStage = ({
   headerHash,
@@ -140,236 +133,5 @@ export const missingSignatureObservation = ({
           admitted.nextRemovalOutRef !== admitted.stateQueueBlockOutRef,
       },
     ),
-  };
-};
-
-type ParsedAction = Readonly<{
-  stage: "init" | "remove" | `step_0${1 | 2 | 3 | 4 | 5 | 6 | 7}`;
-  ordinal?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
-  inputOutRef: string;
-  proofOutRef?: string;
-}>;
-
-const parsedAction = (action: FraudProofWorkflowAction): ParsedAction => {
-  const input = action.input;
-  if (
-    input.schemaVersion !== MISSING_SIGNATURE_ACTION ||
-    input.category !== CATEGORY ||
-    typeof input.stage !== "string"
-  ) {
-    throw new Error("missingSignature workflow action changed identity");
-  }
-  if (input.stage === "init") {
-    if (
-      typeof input.stateQueueBlockOutRef !== "string" ||
-      action.actionId !== `init:${input.stateQueueBlockOutRef}`
-    ) {
-      throw new Error("missingSignature init action changed its queue input");
-    }
-    return {
-      stage: "init",
-      inputOutRef: canonicalOutRef(
-        input.stateQueueBlockOutRef,
-        "missingSignature init state-queue block outRef",
-      ),
-    };
-  }
-  if (input.stage === "remove") {
-    if (
-      typeof input.nextRemovalOutRef !== "string" ||
-      typeof input.fraudProofOutRef !== "string" ||
-      typeof input.stateQueueBlockOutRef !== "string" ||
-      typeof input.requiresMutationLease !== "boolean" ||
-      input.requiresMutationLease !==
-        (input.nextRemovalOutRef !== input.stateQueueBlockOutRef) ||
-      action.actionId !==
-        `remove:${input.nextRemovalOutRef}:${input.fraudProofOutRef}:${input.stateQueueBlockOutRef}`
-    ) {
-      throw new Error("missingSignature removal action changed its inputs");
-    }
-    return {
-      stage: "remove",
-      inputOutRef: canonicalOutRef(
-        input.nextRemovalOutRef,
-        "missingSignature removal queue input outRef",
-      ),
-      proofOutRef: canonicalOutRef(
-        input.fraudProofOutRef,
-        "missingSignature removal proof-token outRef",
-      ),
-    };
-  }
-  if (!/^step_0[1-7]$/u.test(input.stage)) {
-    throw new Error("missingSignature workflow action names an unknown stage");
-  }
-  const ordinal = Number(input.stage.slice(-1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7;
-  if (
-    input.ordinal !== ordinal ||
-    typeof input.threadOutRef !== "string" ||
-    typeof input.stateQueueBlockOutRef !== "string" ||
-    action.actionId !==
-      `${input.stage}:${input.threadOutRef}:${input.stateQueueBlockOutRef}`
-  ) {
-    throw new Error(
-      "missingSignature step action changed order or thread input",
-    );
-  }
-  return {
-    stage: input.stage as ParsedAction["stage"],
-    ordinal,
-    inputOutRef: canonicalOutRef(
-      input.threadOutRef,
-      `${input.stage} computation-thread outRef`,
-    ),
-  };
-};
-
-const exactSuccessor = ({
-  parsed,
-  stage,
-  txHash,
-}: {
-  readonly parsed: ParsedAction;
-  readonly stage: FraudProofRawL1FamilyStage;
-  readonly txHash: string;
-}): boolean => {
-  if (parsed.stage === "init") {
-    return (
-      stage.kind === "step" &&
-      stage.step === 1 &&
-      outputBelongsToTransaction(stage.threadOutRef, txHash)
-    );
-  }
-  if (parsed.stage === "remove") {
-    return (
-      stage.kind === "removed" &&
-      stage.terminal.correction.removalTxHash === txHash &&
-      stage.terminal.correction.removedStateQueueOutRef ===
-        parsed.inputOutRef &&
-      stage.terminal.correction.referencedProofTokenOutRef ===
-        parsed.proofOutRef
-    );
-  }
-  const ordinal = parsed.ordinal!;
-  if (ordinal === 1 && stage.kind === "step" && stage.step === 5)
-    return outputBelongsToTransaction(stage.threadOutRef, txHash);
-  if (ordinal === 7)
-    return (
-      stage.kind === "proof_token" &&
-      outputBelongsToTransaction(stage.fraudProofOutRef, txHash)
-    );
-  if (ordinal < 4 || ordinal === 5 || ordinal === 6) {
-    return (
-      stage.kind === "step" &&
-      stage.step === ordinal + 1 &&
-      outputBelongsToTransaction(stage.threadOutRef, txHash)
-    );
-  }
-  // Step 04 either advances the authenticated cursor at the same validator or
-  // completes by minting the permanent fraud-proof token.
-  return (
-    (stage.kind === "step" &&
-      stage.step === 4 &&
-      outputBelongsToTransaction(stage.threadOutRef, txHash)) ||
-    (stage.kind === "proof_token" &&
-      outputBelongsToTransaction(stage.fraudProofOutRef, txHash))
-  );
-};
-
-const sameRequiredAction = ({
-  headerHash,
-  provenance,
-  stage,
-  actionId,
-}: {
-  readonly headerHash: string;
-  readonly provenance: EvidenceProvenance;
-  readonly stage: FraudProofRawL1FamilyStage;
-  readonly actionId: string;
-}): boolean => {
-  const observed = missingSignatureObservation({
-    headerHash,
-    provenance,
-    stage,
-  });
-  return (
-    observed.kind === "action_required" && observed.action.actionId === actionId
-  );
-};
-
-/** Reconciles one durable action solely from authenticated Cardano L1 state. */
-export const reconcileMissingSignatureAction = async ({
-  headerHash,
-  action,
-  txHash,
-  provenance,
-  stage,
-  transactionConfirmed,
-  recoverUnconfirmedTransaction,
-}: {
-  readonly headerHash: string;
-  readonly action: FraudProofWorkflowAction;
-  readonly txHash?: string;
-  readonly provenance: EvidenceProvenance;
-  readonly stage: FraudProofRawL1FamilyStage;
-  readonly transactionConfirmed: (txHash: string) => Promise<boolean>;
-  /** The shared signed read of the recorded attempt, for a stage it has not
-   * yet moved: only the attempt's own bytes tell a landing that failed
-   * phase 2, an expiry or an invalidation from one still in flight. */
-  readonly recoverUnconfirmedTransaction?: () => Promise<FraudProofWorkflowReconcileResult>;
-}): Promise<FraudProofWorkflowReconcileResult> => {
-  const admittedStage = admitStage({ headerHash, provenance, stage });
-  const parsed = parsedAction(action);
-  if (txHash === undefined) {
-    return sameRequiredAction({
-      headerHash,
-      provenance,
-      stage: admittedStage,
-      actionId: action.actionId,
-    }) ||
-      (parsed.stage === "remove" && admittedStage.kind === "proof_token")
-      ? { kind: "not_found" }
-      : {
-          kind: "conflict",
-          reason:
-            "missingSignature chain state advanced without the intended transaction hash",
-        };
-  }
-  if (!TX_HASH.test(txHash)) {
-    throw new Error(
-      "missingSignature reconciliation transaction hash is invalid",
-    );
-  }
-  const included = await transactionConfirmed(txHash);
-  if (included && exactSuccessor({ parsed, stage: admittedStage, txHash })) {
-    return { kind: "confirmed", txHash };
-  }
-  const unchanged = sameRequiredAction({
-    headerHash,
-    provenance,
-    stage: admittedStage,
-    actionId: action.actionId,
-  });
-  // Absence from release-final history does not authorize rebuilding a
-  // submitted transaction whose inputs may already be spent at the live tip.
-  if (unchanged) {
-    return !included && recoverUnconfirmedTransaction !== undefined
-      ? recoverUnconfirmedTransaction()
-      : { kind: "pending", txHash };
-  }
-  if (
-    !included &&
-    parsed.stage === "remove" &&
-    admittedStage.kind === "proof_token"
-  ) {
-    return recoverUnconfirmedTransaction === undefined
-      ? { kind: "pending", txHash }
-      : recoverUnconfirmedTransaction();
-  }
-  return {
-    kind: "conflict",
-    reason: included
-      ? "missingSignature transaction did not produce its exact immediate successor"
-      : "missingSignature chain state changed without the intended transaction",
   };
 };

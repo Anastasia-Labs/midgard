@@ -211,13 +211,13 @@ describe("manifest-bound family assembly", () => {
         "createFraudProofWorkflowRegistry",
       );
       const sources = [{ fake: "source" }] as never;
-      const journal = { fake: "journal" } as never;
+      const workflowRun = { fake: "run" } as never;
       await expect(
         runOrResumeManifestBoundFamilyWorkflow({
           walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
           workflow,
           sources,
-          journal,
+          run: workflowRun,
         }),
       ).resolves.toBe(result);
       expect(f.l1.observeHeader).toHaveBeenCalledWith({ headerHash: HEADER });
@@ -227,8 +227,8 @@ describe("manifest-bound family assembly", () => {
         deploymentFingerprint: f.binding.deploymentFingerprint,
         observation: f.observation,
         sources,
-        journal,
       });
+      expect(input.run).toBe(workflowRun);
       expect(input.replayer).toBe(workflow.replayer);
       expect(input.terminalVerifier).toBe(workflow.terminalVerifier);
       expect(input.releaseFinalityAuthority).toBe(
@@ -263,7 +263,7 @@ describe("manifest-bound family assembly", () => {
         walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         workflow,
         sources: [],
-        journal: {} as never,
+        run: {} as never,
       });
       expect(run.mock.calls[0]![0].replayContext).toBe(replayContext);
     });

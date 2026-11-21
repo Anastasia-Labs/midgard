@@ -27,13 +27,18 @@ import {
  * Signed-intent recovery over the follower (ticket W1): where one exact
  * signed transaction stands on the follower's canonical chain.
  *
- * `canonicalPoint` is the follower's tip. `releaseFinalPoint` is the tip
- * until an expiry or a spend needs a stable boundary; then it is the
- * highest stored block at least `recoveryDepth` deep (the exact block, or,
- * when the pruning removed it, the nearest kept block below it). While the
- * chain above the follower's origin is shorter than `recoveryDepth`, no
- * block is that deep: nothing is stable, an expiry is `expired_at_tip`, a
- * spend `invalidated_at_tip`, and `releaseFinalPoint` stays the tip.
+ * `canonicalPoint` is the follower's tip. For an inclusion,
+ * `releaseFinalPoint` is the highest stored block at least `releaseDepth`
+ * deep (the release finality depth, the tip being 1 deep): the inclusion is
+ * final only at or below it, never at first sight, and while no stored
+ * block is that deep its finality cannot be read (unavailable). Otherwise
+ * `releaseFinalPoint` is the tip until an expiry or a spend needs a stable
+ * boundary; then it is the highest stored block at least `recoveryDepth`
+ * deep (the exact block, or, when the pruning removed it, the nearest kept
+ * block below it). While the chain above the follower's origin is shorter
+ * than `recoveryDepth`, no block is that deep: nothing is stable, an expiry
+ * is `expired_at_tip`, a spend `invalidated_at_tip`, and
+ * `releaseFinalPoint` stays the tip.
  *
  * An input is classified from the follower's facts, never assumed:
  * - its exact creation comes from the stored creating body; without one
@@ -238,12 +243,16 @@ type Recovery = Readonly<{
   store: FactStore;
   rawReads: FollowerRawReads;
   node: Pick<L1NodeTransport, "submit" | "hasTx">;
-  /** The depth of the release-final boundary (`automaticRecoveryMaxDepth + 2`). */
+  /** The depth of the stable boundary for an expiry or a spend
+   * (`automaticRecoveryMaxDepth + 2`). */
   recoveryDepth: number;
+  /** The release finality depth (`confirmationDepth`), at which an
+   * inclusion is final. */
+  releaseDepth: number;
 }>;
 
 const observeOnce = async (
-  { store, rawReads, node, recoveryDepth }: Recovery,
+  { store, rawReads, node, recoveryDepth, releaseDepth }: Recovery,
   input: SignedInput,
 ): Promise<Observation> => {
   const signed = signedFacts(input);
@@ -296,6 +305,13 @@ const observeOnce = async (
     // A landing that failed phase 2 is not an inclusion: the chain took the
     // collateral and nothing else. Its block is where that was accounted.
     if (!stored.isValid) return finish("landed_invalid", REASONS.landedInvalid);
+    // Final means release-deep, not at the tip.
+    const released = await blockAtLeastDepth(store, view, releaseDepth);
+    if (released === null)
+      throw new FraudProofL1UnavailableError(
+        `no stored block is ${releaseDepth.toString()} deep: the finality of ${input.transactionHash} cannot be read yet`,
+      );
+    releaseFinalPoint = rawPointOf(released);
     // The body fixes every ledger effect, and the stored tx passed phase 2:
     // other witness bytes are the same inclusion.
     return finish(

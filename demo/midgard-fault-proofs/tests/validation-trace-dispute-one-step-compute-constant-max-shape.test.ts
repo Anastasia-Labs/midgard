@@ -3,7 +3,8 @@
  * script, `(program 1.1.0 (lam ctx [(lam pad (error)) (con bytestring P)]))`,
  * is a field-6 item that fills the field bound, and the step computes P.
  *
- * A second case on the failing block commits a trace whose successor of that
+ * Another prover's second case on the failing block (a case naming our key
+ * is our runner's own) commits a trace whose successor of that
  * step returns another root of P, one memory unit off. Both operators
  * defend it with our trace up to that successor, so each holds the correct
  * post state. On each thread the one-step resolution carries the committed
@@ -23,7 +24,6 @@ import { plutusV3ScriptWitness } from "@al-ft/midgard-validation/tests/validatio
 import { credentialToAddress, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
 import {
   VALIDATION_TRACE_CASE_CONVICTED,
   VALIDATION_TRACE_CASE_OPEN,
@@ -97,6 +97,8 @@ let step: ComputeConstantStep;
  * ReadyForOneStep before the resolution. */
 let committedSuccessorHash: string;
 let ready: { unit: string; thread: SDK.CaseThread }[] = [];
+/** The second case's dispute, as its prover plays it. */
+let theirs: TwoThreadCase;
 /** The round each thread of our case stood at once it was ReadyForOneStep. */
 const rounds = new Map<string, bigint>();
 
@@ -119,18 +121,18 @@ const resolveToTheArm = async (index: number, named: Buffer) => {
   if (planning.kind !== "plan") throw new Error(planning.reason);
   const { plan } = planning;
   expect(plan.kind).toBe("core");
-  const lucid = dispute.scene.h.proverLucid;
+  const lucid = theirs.scene.h.proverLucid;
   for (const holder of ["boundary", "prepare", "core"] as const) {
-    expect((await place(dispute, unit)).holder).toBe(holder);
-    await landWith(lucid, await hopFrom(dispute, unit, plan, holder)());
+    expect((await place(theirs, unit)).holder).toBe(holder);
+    await landWith(lucid, await hopFrom(theirs, unit, plan, holder)());
   }
-  const before = await place(dispute, unit);
+  const before = await place(theirs, unit);
   expect(before.holder).toBe("compute");
-  await expectOnchainRefusal(hopFrom(dispute, unit, plan, "compute"), {
+  await expectOnchainRefusal(hopFrom(theirs, unit, plan, "compute"), {
     refusedBy: "fraud_proofs/validation_trace/cek_core_arm_compute",
     check: /verify_compute_step/u,
   });
-  const after = await place(dispute, unit);
+  const after = await place(theirs, unit);
   expect(after.holder).toBe("compute");
   expect(outRefOf(after.utxo)).toBe(outRefOf(before.utxo));
 };
@@ -144,7 +146,7 @@ describe("validation-trace dispute: one-step resolution of a CEK step computing 
       successorFrom: computeConstantStep,
     });
     step = await computeConstantStepOf(dispute.material, SCRIPT);
-    ({ committedSuccessorHash, ready } = await secondCaseAtTheStep(
+    ({ committedSuccessorHash, ready, theirs } = await secondCaseAtTheStep(
       dispute,
       step,
     ));
@@ -197,7 +199,7 @@ describe("validation-trace dispute: one-step resolution of a CEK step computing 
       const { headerHash } = scene.failing.evidence;
       removal!.holdView();
       await removal!.l1For(headerHash).observe({ headerHash });
-      const { result, history } = await playThreads({
+      await playThreads({
         scene,
         runner,
         sides: [a, b],
@@ -229,12 +231,11 @@ describe("validation-trace dispute: one-step resolution of a CEK step computing 
         },
         limit: 400,
       });
-      if (!("entries" in result))
-        throw new Error(`no workflow journal: ${history.join("\n")}`);
+      const stages = await runner.confirmed();
       for (const { unit } of [a, b]) expect(rounds.has(unit)).toBe(true);
 
       // Each thread resolved through the compute arm and was awarded.
-      const moves = confirmedOneStepMoves(result.entries);
+      const moves = confirmedOneStepMoves(stages);
       expect(
         moves.filter(({ stage }) => stage === "close_awarded"),
       ).toHaveLength(2);
@@ -251,7 +252,7 @@ describe("validation-trace dispute: one-step resolution of a CEK step computing 
       ).toHaveLength(2);
 
       // The case closed Convicted, our bond back.
-      const close = confirmedValidationTraceStages(result.entries).at(-1)!;
+      const close = stages.at(-1)!;
       expect(close.action.stage).toBe("close");
       const lucid = scene.h.proverLucid;
       expect(

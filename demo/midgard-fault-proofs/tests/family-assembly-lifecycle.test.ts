@@ -26,6 +26,7 @@ import {
 } from "../src/workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -229,7 +230,6 @@ it("binds once, then isolates transaction caches and invocation refiners for eac
     },
     workflowId: "fixture",
     artifact: {},
-    entries: [],
   };
   expect(await first.adapter.observe(observationInput)).toMatchObject({
     kind: "action_required",
@@ -253,10 +253,10 @@ it("uses the identical field-carriage handle for capture and adapter decoration"
   expect(Object.isFrozen(context)).toBe(true);
   expect(
     await port.resolveAuthenticated({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
       headerHash,
       action: { actionId: "fixture", input: {} },
       artifact: {},
-      entries: [],
     }),
   ).toEqual({ publications: [], requirement: null });
   expect(f.requirements).toEqual(["shared"]);

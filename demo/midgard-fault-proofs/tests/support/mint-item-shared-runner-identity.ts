@@ -13,10 +13,6 @@ import { MINT_ITEM_NON_CANONICAL_FAMILY_DEFINITION } from "../../src/mint-item-n
 import { loadStateQueueTopology } from "../../src/remove-fraudulent-block.load-state-queue-topology.js";
 import * as deployment from "../../src/workflow/deployment-manifest-binding.js";
 import * as observations from "../../src/workflow/family-l1-observation.js";
-import type {
-  FraudProofWorkflowJournalEntry,
-  FraudProofWorkflowJournalEvent,
-} from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
@@ -403,16 +399,6 @@ export const mintItemSharedRunnerIdentity = async () => {
     target: { kind: "state_queue_header", headerHash },
   };
   const workflowId = computeFraudProofWorkflowId(identity);
-  const entries: FraudProofWorkflowJournalEntry[] = [];
-  const append = (event: FraudProofWorkflowJournalEvent) =>
-    entries.push({
-      schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
-      identity,
-      workflowId,
-      sequence: entries.length,
-      recordedAt: new Date(h.emulator.now()).toISOString(),
-      event,
-    } as FraudProofWorkflowJournalEntry);
   const rows: {
     point: string;
     txHash: string;
@@ -425,7 +411,7 @@ export const mintItemSharedRunnerIdentity = async () => {
     .mockImplementation(() => h.emulator.now());
   try {
     for (;;) {
-      const context = { identity, workflowId, artifact: {}, entries };
+      const context = { identity, workflowId, artifact: {} };
       const observed = await adapter.observe(context);
       if (observed.kind !== "action_required")
         throw new Error(`runner stopped: ${JSON.stringify(observed)}`);
@@ -444,16 +430,6 @@ export const mintItemSharedRunnerIdentity = async () => {
           shared.toTransaction().to_cbor_hex(),
         leased: action.input.requiresMutationLease === true,
       });
-      append({
-        kind: "submission_intent",
-        actionId: action.actionId,
-        actionInput: action.input,
-        ...(preflight.durableRecovery === undefined
-          ? {}
-          : { durableRecovery: preflight.durableRecovery }),
-        attempt: 1,
-        txHash: preflight.txHash,
-      });
       const submitted = await adapter.submit({
         ...context,
         action,
@@ -462,11 +438,6 @@ export const mintItemSharedRunnerIdentity = async () => {
       if (submitted.kind !== "submitted")
         throw new Error(`runner refused submission: ${submitted.kind}`);
       await h.proverLucid.awaitTx(submitted.txHash);
-      append({
-        kind: "confirmed",
-        actionId: action.actionId,
-        txHash: submitted.txHash,
-      });
       if (
         action.input.stage === "remove" &&
         action.input.nextRemovalOutRef === action.input.stateQueueBlockOutRef

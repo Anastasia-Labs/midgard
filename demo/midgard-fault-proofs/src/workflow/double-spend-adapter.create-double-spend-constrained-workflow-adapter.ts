@@ -1,5 +1,4 @@
 import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk/core";
-import { deriveFieldPreimageCertification } from "@al-ft/midgard-sdk/state-queue";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import { buildStep01 } from "../double-spend/submit-step-01.js";
@@ -13,12 +12,9 @@ import {
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.certify-fault-proof-field-carriage.js";
 import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
-import {
-  buildProofChunkPublication,
-  resolvePublishedProofChunks,
-} from "../publish-proof-chunks.js";
+import { buildProofChunkPublication } from "../publish-proof-chunks.js";
 import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
-import { type StateQueueMutationLease } from "../remove-fraudulent-block.js";
+import type { StateQueueMutationLease } from "../remove-fraudulent-block.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { buildInit } from "../submit-init.js";
 import { WorkflowActionChangedError } from "./action-changed.js";
@@ -31,18 +27,13 @@ import {
 import {
   action,
   artifactFrom,
-  confirmed,
-  contentActionId,
   type DoubleSpendArtifact,
   type DoubleSpendConstrainedWorkflowAdapterConfig,
   journalValue,
-  mutationLeaseRecovery,
-  parseMutationLeaseRecovery,
   preflightOf,
   requireJournalString,
 } from "./double-spend-adapter.preflight-of.js";
 import type {
-  FraudProofWorkflowJournalEntry,
   FraudProofWorkflowTerminal,
   JournalJsonObject,
 } from "./journal.js";
@@ -53,11 +44,11 @@ import {
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
-  FraudProofWorkflowReconcileResult,
 } from "./orchestrator.js";
+import { workflowProofMaterialsHolder } from "./proof-materials-view.holder.js";
+import type { ProofMaterialsHolder } from "./proof-materials-view.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
-import { reconcileSignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 import {
   type LocallyEvaluatedTransaction,
   submitCapturedTransaction,
@@ -68,8 +59,7 @@ import {
 /**
  * Constrained adapter over the existing double-spend init/step/removal
  * builders. Its transaction boundary is real, but it is not production
- * registered until tier-3 carriage, raw L1 authentication, and durable lease
- * recovery are closed.
+ * registered until tier-3 carriage and raw L1 authentication are closed.
  */
 export const createDoubleSpendConstrainedWorkflowAdapter = (
   config: DoubleSpendConstrainedWorkflowAdapterConfig,
@@ -81,7 +71,6 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       readonly mutationLease?: StateQueueMutationLease;
     }
   >();
-  const mutationLeaseByTxHash = new Map<string, StateQueueMutationLease>();
   const snapshot = async (headerHash: string) => {
     const observed = await config.l1.observe({ headerHash });
     return admitSnapshot({ headerHash, ...observed });
@@ -147,10 +136,10 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
 
   const nextAction = async ({
     artifact,
-    entries,
+    holder,
   }: {
     readonly artifact: DoubleSpendArtifact;
-    readonly entries: readonly FraudProofWorkflowJournalEntry[];
+    readonly holder: ProofMaterialsHolder;
   }): Promise<
     | {
         readonly kind: "completed";
@@ -176,13 +165,13 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       const tx = stage.kind === "step_01" ? artifact.tx1 : artifact.tx2;
       const publicationId = `${stage.kind}:publish-proof`;
       const chunks = await proofChunks(
+        holder,
         requireJournalString(
           tx.inclusion.txMembershipProofCbor,
           "tx.inclusion.txMembershipProofCbor",
         ),
-        entries,
       );
-      if (chunks === undefined && !confirmed(entries, publicationId)) {
+      if (chunks === undefined) {
         return {
           kind: "action",
           action: action(publicationId, {
@@ -206,7 +195,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
     }
     if (stage.kind === "step_03" || stage.kind === "step_04") {
       const plan = fieldPlan(stage.kind, artifact);
-      const ownOutputs = await fieldCarriage(plan, entries);
+      const ownOutputs = await fieldCarriage(plan, holder);
       const missing = firstUnclaimedFieldPublication({
         publisherAddress: config.signer.proofMaterialsAddress,
         planned: plan,
@@ -216,7 +205,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         const base = `${stage.kind}:publish-field:${missing.digest}`;
         return {
           kind: "action",
-          action: action(contentActionId({ base, entries }), {
+          action: action(base, {
             stage: "publish-field",
             proofFor: stage.kind,
             threadOutRef: stage.threadOutRef,
@@ -249,7 +238,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           const base = `${stage.kind}:certify-field:${plan.commitment}`;
           return {
             kind: "action",
-            action: action(contentActionId({ base, entries }), {
+            action: action(base, {
               stage: "certify-field",
               proofFor: stage.kind,
               fieldCommitment: plan.commitment,
@@ -296,11 +285,11 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
   const capture = async ({
     action: requested,
     artifact,
-    entries,
+    holder,
   }: {
     readonly action: FraudProofWorkflowAction;
     readonly artifact: DoubleSpendArtifact;
-    readonly entries: readonly FraudProofWorkflowJournalEntry[];
+    readonly holder: ProofMaterialsHolder;
   }): Promise<LocallyEvaluatedTransaction> => {
     const stage = requireJournalString(requested.input.stage, "action.stage");
     if (stage === "publish-proof") {
@@ -317,7 +306,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
     }
     if (stage === "init") {
       return (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await buildInit({
             lucid: config.lucid,
             blueprint: config.blueprint,
@@ -339,11 +328,11 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
     if (stage === "step_01" || stage === "step_02") {
       const tx = stage === "step_01" ? artifact.tx1 : artifact.tx2;
       const chunks = await proofChunks(
+        holder,
         requireJournalString(
           tx.inclusion.txMembershipProofCbor,
           "tx.inclusion.txMembershipProofCbor",
         ),
-        entries,
       );
       if (chunks === undefined) {
         throw new WorkflowActionChangedError(`${stage} chunks gone from L1`);
@@ -371,7 +360,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         witnessReferenceScripts: config.referenceScripts.witnesses,
       } as const;
       return (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await (async () => {
             if (stage === "step_01") {
               return await buildStep01({
@@ -407,7 +396,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           "field certification action does not match the tier-3 plan",
         );
       }
-      const ownOutputs = await fieldCarriage(plan, entries);
+      const ownOutputs = await fieldCarriage(plan, holder);
       const publications = await resolveFaultProofFieldCarriagePublications({
         lucid: config.lucid,
         publisherAddress: config.signer.proofMaterialsAddress,
@@ -467,7 +456,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       }
       const tx = proofStage === "step_03" ? artifact.tx1 : artifact.tx2;
       const plan = fieldPlan(proofStage, artifact);
-      const ownOutputs = await fieldCarriage(plan, entries);
+      const ownOutputs = await fieldCarriage(plan, holder);
       if (stage === "publish-field") {
         const expectedMissing = firstUnclaimedFieldPublication({
           publisherAddress: config.signer.proofMaterialsAddress,
@@ -524,7 +513,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         });
       }
       return (
-        await journaledStepTransaction(
+        await workflowStepTransaction(
           await (async () => {
             if (proofStage === "step_03") {
               return await buildStep03({
@@ -690,10 +679,10 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         },
       }) as JournalJsonObject;
     },
-    observe: async ({ artifact, entries }) => {
+    observe: async ({ artifact, workflowId, identity }) => {
       const next = await nextAction({
         artifact: artifactFrom(artifact),
-        entries,
+        holder: workflowProofMaterialsHolder({ workflowId, identity }),
       });
       return next.kind === "completed"
         ? { kind: "completed", terminal: next.terminal }
@@ -701,23 +690,21 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           ? { kind: "conflict", reason: next.reason }
           : { kind: "action_required", action: next.action };
     },
-    preflight: async ({ action: requested, artifact, entries }) => {
+    preflight: async ({
+      action: requested,
+      artifact,
+      workflowId,
+      identity,
+    }) => {
       const transaction = await capture({
         action: requested,
         artifact: artifactFrom(artifact),
-        entries,
+        holder: workflowProofMaterialsHolder({ workflowId, identity }),
       });
       if (!preparedByAction.has(requested.actionId)) {
         preparedByAction.set(requested.actionId, { transaction });
       }
-      const prepared = preparedByAction.get(requested.actionId)!;
-      return preflightOf(
-        requested.actionId,
-        transaction,
-        prepared.mutationLease === undefined
-          ? undefined
-          : mutationLeaseRecovery(prepared.mutationLease),
-      );
+      return preflightOf(requested.actionId, transaction);
     },
     submit: async ({ action: requested, preflight }) => {
       const prepared = preparedByAction.get(requested.actionId);
@@ -727,279 +714,19 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         );
       }
       if (prepared.transaction.txHash !== preflight.txHash) {
-        throw new Error(
-          "cached transaction does not match durable intent hash",
-        );
-      }
-      const recoveryIdentity = parseMutationLeaseRecovery(
-        preflight.durableRecovery,
-      );
-      if (
-        (prepared.mutationLease === undefined) !==
-          (recoveryIdentity === undefined) ||
-        (prepared.mutationLease !== undefined &&
-          (prepared.mutationLease.token !== recoveryIdentity?.token ||
-            prepared.mutationLease.source !== recoveryIdentity.source))
-      ) {
-        throw new Error(
-          "cached mutation lease does not match durable recovery identity",
-        );
+        throw new Error("cached transaction does not match the preflight hash");
       }
       preparedByAction.delete(requested.actionId);
-      if (prepared.mutationLease !== undefined) {
-        mutationLeaseByTxHash.set(preflight.txHash, prepared.mutationLease);
-      }
-      return {
-        kind: "submitted",
-        txHash: await submitCapturedTransaction(prepared.transaction),
-      };
-    },
-    reconcile: async ({
-      action: requested,
-      artifact,
-      txHash,
-      durableRecovery,
-      signedTransactionCborHex,
-      authorizeResubmission,
-    }) => {
-      if (txHash === undefined) {
-        return { kind: "conflict", reason: "durable intent omitted tx hash" };
-      }
-      const requiresMutationLease =
-        requested.input.stage === "remove" &&
-        requested.input.requiresMutationLease === true;
-      let mutationLease = mutationLeaseByTxHash.get(txHash);
-      const recoveryIdentity = parseMutationLeaseRecovery(durableRecovery);
-      if (requiresMutationLease && recoveryIdentity === undefined) {
+      try {
         return {
-          kind: "conflict",
-          reason:
-            "descendant removal intent omitted its durable mutation-lease identity",
+          kind: "submitted",
+          txHash: await submitCapturedTransaction(prepared.transaction),
         };
+      } finally {
+        // The runner follows the submitted transaction on chain, so the
+        // lease ends with its submission.
+        await prepared.mutationLease?.release();
       }
-      if (!requiresMutationLease && recoveryIdentity !== undefined) {
-        return {
-          kind: "conflict",
-          reason:
-            "non-descendant action carried an unexpected mutation-lease identity",
-        };
-      }
-      if (mutationLease === undefined && recoveryIdentity !== undefined) {
-        if (config.stateQueueMutationLeaseCoordinator.resume === undefined) {
-          return {
-            kind: "conflict",
-            reason:
-              "mutation-lease coordinator cannot resume the journaled fencing token",
-          };
-        }
-        try {
-          mutationLease =
-            await config.stateQueueMutationLeaseCoordinator.resume(
-              recoveryIdentity,
-            );
-        } catch (cause) {
-          return {
-            kind: "conflict",
-            reason: `journaled mutation lease cannot be resumed: ${String(cause)}`,
-          };
-        }
-        mutationLeaseByTxHash.set(txHash, mutationLease);
-      }
-      const unconfirmed =
-        async (): Promise<FraudProofWorkflowReconcileResult> => {
-          const result =
-            signedTransactionCborHex === undefined ||
-            config.l1?.observeSignedTransaction === undefined
-              ? { kind: "pending" as const, txHash }
-              : await reconcileSignedWorkflowTransaction({
-                  transactionHash: txHash,
-                  signedTransactionCborHex,
-                  observe: config.l1.observeSignedTransaction,
-                  rebroadcast: config.l1.rebroadcastSignedTransaction,
-                  authorizeResubmission:
-                    authorizeResubmission === undefined
-                      ? undefined
-                      : async (signed) => {
-                          await mutationLease?.renew();
-                          await authorizeResubmission(signed);
-                        },
-                });
-          if (result.kind === "not_found") {
-            await mutationLease?.release();
-            mutationLeaseByTxHash.delete(txHash);
-          } else if (result.kind === "conflict") {
-            await mutationLease?.fail(result.reason);
-            mutationLeaseByTxHash.delete(txHash);
-          } else {
-            await mutationLease?.renew();
-          }
-          return result;
-        };
-      const preparedArtifact = artifactFrom(artifact);
-      const actionStage = requireJournalString(
-        requested.input.stage,
-        "action.stage",
-      );
-      if (
-        actionStage === "publish-proof" ||
-        actionStage === "publish-field" ||
-        actionStage === "certify-field"
-      ) {
-        const publicationObserver = config.l1?.publications;
-        if (publicationObserver === undefined) {
-          return {
-            kind: "conflict",
-            reason:
-              "double-spend publication reconciliation has no authenticated raw-L1 observer",
-          };
-        }
-        if (actionStage === "publish-proof") {
-          const chunks = await resolvePublishedProofChunks({
-            lucid: config.lucid,
-            address: config.signer.proofMaterialsAddress,
-            proofCbor: requireJournalString(
-              requested.input.proofCbor,
-              "action.proofCbor",
-            ),
-            ownTransactions: new Set([txHash]),
-          });
-          if (chunks === undefined) return await unconfirmed();
-          for (const chunk of chunks) {
-            const observed = await publicationObserver.observeExact({
-              headerHash: preparedArtifact.headerHash,
-              kind: "field_publication",
-              address: config.signer.proofMaterialsAddress,
-              expectedOutRef: chunk.outRef,
-              expectedDatumCbor: chunk.datumCbor,
-            });
-            if (observed.kind !== "confirmed") return await unconfirmed();
-          }
-        } else {
-          const proofFor = requireJournalString(
-            requested.input.proofFor,
-            "action.proofFor",
-          );
-          if (proofFor !== "step_03" && proofFor !== "step_04") {
-            return {
-              kind: "conflict",
-              reason:
-                "double-spend publication action names an invalid proof step",
-            };
-          }
-          const plan = fieldPlan(proofFor, preparedArtifact);
-          if (actionStage === "publish-field") {
-            const candidates = await config.lucid.utxosAt(
-              config.signer.proofMaterialsAddress,
-            );
-            const candidate = candidates.find(
-              (utxo) =>
-                utxo.txHash === txHash &&
-                utxo.datum === requested.input.publicationDatumCbor,
-            );
-            if (candidate?.datum == null) return await unconfirmed();
-            const observed = await publicationObserver.observeExact({
-              headerHash: preparedArtifact.headerHash,
-              kind: "field_publication",
-              address: config.signer.proofMaterialsAddress,
-              expectedOutRef: `${candidate.txHash}#${candidate.outputIndex.toString()}`,
-              expectedDatumCbor: candidate.datum,
-            });
-            if (observed.kind !== "confirmed") return await unconfirmed();
-          } else {
-            // The certification transaction pays its certificate at output 0.
-            // Confirm that exact output: another valid certificate for the same
-            // opening may sort first at the address, and selecting by order
-            // would never settle this transaction.
-            const certification = deriveFieldPreimageCertification(plan.plan);
-            const observed = await publicationObserver.observeExact({
-              headerHash: preparedArtifact.headerHash,
-              kind: "field_certificate",
-              address: fieldPreimageCertificateAddress({
-                network: config.network,
-                certificatePolicyId: config.fieldPreimageCertificate.policyId,
-              }),
-              expectedOutRef: `${txHash}#0`,
-              expectedDatumCbor: certification.datumCbor,
-              expectedUnit: `${config.fieldPreimageCertificate.policyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`,
-            });
-            if (observed.kind !== "confirmed") return await unconfirmed();
-          }
-        }
-        return { kind: "confirmed", txHash };
-      }
-      if (config.l1 === undefined) {
-        const legacyStatus = await config.lucid.transactionStatus(txHash);
-        await mutationLease?.renew();
-        return legacyStatus.status === "pending"
-          ? { kind: "pending", txHash }
-          : { kind: "not_found" };
-      }
-      if (config.l1.transactionConfirmed === undefined) {
-        return {
-          kind: "conflict",
-          reason:
-            "double-spend reconciliation has no authenticated unit-history transaction observer",
-        };
-      }
-      const [observedStage, intendedTransactionConfirmed] = await Promise.all([
-        snapshot(preparedArtifact.headerHash),
-        config.l1.transactionConfirmed({
-          headerHash: preparedArtifact.headerHash,
-          txHash,
-        }),
-      ]);
-      const stageAdvanced =
-        actionStage === "init"
-          ? observedStage.kind !== "not_started"
-          : actionStage === "step_01"
-            ? observedStage.kind !== "step_01"
-            : actionStage === "step_02"
-              ? observedStage.kind !== "step_02"
-              : actionStage === "step_03"
-                ? observedStage.kind !== "step_03"
-                : actionStage === "step_04"
-                  ? observedStage.kind === "proof_token" ||
-                    observedStage.kind === "removed"
-                  : actionStage === "remove"
-                    ? observedStage.kind === "removed" ||
-                      (observedStage.kind === "proof_token" &&
-                        observedStage.nextRemovalOutRef !==
-                          requested.input.nextRemovalOutRef)
-                    : false;
-      if (
-        !intendedTransactionConfirmed &&
-        actionStage === "remove" &&
-        observedStage.kind === "proof_token"
-      ) {
-        return await unconfirmed();
-      }
-      if (stageAdvanced && !intendedTransactionConfirmed) {
-        await mutationLease?.fail(
-          "chain advanced without the journaled transaction in authenticated unit history",
-        );
-        mutationLeaseByTxHash.delete(txHash);
-        return {
-          kind: "conflict",
-          reason:
-            "double-spend chain advanced without the journaled transaction in authenticated unit history",
-        };
-      }
-      if (stageAdvanced && intendedTransactionConfirmed) {
-        await mutationLease?.release();
-        mutationLeaseByTxHash.delete(txHash);
-        return { kind: "confirmed", txHash };
-      }
-      if (
-        "threadOutRef" in observedStage &&
-        requested.input.threadOutRef !== observedStage.threadOutRef
-      ) {
-        return {
-          kind: "conflict",
-          reason:
-            "double-spend computation thread changed without the journaled transaction",
-        };
-      }
-      return await unconfirmed();
     },
   };
 };

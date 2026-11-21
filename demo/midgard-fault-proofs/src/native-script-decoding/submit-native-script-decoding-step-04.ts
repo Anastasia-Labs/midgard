@@ -48,7 +48,7 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
@@ -127,7 +127,7 @@ export type NativeScriptDecodingStep04Build = {
 };
 
 export type SubmitNativeScriptDecodingStep04Result =
-  UnjournaledSubmission<NativeScriptDecodingStep04Build>;
+  OutsideWorkflowSubmission<NativeScriptDecodingStep04Build>;
 
 type Step04SpendLayout = {
   readonly inputIndex: bigint;

@@ -1,9 +1,13 @@
+import type { WatcherProofMaterialsViews } from "../fault-proofs/proof-materials-views.js";
 import type { WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
 import type { WatcherL1Degradation } from "../l1-follower/tx-inputs.js";
 import type {
   WatcherDecisionDriver,
   WatcherDecisionReadiness,
 } from "./watcher-runtime.decision-driver.js";
+
+/** The proof-materials sweep is closed: informational, never readiness. */
+export const PROOF_MATERIALS_SWEEP_CLOSED = "proof_materials_sweep_closed";
 
 /**
  * The watcher's L1 readiness, as /readyz reads it: the follower's reasons
@@ -12,12 +16,14 @@ import type {
  * cache that `refresh` renews (on every follower change, after every
  * decision pass, and on a timer); the driver's are read live. The
  * follower's degradations (status and metrics only, never readiness) are
- * cached alongside.
+ * cached alongside, followed by why the proof-materials sweep is closed,
+ * read live.
  */
 export const createWatcherL1Readiness = (
   input: Readonly<{
     follower: Pick<WatcherFollowerRuntime, "readiness" | "degradations">;
     driver: () => Pick<WatcherDecisionDriver, "readiness"> | undefined;
+    proofMaterials?: Pick<WatcherProofMaterialsViews, "sweepClosed">;
   }>,
 ) => {
   let followerReadiness: readonly WatcherDecisionReadiness[] = [
@@ -68,5 +74,15 @@ export const createWatcherL1Readiness = (
       },
     ]),
   ];
-  return Object.freeze({ refresh, read, degradations: () => degradations });
+  const sweepClosed = (): readonly WatcherL1Degradation[] =>
+    (input.proofMaterials?.sweepClosed() ?? []).map((detail) => ({
+      reason: PROOF_MATERIALS_SWEEP_CLOSED,
+      count: 1,
+      detail,
+    }));
+  return Object.freeze({
+    refresh,
+    read,
+    degradations: () => [...degradations, ...sweepClosed()],
+  });
 };

@@ -49,6 +49,7 @@ import {
 } from "./fault-proof-application.build-common-infrastructure.js";
 import { createWatcherCatalogueReplayer } from "./fault-proof-application.create-catalogue-replayer.js";
 import { driveProvenCorrectionFrom } from "./fault-proof-application.drive-proven-correction.js";
+import { openOwnThreadCancellerFrom } from "./fault-proof-application.own-thread-canceller.js";
 import {
   WATCHER_FAULT_PROOF_APPLICATION,
   WATCHER_FAULT_PROOF_STARTUP_READINESS,
@@ -60,6 +61,8 @@ import {
   classifyWatcherReplayedHeader,
   watcherReplayCheckpointAdvance,
 } from "./fault-proof-application.replayed-ledger.js";
+import { sweepProofMaterialsFrom } from "./fault-proof-application.sweep-proof-materials.js";
+import { createWatcherProofMaterialsViews } from "./proof-materials-views.js";
 
 export function createApplication(
   input: ApplicationConstruction &
@@ -128,6 +131,7 @@ export function createApplication({
     createWatcherRetainedDaRuntimeOwner(retainedDaOptions);
   const loaderOptions = { ...retainedDaOptions, runtimeOwner: retainedDaOwner };
   const pinnedReplayContexts = replayContextsPinnedAtLoadStart(replayContexts);
+  const proofMaterials = createWatcherProofMaterialsViews(l1.provider);
   /** One loader for all installed families; the record does the rest. */
   const loadRuntime = pinnedReplayContexts.loader(
     createWatcherWorkflowRuntimeLoader({
@@ -143,6 +147,7 @@ export function createApplication({
           l1,
           dependencies,
           environment: environmentSnapshot,
+          proofMaterials,
         }),
     }),
   );
@@ -257,6 +262,17 @@ export function createApplication({
     })();
     return classifierPromise;
   };
+  // The chain-driven operations' authority; they act only while admitted.
+  const applicationAuthority = Object.freeze({
+    isExecutable: () => allowExecution && admittedApplications.has(application),
+    watcherConfig,
+    infrastructure,
+    deploymentIdentity,
+    l1,
+    dependencies,
+    environment: environmentSnapshot,
+    proofMaterials,
+  });
   const methods: WatcherFaultProofApplication = {
     advanceReplayedLedger: watcherReplayCheckpointAdvance({
       watcherConfig,
@@ -275,12 +291,12 @@ export function createApplication({
     installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     runners,
     applicationRegistry,
+    proofMaterials,
     retainedDaTransportStatus: retainedDaOwner.transportStatus,
     retainDecisionAuthorities: (decisionDigest) => {
       authorityGeneration += 1;
-      for (const digest of replayContexts.keys()) {
+      for (const digest of replayContexts.keys())
         if (digest !== decisionDigest) replayContexts.delete(digest);
-      }
     },
     classifyHeader: async (request) => {
       const generation = authorityGeneration;
@@ -330,15 +346,13 @@ export function createApplication({
         );
       }
       const replayContext = headerDecisionReplayContext(completedDecision);
-      if (replayContext !== undefined) {
+      if (replayContext !== undefined)
         replayContexts.set(completedDecision.decisionDigest, replayContext);
-      }
       return completedDecision;
     },
     assertStartupReady: async (invocation) => {
-      if (!admittedApplications.has(application)) {
+      if (!admittedApplications.has(application))
         throw new Error("watcher fault-proof application is closed");
-      }
       if (
         !WATCHER_INSTALLED_WORKFLOW_CATEGORIES.includes(
           invocation.category as WatcherInstalledWorkflowCategory,
@@ -393,13 +407,26 @@ export function createApplication({
           dependencies.readText(await requireCanonicalFile(path, dependencies)),
         ),
       );
+      // The removal must cite the prover's record: the credential a fresh
+      // run's terminal names, else (an observed completion) the wallet's key.
+      const proverCredential =
+        input.terminal?.economics.proverCredential ??
+        dependencies.resolveSigner({
+          network: watcherConfig.targetNetwork,
+          secret: await readSecret({
+            source: watcherConfig.proverWallet.keySource,
+            dependencies,
+            environment: environmentSnapshot,
+            label: "watcher prover wallet",
+          }),
+        }).paymentKeyHash;
       const binding = await bindFraudProofTerminalDeployment({
         manifest: JSON.parse(manifestJson!),
         blueprintJson: blueprintJson!,
         deploymentInfo: JSON.parse(deploymentJson!),
         category: input.category,
         headerHash: input.headerHash,
-        proverCredential: input.terminal.economics.proverCredential,
+        proverCredential,
       });
       const finality = await watcherDeploymentReleaseFinalityAuthority(
         deploymentIdentity,
@@ -430,9 +457,8 @@ export function createApplication({
         return await verifyCompletedFraudProofWorkflow({
           binding,
           authority,
-          entries: input.entries,
-          terminal: input.terminal,
           decisionDigest: input.decisionDigest,
+          ...(input.terminal === undefined ? {} : { terminal: input.terminal }),
         });
       } catch (error) {
         if (error instanceof FraudProofL1CheckpointChangedError)
@@ -440,16 +466,9 @@ export function createApplication({
         throw error;
       }
     },
-    driveProvenCorrection: driveProvenCorrectionFrom({
-      isExecutable: () =>
-        allowExecution && admittedApplications.has(application),
-      watcherConfig,
-      infrastructure,
-      deploymentIdentity,
-      l1,
-      dependencies,
-      environment: environmentSnapshot,
-    }),
+    driveProvenCorrection: driveProvenCorrectionFrom(applicationAuthority),
+    openOwnThreadCanceller: openOwnThreadCancellerFrom(applicationAuthority),
+    sweepProofMaterials: sweepProofMaterialsFrom(applicationAuthority),
     runOrResume: async (invocation) => {
       if (!allowExecution) {
         throw new Error(

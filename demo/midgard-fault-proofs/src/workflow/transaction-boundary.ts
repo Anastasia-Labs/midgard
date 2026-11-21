@@ -62,7 +62,7 @@ const transactionByPreflight = new WeakMap<object, TxSigned>();
 
 /**
  * Keeps the immutable signed transaction beside its in-memory preflight
- * without copying transaction CBOR into the durable public journal.
+ * without copying transaction CBOR into the preflight itself.
  */
 export const bindWorkflowPreflightTransaction = <Preflight extends object>(
   preflight: Preflight,
@@ -198,7 +198,7 @@ export const submitCapturedTransaction = async (
  * hash, every field the builder derived except the transaction itself, and
  * whether confirmation was awaited. Distributes over a union of builds.
  */
-export type UnjournaledSubmission<Built> = Built extends unknown
+export type OutsideWorkflowSubmission<Built> = Built extends unknown
   ? Readonly<
       { txHash: string } & Omit<Built, "transaction"> & {
           awaitedConfirmation: boolean;
@@ -207,17 +207,16 @@ export type UnjournaledSubmission<Built> = Built extends unknown
   : never;
 
 /**
- * Submits a built transaction directly, with no crash journal entry,
- * funding reservation or lease: after a crash nothing knows it was sent.
- * For the diagnostic CLI and tests, which have no journal to write to; for
- * the chain-driven proven-correction removal, which needs none because the
- * correction lock and fraud-proof record on L1 say what is left to remove,
- * so anyone can resume it; and for field-grammar certification
+ * Submits a built transaction directly, outside any workflow's in-flight
+ * set or lease: after a crash nothing knows it was sent. For the diagnostic
+ * CLI and tests; for the chain-driven proven-correction removal, which needs
+ * none because the correction lock and fraud-proof record on L1 say what is
+ * left to remove, so anyone can resume it; and for field-grammar certification
  * (`certifyFaultProofFieldGrammar`), the one builder that submits.
  * Refuses a provider that reports another hash, naming the transaction by
  * `label`, and waits for confirmation only when `awaitConfirmation` is set.
  */
-export const submitUnjournaled = async (
+export const submitOutsideWorkflow = async (
   lucid: LucidEvolution,
   transaction: LocallyEvaluatedTransaction,
   {

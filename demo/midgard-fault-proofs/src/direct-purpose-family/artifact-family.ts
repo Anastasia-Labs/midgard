@@ -1,4 +1,4 @@
-/** What a direct purpose family supplies for its journaled artifact: how a
+/** What a direct purpose family supplies for its workflow artifact: how a
  * finding is admitted and how its convicting proof is planned. Types only, so
  * every family's replay module can name its artifact without loading the
  * workflow modules that load it. */
@@ -25,13 +25,13 @@ export type DirectPurposeProof = Readonly<{
 export type DirectPurposeAdmitted<Prepared extends DirectPurposeReplay> =
   Prepared & Readonly<{ current: TransitionTraceReconstruction }>;
 
-/** What admits a family's journaled artifact. */
+/** What admits a family's workflow artifact. */
 export type DirectPurposeArtifactAdmission<
   Prepared extends DirectPurposeReplay,
 > = Readonly<{
   /** The category, naming every refusal. */
   label: string;
-  /** The journaled artifact's `schemaVersion`. */
+  /** The artifact's `schemaVersion`. */
   artifactVersion: string;
   /** The finding at one coordinate; `null` when it does not convict. */
   prepare: (input: {

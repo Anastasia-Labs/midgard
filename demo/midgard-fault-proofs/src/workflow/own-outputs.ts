@@ -1,19 +1,20 @@
 /**
  * Our own outputs, found by identity. An output is ours exactly when it sits
  * at an index of a transaction whose signed body we hold: the out-ref is
- * taken from that body before the transaction is submitted, journaled, and
- * read back by that out-ref alone. Nothing here searches an address for
- * matching content, so another party's output at the same address, whatever
- * it holds, is never taken for ours and never makes a step plan again.
+ * taken from that body before the transaction is submitted, kept in memory,
+ * and read back by that out-ref alone.
  *
  * A transaction id is the hash of its signed body, so a rollback that
  * re-includes the transaction keeps the out-ref. One that leaves it out for
  * good (expired, or its inputs spent elsewhere) leaves the out-ref gone, and
- * the slot is published again, naming the out-ref it replaces.
+ * the slot is published again.
  *
- * Workflows keep their claims in the workflow journal (each port's durable
- * recovery). Callers with no workflow journal (the CLI and direct step
- * paths) keep them in an in-memory `OwnOutputJournal`.
+ * Callers off a workflow (the CLI and direct step paths) keep their claims
+ * in an in-memory `OwnOutputJournal`. A workflow keeps none: its claims carry
+ * its proof-materials access, and a slot at the proof-materials address is
+ * claimed by the plain output the view finds for its content
+ * (`proof-materials-view.carriage-claims.ts`), since only the prover can
+ * spend there and the chain checks content alone.
  */
 import {
   coreToTxOutput,
@@ -23,7 +24,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { FraudProofWorkflowJournalEntry } from "./journal.js";
+import type { ProofMaterialsAccess } from "./proof-materials-view.js";
 
 const OUT_REF = /^([0-9a-f]{64})#(0|[1-9][0-9]*)$/u;
 
@@ -136,11 +137,9 @@ export const readOwnOutputs = async (
   return found;
 };
 
-/** One of our claims on a slot, and when its transaction was confirmed. */
+/** One of our claims on a slot. */
 export type OwnOutputClaimed = Readonly<{
   outRef: string;
-  /** When the confirmation was journaled (ISO time); absent off a workflow. */
-  confirmedAt?: string;
 }>;
 
 /** A slot and every claim on it, oldest first: its output and replacements. */
@@ -201,12 +200,14 @@ export const resolveOwnOutputs = async ({
 };
 
 /**
- * Claims kept in memory, for callers with no workflow journal: each key's
- * claims, oldest first. A process that loses it publishes again.
+ * Claims on slots, each key's oldest first, kept in memory (a process that
+ * loses them publishes again unless `materials` finds the output).
  */
 export type OwnOutputJournal = Readonly<{
   claims: (key: string) => readonly OwnOutputClaimed[];
   claim: (key: string, outRef: string) => void;
+  /** The workflow's view of its proof-materials address, when it has one. */
+  materials?: ProofMaterialsAccess;
 }>;
 
 export const createOwnOutputJournal = (): OwnOutputJournal => {
@@ -221,16 +222,3 @@ export const createOwnOutputJournal = (): OwnOutputJournal => {
     },
   });
 };
-
-/**
- * The transactions a workflow's journal confirmed: the workflow made them,
- * so their outputs are its own. A read of an address keeps only these.
- */
-export const workflowConfirmedTransactions = (
-  entries: readonly FraudProofWorkflowJournalEntry[],
-): ReadonlySet<string> =>
-  new Set(
-    entries.flatMap(({ event }) =>
-      event.kind === "confirmed" ? [event.txHash] : [],
-    ),
-  );

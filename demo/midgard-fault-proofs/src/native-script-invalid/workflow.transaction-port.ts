@@ -17,8 +17,8 @@ import {
 import type { ManifestBoundFamilyWorkflow } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import { workflowConfirmedTransactions } from "../workflow/own-outputs.js";
-import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
+import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import { buildNativeScriptInvalidInit } from "./submit-init.js";
 import { buildNativeScriptInvalidStep01 } from "./submit-step-01.js";
 import { buildNativeScriptInvalidStep01Forced } from "./submit-step-01-forced.js";
@@ -55,10 +55,14 @@ export const transactionPort = (
       evidence,
       classification,
     }),
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const ownOutputs = workflowFieldCarriageOwnOutputs({
       category: "nativeScriptInvalid",
-      entries,
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
+      }),
     });
     const admitted = await admitNativeScriptInvalidWorkflowArtifact(artifact);
     if (admitted.artifact.headerHash !== config.binding.definition.headerHash) {
@@ -85,7 +89,7 @@ export const transactionPort = (
     if (stage === "init") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildNativeScriptInvalidInit({
               lucid: config.lucid,
               blueprint: config.binding.blueprint,
@@ -108,7 +112,7 @@ export const transactionPort = (
       const forced = admitted.forced;
       return {
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildNativeScriptInvalidStep01Forced({
               ...common,
               threadOutRef: threadOutRef(),
@@ -129,14 +133,15 @@ export const transactionPort = (
         lucid: config.lucid,
         address: config.signer.proofMaterialsAddress,
         proofCbor: txInclusion.txMembershipProofCbor,
-        ownTransactions: workflowConfirmedTransactions(entries),
+        view: config.signer.proofMaterials,
+        holder,
       });
       if (chunks === undefined) {
         throw new Error("native-script-invalid transaction proof disappeared");
       }
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildNativeScriptInvalidStep01({
               lucid: config.lucid,
               blueprint: config.binding.blueprint,
@@ -166,7 +171,7 @@ export const transactionPort = (
       });
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildNativeScriptInvalidStep02({
               ownOutputs,
               ...common,
@@ -191,7 +196,7 @@ export const transactionPort = (
     if (stage === "step_03" && admitted.prepared.scriptItemCbor === "")
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildNativeScriptInvalidStep03AbsentFinalize({
               lucid: config.lucid,
               contracts: config.contracts,
@@ -214,7 +219,7 @@ export const transactionPort = (
       const direct = isDirect(admitted);
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await (async () => {
               const args = {
                 ...common,
@@ -264,7 +269,7 @@ export const transactionPort = (
       });
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildNativeScriptInvalidStep04({
               ownOutputs,
               ...common,
@@ -286,7 +291,7 @@ export const transactionPort = (
     if (stage === "step_05") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildNativeScriptInvalidStep05({
               lucid: config.lucid,
               contracts: config.contracts,

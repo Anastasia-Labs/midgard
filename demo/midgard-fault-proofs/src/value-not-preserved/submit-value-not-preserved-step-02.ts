@@ -38,7 +38,7 @@ import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.j
 import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 import { witnessClaimedQuantity } from "./evidence.js";
@@ -78,7 +78,7 @@ export type ValueNotPreservedStep02FoldBuild = {
 };
 
 export type SubmitValueNotPreservedStep02FoldResult =
-  UnjournaledSubmission<ValueNotPreservedStep02FoldBuild>;
+  OutsideWorkflowSubmission<ValueNotPreservedStep02FoldBuild>;
 
 export const buildValueNotPreservedStep02Fold = async ({
   lucid,
@@ -260,7 +260,7 @@ export type ValueNotPreservedStep02FinishBuild = {
 };
 
 export type SubmitValueNotPreservedStep02FinishResult =
-  UnjournaledSubmission<ValueNotPreservedStep02FinishBuild>;
+  OutsideWorkflowSubmission<ValueNotPreservedStep02FinishBuild>;
 
 export const buildValueNotPreservedStep02Finish = async ({
   lucid,

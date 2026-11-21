@@ -27,7 +27,7 @@ const JOURNEY_PROVER_FUNDING_LOVELACE =
   );
 
 export type ProverDisputeFundingPorts = Readonly<{
-  /** The product's custody terms for the family's dispute, if it posts one
+  /** The bond the family's dispute posts, if it posts one
    * (`watcherValidationDisputeFundingTerms`). */
   disputeTerms(): Readonly<{
     validationDispute?: Readonly<{ bondLovelace: bigint }>;
@@ -44,7 +44,7 @@ export type ProverDisputeFundingPorts = Readonly<{
   onStage(name: string): void;
 }>;
 
-/** What the watcher's reservation counts: every plain coin at the prover. */
+/** What the prover's wallet spends from: every plain coin at the prover. */
 const spendableLovelace = (utxos: readonly UTxO[]) =>
   utxos
     .filter(isPlainFundingOutput)
@@ -52,16 +52,14 @@ const spendableLovelace = (utxos: readonly UTxO[]) =>
 
 /**
  * Before a family whose dispute posts a bond, outside its limit: keeps the
- * prover holding what the watcher's first validation-dispute reservation
- * must hold, the deployment-bound bond, the SDK's case floor and the wallet
- * move reserve (as the watcher's `validationDisputeCustodyLovelace` adds
- * them), over the run's actor funding of the prover. The reservation counts
- * every plain coin at the prover, collateral included, and the same coins
- * pay Init, Open and VerifySource, so a prover holding only the requirement
- * pauses VerifySource; the actor funding stays as that margin. A short
- * prover gets one plain coin of the shortfall, and the step is safe to
- * repeat: a covered prover gets nothing. A family whose dispute posts no
- * bond reads nothing else.
+ * prover holding what its validation-dispute VerifySource and first wallet
+ * move spend, the deployment-bound bond, the SDK's case floor and the wallet
+ * move reserve, over the run's actor funding of the prover. The same plain
+ * coins, collateral included, pay Init, Open and VerifySource, so a prover
+ * holding only the requirement pauses VerifySource short of funding; the
+ * actor funding stays as that margin. A short prover gets one plain coin of
+ * the shortfall, and the step is safe to repeat: a covered prover gets
+ * nothing. A family whose dispute posts no bond reads nothing else.
  */
 export const ensureProverDisputeFunding = async (
   ports: ProverDisputeFundingPorts,

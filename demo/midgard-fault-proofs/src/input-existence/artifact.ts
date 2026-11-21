@@ -1,4 +1,4 @@
-/** Durable input-existence material is admitted before any fee reservation.
+/** Durable input-existence material is admitted before any transaction is built.
  * All roots, source bytes and the event's ledger proof are independently replayed.
  */
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";

@@ -12,26 +12,24 @@ export const walletLovelace = async (lucid: LucidEvolution) =>
     0n,
   );
 
+/**
+ * The run resolved by another record after our reclaim of the thread at
+ * `threadOutRef` by `reclaimTxHash`: the removal is theirs, not our cancel,
+ * and no thread of ours is left standing in it. The result carries no list
+ * of what was reclaimed; each caller pins the reclaim itself from the chain
+ * (the one send, the wallet's lovelace, the thread spent).
+ */
 export const expectResolvedWithReclaim = (
   result: FraudProofWorkflowRunResult,
-  thread: { readonly threadOutRef: string; readonly lovelace: string },
+  threadOutRef: string,
   reclaimTxHash: string,
 ) => {
-  expect(result).toMatchObject({
-    kind: "resolved_by_another_record",
-    reclaimed: [
-      {
-        txHash: reclaimTxHash,
-        threadOutRef: thread.threadOutRef,
-        lovelace: thread.lovelace,
-      },
-    ],
-  });
+  expect(result).toMatchObject({ kind: "resolved_by_another_record" });
   if (result.kind !== "resolved_by_another_record")
     throw new Error("not resolved");
+  expect(result.resolution.removalTxHash).not.toBe(reclaimTxHash);
+  expect(result.resolution.standingThread).toBeUndefined();
+  expect(result.resolution.referencedProofTokenOutRef).not.toBe(threadOutRef);
   // Never our conviction: no terminal, no completion, no removal of ours.
   expect("terminal" in result).toBe(false);
-  const kinds = result.entries.map(({ event }) => event.kind);
-  expect(kinds).not.toContain("completed");
-  expect(kinds).not.toContain("terminal_included");
 };

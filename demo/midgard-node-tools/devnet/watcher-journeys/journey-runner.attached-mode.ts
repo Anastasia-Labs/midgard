@@ -67,7 +67,6 @@ export const attachedJourneyMode = (
       })
     ).payloadEnvelopeCbor;
   return {
-    captureWorkflowBaseline: session.captureWorkflowBaseline,
     readTiming: (fixture, options) =>
       readStackJourneyTiming(
         {
@@ -159,7 +158,6 @@ export const attachedJourneyMode = (
     },
     readDecisions: async () =>
       (await evidence.readDecisions()).map((decision) => ({ decision })),
-    watcherStore: evidence,
     transactions,
     proverAddress: context.layout.proverAddress,
     successor: ({ directory, staged, polls }) =>

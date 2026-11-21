@@ -1,12 +1,11 @@
 /**
  * Pure production-workflow coverage for the §5.2 network-id wrongful-rejection
  * (forced) direction: durable artifact round trip, deterministic action
- * selection from journal plus simulated chain state at every physical step,
+ * selection from simulated chain state at every physical step,
  * and the classification refusals that keep another family's typed rejection
  * reason out of this thread.
  */
 import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
-import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
@@ -29,7 +28,7 @@ import {
   classifyCanonicalBlockViolations,
 } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
-import { type JournalJsonObject } from "../src/workflow/journal.js";
+import type { JournalJsonObject } from "../src/workflow/journal.js";
 import {
   FraudProofRawL1DerivationError,
   type FraudProofRawL1FamilyStage,
@@ -44,7 +43,6 @@ import {
   h28,
   h32,
 } from "./helpers/canonical-block-evidence-fixture.js";
-import { signedRecoveryObservationFixture } from "./helpers/signed-recovery-observation-fixture.js";
 import {
   FORCED_STEP_ADDRESS,
   forcedHarness,
@@ -345,7 +343,6 @@ describe("network-id forced (§5.2) production workflow", () => {
         identity: workflowIdentity(prepared.headerHash),
         workflowId: h32(0x51),
         artifact: harness.artifact,
-        entries: harness.entries(),
         action: selected.action,
       });
     const original = harness.scanUtxos[0]!;
@@ -549,7 +546,6 @@ describe("network-id forced (§5.2) production workflow", () => {
         identity: workflowIdentity(prepared.headerHash),
         workflowId: h32(0x51),
         artifact: harness.artifact,
-        entries: harness.entries(),
         action: selected.action,
       });
     carriage[0] = { ...carriage[0]!, txHash: h32(0x70) };
@@ -566,9 +562,9 @@ describe("network-id forced (§5.2) production workflow", () => {
     await expect(preflight()).rejects.toBe(failure);
   });
 
-  // Regression: the production funding reservation permit reads the signed
-  // body back off the in-memory preflight, so a preflight that forgets to bind
-  // its captured transaction fails the whole run at reservation time.
+  // Regression: the runner reads the signed body back off the in-memory
+  // preflight to send it, so a preflight that forgets to bind its captured
+  // transaction fails the whole run.
   it("binds the captured signed transaction to the preflight it returns", async () => {
     const prepared = await forcedPrepared();
     const capturedTxHash = h32(0x41);
@@ -621,7 +617,6 @@ describe("network-id forced (§5.2) production workflow", () => {
       identity: workflowIdentity(prepared.headerHash),
       workflowId: h32(0x51),
       artifact: harness.artifact,
-      entries: harness.entries(),
       action: observation.action,
     });
     expect(workflowPreflightTransaction(preflight)).toBeDefined();
@@ -632,227 +627,6 @@ describe("network-id forced (§5.2) production workflow", () => {
       scriptExecution: "reference_scripts",
       localUplcEvaluation: { status: "passed" },
     });
-  });
-
-  it("reconciles each forced stage from chain state and the journaled tx hash", async () => {
-    const prepared = await forcedPrepared();
-    const reconcile = async ({
-      kind,
-      stage,
-      forcedDoorOccupied,
-      forcedScanDatum,
-      threadOutRef = `${h32(0x72)}#0`,
-    }: {
-      readonly kind:
-        | "init"
-        | "forced_step01"
-        | "forced_bind"
-        | "forced_scan_open"
-        | "forced_scan_advance";
-      readonly stage: FraudProofRawL1FamilyStage;
-      readonly forcedDoorOccupied: boolean;
-      readonly forcedScanDatum?: string;
-      readonly threadOutRef?: string;
-    }) => {
-      const harness = forcedHarness({
-        prepared,
-        stage,
-        forcedDoorOccupied,
-        ...(forcedScanDatum === undefined ? {} : { forcedScanDatum }),
-      });
-      return await harness.adapter.reconcile({
-        identity: workflowIdentity(prepared.headerHash),
-        workflowId: h32(0x51),
-        artifact: harness.artifact,
-        entries: harness.entries(),
-        action: {
-          actionId: `network-id:${kind}`,
-          input: { kind, threadOutRef },
-        },
-        txHash: h32(0x41),
-      });
-    };
-    const notStarted: FraudProofRawL1FamilyStage = {
-      kind: "not_started",
-      stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
-    };
-    const atStep02: FraudProofRawL1FamilyStage = {
-      kind: "step",
-      step: 2,
-      threadOutRef: `${h32(0x74)}#0`,
-      stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
-    };
-    // init advances the moment the door is occupied, even though the linear
-    // family still reports `not_started`.
-    await expect(
-      reconcile({ kind: "init", stage: notStarted, forcedDoorOccupied: true }),
-    ).resolves.toEqual({ kind: "confirmed", txHash: h32(0x41) });
-    await expect(
-      reconcile({
-        kind: "forced_step01",
-        stage: notStarted,
-        forcedDoorOccupied: true,
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash: h32(0x41) });
-    await expect(
-      reconcile({
-        kind: "forced_step01",
-        stage: notStarted,
-        forcedDoorOccupied: false,
-      }),
-    ).resolves.toEqual({ kind: "not_found" });
-    await expect(
-      reconcile({
-        kind: "forced_bind",
-        stage: atStep02,
-        forcedDoorOccupied: false,
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash: h32(0x41) });
-    // The bind is not confirmed while the thread is still parked at the door.
-    await expect(
-      reconcile({
-        kind: "forced_bind",
-        stage: atStep02,
-        forcedDoorOccupied: true,
-      }),
-    ).resolves.toEqual({ kind: "not_found" });
-    // The bind now hands the thread to the scan, which the linear family
-    // cannot see at all: occupancy of the scan address is what confirms it.
-    await expect(
-      reconcile({
-        kind: "forced_bind",
-        stage: notStarted,
-        forcedDoorOccupied: false,
-        forcedScanDatum: scanDatum(prepared, "ready"),
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash: h32(0x41) });
-    // A scan batch is confirmed exactly when the self-looping thread has left
-    // the out-ref its action named, and pending while it still sits there.
-    await expect(
-      reconcile({
-        kind: "forced_scan_open",
-        stage: notStarted,
-        forcedDoorOccupied: false,
-        forcedScanDatum: scanDatum(prepared, "ready"),
-        threadOutRef: `${h32(0x78)}#0`,
-      }),
-    ).resolves.toEqual({ kind: "not_found" });
-    await expect(
-      reconcile({
-        kind: "forced_scan_open",
-        stage: notStarted,
-        forcedDoorOccupied: false,
-        forcedScanDatum: scanDatum(prepared, "ready"),
-        threadOutRef: `${h32(0x79)}#0`,
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash: h32(0x41) });
-    // The completing batch leaves the scan address entirely.
-    await expect(
-      reconcile({
-        kind: "forced_scan_advance",
-        stage: atStep02,
-        forcedDoorOccupied: false,
-        threadOutRef: `${h32(0x78)}#0`,
-      }),
-    ).resolves.toEqual({ kind: "confirmed", txHash: h32(0x41) });
-  });
-
-  // Before the chain advances, shallow absence must retain the exact signed body;
-  // abandon the funding transition and rebuild the identical transaction while
-  // the original is still landing. An unconfirmed submission now resolves
-  // through canonical signed-transaction recovery.
-  it("keeps an unconfirmed submission pending until signed recovery reports expiry", async () => {
-    const prepared = await forcedPrepared();
-    const inputs = CML.TransactionInputList.new();
-    inputs.add(
-      CML.TransactionInput.new(CML.TransactionHash.from_hex(h32(0x11)), 0n),
-    );
-    const body = CML.TransactionBody.new(
-      inputs,
-      CML.TransactionOutputList.new(),
-      0n,
-    );
-    const signed = CML.Transaction.new(
-      body,
-      CML.TransactionWitnessSet.new(),
-      true,
-    );
-    const transactionHash = CML.hash_transaction(body).to_hex();
-    const signedTransactionCborHex = signed.to_cbor_hex();
-    const observation = signedRecoveryObservationFixture({
-      transactionHash,
-      signedTransactionCborHex,
-    });
-    const observe = vi.fn(async () => observation("pending"));
-    const notStarted: FraudProofRawL1FamilyStage = {
-      kind: "not_started",
-      stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
-    };
-    const reconcile = async (
-      harness: ReturnType<typeof forcedHarness>,
-      overrides: {
-        readonly signedTransactionCborHex?: string;
-      } = {
-        signedTransactionCborHex,
-      },
-    ) => {
-      const observed = await harness.observe();
-      if (observed.kind !== "action_required") {
-        throw new Error("expected the init action");
-      }
-      return await harness.adapter.reconcile({
-        identity: workflowIdentity(prepared.headerHash),
-        workflowId: h32(0x51),
-        artifact: harness.artifact,
-        entries: harness.entries(),
-        action: observed.action,
-        txHash: transactionHash,
-        ...overrides,
-      });
-    };
-    const recovering = forcedHarness({
-      prepared,
-      stage: notStarted,
-      forcedDoorOccupied: false,
-      observeSignedTransaction: observe,
-    });
-    await expect(reconcile(recovering)).resolves.toEqual({
-      kind: "pending",
-      txHash: transactionHash,
-    });
-    expect(observe).toHaveBeenCalledWith({
-      transactionHash,
-      signedTransactionCborHex,
-    });
-    // Whichever lands wins: expired within the horizon is superseded at once.
-    observe.mockResolvedValueOnce(observation("expired"));
-    await expect(reconcile(recovering)).resolves.toEqual({ kind: "not_found" });
-    observe.mockResolvedValueOnce(observation("expired", true));
-    await expect(
-      reconcile(recovering, { signedTransactionCborHex }),
-    ).resolves.toMatchObject({
-      kind: "not_found",
-      retirement: { transactionHash, reason: "expired" },
-    });
-    observe.mockResolvedValueOnce(observation("conflict"));
-    await expect(reconcile(recovering)).resolves.toEqual({
-      kind: "conflict",
-      reason: "conflict",
-    });
-    // Without the durable signed bytes recovery cannot establish absence.
-    await expect(reconcile(recovering, {})).resolves.toMatchObject({
-      kind: "unknown",
-    });
-    // The bare raw-L1 stub has no signed recovery, so the legacy answer stands.
-    await expect(
-      reconcile(
-        forcedHarness({
-          prepared,
-          stage: notStarted,
-          forcedDoorOccupied: false,
-        }),
-      ),
-    ).resolves.toEqual({ kind: "not_found" });
   });
 
   it("routes the forced violation to networkId and refuses another category or a generic fallback", async () => {

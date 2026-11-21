@@ -1,16 +1,15 @@
 /** The validation-trace dispute's staging of a staged builtin step's
  * operands under the watcher's prover funding, over the scene of
  * support/validation-trace-dispute-funded-one-step-staging.ts, while the
- * step's first staging is in flight. Our wallet's one plain coin funds both
- * of the step's runs; the ledger loses the first staging in flight. Each
- * turn meanwhile is a recorded pending result for this workflow: the next
- * run is not built while the first staging is unresolved, the first staging
- * is sent again over the same coin, and no coin is spent twice. Once the
- * ledger takes it, the next run stages from its change and the thread plays
- * through the staged chain to the award. */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+ * step's first staging is in flight. Our wallet holds a large coin and one
+ * plain coin; the ledger loses the first staging in flight. Each turn
+ * meanwhile is a recorded pending result for this workflow: the first
+ * staging is sent again over the same coin, the next run is staged at once
+ * over the other coin, which the first does not spend, and no coin is spent
+ * twice. Once the ledger takes the first, the thread plays through the
+ * staged chain to the award. */
+import { beforeAll, describe, expect, it } from "vitest";
 
-import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { drainProver, topUpProver } from "./support/installed-prover-wallet.js";
 import {
   type LedgerTransaction,
@@ -29,7 +28,7 @@ import {
   confirmedOneStepMoves,
   playThreads,
 } from "./support/validation-trace-dispute-one-step-play.js";
-import { entriesOf } from "./support/validation-trace-dispute-one-step-staged-drive.js";
+import { stagingSends } from "./support/validation-trace-dispute-one-step-staged-drive.js";
 
 const { at, turns, place, open, stagingAddress, depositOf } =
   fundedStagingScene();
@@ -40,24 +39,20 @@ const stages = (transaction: LedgerTransaction, datumCbor: string) =>
     ({ address, datum }) => address === stagingAddress() && datum === datumCbor,
   );
 
-/** The runs the journal of `result` holds a staging intent for. */
-const intendedRuns = (result: FraudProofWorkflowRunResult) =>
-  entriesOf(result).flatMap(({ event }) =>
-    event.kind === "submission_intent" &&
-    event.actionInput.stage === "stage_operands"
-      ? [String(event.actionInput.run)]
-      : [],
+const STAGE = "validation-trace-stage:";
+
+/** The runs the watcher's processes sent a staging for (an action id is
+ * the run and its generation). */
+const sentRuns = () =>
+  stagingSends(at.dispute.sent()).map(
+    (actionId) => actionId.slice(STAGE.length).split(":")[0]!,
   );
 
 describe("validation-trace dispute staging of a staged builtin step's operands while its first staging is in flight", () => {
   beforeAll(open, 1_800_000);
 
-  afterAll(async () => {
-    await at.dispute?.close();
-  });
-
   it(
-    "holds the step's next run while its first staging is in flight over our one plain coin, sending the first again over the same coin and spending no coin twice; once the first lands, the next stages from its change and the thread plays on",
+    "stages the step's next run over another coin while its first staging is in flight, sending the first again over the same coin and spending no coin twice; once the first lands, the thread plays on",
     async () => {
       const { h } = at.scene;
       const [first, next] = runs as [(typeof runs)[0], (typeof runs)[0]];
@@ -74,9 +69,8 @@ describe("validation-trace dispute staging of a staged builtin step's operands w
       );
       const history: string[] = [];
       try {
-        let last: FraudProofWorkflowRunResult | undefined;
         for (let turn = 0; turn < 8; turn += 1) {
-          last = await at.dispute.turn();
+          const last = await at.dispute.turn();
           history.push(
             "reason" in last ? `${last.kind}: ${last.reason}` : last.kind,
           );
@@ -92,13 +86,17 @@ describe("validation-trace dispute staging of a staged builtin step's operands w
           expect(stages(transaction, first.datumCbor)).toBe(true);
           expect(transaction.inputs).toContain(coin);
         }
-        // The next run was not built while the first is unresolved.
-        expect(watch.ours()).toStrictEqual([]);
-        expect(intendedRuns(last!)).not.toContain(digestOf(next.datumCbor));
+        // The next run was staged meanwhile over a coin the first does not
+        // spend: a pending transaction of another action holds no build.
+        const meanwhile = watch.ours();
+        expect(meanwhile, history.join("\n")).toHaveLength(1);
+        expect(stages(meanwhile[0]!, next.datumCbor)).toBe(true);
+        expect(meanwhile[0]!.inputs).not.toContain(coin);
+        expect(sentRuns()).toContain(digestOf(next.datumCbor));
 
         inFlight = false;
-        let staged: LedgerTransaction | undefined;
-        for (let turn = 0; turn < 12 && staged === undefined; turn += 1) {
+        let landed: readonly LedgerTransaction[] = [];
+        for (let turn = 0; turn < 12 && landed.length === 0; turn += 1) {
           const result = await at.dispute.turn();
           history.push(
             "reason" in result
@@ -106,23 +104,13 @@ describe("validation-trace dispute staging of a staged builtin step's operands w
               : result.kind,
           );
           expect(result.kind, history.join("\n")).not.toBe("stalled");
-          staged = watch
+          landed = watch
             .ours()
-            .find((transaction) => stages(transaction, next.datumCbor));
+            .filter((transaction) => stages(transaction, first.datumCbor));
         }
-        expect(staged, history.join("\n")).toBeDefined();
-        const ours = watch.ours();
-        const landed = ours.filter((transaction) =>
-          stages(transaction, first.datumCbor),
-        );
-        expect(landed).toHaveLength(1);
+        expect(landed, history.join("\n")).toHaveLength(1);
         expect(landed[0]!.inputs).toStrictEqual([coin]);
-        // The next run stages from the first staging's change.
-        expect(
-          staged!.inputs.every((input) =>
-            input.startsWith(`${landed[0]!.txHash}#`),
-          ),
-        ).toBe(true);
+        const ours = watch.ours();
         // No two of our transactions the ledger took share an input.
         const consumed = ours.flatMap(({ inputs }) => inputs);
         expect(new Set(consumed).size).toBe(consumed.length);
@@ -130,18 +118,18 @@ describe("validation-trace dispute staging of a staged builtin step's operands w
         watch.restore();
       }
 
-      const { result, history: played } = await playThreads({
+      const { history: played } = await playThreads({
         scene: at.scene,
         runner: turns(),
         sides: [at.side],
-        until: async (run) =>
-          confirmedOneStepMoves(entriesOf(run)).some(
+        until: async () =>
+          confirmedOneStepMoves(await at.dispute.confirmed()).some(
             ({ stage }) => stage === "close_awarded",
           ),
         limit: 60,
       });
       expect(await place(), played.join("\n")).toBeUndefined();
-      expect(new Set(intendedRuns(result))).toStrictEqual(
+      expect(new Set(sentRuns())).toStrictEqual(
         new Set(runs.map(({ datumCbor }) => digestOf(datumCbor))),
       );
     },

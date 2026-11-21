@@ -18,13 +18,14 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { addMintedAssets } from "../workflow/funding-reservation-permit.ledger-accounting.js";
+import { addMintedAssets } from "../workflow/minted-assets.js";
 import { admitFraudProofRawL1Snapshot } from "../workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-snapshot.js";
 import type {
   FraudProofRawL1SnapshotAuthority,
   FraudProofRawL1SnapshotRequest,
   FraudProofRawL1Transaction,
 } from "../workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import type { FraudProofRawL1Snapshot } from "../workflow/raw-l1-snapshot.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "../workflow/release-finality-policy.js";
 
 const blake2b256 = (hex: string): string =>
@@ -47,11 +48,32 @@ export type ValidationTraceCaseHistory = Readonly<{
   /**
    * Every transaction that consumed or produced the token `caseUnit`,
    * complete from genesis, observed for the dispute over `headerHash`.
+   * `alongside` names further units the capture reads with it, so the
+   * observer holds their history under the header too (a receipt whose
+   * slash still reads the case once the case token is burned); only the
+   * case token's transactions are returned.
    */
   transactions(input: {
     readonly headerHash: string;
     readonly caseUnit: string;
+    readonly alongside?: readonly string[];
   }): Promise<readonly ValidationTraceCaseTransaction[]>;
+  /**
+   * One authenticated capture for the dispute over `headerHash`: the
+   * outputs at `scopes` and the complete history of each of `historyUnits`,
+   * which the observer then holds under the header. Absent where the
+   * history is served without the raw L1 view. `admitted` holds
+   * transactions an earlier capture admitted, by hash: one served again in
+   * exactly the same bytes is not decoded again.
+   */
+  snapshot?(
+    input: Pick<
+      FraudProofRawL1SnapshotRequest,
+      "headerHash" | "scopes" | "historyUnits"
+    > & {
+      readonly admitted?: ReadonlyMap<string, FraudProofRawL1Transaction>;
+    },
+  ): Promise<FraudProofRawL1Snapshot>;
 }>;
 
 /** The case history over the authenticated raw L1 view, strictly admitted. */
@@ -61,27 +83,47 @@ export const createValidationTraceCaseHistory = ({
 }: {
   readonly authority: FraudProofRawL1SnapshotAuthority;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
-}): ValidationTraceCaseHistory =>
-  Object.freeze({
-    transactions: async ({ headerHash, caseUnit }) => {
-      const request: FraudProofRawL1SnapshotRequest = {
-        deploymentIdentityDigest: releaseFinality.deploymentIdentityDigest,
-        blueprintHash: releaseFinality.blueprintHash,
-        finalityPolicyDigest: releaseFinality.policyDigest,
+}): ValidationTraceCaseHistory => {
+  const snapshot: NonNullable<ValidationTraceCaseHistory["snapshot"]> = async ({
+    admitted,
+    ...input
+  }) => {
+    const request: FraudProofRawL1SnapshotRequest = {
+      deploymentIdentityDigest: releaseFinality.deploymentIdentityDigest,
+      blueprintHash: releaseFinality.blueprintHash,
+      finalityPolicyDigest: releaseFinality.policyDigest,
+      ...input,
+    };
+    return admitFraudProofRawL1Snapshot({
+      value: await authority.capture(request),
+      request,
+      releaseFinality,
+      observationDepth: "inclusion",
+      admitted,
+    });
+  };
+  return Object.freeze({
+    snapshot,
+    transactions: async ({ headerHash, caseUnit, alongside = [] }) => {
+      const captured = await snapshot({
         headerHash,
         scopes: [],
-        historyUnits: [caseUnit],
-      };
-      const snapshot = admitFraudProofRawL1Snapshot({
-        value: await authority.capture(request),
-        request,
-        releaseFinality,
-        observationDepth: "inclusion",
+        historyUnits: [
+          caseUnit,
+          ...new Set(alongside.filter((unit) => unit !== caseUnit)),
+        ],
       });
-      // The request names no scope, so the snapshot holds the history alone.
-      return snapshot.transactions;
+      // The request names no scope, so the snapshot holds the histories
+      // alone; the case token's is the one returned.
+      const ofCase = new Set(
+        captured.history.find(
+          ({ unit }) => unit === caseUnit,
+        )?.transactionHashes,
+      );
+      return captured.transactions.filter(({ txHash }) => ofCase.has(txHash));
     },
   });
+};
 
 /** A thread the case's history held: its token and its defender. */
 export type ValidationTraceRecordedThread = Readonly<{

@@ -56,7 +56,7 @@ import {
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { NetworkIdContracts } from "./contracts.js";
 import {
@@ -89,7 +89,7 @@ export type NetworkIdStep01Build = {
 };
 
 export type SubmitNetworkIdStep01Result =
-  UnjournaledSubmission<NetworkIdStep01Build>;
+  OutsideWorkflowSubmission<NetworkIdStep01Build>;
 
 export const buildNetworkIdStep01 = async ({
   lucid,

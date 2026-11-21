@@ -10,7 +10,7 @@
  * recovery depth, and the move reads the new copy. The thread is then
  * awarded and closes into our case. Once the observe move is final the
  * watcher spends the copy back to our key address by our key alone, as it
- * does where our signer is not restricted to a reservation
+ * does without the watcher's prover funding
  * (validation-trace-dispute-one-step-canonical-decode-8-observe-copy.test.ts),
  * and the convicted block's removal waits.
  *
@@ -18,7 +18,7 @@
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES } from "../src/validation-trace-dispute/one-step-canonical-decode.js";
@@ -121,13 +121,11 @@ describe("validation-trace dispute one-step resolution through a canonical-decod
     dispute = await openFundedDispute(scene, {
       oneStep: oneStep!,
       removal: removal.removal,
-      removalScripts: removal.published,
-      liveParameters: true,
     });
     const opened = await turnUntil(dispute, VALIDATION_TRACE_CASE_OPEN);
     if (opened.result.kind !== "pending")
       throw new Error(`the case did not open: ${opened.history.join("\n")}`);
-    const { caseOutput } = await caseAndBond(scene, opened.result);
+    const { caseOutput } = await caseAndBond(scene, dispute);
     const defender = sceneOperator(scene);
     const trace = scriptedTrace(await failingMaterial(scene), 8);
     const threadOutRef = await defendScripted(
@@ -141,10 +139,6 @@ describe("validation-trace dispute one-step resolution through a canonical-decod
     ]);
     side = { defender, trace, unit: threadUnitOf(scene, thread!) };
   }, 1_800_000);
-
-  afterAll(async () => {
-    await dispute?.close();
-  });
 
   it(
     "publishes a bytes-only copy of the field at our key address from our funding before the observe move",
@@ -196,9 +190,8 @@ describe("validation-trace dispute one-step resolution through a canonical-decod
         scene,
         runner: turns(),
         sides: [side],
-        until: async (run) =>
-          "entries" in run &&
-          confirmedOneStepMoves(run.entries).some(
+        until: async () =>
+          confirmedOneStepMoves(await dispute.confirmed()).some(
             ({ stage }) => stage === "close_awarded",
           ),
         limit: 20,

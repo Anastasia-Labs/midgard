@@ -1,6 +1,6 @@
 /** The validation-trace dispute runner over an evaluator that first fails
  * without a verdict, on the emulator: the run is held on that one event and
- * names its readiness reason, nothing is submitted or journaled, the event is
+ * names its readiness reason, nothing is submitted, the event is
  * not re-executed before its retry time, and once the evaluator recovers the
  * same runner Inits, Opens and VerifySources the claim into a live case on
  * the proven failure. A claim build whose re-execution then fails without a
@@ -19,7 +19,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { VALIDATION_TRACE_CLAIM_BUILD_HELD } from "../src/validation-trace-dispute/claim-material.js";
 import {
@@ -201,18 +200,10 @@ describe("validation-trace dispute runner: an evaluator failure holds, then the 
       namedState: { name: VALIDATION_TRACE_CLAIM_BUILD_HELD, alarm: false },
     });
     expect(injected.openFaults).toStrictEqual([]);
-    if (!("entries" in pending)) throw new Error("no workflow journal");
-    expect(pending.entries.map(({ event }) => event.kind)).toStrictEqual([
-      "started",
-    ]);
+    expect(runner.process.sent()).toStrictEqual([]);
     expect(await h.proverLucid.wallet().getUtxos()).toStrictEqual(walletBefore);
-    const { result } = await runUntil(
-      runner,
-      scene.failing,
-      VALIDATION_TRACE_CASE_OPEN,
-    );
-    if (!("entries" in result)) throw new Error("no workflow journal");
-    const stages = confirmedValidationTraceStages(result.entries);
+    await runUntil(runner, scene.failing, VALIDATION_TRACE_CASE_OPEN);
+    const stages = await runner.confirmed();
     expect(stages.map(({ action }) => action.stage)).toStrictEqual([
       "init",
       "open",
@@ -232,9 +223,9 @@ describe("validation-trace dispute runner: an evaluator failure holds, then the 
       bounty_claimant: h.proverSigner.paymentKeyHash,
     });
 
-    // A restarted watcher's resumed run rebuilds the journaled claim to check
-    // it; a rebuild that fails without a result holds the run the same way,
-    // journaling nothing.
+    // A restarted watcher's run, in a fresh process, rebuilds the claim to
+    // check it; a rebuild that fails without a result holds the run the same
+    // way, sending nothing.
     injected.openFaults.push(
       new ScriptEvaluationIndeterminateError(
         Buffer.from(txId, "hex"),
@@ -242,7 +233,7 @@ describe("validation-trace dispute runner: an evaluator failure holds, then the 
         { cause: new RangeError("Array buffer allocation failed") },
       ),
     );
-    const restarted = makeRunner(scene, { journal: runner.journal });
+    const restarted = makeRunner(scene);
     const resumed = await restarted.runOnce(scene.failing);
     expect(resumed).toMatchObject({
       kind: "pending",
@@ -250,16 +241,12 @@ describe("validation-trace dispute runner: an evaluator failure holds, then the 
       namedState: { name: VALIDATION_TRACE_CLAIM_BUILD_HELD, alarm: false },
     });
     expect(injected.openFaults).toStrictEqual([]);
-    if (!("entries" in resumed)) throw new Error("no workflow journal");
-    expect(resumed.entries).toHaveLength(result.entries.length);
+    expect(restarted.process.sent()).toStrictEqual([]);
 
     // The same rebuild once half the case open window or less is left is
     // an alarm.
     const end = await openWindowEnd();
-    const late = makeRunner(scene, {
-      journal: runner.journal,
-      now: () => end - HALF_WINDOW,
-    });
+    const late = makeRunner(scene, { now: () => end - HALF_WINDOW });
     failNextClaimBuild();
     expect(await late.runOnce(scene.failing)).toMatchObject({
       kind: "pending",
@@ -293,10 +280,7 @@ describe("validation-trace dispute runner: an evaluator failure holds, then the 
               "u",
             ),
       );
-      if (!("entries" in held)) throw new Error("no workflow journal");
-      expect(held.entries.map(({ event }) => event.kind)).toStrictEqual([
-        "started",
-      ]);
+      expect(runner.process.sent()).toStrictEqual([]);
     },
   );
 

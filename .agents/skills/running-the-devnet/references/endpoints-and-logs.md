@@ -843,19 +843,14 @@ follower's reasons `[review]`.
   to repair (a configuration or deployment-identity refusal, a malformed
   read). The watcher stays up and unready under it; the detail names the
   stage and the error. Fix the cause, then restart the watcher.
-- `fault_proof_objective_unreadable`: at startup an objective's workflow
-  journal rows in `watcher.sqlite` could not be read (a corrupt row, a
-  storage error). The objective is held, never run; clears once its header
-  leaves the finalized queue, which forgets its rows. Report it with the
-  detail.
 - `fault_proof_objective_cleanup_failed`: a released or final objective's
-  workflow rows could not be deleted (a storage error or a lock held past
+  rows in `watcher-journals.sqlite` could not be deleted (a storage error or a lock held past
   the busy timeout); `supervisor.objectiveCleanupFailures` names each. Every
   admission retries; fix the disk or the other writer and wait.
 - `fault_proof_l1_refused:store_inconsistent`: the follower's stored facts
   contradict one another (two unit histories place one transaction at
   different points). The objective is held; report it with the detail.
-- `fault_proof_continuation_stalled`: an objective's proof session journaled
+- `fault_proof_continuation_stalled`: an objective's proof session made
   no progress (no confirmation and no new action) for 30 min, or for 1,800
   polls if the clock stands still. A transaction the submit endpoint accepts
   but that never lands, resubmitted each validity window, is the usual cause.
@@ -866,41 +861,23 @@ follower's reasons `[review]`.
   provider. On the testing profiles (15 min maturity) the bound is longer
   than maturity, so there it is an alarm only.
 - `fault_proof_objective_quarantined`: one objective's run stalled outside
-  preflight, or its funding or run met an integrity failure of its own (for
-  example a reconcile that refused its durable transaction, or a funding
-  reservation and workflow journal that name different attempts), or its family
+  preflight, or its funding or run met an integrity failure of its own, or its family
   re-classified the admitted fault (`no_fault_detected`, `unprovable_gap`) or
   returned an outcome of no known kind; the detail is
   `<category>/<headerHash>: <cause>`. Only that objective is held: the
   `proof_submission_failure` alert is raised, the process keeps running and
   every other objective keeps proving. The objective is run again on a
-  bounded backoff (1 s doubling to 30 s); each run reconciles before it acts,
-  so it re-checks the cause rather than resending anything, and the hold and
+  bounded backoff (1 s doubling to 30 s); each run reads the chain before it
+  acts, so it re-checks the cause rather than resending anything, and the hold and
   alert clear at the first run that meets something else. Report it with the
   detail if it persists.
 - `prover_funding_unavailable`: an objective paused because the prover
   wallet cannot fund its next transaction, a script-decode record
   transaction included (too little plain ada for the fee, collateral or
-  change; a coin holding a token is never spent), or its funding
-  reservation could not be made; the detail is
+  change; a coin holding a token is never spent); the detail is
   `<category>/<headerHash>: <reason>`. The objective resumes on each
   observation and is never failed for it; the hold clears once a later run
   meets something else. Top up the prover wallet with plain ada.
-- `prover_funding_orphaned_reservation`: a funding reservation holds signed
-  transactions that no workflow will drive again and that are not yet
-  retired past release finality; the detail names the reservation. The
-  `proof_submission_failure` alert stays raised meanwhile. The watcher reads
-  each transaction from its own signed bytes on a bounded backoff and
-  releases the reservation once each has expired, been invalidated or
-  landed, past release finality. A transaction that also names a coin
-  outside the follower's history, such as a collateral from before its
-  origin, is retired by a recorded spend of another of its inputs, by a
-  different transaction or by its own landing that failed phase 2, once past
-  the recovery depth. A transaction without expiry that left the mempool
-  unlanded keeps the hold until another transaction spends one of its
-  inputs. When to report: if the hold outlasts the latest expiry of its
-  transactions plus the recovery depth, or at once for a transaction
-  without expiry.
 - `l1_follower_loop_failed`: the follow loop threw. The loop retries every
   transient chain, node and store failure itself, so a throw is a defect no
   retry is known to repair: the loop is not restarted, and the reason stands
@@ -932,13 +909,14 @@ follower's reasons `[review]`.
   `/v1/status`); a DA fetch failure counts only for 180 s unless repeated.
   The DA bond pool and rollback alerts never hold readiness.
 - `journal_integrity`, `journal_unavailable`, `journal_busy`,
-  `journal_capacity`, `journal_decision_missing`: the watcher's fault-proof
-  journals refused a record, could not be opened, met a lock, reached the
-  objective cap, or name a decision they do not hold. The watcher stays up.
+  `journal_capacity`: the watcher's fault-proof journals refused a record,
+  could not be opened, met a lock, or reached the objective cap. The watcher
+  stays up.
   Read the journal paragraphs of `demo/midgard-watcher/README.md` (Runtime
   and commands) before moving journals aside or restarting.
-- `fault_proof_start_deadline_passed`: an objective's header matured before
-  it signed any attempt, so no removal can land; the detail is
+- `fault_proof_start_deadline_passed`: an objective's header matured with
+  no removal of ours landed and nothing of ours in flight, so no removal can
+  land; the detail is
   `<category>/<headerHash>`. Held, never run again, the process up; clears
   once its header leaves the finalized queue. Report it. An objective past
   its latest safe start but before maturity still runs, late
@@ -984,7 +962,7 @@ follower's reasons `[review]`.
   serving.
 - `validation-trace-claim-build-held`: a validation-trace objective could not
   build its claim because the claim's re-execution or pre-state read ended
-  without a result; nothing was journaled. It is rebuilt on each
+  without a result; nothing was sent. It is rebuilt on each
   observation and clears at the first run that meets something else. Check
   the watcher's memory if it lasts. Once half the case open window
   (`block_time + M/2`) or less is left, or the block cannot be read, it is
@@ -994,7 +972,7 @@ follower's reasons `[review]`.
   wallet coins, and the watcher started less than one wallet-only validity
   window (3 min) ago, on its clock or on the last block its follower
   applied. A copy built before the restart may still land within that
-  window, so nothing is sent or journaled yet; the detail is
+  window, so nothing is sent yet; the detail is
   `<category>/<headerHash>: <reason>`. Not an alarm: the objective runs
   again on each follower change and the hold clears once the window has
   passed on both. If it lasts much longer, the follower is behind; check
@@ -1005,7 +983,7 @@ follower's reasons `[review]`.
   its run reported, or its run reported no usable deadline. By then this
   side was due to move. Logged at error level; it clears at the first run
   that reports something else. Check the L1 provider and the objective's
-  journal; report it with the detail.
+  thread on L1; report it with the detail.
 - `validation-trace-one-step-required`: a thread of ours reached a one-step
   resolution this release does not yet drive. Its clock runs, and the
   thread is lost at its deadline unless an operator resolves it. An alarm,
@@ -1051,6 +1029,14 @@ Degradations (`l1Degradations`, status and metrics only):
 `l1_tx_inputs_unreadable` and `l1_event_refusals_unreadable` name a failed
 read of the tx-inputs assessment or of the refusals table, with count 1 and
 the error as detail; they clear on the next good read.
+`fault_proof_own_thread_unreclaimed` counts our computation threads whose
+header left the queue at least the reclaim depth ago and whose last two
+header-free cancels in a row could not be built, funded or sent; the detail
+names each thread's out-ref, lovelace and last failure. It clears once the
+thread is spent or no longer due. `fault_proof_own_thread_uncancellable`
+counts threads of ours standing where the chain offers no cancel (a
+validation-trace thread past the dispute opener), never attempted. Neither
+is alerted on.
 
 ## Logs
 

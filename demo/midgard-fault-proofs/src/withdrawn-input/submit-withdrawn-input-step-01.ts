@@ -45,7 +45,7 @@ import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
@@ -69,7 +69,7 @@ export type WithdrawnInputStep01Build = {
 };
 
 export type SubmitWithdrawnInputStep01Result =
-  UnjournaledSubmission<WithdrawnInputStep01Build>;
+  OutsideWorkflowSubmission<WithdrawnInputStep01Build>;
 
 export const buildWithdrawnInputStep01 = async ({
   lucid,

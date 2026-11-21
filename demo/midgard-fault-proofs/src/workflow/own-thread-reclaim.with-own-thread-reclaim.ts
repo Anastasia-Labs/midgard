@@ -1,7 +1,6 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import { WorkflowActionChangedError } from "./action-changed.js";
-import { isWorkflowFundingShortfall } from "./funding-reservation-permit.workflow-funding-shortfall.js";
 import { isFraudProofL1WaitError } from "./l1-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -18,7 +17,6 @@ import {
   FraudProofThreadReclaimUnfundedError,
   isThreadReclaimInput,
   threadReclaimAction,
-  threadReclaimIntents,
   threadReclaimUnavailableReason,
 } from "./own-thread-reclaim.js";
 import type {
@@ -26,15 +24,8 @@ import type {
   FraudProofStandingThread,
 } from "./raw-l1-family-derivation.own-thread.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
-import {
-  isFraudProofResolvedByAnotherRecordError,
-  journalCreatedRecord,
-} from "./resolved-by-another-record.js";
-import {
-  reconcileSignedWorkflowTransaction,
-  type SignedTransactionRecoveryObservation,
-  type SignedWorkflowTransaction,
-} from "./signed-transaction-reconciliation.js";
+import { isFraudProofResolvedByAnotherRecordError } from "./resolved-by-another-record.js";
+import { isWorkflowFundingShortfall } from "./workflow-funding-shortfall.js";
 
 /**
  * The family's cancel of one of our threads: the move that burns the thread
@@ -59,16 +50,6 @@ export type OwnThreadReclaimPort = Readonly<{
   submit(input: {
     readonly preflight: FraudProofWorkflowPreflight;
   }): Promise<string>;
-  observeSignedTransaction?(
-    input: SignedWorkflowTransaction,
-  ): Promise<SignedTransactionRecoveryObservation>;
-  rebroadcastSignedTransaction?(
-    input: SignedWorkflowTransaction & {
-      readonly authorizeResubmission: (
-        input: SignedWorkflowTransaction,
-      ) => Promise<void>;
-    },
-  ): Promise<string>;
 }>;
 
 const headerOf = (
@@ -81,17 +62,20 @@ const headerOf = (
 };
 
 /**
- * Puts the reclaim of our own threads in front of a family's resolution by
- * another record. The header is gone through a removal against a record
- * this run did not create, whether another prover's (the stage derivation's
- * typed error) or a sibling run's on our key (a completed terminal whose
- * record this journal never confirmed). While a thread of ours stands on it,
- * the run waits for the removal to pass rollback recovery, and its next
- * action is then that thread's cancel; while a confirmed cancel is still
- * within rollback recovery, the run waits. Only then does the resolution
- * reach the run. Every other action is the family's own. The adapter also
- * reports our threads, so the orchestrator can refuse any resolution while
- * one still stands.
+ * Puts the reclaim of our own threads in front of a family's resolution and
+ * completion. The header is gone through a removal: against another prover's
+ * record (the stage derivation's typed error), or against a completed record,
+ * whoever on our key made it. While a thread of ours stands on it, the run
+ * waits for the removal to pass rollback recovery, and its next action is
+ * then that thread's cancel; while a cancel this process sent is still within
+ * rollback recovery, the run waits. Only then does the resolution or the
+ * completion reach the run. Every other action is the family's own. The
+ * adapter also reports our threads, so the orchestrator can refuse any
+ * resolution while one still stands.
+ *
+ * A cancel sent before a restart and then rolled back leaves its thread
+ * standing after the run has ended; the watcher's own-thread sweep reclaims
+ * it from the chain.
  */
 export const withOwnThreadReclaim = <
   Category extends FraudProofCatalogueCategoryName,
@@ -119,6 +103,8 @@ export const withOwnThreadReclaim = <
     throw new Error(`${category} thread reclaim changed adapter identity`);
   }
   const finalDepth = releaseFinality.policy.automaticRecoveryMaxDepth + 2;
+  // The cancels this process sent, by transaction hash.
+  const sentReclaims = new Set<string>();
   // One read of our threads per observation pass: the check before a
   // resolution and the orchestrator's guard after it read the same view. A
   // pass ends when the adapter is next asked to observe or act, or once the
@@ -183,10 +169,9 @@ export const withOwnThreadReclaim = <
         action: threadReclaimAction(threads.standing),
       };
     }
-    const ours = threadReclaimIntents(context.entries);
     const shallow = threads.spends.find(
       ({ txHash, confirmationDepth }) =>
-        ours.has(txHash) && confirmationDepth < finalDepth,
+        sentReclaims.has(txHash) && confirmationDepth < finalDepth,
     );
     if (shallow !== undefined)
       return {
@@ -194,37 +179,6 @@ export const withOwnThreadReclaim = <
         reason: `${category} reclaim ${shallow.txHash} of our thread ${shallow.threadOutRef} awaits release finality`,
       };
     return resolved();
-  };
-  /** A transaction of ours has landed when it created our standing thread
-   * or spent one of ours; otherwise its signed bytes, when recorded, say. */
-  const reconcileByThreads = async (
-    context: Parameters<FraudProofFamilyWorkflowAdapter["reconcile"]>[0],
-    label: string,
-  ): ReturnType<FraudProofFamilyWorkflowAdapter["reconcile"]> => {
-    const { txHash } = context;
-    if (txHash === undefined)
-      return {
-        kind: "conflict",
-        reason: `${category} ${label} intent omitted its transaction hash`,
-      };
-    const threads = await reclaim.observe({
-      headerHash: headerOf(category, context),
-    });
-    if (
-      threads.standing?.threadOutRef.startsWith(`${txHash}#`) === true ||
-      threads.spends.some((spend) => spend.txHash === txHash)
-    )
-      return { kind: "confirmed", txHash };
-    return context.signedTransactionCborHex === undefined ||
-      reclaim.observeSignedTransaction === undefined
-      ? { kind: "pending", txHash }
-      : await reconcileSignedWorkflowTransaction({
-          transactionHash: txHash,
-          signedTransactionCborHex: context.signedTransactionCborHex,
-          observe: reclaim.observeSignedTransaction,
-          rebroadcast: reclaim.rebroadcastSignedTransaction,
-          authorizeResubmission: context.authorizeResubmission,
-        });
   };
   const isReclaim = (action: {
     readonly input: Readonly<Record<string, unknown>>;
@@ -263,13 +217,9 @@ export const withOwnThreadReclaim = <
           throw cause;
         });
       }
-      if (
-        observed.kind === "completed" &&
-        !journalCreatedRecord(
-          context.entries,
-          observed.terminal.proofToken.createdByTxHash,
-        )
-      )
+      // A thread of ours left standing beside a completed record, whoever
+      // on our key made it, comes back to our wallet first.
+      if (observed.kind === "completed")
         return await beforeResolution(
           context,
           observed.terminal.observedAt,
@@ -322,23 +272,11 @@ export const withOwnThreadReclaim = <
     submit: async (context) => {
       endPass(context);
       if (!isReclaim(context.action)) return await base.submit(context);
+      sentReclaims.add(context.preflight.txHash);
       return {
         kind: "submitted",
         txHash: await reclaim.submit({ preflight: context.preflight }),
       };
-    },
-    reconcile: async (context) => {
-      endPass(context);
-      if (!isReclaim(context.action))
-        try {
-          return await base.reconcile(context);
-        } catch (cause) {
-          // A move of ours still in flight when the header was removed:
-          // settled from our threads, so the reclaim can follow it.
-          if (!isFraudProofResolvedByAnotherRecordError(cause)) throw cause;
-          return await reconcileByThreads(context, "move");
-        }
-      return await reconcileByThreads(context, "thread reclaim");
     },
   };
   return Object.freeze(adapter);

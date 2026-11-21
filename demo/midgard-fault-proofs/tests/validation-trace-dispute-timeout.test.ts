@@ -24,10 +24,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import {
-  confirmedValidationTraceStages,
-  parseValidationTraceAction,
-} from "../src/validation-trace-dispute/actions.js";
+import { parseValidationTraceAction } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import type { ValidationTraceClaimMaterial } from "../src/validation-trace-dispute/claim-material.js";
 import {
@@ -191,13 +188,8 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
         },
       }),
     });
-    const { result } = await runUntil(
-      runner,
-      scene.failing,
-      VALIDATION_TRACE_CASE_OPEN,
-    );
-    if (!("entries" in result)) throw new Error("no workflow journal");
-    caseOutRef = confirmedValidationTraceStages(result.entries).find(
+    await runUntil(runner, scene.failing, VALIDATION_TRACE_CASE_OPEN);
+    caseOutRef = (await runner.confirmed()).find(
       ({ action }) => action.stage === "verify_source",
     )!.outputs[0]!.outRef;
     prepared.length = 0;
@@ -408,10 +400,9 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
       scene.failing,
       VALIDATION_TRACE_THREAD_LOST,
     );
-    if (!("entries" in result) || !("reason" in result))
-      throw new Error("no workflow journal");
+    if (!("reason" in result)) throw new Error("no terminal reason");
     expect(result.reason, history.join("\n")).toContain(revealedB.txHash);
-    const stages = confirmedValidationTraceStages(result.entries);
+    const stages = await runner.confirmed();
     const moves = stages.filter(({ action }) =>
       ["reveal", "timeout", "close_thread"].includes(action.stage),
     );

@@ -53,13 +53,13 @@ type NetworkIdWorkflowArtifact = {
  * authenticated bytes it is derived from: the counted-root membership proof
  * (header + leaf) as canonical `Data` CBOR, and the field-2 preimage. The
  * verdict subject, the transaction's own network id, the output network ids
- * and the item list are all re-derived on admission, never journaled as a
+ * and the item list are all re-derived on admission, never carried as a
  * prover assertion.
  */
 /**
- * Durable §5.2 journal artifact. It is the accepted artifact's sibling, not its
- * successor: the shared `schemaVersion` plus the additive `direction`
- * discriminator keeps every already-journaled accepted artifact admissible.
+ * The §5.2 forced workflow artifact. It is the accepted artifact's sibling,
+ * not its successor: the shared `schemaVersion` plus the additive `direction`
+ * discriminator keeps every accepted artifact admissible.
  */
 export type NetworkIdForcedWorkflowArtifact = {
   readonly schemaVersion: typeof ARTIFACT_VERSION;
@@ -141,8 +141,7 @@ export const actionKind = (action: FraudProofWorkflowAction): ActionKind => {
 };
 
 // Every action carries its kind twice: `kind` drives this adapter's own
-// dispatch and `actionKind` is the stable action label the production funding
-// reservation permit reads (it accepts `actionKind` or `stage`, never `kind`).
+// dispatch and `actionKind` is the stable action label of its identity.
 export const action = (
   kind: ActionKind,
   input: Readonly<Record<string, string>>,
@@ -151,24 +150,6 @@ export const action = (
   actionId,
   input: { kind, actionKind: kind, ...input },
 });
-
-export const contentActionId = ({
-  base,
-  entries,
-}: {
-  readonly base: string;
-  readonly entries: WorkflowContext["entries"];
-}): string => {
-  const confirmations = entries.filter(
-    (entry) =>
-      entry.event.kind === "confirmed" &&
-      (entry.event.actionId === base ||
-        entry.event.actionId.startsWith(`${base}:heal:`)),
-  ).length;
-  return confirmations === 0
-    ? base
-    : `${base}:heal:${confirmations.toString()}`;
-};
 
 export const artifactFromPrepared = (
   prepared: PreparedNetworkIdProof,

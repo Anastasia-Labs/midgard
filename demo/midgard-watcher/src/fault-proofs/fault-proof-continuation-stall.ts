@@ -7,9 +7,9 @@ import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import { holdWatcherFaultProofForResubmission } from "./fault-proof-resubmission-hold.js";
 
 /**
- * An objective whose runner session journaled no progress within its
+ * An objective whose runner session made no progress within its
  * continuation bound. It resumes on the next observation; the hold is the
- * operator's alarm until a later run journals progress.
+ * operator's alarm until a later run makes progress.
  */
 export const WATCHER_FAULT_PROOF_CONTINUATION_STALLED =
   "fault_proof_continuation_stalled";
@@ -76,8 +76,9 @@ const namedStateOf = (
 };
 
 /** A run handed back pending, to resume on a later observation. It names
- * the restart wait when that holds it (`FAULT_PROOF_RESTART_WAIT`), which
- * keeps it from being admitted again before the wait is over. */
+ * the restart wait when the run was left with only actions that wait holds
+ * (`FAULT_PROOF_RESTART_WAIT`), which readiness shows until a run ends
+ * otherwise. */
 export type WatcherFaultProofPendingOutcome = Readonly<{
   kind: "pending";
   resume: "await_observation";
@@ -198,7 +199,7 @@ export const holdWatcherFaultProofPending = (
 };
 
 /**
- * The progress callback of an objective's run: its first journaled progress
+ * The progress callback of an objective's run: its first progress
  * clears a stall hold left by an earlier run, without waiting for this run to
  * end. Any other hold is left to the run's outcome.
  */

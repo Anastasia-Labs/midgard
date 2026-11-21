@@ -1,4 +1,4 @@
-import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import { WorkflowActionChangedError } from "./action-changed.js";
 import {
@@ -8,7 +8,6 @@ import {
   TX_HASH,
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import { isCarriagePrerequisiteAction } from "./field-carriage-prerequisite.requirement-identity.js";
-import type { JournalJsonObject } from "./journal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -16,6 +15,7 @@ import {
   type FraudProofWorkflowAction,
   type FraudProofWorkflowPreflight,
 } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
+import type { ProofMaterialsHolder } from "./proof-materials-view.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
@@ -27,7 +27,17 @@ import {
 const cacheKey = (workflowId: string, actionId: string): string =>
   `${workflowId}\u0000${actionId}`;
 
-/** Adds durable field publication/certification in front of a family adapter. */
+// The workflow, and the objective it serves, that the step's needs belong to.
+const holderOf = (
+  workflowId: string,
+  category: string,
+  headerHash: string,
+): ProofMaterialsHolder => ({
+  workflowId,
+  objective: { category, headerHash },
+});
+
+/** Adds field publication/certification in front of a family adapter. */
 export const withFieldCarriagePrerequisite = <
   Category extends FraudProofCatalogueCategoryName,
 >({
@@ -54,10 +64,7 @@ export const withFieldCarriagePrerequisite = <
     isCarriagePrerequisiteAction(action, rawDatum);
   const prepared = new Map<
     string,
-    Readonly<{
-      transaction: LocallyEvaluatedTransaction;
-      durableRecovery: JournalJsonObject;
-    }>
+    Readonly<{ transaction: LocallyEvaluatedTransaction }>
   >();
   const adapter: FraudProofFamilyWorkflowAdapter = {
     adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
@@ -84,18 +91,28 @@ export const withFieldCarriagePrerequisite = <
     observe: async (context) => {
       const observed = await base.observe(context);
       if (
-        context.reconciliationOnly === true ||
         observed.kind !== "action_required" ||
         context.identity.target.kind !== "state_queue_header"
       ) {
         return observed;
       }
-      const inspection = await prerequisite.inspect({
+      const step = {
         headerHash: context.identity.target.headerHash,
+        holder: holderOf(
+          context.workflowId,
+          category,
+          context.identity.target.headerHash,
+        ),
         baseAction: observed.action,
         artifact: context.artifact,
-        entries: context.entries,
-      });
+      };
+      // A workflow under reconciliation-only authority builds nothing, but
+      // what its step needs stays out of every sweep.
+      if (context.reconciliationOnly === true) {
+        await prerequisite.need(step);
+        return observed;
+      }
+      const inspection = await prerequisite.inspect(step);
       if (inspection.kind === "required") {
         return { kind: "action_required", action: inspection.action };
       }
@@ -110,9 +127,13 @@ export const withFieldCarriagePrerequisite = <
         }
         const inspection = await prerequisite.inspect({
           headerHash: context.identity.target.headerHash,
+          holder: holderOf(
+            context.workflowId,
+            category,
+            context.identity.target.headerHash,
+          ),
           baseAction: context.action,
           artifact: context.artifact,
-          entries: context.entries,
         });
         if (inspection.kind === "required" || inspection.kind === "pending") {
           throw new WorkflowActionChangedError(
@@ -132,9 +153,13 @@ export const withFieldCarriagePrerequisite = <
       }
       const inspection = await prerequisite.inspect({
         headerHash: context.identity.target.headerHash,
+        holder: holderOf(
+          context.workflowId,
+          category,
+          context.identity.target.headerHash,
+        ),
         baseAction: observed.action,
         artifact: context.artifact,
-        entries: context.entries,
       });
       if (
         inspection.kind !== "required" ||
@@ -152,9 +177,13 @@ export const withFieldCarriagePrerequisite = <
       }
       const captured = await prerequisite.capture({
         headerHash: context.identity.target.headerHash,
+        holder: holderOf(
+          context.workflowId,
+          category,
+          context.identity.target.headerHash,
+        ),
         action: context.action,
         artifact: context.artifact,
-        entries: context.entries,
       });
       if (
         !TX_HASH.test(captured.transaction.txHash) ||
@@ -181,7 +210,6 @@ export const withFieldCarriagePrerequisite = <
             evaluator: LOCAL_UPLC_EVALUATOR,
           },
           referenceScripts: captured.transaction.referenceScripts,
-          durableRecovery: captured.durableRecovery,
           // The one wallet-only transaction built without an upper validity
           // bound (`wallet-only-validity.ts`).
           ...(captured.kind === "publication"
@@ -199,8 +227,7 @@ export const withFieldCarriagePrerequisite = <
       const captured = prepared.get(key);
       if (
         captured === undefined ||
-        captured.transaction.txHash !== context.preflight.txHash ||
-        !sameJson(captured.durableRecovery, context.preflight.durableRecovery)
+        captured.transaction.txHash !== context.preflight.txHash
       ) {
         throw new Error(
           `${category} field prerequisite has no exact captured body`,
@@ -214,32 +241,6 @@ export const withFieldCarriagePrerequisite = <
       } finally {
         prepared.delete(key);
       }
-    },
-    reconcile: async (context) => {
-      if (!isPrerequisiteAction(context.action)) {
-        return await base.reconcile(context);
-      }
-      if (context.identity.target.kind !== "state_queue_header") {
-        return {
-          kind: "conflict",
-          reason: `${category} field prerequisite changed target`,
-        };
-      }
-      return await prerequisite.reconcile({
-        headerHash: context.identity.target.headerHash,
-        ...(context.signedTransactionCborHex === undefined
-          ? {}
-          : { signedTransactionCborHex: context.signedTransactionCborHex }),
-        ...(context.authorizeResubmission === undefined
-          ? {}
-          : { authorizeResubmission: context.authorizeResubmission }),
-        action: context.action,
-        artifact: context.artifact,
-        ...(context.txHash === undefined ? {} : { txHash: context.txHash }),
-        ...(context.durableRecovery === undefined
-          ? {}
-          : { durableRecovery: context.durableRecovery }),
-      });
     },
   };
   return Object.freeze(adapter);

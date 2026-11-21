@@ -20,11 +20,16 @@ import {
   publicationsOf,
 } from "./own-field-carriage-installed.js";
 import {
+  adoptedAndRejected,
   emulatorWallClock,
   kindOf,
+  ledgerOutputs,
+  ledgerTimeline,
   type LedgerTransaction,
   type LedgerWatch,
   scriptDecodeRoles,
+  strictShape,
+  takenPlanted,
   watchLedger,
 } from "./own-outputs-installed.js";
 import {
@@ -101,11 +106,12 @@ const costOf = (watch: LedgerWatch, harness: Harness) => {
 };
 
 /**
- * Every input and reference input of the application's own transactions is
- * not another party's (`moved` are coins its own wallet moved), the
- * application minted `certificates` certificates, the last of them reads one
- * of the application's own publications for every planned one, and that
- * certificate is read.
+ * The application's transactions took no output another party placed except
+ * an exact copy of carriage (`moved` are coins its own wallet moved): an
+ * inline datum, no datum hash, no reference script, and no token but a field
+ * certificate's own. The application minted `certificates` certificates, the
+ * last of them reads a copy, its own or an adopted one, of every publication
+ * the application planned, and a copy of that certificate is read.
  */
 export const expectOwnFieldCarriage = (
   watch: LedgerWatch,
@@ -113,33 +119,47 @@ export const expectOwnFieldCarriage = (
   moved: ReadonlySet<string> = new Set(),
   certificates = 1,
 ) => {
-  const others = watch.plantedOutRefs();
-  const taken = watch
-    .ours()
-    .flatMap(({ inputs, referenceInputs }) => [...inputs, ...referenceInputs])
-    .filter((outRef) => others.has(outRef) && !moved.has(outRef));
-  expect(taken).toEqual([]);
-  const carriage = fieldCarriageOf(watch, sitesOf(harness));
+  const sites = sitesOf(harness);
+  const certificateToken = (unit: string, quantity: string) =>
+    unit.startsWith(sites.certificatePolicyId) && quantity === "1";
+  const { rejected } = adoptedAndRejected(takenPlanted(watch, moved), (shape) =>
+    strictShape(shape, certificateToken),
+  );
+  expect(
+    rejected,
+    JSON.stringify({ rejected, timeline: ledgerTimeline(watch) }),
+  ).toEqual([]);
+  const carriage = fieldCarriageOf(watch, sites);
   expect(carriage.certificates).toHaveLength(certificates);
   const { transaction: certify, output: certificate } =
     carriage.certificates.at(-1) as {
       transaction: LedgerTransaction;
       output: CarriageOutput;
     };
-  const ownPublications = new Map(
-    carriage.publications.flatMap(({ outputs }) =>
-      outputs.map(({ outRef, datum }) => [outRef, datum] as const),
+  const outputs = ledgerOutputs(watch);
+  const planned = new Set(
+    carriage.publications.flatMap(({ outputs: paid }) =>
+      paid.map(({ datum }) => datum),
     ),
   );
   expect(
     new Set(
       certify.referenceInputs.flatMap((outRef) => {
-        const datum = ownPublications.get(outRef);
-        return datum === undefined ? [] : [datum];
+        const datum = outputs.get(outRef)?.datum;
+        return datum != null && planned.has(datum) ? [datum] : [];
       }),
     ),
-  ).toEqual(new Set(ownPublications.values()));
-  expect(carriage.readersOf(certificate.outRef).length).toBeGreaterThan(0);
+  ).toEqual(planned);
+  const certificateCopies = [...outputs]
+    .filter(
+      ([, output]) =>
+        output.address === certificate.address &&
+        output.datum === certificate.datum,
+    )
+    .map(([outRef]) => outRef);
+  expect(
+    certificateCopies.some((outRef) => carriage.readersOf(outRef).length > 0),
+  ).toBe(true);
   return carriage;
 };
 

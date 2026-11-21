@@ -7,7 +7,6 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { isTransientTransportError } from "./transport-failure.js";
 import { composeWatcherEvidenceExec } from "./watcher-evidence-reader.js";
 import {
-  appendWorkflow,
   directories,
   recordedWatcher,
 } from "./watcher-evidence-reader.test-support.js";
@@ -24,15 +23,19 @@ afterEach(() => {
 describe("a watcher evidence read that fails", () => {
   it("is a read that got no answer when the journal it reads is busy", async () => {
     const watcher = await recordedWatcher();
-    await appendWorkflow(watcher.storePath, "doubleSpend", "12".repeat(28), 1);
-    // The watcher holds its store locked while it writes.
-    const writer = new DatabaseSync(watcher.storePath);
+    // The watcher holds its decision journal locked while it writes.
+    const writer = new DatabaseSync(
+      join(watcher.journalDirectory, "watcher-journals.sqlite"),
+    );
+    writer.exec(
+      "CREATE TABLE watcher_fault_decisions (revision INTEGER, row_key TEXT, body TEXT)",
+    );
     try {
       writer.exec("PRAGMA locking_mode=EXCLUSIVE");
       writer.exec("BEGIN EXCLUSIVE");
       const failure = await watcher
         .reader()
-        .readWorkflowRows("doubleSpend")
+        .readDecisions()
         .catch((error: unknown) => error);
       expect(failure).toBeInstanceOf(Error);
       expect((failure as Error).message).toMatch(/database is locked/u);
@@ -45,10 +48,13 @@ describe("a watcher evidence read that fails", () => {
 
   it("is a named failure, never one to read through, when the reader answers what went wrong", async () => {
     const watcher = await recordedWatcher();
-    await writeFile(watcher.storePath, "not a database");
+    await writeFile(
+      join(watcher.journalDirectory, "watcher-journals.sqlite"),
+      "not a database",
+    );
     const failure = await watcher
       .reader()
-      .readWorkflowRows("doubleSpend")
+      .readDecisions()
       .catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toMatch(/file is not a database/u);

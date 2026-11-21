@@ -9,16 +9,15 @@ import type {
 } from "./remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import {
   type LocallyEvaluatedTransaction,
-  submitUnjournaled,
+  submitOutsideWorkflow,
 } from "./workflow/transaction-boundary.js";
 
 /**
  * Removes a fraud-proved block from the state queue by submitting each
  * removal directly: every successor removal in order, then the target
- * removal. It writes no workflow journal entry. Its callers are the
- * diagnostic CLI, tests, and the chain-driven proven-correction removal,
- * which needs no journal because the correction lock and fraud-proof record
- * on L1 say what is left to remove, so anyone can resume it.
+ * removal. Its callers are the diagnostic CLI, tests, and the chain-driven
+ * proven-correction removal: the correction lock and fraud-proof record on
+ * L1 say what is left to remove, so anyone can resume it.
  *
  * A non-tail removal requires `awaitConfirmation`, refused before any lease
  * or build, because each successor removal must be confirmed and the
@@ -74,7 +73,7 @@ export const submitRemoveFraudulentBlock = async ({
       await beforeSubmit?.(transaction);
       // The slash must reach the network exactly as it was evaluated.
       readFraudSlashFundingAuthority(transaction.signed);
-      const txHash = await submitUnjournaled(input.lucid, transaction, {
+      const txHash = await submitOutsideWorkflow(input.lucid, transaction, {
         label: "remove-fraudulent-block",
         awaitConfirmation,
       });

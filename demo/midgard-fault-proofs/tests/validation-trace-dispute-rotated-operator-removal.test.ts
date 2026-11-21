@@ -21,11 +21,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
-import { CURSOR_FAMILY_ACTION } from "../src/workflow/cursor-family-state.js";
-import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
@@ -72,8 +69,6 @@ let queue: string[];
 let secondNodeBefore: UTxO;
 let retiredBefore: UTxO[];
 let schedulerBefore: UTxO;
-/** Every run's journal, the latest last. */
-let entries: readonly FraudProofWorkflowJournalEntry[] = [];
 const history: string[] = [];
 
 const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
@@ -121,21 +116,14 @@ const retiredDirectory = async () =>
     scene.h.contracts.retiredOperators.spendingScriptAddress,
   );
 
-/** The shared remove stage's journaled transactions, in order. */
+/** The shared remove stage's transactions the process sent, in order. */
 const removalTransactions = () =>
-  entries.flatMap(({ event }) =>
-    event.kind === "submission_intent" &&
-    event.actionInput.schemaVersion === CURSOR_FAMILY_ACTION
-      ? [
-          CML.Transaction.from_cbor_hex(
-            recorder.signedCbors.get(event.txHash) ??
-              (() => {
-                throw new Error(`no recorded removal ${event.txHash}`);
-              })(),
-          ),
-        ]
-      : [],
-  );
+  runner.process
+    .sent()
+    .filter(({ actionId }) => actionId.startsWith("remove:"))
+    .map(({ signedTransactionCborHex }) =>
+      CML.Transaction.from_cbor_hex(signedTransactionCborHex),
+    );
 
 const inputsOf = (tx: CML.Transaction) => {
   const inputs = tx.body().inputs();
@@ -182,7 +170,6 @@ const runWhile = async (
   try {
     for (let run = 0; run < limit; run += 1) {
       const result = await runner.runOnce(scene.failing);
-      if ("entries" in result) entries = result.entries;
       history.push(
         "reason" in result ? `${result.kind}: ${result.reason}` : result.kind,
       );
@@ -206,13 +193,8 @@ describe("validation-trace dispute runner: removal of a block whose operator ret
       removal: removal.removal,
       terminalVerifier: removal.terminalVerifier(headerHash),
     });
-    const { result } = await runUntil(
-      runner,
-      scene.failing,
-      VALIDATION_TRACE_CASE_OPEN,
-    );
-    if (!("entries" in result)) throw new Error("no workflow journal");
-    const opened = confirmedValidationTraceStages(result.entries).find(
+    await runUntil(runner, scene.failing, VALIDATION_TRACE_CASE_OPEN);
+    const opened = (await runner.confirmed()).find(
       ({ action }) => action.stage === "verify_source",
     )!.outputs[0]!.outRef;
 

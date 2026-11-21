@@ -62,9 +62,9 @@ import {
   resolveRosterParts,
 } from "./family-application-registry.resolve-roster-parts.js";
 import { type FamilyCategory } from "./family-definition.js";
-import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import type { FraudProofL1Source } from "./l1-source.js";
 import { type WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WorkflowRun } from "./workflow-run.js";
 
 /**
  * Derives the record of a cursor family that binds the admitted decision
@@ -86,7 +86,7 @@ const decisionDigestCursorFamilyApplicationRecord = <
     execute: (input: {
       readonly workflow: Workflow;
       readonly sources: readonly RetainedDaPayloadSource[];
-      readonly journal: FraudProofWorkflowJournalStore;
+      readonly run: WorkflowRun;
       readonly walletOnlySend: WalletOnlySend;
     }) => Promise<unknown>;
   }>,
@@ -120,8 +120,8 @@ const decisionDigestCursorFamilyApplicationRecord = <
       return bound as Config;
     },
     constructWorkflow: family.constructWorkflow,
-    execute: async ({ workflow, sources, journal, walletOnlySend }) =>
-      await family.execute({ workflow, sources, journal, walletOnlySend }),
+    execute: async ({ workflow, sources, run, walletOnlySend }) =>
+      await family.execute({ workflow, sources, run, walletOnlySend }),
     bindsDecisionDigest: true,
   });
 };

@@ -5,50 +5,30 @@ import {
   type FraudProofCatalogueCategoryName,
   Proof,
 } from "@al-ft/midgard-sdk/core";
-import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 
 import {
   type PublishedProofChunk,
-  resolvePublishedProofChunks,
   splitProofIntoChunkDatums,
 } from "../publish-proof-chunks.js";
-import type { FraudProofWorkflowJournalEntry } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
   journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
 } from "./journal.fraud-proof-workflow-terminal.js";
-import type {
-  FraudProofWorkflowAction,
-  FraudProofWorkflowReconcileResult,
-} from "./orchestrator.js";
-import { type SignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
-import { type LocallyEvaluatedTransaction } from "./transaction-boundary.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import type { LocallyEvaluatedTransaction } from "./transaction-boundary.js";
 
 export const PROOF_CHUNK_PREREQUISITE =
   "midgard-production-proof-chunk-prerequisite-v1" as const;
 
-export const PROOF_CHUNK_PUBLICATION_RECOVERY =
-  "midgard-production-proof-chunk-publication-recovery-v1" as const;
-
-export const PROOF_CARRIAGE_RECOVERY =
-  "midgard-production-proof-carriage-recovery-v1" as const;
-
 export const TX_HASH = /^[0-9a-f]{64}$/u;
-
-export const OUT_REF = /^([0-9a-f]{64})#(0|[1-9][0-9]*)$/u;
 
 export type ProofChunkRequirement = Readonly<{
   proofCbor: string;
   proofCborSha256: string;
   chunkDatums: readonly string[];
   chunkDatumSha256s: readonly string[];
-}>;
-
-export type ProofChunkPublicationRecovery = Readonly<{
-  schemaVersion: typeof PROOF_CHUNK_PUBLICATION_RECOVERY;
-  proofCborSha256: string;
-  outputs: readonly Readonly<{ outRef: string; datumCbor: string }>[];
 }>;
 
 export type DirectCapacityFailure = Readonly<{
@@ -58,29 +38,37 @@ export type DirectCapacityFailure = Readonly<{
   errorSha256: string;
 }>;
 
-export type ProofCarriageRecovery = Readonly<{
-  schemaVersion: typeof PROOF_CARRIAGE_RECOVERY;
-  route: "direct" | "publication";
-  baseAction: FraudProofWorkflowAction;
-  proofCborSha256: string;
-  directCapacityFailure?: DirectCapacityFailure;
-  baseDurableRecovery?: JournalJsonObject;
-  publicationDurableRecovery?: JournalJsonObject;
-}>;
-
 export interface ProofChunkPrerequisitePort<
   Category extends FraudProofCatalogueCategoryName,
 > {
   readonly portVersion: typeof PROOF_CHUNK_PREREQUISITE;
   readonly category: Category;
   classifyDirectCapacityFailure(cause: unknown): DirectCapacityFailure;
-  inspect(input: {
+  /**
+   * Registers with the process's proof-materials view the chunks
+   * `baseAction` needs, so no sweep takes them while the workflow lives.
+   */
+  need(input: {
     readonly headerHash: string;
+    readonly workflowId: string;
     readonly baseAction: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
-    readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<void>;
+  /**
+   * Registers what `need` registers, then finds the chunks by content:
+   * `satisfied` with them once each is authenticated on the current chain.
+   */
+  inspect(input: {
+    readonly headerHash: string;
+    readonly workflowId: string;
+    readonly baseAction: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
   }): Promise<
-    | { readonly kind: "not_required" | "satisfied" }
+    | { readonly kind: "not_required" }
+    | {
+        readonly kind: "satisfied";
+        readonly chunks: readonly PublishedProofChunk[];
+      }
     | { readonly kind: "pending"; readonly reason: string }
     | { readonly kind: "required"; readonly action: FraudProofWorkflowAction }
   >;
@@ -90,29 +78,17 @@ export interface ProofChunkPrerequisitePort<
     readonly artifact: JournalJsonObject;
   }): Promise<{
     readonly transaction: LocallyEvaluatedTransaction;
-    readonly durableRecovery: JournalJsonObject;
   }>;
-  reconcile(input: {
-    readonly headerHash: string;
-    readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
-    readonly txHash?: string;
-    readonly durableRecovery?: JournalJsonObject;
-    readonly signedTransactionCborHex?: string;
-    readonly authorizeResubmission?: (
-      input: SignedWorkflowTransaction,
-    ) => Promise<void>;
-  }): Promise<FraudProofWorkflowReconcileResult>;
 }
 
 export const sha256 = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
 
-/** Direct, or through a publication among the transactions the workflow's
- * journal confirmed, the only ones whose chunks are ours. */
+/** Direct, or through the published chunks found and authenticated for
+ * this step. */
 type DirectFirstProofCarriageRoute =
   | "direct"
-  | Readonly<{ publication: ReadonlySet<string> }>;
+  | Readonly<{ published: readonly PublishedProofChunk[] }>;
 
 const directFirstProofCarriageRouteByAction = new WeakMap<
   object,
@@ -143,16 +119,15 @@ export const withDirectFirstProofCarriageRoute = async <Result>({
  * Resolves an already-authorized published route without making publication a
  * prerequisite for the direct fit attempt. `undefined` is deliberately the
  * direct route: the outer adapter will only revisit this after an exact
- * release-bound capacity refusal and a journal-confirmed publication.
+ * release-bound capacity refusal and once the chunks are found by content
+ * and authenticated.
  */
 export const resolveDirectFirstProofChunks = async ({
   action,
-  lucid,
   address,
   proofCbor,
 }: {
   readonly action: FraudProofWorkflowAction;
-  readonly lucid: LucidEvolution;
   readonly address: string;
   readonly proofCbor: string;
 }): Promise<readonly PublishedProofChunk[]> => {
@@ -163,18 +138,19 @@ export const resolveDirectFirstProofChunks = async ({
     );
   }
   if (route === "direct") return [];
-  const chunks = await resolvePublishedProofChunks({
-    lucid,
-    address,
-    proofCbor,
-    ownTransactions: route.publication,
-  });
-  if (chunks === undefined) {
+  const datums = splitProofIntoChunkDatums(proofCbor);
+  if (
+    route.published.length !== datums.length ||
+    route.published.some(
+      (chunk, index) =>
+        chunk.datumCbor !== datums[index] || chunk.utxo.address !== address,
+    )
+  ) {
     throw new Error(
-      "journal-authorized proof publication has no exact complete output set",
+      "authenticated proof chunks are not the exact complete set of this proof",
     );
   }
-  return chunks;
+  return route.published;
 };
 
 // The orchestrator hands back the journal-normalized (key-sorted) action, so

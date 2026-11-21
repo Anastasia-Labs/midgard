@@ -8,7 +8,7 @@ import type {
   admitFraudProofRawL1Snapshot,
   FraudProofRawL1FamilyDefinition,
 } from "../../src/workflow/index.js";
-import { rebodied } from "./validation-trace-dispute-funded-move-walk.js";
+import { rebodied } from "./rebodied-transaction-body.js";
 
 export type Snapshot = ReturnType<typeof admitFraudProofRawL1Snapshot>;
 

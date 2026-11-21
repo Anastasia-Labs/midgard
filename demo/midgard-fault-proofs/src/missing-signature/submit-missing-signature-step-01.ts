@@ -70,7 +70,7 @@ import {
 } from "../witness-reference-scripts.js";
 import {
   type LocallyEvaluatedTransaction,
-  type UnjournaledSubmission,
+  type OutsideWorkflowSubmission,
 } from "../workflow/transaction-boundary.js";
 import {
   MISSING_SIGNATURE_CATEGORY_LABEL,
@@ -108,7 +108,7 @@ export type MissingSignatureStep01Build = {
 };
 
 export type SubmitMissingSignatureStep01Result =
-  UnjournaledSubmission<MissingSignatureStep01Build>;
+  OutsideWorkflowSubmission<MissingSignatureStep01Build>;
 
 type MissingSignatureStep01Layout = {
   readonly inputIndex: bigint;

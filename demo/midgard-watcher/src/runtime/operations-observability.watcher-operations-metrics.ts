@@ -33,8 +33,6 @@ export const WATCHER_ALERT_CODES = Object.freeze([
   "da_bond_pool_withdrawing",
   "validation_trace_replay_stuck",
   "prover_funding_unavailable",
-  "prover_collateral_forfeited",
-  "prover_collateral_accounting_failed",
   "unproven_fault_merged",
   "fault_detector_failed",
 ] as const);
@@ -51,10 +49,7 @@ export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
  * retrying, so the alert only tells the operator; the header's outcome
  * clears it. A detected fault whose header merged unproven is history no
  * watcher action changes, and nothing acknowledges it: its durable alert
- * stays listed across restarts but must not hold readiness forever. A proof
- * attempt whose collateral the chain took is spent money no watcher action
- * recovers, and the workflow goes on with a re-signed attempt: the alert
- * tells the operator that local evaluation disagreed with the chain. A
+ * stays listed across restarts but must not hold readiness forever. A
  * fault detector whose result a decision pass withheld left the header to
  * the other families, and a header none of them decides still fails its
  * pass: the alert names the family for the operator.
@@ -66,7 +61,6 @@ export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
     "chain_rollback",
     "validation_trace_replay_stuck",
     "unproven_fault_merged",
-    "prover_collateral_forfeited",
     "fault_detector_failed",
   ]);
 
@@ -233,7 +227,9 @@ export type WatcherOperationsStatus = Readonly<{
    * Named L1 degradations, for example `l1_tx_inputs_unresolvable` for
    * recorded txs no open proof needs whose inputs can never resolve, or
    * `l1_proof_history_pruned` for open proofs whose history pruning removed
-   * before a pin held it. Reported only: they never add a readiness reason.
+   * before a pin held it, or `fault_proof_own_thread_unreclaimed` for
+   * threads of ours due for reclaim whose cancels keep failing. Reported
+   * only: they never add a readiness reason.
    */
   l1Degradations: readonly WatcherOperationsL1Degradation[];
   retainedDaTransport: WatcherRetainedDaTransportStatus;

@@ -52,8 +52,8 @@ const mintQuantity = (body: CML.TransactionBody, unit: string): bigint => {
 
 /**
  * Authenticates one content publication at an authenticated canonical Kupo/Ogmios point.
- * The expected out-ref is the hash journaled before network submission, so a
- * third party's same-content output cannot confirm an ambiguous local submit,
+ * The expected out-ref names the transaction the caller signed, so a third
+ * party's same-content output cannot confirm an ambiguous local submit,
  * and the snapshot is scoped to that out-ref alone.
  */
 export const createFraudProofAuthenticatedPublicationObserver = ({
@@ -78,7 +78,7 @@ export const createFraudProofAuthenticatedPublicationObserver = ({
         blueprintHash: releaseFinality.blueprintHash,
         finalityPolicyDigest: releaseFinality.policyDigest,
         headerHash: input.headerHash,
-        // Only the journaled output is read, never the rest of its address:
+        // Only the expected output is read, never the rest of its address:
         // what else sits there neither costs the read nor can crowd it out.
         scopes: [
           {
@@ -122,7 +122,7 @@ export const createFraudProofAuthenticatedPublicationObserver = ({
             ))
       ) {
         throw new Error(
-          "authenticated publication output differs from its journaled content identity",
+          "authenticated publication output differs from its expected content identity",
         );
       }
       if (input.expectedUnit !== undefined) {

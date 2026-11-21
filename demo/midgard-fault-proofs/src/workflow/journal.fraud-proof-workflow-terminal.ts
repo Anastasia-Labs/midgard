@@ -9,9 +9,6 @@ import {
 export const FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION =
   "midgard-fraud-proof-workflow-identity-v1" as const;
 
-export const FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION =
-  "midgard-fraud-proof-workflow-journal-entry-v1" as const;
-
 export type FraudProofWorkflowTarget =
   | {
       readonly kind: "state_queue_header";
@@ -48,10 +45,10 @@ export const FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION =
   "midgard-fraud-proof-workflow-terminal-v1" as const;
 
 /**
- * The terminal state a workflow is allowed to persist.  These are chain facts,
- * not an adapter-owned success message: the orchestrator independently asks a
- * production terminal verifier to authenticate them before appending the
- * terminal journal entry.
+ * The terminal state a workflow reports. These are chain facts, not an
+ * adapter-owned success message: the orchestrator independently asks a
+ * production terminal verifier to authenticate them before it reports the
+ * terminal.
  */
 export type FraudProofWorkflowTerminal = {
   readonly schemaVersion: typeof FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION;
@@ -238,5 +235,3 @@ export const computeFraudProofWorkflowId = (
     )
     .digest("hex");
 };
-
-export { isFinalWorkflowCompletion } from "./completion-finality.js";

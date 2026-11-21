@@ -121,8 +121,8 @@ export type FamilyDefinition<
   >[];
   /**
    * The script-decoding item whose Plutus script must be recorded before an
-   * action, or null for none. The record runs first, as journaled actions of
-   * the workflow; it needs `SCRIPT_DECODE_REFERENCE_SCRIPTS` among the
+   * action, or null for none. The record runs first, as actions of the
+   * workflow; it needs `SCRIPT_DECODE_REFERENCE_SCRIPTS` among the
    * auxiliary reference scripts.
    */
   scriptDecodeRecord?: (

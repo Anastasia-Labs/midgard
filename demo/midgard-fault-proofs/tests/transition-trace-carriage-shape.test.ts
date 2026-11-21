@@ -133,7 +133,7 @@ describe("transition-trace carriage lookup", () => {
         datums: DATUMS,
         ownOutputs: theirs,
       }),
-    ).rejects.toThrow("requires a journaled chunk publication");
+    ).rejects.toThrow("requires a claimed chunk publication");
     const own = await publishing({
       lucid,
       address,
@@ -172,7 +172,7 @@ describe("transition-trace carriage lookup", () => {
         datums: DATUMS,
         ownOutputs,
       }),
-    ).rejects.toThrow("requires a journaled chunk publication");
+    ).rejects.toThrow("requires a claimed chunk publication");
     const again = await publishing({
       lucid,
       address,

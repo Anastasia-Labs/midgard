@@ -1,8 +1,5 @@
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
-import type { JourneyWorkflowStore } from "./correction.js";
 import type { JourneyBlock, JourneyFixture, StagedJourney } from "./fixture.js";
 import type { JourneySuccessorPort } from "./honest-successor.js";
 import type { JourneyWatcherOperations } from "./journey-session.types.js";
@@ -45,10 +42,6 @@ export type JourneyRunWatcher = JourneyWatcherOperations &
  * stack's watcher, Kupo, Ogmios and node.
  */
 export type JourneyRunMode = Readonly<{
-  /** The watcher's workflow rows for `category` before staging. */
-  captureWorkflowBaseline(
-    category: FraudProofCatalogueCategoryName,
-  ): Promise<ReadonlyMap<string, readonly FraudProofWorkflowJournalEntry[]>>;
   /** The family's timing plan, with its staging where its limit holds it. */
   readTiming(
     fixture: JourneyFixture,
@@ -78,7 +71,6 @@ export type JourneyRunMode = Readonly<{
     }>,
   ): Promise<JourneyRunWatcher>;
   readDecisions(): Promise<readonly { decision: HeaderDecision }[]>;
-  watcherStore: JourneyWorkflowStore;
   transactions: JourneyChainTransactions;
   /** The prover wallet the correction's reward must pay. */
   proverAddress: string;

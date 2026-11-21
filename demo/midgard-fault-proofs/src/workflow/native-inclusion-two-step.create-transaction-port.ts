@@ -11,9 +11,9 @@ import {
   buildZeroInputStep01Forced,
 } from "../zero-input/submit-step-01.js";
 import { buildZeroInputStep02V1 } from "../zero-input/submit-step-02.js";
-import {
-  type ManifestBoundLinearFamilyWorkflow,
-  type ManifestBoundLinearFamilyWorkflowConfig,
+import type {
+  ManifestBoundLinearFamilyWorkflow,
+  ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
@@ -26,7 +26,7 @@ import {
   captureRemoval,
   stringField,
 } from "./native-inclusion-two-step.capture-removal.js";
-import { type NativeInclusionTwoStepCategory } from "./native-inclusion-two-step.parse-artifact.js";
+import type { NativeInclusionTwoStepCategory } from "./native-inclusion-two-step.parse-artifact.js";
 import {
   type AssemblyContext,
   type BoundConfig,
@@ -34,7 +34,8 @@ import {
   type WitnessRole,
 } from "./native-inclusion-two-step.prepare-native-inclusion-two-step-artifact.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
-import { journaledStepTransaction } from "./step-transaction.js";
+import { proofMaterialsAccess } from "./proof-materials-view.js";
+import { workflowStepTransaction } from "./step-transaction.js";
 
 export const createTransactionPort = <
   Category extends NativeInclusionTwoStepCategory,
@@ -49,10 +50,14 @@ export const createTransactionPort = <
       evidence,
       classification,
     }),
-  capture: async ({ action, artifact, entries }) => {
+  capture: async ({ action, artifact, holder }) => {
     const ownOutputs = workflowFieldCarriageOwnOutputs({
       category: config.category,
-      entries,
+      materials: proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
+      }),
     });
     const admitted = admitNativeInclusionTwoStepArtifact(artifact);
     if (
@@ -65,7 +70,7 @@ export const createTransactionPort = <
     if (input.stage === "init") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await buildInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -90,14 +95,13 @@ export const createTransactionPort = <
         admitted.artifact.sourceKind === "accepted"
           ? await resolveDirectFirstProofChunks({
               action,
-              lucid: config.lucid,
               address: config.signer.proofMaterialsAddress,
               proofCbor: admitted.artifact.txMembershipProofCbor,
             })
           : undefined;
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await (async () => {
               const common = {
                 lucid: config.lucid,
@@ -205,7 +209,7 @@ export const createTransactionPort = <
     if (input.stage === "step_02") {
       return Object.freeze({
         transaction: (
-          await journaledStepTransaction(
+          await workflowStepTransaction(
             await (async () => {
               const common = {
                 lucid: config.lucid,

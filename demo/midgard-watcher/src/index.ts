@@ -44,10 +44,6 @@ export {
   type WatcherFaultProofStartupReadiness,
   type WatcherInstalledWorkflowCategory,
 } from "./fault-proofs/fault-proof-application.production-dependencies.js";
-export {
-  mintWatcherProverFundingReservationPermit,
-  type WatcherProverFundingUtxoProvider,
-} from "./fault-proofs/fault-proof-execution.js";
 export type { WatcherFaultProofProgressRequest } from "./fault-proofs/fault-proof-progress-authority.types.js";
 export {
   createWatcherFaultProofSupervisor,
@@ -69,66 +65,7 @@ export {
   WATCHER_PREFLIGHT_STALL_RETRY_DELAY_MS,
   type WatcherPreflightStalledResult,
 } from "./fault-proofs/preflight-stall-retry.js";
-export {
-  assertWatcherProtocolParameterRuntimeAuthority,
-  createWatcherProtocolParameterRuntimeAuthority,
-  WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY,
-  type WatcherProtocolParameterRuntimeAuthority,
-} from "./funding/prover-funding.js";
-export { createWatcherProverFundingAuthority } from "./funding/prover-funding-authority.create-watcher-prover-funding-authority.js";
-export {
-  createWatcherProverFundingAuthorityFactory,
-  watcherValidationDisputeFundingTerms,
-} from "./funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.js";
-export {
-  assertWatcherProverFundingAuthorityFactory,
-  WATCHER_PROVER_FUNDING_AUTHORITY,
-  type WatcherProverFundingAuthority,
-  type WatcherProverFundingAuthorityFactory,
-} from "./funding/prover-funding-authority.watcher-prover-funding-authority-factory.js";
-export {
-  aggregateWatcherProverFundingSweep,
-  assertWatcherProverFundingSweep,
-  assertWatcherRuntimeProverFundingCalculation,
-  calculateWatcherRuntimeProverFunding,
-  WATCHER_RUNTIME_PROVER_FUNDING_CALCULATION,
-  type WatcherProverFundingSweep,
-  type WatcherRuntimeProverFundingCalculation,
-} from "./funding/prover-funding-calculation.aggregate-watcher-prover-funding-sweep.js";
-export {
-  calculateWatcherProverFunding,
-  WATCHER_PROVER_FUNDING_SWEEP,
-} from "./funding/prover-funding-calculation.calculate-watcher-prover-funding.js";
-export {
-  assertWatcherProverFundingCalculation,
-  WATCHER_PROVER_FUNDING_CALCULATION,
-  type WatcherProverFundingActionCalculation,
-  type WatcherProverFundingCalculation,
-} from "./funding/prover-funding-calculation.capital-flow.js";
-export {
-  makeWatcherProverFundingReservationRecord,
-  parseWatcherProverFundingReservationRecord,
-} from "./funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
-export {
-  planWatcherProverFundingReservation,
-  restoreWatcherProverFundingReservationPlan,
-} from "./funding/prover-funding-reservation.plan-watcher-prover-funding-reservation.js";
-export {
-  assertWatcherProverFundingReservationPlan,
-  WATCHER_PROVER_FUNDING_RESERVATION_PLAN,
-  type WatcherProverFundingReservationInput,
-  type WatcherProverFundingReservationPlan,
-  type WatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationStore,
-  type WatcherProverFundingReservationTransition,
-} from "./funding/prover-funding-reservation.watcher-prover-funding-reservation-store.js";
-export {
-  isWatcherProverFundingReservationConflict,
-  WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE,
-  type WatcherProverFundingReservationConflict,
-  type WatcherSqliteProverFundingReservationStoreRuntime,
-} from "./funding/sqlite-prover-funding-reservation-store.derive-signed-transition.js";
-export { openWatcherSqliteProverFundingReservationStore } from "./funding/sqlite-prover-funding-reservation-store.unsafe-open-watcher-sqlite-prover-funding-reservation-store-for-test.js";
+export { watcherValidationDisputeFundingTerms } from "./funding/validation-dispute-funding-terms.js";
 export {
   assertWatcherWorkflowFundingProfileOverlay,
   createWatcherWorkflowFundingProfileBundle,
@@ -316,9 +253,9 @@ export {
   type WatcherDurableStoreErrorCode,
   type WatcherReconstructedState,
 } from "./storage/durable-store.canonical-json.js";
-export {
-  type WatcherPublicDaLibp2pTransportV1,
-  type WatcherPublicDaRequest,
+export type {
+  WatcherPublicDaLibp2pTransportV1,
+  WatcherPublicDaRequest,
 } from "./storage/public-da-client.js";
 export {
   createWatcherPublicDaLibp2pTransport,
@@ -342,11 +279,6 @@ export {
   type WatcherRetainedDaRuntimeOwner,
   type WatcherRetainedDaTransportStatus,
 } from "./storage/retained-da-runtime.retained-da-request-permits.js";
-export {
-  openWatcherSqliteDurableBackend,
-  WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION,
-  type WatcherSqliteDurableBackend,
-} from "./storage/sqlite-durable-backend.js";
 export {
   type LoadedWatcherRuleBundle,
   WATCHER_RULE_BUNDLE_REJECTION_SELECTION,

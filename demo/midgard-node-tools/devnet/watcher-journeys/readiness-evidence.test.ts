@@ -19,9 +19,8 @@ import { JOURNEY_VERIFIED_HEADERS_ARTIFACT } from "./verified-headers.js";
 /**
  * The verifier's healthy-block check, on a synthetic run directory holding
  * the artifacts it reads before that check. Stubbed: the finalized-manifest
- * identity check, header hashing (a fake header carries its own hash), the
- * workflow journal validator (it returns the saved entries) and the
- * fault-decision journal audit (it returns one fault decision). An empty
+ * identity check, header hashing (a fake header carries its own hash) and
+ * the fault-decision journal audit (it returns one fault decision). An empty
  * native capture makes the verifier stop just after the check, so a run that
  * passes it is told apart by the next refusal.
  */
@@ -36,11 +35,6 @@ vi.mock(
 vi.mock("@al-ft/midgard-sdk/core", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   hashBlockHeader: (header: { hash: string }) => Effect.succeed(header.hash),
-}));
-vi.mock("@al-ft/midgard-fault-proofs", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  validateFraudProofWorkflowJournal: ({ entries }: { entries: unknown[] }) =>
-    entries,
 }));
 const native = vi.hoisted(() => ({ chain: undefined as unknown }));
 vi.mock(
@@ -87,7 +81,7 @@ const FAULT = {
   decisionDigest: DECISION_DIGEST,
   payloadEnvelopeSha256: sha256(CURRENT.payloadEnvelopeCbor),
 };
-const TERMINAL = { completion: "synthetic" };
+const TERMINAL = { category: CATEGORY, headerHash: CURRENT.headerHash };
 const deployment = {
   manifest: { manifestId: FINGERPRINT },
 } as unknown as JourneyEvidenceDeployment;
@@ -117,18 +111,6 @@ beforeEach(async () => {
   await artifact("staged.json", { predecessor: PREDECESSOR, current: CURRENT });
   await artifact("successor.json", SUCCESSOR);
   await artifact("successor-predecessor.json", ADOPTED_HEAD);
-  await artifact("completed-workflow.json", [
-    {
-      workflowId: "synthetic-workflow",
-      identity: {
-        deploymentFingerprint: FINGERPRINT,
-        category: CATEGORY,
-        target: { kind: "state_queue_header", headerHash: CURRENT.headerHash },
-        decisionDigest: DECISION_DIGEST,
-      },
-      event: { kind: "completed", terminal: TERMINAL },
-    },
-  ]);
   await writeFile(join(directory, "native-chain.ndjson"), "");
 });
 afterEach(async () => {
@@ -167,9 +149,9 @@ describe("journey result evidence: healthy blocks", () => {
 });
 
 /**
- * A release-depth stamp anchors `terminal_included`; the verifier re-checks the
- * proof-token, removal and successor depths in the native capture (stubbed
- * here). Passing that check is told apart by the next refusal: the synthetic
+ * A release-depth stamp carries the correction the chain held at that depth;
+ * the verifier re-checks the proof-token, removal and successor depths in the
+ * native capture (stubbed here). Passing that check is told apart by the next refusal: the synthetic
  * capture holds no terminal confirmation block.
  */
 describe("journey result evidence: release-depth anchor", () => {
@@ -181,9 +163,11 @@ describe("journey result evidence: release-depth anchor", () => {
     "4d",
   ].map((byte) => byte.repeat(32));
   const included = {
+    category: CATEGORY,
+    headerHash: CURRENT.headerHash,
     proofToken: { createdByTxHash: PROOF_TX },
     correction: { removalTxHash: REMOVAL_TX },
-    observedAt: { blockHash: "5e".repeat(32), slot: "1", confirmationDepth: 1 },
+    observedAt: { blockHash: "5e".repeat(32), slot: 1, confirmationDepth: 1 },
   };
   const anchored = {
     manifest: {
@@ -193,17 +177,6 @@ describe("journey result evidence: release-depth anchor", () => {
     },
     initialization: { txHash: INIT_TX },
   } as unknown as JourneyEvidenceDeployment;
-  const journalEntry = (event: unknown) => ({
-    workflowId: "synthetic-workflow",
-    identity: {
-      deploymentFingerprint: FINGERPRINT,
-      category: CATEGORY,
-      target: { kind: "state_queue_header", headerHash: CURRENT.headerHash },
-      decisionDigest: DECISION_DIGEST,
-    },
-    event,
-  });
-  const includedEvent = { kind: "terminal_included", terminal: included };
   /** Native blocks holding each transaction, at the tip's release depth. */
   const capture = (shallow?: string) => {
     const tip = 100n + BigInt(depth) - 1n;
@@ -218,16 +191,9 @@ describe("journey result evidence: release-depth anchor", () => {
       ),
     };
   };
-  const stage = async ({
-    terminalKind,
-    finalized = [],
-  }: {
-    terminalKind?: string;
-    finalized?: unknown[];
-  }) => {
+  const stage = async (terminal: unknown = included) => {
     const artifact = (name: string, value: unknown) =>
       writeJourneyArtifact(join(directory, name), value);
-    const saved = [journalEntry(includedEvent)];
     await artifact("result.json", {
       status: "passed",
       executionPolicy: "authenticated-inclusion",
@@ -240,8 +206,6 @@ describe("journey result evidence: release-depth anchor", () => {
       ...SUCCESSOR,
       commitTxHash: SUCCESSOR_TX,
     });
-    await artifact("completed-workflow.json", saved);
-    await artifact("finalized-workflow.json", [...saved, ...finalized]);
     await artifact("finalized-evidence-stamp.json", {
       category: CATEGORY,
       headerHash: CURRENT.headerHash,
@@ -251,16 +215,15 @@ describe("journey result evidence: release-depth anchor", () => {
       ),
       finalityDepth: depth,
       nativeEvidencePath: join(directory, "native-chain.ndjson"),
-      terminalKind,
-      terminal: included,
+      terminal,
     });
     await retainVerified([PREDECESSOR, ADOPTED_HEAD, SUCCESSOR]);
   };
   const verifyAnchored = () =>
     verifyJourneyResultEvidence(runDirectory, directory, CATEGORY, anchored);
 
-  it("accepts an included terminal whose effects are release-depth deep", async () => {
-    await stage({ terminalKind: "terminal_included" });
+  it("accepts a correction whose effects are release-depth deep", async () => {
+    await stage();
     capture();
     await expect(verifyAnchored()).rejects.toThrow(
       /Terminal confirmation point is not canonical/u,
@@ -268,9 +231,9 @@ describe("journey result evidence: release-depth anchor", () => {
   });
 
   it.each([PROOF_TX, REMOVAL_TX, SUCCESSOR_TX])(
-    "refuses an included anchor with a transaction one block short of release depth (%s)",
+    "refuses a correction with a transaction one block short of release depth (%s)",
     async (shallow) => {
-      await stage({ terminalKind: "terminal_included" });
+      await stage();
       capture(shallow);
       await expect(verifyAnchored()).rejects.toThrow(
         /insufficient finality depth/u,
@@ -278,39 +241,16 @@ describe("journey result evidence: release-depth anchor", () => {
     },
   );
 
-  it.each(["completed", undefined])(
-    "keeps the completed anchor for a stamp of kind %s",
-    async (terminalKind) => {
-      await stage({
-        terminalKind,
-        finalized: [journalEntry({ kind: "completed", terminal: included })],
-      });
-      capture();
-      await expect(verifyAnchored()).rejects.toThrow(
-        /Terminal confirmation point is not canonical/u,
-      );
-    },
-  );
-
-  it("reads a stamp without a terminal kind as a completed anchor", async () => {
-    await stage({});
+  it.each([
+    [
+      "another header",
+      { headerHash: PREDECESSOR.headerHash },
+      /another header/u,
+    ],
+    ["another family", { category: "doubleSpend" }, /another family/u],
+  ])("refuses a stamped correction for %s", async (_name, changed, refusal) => {
+    await stage({ ...included, ...changed });
     capture();
-    await expect(verifyAnchored()).rejects.toThrow(
-      /lacks the stamp's anchored terminal/u,
-    );
-  });
-
-  it("refuses an included anchor over a journal that already completed", async () => {
-    await stage({
-      terminalKind: "terminal_included",
-      finalized: [
-        journalEntry({ kind: "completed", terminal: included }),
-        journalEntry(includedEvent),
-      ],
-    });
-    capture();
-    await expect(verifyAnchored()).rejects.toThrow(
-      /ignored a completed terminal/u,
-    );
+    await expect(verifyAnchored()).rejects.toThrow(refusal);
   });
 });
