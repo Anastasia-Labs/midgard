@@ -20,7 +20,7 @@
  * usage: node scripts/generate-cek-write-bits-loop-v1-goldens.mjs [--check]
  */
 
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { encodeCbor } from "@al-ft/midgard-core";
@@ -49,12 +49,9 @@ import { steps } from "../tests/fixtures/cek-write-bits-loop-v1.vectors.mjs";
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
 const repositoryRoot = resolve(packageRoot, "../..");
-const aikenFileName = "cek-core-staged-write-bits-loop-golden.test.ak";
-const generatedAikenPath = join(
-  repositoryRoot,
-  "onchain/aiken/validators/fraud-proofs/validation-trace",
-  aikenFileName,
-);
+const aikenModule =
+  "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-write-bits-loop-golden.test.ak";
+const generatedAikenPath = join(repositoryRoot, aikenModule);
 
 const { checkOnly } = parseGoldenChannelArguments(
   "usage: node scripts/generate-cek-write-bits-loop-v1-goldens.mjs [--check]",
@@ -301,7 +298,7 @@ writeOrCheck(
   generatedAikenPath,
   formatAikenSource({
     source: `${source}\n`,
-    fileName: aikenFileName,
+    fileName: basename(aikenModule),
     repositoryRoot,
     tmpPrefix: "cek-write-bits-loop-v1-",
   }),

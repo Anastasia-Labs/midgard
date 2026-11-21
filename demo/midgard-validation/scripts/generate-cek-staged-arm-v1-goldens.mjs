@@ -21,7 +21,7 @@
  * usage: node scripts/generate-cek-staged-arm-v1-goldens.mjs [--check]
  */
 
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -41,12 +41,9 @@ import {
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
 const repositoryRoot = resolve(packageRoot, "../..");
-const aikenFileName = "cek-core-staged-golden.test.ak";
-const generatedAikenPath = join(
-  repositoryRoot,
-  "onchain/aiken/validators/fraud-proofs/validation-trace",
-  aikenFileName,
-);
+const aikenModule =
+  "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-golden.test.ak";
+const generatedAikenPath = join(repositoryRoot, aikenModule);
 
 const { checkOnly } = parseGoldenChannelArguments(
   "usage: node scripts/generate-cek-staged-arm-v1-goldens.mjs [--check]",
@@ -290,7 +287,7 @@ writeOrCheck(
   generatedAikenPath,
   formatAikenSource({
     source: `${source}\n`,
-    fileName: aikenFileName,
+    fileName: basename(aikenModule),
     repositoryRoot,
     tmpPrefix: "cek-staged-arm-v1-",
   }),

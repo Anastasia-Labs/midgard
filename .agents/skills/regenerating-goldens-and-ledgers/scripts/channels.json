@@ -754,9 +754,7 @@
         "@golden-channel",
         "demo/midgard-validation/tests/fixtures/script-decode-step-v1.vectors.mjs"
       ],
-      "outputs": [
-        "onchain/aiken/lib/midgard/script-decode-v1-golden.test.ak"
-      ],
+      "outputs": ["onchain/aiken/lib/midgard/script-decode-v1-golden.test.ak"],
       "aikenImportsOfOutputs": true,
       "sync": {
         "run": "pnpm --dir demo/midgard-validation run fixtures:script-decode-step-v1:sync"
