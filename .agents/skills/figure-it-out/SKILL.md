@@ -1,6 +1,6 @@
 ---
 name: figure-it-out
-description: "Design an auditable playbook when no narrower one fits: a large migration, an ambitious multi-part change, or work a human reviews after stepping away. Scales rigor to the task, runs a hypothesis loop, and logs decisions via show-me-your-work. Use for /figure-it-out, 'figure it out', a large migration, or when no narrower playbook applies."
+description: "Design an auditable playbook when no narrower one fits, such as a large migration or an ambitious multi-part change a human reviews later. Runs a hypothesis loop and logs decisions via show-me-your-work. Use for /figure-it-out or 'figure it out'."
 disable-model-invocation: true
 ---
 

@@ -25,6 +25,12 @@ A finding is reported only when all of these hold:
 Drop a finding that lacks one of them, and record the drop and its reason.
 Two real findings beat twelve speculative ones.
 
+An **excess finding** (lens 14) needs none of the four: it names code the
+change adds or keeps that fails the test in
+[production-l2.md](../../../../docs/agents/production-l2.md), and what to
+delete. It ranks with a gap of the same size. A review that reports gaps and
+no look for excess is half a review.
+
 These are **not** findings:
 
 - A validator that does not re-check its own `validator main(...)`
@@ -35,6 +41,11 @@ These are **not** findings:
 - Legacy fault-proof families that still attach step scripts inline. The
   reference-script ruling governs new work; see that lens.
 - "Consider more validation" with no input that gets through.
+- A failure only we could cause, or whose whole cost is fees, a rebuilt
+  transaction or a repeated read. A transaction of ours landing
+  script-invalid is the standing example: phase 1 rejects it.
+- A request for a journal, stored record, alert, metric, status or
+  accounting where reading the chain again answers the question.
 - "This function is complex and could have bugs."
 - A cost concern with no measurement. Measure it, or report it as PLAUSIBLE
   with the measurement that would decide it.
@@ -418,3 +429,23 @@ Ask:
 - Is there a test that builds two distinct successors from one pre-state and
   shows the step accepts at most one? In an emulator scenario, a challenger
   disputing an honest step with a different valid successor must be refused.
+
+### 14. Excess
+
+Every finding a reviewer raises about a gap pushes code in; nothing pushed it
+out until the owner did. On 2026-11-21 the owner had the fault-proof workflow's
+remembered sends, coin holds, restart wait, rebroadcast and three-minute
+wallet-only bound deleted: each covered a case that was unrealistic or cost
+only fees, and the ledger plus the node's mempool already answered it.
+
+Ask:
+
+- Does each guard, retry, hold, stored record, status, alert or knob in the
+  diff pass the four-part test in
+  [production-l2.md](../../../../docs/agents/production-l2.md)? One that does
+  not is a finding; name the lines to delete `[review]`.
+- Does a check repeat one the ledger, a validator, the type or an earlier
+  layer already makes?
+- Could the change have landed by deepening an existing module instead of
+  adding one? Is there a case split that one general rule replaces?
+- What are the net lines? Growth without a named reason is a finding.

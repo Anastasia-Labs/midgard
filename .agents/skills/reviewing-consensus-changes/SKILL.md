@@ -1,6 +1,6 @@
 ---
 name: reviewing-consensus-changes
-description: Two-pass adversarial review for changes to Midgard consensus-critical code. Use before committing or requesting review on a change that touches onchain/aiken validators or lib, a fraud-proof family, the state queue, DA bond or availability challenges, deposits, withdrawals, reserve or payout, the hub oracle, watcher fault adjudication, or a canonical codec with its TypeScript/Aiken twin and golden channel; when asked for a careful, soundness or adversarial review of such code; when deciding whether a review finding against it is real; and after a reviewer finds a gap the author missed.
+description: Two-pass adversarial review of Midgard consensus-critical code, for defects and for excess. Use before committing a change to onchain/aiken, a fraud-proof family, the state queue, DA, deposits, withdrawals, watcher adjudication or a canonical codec; or when deciding whether a review finding is real.
 ---
 
 # Reviewing consensus changes
@@ -16,7 +16,9 @@ is the process that catches the first two kinds without fixing the third.
 
 Argue from structure, not odds. A path an adversary can reach is a finding
 however unlikely an honest run is to take it; an adversary chooses the
-unlikely inputs.
+unlikely inputs. That licence covers adversaries only: a failure of our own
+process whose cost is fees is not a finding, and machinery built for one is
+(the excess lens).
 
 ## Scope
 

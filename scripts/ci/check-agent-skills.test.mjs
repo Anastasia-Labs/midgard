@@ -106,7 +106,7 @@ test("an over-long description and an over-long SKILL.md are refused", () => {
     },
     (root) => {
       const problems = checkAgentSkills(root).join("\n");
-      assert.match(problems, /description is 1025 characters, limit 1024/u);
+      assert.match(problems, /description is 1025 characters, limit 320/u);
       assert.match(problems, /long-body\/SKILL\.md: \d+ lines, limit 500/u);
     },
   );

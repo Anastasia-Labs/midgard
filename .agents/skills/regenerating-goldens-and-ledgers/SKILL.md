@@ -1,6 +1,6 @@
 ---
 name: regenerating-goldens-and-ledgers
-description: Use when a change touches a cross-language golden (`*.generated.json`, `*-golden.test.ak`, Aiken constants a generator rebinds), a script budget (`script-budgets.json`), a deployment profile or `onchain/aiken/env/*.ak`, `docs/consensus-profile-v1.md`, or any source those are generated from (midgard-core, midgard-sdk, midgard-validation, lucid-midgard, Aiken types a golden imports); when a `fixtures:*:check`, `docs:*:check`, `deployment:check` or script-budget step fails; when adding a new generator; or before building or committing `onchain/aiken/plutus.json`.
+description: Use when a change touches a cross-language golden, a script budget, a deployment profile, `docs/consensus-profile-v1.md` or a source those are generated from; when a `fixtures:*:check`, `docs:*:check`, `deployment:check` or budget step fails; or before building or committing `onchain/aiken/plutus.json`.
 ---
 
 # Regenerating goldens and ledgers

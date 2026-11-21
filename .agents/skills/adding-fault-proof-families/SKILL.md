@@ -1,6 +1,6 @@
 ---
 name: adding-fault-proof-families
-description: Use when adding a new fault-proof (fraud-proof) family or catalogue category to Midgard, completing a partly registered family, or routing a new RejectionReason arm to a family. Covers the Aiken step validators, the catalogue ID and deployment-manifest identity, the SDK contract chain, the family application registry, the emulator lifecycle tests in both polarities, the watcher and devnet journey wiring, and the fault-proof status docs. Triggers - FRAUD_PROOF_CATALOGUE_CATEGORY_IDS, FAMILY_APPLICATION_REGISTRY, "new fraud proof", "new family", step-01.ak under validators/fraud-proofs.
+description: Use when adding a fault-proof (fraud-proof) family or catalogue category, completing a partly registered family, or routing a new RejectionReason arm. Covers the Aiken step validators, catalogue and manifest identity, SDK contracts, the family registry, emulator tests, watcher and journey wiring.
 ---
 
 # Adding fault-proof families

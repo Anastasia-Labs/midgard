@@ -1,6 +1,6 @@
 ---
 name: committing-safely
-description: Commit exactly your own paths in a Midgard working tree that other sessions and agents share, without sweeping up their staged work, triggering the stash-everything pre-commit shim, or committing the blueprint. Use when about to stage, commit, or push; when the tree or index holds changes that are not yours; when committing only some hunks of a file; when deleting or cleaning files picked out of `git status`; or when a commit swept, reverse-staged, or lost someone else's changes.
+description: Commit exactly your own paths in a Midgard working tree other sessions share. Use when about to stage, commit or push; when the tree or index holds changes that are not yours; when committing some hunks of a file; or when a commit swept up or lost someone else's changes or the blueprint.
 ---
 
 # Committing safely

@@ -1,6 +1,6 @@
 ---
 name: running-the-devnet
-description: Launch, relaunch, redeploy, and wait on a local Midgard devnet (the isolated phase4 Cardano chain, the watcher-journey wrapper, or the demo-node Docker stack), decide whether a change leaves a running deployment stale, and read a service crash. Use when starting or restarting the devnet or a node/DA committee process, when asking "is it ready?", when `/healthz`, `/readyz`, `/metrics`, Kupo `/health`, a readiness timeout or restart loop comes up, when a consensus-profile field, the blueprint, or a deployment profile changed under a running deployment, or when a devnet service exited.
+description: Launch, relaunch, redeploy and wait on a local Midgard devnet, decide whether a change leaves a running deployment stale, and read a service crash. Use when starting or restarting the devnet or a node or DA committee process, on a readiness timeout or restart loop, or when a devnet service exited.
 ---
 
 # Running the devnet

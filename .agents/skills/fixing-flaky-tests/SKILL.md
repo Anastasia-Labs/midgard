@@ -1,6 +1,6 @@
 ---
 name: fixing-flaky-tests
-description: Measures, root-causes and fixes an intermittent Midgard test, then proves the fix with a rerun count sized to the measured failure rate. Use when a vitest suite, emulator scenario, Postgres-backed node test or CI step fails only sometimes, passes on rerun, times out under load, or fails in CI but not locally; before raising a timeout, adding a retry, skipping or deleting a test to get green; when someone claims a flake is fixed; and when a gate run's failures must be diffed against a program's accepted-failures list.
+description: Measure, root-cause and fix an intermittent Midgard test, then prove the fix with a rerun count sized to the failure rate. Use when a test or CI step fails only sometimes or only in CI; before raising a timeout, adding a retry or skipping a test; and when someone claims a flake is fixed.
 ---
 
 # Fixing flaky tests

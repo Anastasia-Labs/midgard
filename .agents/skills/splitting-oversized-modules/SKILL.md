@@ -1,6 +1,6 @@
 ---
 name: splitting-oversized-modules
-description: Split an oversized Midgard TypeScript or Aiken module into smaller modules as a proven pure move, in a commit of its own. Use when a file is too big to work in or review, when asked to modularize, break up, decompose or extract from a god module, when moving declarations between files or packages, or when a change would be easier after first splitting the file it touches. Also use to check that an earlier split changed nothing (verify-pure-move.mjs, compare-blueprint-hashes.mjs).
+description: Split an oversized Midgard TypeScript or Aiken module as a proven pure move in its own commit. Use when a file is too big to work in or review, when asked to modularize or extract, when moving declarations between files or packages, or to check that an earlier split changed nothing.
 ---
 
 # Splitting oversized modules

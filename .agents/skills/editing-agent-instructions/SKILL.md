@@ -1,6 +1,6 @@
 ---
 name: editing-agent-instructions
-description: Decide where a rule or a hard-won lesson lives, and write it so it holds. Use before adding, editing or removing text in AGENTS.md, a nested AGENTS.md, CLAUDE.md, docs/agents/*.md, anything under .agents/skills/ or .claude/agents/; when someone proposes "document this convention" after it broke again; when a lesson, trap or owner ruling needs a permanent home; when reviewing a diff that touches those files; or when one of them has grown and needs a trim.
+description: Decide where a rule or lesson lives and write it so it holds. Use before adding, editing or removing text in AGENTS.md, CLAUDE.md, docs/agents/*.md, .agents/skills/ or .claude/agents/; when a lesson or owner ruling needs a permanent home; or when one of those files needs a trim.
 ---
 
 # Editing agent instructions
@@ -100,7 +100,7 @@ it is written down. Read it top to bottom and take the first match.
   same files.
   `[ci: agent-skills-ci.yml/Check skills and the .claude/skills link]`
 - **Frontmatter, size, links and test commands are checked.** `name` equals
-  the directory name, `description` is present and at most 1,024 characters,
+  the directory name, `description` is present and at most 320 characters,
   `SKILL.md` is at most 500 lines, every relative Markdown link in the skill
   resolves, and no fenced code block runs Vitest directly: suites go through
   `node scripts/contrib.mjs test`, and a line that must stay raw ends with

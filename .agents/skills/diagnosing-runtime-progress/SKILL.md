@@ -1,6 +1,6 @@
 ---
 name: diagnosing-runtime-progress
-description: Diagnose a Midgard service that is alive or ready but not completing eligible work, including dependency outages, safety holds and recovery stalls. Use for pending obligations with no useful progress, conflicting provider tips, unexplained healthy readiness, or repeated worker failures; collect observations without changing journal/schema state.
+description: Diagnose a Midgard service that is alive or ready but not completing eligible work. Use for pending obligations with no progress, conflicting provider tips, unexplained healthy readiness, or repeated worker failures; collect observations without changing state.
 ---
 
 # Diagnosing runtime progress

@@ -13,7 +13,7 @@ by every session, so their budgets are the tightest.
 | -------------------- | ----- | ----- | --------------- | ------------------------------------------------------------------------------------ |
 | `AGENTS.md`          | 69    | 3,447 | 100 lines       | Rung 4 only; every addition says what it buys every session.                         |
 | `CLAUDE.md`          | 27    | 902   | 30 lines        | A router to `AGENTS.md` and a few docs; no rules of its own.                         |
-| Skill `description`s | —     | —     | 1,024 chars     | `[script: scripts/ci/check-agent-skills.mjs]`. Loaded every turn, so prune triggers. |
+| Skill `description`s | —     | —     | 320 chars       | `[script: scripts/ci/check-agent-skills.mjs]`. Loaded every turn, so prune triggers. |
 
 The skill descriptions in this tree ranged from 189 to 618 characters.
 

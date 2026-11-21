@@ -1,6 +1,6 @@
 ---
 name: local-test-environment
-description: Get a Midgard checkout ready to run its test suites, and read what is wrong when it is not. Covers the shared test Postgres on 127.0.0.1:5433 (scripts/start-test-postgres.sh, synchronous_commit on), the per-worktree test-database prefix (MIDGARD_TEST_DATABASE_PREFIX), which suites need a built dist and why, the blueprint stamp setup that rebuilds a stale blueprint (deployment:build), the pinned Aiken and the hooks, and each linked worktree's own operator compose project and host ports. Use before running a Postgres-backed or blueprint-reading suite in a fresh checkout or worktree; when vitest reports "No test files found", ECONNREFUSED 127.0.0.1:5433, a "[blueprint-stamp]" rebuild or refusal, a missing dist/ file, or rows a test did not write; when two checkouts run suites or the operator stack at once; before running one file of a package, a gate over several suites or anything longer than one Bash call; when reusing another worktree's blueprint; or when `node scripts/doctor.mjs` fails.
+description: Get a Midgard checkout ready to run its test suites. Use before running a Postgres-backed or blueprint-reading suite in a fresh checkout or worktree; when vitest reports no test files, ECONNREFUSED 127.0.0.1:5433, a blueprint-stamp rebuild or a missing dist file; or when `node scripts/doctor.mjs` fails.
 ---
 
 # Local test environment

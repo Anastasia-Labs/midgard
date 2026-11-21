@@ -1,6 +1,6 @@
 ---
 name: writing-tests
-description: Gates whether a Midgard test should exist, places it at the cheapest level that catches the bug, and keeps it able to fail. Use before adding or changing what an Aiken test, vitest suite, golden-vector channel, lucid-evolution emulator scenario, Postgres-backed node test or devnet check asserts, down to one case added to an existing test; when fixing a bug, which starts with a regression test that is red before the fix; and when a test, gate, focused check or verifier reports green and you need to know it could have gone red.
+description: Decide whether a Midgard test should exist, place it at the cheapest level that catches the bug, and keep it able to fail. Use before adding or changing what a test asserts; when fixing a bug (red regression test first); and when a green test or gate must be shown able to go red.
 ---
 
 # Writing tests that earn their place

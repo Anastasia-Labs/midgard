@@ -1,6 +1,6 @@
 ---
 name: resuming-a-work-program
-description: Resume a multi-session Midgard work program from its durable task and decision records. Use when reconciling candidate worktrees, ownership, reviews, integration state or required evidence after an interrupted program; when a handoff omits original obligations; or before integrating a reviewed candidate packet.
+description: Resume a multi-session Midgard work program from its task and decision records. Use when reconciling worktrees, ownership, reviews or integration state after an interruption, when a handoff omits obligations, or before integrating a reviewed candidate.
 ---
 
 # Resuming a work program

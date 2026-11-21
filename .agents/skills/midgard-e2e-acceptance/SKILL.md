@@ -1,6 +1,6 @@
 ---
 name: midgard-e2e-acceptance
-description: Run, attach, resume, or diagnose the Midgard live Preprod acceptance run through the one-command `e2e-stack` harness, and assess what it does and does not prove. Use for fresh or interrupted Preprod deployments with local Kupmios, reference scripts, operator registration, the DA committee and public retained DA, the watcher, deposits, L2 transfers, automatic merge and finality, withdrawals and payouts, stop-message recovery, the release-readiness gates, and opt-in throughput checks.
+description: Run, attach, resume or diagnose the Midgard live Preprod acceptance run through the `e2e-stack` harness, and assess what it does and does not prove. Use for fresh or interrupted Preprod deployments, the release-readiness gates and opt-in throughput checks.
 ---
 
 # Midgard E2E Acceptance

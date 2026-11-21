@@ -1,6 +1,6 @@
 ---
 name: writing-reports-and-prs
-description: Writes Midgard PR descriptions, commit message bodies, and the report an agent hands back to whoever dispatched it, so that each one separates claims from evidence and states what was not checked. Use when opening or editing a pull request, writing a commit message that says something was verified, handing a report back to an orchestrator or the owner, posting a verification summary on an issue, or about to write "green", "passes", "verified" or "tested".
+description: Write Midgard PR descriptions, commit bodies and hand-back reports that separate claims from evidence and state what was not checked. Use when opening or editing a pull request, reporting to an orchestrator or the owner, or about to write "green", "passes", "verified" or "tested".
 ---
 
 # Writing reports and PRs

@@ -5,8 +5,8 @@
 // It checks what can rot without anyone noticing:
 //   - .claude/skills is a symlink to ../.agents/skills;
 //   - every skill directory has a SKILL.md whose frontmatter `name` equals the
-//     directory name and whose `description` is present and at most 1,024
-//     characters, the limit past which the harness truncates it;
+//     directory name and whose `description` is present and at most 320
+//     characters (the harness allows 1,024; every one loads in every session);
 //   - SKILL.md stays within 500 lines; longer material belongs in references/;
 //   - every relative Markdown link in a skill's .md files resolves;
 //   - no fenced code block in a skill's .md files runs Vitest directly
@@ -33,7 +33,8 @@ import { fileURLToPath } from "node:url";
 const SKILLS_DIR = ".agents/skills";
 const CLAUDE_LINK = ".claude/skills";
 const CLAUDE_LINK_TARGET = "../.agents/skills";
-const MAX_DESCRIPTION = 1024;
+// Triggers that do not fit belong in the skill body.
+const MAX_DESCRIPTION = 320;
 const MAX_SKILL_LINES = 500;
 const NAME_SHAPE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
