@@ -5,9 +5,9 @@
 #   node scripts/preflight.mjs --pre-push
 #
 # which judges only the committed diff against the merge-base with the base
-# branch (what the push sends), and runs only the checks marked "runs in the
-# pre-push hook" in docs/agents/required-checks.md: formatting, the generated
-# check list, repository tooling self-tests, workflow and agent-doc lint, and a
+# branch (what the push sends), and runs only the checks the registry marks
+# prePush (`node scripts/preflight.mjs --pre-push --list` prints them):
+# formatting, repository tooling self-tests, workflow and agent-doc lint, and a
 # merge-conflict prediction. Ordinary preflight assigns the covered package
 # matrix to Node CI; --full-local retains local matrix execution. Focused
 # regressions and distinct acceptance checks remain required before merge.

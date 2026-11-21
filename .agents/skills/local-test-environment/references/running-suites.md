@@ -48,9 +48,9 @@ token: `vitest run --disable-console-intercept <file>` runs every file.
 **The gate before a merge is `node scripts/preflight.mjs --full-local --base
 <target-ref>`**, never a hand-written script or a list of commands in a
 brief: it runs every check the change selects as CI runs it, the package
-suites as `contrib test --related` for each package the change can reach
-([required checks](../../../../docs/agents/required-checks.md#gate-before-a-merge)).
-`--json` lists each check's receipts. The rules below are for suites run by
+suites as `contrib test --related` for each package the change can reach.
+`node scripts/preflight.mjs --list` prints what it would run, and `--json`
+lists each check's receipts. The rules below are for suites run by
 hand, as in a fix loop.
 
 - **One process per suite, in parallel.** Start the node, watcher,

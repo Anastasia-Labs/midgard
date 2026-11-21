@@ -1,24 +1,18 @@
 #!/usr/bin/env node
 
 // Runs the local checks a change can break, selected from the diff against
-// the base branch. The doctrine, the check list and every flag are in
-// docs/agents/required-checks.md (generated from scripts/preflight/registry.mjs).
+// the base branch. `--list` prints the checks a change selects; the check
+// registry is scripts/preflight/registry.mjs.
 //
 // usage: node scripts/preflight.mjs [--strict | --pre-push] [--base <ref>]
 //                                   [--full] [--list] [--json]
 //        node scripts/preflight.mjs --run <check-id> [--run <check-id>...] [--list]
-//        node scripts/preflight.mjs --write-docs | --check-docs
 // Exit 0 all passed, 1 a check failed, 2 usage error, 3 a check was skipped
 // for a missing capability and nothing failed.
 
-import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  REQUIRED_CHECKS_DOC,
-  renderRequiredChecks,
-} from "./preflight/docs.mjs";
 import { createProbeSet } from "./preflight/probes.mjs";
 import { readCiEvidence } from "./preflight/ci-evidence.mjs";
 import {
@@ -39,8 +33,7 @@ import {
 export const JSON_SCHEMA = "midgard-preflight/v1";
 
 const USAGE = `usage: node scripts/preflight.mjs [--strict | --pre-push] [--base <target-ref>] [--ci-run <id>] [--full-local | --full] [--list] [--json]
-       node scripts/preflight.mjs --run <check-id> [--run <check-id>...] [--list]
-       node scripts/preflight.mjs --write-docs | --check-docs`;
+       node scripts/preflight.mjs --run <check-id> [--run <check-id>...] [--list]`;
 
 export const parseArguments = (argv) => {
   const options = {
@@ -52,7 +45,6 @@ export const parseArguments = (argv) => {
     fullLocal: false,
     list: false,
     json: false,
-    docs: undefined,
     run: [],
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -77,13 +69,6 @@ export const parseArguments = (argv) => {
       case "--json":
         options.json = true;
         break;
-      case "--write-docs":
-      case "--check-docs":
-        if (options.docs !== undefined) {
-          throw new UsageError("--write-docs and --check-docs are exclusive");
-        }
-        options.docs = arg.slice(2, -"-docs".length);
-        break;
       case "--ci-run":
       case "--run":
       case "--base": {
@@ -105,9 +90,6 @@ export const parseArguments = (argv) => {
         throw new UsageError(`unknown argument '${arg}'`);
     }
   }
-  if (options.docs !== undefined && argv.length !== 1) {
-    throw new UsageError(`--${options.docs}-docs takes no other argument`);
-  }
   // A named run has no base, diff or CI evidence to qualify it.
   if (
     options.run.length > 0 &&
@@ -122,40 +104,6 @@ export const parseArguments = (argv) => {
     throw new UsageError("--run combines only with --run and --list");
   }
   return options;
-};
-
-// Doc mode: the committed file must equal what the registry renders.
-export const docsCommand = (
-  root,
-  mode,
-  { stdout, stderr, path = resolve(root, REQUIRED_CHECKS_DOC) },
-) => {
-  const rendered = renderRequiredChecks(buildRegistry(root));
-  if (mode === "write") {
-    writeFileSync(path, rendered);
-    stdout(`wrote ${REQUIRED_CHECKS_DOC}\n`);
-    return EXIT.passed;
-  }
-  let committed;
-  try {
-    committed = readFileSync(path, "utf8");
-  } catch {
-    committed = undefined;
-  }
-  if (committed === rendered) {
-    stdout(`${REQUIRED_CHECKS_DOC} is current\n`);
-    return EXIT.passed;
-  }
-  stderr(
-    [
-      `${REQUIRED_CHECKS_DOC} ${committed === undefined ? "is missing" : "does not match the preflight registry"}.`,
-      "Fix:",
-      "  1. Regenerate it: node scripts/preflight.mjs --write-docs",
-      `  2. Stage it by explicit path: git add ${REQUIRED_CHECKS_DOC}`,
-      "",
-    ].join("\n"),
-  );
-  return EXIT.failed;
 };
 
 const numbered = (steps) =>
@@ -258,11 +206,8 @@ export const main = async (
     return EXIT.usage;
   }
   if (options.help) {
-    stdout(`${USAGE}\nSee ${REQUIRED_CHECKS_DOC}.\n`);
+    stdout(`${USAGE}\nSee docs/agents/verification.md.\n`);
     return EXIT.passed;
-  }
-  if (options.docs !== undefined) {
-    return docsCommand(root, options.docs, { stdout, stderr });
   }
   if (options.run.length > 0) {
     return runNamed(root, options.run, options.list, {

@@ -62,9 +62,6 @@ jobs:
       - name: Lint the workflows
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run workflow-lint
-      - name: Check the generated required-checks list
-        if: ${{ !cancelled() }}
-        run: node scripts/preflight.mjs --run required-checks-doc
       - name: Check registries name only existing files
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run registry-paths

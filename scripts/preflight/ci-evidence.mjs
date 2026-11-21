@@ -1,4 +1,4 @@
-// Reuse only the two audited, file-only validators. A green job name alone
+// Reuse only the audited, file-only validator. A green job name alone
 // cannot establish its checkout, runtime, command or completed coverage.
 import { execFileSync } from "node:child_process";
 import {
@@ -27,7 +27,6 @@ const WORKFLOW = ".github/workflows/repo-tools-ci.yml";
 // Each audited validator's Repo Tools step. The step runs the check by id
 // (ciStepCommand), so CI executes the registry's own command for it.
 export const CI_VALIDATORS = {
-  "required-checks-doc": "Check the generated required-checks list",
   "contributor-build-guards": "Check deterministic contributor build guards",
 };
 export const ciStepCommand = (id) => `node scripts/preflight.mjs --run ${id}`;

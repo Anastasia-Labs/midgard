@@ -435,15 +435,6 @@ export const toolingChecks = (root) => [
     plan: () => [],
   },
   {
-    id: "required-checks-doc",
-    title: "docs/agents/required-checks.md is generated from this registry",
-    always: true,
-    prePush: true,
-    display: "node scripts/preflight.mjs --check-docs",
-    fix: "node scripts/preflight.mjs --write-docs",
-    plan: () => [step(node("scripts/preflight.mjs", "--check-docs"))],
-  },
-  {
     // Any deletion or rename can leave a registry naming nothing, so it runs
     // on every push; it reads files only and takes about two seconds.
     id: "registry-paths",

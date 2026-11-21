@@ -81,7 +81,6 @@ export const VERIFICATION_ONLY = [
   "scripts/preflight/registry.demo-checks.mjs",
   "scripts/preflight/registry.select-checks.mjs",
   "scripts/preflight/registry.tooling-checks.mjs",
-  "scripts/preflight/docs.mjs",
   "scripts/preflight/ci-evidence.mjs",
   "scripts/preflight/sdk-suite-evidence.mjs",
   "scripts/preflight/runtime-owner.mjs",

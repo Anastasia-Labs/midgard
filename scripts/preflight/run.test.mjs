@@ -484,7 +484,7 @@ test("preflight check durations remain nonnegative when UTC moves backwards", as
 
 test("verified equivalent CI records coverage and avoids dispatch; changed commands still run", async () => {
   let dispatched = 0;
-  const checks = [check("required-checks-doc"), check("other")];
+  const checks = [check("contributor-build-guards"), check("other")];
   const result = await runPreflight({
     root: "/nonexistent",
     base: "base",
@@ -493,9 +493,9 @@ test("verified equivalent CI records coverage and avoids dispatch; changed comma
     log() {},
     ciEvidence: new Map([
       [
-        "required-checks-doc",
+        "contributor-build-guards",
         {
-          command: "run required-checks-doc",
+          command: "run contributor-build-guards",
           run: "verified-run",
           coverage: "completed declared validator",
         },

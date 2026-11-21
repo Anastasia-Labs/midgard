@@ -1,18 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import {
-  docsCommand,
-  JSON_SCHEMA,
-  main,
-  parseArguments,
-} from "../preflight.mjs";
-import { REQUIRED_CHECKS_DOC, renderRequiredChecks } from "./docs.mjs";
+import { JSON_SCHEMA, main, parseArguments } from "../preflight.mjs";
 import { buildRegistry } from "./registry.mjs";
 import { DEFAULT_BASE } from "./run.mjs";
 
@@ -111,37 +105,6 @@ test("explicit full-local mode keeps path selection; --full also widens scope", 
   assert.equal(parseArguments([]).fullLocal, false);
 });
 
-test("the committed required-checks.md is the one the registry renders", () => {
-  const committed = readFileSync(resolve(root, REQUIRED_CHECKS_DOC), "utf8");
-  assert.equal(
-    committed,
-    renderRequiredChecks(buildRegistry(root)),
-    "run: node scripts/preflight.mjs --write-docs",
-  );
-});
-
-test("--check-docs fails on a stale or missing document and names the fix", () => {
-  const scratch = mkdtempSync(join(tmpdir(), "preflight-docs-test-"));
-  try {
-    const path = join(scratch, "required-checks.md");
-    writeFileSync(path, "# stale\n");
-    const io = capture();
-    assert.equal(docsCommand(root, "check", { ...io, path }), 1);
-    assert.match(io.out.stderr, /--write-docs/u);
-    const missing = capture();
-    assert.equal(
-      docsCommand(root, "check", { ...missing, path: join(scratch, "none") }),
-      1,
-    );
-    assert.match(missing.out.stderr, /is missing/u);
-    const write = capture();
-    assert.equal(docsCommand(root, "write", { ...write, path }), 0);
-    assert.equal(docsCommand(root, "check", { ...capture(), path }), 0);
-  } finally {
-    rmSync(scratch, { recursive: true, force: true });
-  }
-});
-
 test("usage errors exit 2", async () => {
   for (const argv of [
     ["--bogus"],
@@ -149,8 +112,6 @@ test("usage errors exit 2", async () => {
     ["--base", "--json"],
     ["--ci-run"],
     ["--ci-run", "--json"],
-    ["--write-docs", "--check-docs"],
-    ["--check-docs", "--json"],
     ["--strict", "--base", "refs/heads/no-such-branch-for-preflight"],
     ["--run"],
     ["--run", "no-such-check"],
@@ -199,12 +160,6 @@ test("--json prints one document with the stable schema and nothing else", async
   assert.deepEqual(report.changedFiles, []);
   assert.equal(report.exitCode, exitCode);
   assert.equal(exitCode, 0);
-  const ids = report.checks.map((check) => check.id);
-  assert.deepEqual(ids, [
-    "merge-conflicts",
-    "required-checks-doc",
-    "registry-paths",
-  ]);
   for (const check of report.checks) {
     assert.deepEqual(Object.keys(check).sort(), [
       "command",
@@ -251,23 +206,23 @@ test("the kill switch forces a full run and a failed check exits 1 with its fix"
     ...io,
     probes: allAvailable,
     runStep: async (_root, step) => ({
-      status: step.argv.includes("--check-docs") ? 1 : 0,
+      status: step.argv.includes("scripts/contrib/enroll-builds.mjs") ? 1 : 0,
       output: "",
     }),
   });
   assert.equal(exitCode, 1);
   assert.match(io.out.stdout, /full run: MIDGARD_PREFLIGHT_FULL=1/u);
-  assert.match(io.out.stdout, /FAILED +required-checks-doc/u);
+  assert.match(io.out.stdout, /FAILED +contributor-build-guards/u);
   assert.match(
     io.out.stdout,
-    /fix: node scripts\/preflight\.mjs --write-docs/u,
+    /fix: node scripts\/contrib\/enroll-builds\.mjs --write/u,
   );
   assert.match(io.out.stdout, /preflight FAILED/u);
 });
 
 test("--run executes exactly the named checks at full scope, in registry order", async () => {
   const registry = buildRegistry(root);
-  const expected = ["required-checks-doc", "registry-paths"].map((id) =>
+  const expected = ["registry-paths", "toolchain-pins"].map((id) =>
     registry.checks
       .find((check) => check.id === id)
       .plan({ matched: [], full: true, advise: () => {} })
@@ -276,7 +231,7 @@ test("--run executes exactly the named checks at full scope, in registry order",
   const io = capture();
   const ran = [];
   const exitCode = await main(
-    ["--run", "registry-paths", "--run", "required-checks-doc"],
+    ["--run", "toolchain-pins", "--run", "registry-paths"],
     {
       root,
       env: {},
@@ -290,8 +245,8 @@ test("--run executes exactly the named checks at full scope, in registry order",
   );
   assert.equal(exitCode, 0);
   assert.deepEqual(ran, expected.flat());
-  assert.match(io.out.stdout, /PASSED +required-checks-doc/u);
   assert.match(io.out.stdout, /PASSED +registry-paths/u);
+  assert.match(io.out.stdout, /PASSED +toolchain-pins/u);
   assert.doesNotMatch(io.out.stdout, /merge-conflicts/u);
   assert.match(io.out.stdout, /preflight passed/u);
 });

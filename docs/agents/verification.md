@@ -5,11 +5,11 @@ Commands run from the repository root unless stated otherwise. [review]
 ## Required checks
 
 Run `node scripts/preflight.mjs` before pushing; gate a merge with
-`--full-local --base <target-ref>` ([how](required-checks.md#gate-before-a-merge)).
-Ordinary PRs assign the package build/typecheck/suite matrix to Node CI,
-reported as pending apart from local results. Read generated
-[required-checks.md](required-checks.md) for selectors, ownership and
-capabilities. Unknown workflow routing retains local execution; the fast
+`--full-local --base <target-ref>`. Ordinary PRs assign the package
+build/typecheck/suite matrix to Node CI, reported as pending apart from local
+results. `node scripts/preflight.mjs --list` prints the checks a change selects,
+their commands and the capabilities they need; the registry is
+`scripts/preflight/registry.mjs`. Unknown workflow routing retains local execution; the fast
 pre-push slice stays mandatory. [script: scripts/preflight/run.mjs]
 
 Focused local regressions and causal red/green checks remain mandatory. Prepare
@@ -42,8 +42,8 @@ Deployment checks remain manual; preparation lanes are selected by preflight. [r
    sleep loop. Node CI gate requires every dependency to succeed. Traced refusals
    are selected by the preflight registry (`traced-refusals`): a changed validator
    selects the pin files that reach it. CI imports the same trigger set. [review]
-3. `--strict --ci-run <Repo-Tools-run-id>` admits only required-checks generation
-   and build-guard enrollment reuse, verifying merge tree/parents, inputs,
+3. `--strict --ci-run <Repo-Tools-run-id>` admits only build-guard enrollment
+   reuse, verifying merge tree/parents, inputs,
    current remote target, Node profile, commands and completed steps. Dirty,
    stale, absent or different evidence is refused. Record coverage as reused;
    scheduling supplies no pass. Failures retain gates. [script: scripts/preflight/ci-evidence.mjs]

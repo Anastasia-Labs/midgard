@@ -19,7 +19,6 @@ import {
   ciIdentity,
   ciStepCommand,
   validateCiEvidence,
-  validatorCommands,
   validatorInputs,
 } from "./ci-evidence.mjs";
 import { loadYaml } from "../ci/lint-workflows.mjs";
@@ -89,15 +88,11 @@ const fixture = () => {
 };
 test("exact tested tree, runtime, commands and successful steps cover only audited validators", () => {
   const evidence = validateCiEvidence(fixture());
-  assert.deepEqual(
-    [...evidence.keys()],
-    ["required-checks-doc", "contributor-build-guards"],
-  );
   assert.equal(evidence.has("demo-test-db"), false);
-  assert.equal(evidence.get("required-checks-doc").tree, "merged-tree");
+  assert.equal(evidence.get("contributor-build-guards").tree, "merged-tree");
   assert.equal(
-    evidence.get("required-checks-doc").command,
-    "local command of required-checks-doc",
+    evidence.get("contributor-build-guards").command,
+    "local command of contributor-build-guards",
   );
 });
 test("stale or incomplete CI never satisfies a local validator", () => {
@@ -145,10 +140,10 @@ test("stale or incomplete CI never satisfies a local validator", () => {
     // the registry's command by construction.
     (f) => {
       f.workflow.jobs["repo-tools"].steps[0].run =
-        "node scripts/preflight.mjs --check-docs";
+        "node scripts/contrib/enroll-builds.mjs";
     },
     (f) => {
-      delete f.commands["required-checks-doc"];
+      delete f.commands["contributor-build-guards"];
     },
   ];
   for (const mutate of mutations) {
@@ -309,7 +304,7 @@ const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 const yaml = loadYaml(repositoryRoot);
 
 test(
-  "the Repo Tools workflow runs each audited validator by id, and its evidence stands for the registry command",
+  "the Repo Tools workflow runs each audited validator by id",
   {
     skip:
       yaml === undefined && process.env.GITHUB_ACTIONS !== "true"
@@ -329,9 +324,5 @@ test(
       assert.equal(step.length, 1, name);
       assert.equal(step[0].run, ciStepCommand(id), name);
     }
-    assert.deepEqual(validatorCommands(repositoryRoot), {
-      "required-checks-doc": "node scripts/preflight.mjs --check-docs",
-      "contributor-build-guards": "node scripts/contrib/enroll-builds.mjs",
-    });
   },
 );

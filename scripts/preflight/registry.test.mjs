@@ -339,7 +339,6 @@ test("verification-only edits exercise their tooling without repeating unchanged
   assert.equal(selection.full, false);
   const ids = selection.selected.map(({ check }) => check.id);
   assert.ok(ids.includes("repo-tooling-tests"));
-  assert.ok(ids.includes("required-checks-doc"));
   assert.ok(!ids.includes("demo-test"));
   assert.ok(!ids.includes("tx-preparation:emulator"));
   for (const shared of [

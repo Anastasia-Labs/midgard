@@ -11,9 +11,10 @@
 //     MIDGARD_PREFLIGHT_FULL=1 selects every check at full scope.
 //   * "Could not look" is never "passed": a check whose capability is missing
 //     is SKIPPED WITH A REASON and the run exits 3, not 0.
-//   * When CI catches a failure preflight selection missed, record it in the
-//     misses log described in docs/agents/required-checks.md and widen the
-//     triggers that missed it.
+//   * When CI catches a failure preflight selection missed, append one JSON
+//     line to scripts/preflight/misses.jsonl (date, CI run, commit, CI check,
+//     changed paths, checks preflight ran, why it missed, remedy) and widen
+//     the triggers that missed it.
 //
 // Trigger lists are derived from the tool that owns them (see derive.mjs), so
 // they cannot drift from what the tool actually reads.
