@@ -38,6 +38,12 @@ const harmonicLabsPackages = {
     "@harmoniclabs packages are not dependencies of this workspace. Use the owned UPLC values and Flat encoder in @al-ft/midgard-validation/uplc, the iterative Plutus Data codecs (@al-ft/midgard-core/plutus-data-lucid-iterative, midgard-validation plutus-data-iterative.*), or the pinned @lucid-evolution/uplc wasm.",
 };
 
+const nodeSourceAlias = {
+  group: ["@/*"],
+  message:
+    "midgard-node is compiled from source by midgard-node-tools through the midgard-source exports condition, so neither package has a @/ alias: use relative specifiers inside a package and `midgard-node/<subpath>` from the tooling package.",
+};
+
 // No runtime module loads the TypeScript compiler. A worker runs under a
 // fixed heap (the settlement worker once reached a source scanner that
 // imported it through the fault-proofs root barrel), so everything its graph
@@ -47,6 +53,16 @@ const typescriptCompiler = {
   message:
     "Runtime source must not import the TypeScript compiler: every process that reaches this module would load it at startup. Keep compiler-based tooling in tests or scripts.",
 };
+
+// The import restrictions every file carries, plus a block's own. A block's
+// `no-restricted-imports` replaces an earlier block's for the files it
+// matches, so each one restates the shared patterns through this.
+const restrictImports = (...patterns) => ({
+  "no-restricted-imports": [
+    "error",
+    { patterns: [workspacePackageBoundary, harmonicLabsPackages, ...patterns] },
+  ],
+});
 
 export default tseslint.config(
   {
@@ -84,10 +100,7 @@ export default tseslint.config(
           ignoreRestSiblings: true,
         },
       ],
-      "no-restricted-imports": [
-        "error",
-        { patterns: [workspacePackageBoundary, harmonicLabsPackages] },
-      ],
+      ...restrictImports(),
     },
   },
   {
@@ -214,36 +227,17 @@ export default tseslint.config(
   {
     files: ["*/src/**/*.ts"],
     rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            workspacePackageBoundary,
-            harmonicLabsPackages,
-            typescriptCompiler,
-          ],
-        },
-      ],
+      ...restrictImports(typescriptCompiler),
     },
   },
   {
     files: ["midgard-sdk/src/**/*.ts"],
     rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            workspacePackageBoundary,
-            harmonicLabsPackages,
-            typescriptCompiler,
-            {
-              group: ["@/*"],
-              message:
-                "midgard-sdk src is resolved from source by every consumer through the midgard-source exports condition. The @/ alias exists only in this package's tsconfig/vitest config, so src must use relative specifiers.",
-            },
-          ],
-        },
-      ],
+      ...restrictImports(typescriptCompiler, {
+        group: ["@/*"],
+        message:
+          "midgard-sdk src is resolved from source by every consumer through the midgard-source exports condition. The @/ alias exists only in this package's tsconfig/vitest config, so src must use relative specifiers.",
+      }),
     },
   },
   {
@@ -283,39 +277,32 @@ export default tseslint.config(
       "midgard-validation/src/validation-machine/*-producers.*.ts",
     ],
     rules: {
-      "no-restricted-imports": [
-        "error",
+      ...restrictImports(
+        typescriptCompiler,
         {
-          patterns: [
-            workspacePackageBoundary,
-            harmonicLabsPackages,
-            typescriptCompiler,
-            {
-              group: [
-                "**/phase-a.js",
-                "**/phase-b.js",
-                "**/trace-replay.js",
-                "**/trace-builder-stop.js",
-              ],
-              message:
-                "A trace producer must not import replay or its verdict: only the driver compares a producer's outcome with replay.",
-            },
-            {
-              regex: ".",
-              importNames: [
-                "RejectedTx",
-                "RejectCode",
-                "RejectCodes",
-                "ValidationMachineReplayInput",
-                "ValidationReplay",
-                "ValidationTraceStopped",
-              ],
-              message:
-                "A trace producer must not name replay's verdict types: only the driver compares a producer's outcome with replay.",
-            },
+          group: [
+            "**/phase-a.js",
+            "**/phase-b.js",
+            "**/trace-replay.js",
+            "**/trace-builder-stop.js",
           ],
+          message:
+            "A trace producer must not import replay or its verdict: only the driver compares a producer's outcome with replay.",
         },
-      ],
+        {
+          regex: ".",
+          importNames: [
+            "RejectedTx",
+            "RejectCode",
+            "RejectCodes",
+            "ValidationMachineReplayInput",
+            "ValidationReplay",
+            "ValidationTraceStopped",
+          ],
+          message:
+            "A trace producer must not name replay's verdict types: only the driver compares a producer's outcome with replay.",
+        },
+      ),
     },
   },
   {
@@ -377,31 +364,21 @@ export default tseslint.config(
     // behavior.
     files: ["midgard-watcher/src/**/*.ts"],
     rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            workspacePackageBoundary,
-            harmonicLabsPackages,
-            typescriptCompiler,
-            {
-              group: [
-                "midgard-node",
-                "midgard-node/*",
-                "midgard-node-tools",
-                "midgard-node-tools/*",
-                "da-committee-node",
-                "da-committee-node/*",
-                "**/midgard-node/**",
-                "**/midgard-node-tools/**",
-                "**/da-committee-node/**",
-              ],
-              message:
-                "The watcher verifies the operator independently: its runtime must not import the operator's node, its tooling, or the DA committee service. Model the boundary it needs (an HTTP/libp2p client, a config field) instead.",
-            },
-          ],
-        },
-      ],
+      ...restrictImports(typescriptCompiler, {
+        group: [
+          "midgard-node",
+          "midgard-node/*",
+          "midgard-node-tools",
+          "midgard-node-tools/*",
+          "da-committee-node",
+          "da-committee-node/*",
+          "**/midgard-node/**",
+          "**/midgard-node-tools/**",
+          "**/da-committee-node/**",
+        ],
+        message:
+          "The watcher verifies the operator independently: its runtime must not import the operator's node, its tooling, or the DA committee service. Model the boundary it needs (an HTTP/libp2p client, a config field) instead.",
+      }),
     },
   },
   {
@@ -411,52 +388,30 @@ export default tseslint.config(
     // a user depend on operator code and its ledger state.
     files: ["midgard-user-cli/src/**/*.ts"],
     rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            workspacePackageBoundary,
-            harmonicLabsPackages,
-            typescriptCompiler,
-            {
-              group: [
-                "midgard-node",
-                "midgard-node/*",
-                "midgard-node-tools",
-                "midgard-node-tools/*",
-                "da-committee-node",
-                "da-committee-node/*",
-                "**/midgard-node/**",
-                "**/midgard-node-tools/**",
-                "**/da-committee-node/**",
-              ],
-              message:
-                "midgard-user runs on the user's own wallet and indexer: it must not import the operator's node, its tooling, or the DA committee service. Move what it needs into @al-ft/midgard-core or @al-ft/midgard-sdk.",
-            },
-          ],
-        },
-      ],
+      ...restrictImports(typescriptCompiler, {
+        group: [
+          "midgard-node",
+          "midgard-node/*",
+          "midgard-node-tools",
+          "midgard-node-tools/*",
+          "da-committee-node",
+          "da-committee-node/*",
+          "**/midgard-node/**",
+          "**/midgard-node-tools/**",
+          "**/da-committee-node/**",
+        ],
+        message:
+          "midgard-user runs on the user's own wallet and indexer: it must not import the operator's node, its tooling, or the DA committee service. Move what it needs into @al-ft/midgard-core or @al-ft/midgard-sdk.",
+      }),
     },
   },
   {
     files: ["midgard-node/**/*.ts", "midgard-node-tools/**/*.ts"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            workspacePackageBoundary,
-            harmonicLabsPackages,
-            typescriptCompiler,
-            {
-              group: ["@/*"],
-              message:
-                "midgard-node is compiled from source by midgard-node-tools through the midgard-source exports condition, so neither package has a @/ alias: use relative specifiers inside a package and `midgard-node/<subpath>` from the tooling package.",
-            },
-          ],
-        },
-      ],
-    },
+    rules: restrictImports(nodeSourceAlias),
+  },
+  {
+    files: ["midgard-node/src/**/*.ts", "midgard-node-tools/src/**/*.ts"],
+    rules: restrictImports(nodeSourceAlias, typescriptCompiler),
   },
   {
     // Owner rulings checked as lint (docs/agents/lint-rules.md). The rules are
