@@ -28,6 +28,8 @@ import type { MpfStoredValue } from "./types.js";
 export const RETAINED_ROOT_PREFIX = "__retained__/";
 const NODE_REFS_PREFIX = "__refs__/";
 const DEAD_NODE_PREFIX = "__dead__/";
+/** A node key: the node hash. */
+const NODE_KEY = /^[0-9a-f]{64}$/;
 
 /** The range of keys under `prefix`, which ends in `/` (the byte before 0). */
 const under = (prefix: string) => ({
@@ -96,15 +98,21 @@ export const createLevelLedgerStorage = (input: {
         ...change.unqueueDead.map((hash) => del(DEAD_NODE_PREFIX + hash)),
       ]);
     },
+    // `nodes` counts every hash with a node key or a count key. Each node
+    // this store holds has both, so a node key left without its count, or a
+    // count left without its node key, shows up as a node more than the store
+    // holds; so does a node key another writer of the database put there.
     counts: async () => {
-      let nodes = 0;
+      const hashes = new Set<string>();
+      for await (const key of level.keys())
+        if (NODE_KEY.test(key)) hashes.add(key);
       let nodeRefs = 0;
-      for await (const refs of level.values(under(NODE_REFS_PREFIX))) {
-        nodes += 1;
+      for await (const [key, refs] of level.iterator(under(NODE_REFS_PREFIX))) {
+        hashes.add(key.slice(NODE_REFS_PREFIX.length));
         nodeRefs += Number(refs);
       }
       return {
-        nodes,
+        nodes: hashes.size,
         outputs: 0,
         roots: await countUnder(RETAINED_ROOT_PREFIX),
         nodeRefs,
