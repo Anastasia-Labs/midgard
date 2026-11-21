@@ -65,7 +65,6 @@ export {
   WATCHER_PREFLIGHT_STALL_RETRY_DELAY_MS,
   type WatcherPreflightStalledResult,
 } from "./fault-proofs/preflight-stall-retry.js";
-export { watcherValidationDisputeFundingTerms } from "./funding/validation-dispute-funding-terms.js";
 export {
   assertWatcherWorkflowFundingProfileOverlay,
   createWatcherWorkflowFundingProfileBundle,
@@ -171,6 +170,7 @@ export {
 export {
   assertWatcherDeploymentProtocolParameterAuthority,
   watcherDeploymentAppliedScriptHashes,
+  watcherDeploymentAvailabilityChallengeAuthority,
   watcherDeploymentProtocolParameterAuthority,
   watcherDeploymentReleaseEconomicsAuthority,
   watcherDeploymentReleaseFinalityAuthority,

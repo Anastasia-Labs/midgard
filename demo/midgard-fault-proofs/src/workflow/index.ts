@@ -31,7 +31,6 @@ export * from "./field-carriage-prerequisite.js";
 export * from "./forced-rejection-reason.js";
 export { isWorkflowFundingPauseReason } from "./funding-pause-reason.js";
 export * from "./funding-requirements.js";
-export * from "./funding-requirements-test-support.js";
 export * from "./header-classifier.js";
 export * from "./in-flight.js";
 export * from "./input-no-idx.js";
@@ -81,7 +80,6 @@ export * from "./release-economics-policy.js";
 export * from "./release-finality-policy.js";
 export * from "./replay-requirements.js";
 export * from "./runtime.js";
-export { validationDisputeWalletMoveReserve } from "./runtime-funding-fee.js";
 export {
   isFinalAtReleaseDepth,
   type SignedTransactionRecoveryObservation,

@@ -1,6 +1,6 @@
 import type { DeploymentManifestCardanoProtocolParameters } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { isPlainFundingOutput } from "@al-ft/midgard-fault-proofs/funding/plain-funding-output";
-import { validationDisputeWalletMoveReserve } from "@al-ft/midgard-fault-proofs/workflow/runtime-funding-fee";
+import { validationDisputeWalletMoveReserve } from "@al-ft/midgard-fault-proofs/test-support/validation-dispute-wallet-move-reserve";
 import { VALIDATION_CASE_FLOOR_LOVELACE } from "@al-ft/midgard-sdk/da";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";

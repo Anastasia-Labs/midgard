@@ -24,7 +24,6 @@ import type {
 } from "./family-application.assert-family-definition-roster.js";
 import { FAMILY_APPLICATION_REGISTRY } from "./family-application-registry.family-application-registry.js";
 import type { FamilyApplicationRegistryEntry } from "./family-application-registry.value-not-preserved-family-application-record.js";
-import type { WorkflowFundingRequirements } from "./funding-requirements.js";
 import type { InstalledFraudProofCategory } from "./installed-categories.js";
 import { continuePendingWorkflow } from "./pending-continuation.js";
 import {
@@ -219,15 +218,6 @@ export const createManifestBoundWorkflowRunner = <
     runOrResume: createManifestBoundWorkflowRunOrResume(input),
   });
 
-const runnerFunding = (
-  fundingRequirements: WorkflowFundingRequirements | undefined,
-): Readonly<{
-  fundingRequirements?: WorkflowFundingRequirements;
-}> =>
-  fundingRequirements === undefined
-    ? Object.freeze({})
-    : Object.freeze({ fundingRequirements });
-
 /**
  * Mints the admitted production runner for a family application record. The
  * record supplies the category, the roster, the binding, the construction and
@@ -242,11 +232,9 @@ export const createFamilyApplicationWorkflowRunner = <
 >(
   record: FamilyApplicationRecord<Category, Config, Workflow>,
   loadRuntime: WorkflowRuntimeLoader,
-  fundingRequirements?: WorkflowFundingRequirements,
 ): WorkflowAdapterRunner =>
   createAdmittedWorkflowRunner({
     category: record.category,
-    ...runnerFunding(fundingRequirements),
     runOrResume: createManifestBoundWorkflowRunOrResume({
       record,
       loadRuntime,
@@ -254,12 +242,11 @@ export const createFamilyApplicationWorkflowRunner = <
   });
 
 /**
- * The factory a compiled host applies to install one family: the host's one
- * shared runtime loader and, when measured, the family's funding profile.
+ * The factory a compiled host applies to install one family over the host's
+ * one shared runtime loader.
  */
 export type FamilyWorkflowRunnerFactory = (
   loadRuntime: WorkflowRuntimeLoader,
-  fundingRequirements?: WorkflowFundingRequirements,
 ) => WorkflowAdapterRunner;
 
 /**
@@ -279,12 +266,8 @@ const familyApplicationWorkflowRunnerFactory = <
     unknown,
     FamilyApplicationWorkflowIdentity<Category>
   >;
-  return (loadRuntime, fundingRequirements) =>
-    createFamilyApplicationWorkflowRunner(
-      record,
-      loadRuntime,
-      fundingRequirements,
-    );
+  return (loadRuntime) =>
+    createFamilyApplicationWorkflowRunner(record, loadRuntime);
 };
 
 type WorkflowRunnerFactories = {

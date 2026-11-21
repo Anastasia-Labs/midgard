@@ -93,7 +93,9 @@ export type WorkflowSends = Readonly<{
   /** Notes every coin the process's wallet lists now, in place of its
    * previous listing. */
   noteWalletCoins: (outRefs: readonly string[]) => void;
-  /** Whether another action of the process holds `outRef`. */
+  /** Whether another action of the process holds `outRef`: an expired
+   * predecessor's required coins included, which only its action's rebuild
+   * is offered (`withRequiredWalletInputs`). */
   isHeld: (outRef: string) => boolean;
   /** The sweep wallet the objective's restricted wallet installed, if any. */
   sweepWallet: () => WorkflowSweepWallet | undefined;
@@ -125,6 +127,8 @@ export type WorkflowInFlight = Readonly<{
   holdWalletInputs: HoldWalletInputs;
   /** Every coin held now, by a workflow or by another action. */
   heldOutRefs: () => readonly string[];
+  /** Every objective's part the process keeps now. */
+  objectives: () => readonly WorkflowSends[];
 }>;
 
 const HELD_UNTIL_SETTLED = Number.MAX_SAFE_INTEGER;
@@ -221,8 +225,11 @@ export const createWorkflowInFlight = ({
       record: (transaction) => {
         if (transactions.some(({ txHash }) => txHash === transaction.txHash))
           return;
+        // Only a transaction of the required action replaces its expired
+        // predecessor: another action's leaves those coins held for it.
         const kept = required;
-        clearRequired();
+        const replaces = transaction.actionId === kept.actionId;
+        if (replaces) clearRequired();
         let release: () => void;
         try {
           release = holdWalletInputs({
@@ -230,7 +237,7 @@ export const createWorkflowInFlight = ({
             untilMs: HELD_UNTIL_SETTLED,
           });
         } catch (cause) {
-          if (kept.outRefs.length > 0) holdRequired(kept);
+          if (replaces && kept.outRefs.length > 0) holdRequired(kept);
           throw cause;
         }
         releasing.set(transaction.txHash, release);
@@ -275,7 +282,7 @@ export const createWorkflowInFlight = ({
       noteWalletCoins: (outRefs) => {
         walletCoins = new Set(outRefs);
       },
-      isHeld: (outRef) => !required.outRefs.includes(outRef) && isHeld(outRef),
+      isHeld,
       sweepWallet: () => sweep,
       installSweepWallet: (wallet) => {
         sweep = wallet;
@@ -304,5 +311,6 @@ export const createWorkflowInFlight = ({
     },
     holdWalletInputs,
     heldOutRefs: () => [...holds.keys()].filter(isHeld),
+    objectives: () => Object.freeze([...scopes.values()]),
   });
 };

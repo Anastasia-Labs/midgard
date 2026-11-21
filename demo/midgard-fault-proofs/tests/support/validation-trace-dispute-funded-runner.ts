@@ -17,8 +17,8 @@
  */
 import { CML, Lucid } from "@lucid-evolution/lucid";
 import {
+  watcherDeploymentAvailabilityChallengeAuthority,
   watcherDeploymentReleaseFinalityAuthority,
-  watcherValidationDisputeFundingTerms,
 } from "midgard-watcher";
 
 import { createValidationTraceDisputeWorkflowAdapter } from "../../src/validation-trace-dispute/adapter.js";
@@ -42,7 +42,6 @@ import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchest
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { createFraudProofWorkflowRegistry } from "../../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runFraudProofWorkflow } from "../../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
-import { validationDisputeWalletMoveReserve } from "../../src/workflow/runtime-funding-fee.js";
 import { restrictWorkflowWallet } from "../../src/workflow/workflow-wallet.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
 import { terminalVerifier } from "../workflow.make-adapter.js";
@@ -50,6 +49,7 @@ import { emulatorManifestProtocolParameters } from "./emulator-protocol-paramete
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { emulatorPublicationObserver } from "./install-field-carriage.js";
 import { FixtureRetainedDaSource } from "./script-decode-installed-host.js";
+import { validationDisputeWalletMoveReserve } from "./validation-dispute-wallet-move-reserve.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
 import { confirmedValidationTraceStages } from "./validation-trace-confirmed-stages.js";
 import { signedDeployment } from "./validation-trace-dispute-funded-roster.js";
@@ -164,8 +164,10 @@ export const openFundedDispute = async (
     decision,
   } = await classifyFailingHeader(scene);
   if (
-    watcherValidationDisputeFundingTerms(identity, CATEGORY).validationDispute
-      ?.bondLovelace !== BOND_LOVELACE
+    BigInt(
+      watcherDeploymentAvailabilityChallengeAuthority(identity).parameters
+        .challengerBondLovelace,
+    ) !== BOND_LOVELACE
   )
     throw new Error("the fixture manifest binds another dispute bond");
   const authentic = createValidationTraceCaseHistory({

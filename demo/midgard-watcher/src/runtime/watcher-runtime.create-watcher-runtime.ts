@@ -302,6 +302,18 @@ export const startWatcherRuntime = async (
           decisionDigest: job.decisionDigest,
           runtimeConfigPath: input.config.watcherRuntimeConfigPath,
         }),
+      ...(faultProofApplication.proofMaterials === undefined
+        ? {}
+        : {
+            proofMaterialsSweepable:
+              faultProofApplication.proofMaterials.sweepable,
+          }),
+      observeSignedTransaction: activeFollower.faultProofL1
+        .source("released-in-flight")
+        .signedTransactions({
+          releaseFinality:
+            watcherDeploymentReleaseFinalityPolicy(deploymentIdentity),
+        }).observeSignedTransaction,
     });
     faultProofSupervisor = activeSupervisor;
     // The proof-materials first pass completes once the roster's floor is

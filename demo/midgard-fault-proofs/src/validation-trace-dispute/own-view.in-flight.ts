@@ -8,42 +8,73 @@ import type { ValidationTraceInFlight } from "./own-view.js";
 
 const decoded = new WeakMap<InFlightTransaction, ValidationTraceInFlight>();
 
-/** `transaction` as the own view's in-flight transaction, decoded once. */
+/** The out-refs `inputs` names, in order; frees each input it reads. */
+const outRefsOf = (inputs: CML.TransactionInputList): string[] =>
+  Array.from({ length: inputs.len() }, (_, index) => {
+    const input = inputs.get(index);
+    const id = input.transaction_id();
+    try {
+      return `${id.to_hex()}#${input.index().toString()}`;
+    } finally {
+      id.free();
+      input.free();
+    }
+  });
+
+/** One output's address and inline datum; frees what it reads. */
+const createdBy = (
+  output: CML.TransactionOutput,
+): Readonly<{ address: string; datumCbor: string | undefined }> => {
+  const option = output.datum();
+  const datum = option?.as_datum();
+  try {
+    return {
+      address: coreToTxOutput(output).address,
+      datumCbor: datum?.to_cbor_hex(),
+    };
+  } finally {
+    datum?.free();
+    option?.free();
+    output.free();
+  }
+};
+
+/** `transaction` as the own view's in-flight transaction, decoded once.
+ * Every wasm object read is freed once its plain values are out: a turn
+ * that decodes many large transactions must not leave them to finalizers. */
 const inFlightOf = (
   transaction: InFlightTransaction,
 ): ValidationTraceInFlight => {
   const known = decoded.get(transaction);
   if (known !== undefined) return known;
-  const body = CML.Transaction.from_cbor_hex(
+  const tx = CML.Transaction.from_cbor_hex(
     transaction.signedTransactionCborHex,
-  ).body();
+  );
+  const body = tx.body();
   const inputs = body.inputs();
   const references = body.reference_inputs();
   const outputs = body.outputs();
-  const ttl = body.ttl();
-  const outRefOf = (input: CML.TransactionInput) =>
-    `${input.transaction_id().to_hex()}#${input.index().toString()}`;
-  const found = Object.freeze({
-    txHash: transaction.txHash,
-    spends: Array.from({ length: inputs.len() }, (_, index) =>
-      outRefOf(inputs.get(index)),
-    ),
-    reads: Array.from({ length: references?.len() ?? 0 }, (_, index) =>
-      outRefOf(references!.get(index)),
-    ),
-    creates: Array.from({ length: outputs.len() }, (_, index) => {
-      const output = outputs.get(index);
-      const { address } = coreToTxOutput(output);
-      return {
+  try {
+    const ttl = body.ttl();
+    const found = Object.freeze({
+      txHash: transaction.txHash,
+      spends: outRefsOf(inputs),
+      reads: references === undefined ? [] : outRefsOf(references),
+      creates: Array.from({ length: outputs.len() }, (_, index) => ({
         outRef: `${transaction.txHash}#${index.toString()}`,
-        address,
-        datumCbor: output.datum()?.as_datum()?.to_cbor_hex(),
-      };
-    }),
-    validTo: ttl === undefined ? undefined : Number(ttl),
-  });
-  decoded.set(transaction, found);
-  return found;
+        ...createdBy(outputs.get(index)),
+      })),
+      validTo: ttl === undefined ? undefined : Number(ttl),
+    });
+    decoded.set(transaction, found);
+    return found;
+  } finally {
+    outputs.free();
+    references?.free();
+    inputs.free();
+    body.free();
+    tx.free();
+  }
 };
 
 /** The transactions `inFlight` holds, oldest first. */

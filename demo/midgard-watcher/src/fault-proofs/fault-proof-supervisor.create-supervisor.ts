@@ -6,6 +6,7 @@ import {
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import { requireRunnableHeaderFault } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import type { WorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
+import { followReleasedInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight-released";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
@@ -103,13 +104,15 @@ const verifiedCompletion = (
   confirmationDepth: verification.confirmationDepth,
 });
 
+type Objective = Readonly<{ category: string; headerHash: string }>;
+
 export const createSupervisor = (input: {
   readonly journalRoot: string;
   /** What this process sent and has not seen settle, held in memory only:
    * whether an objective's run continues in-flight work reads it. */
   readonly inFlight: Pick<
     WorkflowInFlight,
-    "sending" | "forget" | "forObjective"
+    "sending" | "forget" | "forObjective" | "objectives"
   >;
   readonly deploymentFingerprint: string;
   readonly deadlineAlertHeadroomMs: number;
@@ -174,7 +177,13 @@ export const createSupervisor = (input: {
     sweep: input.dependencies.sweepProofMaterials,
     inFlight: input.inFlight,
     walletOnlySend: () => walletOnlySend,
+    sweepable: input.dependencies.proofMaterialsSweepable,
+    isRevoked: input.dependencies.isActuationRevokedError,
   });
+  const jobInProcess = (objective: Objective): boolean =>
+    [jobs, registering, transportRetries].some((held) =>
+      held.has(objectiveKey(objective)),
+    );
   const createAuthority = () =>
     createWatcherFaultProofProgressAuthority({
       journalRoot: input.journalRoot,
@@ -232,10 +241,7 @@ export const createSupervisor = (input: {
         input.dependencies.objectiveSettled?.(objective);
       },
       proofMaterials: input.dependencies.proofMaterials,
-      jobInProcess: (objective) =>
-        [jobs, registering, transportRetries].some((held) =>
-          held.has(objectiveKey(objective)),
-        ),
+      jobInProcess,
     });
   let progressAuthority = createAuthority();
   let progressSerial: Promise<unknown> = Promise.resolve();
@@ -358,10 +364,7 @@ export const createSupervisor = (input: {
   const contextKey = (job: WatcherFaultProofJob) =>
     `${job.rollbackGeneration}:${job.observationRevision ?? job.decisionDigest}`;
 
-  const objectiveKey = ({
-    category,
-    headerHash,
-  }: Pick<WatcherFaultProofJob, "category" | "headerHash">) =>
+  const objectiveKey = ({ category, headerHash }: Objective) =>
     `${category}\u0000${headerHash}`;
   let resolveDone!: () => void;
   let rejectDone!: (reason: Error) => void;
@@ -658,6 +661,22 @@ export const createSupervisor = (input: {
 
   // Set by each admitted observation; the pump runs one sweep for any number.
   let sweepDue = false;
+  // Set by each admitted pass at tip: the in-flight parts of objectives no
+  // run drives are followed, and a proof-materials sweep due runs again.
+  let tipDue = false;
+  const passAtTip = async (): Promise<void> => {
+    const observe = input.dependencies.observeSignedTransaction;
+    if (observe !== undefined)
+      await followReleasedInFlight({
+        inFlight: input.inFlight,
+        driven: (objective) =>
+          progressAuthority.drives(objective) ||
+          jobInProcess(objective) ||
+          sweeps.sweeping(objective),
+        observeSignedTransaction: observe,
+      });
+    await sweeps.atTip();
+  };
   const ensurePump = (): void => {
     if (pumping) return;
     pumping = true;
@@ -670,10 +689,18 @@ export const createSupervisor = (input: {
             yielded.clear();
             await runPending(entry);
           }
-          if (!sweepDue || queue.length > 0 || busy.reason() !== null) break;
-          sweepDue = false;
+          if (
+            !(sweepDue || tipDue) ||
+            queue.length > 0 ||
+            busy.reason() !== null
+          )
+            break;
+          const atTip = tipDue;
+          sweepDue = tipDue = false;
           if (phase === "accepting")
             await input.ownThreadSweep?.().catch(() => undefined);
+          if (atTip && phase === "accepting")
+            await passAtTip().catch(() => undefined);
         }
       } catch (error) {
         block(error, activeJob);
@@ -933,6 +960,10 @@ export const createSupervisor = (input: {
             void scheduled.completion.catch(() => undefined);
           }
           sweepDue ||= input.ownThreadSweep !== undefined;
+          tipDue ||=
+            (await input.proofRetention?.passAtTip(
+              request.observation.nativePoint,
+            )) === true;
           ensurePump();
         } catch (error) {
           if (input.dependencies.isActuationRevokedError(error)) return;

@@ -9,8 +9,16 @@ import {
 
 import { isPlainFundingOutput } from "../funding/plain-funding-output.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import { validationTraceMoveFeeCeiling } from "../validation-trace-dispute/move-fee.js";
 import type { WorkflowSends } from "./in-flight.js";
 import { proofMaterialsViewFor } from "./proof-materials-view.js";
+import {
+  assertWorkflowTransactionShape,
+  workflowTransactionParts,
+  type WorkflowTransactionRoster,
+} from "./transaction-shape.js";
+
+export type { WorkflowTransactionRoster } from "./transaction-shape.js";
 
 const outRefLabel = ({ txHash, outputIndex }: UTxO): string =>
   `${txHash}#${outputIndex.toString()}`;
@@ -37,16 +45,63 @@ export const balanceCbor = (utxos: readonly UTxO[]): string => {
  * expired predecessor (`WorkflowSends.requiredWalletInputs`), every
  * transaction the wallet's Lucid builds collects those coins explicitly, and
  * coin selection tops up from the rest of the pool.
+ *
+ * Given the deployment's `roster`, the wallet signs no transaction outside
+ * the workflow transaction shape (`transaction-shape.ts`): an input it
+ * listed as a wallet coin is placed at our wallet, and any other input is
+ * read from the chain only where the shape turns on it.
  */
 export const restrictWorkflowWallet = ({
   signer,
   sends,
+  roster,
 }: {
   readonly signer: ResolvedProverSigner;
   readonly sends: WorkflowSends;
+  readonly roster?: WorkflowTransactionRoster;
 }): ResolvedProverSigner => {
   if (signer.proofMaterials !== undefined)
     sends.installProofMaterialsView(signer.proofMaterials);
+  const assertShape = async (
+    lucid: LucidEvolution,
+    tx: string,
+    governed: WorkflowTransactionRoster,
+  ): Promise<void> => {
+    const parts = workflowTransactionParts(tx);
+    const placed = new Map<string, string>();
+    for (const outRef of [...parts.inputs, ...parts.collateralInputs])
+      if (sends.isWalletCoin(outRef)) placed.set(outRef, signer.address);
+    const maximumFeeLovelace = validationTraceMoveFeeCeiling(lucid);
+    // Every other input the shape turns on is read: those of a transaction
+    // that embeds a script (our lock spends a proof material) or whose fee
+    // passes the ceiling (our coins must not pay it), and collateral.
+    const unplaced = [
+      ...(parts.embeddedScriptHashes.length > 0 ||
+      parts.fee > maximumFeeLovelace
+        ? parts.inputs
+        : []),
+      ...parts.collateralInputs,
+    ].filter((outRef) => !placed.has(outRef));
+    if (unplaced.length > 0)
+      for (const utxo of await lucid.utxosByOutRef(
+        [...new Set(unplaced)].map((outRef) => {
+          const [txHash, outputIndex] = outRef.split("#");
+          return { txHash: txHash!, outputIndex: Number(outputIndex) };
+        }),
+      ))
+        placed.set(outRefLabel(utxo), utxo.address);
+    assertWorkflowTransactionShape({
+      parts,
+      shape: {
+        roster: governed,
+        walletAddress: signer.address,
+        proofMaterialsAddress: signer.proofMaterialsAddress,
+        paymentKeyHash: signer.paymentKeyHash,
+        maximumFeeLovelace,
+      },
+      addressOf: (outRef) => placed.get(outRef),
+    });
+  };
   return Object.freeze({
     ...signer,
     selectWallet: (lucid: LucidEvolution): void => {
@@ -59,11 +114,18 @@ export const restrictWorkflowWallet = ({
         sends.noteWalletCoins(utxos.map(outRefLabel));
         return utxos;
       };
-      const selectable = async (): Promise<readonly UTxO[]> =>
-        (await listed()).filter(
-          (utxo) =>
-            isPlainFundingOutput(utxo) && !sends.isHeld(outRefLabel(utxo)),
+      // A required coin is held for its action and offered only to the build
+      // that must spend it.
+      const selectable = async (): Promise<readonly UTxO[]> => {
+        const forced = new Set(
+          (requiredInputs.get(lucid) ?? []).map(outRefLabel),
         );
+        return (await listed()).filter(
+          (utxo) =>
+            isPlainFundingOutput(utxo) &&
+            (forced.has(outRefLabel(utxo)) || !sends.isHeld(outRefLabel(utxo))),
+        );
+      };
       const addressHex = CML.Address.from_bech32(signer.address).to_hex();
       const api: WalletApi = Object.freeze({
         getNetworkId: async () =>
@@ -75,10 +137,12 @@ export const restrictWorkflowWallet = ({
         getUnusedAddresses: async () => [],
         getChangeAddress: async () => addressHex,
         getRewardAddresses: async () => [],
-        signTx: async (tx) =>
-          (
+        signTx: async (tx) => {
+          if (roster !== undefined) await assertShape(lucid, tx, roster);
+          return (
             await original.signTx(CML.Transaction.from_cbor_hex(tx))
-          ).to_cbor_hex(),
+          ).to_cbor_hex();
+        },
         signData: async (address, payload) =>
           await original.signMessage(
             CML.Address.from_hex(address).to_bech32(),

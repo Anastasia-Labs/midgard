@@ -356,10 +356,6 @@
       "midgard-source": "./src/workflow/funding-requirements.ts",
       "import": "./dist/workflow/funding-requirements.js"
     },
-    "./workflow/funding-requirements-test-support": {
-      "midgard-source": "./src/workflow/funding-requirements-test-support.ts",
-      "import": "./dist/workflow/funding-requirements-test-support.js"
-    },
     "./workflow/header-classifier": {
       "midgard-source": "./src/workflow/header-classifier.ts",
       "import": "./dist/workflow/header-classifier.js"
@@ -367,6 +363,10 @@
     "./workflow/in-flight": {
       "midgard-source": "./src/workflow/in-flight.ts",
       "import": "./dist/workflow/in-flight.js"
+    },
+    "./workflow/in-flight-released": {
+      "midgard-source": "./src/workflow/in-flight-released.ts",
+      "import": "./dist/workflow/in-flight-released.js"
     },
     "./workflow/input-set-uniqueness": {
       "midgard-source": "./src/workflow/input-set-uniqueness.ts",
@@ -538,6 +538,10 @@
     "./test-support/cross-block-raw-emulator": {
       "midgard-source": "./tests/support/cross-block-raw-emulator.ts",
       "types": "./tests/support/cross-block-raw-emulator.ts"
+    },
+    "./test-support/validation-dispute-wallet-move-reserve": {
+      "midgard-source": "./tests/support/validation-dispute-wallet-move-reserve.ts",
+      "types": "./tests/support/validation-dispute-wallet-move-reserve.ts"
     },
     "./test-support/wallet-only-send-always-open": {
       "midgard-source": "./tests/support/wallet-only-send-always-open.ts",
@@ -736,10 +740,10 @@
             "src/workflow/forced-rejection-reason.ts",
             "src/workflow/funding-measurements.ts",
             "src/workflow/funding-pause-reason.ts",
-            "src/workflow/funding-requirements-test-support.ts",
             "src/workflow/funding-requirements.ts",
             "src/workflow/header-classifier.ts",
             "src/workflow/in-flight.ts",
+            "src/workflow/in-flight-released.ts",
             "src/workflow/input-set-uniqueness.ts",
             "src/workflow/installed-categories.ts",
             "src/workflow/journal.ts",

@@ -3,10 +3,13 @@ import {
   parseDeploymentManifestCardanoProtocolParameters,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { isPlainFundingOutput } from "@al-ft/midgard-fault-proofs/funding/plain-funding-output";
-import { validationDisputeWalletMoveReserve } from "@al-ft/midgard-fault-proofs/workflow/runtime-funding-fee";
+import { validationDisputeWalletMoveReserve } from "@al-ft/midgard-fault-proofs/test-support/validation-dispute-wallet-move-reserve";
 import { VALIDATION_CASE_FLOOR_LOVELACE } from "@al-ft/midgard-sdk/da";
 import { paymentCredentialOf, type UTxO } from "@lucid-evolution/lucid";
-import { watcherValidationDisputeFundingTerms } from "midgard-watcher";
+import {
+  type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentAvailabilityChallengeAuthority,
+} from "midgard-watcher";
 
 import type {
   AttachedJourneySession,
@@ -28,7 +31,7 @@ const JOURNEY_PROVER_FUNDING_LOVELACE =
 
 export type ProverDisputeFundingPorts = Readonly<{
   /** The bond the family's dispute posts, if it posts one
-   * (`watcherValidationDisputeFundingTerms`). */
+   * (`validationDisputeTerms`). */
   disputeTerms(): Readonly<{
     validationDispute?: Readonly<{ bondLovelace: bigint }>;
   }>;
@@ -43,6 +46,26 @@ export type ProverDisputeFundingPorts = Readonly<{
   transfer(lovelace: bigint): Promise<void>;
   onStage(name: string): void;
 }>;
+
+/**
+ * What a validation-trace dispute's VerifySource posts from the prover's
+ * wallet, from the signed deployment: the manifest's dispute bond (the case
+ * validator's applied bond). Any other category posts no bond.
+ */
+const validationDisputeTerms = (
+  identity: VerifiedWatcherDeploymentIdentity,
+  category: string,
+): ReturnType<ProverDisputeFundingPorts["disputeTerms"]> =>
+  category === "validationTraceDispute"
+    ? {
+        validationDispute: {
+          bondLovelace: BigInt(
+            watcherDeploymentAvailabilityChallengeAuthority(identity).parameters
+              .challengerBondLovelace,
+          ),
+        },
+      }
+    : {};
 
 /** What the prover's wallet spends from: every plain coin at the prover. */
 const spendableLovelace = (utxos: readonly UTxO[]) =>
@@ -108,7 +131,7 @@ export const proverDisputeTopUpBeforeFamily = async (
       : session.proverAddress();
   return ensureProverDisputeFunding({
     disputeTerms: () =>
-      watcherValidationDisputeFundingTerms(
+      validationDisputeTerms(
         session.authority.deploymentAuthority.deploymentIdentity,
         input.category,
       ),

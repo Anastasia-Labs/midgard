@@ -1,13 +1,22 @@
+import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type {
   WorkflowAdapterReadinessInput,
   WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs/workflow/adapters";
 import type { CompleteCanonicalReplayContext } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 import type { WorkflowRuntimeLoader } from "@al-ft/midgard-fault-proofs/workflow/runtime";
-import { restrictWorkflowWallet } from "@al-ft/midgard-fault-proofs/workflow/workflow-wallet";
+import {
+  restrictWorkflowWallet,
+  type WorkflowTransactionRoster,
+} from "@al-ft/midgard-fault-proofs/workflow/workflow-wallet";
+import {
+  credentialToAddress,
+  scriptHashToCredential,
+} from "@lucid-evolution/lucid";
 
 import type { WatcherConfig } from "../runtime/config.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import { watcherDeploymentAppliedScriptHashes } from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import type { WatcherWorkflowInfrastructure } from "../storage/retained-da-runtime.js";
 import {
   bindWatcherDeploymentAuthority,
@@ -48,6 +57,33 @@ export const watcherFaultProofSourceId = ({
   ].join("/");
 
 /**
+ * The signed deployment's governed contracts, which a workflow transaction
+ * may pay (its spending validators' addresses) and embed (any applied
+ * script).
+ */
+export const watcherWorkflowTransactionRoster = (
+  identity: VerifiedWatcherDeploymentIdentity,
+): WorkflowTransactionRoster => {
+  const applied = Object.entries(
+    watcherDeploymentAppliedScriptHashes(identity),
+  );
+  const members = DEPLOYMENT_MEMBERS as Readonly<
+    Record<string, { readonly purpose: string } | undefined>
+  >;
+  return Object.freeze({
+    contractAddresses: applied
+      .filter(([name]) => members[name]?.purpose === "spend")
+      .map(([, scriptHash]) =>
+        credentialToAddress(
+          identity.network,
+          scriptHashToCredential(scriptHash),
+        ),
+      ),
+    scriptHashes: applied.map(([, scriptHash]) => scriptHash),
+  });
+};
+
+/**
  * Pins, for each loading invocation, the replay context its decision held
  * when its load started. A withdrawal (shutdown, rollback, another target)
  * clears the live contexts for every later run, never for a run already
@@ -79,7 +115,8 @@ export const replayContextsPinnedAtLoadStart = (
  * The watcher's one loader body for an acting invocation. On top of the
  * deployment binding it reads the prover wallet, selects the signer (for an
  * acting invocation, restricted to the coins no action of this process
- * holds), with the process's one view of its proof-materials address, and
+ * holds and to the deployment's transaction shape), with the process's one
+ * view of its proof-materials address, and
  * hands over the optional
  * parts a family may require; the family's record then binds its own
  * manifest-bound config from these inside the shared runtime, so nothing here
@@ -140,6 +177,7 @@ export const buildCommonInfrastructure = async ({
       : restrictWorkflowWallet({
           signer: resolvedSigner,
           sends: executionInvocation.sends,
+          roster: watcherWorkflowTransactionRoster(deploymentIdentity),
         });
   signer.selectWallet(binding.lucid);
   return Object.freeze({

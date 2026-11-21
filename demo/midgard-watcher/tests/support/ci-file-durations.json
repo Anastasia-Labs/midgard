@@ -88,7 +88,6 @@
     "tests/fault-proofs/watcher-journal-database.test.ts": 29.1,
     "tests/fault-proofs/watcher-journal-integrity.test.ts": 2.8,
     "tests/funding/protocol-parameter-retry.test.ts": 0,
-    "tests/funding/validation-dispute-funding-terms.test.ts": 1.2,
     "tests/funding/workflow-funding-profile-overlay.test.ts": 2.1,
     "tests/indexers/attestation-timeout-observation.test.ts": 0.7,
     "tests/indexers/authenticated-state-queue-observation.test.ts": 1,

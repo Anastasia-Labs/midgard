@@ -205,8 +205,8 @@ const createProgressAuthority = (
   // An objective whose header left the finalized queue has resolved: its
   // proof or another landed and is final, or the header merged. Its pin goes,
   // and its rows once no job of it is queued or active: such a job's run
-  // adopts the objective again, and a later observation releases it. Nothing
-  // this process sent for it can still land, so its in-flight part goes too.
+  // adopts the objective again, and a later observation releases it. Its
+  // in-flight part goes once nothing in it may land (`in-flight-released.ts`).
   const release = async (target: WatcherProofObjective): Promise<void> => {
     await input.retention?.release(target);
     if (!input.sending(target)) input.forgetInFlight(target);
@@ -448,8 +448,8 @@ const createProgressAuthority = (
           // releases it as a resolved hold is: nothing drives it again until
           // its header is queued again, which admits it afresh. A
           // transaction this process sent for it keeps its coins held until
-          // its bound passes. A marked completion is final already: it is
-          // released.
+          // it lands final or dies (`in-flight-released.ts`). A marked
+          // completion is final already: it is released.
           const departure: WatcherProofDeparture =
             input.departure === undefined ||
             matchingWatcherProofMarker(
@@ -559,6 +559,7 @@ const createProgressAuthority = (
       await input.retention?.release(objective);
       await cleanup.forget(objective, { final: true, departed: true });
     },
+    drives: (objective) => objectives.has(keyOf(objective)),
     completionMarker: (objective) =>
       matchingWatcherProofMarker(database(), objective, k, input.categories),
   });

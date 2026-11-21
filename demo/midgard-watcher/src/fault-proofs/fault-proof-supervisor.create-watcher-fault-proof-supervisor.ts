@@ -68,6 +68,10 @@ export const createWatcherFaultProofSupervisor = (input: {
   readonly proofMaterials?: SupervisorDependencies["proofMaterials"];
   /** The sweep-only run after a departure completes an objective. */
   readonly sweepProofMaterials?: SupervisorDependencies["sweepProofMaterials"];
+  /** Whether the views hold sweepable materials (a failed sweep's retry). */
+  readonly proofMaterialsSweepable?: SupervisorDependencies["proofMaterialsSweepable"];
+  /** Follows the sends of objectives no run drives at each pass at tip. */
+  readonly observeSignedTransaction?: SupervisorDependencies["observeSignedTransaction"];
 }): WatcherFaultProofSupervisor =>
   createSupervisor({
     journalRoot: input.journalRoot,
@@ -134,6 +138,12 @@ export const createWatcherFaultProofSupervisor = (input: {
       ...(input.sweepProofMaterials === undefined
         ? {}
         : { sweepProofMaterials: input.sweepProofMaterials }),
+      ...(input.proofMaterialsSweepable === undefined
+        ? {}
+        : { proofMaterialsSweepable: input.proofMaterialsSweepable }),
+      ...(input.observeSignedTransaction === undefined
+        ? {}
+        : { observeSignedTransaction: input.observeSignedTransaction }),
     }),
   }) as WatcherFaultProofSupervisor;
 

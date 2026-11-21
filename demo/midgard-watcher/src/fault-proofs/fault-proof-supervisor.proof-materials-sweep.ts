@@ -4,6 +4,7 @@ import type {
   WorkflowInFlight,
   WorkflowSends,
 } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
+import { proofMaterialsSweepInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight-released";
 import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import type { WalletOnlySend } from "@al-ft/midgard-fault-proofs/workflow/wallet-only-send-gate";
 
@@ -24,24 +25,73 @@ export type WatcherProofMaterialsSweep = (
     Readonly<{ sends: WorkflowSends; walletOnlySend: WalletOnlySend }>,
 ) => Promise<unknown>;
 
+/** Whether the process's proof-materials views hold materials a sweep may
+ * take now: `unknown` while no view can say (none open). */
+export type WatcherProofMaterialsSweepable = () => Promise<
+  "some" | "none" | "unknown"
+>;
+
 /**
  * One sweep-only run for each objective a departure completes from the
  * chain alone, after restart as before it: noted when the chain verifies
  * the completion and queued once the objective is completed, so its
  * proof-materials needs are released first. Sweeps run one at a time; a
- * failure is logged and never reopens the objective, and each run's part of
- * the in-flight set goes with it (a sweep spends no wallet coin, and the
- * materials a dropped sweep leaves are the next ending's).
+ * failure is logged and never reopens the objective. Each run's part of the
+ * in-flight set goes with it, or, while a sweep it sent may still land, once
+ * the follow of released parts settles that sweep (`in-flight-released.ts`).
+ *
+ * A sweep that failed, or whose transaction was lost, is run again at a
+ * completed pass at tip (`atTip`): the last completion swept is kept in
+ * memory, and while no sweep is queued, running or in flight and the views
+ * report sweepable materials, its sweep-only run is queued once more, one
+ * per pass. A pass that finds nothing sweepable drops it; so does a sweep
+ * whose permit was revoked.
  */
 export const createWatcherProofMaterialsSweeps = (input: {
   readonly sweep: WatcherProofMaterialsSweep | undefined;
-  readonly inFlight: Pick<WorkflowInFlight, "forObjective" | "forget">;
+  readonly inFlight: Pick<
+    WorkflowInFlight,
+    "forObjective" | "forget" | "sending" | "objectives"
+  >;
   readonly walletOnlySend: () => WalletOnlySend;
+  readonly sweepable?: WatcherProofMaterialsSweepable;
+  readonly isRevoked?: (error: unknown) => boolean;
 }) => {
   const verified = new Map<string, Completion>();
   const keyOf = ({ category, headerHash }: Objective) =>
     `${category}/${headerHash}`;
+  // Objectives whose sweep is queued or running.
+  const sweeping = new Set<string>();
+  let last: Completion | undefined;
   let queue: Promise<void> = Promise.resolve();
+  const enqueue = (
+    sweep: WatcherProofMaterialsSweep,
+    completion: Completion,
+  ): void => {
+    const { category, headerHash } = completion.job;
+    const objective = { category, headerHash };
+    sweeping.add(keyOf(objective));
+    queue = queue.then(async () => {
+      await new Promise((resolve) => setImmediate(resolve));
+      try {
+        await sweep({
+          ...completion,
+          sends: input.inFlight.forObjective(objective),
+          walletOnlySend: input.walletOnlySend(),
+        });
+      } catch (cause) {
+        if (input.isRevoked?.(cause) === true && last === completion)
+          last = undefined;
+        process.stderr.write(
+          `watcher proof materials: sweep of ${keyOf(objective)} failed: ${formatUnknownError(cause)}\n`,
+        );
+      } finally {
+        sweeping.delete(keyOf(objective));
+        if (!input.inFlight.sending(objective))
+          input.inFlight.forget(objective);
+      }
+    });
+  };
   return Object.freeze({
     verified: (completion: Completion): void => {
       if (input.sweep !== undefined)
@@ -51,25 +101,32 @@ export const createWatcherProofMaterialsSweeps = (input: {
       const completion = verified.get(keyOf(completed));
       verified.delete(keyOf(completed));
       if (completion === undefined || input.sweep === undefined) return;
+      last = completion;
+      enqueue(input.sweep, completion);
+    },
+    /** Whether a sweep of the objective is queued or running. */
+    sweeping: (objective: Objective): boolean => sweeping.has(keyOf(objective)),
+    /** At a completed pass at tip: the last sweep again, when it is due. */
+    atTip: async (): Promise<void> => {
       const { sweep } = input;
-      const { category, headerHash } = completion.job;
-      const objective = { category, headerHash };
-      queue = queue.then(async () => {
-        await new Promise((resolve) => setImmediate(resolve));
-        try {
-          await sweep({
-            ...completion,
-            sends: input.inFlight.forObjective(objective),
-            walletOnlySend: input.walletOnlySend(),
-          });
-        } catch (cause) {
-          process.stderr.write(
-            `watcher proof materials: sweep of ${keyOf(objective)} failed: ${formatUnknownError(cause)}\n`,
-          );
-        } finally {
-          input.inFlight.forget(objective);
-        }
-      });
+      if (
+        last === undefined ||
+        sweep === undefined ||
+        input.sweepable === undefined ||
+        sweeping.size > 0 ||
+        proofMaterialsSweepInFlight(input.inFlight)
+      )
+        return;
+      const retried = last;
+      let found: Awaited<ReturnType<WatcherProofMaterialsSweepable>>;
+      try {
+        found = await input.sweepable();
+      } catch {
+        return; // read again at the next pass
+      }
+      if (last !== retried || sweeping.size > 0) return;
+      if (found === "none") last = undefined;
+      if (found === "some") enqueue(sweep, retried);
     },
     idle: async () => await queue,
   });

@@ -1,11 +1,9 @@
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  validationDisputeWalletMoveReserve,
-  workflowRuntimeFundingMinimumFee,
-} from "../src/workflow/runtime-funding-fee.js";
+import { workflowRuntimeFundingMinimumFee } from "../src/workflow/runtime-funding-fee.js";
 import { RUNTIME_FUNDING_TEST_PARAMETERS } from "./helpers/runtime-funding-policy-fixture.js";
+import { validationDisputeWalletMoveReserve } from "./support/validation-dispute-wallet-move-reserve.js";
 
 const FUNDING_PAYMENT_KEY_HASH = CML.PrivateKey.from_normal_bytes(
   Buffer.alloc(32, 0x23),

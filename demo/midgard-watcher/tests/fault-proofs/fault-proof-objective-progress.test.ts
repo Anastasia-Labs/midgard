@@ -31,11 +31,7 @@ import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journ
 import { WatcherJournalUnavailableError } from "../../src/fault-proofs/watcher-journal-database.types.js";
 import { WatcherFaultProofL1RefusedError } from "../../src/l1-follower/fault-proof-l1-source.chain.js";
 import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
-import { handleWatcherOperationsHttpRequest } from "../../src/runtime/operations-observability.handle-http-request.js";
-import {
-  createWatcherOperationsObservability,
-  type WatcherOperationsSink,
-} from "../../src/runtime/operations-observability.js";
+import type { WatcherOperationsSink } from "../../src/runtime/operations-observability.js";
 import {
   cleanupClassifiedFaultFixtures,
   deploymentIdentity,
@@ -44,6 +40,7 @@ import {
   setupClassifiedFaultFixture,
 } from "../support/classified-fault-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { readyzReasons } from "../support/fault-proof-readyz-reasons.js";
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
 import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import {
@@ -53,6 +50,7 @@ import {
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { registerFaultProofResubmissionVisibilityTest } from "./fault-proof-objective-progress.hold-visibility.js";
 import { registerLateStartTests } from "./fault-proof-objective-progress.late-start.js";
+import { registerReleasedInFlightTests } from "./fault-proof-objective-progress.released-in-flight.js";
 const finishControl = vi.hoisted(() => ({
   beforeFinish: async (): Promise<void> => undefined,
   beforeRegister: async (): Promise<void> => undefined,
@@ -233,7 +231,10 @@ export const setup = async (
   let execution:
     | ReturnType<typeof createWatcherFaultProofExecution>
     | undefined;
-  const createSupervisor = (proofRetention = storelessProofRetention) => {
+  const createSupervisor = (
+    proofRetention = storelessProofRetention,
+    more: Partial<Parameters<typeof createWatcherFaultProofSupervisor>[0]> = {},
+  ) => {
     inFlight = createWorkflowInFlight();
     execution = createWatcherFaultProofExecution({
       application: {
@@ -269,6 +270,7 @@ export const setup = async (
       l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
       execution,
       sweepProofMaterials,
+      ...more,
     });
     supervisors.push(supervisor);
     return supervisor;
@@ -366,28 +368,6 @@ export const setup = async (
     },
   };
 };
-/** The reasons `/readyz` names for this supervisor alone. */
-const readyzReasons = async (
-  supervisor: ReturnType<typeof createWatcherFaultProofSupervisor>,
-): Promise<readonly string[]> => {
-  const operations = createWatcherOperationsObservability({
-    deploymentFingerprint: deploymentIdentity.manifestId,
-    supervisor,
-    launchScopeStatus: () => ({
-      installedCategoryCount: 1,
-      requiredCategoryCount: 1,
-    }),
-    retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
-    durableProofQueueStatus: () => supervisor.durableQueueStatus(),
-    nowMs: () => 100_000n,
-  });
-  const response = await handleWatcherOperationsHttpRequest(
-    new Request("http://127.0.0.1/readyz"),
-    operations.api,
-  );
-  return ((await response.json()) as { reasons: readonly string[] }).reasons;
-};
-
 /** The recorded objective rows, as `<category>/<headerHash>`. */
 const objectiveRows = (journalRoot: string): readonly string[] =>
   listWatcherProofObjectives(
@@ -1324,6 +1304,7 @@ describe("proof objective progress with journals and an in-memory in-flight set"
 
   registerFaultProofResubmissionVisibilityTest(setup);
   registerLateStartTests(setup);
+  registerReleasedInFlightTests(setup);
   it("does not spin or run again for identical pending observations", async () => {
     const test = await setup();
     const supervisor = test.createSupervisor();

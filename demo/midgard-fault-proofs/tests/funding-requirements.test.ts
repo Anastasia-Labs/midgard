@@ -1,8 +1,6 @@
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../src/workflow/funding-requirements.js";
-import "../src/workflow/funding-requirements-test-support.js";
-import "../src/workflow/runner-admission.js";
 import "./funding-requirements.input.js";
 
 import { CML } from "@lucid-evolution/lucid";
@@ -10,13 +8,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   admitWorkflowFundingRequirements,
-  assertAdmittedWorkflowFundingRequirements,
   createWorkflowFundingRequirements,
   isProtocolFundedWorkflowAction,
-  workflowFundingRequirementsForRunner,
 } from "../src/workflow/funding-requirements.js";
-import { unsafeCreateMeasuredWorkflowRunnerForTest } from "../src/workflow/funding-requirements-test-support.js";
-import { createAdmittedWorkflowRunner } from "../src/workflow/runner-admission.js";
 import {
   fundingAddress,
   fundingInputCbor,
@@ -316,44 +310,5 @@ describe("production workflow funding requirements V1", () => {
       lifecycle: "challenge_response_timeout_correction",
     });
     expect(admitWorkflowFundingRequirements(profile)).toEqual(profile);
-  });
-
-  it("returns only the exact profile bound by a fixed admitted runner factory", () => {
-    const profile = createWorkflowFundingRequirements(input());
-    const runner = unsafeCreateMeasuredWorkflowRunnerForTest({
-      category: "doubleSpend",
-      fundingRequirements: profile,
-    });
-    expect(
-      workflowFundingRequirementsForRunner({
-        category: "doubleSpend",
-        runner,
-      }),
-    ).toBe(profile);
-    expect(() =>
-      assertAdmittedWorkflowFundingRequirements(profile),
-    ).not.toThrow();
-    expect(() =>
-      assertAdmittedWorkflowFundingRequirements({ ...profile }),
-    ).toThrow("not factory-admitted");
-    expect(() =>
-      workflowFundingRequirementsForRunner({
-        category: "minFee",
-        runner,
-      }),
-    ).toThrow("not category-admitted");
-  });
-
-  it("keeps unmeasured admitted runners explicitly not ready for W31", () => {
-    const runner = createAdmittedWorkflowRunner({
-      category: "doubleSpend",
-      runOrResume: async () => undefined,
-    });
-    expect(() =>
-      workflowFundingRequirementsForRunner({
-        category: "doubleSpend",
-        runner,
-      }),
-    ).toThrow("no admitted measured funding profile");
   });
 });

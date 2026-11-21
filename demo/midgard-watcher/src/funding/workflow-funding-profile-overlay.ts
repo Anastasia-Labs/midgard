@@ -200,10 +200,11 @@ export const workflowFundingProfileFromOverlay = ({
 };
 
 /**
- * The signed measured funding profile of each category, refused when an
- * executing watcher has no overlay or the overlay names another deployment.
+ * Admits the signed funding-profile overlay of the deployment: refused when
+ * an executing watcher has none or it names another deployment. Nothing at
+ * runtime reads its measurements, so a category without one installs.
  */
-export const watcherWorkflowFundingProfiles = ({
+export const admitWatcherWorkflowFundingProfileOverlay = ({
   overlay,
   deploymentIdentity,
   allowExecution,
@@ -211,7 +212,7 @@ export const watcherWorkflowFundingProfiles = ({
   readonly overlay: WatcherWorkflowFundingProfileOverlay | undefined;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly allowExecution: boolean;
-}) => {
+}): void => {
   if (allowExecution && overlay === undefined) {
     throw new Error(
       "watcher application requires its signed funding-profile overlay",
@@ -228,14 +229,6 @@ export const watcherWorkflowFundingProfiles = ({
       );
     }
   }
-  return (
-    category: FraudProofCatalogueCategoryName,
-  ): WorkflowFundingRequirements | undefined =>
-    // Install every runner at startup. Nothing at runtime reads the
-    // measurements, so missing ones do not stop observation.
-    overlay === undefined || overlay.profiles[category] === undefined
-      ? undefined
-      : workflowFundingProfileFromOverlay({ overlay, category });
 };
 
 /**

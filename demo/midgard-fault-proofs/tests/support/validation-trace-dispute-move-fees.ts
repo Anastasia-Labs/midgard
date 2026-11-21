@@ -7,7 +7,7 @@ import {
   VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE,
   validationTraceMoveMinimumFee,
 } from "../../src/validation-trace-dispute/move-fee.js";
-import { VALIDATION_DISPUTE_WALLET_MOVE } from "../../src/workflow/runtime-funding-fee.js";
+import { VALIDATION_DISPUTE_WALLET_MOVE } from "./validation-dispute-wallet-move-reserve.js";
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
 
 /** A landed move's fee: what it paid, the minimum the builder priced it at,

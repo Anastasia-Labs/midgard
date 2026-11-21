@@ -1,8 +1,5 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
-import type { WorkflowFundingRequirements } from "./funding-requirements.js";
-import { bindWorkflowFundingRequirementsToRunner } from "./funding-requirements-admission.js";
-
 export const WORKFLOW_ADAPTER_RUNNER =
   "midgard-production-fraud-proof-workflow-runner-v1" as const;
 
@@ -21,30 +18,15 @@ const categoryByRunner = new WeakMap<object, FraudProofCatalogueCategoryName>();
 export const createAdmittedWorkflowRunner = <Input>({
   category,
   runOrResume,
-  fundingRequirements,
 }: {
   readonly category: FraudProofCatalogueCategoryName;
   readonly runOrResume: (input: Input) => Promise<unknown>;
-  /**
-   * Optional measured profile, bound to this runner for
-   * `workflowFundingRequirementsForRunner`. Omitting it changes nothing at
-   * runtime: the runner is installed and ready, and nothing at runtime reads
-   * this profile.
-   */
-  readonly fundingRequirements?: WorkflowFundingRequirements;
 }): AdmittedRunner<Input> => {
   const runner = Object.freeze({
     runnerVersion: WORKFLOW_ADAPTER_RUNNER,
     runOrResume,
   });
   categoryByRunner.set(runner, category);
-  if (fundingRequirements !== undefined) {
-    bindWorkflowFundingRequirementsToRunner({
-      category,
-      runner,
-      requirements: fundingRequirements,
-    });
-  }
   return runner;
 };
 

@@ -92,6 +92,11 @@ export type WatcherFaultProofProgressAuthority = Readonly<{
    * conviction. The objective is released as a departed one is, and
    * forgotten once its job is done. */
   markResolved(objective: WatcherProofObjective): Promise<void>;
+  /** Whether the objective is admitted and not yet settled, so a run of it
+   * may come again. */
+  drives(
+    objective: Readonly<{ category: string; headerHash: string }>,
+  ): boolean;
   /** The objective's marker: verified beyond rollback recovery, so final and
    * never verified or held again. */
   completionMarker(

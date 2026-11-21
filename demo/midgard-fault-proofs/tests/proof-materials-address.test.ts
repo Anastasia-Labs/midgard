@@ -6,9 +6,14 @@
  * `sig(key)` (the proof-materials address), which only that key spends. A read of either by its full
  * address never returns an output of the other, and the workflow's wallet
  * offers only the funding address's coins to coin selection and collateral.
+ * A workflow transaction is signed only in the workflow's shape: it pays no
+ * other address of a key, posts collateral from, and returns it to, the
+ * funding address only, and embeds our proof-materials lock only to spend a
+ * proof material.
  */
 import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import {
+  CML,
   Constr,
   credentialToAddress,
   Data,
@@ -31,6 +36,7 @@ import { resolveProverSigner } from "../src/runtime.js";
 import { assertManifestBoundWorkflowSigner } from "../src/workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
 import { restrictWorkflowWallet } from "../src/workflow/workflow-wallet.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
+import { signingScene } from "./support/workflow-transaction-shape.js";
 
 const KEY = "a7".repeat(28);
 /** A Close refund's tag: the OutputReference of the bond it refunds. */
@@ -191,5 +197,123 @@ describe("the funding and proof-materials reads", () => {
     expect(byLabel(await lucid.wallet().getUtxos())).toEqual(
       byLabel([plain!, refund!]),
     );
+  });
+});
+
+describe("a workflow transaction at signing", () => {
+  it("pays no other address of a key", async () => {
+    const scene = await signingScene();
+    const stranger = credentialToAddress("Custom", {
+      type: "Key",
+      hash: "52".repeat(28),
+    });
+    // The funding key staked to another key is not ours either.
+    const restaked = credentialToAddress(
+      "Custom",
+      { type: "Key", hash: scene.signer.paymentKeyHash },
+      { type: "Key", hash: "a8".repeat(28) },
+    );
+    for (const address of [
+      scene.signer.address,
+      scene.signer.proofMaterialsAddress,
+      scene.contract,
+    ])
+      await expect(
+        scene.sign({ inputs: [scene.coin], outputs: [address] }),
+      ).resolves.toBeDefined();
+    for (const address of [stranger, restaked])
+      await expect(
+        scene.sign({ inputs: [scene.coin], outputs: [address] }),
+      ).rejects.toThrow(
+        "workflow transaction output escapes the governed contract roster",
+      );
+  });
+
+  it("posts collateral from, and returns it to, the funding address only", async () => {
+    const scene = await signingScene();
+    const shape = (collateral: string, returnAddress: string) => ({
+      inputs: [scene.coin],
+      outputs: [scene.contract],
+      collateral: { inputs: [collateral], returnAddress },
+    });
+    await expect(
+      scene.sign(shape(scene.collateral, scene.signer.address)),
+    ).resolves.toBeDefined();
+    await expect(
+      scene.sign(shape(scene.material, scene.signer.address)),
+    ).rejects.toThrow("workflow collateral is not our wallet's");
+    await expect(
+      scene.sign(shape(scene.collateral, scene.signer.proofMaterialsAddress)),
+    ).rejects.toThrow("workflow collateral return escapes our wallet");
+  });
+
+  it("embeds our proof-materials lock only to spend a proof material", async () => {
+    const scene = await signingScene();
+    const lock = (key: string) =>
+      CML.NativeScript.new_script_pubkey(CML.Ed25519KeyHash.from_hex(key));
+    const ours = lock(scene.signer.paymentKeyHash);
+    await expect(
+      scene.sign({
+        inputs: [scene.material],
+        outputs: [scene.signer.address],
+        nativeScripts: [ours],
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      scene.sign({
+        inputs: [scene.coin],
+        outputs: [scene.signer.address],
+        nativeScripts: [ours],
+      }),
+    ).rejects.toThrow(
+      "workflow transaction embeds our proof-materials script without spending a proof material",
+    );
+    for (const nativeScripts of [[lock("a8".repeat(28))], [ours, ours]])
+      await expect(
+        scene.sign({
+          inputs: [scene.material],
+          outputs: [scene.signer.address],
+          nativeScripts,
+        }),
+      ).rejects.toThrow(
+        "workflow transaction embeds an executable script witness off the roster",
+      );
+  });
+
+  it("keeps a fee our coins pay within the protocol's per-transaction ceiling, and leaves a fee no coin of ours pays to the protocol", async () => {
+    const scene = await signingScene();
+    const over = scene.maximumFee + 1n;
+    await expect(
+      scene.sign({ inputs: [scene.coin], outputs: [scene.contract] }),
+    ).resolves.toBeDefined();
+    for (const inputs of [[scene.coin], [scene.material]])
+      await expect(
+        scene.sign({
+          inputs,
+          outputs: [scene.contract],
+          fee: over,
+          ...(inputs[0] === scene.material
+            ? {
+                nativeScripts: [
+                  CML.NativeScript.new_script_pubkey(
+                    CML.Ed25519KeyHash.from_hex(scene.signer.paymentKeyHash),
+                  ),
+                ],
+              }
+            : {}),
+        }),
+      ).rejects.toThrow("workflow transaction fee is outside the policy bound");
+    // A slash's fee is its slashed bond's: no input of ours pays it.
+    await expect(
+      scene.sign({
+        inputs: [scene.foreign],
+        outputs: [scene.contract],
+        fee: over,
+        collateral: {
+          inputs: [scene.collateral],
+          returnAddress: scene.signer.address,
+        },
+      }),
+    ).resolves.toBeDefined();
   });
 });

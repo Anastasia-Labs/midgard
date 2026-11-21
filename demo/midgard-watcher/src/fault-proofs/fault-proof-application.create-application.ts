@@ -20,7 +20,7 @@ import {
 import { Header } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
-import { watcherWorkflowFundingProfiles } from "../funding/workflow-funding-profile-overlay.js";
+import { admitWatcherWorkflowFundingProfileOverlay } from "../funding/workflow-funding-profile-overlay.js";
 import {
   assertWatcherStateQueueHeaderObservation,
   assertWatcherStateQueueObservation,
@@ -106,7 +106,7 @@ export function createApplication({
     }
   }
   const infrastructure = admitInfrastructure(options.infrastructure);
-  const fundingProfile = watcherWorkflowFundingProfiles({
+  admitWatcherWorkflowFundingProfileOverlay({
     overlay: options.fundingProfileOverlay,
     deploymentIdentity,
     allowExecution,
@@ -159,13 +159,7 @@ export function createApplication({
         ): readonly [
           WatcherInstalledWorkflowCategory,
           WorkflowAdapterRunner,
-        ] => [
-          category,
-          WORKFLOW_RUNNER_FACTORIES[category](
-            loadRuntime,
-            fundingProfile(category),
-          ),
-        ],
+        ] => [category, WORKFLOW_RUNNER_FACTORIES[category](loadRuntime)],
       ),
     ) as Record<WatcherInstalledWorkflowCategory, WorkflowAdapterRunner>,
   );

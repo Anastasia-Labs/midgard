@@ -1,6 +1,6 @@
 import type { WorkflowAdapterReadinessInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
 
-import { watcherWorkflowFundingProfiles } from "../funding/workflow-funding-profile-overlay.js";
+import { admitWatcherWorkflowFundingProfileOverlay } from "../funding/workflow-funding-profile-overlay.js";
 import { assertWatcherVerifiedDeploymentAuthority } from "../runtime/deployment-authority.js";
 import { readWatcherRuntimeConfigFile } from "../runtime/watcher-runtime.launch-checks.js";
 import { admitInfrastructure } from "./fault-proof-application.bind-watcher-deployment-authority.js";
@@ -63,7 +63,7 @@ export const createWatcherFaultProofReadinessApplication = (
   assertWatcherVerifiedDeploymentAuthority(options.deploymentAuthority);
   const deploymentIdentity = options.deploymentAuthority.deploymentIdentity;
   admitInfrastructure(options.infrastructure);
-  watcherWorkflowFundingProfiles({
+  admitWatcherWorkflowFundingProfileOverlay({
     overlay: options.fundingProfileOverlay,
     deploymentIdentity,
     allowExecution: false,

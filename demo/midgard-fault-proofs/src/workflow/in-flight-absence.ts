@@ -24,6 +24,17 @@ type Decoded = Readonly<{
 
 const decoded = new WeakMap<InFlightTransaction, Decoded>();
 
+/** `output`'s address in bech32; frees what it reads. */
+const bech32AddressOf = (output: CML.TransactionOutput): string => {
+  const address = output.address();
+  try {
+    return address.to_bech32();
+  } finally {
+    address.free();
+    output.free();
+  }
+};
+
 /** `transaction`'s outputs, decoded once. */
 const decode = (transaction: InFlightTransaction): Decoded => {
   const known = decoded.get(transaction);
@@ -31,14 +42,15 @@ const decode = (transaction: InFlightTransaction): Decoded => {
   const tx = CML.Transaction.from_cbor_hex(
     transaction.signedTransactionCborHex,
   );
+  const body = tx.body();
+  const outputs = body.outputs();
   try {
-    const outputs = tx.body().outputs();
     const found = Object.freeze({
       creates: Object.freeze(
         Array.from({ length: outputs.len() }, (_, index) =>
           Object.freeze({
             outRef: `${transaction.txHash}#${index.toString()}`,
-            address: outputs.get(index).address().to_bech32(),
+            address: bech32AddressOf(outputs.get(index)),
           }),
         ),
       ),
@@ -46,6 +58,8 @@ const decode = (transaction: InFlightTransaction): Decoded => {
     decoded.set(transaction, found);
     return found;
   } finally {
+    outputs.free();
+    body.free();
     tx.free();
   }
 };

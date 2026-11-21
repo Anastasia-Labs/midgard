@@ -1,7 +1,6 @@
 import "node:crypto";
 import "@al-ft/midgard-sdk/core";
 import "@lucid-evolution/lucid";
-import "./funding-requirements-admission.js";
 import "./runner-admission.js";
 import "./funding-requirements.workflow-funding-controlled-output.js";
 import "./funding-requirements.canonical-transaction.js";
@@ -11,9 +10,7 @@ import "./funding-requirements.normalized-requirements.js";
 import "./funding-requirements.admit-workflow-funding-requirements.js";
 export {
   admitWorkflowFundingRequirements,
-  assertAdmittedWorkflowFundingRequirements,
   createWorkflowFundingRequirements,
-  workflowFundingRequirementsForRunner,
 } from "./funding-requirements.admit-workflow-funding-requirements.js";
 export { computeWorkflowFundingRequirementsDigest } from "./funding-requirements.normalized-requirements.js";
 export {

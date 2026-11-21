@@ -42,6 +42,9 @@ export type WatcherProofMaterialsViews = Readonly<{
   /** Why each view sweeps nothing now, one line per address; empty while
    * every view is open. */
   sweepClosed(): readonly string[];
+  /** Whether an open view holds materials a sweep may take now; `unknown`
+   * while no view is open. */
+  sweepable(): Promise<"some" | "none" | "unknown">;
 }>;
 
 const objectiveKey = ({ category, headerHash }: ProofMaterialsObjective) =>
@@ -91,5 +94,14 @@ export const createWatcherProofMaterialsViews = (
         const readiness = view.readiness();
         return readiness.open ? [] : [`${view.address}: ${readiness.reason}`];
       }),
+    sweepable: async () => {
+      let open = false;
+      for (const view of views.values()) {
+        if (!view.readiness().open) continue;
+        open = true;
+        if ((await view.sweepable(1)).length > 0) return "some";
+      }
+      return open ? "none" : "unknown";
+    },
   });
 };

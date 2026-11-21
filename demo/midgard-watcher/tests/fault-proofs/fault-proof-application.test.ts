@@ -27,7 +27,6 @@ import {
   type FamilyApplicationWorkflowIdentity,
 } from "@al-ft/midgard-fault-proofs/workflow/family-application";
 import { FAMILY_APPLICATION_REGISTRY } from "@al-ft/midgard-fault-proofs/workflow/family-application-registry";
-import { workflowFundingRequirementsForRunner } from "@al-ft/midgard-fault-proofs/workflow/funding-requirements";
 import {
   INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
   UNINSTALLED_FRAUD_PROOF_CATEGORIES,
@@ -82,7 +81,7 @@ describe("watcher production fault-proof application V1", () => {
     ).toThrow("launch scope names a category with no installed workflow");
   });
 
-  it("installs every runner with an empty signed funding bundle while funding requests stay gated", async () => {
+  it("installs every runner with an empty signed funding bundle", async () => {
     const directory = await mkdtemp(join(tmpdir(), "midgard-empty-funding-"));
     try {
       const bundle = createWatcherWorkflowFundingProfileBundle({
@@ -115,14 +114,9 @@ describe("watcher production fault-proof application V1", () => {
       expect(application.installedCategories).toEqual([
         ...INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
       ]);
-      for (const category of INSTALLED_FRAUD_PROOF_CATEGORY_ORDER) {
-        expect(() =>
-          workflowFundingRequirementsForRunner({
-            category,
-            runner: application.runners[category],
-          }),
-        ).toThrow("has no admitted measured funding profile");
-      }
+      expect(Object.keys(application.runners)).toEqual([
+        ...INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
+      ]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

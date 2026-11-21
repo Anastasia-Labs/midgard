@@ -9,6 +9,8 @@ import type { FraudProofWorkflowAction } from "./orchestrator.js";
 export const PROOF_MATERIALS_SWEEP =
   "midgard-proof-materials-sweep-v1" as const;
 export const PROOF_MATERIALS_SWEEP_STAGE = "proof_materials_sweep" as const;
+/** What every sweep's action id starts with. */
+export const PROOF_MATERIALS_SWEEP_ACTION_PREFIX = "proof-materials-sweep:";
 
 /**
  * The most materials one sweep spends. An input adds about 36 bytes to the
@@ -42,7 +44,7 @@ export const proofMaterialsSweepAction = ({
 }): FraudProofWorkflowAction => {
   const inputs = [...new Set(outRefs)].sort(byOutRef);
   return Object.freeze({
-    actionId: `proof-materials-sweep:${createHash("sha256")
+    actionId: `${PROOF_MATERIALS_SWEEP_ACTION_PREFIX}${createHash("sha256")
       .update(inputs.join(","))
       .digest("hex")}`,
     input: Object.freeze({
