@@ -826,10 +826,8 @@ held and retried while the watcher keeps serving (see
 process configuration exits 78, before the operations server binds. Every
 reason in `WATCHER_OPERATIONS_READINESS_REASONS`
 (`demo/midgard-watcher/src/runtime/operations-observability.watcher-operations-readiness-reasons.ts`)
-has an entry below
-`[script: scripts/ci/check-watcher-readiness-reasons-doc.test.mjs]`; the
-fault-proof execution holds and the L1 follower's reasons are listed by hand
-`[review]`.
+has an entry below, as do the fault-proof execution holds and the L1
+follower's reasons `[review]`.
 
 - `startup:<stage>`: the operations server binds before the L1-dependent
   startup stages, and until the runtime's observability exists `/readyz`

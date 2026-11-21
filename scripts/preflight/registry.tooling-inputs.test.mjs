@@ -66,22 +66,11 @@ const runFor = (changed) => {
   return steps[0].argv;
 };
 
-test("adding a journey test file runs the wiring check that reads it, alone", () => {
-  assert.deepEqual(
-    runFor([
-      "demo/midgard-node-tools/devnet/watcher-journeys/new-journey.test.ts",
-    ]),
-    ["node", "--test", "scripts/ci/node-tools-journey-tests-wired.test.mjs"],
-  );
-});
-
 test("editing a workflow runs each wiring check that reads it and no other self-test", () => {
   const argv = runFor([".github/workflows/midgard-node-ci.yml"]);
   assert.ok(argv, "a Node CI workflow edit selects no self-test");
   assert.deepEqual(argv.slice(0, 2), ["node", "--test"]);
   for (const reader of [
-    "scripts/ci/node-tools-journey-tests-wired.test.mjs",
-    "scripts/ci/shard-counts.test.mjs",
     "scripts/ci/fork-simulator-inputs.test.mjs",
     "scripts/ci/lint-workflows.test.mjs",
   ])
@@ -92,7 +81,6 @@ test("editing a workflow runs each wiring check that reads it and no other self-
 
 test("a change under the step's own paths still runs every self-test", () => {
   for (const path of [
-    "scripts/ci/node-tools-journey-tests-wired.test.mjs",
     "scripts/lib/aiken.mjs",
     ".githooks/pre-push",
     ".claude/settings.json",

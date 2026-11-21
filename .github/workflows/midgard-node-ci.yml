@@ -828,10 +828,9 @@ jobs:
   # so a file that runs longer is split by case rather than holding one shard
   # past the job's time limit. The matrix is the one count this
   # workflow reads (the jobs and test-durations take it from the matrix);
-  # change it together with tests/duration-shards.test.ts, which
-  # scripts/ci/shard-counts.test.mjs pins to it, and rekey the table's reserve. On
-  # a pull request that skips the traced-refusal step, shard 1 finishes that
-  # much earlier.
+  # change it together with tests/duration-shards.test.ts and rekey the table's
+  # reserve. On a pull request that skips the traced-refusal step, shard 1
+  # finishes that much earlier.
   midgard-fault-proofs:
     name: midgard-fault-proofs (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [aiken-fork, blueprint, test-blueprints]

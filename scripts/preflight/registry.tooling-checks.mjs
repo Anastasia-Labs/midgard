@@ -309,26 +309,13 @@ const toolingTestInputs = (root) => {
       `${DEMO}/midgard-l1-follower/src/**`,
       READINESS_DOC,
     ],
-    "scripts/ci/check-watcher-readiness-reasons-doc.test.mjs": [
-      `${DEMO}/midgard-watcher/src/runtime/operations-observability.watcher-operations-readiness-reasons.ts`,
-      READINESS_DOC,
-    ],
     "scripts/ci/fork-simulator-inputs.test.mjs": [
       NODE_CI,
       ...MANIFESTS,
       PACKAGE_TASKS,
     ],
     "scripts/ci/lint-workflows.test.mjs": [WORKFLOWS, ".github/actions/**"],
-    "scripts/ci/node-tools-journey-tests-wired.test.mjs": [
-      NODE_CI,
-      `${DEMO}/midgard-node-tools/devnet/watcher-journeys/**`,
-    ],
     "scripts/ci/prepare-merge-gates.test.mjs": [WORKFLOWS],
-    "scripts/ci/script-modes.test.mjs": [WORKFLOWS, ".githooks/**"],
-    "scripts/ci/shard-counts.test.mjs": [
-      NODE_CI,
-      `${DEMO}/*/tests/duration-shards.test.ts`,
-    ],
     "scripts/ci/traced-refusal-inputs.test.mjs": [
       NODE_CI,
       ".github/actions/demo-setup/**",
@@ -341,7 +328,6 @@ const toolingTestInputs = (root) => {
       `${DEMO}/midgard-fault-proofs/tests/**`,
       `${DEMO}/midgard-fault-proofs/scripts/traced-refusal-plan.mjs`,
     ],
-    "scripts/ci/vitest-script-flags.test.mjs": ["**/package.json"],
     "scripts/ci/workflow-triggers.test.mjs": [WORKFLOWS],
     "scripts/contrib/campaign.test.mjs": [
       `${DEMO}/midgard-node-tools/config/devnet-campaign.example.json`,

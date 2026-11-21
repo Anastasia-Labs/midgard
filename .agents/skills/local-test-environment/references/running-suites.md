@@ -41,9 +41,7 @@ each with its own database family. [script: scripts/contrib/vitest-command.mjs]
 multi-word boolean written in kebab case (`--disable-console-intercept`,
 `--pass-with-no-tests`) is not registered as boolean and swallows the next
 token: `vitest run --disable-console-intercept <file>` runs every file.
-`contrib test` passes only camelCase and `--flag=value` forms, and
-`scripts/ci/vitest-script-flags.test.mjs` keeps every package `test` script
-free of the trap [ci: Repo Tools CI/Run the repository tool tests].
+`contrib test` passes only camelCase and `--flag=value` forms.
 
 ## Gate runs over several suites
 

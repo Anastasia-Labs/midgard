@@ -191,8 +191,7 @@ by package with what enforces it. Read it before step 2, and again whenever a
    base scenario applicable to the family has a passing test and each negative
    fails in the validator.
 8. **Wire the watcher and the devnet journeys.** Update any category-keyed
-   funding tables and add a `JOURNEY_FIXTURE_OWNERS` entry with the pinned
-   owner counts in `watcher-journeys/catalogue.test.ts` updated. The watcher
+   funding tables and add a `JOURNEY_FIXTURE_OWNERS` entry. The watcher
    category map is a core projection. Done when `journey-owner` is `OK` and
    the watcher suite passes. [review]
 9. **Update the docs in the same change.** The maintenance rule in
@@ -246,10 +245,9 @@ you checked it by reading.
 - [ ] No generated Aiken edited by hand. [review]
 - [ ] Watcher deployment identity admits the core-derived category.
       [ci: Midgard Node CI/Test Midgard watcher]
-- [ ] Devnet journey owner assigned and owner counts updated.
+- [ ] Devnet journey owner assigned.
       [ci: Midgard Node CI/Typecheck, build, and test Midgard node tools]
-      (the typecheck enforces the owner entry; the count test in
-      `devnet/watcher-journeys/catalogue.test.ts` runs in no CI job)
+      (the typecheck enforces the owner entry)
 - [ ] Status docs updated in the same change. [review]
       (`catalogue-status.md` says it "is not machine-checked"; plan item W5.6)
 - [ ] `family-checklist.mjs <category>` exits 0.

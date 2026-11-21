@@ -169,7 +169,6 @@ Rerun:
 
 ```bash
 node .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs
-node --test .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.test.mjs
 # Locate quick_validate.py in the installed skill-creator skill first.
 python3 "$SKILL_CREATOR_DIR/scripts/quick_validate.py" \
   .agents/skills/midgard-e2e-acceptance

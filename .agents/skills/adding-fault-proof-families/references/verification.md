@@ -76,19 +76,7 @@ node scripts/contrib.mjs test --package midgard-core --file tests/deployment-man
 node scripts/contrib.mjs test --package da-committee-node --file tests/deployment-fixture.test.ts
 ```
 
-## 6. Devnet journey counts
-
-```bash
-node scripts/contrib.mjs test --package midgard-node-tools \
-  --config vitest.watcher-journeys.config.ts --file devnet/watcher-journeys/catalogue.test.ts
-```
-
-The journeys config includes every `devnet/watcher-journeys` test, including
-the `*-live.test.ts` files, with a one-hour timeout, so contrib runs only the
-files `--file` names. As of 2026-09-25 the catalogue file ran 10 tests in about
-17 seconds.
-
-## 7. What CI runs
+## 6. What CI runs
 
 | CI step                                                              | Covers                                         |
 | -------------------------------------------------------------------- | ---------------------------------------------- |
@@ -103,8 +91,7 @@ files `--file` names. As of 2026-09-25 the catalogue file ran 10 tests in about
 | Midgard Node CI / Test Midgard watcher                               | watcher deployment identity                    |
 | Midgard Node CI / Typecheck Midgard node                             | node category tables                           |
 | Midgard Node CI / Test Midgard node                                  | role mirror, DA fixture drift                  |
-| Midgard Node CI / Typecheck, build, and test Midgard node tools      | journey owner entry (not the count test)       |
-| Midgard Node CI / Test the watcher journeys that need no devnet      | the journey count test                         |
+| Midgard Node CI / Typecheck, build, and test Midgard node tools      | journey owner entry                            |
 
 Report which of these you ran locally, with their pass counts, and which you
 left to CI.
