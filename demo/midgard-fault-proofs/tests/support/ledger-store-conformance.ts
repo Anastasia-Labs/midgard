@@ -147,7 +147,10 @@ export const event = (
 
 const unknownRoot = "ab".repeat(32);
 
-/** A storage whose first `sweepNodes` call waits for `release`. */
+/**
+ * A storage whose first `sweepNodes` page is held back until `release`: the
+ * sweep has listed its candidates but deleted none of them yet.
+ */
 const gatedStorage = (storage: LedgerStorage) => {
   let reached!: () => void;
   let release!: () => void;
@@ -160,12 +163,13 @@ const gatedStorage = (storage: LedgerStorage) => {
     storage: {
       ...storage,
       sweepNodes: async (after: string | undefined, limit: number) => {
+        const page = await storage.sweepNodes(after, limit);
         if (first) {
           first = false;
           reached();
           await opened;
         }
-        return await storage.sweepNodes(after, limit);
+        return page;
       },
     } satisfies LedgerStorage,
   };
