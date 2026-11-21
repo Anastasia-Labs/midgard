@@ -7,8 +7,7 @@
  * operations. Reads go to the operation's own writes first and then to the
  * ledger's node source; writes stay in the operation. The library's delete
  * hook and root marker are ignored: nodes are removed only by the store's
- * reference counting, and a
- * ledger is addressed by its root hash alone.
+ * reference counting, and a ledger is addressed by its root hash alone.
  *
  * The library's retained-write and hydration store flags are left unset, so
  * the library runs exactly its upstream algorithm.
