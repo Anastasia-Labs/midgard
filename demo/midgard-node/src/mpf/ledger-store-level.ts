@@ -4,24 +4,20 @@
  * shape the native owner and `MidgardMpf` already read and write, so a node
  * written by either is readable by the other.
  *
- * Retained roots are `__retained__/<root hex>` keys, and `__sweeping__` is
- * present from `beginSweep` to `endSweep`. The adapter never writes or deletes
- * the `__root__` marker, and a sweep considers only node keys.
+ * A held node's reference count is its `__refs__/<hash>` key, as a decimal
+ * string; a node key without one is not held. The dead queue is the
+ * `__dead__/<hash>` keys, and retained roots are `__retained__/<root>` keys.
+ * The adapter never writes or deletes the `__root__` marker.
  *
- * Outputs are not kept here: `readOutputs` is injected, and output writes,
- * kept outputs and the output sweep are no-ops. Kept nodes are not checked:
- * the store reads them under its write lock, so none can be missing.
+ * Outputs are not kept here: `readOutputs` is injected, every output counts
+ * as held once (`outputRefs` answers 1), and output writes are no-ops.
  *
- * While a sweep runs (`LedgerStore.retain`), nothing else may write this
- * database: the adapter tells records written during the sweep apart only by
- * the writes it made itself. A sweep also deletes every node not reachable
- * from the retained roots, so the retained set must include every root
- * another reader of the database still needs, the `__root__` marker's
- * included.
+ * Nothing else may delete node keys this store holds. The store deletes a
+ * node once no retained root reaches it, so every root another reader of the
+ * database still needs, the `__root__` marker's included, must be retained.
  */
 import type {
   LedgerStorage,
-  NodeHash,
   OutRefHex,
   StoredNode,
 } from "@al-ft/midgard-fault-proofs/ledger-store";
@@ -30,12 +26,14 @@ import type { Level } from "level";
 import type { MpfStoredValue } from "./types.js";
 
 export const RETAINED_ROOT_PREFIX = "__retained__/";
-/** The first key after every `__retained__/` key. */
-const RETAINED_ROOT_END = "__retained__0";
-/** Present while a sweep runs; it outlives a process that dies mid-sweep. */
-export const SWEEP_RUNNING_KEY = "__sweeping__";
+const NODE_REFS_PREFIX = "__refs__/";
+const DEAD_NODE_PREFIX = "__dead__/";
 
-const NODE_KEY = /^[0-9a-f]{64}$/;
+/** The range of keys under `prefix`, which ends in `/` (the byte before 0). */
+const under = (prefix: string) => ({
+  gte: prefix,
+  lt: `${prefix.slice(0, -1)}0`,
+});
 
 export const createLevelLedgerStorage = (input: {
   /** The MPF LevelDB, opened with JSON value encoding. */
@@ -45,18 +43,22 @@ export const createLevelLedgerStorage = (input: {
   ) => Promise<(Buffer | undefined)[]>;
 }): LedgerStorage => {
   const { level } = input;
-  /** Node keys written or kept since the running sweep began. */
-  let writtenDuringSweep: Set<NodeHash> | undefined;
 
-  const retainedKeys = async (): Promise<string[]> => {
+  const keysUnder = async (prefix: string, limit = -1): Promise<string[]> => {
     const keys: string[] = [];
-    for await (const key of level.keys({
-      gte: RETAINED_ROOT_PREFIX,
-      lt: RETAINED_ROOT_END,
-    }))
-      keys.push(key);
+    for await (const key of level.keys({ ...under(prefix), limit }))
+      keys.push(key.slice(prefix.length));
     return keys;
   };
+
+  const countUnder = async (prefix: string) => (await keysUnder(prefix)).length;
+
+  const put = (key: string, value: MpfStoredValue) => ({
+    type: "put" as const,
+    key,
+    value,
+  });
+  const del = (key: string) => ({ type: "del" as const, key });
 
   return {
     readNodes: async (hashes) =>
@@ -64,83 +66,51 @@ export const createLevelLedgerStorage = (input: {
         ? []
         : ((await level.getMany([...hashes])) as (StoredNode | undefined)[]),
     readOutputs: async (outRefs) => await input.readOutputs(outRefs),
-    isRetained: async (root) =>
-      (await level.get(RETAINED_ROOT_PREFIX + root)) !== undefined,
-    writeBlock: async (block) => {
+    nodeRefs: async (hashes) =>
+      hashes.length === 0
+        ? []
+        : (
+            await level.getMany(hashes.map((hash) => NODE_REFS_PREFIX + hash))
+          ).map((refs) => (refs === undefined ? undefined : Number(refs))),
+    outputRefs: async (outRefs) => outRefs.map(() => 1),
+    retainedRoots: async () => await keysUnder(RETAINED_ROOT_PREFIX),
+    deadNodes: async (limit) => await keysUnder(DEAD_NODE_PREFIX, limit),
+    write: async (change) => {
       await level.batch([
-        ...[...block.nodes].map(([hash, node]) => ({
-          type: "put" as const,
-          key: hash,
-          value: node as MpfStoredValue,
-        })),
-        {
-          type: "put" as const,
-          key: RETAINED_ROOT_PREFIX + block.root,
-          value: block.root,
-        },
+        ...[...change.putNodes].flatMap(([hash, { node, refs }]) => [
+          put(hash, node as MpfStoredValue),
+          put(NODE_REFS_PREFIX + hash, String(refs)),
+        ]),
+        ...[...change.nodeRefs].map(([hash, refs]) =>
+          put(NODE_REFS_PREFIX + hash, String(refs)),
+        ),
+        ...change.deleteNodes.flatMap((hash) => [
+          del(hash),
+          del(NODE_REFS_PREFIX + hash),
+        ]),
+        ...change.addRoots.map((root) =>
+          put(RETAINED_ROOT_PREFIX + root, root),
+        ),
+        ...change.removeRoots.map((root) => del(RETAINED_ROOT_PREFIX + root)),
+        ...change.queueDead.map((hash) => put(DEAD_NODE_PREFIX + hash, hash)),
+        ...change.unqueueDead.map((hash) => del(DEAD_NODE_PREFIX + hash)),
       ]);
-      if (writtenDuringSweep === undefined) return;
-      for (const hash of block.nodes.keys()) writtenDuringSweep.add(hash);
-      for (const hash of block.keptNodes) writtenDuringSweep.add(hash);
     },
-    beginSweep: async (retained) => {
-      const dropped = (await retainedKeys()).filter(
-        (key) => !retained.has(key.slice(RETAINED_ROOT_PREFIX.length)),
-      );
-      await level.batch([
-        ...dropped.map((key) => ({ type: "del" as const, key })),
-        ...[...retained].map((root) => ({
-          type: "put" as const,
-          key: RETAINED_ROOT_PREFIX + root,
-          value: root,
-        })),
-        { type: "put" as const, key: SWEEP_RUNNING_KEY, value: "1" },
-      ]);
-      writtenDuringSweep = new Set();
-    },
-    sweepNodes: async (after, limit) => {
-      const written = writtenDuringSweep;
-      if (written === undefined) return [];
-      const page: NodeHash[] = [];
-      for await (const key of level.keys(
-        after === undefined ? {} : { gt: after },
-      )) {
-        if (!NODE_KEY.test(key) || written.has(key)) continue;
-        page.push(key);
-        if (page.length >= limit) break;
-      }
-      return page;
-    },
-    sweepOutputs: async () => [],
-    deleteSwept: async (records) => {
-      const written = writtenDuringSweep;
-      if (written === undefined) throw new Error("no sweep is running");
-      const dead = records.nodes.filter((hash) => !written.has(hash));
-      if (dead.length > 0)
-        await level.batch(dead.map((key) => ({ type: "del" as const, key })));
-    },
-    endSweep: async (dropped) => {
-      await level.batch([
-        ...[...dropped].map((root) => ({
-          type: "del" as const,
-          key: RETAINED_ROOT_PREFIX + root,
-        })),
-        { type: "del" as const, key: SWEEP_RUNNING_KEY },
-      ]);
-      writtenDuringSweep = undefined;
-    },
-    unfinishedSweep: async () =>
-      (await level.get(SWEEP_RUNNING_KEY)) === undefined
-        ? undefined
-        : new Set(
-            (await retainedKeys()).map((key) =>
-              key.slice(RETAINED_ROOT_PREFIX.length),
-            ),
-          ),
     counts: async () => {
       let nodes = 0;
-      for await (const key of level.keys()) if (NODE_KEY.test(key)) nodes += 1;
-      return { nodes, outputs: 0, roots: (await retainedKeys()).length };
+      let nodeRefs = 0;
+      for await (const refs of level.values(under(NODE_REFS_PREFIX))) {
+        nodes += 1;
+        nodeRefs += Number(refs);
+      }
+      return {
+        nodes,
+        outputs: 0,
+        roots: await countUnder(RETAINED_ROOT_PREFIX),
+        nodeRefs,
+        outputRefs: 0,
+        dead: await countUnder(DEAD_NODE_PREFIX),
+      };
     },
   };
 };

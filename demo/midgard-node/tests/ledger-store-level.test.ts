@@ -147,7 +147,7 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
     }
   });
 
-  it("never touches the __root__ marker, and a sweep keeps it readable", async () => {
+  it("never touches the __root__ marker, and a retain keeps it readable", async () => {
     const { path, level, store, a, b, c } = await written();
     // The marker the node's own writer keeps for its current trie.
     await level.put(ROOT_KEY, a.root);
