@@ -147,7 +147,6 @@ describe("sqlite ledger storage across reopen", () => {
         }),
       ).rejects.toThrow();
       expect(await storage.counts()).toEqual(before);
-      expect(await storage.isRetained("cd".repeat(32))).toBe(false);
     } finally {
       storage.close();
     }

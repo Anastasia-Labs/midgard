@@ -160,12 +160,29 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
   const source = toLedgerSource(storage);
   /** Serialises every write, and the reads its counts come from. */
   const writeLock = exclusive();
+  /**
+   * The retained roots, read from storage once. The store is its storage's
+   * only writer, so it keeps the set current itself, after each write that
+   * changes it succeeds.
+   */
+  let retainedSet: Promise<Set<NodeHash>> | undefined;
+  const retainedRoots = (): Promise<Set<NodeHash>> => {
+    retainedSet ??= storage.retainedRoots().then(
+      (roots) => new Set(roots),
+      (error: unknown) => {
+        retainedSet = undefined;
+        throw error;
+      },
+    );
+    return retainedSet;
+  };
 
   const retained = async (root: string): Promise<boolean> =>
-    root === EMPTY_LEDGER_ROOT || (await storage.isRetained(root));
+    root === EMPTY_LEDGER_ROOT || (await retainedRoots()).has(root);
 
   const persistLocked = async (ledger: LedgerValue): Promise<void> => {
-    if (await storage.isRetained(ledger.root)) return;
+    const roots = await retainedRoots();
+    if (roots.has(ledger.root)) return;
     const change = newChange();
     /** Stored counts read so far; `undefined` for a node not held. */
     const stored = new Map<NodeHash, number | undefined>();
@@ -223,14 +240,14 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
     }
     change.addRoots.push(ledger.root);
     await storage.write(change);
+    roots.add(ledger.root);
   };
 
   /** Drops the retained roots `roots` does not name, queueing each whose
    * count reaches zero. */
   const replaceRetained = async (roots: ReadonlySet<string>): Promise<void> => {
-    const dropped = (await storage.retainedRoots()).filter(
-      (root) => !roots.has(root),
-    );
+    const held = await retainedRoots();
+    const dropped = [...held].filter((root) => !roots.has(root));
     if (dropped.length === 0) return;
     const change = newChange();
     const counts = await readCounts(dropped, (hashes) =>
@@ -244,6 +261,7 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
       if (refs === 1) change.queueDead.push(root);
     }
     await storage.write(change);
+    for (const root of dropped) held.delete(root);
   };
 
   /**
@@ -356,9 +374,11 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
       // the write order when `retain` is called.
       await writeLock(() => replaceRetained(roots));
       while (await writeLock(drainBatch));
+      const held = await retainedRoots();
       const notRetained = new Set<string>();
       for (const root of roots)
-        if (!(await retained(root))) notRetained.add(root);
+        if (root !== EMPTY_LEDGER_ROOT && !held.has(root))
+          notRetained.add(root);
       return { notRetained };
     },
   };

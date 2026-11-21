@@ -37,7 +37,6 @@ export const createMemoryLedgerStorage = (): LedgerStorage => {
     nodeRefs: async (hashes) => hashes.map((hash) => nodes.get(hash)?.refs),
     outputRefs: async (outRefs) =>
       outRefs.map((outRef) => outputs.get(outRef)?.refs),
-    isRetained: async (root) => roots.has(root),
     retainedRoots: async () => [...roots],
     deadNodes: async (limit) => {
       const page: NodeHash[] = [];

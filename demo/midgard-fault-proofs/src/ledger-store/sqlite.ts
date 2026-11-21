@@ -105,7 +105,6 @@ export const openSqliteLedgerStorage = (path: string): SqliteLedgerStorage => {
     deleteOutput: database.prepare(
       "DELETE FROM ledger_outputs WHERE out_ref = ?",
     ),
-    root: database.prepare("SELECT 1 AS held FROM ledger_roots WHERE root = ?"),
     roots: database.prepare("SELECT root FROM ledger_roots"),
     putRoot: database.prepare(
       "INSERT OR IGNORE INTO ledger_roots (root) VALUES (?)",
@@ -183,7 +182,6 @@ export const openSqliteLedgerStorage = (path: string): SqliteLedgerStorage => {
       }),
     nodeRefs: async (hashes) => refsOf(statement.nodeRefs, hashes),
     outputRefs: async (outRefs) => refsOf(statement.outputRefs, outRefs),
-    isRetained: async (root) => statement.root.get(bytes(root)) !== undefined,
     retainedRoots: async () =>
       (statement.roots.all() as { root: Uint8Array }[]).map(({ root }) =>
         hex(root),
