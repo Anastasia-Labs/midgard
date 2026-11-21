@@ -231,6 +231,34 @@ export const describeLedgerStoreRetainConformance = (
       });
     });
 
+    it("lists the requested roots not retained when the deletion ends", async () => {
+      await withStore(async (store) => {
+        const entries = base();
+        const a = await store.admit(entries, await ledgerEntriesRoot(entries));
+        await store.persist(a);
+        const b = await a.apply(event([0, 1], [460]));
+        await store.persist(b);
+        const pMutations = event([2], [461]);
+        const p = await (await store.at(a.root)).apply(pMutations);
+        const neverPersisted = "ab".repeat(32);
+        const retaining = store.retain(
+          new Set([a.root, p.root, neverPersisted]),
+        );
+        // Lands after the retained set's replacement, before the deletion
+        // ends.
+        const persisting = store.persist(p);
+        const [retained] = await Promise.all([retaining, persisting]);
+        expect(retained).toEqual({ notRetained: new Set([neverPersisted]) });
+        await expectLedgerMatches(
+          await store.at(p.root),
+          appliedEntries(entries, pMutations),
+        );
+        await expect(store.at(b.root)).rejects.toBeInstanceOf(
+          LedgerNotRetained,
+        );
+      });
+    });
+
     it("drops the parent of a fork, then one of its children", async () => {
       await withStore(async (store, storage) => {
         const entries = base();
