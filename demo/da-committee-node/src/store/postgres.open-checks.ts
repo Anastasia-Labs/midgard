@@ -16,15 +16,12 @@ import {
 
 /**
  * What the store open checks the stored records against: the member's
- * current retirement binding (when its promise profile is adopted), the
- * deployment's L1 origin (when configured), and k, the depth past which a
- * terminal header record is final (the manifest's
- * `automaticRecoveryMaxDepth`).
+ * current retirement binding (when its promise profile is adopted) and the
+ * deployment's L1 origin (when configured).
  */
 export type CommitteeStoreOpenChecks = Readonly<{
   retirementBinding?: CommitteeRetirementBinding;
   l1Origin?: Readonly<{ slot: number }>;
-  securityParameter?: number;
 }>;
 
 /**

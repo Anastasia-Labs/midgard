@@ -269,28 +269,20 @@ describe("committee store schema", () => {
   it("runs the schema statements only on a connection that still holds the instance lock", async () => {
     const database = await testStoreDatabase();
     await closeTestCommitteeStore(await openTestCommitteeStore(database));
-    // Not pending, so the L1 record upgrade does not parse it.
-    const quarantined = {
-      status: "published",
-      quarantineReason: "stale",
-      quarantinedAt: "2026-10-01T00:00:00.000Z",
-    };
-    await withClient(database.url, (client) =>
-      client.query(
-        "INSERT INTO committee_decision_outbox (effect_id, header_hash, record) VALUES ($1, $2, $3)",
-        ["effect-1", hash(1), quarantined],
-      ),
-    );
-    const outboxRecord = () =>
-      withClient(
-        database.url,
-        async (client) =>
-          (
-            await client.query<{ readonly record: unknown }>(
-              "SELECT record FROM committee_decision_outbox WHERE effect_id = 'effect-1'",
-            )
-          ).rows[0]?.record,
+    const counters = () =>
+      withClient(database.url, async (client) =>
+        (
+          await client.query<{ readonly name: string }>(
+            "SELECT name FROM committee_store_counts ORDER BY name",
+          )
+        ).rows.map((row) => row.name),
       );
+    const seeded = await counters();
+    expect(seeded).not.toEqual([]);
+    // A store whose counters are gone: the schema statements reseed them.
+    await withClient(database.url, (client) =>
+      client.query("DELETE FROM committee_store_counts"),
+    );
     const pool = new Pool({ connectionString: database.url });
     try {
       const lost = new Error("the instance lock is no longer held");
@@ -306,8 +298,8 @@ describe("committee store schema", () => {
           () => undefined,
         ),
       ).rejects.toBe(lost);
-      // The upgrade UPDATE that strips the quarantine fields did not run.
-      expect(await outboxRecord()).toEqual(quarantined);
+      // The seeding statement did not run.
+      expect(await counters()).toEqual([]);
 
       await initializeCommitteeSchema(
         pool,
@@ -315,7 +307,7 @@ describe("committee store schema", () => {
         {},
         () => undefined,
       );
-      expect(await outboxRecord()).toEqual({ status: "published" });
+      expect(await counters()).toEqual(seeded);
     } finally {
       await pool.end();
     }

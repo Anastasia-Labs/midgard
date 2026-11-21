@@ -83,18 +83,11 @@ the pair straddled the retired set. <!-- doc-links:historical -->
   the straddle refusal are deleted.
 - Recovery gating is unchanged. Only records that can reach it are narrower.
 - Stores written before the ruling may hold a relayed cross-header record.
-  The codec refuses such a record on read, so a running committee could not
-  read its own store without a fix. The committee store is Postgres only
-  (C2), and its schema upgrade removes these records when the store opens
-  (`demo/da-committee-node/src/store/postgres.schema.ts`):
-  - While the `conflicting_header_hash` column still exists, the upgrade
-    deletes every row whose `header_hash` differs from it.
-  - It then drops the column. The digest ordering check that a new table
-    carries is added in its place.
-  - All of this runs in the one transaction that opens the store, and it does
-    nothing on a store that is already upgraded.
-  - The drop-on-open module that C4 used for this, and its JSON-store
-    filtering, were deleted in C2 along with the JSON backend.
+  The codec refuses such a record on read. The launch deployment starts with
+  a fresh committee store, so no such store is opened. The schema upgrade that
+  once removed these records on open was deleted with the other pre-launch
+  store upgrades, and the drop-on-open module that C4 used for this was
+  deleted in C2 along with the JSON backend.
 
 ## Consequence for C1
 
@@ -123,12 +116,6 @@ until that header is final (k) or provably unable to land.
   and gossip ingest. Siblings return `undefined`, and ingest refuses them with
   nothing stored. One header with two digests still yields evidence and is
   stored.
-- `demo/da-committee-node/tests/conflict-evidence-cross-header-upgrade.test.ts`
-  rebuilds the conflict-evidence table as it was before the ruling. It seeds a
-  cross-header record and a same-header record, then reopens the store. The
-  cross-header record and the column are gone and the same-header record is
-  kept. The conflict-evidence read and the retirement snapshot read both
-  succeed, and the digest ordering check holds.
 - `demo/midgard-core/tests/da-transport-conflict-evidence.test.ts` checks that
   the codec refuses a cross-header pair on both encode and decode. The golden
   vector in `da-transport-vectors.test.ts` now uses one header hash with two

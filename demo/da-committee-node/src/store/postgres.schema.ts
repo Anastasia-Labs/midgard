@@ -9,7 +9,6 @@ import {
   fencedOpenTransaction,
   rebindRetirementFloor,
 } from "./postgres.open-checks.js";
-import { upgradeCommitteeL1Records } from "./postgres.upgrade-l1-records.js";
 
 /**
  * Header statuses that are not yet final: the headers a readiness probe
@@ -100,6 +99,7 @@ CREATE TABLE IF NOT EXISTS committee_da_signatures (
   end_time_ms bigint CHECK (end_time_ms >= 0),
   created_at timestamptz NOT NULL DEFAULT NOW(),
   updated_at timestamptz NOT NULL DEFAULT NOW(),
+  block_time_ms bigint CHECK (block_time_ms >= 0),
   PRIMARY KEY (header_hash, commitment_digest, signer_index)
 );
 
@@ -174,57 +174,6 @@ CREATE TABLE IF NOT EXISTS committee_store_counts (
   name text PRIMARY KEY,
   value bigint NOT NULL CHECK (value >= 0)
 );
-`;
-
-/**
- * Stores created before this schema still carry the conflict-evidence column
- * C4 made redundant: a stored record names one header (the codec refuses any
- * other), so `conflicting_header_hash` only ever equals `header_hash`. A
- * store from before C4 may still hold a relayed pair over two sibling headers
- * (docs/midgard/decisions/da-sibling-signatures-not-slashable.md); the codec
- * refuses it on read, so it would throw out of every conflict-evidence read.
- * Such rows are deleted while the column still tells them apart, then the
- * column goes with its ordering check, which is restated over the digests
- * alone as a new table has it, in the one transaction of the open.
- * They also lack the signed
- * decision's end time (C1 E6); it is backfilled from the member's own
- * signature records, whose canonical end time the write path checked. A
- * value that is not a bounded decimal stays NULL rather than failing the
- * open.
- * Their decision outbox records may carry the quarantine fields the L1
- * source no longer has (C1); the fields are stripped and the rest of each
- * record kept. `upgradeCommitteeL1Records` then upgrades the L1 source
- * state, which needs the record parser.
- */
-const COMMITTEE_STORE_UPGRADE_SQL = `
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = current_schema()
-      AND table_name = 'committee_da_conflict_evidence'
-      AND column_name = 'conflicting_header_hash'
-  ) THEN
-    DELETE FROM committee_da_conflict_evidence
-      WHERE header_hash <> conflicting_header_hash;
-    ALTER TABLE committee_da_conflict_evidence
-      DROP COLUMN conflicting_header_hash;
-    ALTER TABLE committee_da_conflict_evidence
-      ADD CHECK (conflicting_commitment_digest > commitment_digest);
-  END IF;
-END $$;
-ALTER TABLE committee_da_signatures
-  ADD COLUMN IF NOT EXISTS end_time_ms bigint CHECK (end_time_ms >= 0);
-ALTER TABLE committee_da_signatures
-  ADD COLUMN IF NOT EXISTS block_time_ms bigint CHECK (block_time_ms >= 0);
-UPDATE committee_da_signatures
-  SET end_time_ms = (record->'validation'->'l1Header'->>'endTime')::bigint
-  WHERE end_time_ms IS NULL
-    AND record->>'source' = 'local'
-    AND record->'validation'->'l1Header'->>'endTime' ~ '^(0|[1-9][0-9]{0,17})$';
-UPDATE committee_decision_outbox
-  SET record = record - 'quarantineReason' - 'quarantinedAt'
-  WHERE record ?| ARRAY['quarantineReason', 'quarantinedAt'];
 `;
 
 /**
@@ -415,13 +364,12 @@ export const committeeStoreMigrations: MigrationSet = {
 };
 
 /**
- * Creates or upgrades the committee store schema. One multi-statement query
- * runs in one transaction on a connection the server confirms still holds
- * the instance lock: it applies whole or not at all, and an instance that
- * lost the lock runs none of it. The L1 records are upgraded after it
- * (`upgradeCommitteeL1Records`), then the stored retirement floor is re-bound
- * and the stored points are checked against the L1 origin (`checks`), each
- * write fenced on the instance lock.
+ * Creates the committee store schema. One multi-statement query runs in one
+ * transaction on a connection the server confirms still holds the instance
+ * lock: it applies whole or not at all, and an instance that lost the lock
+ * runs none of it. Then the stored retirement floor is re-bound and the
+ * stored points are checked against the L1 origin (`checks`), each write
+ * fenced on the instance lock.
  * A refusal names its reason; the startup fails on it at once
  * (`committee_startup_failed`) and the process holds, unready, until it is
  * restarted.
@@ -434,14 +382,9 @@ export const initializeCommitteeSchema = async (
 ): Promise<void> => {
   await fencedOpenTransaction(pool, lock, (client) =>
     client.query(
-      [
-        COMMITTEE_STORE_TABLES_SQL,
-        COMMITTEE_STORE_UPGRADE_SQL,
-        COMMITTEE_STORE_DERIVED_SQL,
-      ].join("\n"),
+      [COMMITTEE_STORE_TABLES_SQL, COMMITTEE_STORE_DERIVED_SQL].join("\n"),
     ),
   );
-  await upgradeCommitteeL1Records(pool, lock, write, checks.securityParameter);
   await fencedOpenTransaction(pool, lock, async (client) => {
     if (checks.l1Origin !== undefined)
       await assertNoPointBeforeL1Origin(client, checks.l1Origin);

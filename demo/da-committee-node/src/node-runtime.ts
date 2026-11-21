@@ -119,7 +119,6 @@ export const openCommitteeNodeRuntime = async (
     const store = await openCommitteeStore(config.localState, {
       ...storeLockEvents,
       openChecks: {
-        securityParameter: config.automaticRecoveryMaxDepth,
         ...(config.l1Origin === undefined ? {} : { l1Origin: config.l1Origin }),
         ...(retirementBinding === undefined ? {} : { retirementBinding }),
       },
