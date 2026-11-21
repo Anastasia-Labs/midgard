@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { loadDaSigner, signDaAttestation } from "../src/signer.js";
 import { type L1SourceState } from "../src/store.js";
 import {
-  closeTestCommitteeStore,
   openTestCommitteeStore,
   testStoreDatabase,
 } from "./helpers/committee-store.js";
