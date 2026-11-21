@@ -1,0 +1,110 @@
+/**
+ * Landed-block processing for the production lifecycle, as the production
+ * driver runs it: the hook (`landedBlockHook`) after the driver's sink, at
+ * the change's view under the driver's write capability (`withDriverView`),
+ * over a follower store in the node's database, with the node's ports and
+ * the driver's recompute as the rebase.
+ */
+import {
+  openPostgresFactStore,
+  projectionStoreOptions,
+} from "@al-ft/midgard-l1-follower";
+import {
+  eventProjection,
+  eventProjectionConfigFromContracts,
+} from "@al-ft/midgard-l1-follower/events";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/users";
+import type { Effect } from "effect";
+
+import { forcedOrderConfigFromContracts } from "../../src/forced-orders/config.js";
+import { forcedOrderProjection } from "../../src/forced-orders/projection.js";
+import type { DriverHold } from "../../src/l1-events/driver.js";
+import { queueTerminalProjection } from "../../src/l1-queue-terminals/projection.js";
+import { stateQueueProjectionConfig } from "../../src/l1-state-queue/config.js";
+import { landedBlockHook } from "../../src/landed-blocks/hook.js";
+import {
+  type NodeLandedBlockContext,
+  nodeLandedBlockPorts,
+} from "../../src/landed-blocks/node-ports.js";
+import type { NodeConfigDep } from "../../src/services/config.js";
+import type { Database } from "../../src/services/database.js";
+import { withDriverView } from "../../src/services/follower-write-gate.driver.js";
+import type { Globals } from "../../src/services/globals.js";
+import { availabilityParametersFromExplicitEnvironment } from "../../src/services/midgard-contracts.load-reference-script-auth-validator.js";
+import type { EmulatorLandedBlocks } from "./emulator-l1-follower.driver.js";
+
+export const openLandedBlocks = async (args: {
+  readonly contracts: SDKCore.MidgardValidators;
+  readonly nodeConfig: NodeConfigDep;
+  /** k, the follower's security parameter. */
+  readonly securityParameter: number;
+  readonly run: <A>(
+    effect: Effect.Effect<
+      A,
+      never,
+      NodeLandedBlockContext | Database | Globals
+    >,
+  ) => Promise<A>;
+  /** The driver's recompute when the rebase is due (`rebaseIfDue`). */
+  readonly rebase: (reason: string) => Effect.Effect<DriverHold | undefined>;
+  /** The node's verified confirmed ledger, which each committed fold advances. */
+  readonly verified: Pick<
+    Globals,
+    "VERIFIED_CONFIRMED_LEDGER" | "CONFIRMED_LEDGER_FOLD_LOG"
+  >;
+}) => {
+  const { contracts, nodeConfig } = args;
+  const stateQueue = stateQueueProjectionConfig(contracts.stateQueue);
+  const events = eventProjectionConfigFromContracts(
+    SDK.requireEventHistoryContracts(contracts),
+    nodeConfig.NETWORK === "Mainnet" ? 1 : 0,
+  );
+  const forcedOrders = forcedOrderConfigFromContracts(contracts);
+  // Never started: the emulator follower host (`follower-emulator.host.ts`)
+  // writes the facts under the writer lease, and a start would check its
+  // own tracked set against them (and reset them on a difference).
+  // Landed-block processing only reads facts and takes its own
+  // transactions, neither of which needs the writer lease.
+  const store = openPostgresFactStore({
+    ...projectionStoreOptions(
+      [
+        eventProjection(events),
+        queueTerminalProjection(stateQueue),
+        forcedOrderProjection(forcedOrders),
+      ],
+      {
+        securityParameter: args.securityParameter,
+        trackedSet: {
+          addresses: new Set(),
+          paymentCredentials: new Set(),
+          policies: new Set(),
+        },
+      },
+      "postgres",
+    ),
+    connection: {
+      connectionString: `postgresql://${encodeURIComponent(nodeConfig.POSTGRES_USER)}:${encodeURIComponent(nodeConfig.POSTGRES_PASSWORD)}@${nodeConfig.POSTGRES_HOST}:${nodeConfig.POSTGRES_PORT.toString()}/${encodeURIComponent(nodeConfig.POSTGRES_DB)}`,
+    },
+  });
+  const ports = nodeLandedBlockPorts(
+    store,
+    { projection: events, forcedOrders, stateQueue },
+    args.rebase,
+    // As the node takes it for a derived (manifest-less) bundle.
+    () => ({
+      deploymentIdentity: contracts.hubOracle.policyId,
+      responseGeometry:
+        availabilityParametersFromExplicitEnvironment().response_geometry,
+    }),
+    args.verified,
+  );
+  const hook: EmulatorLandedBlocks = (change) =>
+    landedBlockHook({
+      store,
+      config: stateQueue,
+      ports,
+      run: (effect) => args.run(withDriverView(change.view)(effect)),
+    })(change);
+  return { hook, close: () => store.close() };
+};

@@ -1,24 +1,32 @@
 import type { MessagePort } from "node:worker_threads";
 
-import * as SDK from "@al-ft/midgard-sdk";
-import { CML, coreToUtxo, UTxO, utxoToCore } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import {
+  CML,
+  coreToUtxo,
+  type SlotConfig,
+  UTxO,
+  utxoToCore,
+} from "@lucid-evolution/lucid";
+import { Data, Effect } from "effect";
 
-import type { SlotAwareDueWork } from "@/fibers/slot-aware-due-work.js";
-import type {
-  SpeculativeCandidateSummary,
-  SpeculativeInvalidationReason,
-  UserEventBarrierWatermarks,
-} from "@/fibers/speculative-commit-state.js";
-
-export type SpeculativeCommitBaseInput = {
-  readonly headerHash: string;
-  readonly utxosRoot: string;
-  readonly blockEndTimeMs: number;
-  readonly submittedTxHash: string;
-};
+import type { CommitSubmitRefusalCode } from "../../fibers/block-commitment.worker-readiness.js";
+import type { SlotAwareDueWork } from "../../fibers/slot-aware-due-work.js";
+import type { LedgerDivergenceCheck } from "../../mpf/local-ledger-divergence.js";
+import type { UnwrittenHold } from "../../services/intent-journal.holds.js";
 
 export type WorkerInput = {
+  readonly history?: import("../../services/follower-write-gate.js").FollowerWritePermit;
+  /**
+   * The frontier the main thread last verified `confirmed_ledger` derives
+   * the root of (`confirmed-ledger-verification.ts`), at the generation it
+   * read, or the frontier a clean fold advanced that verification to
+   * (`confirmed-ledger-advance.ts`); built by `verifiedFrontierWorkerInput`
+   * and read by `parseVerifiedFrontier`. Absent until a verification
+   * passes, and after one finds a divergence.
+   */
+  readonly verifiedFrontier?: VerifiedFrontier;
   readonly nativeMpf?: {
     readonly port: MessagePort;
     readonly durableRoot: string;
@@ -26,30 +34,98 @@ export type WorkerInput = {
   };
   data: {
     availableConfirmedBlock: "" | SerializedStateQueueUTxO;
-    availableLocalFinalizationBlock: "" | SerializedStateQueueUTxO;
     currentBlockStartTimeMs: number;
-    localFinalizationPending: boolean;
     /**
      * Parent-generated identity for the logical PostgreSQL ledger-MPF lease.
      * The parent uses the same identity to release a lease only after the
      * worker thread has stopped, including timeout and interruption paths.
      */
     ledgerStoreLeaseOwner: string;
+    /**
+     * Immutable, node-selected time mapping used by canonical V1 forced
+     * validation. Plain data keeps candidate construction provider-free.
+     */
+    forcedValidationSlotConfig?: SlotConfig;
     mempoolTxsCountSoFar: number;
     sizeOfProcessedTxsSoFar: number;
     stateQueueLeaseToken?: string;
     baseSnapshotId?: string;
     stateQueueHasUnmergedTail?: boolean;
-    speculativeBuild?: {
-      readonly base: SpeculativeCommitBaseInput;
-      readonly watermarks: UserEventBarrierWatermarks;
-      /** Payload already committed by the submitted base block. */
-      readonly excludedMempoolTxIds: readonly string[];
-      readonly excludedDepositEventIds: readonly string[];
-      readonly excludedForcedTransactionEventIds: readonly string[];
-      readonly excludedWithdrawalEventIds: readonly string[];
-    };
   };
+};
+
+/**
+ * A frontier header (56 hex), the root of its post-state (64 hex) and the
+ * frontier generation it was verified at (a positive `bigint`, in decimal
+ * with no leading zero; migration 0038). The generation names the ledger
+ * verified: a frontier unfolded and folded back to the same header and
+ * root, or `confirmed_ledger` written outside a fold, carries another.
+ */
+export type VerifiedFrontier = Readonly<{
+  headerHash: string;
+  utxosRoot: string;
+  generation: string;
+}>;
+
+/** `WorkerInput.verifiedFrontier` is not a frontier the parent could send. */
+export class MalformedVerifiedFrontierError extends Data.TaggedError(
+  "MalformedVerifiedFrontierError",
+)<{ readonly detail: string }> {}
+
+const HEADER_HASH_HEX = /^[0-9a-f]{56}$/u;
+const ROOT_HEX = /^[0-9a-f]{64}$/u;
+const GENERATION = /^[1-9][0-9]{0,18}$/u;
+const GENERATION_MAX = 9_223_372_036_854_775_807n;
+
+const isGeneration = (value: unknown): value is string =>
+  typeof value === "string" &&
+  GENERATION.test(value) &&
+  BigInt(value) <= GENERATION_MAX;
+
+/** The `WorkerInput` field the parent sends for `verified`: none while no
+ * verification has passed. Only the frontier and its generation cross. */
+export const verifiedFrontierWorkerInput = (
+  verified: VerifiedFrontier | undefined,
+): Pick<WorkerInput, "verifiedFrontier"> =>
+  verified === undefined
+    ? {}
+    : {
+        verifiedFrontier: {
+          headerHash: verified.headerHash,
+          utxosRoot: verified.utxosRoot,
+          generation: verified.generation,
+        },
+      };
+
+/** The verified frontier the worker received, `undefined` if none was sent.
+ * Anything else fails: a payload the parent cannot produce is a broken
+ * contract, not a frontier still awaiting verification. */
+export const parseVerifiedFrontier = (
+  value: unknown,
+): Effect.Effect<
+  VerifiedFrontier | undefined,
+  MalformedVerifiedFrontierError
+> => {
+  if (value === undefined) return Effect.succeed(undefined);
+  const pair = value as Partial<Record<keyof VerifiedFrontier, unknown>>;
+  return typeof value === "object" &&
+    value !== null &&
+    Object.keys(value).sort().join() === "generation,headerHash,utxosRoot" &&
+    typeof pair.headerHash === "string" &&
+    HEADER_HASH_HEX.test(pair.headerHash) &&
+    typeof pair.utxosRoot === "string" &&
+    ROOT_HEX.test(pair.utxosRoot) &&
+    isGeneration(pair.generation)
+    ? Effect.succeed({
+        headerHash: pair.headerHash,
+        utxosRoot: pair.utxosRoot,
+        generation: pair.generation,
+      })
+    : Effect.fail(
+        new MalformedVerifiedFrontierError({
+          detail: `verifiedFrontier is not exactly a 56-hex header hash, a 64-hex root and a decimal generation: ${JSON.stringify(value)}`,
+        }),
+      );
 };
 
 export type NativeMpfPromotion = {
@@ -71,43 +147,115 @@ export type SuccessfulSubmissionOutput = {
   nativeMpfPromotion?: NativeMpfPromotion;
 };
 
+export type CommitCandidateRoots = {
+  readonly utxos: string;
+  /** Raw transaction MPF root. */
+  readonly rawTransactions: string;
+  readonly transactions: string;
+  readonly transitionTrace: string;
+  readonly eventToStep: string;
+};
+
 export type SkippedSubmissionOutput = {
   type: "SkippedSubmissionOutput";
   mempoolTxsCount: number;
   sizeOfProcessedTxs: number;
+  /** The block built and then deferred because no confirmed base was
+   * available: its end time and the roots already computed while building it
+   * (user-event roots are resolved only at submission). Absent when
+   * submission failed. */
+  candidate?: {
+    readonly endTimeMs: number;
+    readonly roots: CommitCandidateRoots;
+  };
+  /** Why the commit's submission was refused before broadcast, when it was
+   * (`commit_submit_refused`): the attempt was abandoned and its payload
+   * kept for the retry. */
+  submitRefusal?: CommitSubmitRefusal;
+};
+
+/** A commit submission refused before broadcast: its bounded code and the
+ * failure it was classified from. */
+export type CommitSubmitRefusal = {
+  readonly code: CommitSubmitRefusalCode;
+  readonly detail: string;
 };
 
 export type NothingToCommitOutput = {
   type: "NothingToCommitOutput";
 };
 
+/**
+ * `localFault` is set when the failure is a local fault: this process's
+ * Ed25519 verifier fault (`LedgerSignatureVerifierUnavailableError`), or a
+ * due withdrawal row this node cannot classify
+ * (`WithdrawalUnclassifiableError`), whose event id (hex) is
+ * `localFaultSubject` and whose case is `localFaultCase`. The parent retries
+ * either for a bounded number of attempts without a successful commit before
+ * the node exits.
+ */
 export type FailureOutput = {
   type: "FailureOutput";
   error: string;
-};
+} & LocalFaultMark;
+
+/** `FailureOutput`'s local fault, if it is one. */
+export type LocalFaultMark =
+  | {
+      localFault?: undefined;
+      localFaultSubject?: undefined;
+      localFaultCase?: undefined;
+    }
+  | {
+      localFault: typeof VERIFIER_UNAVAILABLE_FAULT;
+      localFaultSubject?: undefined;
+      localFaultCase?: undefined;
+    }
+  | {
+      localFault: typeof WITHDRAWAL_UNCLASSIFIABLE_FAULT;
+      localFaultSubject: string;
+      localFaultCase: WithdrawalUnclassifiableCase;
+    };
+
+/** Why a due withdrawal row cannot be classified on this node: the row, or
+ * the ledger output it names, does not decode; or the row decodes and the
+ * classifier failed on this node. */
+export type WithdrawalUnclassifiableCase = "undecodable" | "classifier_failed";
+
+/** `FailureOutput.localFault` of an Ed25519 verifier fault. */
+export const VERIFIER_UNAVAILABLE_FAULT = "verifier_unavailable";
+/** `FailureOutput.localFault` of a withdrawal row this node cannot classify. */
+export const WITHDRAWAL_UNCLASSIFIABLE_FAULT = "withdrawal_unclassifiable";
 
 export type RegisteredDueWorkOutput = {
   type: "RegisteredDueWorkOutput";
   dueWork: SlotAwareDueWork;
 };
 
-export type AwaitingForeignDaOutput = {
-  readonly type: "AwaitingForeignDaOutput";
-  readonly foreignHeaderHash: string;
-  readonly reason: string;
+/** The commit waits for its base: a tail landed-block processing has not
+ * applied to the working ledger yet, or this node's own block still in
+ * flight. With `divergence`, the base's entries do not derive the root this
+ * node stores for it (`local-ledger-divergence.ts`, by that check): the
+ * commit is refused until they do. With `unverified`, the base is a landed
+ * tail and the frontier it builds from is not the verified frontier the
+ * worker received: it waits for the main thread's verification. */
+export type AwaitingCommitBaseOutput = {
+  readonly type: "AwaitingCommitBaseOutput";
+  readonly baseHeaderHash: string;
+  readonly detail: string;
+  readonly divergence?: LedgerDivergenceCheck;
+  readonly unverified?: true;
 };
 
-export type SubmittedAwaitingLocalFinalizationOutput = {
-  type: "SubmittedAwaitingLocalFinalizationOutput";
-  submittedTxHash: string;
-  txSize: number;
-  mempoolTxsCount: number;
-  sizeOfBlocksTxs: number;
-  blockEndTimeMs: number;
-  error: string;
-  submittedHeaderHash: string;
-  submittedUtxosRoot: string;
-  nativeMpfPromotion?: NativeMpfPromotion;
+/** The commit waits for the next scheduler window: a dead journal whose
+ * commit was signed holds this block's header hash (identical content on
+ * the same base, built in the same window). Its signed bytes can still land,
+ * and landing applies that journal, so it is kept; the next window's block
+ * end time gives the replacement another header. */
+export type AwaitingNextCommitWindowOutput = {
+  readonly type: "AwaitingNextCommitWindowOutput";
+  readonly heldHeaderHash: string;
+  readonly detail: string;
 };
 
 export type SubmittedAwaitingConfirmationOutput = {
@@ -120,46 +268,6 @@ export type SubmittedAwaitingConfirmationOutput = {
   submittedHeaderHash: string;
   submittedUtxosRoot: string;
   nativeMpfPromotion?: NativeMpfPromotion;
-  speculativeExecution?: {
-    readonly candidateId: string;
-    readonly baseHydrationPassesBeforeReady: number;
-    readonly mpfProcessingPassesBeforeReady: number;
-    readonly baseHydrationPassesAfterReady: number;
-    readonly mpfProcessingPassesAfterReady: number;
-  };
-};
-
-export type SpeculativeCandidateReadyOutput = {
-  readonly type: "SpeculativeCandidateReadyOutput";
-  readonly candidate: SpeculativeCandidateSummary;
-};
-
-export type SpeculativeCandidateInvalidatedOutput = {
-  readonly type: "SpeculativeCandidateInvalidatedOutput";
-  readonly candidateId: string;
-  readonly reason: SpeculativeInvalidationReason;
-};
-
-export type SpeculativeCommitWorkerInstruction =
-  | {
-      readonly type: "SubmitSpeculativeCandidate";
-      readonly confirmedBlock: SerializedStateQueueUTxO;
-      readonly stateQueueLeaseToken: string;
-      readonly baseSnapshotId: string;
-      readonly stateQueueHasUnmergedTail: boolean;
-      readonly localFinalizationBlock?: SerializedStateQueueUTxO;
-    }
-  | {
-      readonly type: "InvalidateSpeculativeCandidate";
-      readonly reason: SpeculativeInvalidationReason;
-    };
-
-export type SuccessfulLocalFinalizationRecoveryOutput = {
-  type: "SuccessfulLocalFinalizationRecoveryOutput";
-  finalizedHeaderHash: string;
-  mempoolTxsCount: number;
-  sizeOfBlocksTxs: number;
-  mempoolLedgerDeletedOutRefHexes: readonly string[];
 };
 
 export type WorkerOutput =
@@ -168,22 +276,51 @@ export type WorkerOutput =
   | NothingToCommitOutput
   | FailureOutput
   | RegisteredDueWorkOutput
-  | AwaitingForeignDaOutput
-  | SubmittedAwaitingLocalFinalizationOutput
-  | SubmittedAwaitingConfirmationOutput
-  | SpeculativeCandidateReadyOutput
-  | SpeculativeCandidateInvalidatedOutput
-  | SuccessfulLocalFinalizationRecoveryOutput;
+  | AwaitingCommitBaseOutput
+  | AwaitingNextCommitWindowOutput
+  | SubmittedAwaitingConfirmationOutput;
+
+/**
+ * Posted by the commit worker ahead of its output, as soon as a commit-stage
+ * rejection's mempool_ledger revert has committed: the parent reloads its
+ * ledger cache without waiting for the block submission to finish.
+ */
+export type MempoolLedgerRevertedNotice = {
+  readonly type: "MempoolLedgerRevertedNotice";
+};
+
+/**
+ * Posted by the commit worker ahead of its output: a commit stage held the
+ * build (`held`), or its rejections reached the build's limit and it left the
+ * rest pending (`breaker`). The parent names it on `/readyz`.
+ */
+export type CommitBuildAlarmNotice = {
+  readonly type: "CommitBuildAlarmNotice";
+  readonly alarm: "held" | "breaker";
+  readonly stage: string;
+};
+
+/**
+ * Posted by the commit worker ahead of its output when its intent journal
+ * refused a submission and the refusal hold's write to the node database
+ * has not landed (I1-H1). The worker's journal ends with the thread, so the
+ * parent's journal takes the holds over: `/readyz` names them, and its
+ * refresh at every tip writes them until they land.
+ */
+export type IntentRefusalHoldsNotice = {
+  readonly type: "IntentRefusalHoldsNotice";
+  readonly holds: readonly UnwrittenHold[];
+};
 
 // Datatype to use CBOR hex of state queue UTxOs instead of `UTxO` from LE for
 // transferability.
 export type SerializedStateQueueUTxO = Omit<
-  SDK.StateQueueUTxO,
+  SDKStateQueue.StateQueueUTxO,
   "utxo" | "datum"
 > & { utxo: string; datum: string };
 
 export const serializeStateQueueUTxO = (
-  stateQueueUTxO: SDK.StateQueueUTxO,
+  stateQueueUTxO: SDKStateQueue.StateQueueUTxO,
 ): Effect.Effect<
   SerializedStateQueueUTxO,
   SDK.CmlUnexpectedError | SDK.CborSerializationError
@@ -193,7 +330,7 @@ export const serializeStateQueueUTxO = (
       try: () => utxoToCore(stateQueueUTxO.utxo),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
-          message: `Failed to serialize state queue UTxO: ${e}`,
+          message: `Failed to serialize state queue UTxO: ${String(e)}`,
           cause: e,
         }),
     });
@@ -201,7 +338,7 @@ export const serializeStateQueueUTxO = (
       try: () => SDK.encodeLinkedListNodeView(stateQueueUTxO.datum),
       catch: (e) =>
         new SDK.CborSerializationError({
-          message: `Failed to serialize state queue datum: ${e}`,
+          message: `Failed to serialize state queue datum: ${String(e)}`,
           cause: e,
         }),
     });
@@ -215,7 +352,7 @@ export const serializeStateQueueUTxO = (
 export const deserializeStateQueueUTxO = (
   stateQueueUTxO: SerializedStateQueueUTxO,
 ): Effect.Effect<
-  SDK.StateQueueUTxO,
+  SDKStateQueue.StateQueueUTxO,
   SDK.CmlUnexpectedError | SDK.CborDeserializationError
 > =>
   Effect.gen(function* () {
@@ -226,7 +363,7 @@ export const deserializeStateQueueUTxO = (
         ),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
-          message: `Failed to convert state queue UTxO to CML: ${e}`,
+          message: `Failed to convert state queue UTxO to CML: ${String(e)}`,
           cause: e,
         }),
     });
@@ -234,7 +371,7 @@ export const deserializeStateQueueUTxO = (
       Effect.mapError(
         (e) =>
           new SDK.CborDeserializationError({
-            message: `Failed to deserialize datum: ${e}`,
+            message: `Failed to deserialize datum: ${e.message}`,
             cause: e,
           }),
       ),

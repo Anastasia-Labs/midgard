@@ -1,0 +1,6 @@
+interface:
+  display_name: "Why"
+  short_description: "Investigate design rationale using code history and available re"
+  default_prompt: "Use $why for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

@@ -28,9 +28,12 @@ representation.
 
 ## In the codebase
 
-These map directly to the on-chain
+These are the design counterparts of the on-chain
 [consensus validators](/docs/onchain/consensus-validators) and
 [operator directory](/docs/onchain/operator-directory), to the operator-facing
 builders in [`midgard-sdk`](/docs/sdk/midgard-sdk/blocks-and-scheduling), and to the
 node's [background fibers](/docs/operators/node/background-fibers) that run the
-commit/confirm/merge lifecycle.
+commit/confirm/merge lifecycle. The current hub implementation authenticates
+a singleton configuration datum and a coupled correction-lock NFT through its
+mint policy; do not infer a separate hub spending handler from the chapter's
+older spending-validator section.

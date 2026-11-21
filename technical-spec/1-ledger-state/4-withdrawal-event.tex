@@ -35,7 +35,7 @@ A withdrawal event in a Midgard block acknowledges that a user has created an L1
         \end{array} \right\}\\
     \T{WithdrawalValidity} \coloneq\;& \T{WithdrawalIsValid} \\
 	                               \mid\;& \T{NonExistentWithdrawalUtxo} \\
-	                               \mid\;& \T{SpentWithdrawalUtxo} \\
+	                               \mid\;& \T{SpentWithdrawalUtxo}\{\T{l2\_tx\_id}\} \\
 	                               \mid\;& \T{IncorrectWithdrawalOwner} \\
 	                               \mid\;& \T{IncorrectWithdrawalValue} \\
 	                               \mid\;& \T{IncorrectWithdrawalSignature} \\
@@ -44,10 +44,12 @@ A withdrawal event in a Midgard block acknowledges that a user has created an L1
 \end{align*}
 \endgroup
 
-The \code{WithdrawalId} of a withdrawal event corresponds to one of the inputs spent by the user in the L1 transaction that created the L1 withdrawal request utxo (more specifically, it's the hash of its serialized output-reference).
+The \code{WithdrawalId} of a withdrawal event is the output reference of one of the inputs spent by the user in the L1 transaction that created the withdrawal request.
+The authentication NFT's asset name is derived from this reference; the event ID itself is not a hash.
 This key is needed to identify the L1 withdrawal utxo, ensure that withdrawal events are unique, and detect when an operator has fabricated a withdrawal event without the corresponding withdrawal request existing in the L1 ledger.
 
-If a withdrawal event is permitted by Midgard's ledger rules to be included in a block, its effect is to remove the output at output-reference \code{l2\_outref} from the block's utxo set.
+Only a withdrawal event tagged \code{WithdrawalIsValid} removes the output at \code{l2\_outref} from the block's UTxO set.
+An invalid withdrawal is still included when due, but its transition is an exact no-op and settlement follows the refund path.
 
 A withdrawal event must not be tagged as \code{WithdrawalIsValid} unless \code{l2\_value} can be paid exactly to \code{l1\_address} with \code{l1\_datum} as a valid Cardano L1 transaction output.
 In particular, the exact \code{l2\_value} must satisfy the L1 output's minimum-ADA and token-bundle constraints without adding reserve funds or any other top-up.

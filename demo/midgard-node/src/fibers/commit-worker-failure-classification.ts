@@ -1,12 +1,17 @@
 import { Effect } from "effect";
 
-import type { WorkerOutput } from "@/workers/utils/commit-block-header.js";
-import { WorkerError } from "@/workers/utils/common.js";
+import { PendingBlockFinalizationsDB } from "../database/index.js";
+import type { Globals } from "../services/globals.globals.js";
+import type { WorkerOutput } from "../workers/utils/commit-block-header.js";
+import { WorkerError } from "../workers/utils/common.js";
+import { watchRetainedBlockSubmission } from "./unresolved-block-submission.js";
 
 export type CommitWorkerFailureJournalEvidence = {
   readonly headerHash: Buffer;
-  readonly submittedTxHash: Buffer | null;
+  readonly intendedTxHash: Buffer | null;
+  /** The journal's derived status (`ownBlockStatusSql`). */
   readonly status: string;
+  readonly dead: boolean;
 };
 
 export type RetrieveCommitWorkerFailureJournalEvidence<E, R> = (
@@ -16,13 +21,16 @@ export type RetrieveCommitWorkerFailureJournalEvidence<E, R> = (
 const encodeJournalEvidence = (
   row: CommitWorkerFailureJournalEvidence,
 ): string =>
-  `header_hash=${row.headerHash.toString("hex")},status=${row.status},submitted_tx_hash=${row.submittedTxHash?.toString("hex") ?? "null"}`;
+  `header_hash=${row.headerHash.toString("hex")},status=${row.status},dead=${row.dead.toString()},intended_tx_hash=${row.intendedTxHash?.toString("hex") ?? "null"}`;
 
 /**
  * A typed worker failure can release its state-queue mutation lease only when
- * the durable journal proves that submission preparation never started. The
- * lookup deliberately includes every journal status: pending or abandoned
- * rows with a null submitted hash cannot rule out a crash or uncertain submit.
+ * the durable journal proves that no submission under the lease can be on L1:
+ * either preparation never started (or its unsigned journal was discarded),
+ * or no journal row under the lease records a signed intent. A commit is
+ * broadcast only once its signed intent is journaled
+ * (`recordSignedIntent`), so a row without one was never broadcast; a row
+ * with one may be on L1 whatever its status.
  */
 export const classifyCommitWorkerOutputForMutationLease = <E, R>({
   output,
@@ -59,7 +67,7 @@ export const classifyCommitWorkerOutputForMutationLease = <E, R>({
         }),
     ),
     Effect.flatMap((rows) => {
-      if (rows.length > 0) {
+      if (!rows.every((row) => row.intendedTxHash === null)) {
         return Effect.fail(
           new WorkerError({
             worker: "commit-block-header",
@@ -73,9 +81,38 @@ export const classifyCommitWorkerOutputForMutationLease = <E, R>({
         );
       }
 
-      return Effect.logWarning(
-        `commit_worker_failure_lease_disposition=provably_pre_mutation state_queue_lease_token=${stateQueueLeaseToken} error=${output.error}`,
+      // The failure itself is `commit_worker_failed`; this benign
+      // disposition repeats on every failing tick.
+      return Effect.logDebug(
+        `commit_worker_failure_lease_disposition=${rows.length === 0 ? "provably_pre_mutation" : "unsigned_pre_broadcast"} state_queue_lease_token=${stateQueueLeaseToken} error=${output.error}`,
       ).pipe(Effect.as(output));
     }),
   );
 };
+
+/**
+ * Classifies `output` against its lease's journal rows, read once; a commit tx
+ * those rows retain also becomes the confirmation's unresolved submission.
+ */
+export const classifyCommitWorkerOutputAgainstLeaseJournal = (
+  globals: Globals,
+  output: WorkerOutput,
+  stateQueueLeaseToken?: string,
+) =>
+  classifyCommitWorkerOutputForMutationLease({
+    output,
+    stateQueueLeaseToken,
+    retrieveJournalEvidence: (token) =>
+      PendingBlockFinalizationsDB.retrieveByStateQueueLeaseToken(token).pipe(
+        Effect.tap((rows) => watchRetainedBlockSubmission(globals, rows)),
+        Effect.map((rows) =>
+          rows.map(({ row, status, dead }) => ({
+            headerHash: row[PendingBlockFinalizationsDB.Columns.HEADER_HASH],
+            intendedTxHash:
+              row[PendingBlockFinalizationsDB.Columns.INTENDED_TX_HASH] ?? null,
+            status,
+            dead,
+          })),
+        ),
+      ),
+  });

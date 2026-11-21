@@ -1,0 +1,4 @@
+interface:
+  display_name: "Diagnosing Runtime Progress"
+  short_description: "Distinguish idle services, outages, holds and actual stalls."
+  default_prompt: "Use the Midgard diagnosing-runtime-progress workflow."

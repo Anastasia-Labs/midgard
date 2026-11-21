@@ -1,0 +1,4 @@
+interface:
+  display_name: "Committing Safely"
+  short_description: "Commit exactly your own paths in a shared tree."
+  default_prompt: "Use the Midgard committing-safely workflow."

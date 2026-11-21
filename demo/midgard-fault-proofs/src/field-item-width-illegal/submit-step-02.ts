@@ -1,0 +1,292 @@
+import { decodeMidgardNativeTxWitnessSetCompact } from "@al-ft/midgard-core";
+import {
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
+  type FieldOpening,
+  isMidgardWitnessSetField,
+} from "@al-ft/midgard-sdk/fraud-proof";
+import {
+  type BuildTxWithRedeemer,
+  Data,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
+import {
+  type FaultProofFieldGrammarDeployment,
+  routeFaultProofFieldGrammar,
+  WALKED_FIELD_GRAMMAR_ROUTE,
+} from "../field-grammar-certificate.route-fault-proof-field-grammar.js";
+import { reuseOrCertifyFaultProofFieldCarriage } from "../field-opening.certify-fault-proof-field-carriage.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
+import {
+  faultProofFieldOpening,
+  publishFaultProofFieldCarriage,
+} from "../field-opening.publish-fault-proof-field-carriage.js";
+import {
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
+} from "../linear-fault-family.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
+import type { ResolvedProverSigner } from "../runtime.js";
+import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
+import type { FieldItemWidthIllegalContracts } from "./contracts.js";
+import {
+  encodeFieldItemWidthBoundCoordinate,
+  fieldItemWidthAuthenticatedItem,
+  FieldItemWidthBoundCoordinate,
+  type FieldItemWidthEvidence,
+} from "./field-item-width-illegal.js";
+import {
+  FieldItemWidthStep02DatumSchema,
+  FieldItemWidthStep02RedeemerSchema,
+  FieldItemWidthStep03DatumSchema,
+} from "./schemas.js";
+
+export const buildFieldItemWidthIllegalStep02 = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  evidence,
+  nativeTxCompactCbor,
+  witnessSetCompactCbor,
+  publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo: suppliedCertificateUtxo,
+  certificateReferenceScriptUtxo,
+  referenceScriptUtxo,
+  fieldGrammar,
+  ownOutputs = createOwnOutputJournal(),
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: FieldItemWidthIllegalContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly evidence: FieldItemWidthEvidence;
+  readonly nativeTxCompactCbor: string;
+  readonly witnessSetCompactCbor: string;
+  readonly publishCarriage?: boolean;
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  readonly certificateUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
+  readonly certificateReferenceScriptUtxo?: UTxO;
+  /**
+   * The field grammar certificate, for an outputs (2) or mint (5) field past
+   * the walked limit or under tier 3; every other field is walked.
+   */
+  readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
+}) => {
+  const stepIndex = 1;
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    family: "field-item-width-illegal",
+    stepIndex,
+    threadOutRef,
+  });
+  const state = requireLinearFaultStepState<FieldItemWidthBoundCoordinate>({
+    threadUtxo,
+    signer,
+    schema: FieldItemWidthStep02DatumSchema as never,
+    family: "field-item-width-illegal",
+    stepIndex,
+  });
+  if (
+    Data.to(state, FieldItemWidthBoundCoordinate) !==
+    encodeFieldItemWidthBoundCoordinate(evidence, state.compact)
+  )
+    throw new Error(
+      "field-item-width-illegal: opening subject or coordinate differs from thread",
+    );
+  const witnessSet = decodeMidgardNativeTxWitnessSetCompact(
+    Buffer.from(witnessSetCompactCbor, "hex"),
+  );
+  const planned =
+    evidence.kind === "StaticDomain"
+      ? null
+      : planFaultProofFieldOpening({
+          anchorSourceKind: state.subject.source_kind === 1n ? 1n : 0n,
+          fieldIndex: Number(evidence.fieldIndex),
+          anchorTxId: state.subject.transaction_id,
+          nativeTxCompactCbor,
+          fieldPreimage: Buffer.from(evidence.fieldPreimageHex, "hex"),
+          // A body field opens on `BodyFieldOpening`, which carries no
+          // witness set; only a witness-set field carries one and its anchor.
+          ...(isMidgardWitnessSetField(Number(evidence.fieldIndex))
+            ? {
+                witnessSet: {
+                  addr_tx_wits_hash: Buffer.from(
+                    witnessSet.addrTxWitsHash,
+                  ).toString("hex"),
+                  script_tx_wits_hash: Buffer.from(
+                    witnessSet.scriptTxWitsHash,
+                  ).toString("hex"),
+                  redeemer_tx_wits_hash: Buffer.from(
+                    witnessSet.redeemerTxWitsHash,
+                  ).toString("hex"),
+                },
+                anchorWitnessSetHash: state.compact.witness_set_hash,
+              }
+            : {}),
+          owner: signer.paymentKeyHash,
+          publish: publishCarriage,
+          label: "field-item-width-illegal field opening",
+        });
+  signer.selectWallet(lucid);
+  const carriageUtxos =
+    planned === null
+      ? []
+      : (publishedCarriageUtxos ??
+        (await publishFaultProofFieldCarriage({
+          ownOutputs,
+          lucid,
+          signer,
+          planned,
+          publisherAddress: signer.proofMaterialsAddress,
+          label: "field-item-width-illegal field opening",
+        })));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
+  const certificateUtxo =
+    planned === null
+      ? undefined
+      : (suppliedCertificateUtxo ??
+        (planned.plan.tier === "Certified"
+          ? await reuseOrCertifyFaultProofFieldCarriage({
+              ownOutputs,
+              lucid,
+              network: lucid.config().network!,
+              signer,
+              planned,
+              certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+              certificateMintingScript:
+                contracts.fieldPreimageCertificateMintingScript,
+              certificateReferenceScriptUtxo,
+              missingReferenceScript:
+                "field-item-width-illegal: certified opening requires certificate reference script",
+              chunkUtxos: carriageUtxos,
+              compactCbor: nativeTxCompactCbor,
+              witnessSetCompactCbor,
+            })
+          : undefined));
+  if (isPrerequisiteTurn(certificateUtxo)) return certificateUtxo;
+  const grammar =
+    planned === null || (planned.fieldIndex !== 2 && planned.fieldIndex !== 5)
+      ? WALKED_FIELD_GRAMMAR_ROUTE
+      : await routeFaultProofFieldGrammar({
+          lucid,
+          signer,
+          plan: planned.plan,
+          // The step reads the coordinate's item, whose domain is the
+          // field's count.
+          read: "itemAndCount",
+          itemCount: planned.itemCount,
+          source: {
+            sourceKind: planned.sourceKind,
+            compactCbor: nativeTxCompactCbor,
+            witnessSetCompactCbor,
+          },
+          carriageUtxos: [
+            ...carriageUtxos,
+            ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+          ],
+          fieldPreimageCertificatePolicyId:
+            contracts.fieldPreimageCertificatePolicyId,
+          fieldGrammar,
+          label: "field-item-width-illegal field opening",
+        });
+  const stepReference = requireLinearFaultReferenceScript({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: contracts.steps[1].spendingScriptHash,
+    family: "field-item-width-illegal",
+    stepIndex,
+  });
+  const nextDatum = Data.to(
+    {
+      fraud_prover: signer.paymentKeyHash,
+      data: fieldItemWidthAuthenticatedItem(evidence),
+    } as never,
+    FieldItemWidthStep03DatumSchema as never,
+  );
+  const outputMatches = computationThreadOutputPredicate({
+    address: contracts.steps[2].spendingScriptAddress,
+    datum: nextDatum,
+    unit: threadToken.unit,
+  });
+  let outputIndex: bigint | undefined;
+  const redeemer = ((ctx) => {
+    const opening: FieldOpening | null =
+      planned === null
+        ? null
+        : faultProofFieldOpening({
+            planned,
+            referenceInputs: ctx.referenceInputs,
+            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+            label: "field-item-width-illegal field opening",
+          });
+    requireOwnSpendPurpose(ctx, threadUtxo, "field-item-width-illegal step-02");
+    const inputIndex = requireInputIndex(
+      ctx,
+      threadUtxo,
+      "field-item-width-illegal",
+    );
+    outputIndex = requireUniqueOutputIndex(
+      ctx.outputs,
+      outputMatches,
+      "field-item-width-illegal step-02 output",
+    );
+    return Data.to(
+      {
+        Continue: [
+          {
+            input_index: inputIndex,
+            output_index: outputIndex,
+            opening,
+            grammar_ref_input_index: grammar.grammarRefInputIndex(
+              ctx.referenceInputs,
+            ),
+          },
+        ],
+      } as never,
+      FieldItemWidthStep02RedeemerSchema as never,
+    );
+  }) satisfies BuildTxWithRedeemer;
+  const transaction = await buildLinearFaultContinue({
+    lucid,
+    signer,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    stepReference,
+    stepScript: contracts.steps[1].spendingScript,
+    stepRole: "field-item-width-illegal step-02",
+    nextAddress: contracts.steps[2].spendingScriptAddress,
+    nextDatum,
+    redeemer,
+    carriageUtxos,
+    extraReferenceInputs: [
+      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+      ...grammar.referenceInputs,
+    ],
+  });
+  if (outputIndex === undefined)
+    throw new Error("field-item-width-illegal: step-02 layout unresolved");
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+    carriageTier: planned?.plan.tier ?? null,
+  };
+};

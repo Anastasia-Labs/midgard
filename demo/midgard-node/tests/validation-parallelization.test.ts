@@ -3,6 +3,7 @@ import {
   computeMidgardNativeTxId,
   deriveMidgardNativeTxBodyCompact,
   deriveMidgardNativeTxCompact,
+  encodeCbor,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCanonical,
   MIDGARD_NATIVE_TX_VERSION,
@@ -11,28 +12,28 @@ import {
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetCanonical,
 } from "@al-ft/midgard-core/codec";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import {
-  buildPhaseAValidatedTx,
-  decodeMidgardSubmittedTxFromCanonicalCbor,
   PhaseAValidatedTx,
   QueuedTx,
   RejectCodes,
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/types";
+import { buildPhaseAValidatedTx } from "@al-ft/midgard-validation/validation-candidate";
 import { CML } from "@lucid-evolution/lucid";
-import { encode } from "cborg";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { sampleValidationQueueWaits } from "../src/fibers/tx-queue-processor.run-phase-afor-batch.js";
+import { hasUnseenTxQueueWake } from "../src/fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
+import { resolveValidationWorkerPoolSize } from "../src/services/config.validation.js";
+import { packPhaseAJob } from "../src/workers/utils/validation-pool.js";
 import {
-  hasUnseenTxQueueWake,
-  sampleValidationQueueWaits,
-} from "@/fibers/tx-queue-processor.js";
-import { resolveValidationWorkerPoolSize } from "@/services/config.js";
-import { packPhaseAJob } from "@/workers/utils/validation-pool.js";
-
-import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
+  makeMidgardTxOutput,
+  makeOutRefCbor,
+} from "./midgard-output-helpers.js";
 
 /**
  * Builds a fixed-width 32-byte hex string for validation tests.
@@ -40,12 +41,7 @@ import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 const hex32 = (byte: number) => byte.toString(16).padStart(2, "0").repeat(32);
 
 const outRefFromHash = (txHashHex: string, index: bigint): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHashHex),
-      index,
-    ).to_cbor_bytes(),
-  );
+  makeOutRefCbor(txHashHex, index);
 
 const makeOutput = (address: string, lovelace: bigint): Buffer =>
   Buffer.from(
@@ -82,7 +78,7 @@ describe("validation queue-wait metric sampling", () => {
 });
 
 const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
-  Buffer.from(encode(items.map((item) => Buffer.from(item))));
+  Buffer.from(encodeCbor(items.map((item) => Buffer.from(item))));
 
 const makeNativeTx = ({
   spent,
@@ -138,11 +134,21 @@ const makeNativeTx = ({
   };
 };
 
+// Phase B enforces the #618 min-Ada floor (E_MIN_ADA, R8 of decision 0005) on
+// every output, so phase-B candidates must carry a compliant amount — the
+// measured floor for these 37-byte outputs is 849,070 lovelace. The original
+// 10-lovelace fixtures predate that ruling and were rejected before the
+// behaviour under test (conflict detection, validity intervals) was ever
+// reached (#642 item 4). 5M rather than the exact floor: these tests are
+// about conflicts and intervals, not the floor's boundary, so the amount
+// carries headroom against future fee-parameter or serialized-size drift.
+const PHASE_B_COMPLIANT_LOVELACE = 5_000_000n;
+
 const makeCandidate = ({
   arrivalSeq,
   spent,
   referenceInputs = [],
-  inputLovelace = 10n,
+  inputLovelace = PHASE_B_COMPLIANT_LOVELACE,
   validityIntervalStart,
   validityIntervalEnd,
 }: {
@@ -164,7 +170,9 @@ const makeCandidate = ({
   const txCbor = encodeMidgardNativeTxCanonical(tx);
   const submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(txCbor);
   return buildPhaseAValidatedTx({
+    sourceKind: "normal",
     ledgerTx: submittedTx.ledgerTx,
+    expectedNetworkId: 0n,
     txCbor: submittedTx.txCbor,
     arrivalSeq,
     createdAt: new Date(0),
@@ -273,8 +281,14 @@ describe("validation parallelization", () => {
     const spentX = outRefFromHash(hex32(0x01), 0n);
     const spentZ = outRefFromHash(hex32(0x02), 0n);
     const preState = new Map<string, Buffer>([
-      [spentX.toString("hex"), makeOutput(testAddress, 10n)],
-      [spentZ.toString("hex"), makeOutput(testAddress, 10n)],
+      [
+        spentX.toString("hex"),
+        makeOutput(testAddress, PHASE_B_COMPLIANT_LOVELACE),
+      ],
+      [
+        spentZ.toString("hex"),
+        makeOutput(testAddress, PHASE_B_COMPLIANT_LOVELACE),
+      ],
     ]);
 
     const txA = makeCandidate({
@@ -293,6 +307,7 @@ describe("validation parallelization", () => {
 
     const { accepted, rejected } = await Effect.runPromise(
       runPhaseBValidationWithPatch([txA, txB, txC], preState, {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         nowCardanoSlotNo: 0n,
         bucketConcurrency: 8,
       }),
@@ -316,13 +331,16 @@ describe("validation parallelization", () => {
   it("evaluates validity intervals against the current Cardano slot number", async () => {
     const spent = outRefFromHash(hex32(0x03), 0n);
     const preState = new Map<string, Buffer>([
-      [spent.toString("hex"), makeOutput(testAddress, 10n)],
+      [
+        spent.toString("hex"),
+        makeOutput(testAddress, PHASE_B_COMPLIANT_LOVELACE),
+      ],
     ]);
 
     const expired = makeCandidate({
       arrivalSeq: 0n,
       spent: [spent],
-      validityIntervalEnd: 119n,
+      validityIntervalEnd: 120n,
     });
     const active = makeCandidate({
       arrivalSeq: 1n,
@@ -334,6 +352,7 @@ describe("validation parallelization", () => {
     const { accepted: expiredAccepted, rejected: expiredRejected } =
       await Effect.runPromise(
         runPhaseBValidationWithPatch([expired], preState, {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           nowCardanoSlotNo: 120n,
           bucketConcurrency: 1,
         }),
@@ -341,11 +360,12 @@ describe("validation parallelization", () => {
     expect(expiredAccepted).toHaveLength(0);
     expect(expiredRejected).toHaveLength(1);
     expect(expiredRejected[0].code).toBe(RejectCodes.ValidityIntervalMismatch);
-    expect(expiredRejected[0].detail).toBe("120 > 119");
+    expect(expiredRejected[0].detail).toBe("120 >= 120");
 
     const { accepted: activeAccepted, rejected: activeRejected } =
       await Effect.runPromise(
         runPhaseBValidationWithPatch([active], preState, {
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           nowCardanoSlotNo: 120n,
           bucketConcurrency: 1,
         }),

@@ -1,0 +1,14 @@
+import "@al-ft/midgard-core/codec/hash";
+import "@al-ft/midgard-core/deployment-manifest-identity";
+import "@al-ft/midgard-fault-proofs/workflow/release-economics-policy";
+import "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/users";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../../src/indexers/authenticated-state-queue-observation.correction-lock-witness.js";
+import "../../src/runtime/deployment-identity.js";
+import "../../src/storage/durable-store.js";
+import "../support/deployment-authority-fixture.build-watcher-authority-contracts.js";
+import "./authenticated-state-queue-observation.availability-lock-witness.js";

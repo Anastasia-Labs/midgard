@@ -219,9 +219,7 @@ fn midgard_outputs_contain_script_hash(
   }
 }
 
-fn midgard_address_payment_credential(
-  address: MidgardAddress,
-) -> Credential {
+fn midgard_address_payment_credential(address: MidgardAddress) -> Credential {
   when address is {
     MidgardUnprotectedAddress { payment_credential, .. } -> payment_credential
     MidgardProtectedAddress { payment_credential, .. } -> payment_credential
@@ -234,10 +232,8 @@ fn midgard_bytearray_present(
 ) -> Bool {
   when values is {
     [] -> False
-    [value, ..rest] -> value == expected || midgard_bytearray_present(
-        rest,
-        expected,
-      )
+    [value, ..rest] ->
+      value == expected || midgard_bytearray_present(rest, expected)
   }
 }
 
@@ -315,7 +311,10 @@ fn midgard_redeemer_map_has_mint(
     [Pair(purpose, redeemer), ..rest] ->
       when purpose is {
         MidgardMint(policy) -> or {
-            and { policy == expected_policy, redeemer == expected_redeemer },
+            and {
+              policy == expected_policy,
+              redeemer == expected_redeemer,
+            },
             midgard_redeemer_map_has_mint(
               rest,
               expected_policy,
@@ -677,6 +676,10 @@ validator datum_equals_redeemer_spend {
     expect Some(actual_datum) = datum
     actual_datum == redeemer
   }
+
+  else(_) {
+    fail
+  }
 }
 
 validator midgard_v1_spend_guard {
@@ -746,10 +749,7 @@ validator midgard_v1_context_probe {
     when context.purpose is {
       MidgardSpend(script_hash, own_out_ref) -> and {
           script_hash == redeemer.expected_spend_script_hash,
-          midgard_output_reference_eq(
-            own_out_ref,
-            redeemer.expected_own_ref,
-          ),
+          midgard_output_reference_eq(own_out_ref, redeemer.expected_own_ref),
           midgard_inputs_begin_with(
             context.transaction.inputs,
             redeemer.expected_first_input,

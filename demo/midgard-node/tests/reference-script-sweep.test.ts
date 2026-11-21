@@ -1,0 +1,10 @@
+import "@al-ft/midgard-sdk/state-queue";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../src/transactions/reference-script-sweep.build-reference-script-sweep-plan.js";
+import "../src/transactions/reference-script-sweep.reference-script-fee.js";
+import "../src/transactions/reference-script-sweep.select-retired-reference-script-utxos.js";
+import "./reference-script-sweep.plan.js";
+import "./reference-script-sweep.retired-reference-script-sweep-scope.js";
+import "./reference-script-sweep.retired-reference-script-sweep-batching.js";
+import "./reference-script-sweep.retired-auth-policy-disposition.js";

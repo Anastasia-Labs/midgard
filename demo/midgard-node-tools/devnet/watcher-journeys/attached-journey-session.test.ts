@@ -1,0 +1,332 @@
+import { readdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import { watcherDeploymentReleaseFinalityAuthority } from "midgard-watcher";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
+
+import {
+  closeStackWatchers,
+  deploymentIdentity,
+  fingerprint,
+  liveStatus,
+  PROVER_MINIMUM_LOVELACE,
+  removeStackDirectories,
+  runningStackWatcher,
+  seedWorkflowStarted,
+  STACK_DEPOSIT_LOVELACE,
+  STACK_REQUIRED_BOND_LOVELACE,
+  watcherContainer,
+} from "./attached-journey-session.test-support.js";
+import { selectJourneyFixtures } from "./catalogue.js";
+import {
+  captureJourneyWorkflowBaseline,
+  openAttachedJourneySession,
+} from "./journey-session.js";
+
+afterAll(removeStackDirectories);
+afterEach(closeStackWatchers);
+
+describe("attached journey session", () => {
+  it("attaches to the stack's watcher and starts nothing of its own", async () => {
+    const stack = await runningStackWatcher(liveStatus());
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
+    try {
+      expect(session.mode).toBe("attached");
+      expect(session.directory.startsWith(stack.runDirectory)).toBe(true);
+      expect(
+        (await readdir(join(stack.runDirectory, "work/journeys"))).sort(),
+      ).toEqual(["replay", "sessions"]);
+      expect(session.releaseFinality).toEqual(
+        await watcherDeploymentReleaseFinalityAuthority(
+          deploymentIdentity,
+        ).verifyForWorkflow({ deploymentFingerprint: fingerprint }),
+      );
+      expect(session.authority.deploymentAuthority.deploymentIdentity).toBe(
+        deploymentIdentity,
+      );
+      expect(await session.watcher.operations("/v1/status")).toEqual(
+        liveStatus(),
+      );
+      expect(await session.watcher.diagnostics()).toEqual({
+        status: liveStatus(),
+        metrics: { queuedProofCount: "0" },
+      });
+      await session.assertHealthy();
+      expect(await session.evidence.readDecisions()).toEqual([]);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("captures its baseline from the stack watcher's workflow journal", async () => {
+    const stack = await runningStackWatcher(liveStatus());
+    const headerHash = "12".repeat(28);
+    await seedWorkflowStarted(stack.storePath, headerHash);
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
+    try {
+      const baseline = await session.captureWorkflowBaseline("doubleSpend");
+      expect(baseline.get(headerHash)).toHaveLength(1);
+      expect(baseline).toEqual(
+        await captureJourneyWorkflowBaseline(stack.storePath, "doubleSpend"),
+      );
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("refuses a watcher of another deployment, a watcher still starting or not live, or none", async () => {
+    // A starting watcher's status, as it serves one before binding a deployment.
+    const starting = {
+      observedAtMs: "1",
+      liveness: "live",
+      readiness: "not_ready",
+      readinessReasons: ["startup:l1_follower"],
+      l1Readiness: [],
+      startup: { stage: "l1_follower", outcome: "started" },
+    };
+    for (const [status, refusal] of [
+      [
+        { ...liveStatus(), deploymentFingerprint: "cd".repeat(32) },
+        /serves another deployment/u,
+      ],
+      [starting, /still starting and not attached to a deployment/u],
+      [{ ...liveStatus(), liveness: "blocked" }, /not live: blocked/u],
+    ] as const) {
+      const stack = await runningStackWatcher(status);
+      await expect(
+        openAttachedJourneySession(stack.context, stack.options()),
+      ).rejects.toThrow(refusal);
+    }
+    const stack = await runningStackWatcher(liveStatus());
+    await closeStackWatchers();
+    await expect(
+      openAttachedJourneySession(stack.context, stack.options()),
+    ).rejects.toThrow();
+  });
+
+  it("refuses at drill start a run whose replay store was never warmed, naming the warm-up command, before any L1 work", async () => {
+    const stack = await runningStackWatcher(liveStatus(), { replay: "cold" });
+    await expect(
+      openAttachedJourneySession(stack.context, stack.options()),
+    ).rejects.toThrow(/pnpm run journey-replay:warm-up/u);
+    expect(stack.requests).toEqual([]);
+    expect(stack.operator2.calls).toEqual([]);
+  });
+
+  it("opens the drill on the replay store the warm-up filled", async () => {
+    const stack = await runningStackWatcher(liveStatus(), { replay: "cold" });
+    await stack.warmReplay();
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
+    await session.close();
+  });
+
+  it("refuses at drill start a prover below the stack's configured minimum, by address and shortfall", async () => {
+    const shortfall = 1_500_000n;
+    const stack = await runningStackWatcher(liveStatus(), {
+      proverLovelace: PROVER_MINIMUM_LOVELACE - shortfall,
+    });
+    const refusal = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    ).then(
+      () => undefined,
+      (error: unknown) => String(error),
+    );
+    expect(refusal).toContain(stack.proverAddress);
+    expect(refusal).toContain(`${shortfall.toString()} lovelace short`);
+    expect(stack.operator2.calls).toEqual([]);
+  });
+
+  describe("operator-2's and the drill funding wallet's funding for the families it runs", () => {
+    // A family the committee attests (ending in operator-2's conviction),
+    // one it refuses before it signs, and a last attested family whose
+    // conviction no family follows. doubleWithdraw publishes two withdrawal
+    // orders; withdrawnInput commits one history block and publishes one
+    // withdrawal order.
+    const families = selectJourneyFixtures(
+      "doubleWithdraw,canonicalDecodability,withdrawnInput",
+    );
+    // Each L1 transaction is kept 5 ADA of fee headroom.
+    const worstCase =
+      // operator-2's first onboarding, and one after doubleWithdraw's
+      // conviction, which the refused family follows; none after the last
+      // family's conviction.
+      2n * STACK_REQUIRED_BOND_LOVELACE +
+      // Four header nodes (three faults and one history block), 5 ADA each,
+      // and their commits.
+      4n * (5_000_000n + 5_000_000n) +
+      // Three user events, 10 ADA each, and their publications.
+      3n * (10_000_000n + 5_000_000n) +
+      // Each family's onboarding and bond top-up.
+      3n * 2n * 5_000_000n +
+      // The funding wallet's ledger-owner deposit and its transaction.
+      STACK_DEPOSIT_LOVELACE +
+      5_000_000n;
+    const funded = (fundingLovelace: bigint) =>
+      runningStackWatcher(liveStatus(), {
+        operator2Lovelace: STACK_REQUIRED_BOND_LOVELACE,
+        fundingLovelace,
+      });
+
+    it("refuses at drill start two wallets that together hold less than the worst case, by both addresses and the shortfall", async () => {
+      const stack = await funded(worstCase - STACK_REQUIRED_BOND_LOVELACE - 1n);
+      const refusal = await openAttachedJourneySession(
+        stack.context,
+        stack.options(undefined, families),
+      ).then(
+        () => undefined,
+        (error: unknown) => String(error),
+      );
+      expect(refusal).toContain(stack.context.accounts.operator.address);
+      expect(refusal).toContain(stack.context.accounts.funding.address);
+      expect(refusal).toContain(" 1 lovelace short");
+      expect(stack.operator2.calls).toEqual([]);
+    });
+
+    it("opens with two wallets that together hold exactly the worst case", async () => {
+      const stack = await funded(worstCase - STACK_REQUIRED_BOND_LOVELACE);
+      const session = await openAttachedJourneySession(
+        stack.context,
+        stack.options(undefined, families),
+      );
+      await session.close();
+    });
+  });
+
+  it("refuses evidence that does not come from this stack's watcher", async () => {
+    const stack = await runningStackWatcher(liveStatus());
+    // Another stack's watcher: the same journals under another configuration.
+    const foreign = join(stack.root, "foreign-watcher-process.json");
+    await writeFile(
+      foreign,
+      JSON.stringify({
+        workflowJournalDirectory: join(stack.root, "workflows"),
+        watcherConfig: { storage: { path: stack.storePath } },
+        operationsEndpoint: "http://127.0.0.1:7402",
+      }),
+    );
+    const otherWatcher = watcherContainer(foreign);
+    await expect(
+      openAttachedJourneySession(stack.context, stack.options(otherWatcher)),
+    ).rejects.toThrow(/another process configuration/u);
+  });
+
+  it("holds operator-2's node and starts it again when the run ends", async () => {
+    const stack = await runningStackWatcher(liveStatus());
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
+    expect(stack.operator2.calls).toEqual([]);
+    await session.operator2.hold();
+    await session.operator2.assertStopped();
+    expect(stack.operator2.running()).toBe(false);
+    await session.close();
+    expect(stack.operator2.running()).toBe(true);
+    expect(stack.operator2.calls).toEqual(["stop", "start"]);
+  });
+
+  it("proves operator-2's node stopped before every signature of operator-2's wallet", async () => {
+    const stack = await runningStackWatcher(liveStatus());
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
+    await expect(stack.signAsOperator2()).rejects.toThrow(
+      "Operator-2's node is not held stopped by this drill; refusing to sign as operator-2",
+    );
+    await session.operator2.hold();
+    await stack.signAsOperator2();
+    // Started behind the drill's back: the next signature is refused.
+    await stack.operator2.control.start();
+    await expect(stack.signAsOperator2()).rejects.toThrow(
+      "is still running; refusing to sign as operator-2",
+    );
+    await stack.operator2.control.stop();
+    await stack.signAsOperator2();
+    await session.close();
+    await expect(stack.signAsOperator2()).rejects.toThrow(
+      "refusing to sign as operator-2",
+    );
+  });
+
+  it("proves operator-2's node stopped before every publication as operator-2's DA producer", async () => {
+    const stack = await runningStackWatcher(liveStatus());
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
+    const refused = "refusing to publish as operator-2's DA producer";
+    await expect(stack.publishAsOperator2()).rejects.toThrow(refused);
+    await session.operator2.hold();
+    await expect(stack.publishAsOperator2()).rejects.toThrow(
+      stack.producerTransportOpened,
+    );
+    // Started behind the drill's back: the next publication is refused.
+    await stack.operator2.control.start();
+    await expect(stack.publishAsOperator2()).rejects.toThrow(refused);
+    await stack.operator2.control.stop();
+    await session.close();
+    await expect(stack.publishAsOperator2()).rejects.toThrow(refused);
+    expect(stack.producerTransportOpens()).toBe(1);
+  });
+
+  it("refuses to pause this stack's own node as operator-2", async () => {
+    const stack = await runningStackWatcher(liveStatus());
+    for (const [operator2, refusal] of [
+      [
+        {
+          composeProject: "midgard-node-drill",
+          endpoint: "http://127.0.0.1:3100",
+        },
+        /Compose project is this stack's own project/u,
+      ],
+      [
+        {
+          composeProject: "midgard-node-op2",
+          endpoint: `${stack.context.stackConfig.endpoint}/`,
+        },
+        /endpoint is this stack's own node endpoint/u,
+      ],
+    ] as const)
+      await expect(
+        openAttachedJourneySession(stack.context, {
+          ...stack.options(),
+          operator2,
+        }),
+      ).rejects.toThrow(refusal);
+    expect(stack.operator2.calls).toEqual([]);
+  });
+
+  it("closes when a family finds the watcher no longer serving this deployment, and stays closed", async () => {
+    const stack = await runningStackWatcher(liveStatus());
+    const session = await openAttachedJourneySession(
+      stack.context,
+      stack.options(),
+    );
+    stack.served.status = { ...liveStatus(), liveness: "stopping" };
+    // The check alone refuses; the family it fails closes the session.
+    await expect(session.assertHealthy()).rejects.toThrow(/not live/u);
+    expect(session.isClosed()).toBe(false);
+    await expect(
+      session.runFamily(() => session.assertHealthy()),
+    ).rejects.toThrow(/not live/u);
+    expect(session.isClosed()).toBe(true);
+    const served = stack.requests.length;
+    expect(() => session.watcher.requireLive()).toThrow(/closed/u);
+    await expect(session.watcher.operations("/v1/status")).rejects.toThrow(
+      /closed/u,
+    );
+    expect(stack.requests).toHaveLength(served);
+    await session.close();
+  });
+});

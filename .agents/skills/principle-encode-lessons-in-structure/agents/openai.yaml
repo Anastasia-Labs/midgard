@@ -1,0 +1,6 @@
+interface:
+  display_name: "Principle Encode Lessons In Structure"
+  short_description: "Apply when you catch yourself writing the same instruction a sec"
+  default_prompt: "Use $principle-encode-lessons-in-structure for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

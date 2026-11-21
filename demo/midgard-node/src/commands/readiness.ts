@@ -1,12 +1,14 @@
+import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
+
+/** Path segment of the node's readiness route, `GET /readyz`. */
+export const READINESS_ENDPOINT = "readyz";
+
 /**
  * Latest heartbeat timestamps reported by each long-running worker.
  */
 export type WorkerHeartbeats = {
   readonly blockCommitment: number;
-  readonly blockConfirmation: number;
   readonly merge: number;
-  readonly depositFetch: number;
-  readonly withdrawalFetch: number;
   readonly txQueueProcessor: number;
 };
 
@@ -19,11 +21,13 @@ export type ReadinessInput = {
   readonly maxQueueDepth: number;
   readonly queueDepth: number;
   readonly workerHeartbeats: WorkerHeartbeats;
-  readonly localFinalizationPending: boolean;
   readonly unresolvedBlockSubmissionAgeMs: number;
   readonly maxUnresolvedBlockSubmissionAgeMs: number;
   readonly dbHealthy: boolean;
-  readonly awaitingForeignTipReconciliations: number;
+  /** Only a registered key awaiting activation is unready here: removal
+   * arrives as the liveness reason `operator_removed`, and `unknown` is a
+   * readiness detail. */
+  readonly operatorMembership?: OperatorMembershipState;
   readonly validationPool?: {
     readonly configuredWorkers: number;
     readonly liveWorkers: number;
@@ -31,13 +35,41 @@ export type ReadinessInput = {
     readonly oldestInFlightAgeMs: number;
     readonly jobTimeoutMs: number;
   };
+  /** The active state-queue mutation lease, if any: its holder, how long it
+   * has held the lease by the database clock, and the longest a hold may
+   * last. Renewal keeps a wedged holder's lease active, so only the hold time
+   * shows it. */
   readonly stateQueueMutationLease?: {
-    readonly active: boolean;
-    readonly stale: boolean;
-    readonly remainingMs: number | null;
-    readonly holder: string | null;
+    readonly holder: string;
+    readonly heldMs: number;
+    readonly maxHoldMs: number;
+  };
+  /** The operator's attestation-timeout correction step. Every node runs it;
+   * the field is optional only so callers without the fiber (tests) may omit
+   * it. */
+  readonly attestationTimeoutCorrection?: {
+    readonly consecutiveFailures: number;
+    readonly oldestUnattestedHeader: {
+      readonly headerHash: string;
+      readonly deadlineMs: number;
+    } | null;
+    readonly lastProgressAtMs: number;
+    readonly lastQueueReadAtMs: number;
+    /** Longest a healthy correction goes without progress. */
+    readonly stallBoundMs: number;
+    /** Longest the queue may go unread before a header could have come due
+     * unseen. */
+    readonly queueUnknownBoundMs: number;
   };
 };
+
+/**
+ * Consecutive failed correction steps that make a pending timeout correction
+ * unready. One failed tick is a transient provider blip the next tick retries;
+ * three in a row (about 30 s at the default 10 s interval) is a correction
+ * that is not happening.
+ */
+export const ATTESTATION_TIMEOUT_CORRECTION_FAILURE_THRESHOLD = 3;
 
 /**
  * Readiness outcome returned by the readiness endpoint/command.
@@ -53,24 +85,18 @@ export type ReadinessResult = {
  */
 export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
   const reasons: string[] = [];
+  if (input.operatorMembership === "awaiting_activation") {
+    reasons.push("operator_not_yet_active");
+  }
 
   if (!input.dbHealthy) {
     reasons.push("db_unhealthy");
   }
 
-  if (input.awaitingForeignTipReconciliations > 0) {
-    reasons.push(
-      `foreign_tip_reconciliation_awaiting:${input.awaitingForeignTipReconciliations.toString()}`,
-    );
-  }
-
   const heartbeatThreshold = Math.max(1, input.maxHeartbeatAgeMs);
   const heartbeatEntries: readonly [string, number][] = [
     ["blockCommitment", input.workerHeartbeats.blockCommitment],
-    ["blockConfirmation", input.workerHeartbeats.blockConfirmation],
     ["merge", input.workerHeartbeats.merge],
-    ["depositFetch", input.workerHeartbeats.depositFetch],
-    ["withdrawalFetch", input.workerHeartbeats.withdrawalFetch],
     ["txQueueProcessor", input.workerHeartbeats.txQueueProcessor],
   ];
 
@@ -84,10 +110,6 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
   const queueLimit = Math.max(0, input.maxQueueDepth);
   if (input.queueDepth > queueLimit) {
     reasons.push(`queue_depth_exceeded:${input.queueDepth}:${queueLimit}`);
-  }
-
-  if (input.localFinalizationPending) {
-    reasons.push("local_finalization_pending");
   }
 
   if (input.validationPool !== undefined) {
@@ -116,12 +138,42 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
     );
   }
 
-  if (input.stateQueueMutationLease?.stale === true) {
-    reasons.push(
-      `state_queue_lease_stale:${
-        input.stateQueueMutationLease.holder ?? "unknown"
-      }:${input.stateQueueMutationLease.remainingMs ?? "unknown"}`,
-    );
+  const lease = input.stateQueueMutationLease;
+  if (lease !== undefined && lease.heldMs > lease.maxHoldMs) {
+    reasons.push(`state_queue_lease_held_long:${lease.holder}:${lease.heldMs}`);
+  }
+
+  const correction = input.attestationTimeoutCorrection;
+  if (correction !== undefined) {
+    // Failing or stalling only matters while there is a correction to make:
+    // an unattested header past its DA-attestation deadline.
+    const unattested = correction.oldestUnattestedHeader;
+    if (unattested !== null && input.nowMillis >= unattested.deadlineMs) {
+      const overdueMs = input.nowMillis - unattested.deadlineMs;
+      if (
+        correction.consecutiveFailures >=
+        ATTESTATION_TIMEOUT_CORRECTION_FAILURE_THRESHOLD
+      ) {
+        reasons.push(
+          `attestation_timeout_correction_failing:${unattested.headerHash}:${correction.consecutiveFailures}:${overdueMs}`,
+        );
+      }
+      // A step that neither fails nor finishes (hung waiting on a
+      // confirmation) never raises the failure count.
+      const sinceProgressMs = input.nowMillis - correction.lastProgressAtMs;
+      if (sinceProgressMs > correction.stallBoundMs) {
+        reasons.push(
+          `attestation_timeout_correction_stalled:${unattested.headerHash}:${sinceProgressMs}:${correction.stallBoundMs}`,
+        );
+      }
+    }
+    // A queue the step cannot read is not a queue with nothing to correct.
+    const sinceQueueReadMs = input.nowMillis - correction.lastQueueReadAtMs;
+    if (sinceQueueReadMs > correction.queueUnknownBoundMs) {
+      reasons.push(
+        `attestation_timeout_queue_unknown:${sinceQueueReadMs}:${correction.queueUnknownBoundMs}`,
+      );
+    }
   }
 
   return {

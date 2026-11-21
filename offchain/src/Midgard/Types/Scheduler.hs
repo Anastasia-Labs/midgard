@@ -68,8 +68,7 @@ $( makeIsDataSchemaIndexed
  )
 
 data NeglectedUserEvent
-  = NoNeglectedUserEvent
-  | NeglectedDeposit
+  = NeglectedDeposit
       { depositRefInputIndex :: Integer
       }
   | NeglectedWithdrawal
@@ -83,10 +82,9 @@ data NeglectedUserEvent
 
 $( makeIsDataSchemaIndexed
      ''NeglectedUserEvent
-     [ ('NoNeglectedUserEvent, 0)
-     , ('NeglectedDeposit, 1)
-     , ('NeglectedWithdrawal, 2)
-     , ('NeglectedTxOrder, 3)
+     [ ('NeglectedDeposit, 0)
+     , ('NeglectedWithdrawal, 1)
+     , ('NeglectedTxOrder, 2)
      ]
  )
 

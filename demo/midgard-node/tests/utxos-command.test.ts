@@ -7,7 +7,7 @@ import {
   parseAddressArgument,
   parseTxOutRefCborHex,
   parseTxOutRefLabel,
-} from "@/commands/command-utils.js";
+} from "../src/commands/command-utils.js";
 import {
   decodeStoredUtxo,
   encodeStoredUtxo,
@@ -15,20 +15,17 @@ import {
   parseTxOutRefsRequest,
   requireByOutRefsSelector,
   sumAssets,
-} from "@/commands/utxos.js";
-
-import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
+} from "../src/commands/utxos.js";
+import {
+  makeMidgardTxOutput,
+  makeOutRefCbor,
+} from "./midgard-output-helpers.js";
 
 const VALID_ADDRESS =
   "addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs";
 
 const txOutRefCbor = (txHashByte: string, outputIndex: bigint) =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(txHashByte.repeat(32)),
-      outputIndex,
-    ).to_cbor_bytes(),
-  );
+  makeOutRefCbor(txHashByte.repeat(32), outputIndex);
 
 describe("utxos command helpers", () => {
   it("normalizes a valid payment address", () => {

@@ -9,11 +9,13 @@ withdrawals, enforced on-chain by the
 
 ## Modules
 
-- **`reserve`**: manage the protocol reserve funds. Exports `ReserveSpendRedeemer`.
-- **`payout`**: withdrawal payout minting and spending. Exports `PayoutDatum`,
+- **`reserve`**: the reserve spending redeemer schema, exported as
+  `ReserveSpendRedeemer`.
+- **`payout`**: schemas for payout state, minting, and spending. Exports `PayoutDatum`,
   `PayoutSpendRedeemer`, and `PayoutMintRedeemer`.
 - **`reserve-payout`** (`reserve-payout.ts` plus the `reserve-payout/` directory): the
-  combined reserve-to-payout flow.
+  transaction builders for deposit absorption, payout initialization/funding,
+  and conclusion.
 
 ## Related
 

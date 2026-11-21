@@ -1,0 +1,6 @@
+interface:
+  display_name: "Principle Exhaust The Design Space"
+  short_description: "Apply when facing a novel UI interaction or architectural decisi"
+  default_prompt: "Use $principle-exhaust-the-design-space for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

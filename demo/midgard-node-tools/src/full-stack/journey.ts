@@ -1,0 +1,475 @@
+import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import {
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+} from "@al-ft/midgard-core/codec";
+import { walletFromSeed } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import {
+  buildTransferTxWithMinFee,
+  fetchNodeUtxos,
+  submitNativeTransferTx,
+} from "midgard-node/commands/submit-l2-transfer";
+import type { ResolvedTxStatus } from "midgard-node/commands/tx-status";
+
+import {
+  readJsonIfPresent,
+  type StackJournal,
+  writeDurableJson,
+} from "./journal.js";
+import {
+  assertDepositCredit,
+  assertDepositFunding,
+  assertTransferDeltas,
+  assertWithdrawalDebit,
+} from "./journey-balances.js";
+import { awaitExactPayout, settlementEvidence } from "./payout.js";
+import { equalAssets } from "./payout-body.js";
+import { getJson, poll, type StackProcesses } from "./process.js";
+import { verifyPublicDa } from "./public-da.js";
+import { confirmRuntimeReadiness } from "./runtime.js";
+import type { StackStep } from "./workflow.js";
+
+type TransferIntent = {
+  txId: string;
+  signedTxCbor: string;
+  fee: string;
+  senderBalanceBefore: string;
+  recipientBalanceBefore: string;
+};
+type WithdrawalIntent = {
+  l2OutRef: string;
+  address: string;
+  assets: Record<string, string>;
+  recipientBalanceBefore: string;
+};
+type NodeUtxos = Effect.Effect.Success<ReturnType<typeof fetchNodeUtxos>>;
+/** The node's L2 ledger as the journey reads and writes it. */
+export type JourneyLedger = {
+  utxos(address: string): Promise<NodeUtxos>;
+  submitTransfer(signedTxCbor: string, txId: string): Promise<unknown>;
+};
+export const nodeLedger = (endpoint: string): JourneyLedger => ({
+  utxos: (address) =>
+    Effect.runPromise(fetchNodeUtxos(endpoint, address, 10_000)),
+  submitTransfer: (signedTxCbor, txId) =>
+    Effect.runPromise(
+      submitNativeTransferTx(endpoint, signedTxCbor, txId, 30_000),
+    ),
+});
+/**
+ * Runs a signing `midgard-user` command with its wallet arguments and the
+ * environment they need. A preprod-public stack's command takes its seed
+ * only from a private file: a new one in the run directory, which only the
+ * host user can read and which is deleted when the command ends. A testing
+ * one names the variable that holds the seed and is given only that one.
+ */
+async function withWalletSeed<T>(
+  processes: StackProcesses,
+  role: string,
+  run: (
+    walletArguments: string[],
+    walletEnvironment: Record<string, string>,
+  ) => Promise<T>,
+) {
+  const { config, env } = processes;
+  const seedEnv = config.wallets[role]!.seedEnv;
+  if (config.public === undefined)
+    return run(["--wallet-seed-phrase-env", seedEnv], {
+      [seedEnv]: env[seedEnv]!,
+    });
+  const directory = join(config.runDirectory, "wallets");
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const file = join(directory, `${role}.seed`);
+  // One an interrupted run left behind is replaced, never written through.
+  await rm(file, { force: true });
+  await writeFile(file, env[seedEnv]!, { flag: "wx", mode: 0o600 });
+  await chmod(file, 0o600);
+  try {
+    return await run(["--wallet-seed-phrase-file", file], {});
+  } finally {
+    await rm(file, { force: true });
+  }
+}
+type RecordedPayout = Awaited<ReturnType<typeof awaitExactPayout>>;
+/** Whether a completed withdrawal step recorded this withdrawal's payout. */
+function isPayoutOf(
+  data: unknown,
+  eventId: string,
+  intent: WithdrawalIntent,
+): data is RecordedPayout {
+  const payout = data as Partial<RecordedPayout> | null;
+  return (
+    payout?.eventId === eventId &&
+    payout.address === intent.address &&
+    typeof payout.assets === "object" &&
+    payout.assets !== null &&
+    equalAssets(payout.assets, intent.assets) &&
+    typeof payout.txHash === "string" &&
+    /^[0-9a-f]{64}$/.test(payout.txHash) &&
+    Number.isInteger(payout.outputIndex)
+  );
+}
+const lovelaceOf = (utxos: NodeUtxos) =>
+  utxos.reduce((sum, utxo) => sum + (utxo.assets.lovelace ?? 0n), 0n);
+
+export function journeySteps(
+  processes: StackProcesses,
+  ledger: JourneyLedger = nodeLedger(processes.config.endpoint),
+  /** Checks a committed block's public DA bytes (`public-da.ts`). */
+  verifyDa: typeof verifyPublicDa = verifyPublicDa,
+): StackStep[] {
+  const { config, env } = processes;
+  const user = walletFromSeed(env[config.wallets.user!.seedEnv]!, {
+    network: "Preprod",
+  });
+  const recipient = walletFromSeed(env[config.wallets.recipient!.seedEnv]!, {
+    network: "Preprod",
+  });
+  const utxos = (address: string) => ledger.utxos(address);
+  const balance = async (address: string) => lovelaceOf(await utxos(address));
+  const journal = () =>
+    readJsonIfPresent(
+      join(config.runDirectory, "stack-journal.json"),
+    ) as Promise<StackJournal>;
+  const steps: StackStep[] = [];
+  for (let cycle = 0; cycle < config.journey.cycles; cycle++) {
+    const prefix = `cycle-${cycle}`;
+    const file = (name: string) =>
+      join(config.runDirectory, `${prefix}-${name}.json`);
+    steps.push({
+      id: `${prefix}-deposit`,
+      reconcile: async () => {
+        const receipt = (await readJsonIfPresent(file("deposit"))) as
+          | { eventId: string }
+          | undefined;
+        if (!receipt) return { status: "retry" };
+        const eventId = receipt.eventId;
+        if (!eventId || !/^[0-9a-f]+$/.test(eventId))
+          throw new Error("Deposit receipt lacks its exact event identity");
+        // Done once the credit is spendable on L2: the node serves a
+        // deposit's output once the block holding it is on L1, long before
+        // the block merges. The settlement step checks its settlement.
+        if ((await readJsonIfPresent(file("deposit-balance"))) === undefined) {
+          const before = (await readJsonIfPresent(file("deposit-intent"))) as {
+            balance: string;
+          };
+          const after = await poll(
+            "L2 deposit credit",
+            config.timeoutMs,
+            async () => {
+              const value = await balance(user.address);
+              return value === BigInt(before.balance) ? undefined : value;
+            },
+          );
+          assertDepositCredit(
+            BigInt(before.balance),
+            after,
+            BigInt(config.journey.depositLovelace),
+          );
+          await writeDurableJson(file("deposit-balance"), {
+            before: before.balance,
+            after: String(after),
+            credited: config.journey.depositLovelace,
+          });
+        }
+        return { status: "complete", data: { eventId } };
+      },
+      execute: async () => {
+        if ((await readJsonIfPresent(file("deposit-intent"))) === undefined) {
+          // A resend after a lost response reuses the intent; only a first send checks funds.
+          const funds = (await processes.walletUtxos(
+            `${prefix}-deposit-funds`,
+            user.address,
+          )) as { totals: { lovelace: string } };
+          assertDepositFunding(
+            BigInt(funds.totals.lovelace),
+            BigInt(config.journey.depositLovelace),
+          );
+          await writeDurableJson(file("deposit-intent"), {
+            balance: String(await balance(user.address)),
+          });
+        }
+        const run = await journal();
+        // The user's own tool deposits through its own view of L1; a rerun
+        // under the same submission id resumes the same deposit.
+        const receipt = await withWalletSeed(
+          processes,
+          "user",
+          (wallet, walletEnvironment) =>
+            processes.user(
+              `${prefix}-deposit-submit`,
+              [
+                "deposit",
+                "--submission-id",
+                `${run.runId}:${prefix}:deposit`,
+                ...wallet,
+                "--l2-address",
+                user.address,
+                "--lovelace",
+                config.journey.depositLovelace,
+              ],
+              walletEnvironment,
+            ),
+        );
+        await writeDurableJson(file("deposit"), receipt);
+        return receipt;
+      },
+    });
+    steps.push({
+      id: `${prefix}-transfer`,
+      reconcile: async () => {
+        const intent = (await readJsonIfPresent(file("transfer"))) as
+          | TransferIntent
+          | undefined;
+        if (!intent) return { status: "retry" };
+        const status = (await getJson(
+          `${config.endpoint}/tx-status?tx_hash=${intent.txId}`,
+        )) as ResolvedTxStatus | undefined;
+        if (status?.status === "rejected")
+          throw new Error(`Transfer rejected: ${status.reasonCode}`);
+        if (!status || status.status === "not_found")
+          return { status: "retry" };
+        const committed = await poll(
+          "transfer commitment",
+          config.timeoutMs,
+          async () => {
+            const value = (await getJson(
+              `${config.endpoint}/tx-status?tx_hash=${intent.txId}`,
+            )) as ResolvedTxStatus | undefined;
+            if (value?.status === "rejected")
+              throw new Error(`Transfer rejected: ${value.reasonCode}`);
+            return value?.status === "committed" && value.headerHash
+              ? value
+              : undefined;
+          },
+        );
+        const da = await verifyDa(processes, committed.headerHash!);
+        // Done at commit: the settlement step checks the merge.
+        if ((await readJsonIfPresent(file("transfer-balance"))) === undefined) {
+          const actual = await balance(user.address);
+          const recipientUtxos = await utxos(recipient.address);
+          const recipientBalanceAfter = lovelaceOf(recipientUtxos);
+          assertTransferDeltas({
+            amount: BigInt(config.journey.transferLovelace),
+            fee: BigInt(intent.fee),
+            senderBefore: BigInt(intent.senderBalanceBefore),
+            senderAfter: actual,
+            recipientBefore: BigInt(intent.recipientBalanceBefore),
+            recipientAfter: recipientBalanceAfter,
+            received: recipientUtxos
+              .filter((utxo) => utxo.txHash === intent.txId)
+              .map((utxo) => utxo.assets.lovelace ?? 0n),
+          });
+          await writeDurableJson(file("transfer-balance"), {
+            senderBalance: String(actual),
+            recipientBalance: String(recipientBalanceAfter),
+            fee: intent.fee,
+            received: config.journey.transferLovelace,
+          });
+        }
+        return { status: "complete", data: { committed, da } };
+      },
+      execute: async () => {
+        let intent = (await readJsonIfPresent(file("transfer"))) as
+          | TransferIntent
+          | undefined;
+        if (!intent) {
+          const available = await utxos(user.address);
+          const built = await buildTransferTxWithMinFee({
+            senderAddress: user.address,
+            destinationAddress: recipient.address,
+            signer: user.paymentKey,
+            availableUtxos: available,
+            requestedAssets: {
+              lovelace: BigInt(config.journey.transferLovelace),
+            },
+            network: "Preprod",
+            networkId: 0n,
+            minFeeA: BigInt(env.MIN_FEE_A!),
+            minFeeB: BigInt(env.MIN_FEE_B!),
+          });
+          intent = {
+            txId: built.txIdHex,
+            signedTxCbor: built.txHex,
+            fee: String(built.fee),
+            recipientBalanceBefore: String(await balance(recipient.address)),
+            senderBalanceBefore: String(lovelaceOf(available)),
+          };
+          // This checkpoint precedes the first send, including a lost response.
+          await writeDurableJson(file("transfer"), intent);
+        }
+        const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
+          Buffer.from(intent.signedTxCbor, "hex"),
+        );
+        if (
+          computeMidgardNativeTxId(decoded).toString("hex") !== intent.txId ||
+          decoded.body.fee !== BigInt(intent.fee)
+        )
+          throw new Error(
+            "Saved transfer differs from its exact transaction identity or fee",
+          );
+        return ledger.submitTransfer(intent.signedTxCbor, intent.txId);
+      },
+    });
+    steps.push({
+      id: `${prefix}-withdrawal`,
+      reconcile: async (record) => {
+        const receipt = (await readJsonIfPresent(file("withdrawal"))) as
+          | { eventId: string }
+          | undefined;
+        if (!receipt) return { status: "retry" };
+        const intent = (await readJsonIfPresent(
+          file("withdrawal-intent"),
+        )) as WithdrawalIntent;
+        // Inclusion proven at depth is permanent, but a later cycle's deposit
+        // may spend the payout output, so a recorded payout is not proven again.
+        const payout =
+          record?.status === "complete" &&
+          isPayoutOf(record.data, receipt.eventId, intent)
+            ? record.data
+            : await awaitExactPayout(
+                processes,
+                receipt.eventId,
+                intent.address,
+                intent.assets,
+              );
+        const available = await utxos(recipient.address);
+        if (
+          available.some(
+            (utxo) => `${utxo.txHash}#${utxo.outputIndex}` === intent.l2OutRef,
+          )
+        )
+          throw new Error("Paid withdrawal remains spendable on L2");
+        if (
+          (await readJsonIfPresent(file("withdrawal-balance"))) === undefined
+        ) {
+          const after = lovelaceOf(available);
+          assertWithdrawalDebit(
+            BigInt(intent.recipientBalanceBefore),
+            after,
+            BigInt(intent.assets.lovelace!),
+          );
+          await writeDurableJson(file("withdrawal-balance"), {
+            before: intent.recipientBalanceBefore,
+            after: String(after),
+            debited: intent.assets.lovelace,
+          });
+        }
+        await confirmRuntimeReadiness(processes);
+        return { status: "complete", data: payout };
+      },
+      execute: async () => {
+        let intent = (await readJsonIfPresent(file("withdrawal-intent"))) as
+          | WithdrawalIntent
+          | undefined;
+        if (!intent) {
+          const transfer = (await readJsonIfPresent(
+            file("transfer"),
+          )) as TransferIntent;
+          const selected = (await utxos(recipient.address)).filter(
+            (utxo) => utxo.txHash === transfer.txId,
+          );
+          if (selected.length !== 1)
+            throw new Error(
+              "Cannot identify the exact transferred output for withdrawal",
+            );
+          const output = selected[0]!;
+          intent = {
+            l2OutRef: `${output.txHash}#${output.outputIndex}`,
+            address: recipient.address,
+            recipientBalanceBefore: String(await balance(recipient.address)),
+            assets: Object.fromEntries(
+              Object.entries(output.assets).map(([unit, value]) => [
+                unit,
+                String(value),
+              ]),
+            ),
+          };
+          await writeDurableJson(file("withdrawal-intent"), intent);
+        }
+        const run = await journal();
+        const receipt = await withWalletSeed(
+          processes,
+          "recipient",
+          (wallet, walletEnvironment) =>
+            processes.user(
+              `${prefix}-withdrawal-submit`,
+              [
+                "withdraw",
+                "--submission-id",
+                `${run.runId}:${prefix}:withdrawal`,
+                ...wallet,
+                "--l2-out-ref",
+                intent.l2OutRef,
+                "--l1-address",
+                intent.address,
+                "--node-endpoint",
+                config.endpoint,
+              ],
+              walletEnvironment,
+            ),
+        );
+        await writeDurableJson(file("withdrawal"), receipt);
+        return receipt;
+      },
+    });
+    // The checks that wait for a block to mature, after the payout: on a
+    // long maturity the deposit's block and the transfer's block mature
+    // while the withdrawal's does, so a cycle waits about one maturity.
+    steps.push({
+      id: `${prefix}-settlement`,
+      reconcile: async () => {
+        const deposit = (await readJsonIfPresent(file("deposit"))) as {
+          eventId: string;
+        };
+        const transfer = (await readJsonIfPresent(
+          file("transfer"),
+        )) as TransferIntent;
+        const observed = await poll(
+          "automatic deposit settlement",
+          config.timeoutMs,
+          async () => {
+            const evidence = await settlementEvidence(
+              processes,
+              "deposit",
+              deposit.eventId,
+            );
+            return evidence.jobs?.length === 1 &&
+              evidence.jobs[0]!.phase === "complete"
+              ? evidence
+              : undefined;
+          },
+        );
+        const merged = await poll(
+          "automatic transfer merge",
+          config.timeoutMs,
+          async () => {
+            const value = (await getJson(
+              `${config.endpoint}/tx-status?tx_hash=${transfer.txId}`,
+            )) as ResolvedTxStatus | undefined;
+            return value?.status === "committed" &&
+              value.confirmedLedgerFinalized === true
+              ? value
+              : undefined;
+          },
+        );
+        return {
+          status: "complete",
+          data: {
+            deposit: { eventId: deposit.eventId, observed },
+            transfer: { merged },
+          },
+        };
+      },
+      // Settlement is observed, never sent: reconcile completes or throws.
+      execute: () =>
+        Promise.reject(
+          new Error("Settlement is observed on the stack, never sent"),
+        ),
+    });
+  }
+  return steps;
+}

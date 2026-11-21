@@ -1,3 +1,4 @@
+import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -7,6 +8,7 @@ import {
 
 import {
   ProviderCapabilityError,
+  ProviderError,
   ProviderHttpError,
   ProviderPayloadError,
 } from "./core/errors.js";
@@ -15,6 +17,7 @@ import type {
   MidgardProtocolParameters,
   MidgardUtxo,
   OutRef,
+  SubmitAdmissionStatus,
   SubmitTxResult,
   TxStatus,
 } from "./core/index.js";
@@ -34,13 +37,13 @@ import {
   isObject,
   normalizeTxIdHex,
   parseProtocolInfo,
+  parseRedeemerBudgets,
   parseSubmitTxCanonicalCbor,
   parseSubmitTxResult,
   parseTxStatus,
   parseUtxoResponse,
   parseUtxosResponse,
   txOutRefCborHex,
-  validateFallbackProtocolInfo,
 } from "./provider/payload.js";
 import {
   MidgardNodeTransport,
@@ -50,7 +53,7 @@ import type {
   MidgardNodeProviderOptions,
   MidgardProtocolInfo,
   MidgardProvider,
-  ProtocolInfoFallback,
+  MidgardRedeemerBudget,
   ProviderDiagnostics,
 } from "./provider/types.js";
 
@@ -59,7 +62,7 @@ export type {
   MidgardNodeProviderOptions,
   MidgardProtocolInfo,
   MidgardProvider,
-  ProtocolInfoFallback,
+  MidgardRedeemerBudget,
   ProtocolScriptLanguage,
   ProviderDiagnostics,
 } from "./provider/types.js";
@@ -67,6 +70,36 @@ export type {
 const midgardNodeProviderConstructorToken = Symbol(
   "MidgardNodeProvider.constructor",
 );
+
+/** How many acknowledged txs a provider keeps the bytes of, to resubmit one
+ * the node lost; the oldest is forgotten first. */
+const ACKNOWLEDGED_TX_CAPACITY = 1_024;
+
+/** A tx the node acknowledged (200 or 202) and has not settled yet. */
+type AcknowledgedTx = {
+  readonly txHex: string;
+  resubmitted: boolean;
+};
+
+/** A `/tx-status` answer after which the node keeps the tx for good. */
+const settledTxStatusKinds: ReadonlySet<TxStatus["kind"]> = new Set([
+  "accepted",
+  "pending_commit",
+  "committed",
+  "rejected",
+]);
+
+/** The admission status a spent-input refusal resolves to, for each
+ * `/tx-status` answer that means the node already holds the tx itself. */
+const heldTxAdmissionStatus: Partial<
+  Record<TxStatus["kind"], SubmitAdmissionStatus>
+> = {
+  queued: "queued",
+  validating: "validating",
+  accepted: "accepted",
+  pending_commit: "accepted",
+  committed: "accepted",
+};
 
 const normalizeAddressForUtxoQuery = (
   address: Address,
@@ -116,10 +149,11 @@ const submittedTxCanonicalCbor = (
 export class MidgardNodeProvider implements MidgardProvider {
   readonly endpoint: string;
   private readonly transport: MidgardNodeTransport;
-  private readonly protocolInfoFallback?: ProtocolInfoFallback;
   private protocolInfoSource: ProviderDiagnostics["protocolInfoSource"] =
     "unknown";
-  private protocolInfoFallbackReason: string | undefined;
+  /** Acknowledged txs by id, oldest first (design D9: a 202 means accepted,
+   * not stored, so the node can lose one). */
+  private readonly acknowledged = new Map<string, AcknowledgedTx>();
 
   private constructor(
     options: MidgardNodeProviderOptions,
@@ -136,7 +170,6 @@ export class MidgardNodeProvider implements MidgardProvider {
       this.endpoint,
       options.fetch ?? fetch,
     );
-    this.protocolInfoFallback = options.protocolInfoFallback;
   }
 
   static async create(
@@ -154,7 +187,6 @@ export class MidgardNodeProvider implements MidgardProvider {
     return providerDiagnostics({
       endpoint: this.endpoint,
       protocolInfoSource: this.protocolInfoSource,
-      protocolInfoFallbackReason: this.protocolInfoFallbackReason,
     });
   }
 
@@ -163,17 +195,9 @@ export class MidgardNodeProvider implements MidgardProvider {
     const { response, payload } = await this.transport.requestJson(endpoint);
     if (!response.ok) {
       if (unavailableProtocolInfoStatuses.has(response.status)) {
-        if (this.protocolInfoFallback === undefined) {
-          throw new ProviderCapabilityError(
-            endpoint,
-            "GET /protocol-info is unavailable and no explicit fallback was supplied",
-          );
-        }
-        this.protocolInfoSource = "fallback";
-        this.protocolInfoFallbackReason = this.protocolInfoFallback.reason;
-        return validateFallbackProtocolInfo(
-          this.protocolInfoFallback.protocolInfo,
+        throw new ProviderCapabilityError(
           endpoint,
+          "GET /protocol-info is required but unavailable",
         );
       }
       throw new ProviderHttpError({
@@ -185,7 +209,6 @@ export class MidgardNodeProvider implements MidgardProvider {
     }
     const protocolInfo = parseProtocolInfo(payload, endpoint);
     this.protocolInfoSource = "node";
-    this.protocolInfoFallbackReason = undefined;
     return protocolInfo;
   }
 
@@ -297,11 +320,35 @@ export class MidgardNodeProvider implements MidgardProvider {
       endpoint,
       protocolInfo.submissionLimits.maxSubmitTxCborBytes,
     );
+    const body = encodeMidgardProofSubmission({
+      transactionCbor: submittedTx.txCanonicalCbor,
+    });
     const { response, payload } = await this.transport.requestJson(endpoint, {
       method: "POST",
-      headers: { "content-type": "application/cbor" },
-      body: submittedTx.txCanonicalCbor,
+      headers: {
+        "content-type": "application/vnd.midgard.v1+cbor",
+      },
+      body,
     });
+    if (
+      response.status === 409 &&
+      isObject(payload) &&
+      payload.error === "E_INPUT_SPENT"
+    ) {
+      // The tx may itself be the one that spent the input: the node holds
+      // it already, so the refusal is not a failure (design D6, D9).
+      const status = await this.readTxStatus(submittedTx.txId);
+      const held = heldTxAdmissionStatus[status.kind];
+      if (held !== undefined) {
+        this.remember(submittedTx.txId, txCanonicalCborHex);
+        return {
+          txId: submittedTx.txId,
+          status: held,
+          httpStatus: 200,
+          duplicate: true,
+        };
+      }
+    }
     if (response.status !== 200 && response.status !== 202) {
       const message = isObject(payload)
         ? typeof payload.error === "string"
@@ -324,10 +371,86 @@ export class MidgardNodeProvider implements MidgardProvider {
         `expected=${submittedTx.txId} actual=${admission.txId}`,
       );
     }
+    this.remember(submittedTx.txId, txCanonicalCborHex);
     return admission;
   }
 
+  private remember(txId: string, txHex: string): void {
+    if (this.acknowledged.has(txId)) return;
+    this.acknowledged.set(txId, { txHex, resubmitted: false });
+    if (this.acknowledged.size > ACKNOWLEDGED_TX_CAPACITY) {
+      const oldest = this.acknowledged.keys().next();
+      if (oldest.done !== true) this.acknowledged.delete(oldest.value);
+    }
+  }
+
+  async evaluateTx(
+    txCanonicalCborHex: string,
+  ): Promise<readonly MidgardRedeemerBudget[]> {
+    const endpoint = "/tx/evaluate";
+    const protocolInfo = await this.getProtocolInfo();
+    const draft = submittedTxCanonicalCbor(
+      txCanonicalCborHex,
+      endpoint,
+      protocolInfo.submissionLimits.maxSubmitTxCborBytes,
+    );
+    const { response, payload } = await this.transport.requestJson(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/vnd.midgard.v1+cbor" },
+      body: encodeMidgardProofSubmission({
+        transactionCbor: draft.txCanonicalCbor,
+      }),
+    });
+    if (response.status !== 200) {
+      const detail = isObject(payload)
+        ? [payload.error, payload.detail]
+            .filter((part) => typeof part === "string")
+            .join(": ")
+        : "";
+      throw new ProviderHttpError({
+        endpoint,
+        statusCode: response.status,
+        message:
+          detail.length > 0
+            ? detail
+            : `POST ${endpoint} failed with status ${response.status.toString()}`,
+        detail: JSON.stringify(payload ?? null),
+        retryable: response.status === 503 || response.status >= 500,
+      });
+    }
+    return parseRedeemerBudgets(payload, endpoint);
+  }
+
+  /**
+   * Reads `/tx-status`. A tx this provider submitted that the node
+   * acknowledged and then reports `not_found` was lost before the node
+   * stored it (design D9): it is resubmitted once, and the status read
+   * again. A resubmission that fails retryably (503, transport) is tried
+   * again on the next read; any other failure is thrown.
+   */
   async getTxStatus(txId: string): Promise<TxStatus> {
+    const status = await this.readTxStatus(txId);
+    const acknowledged = this.acknowledged.get(status.txId);
+    if (acknowledged === undefined) return status;
+    if (settledTxStatusKinds.has(status.kind)) {
+      this.acknowledged.delete(status.txId);
+      return status;
+    }
+    if (status.kind !== "not_found" || acknowledged.resubmitted) return status;
+    acknowledged.resubmitted = true;
+    try {
+      await this.submitTx(acknowledged.txHex);
+    } catch (error) {
+      if (error instanceof ProviderError && error.retryable) {
+        acknowledged.resubmitted = false;
+        return status;
+      }
+      throw error;
+    }
+    return this.readTxStatus(txId);
+  }
+
+  private async readTxStatus(txId: string): Promise<TxStatus> {
     const endpoint = "/tx-status";
     const requestedTxId = normalizeTxIdHex(txId, endpoint);
     const { response, payload } = await this.transport.requestJson(

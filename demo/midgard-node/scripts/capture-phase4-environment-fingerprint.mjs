@@ -6,6 +6,8 @@ import { createHash } from "node:crypto";
 
 import {
   canonicalJsonSha256,
+  decodePhase4EnvironmentArtifactV1,
+  decodePhase4EnvironmentDocumentV1,
   PHASE4_ENVIRONMENT_ARTIFACT_SCHEMA,
   PHASE4_ENVIRONMENT_SCHEMA,
   PHASE4_RESOURCE_PROFILE,
@@ -90,14 +92,10 @@ const document = {
   },
   postgres: component("PHASE4_POSTGRES", "postgres"),
   provider: {
-    kind: required("L1_PROVIDER"),
+    // The node reads and submits through the local node's socket.
+    kind: "l1_node",
     routeSha256: sha256(
-      Buffer.from(
-        JSON.stringify({
-          kupo: required("L1_KUPO_KEY"),
-          ogmios: required("L1_OGMIOS_KEY"),
-        }),
-      ),
+      Buffer.from(JSON.stringify({ socket: required("L1_NODE_SOCKET_PATH") })),
     ),
   },
   deploymentManifest: {
@@ -107,11 +105,12 @@ const document = {
   clockOffsetMs,
 };
 
-const artifact = {
+decodePhase4EnvironmentDocumentV1(document);
+const artifact = decodePhase4EnvironmentArtifactV1({
   schemaVersion: PHASE4_ENVIRONMENT_ARTIFACT_SCHEMA,
   documentSha256: canonicalJsonSha256(document),
   document,
-};
+});
 
 fs.mkdirSync(path.dirname(path.resolve(outputPath)), { recursive: true });
 fs.writeFileSync(outputPath, `${JSON.stringify(artifact, null, 2)}\n`);

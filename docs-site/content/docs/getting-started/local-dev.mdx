@@ -34,8 +34,8 @@ The TypeScript workspace under `demo/` uses `pnpm`:
 - **Node.js:** `>=22.16.0` (declared in the `engines` field of `demo/package.json`).
 
 <Callout type="info" title="On-chain toolchain">
-The on-chain Aiken code is built separately with the Aiken compiler. Install
-[Aiken](https://aiken-lang.org/) to build `onchain/aiken`.
+  The on-chain Aiken code is built separately with the Aiken compiler. Install
+  [Aiken](https://aiken-lang.org/) to build `onchain/aiken`.
 </Callout>
 
 ## Demo workspace commands
@@ -50,49 +50,40 @@ pnpm run lint         # eslint with --max-warnings=0
 pnpm run format-check # prettier --check
 ```
 
-The underlying scripts are defined in `demo/package.json`:
+`build` and `typecheck` run workspace packages with bounded concurrency.
+`test` first type-checks, then runs the explicit package lanes in
+`demo/scripts/run-test-lanes-v1.mjs`; it is not a recursive test of every
+workspace member. Use `pnpm run test:serial` for the recursive workspace pass,
+or run a package's own `test` command for a targeted change. Node and tools
+suites also require their documented PostgreSQL test setup.
 
-| Script | Command |
-| --- | --- |
-| `build` | `pnpm -r --if-present --workspace-concurrency=1 run build` |
-| `typecheck` | `pnpm -r --if-present --workspace-concurrency=1 run typecheck` |
-| `test` | `pnpm run typecheck && pnpm -r --if-present --workspace-concurrency=1 run test` |
-| `lint` | `eslint . --max-warnings=0` |
-| `lint:fix` | `eslint . --fix` |
-| `format` | `prettier --write "**/*.{ts,tsx,md}"` |
-| `format-check` | `prettier --check "**/*.{ts,tsx,md}"` |
-| `clean` | `pnpm -r --if-present --workspace-concurrency=1 run clean && rm -rf node_modules` |
+Exact flags, heap limits, and formatting exclusions live in `demo/package.json`.
 
 ### Targeted transaction-preparation tests
 
 `demo/package.json` also defines focused test scripts:
 
-| Script | Command |
-| --- | --- |
-| `test:tx-prep:sdk` | `pnpm --filter @al-ft/lucid-midgard test && pnpm --filter @al-ft/midgard-sdk test` |
-| `test:tx-prep:node` | `pnpm --filter midgard-node run test:tx-prep:node` |
-| `test:tx-prep:emulator` | Runs `midgard-node` emulator tests and a fault-proofs submit-init emulator test. |
-| `test:tx-prep:local` | Runs the `sdk`, `node`, and `emulator` groups in sequence. |
+| Script                  | Command                                                                            |
+| ----------------------- | ---------------------------------------------------------------------------------- |
+| `test:tx-prep:sdk`      | `pnpm --filter @al-ft/lucid-midgard test && pnpm --filter @al-ft/midgard-sdk test` |
+| `test:tx-prep:node`     | Runs node transaction-preparation checks and node-tools e2e reliability checks.    |
+| `test:tx-prep:emulator` | Runs `midgard-node` emulator tests and a fault-proofs submit-init emulator test.   |
+| `test:tx-prep:local`    | Runs the `sdk`, `node`, and `emulator` groups in sequence.                         |
 
 ## Per-package builds
 
-The demo packages can also be built independently inside `demo/`. For example:
+From the repository root, install the workspace once, then select a package:
 
 ```sh
-pnpm install && pnpm build
+pnpm --dir demo install --frozen-lockfile
+pnpm --dir demo/midgard-sdk build
+pnpm --dir demo/midgard-node build
 ```
-
-This applies to `demo/midgard-sdk`, `demo/midgard-node`, and
-`demo/midgard-manager`.
 
 ## Building the on-chain code
 
-Build the Aiken validators with:
-
-```sh
-cd onchain/aiken
-aiken build
-```
+Use the compiler/toolchain pinned by `onchain/aiken/aiken.toml` and the repository
+CI configuration.
 
 For demo, preprod, or e2e deployments, build the Aiken contracts from `onchain/aiken`
 with the `testnet` environment **before** building node images:
@@ -105,7 +96,7 @@ Use another Aiken environment only when the task explicitly targets it.
 
 ## Development shell
 
-`demo/Makefile` provides a Nix development shell:
+From `demo`, its `Makefile` provides a Nix development shell:
 
 ```sh
 make shell   # runs: nix develop
@@ -113,7 +104,7 @@ make shell   # runs: nix develop
 
 ## Building the technical specification
 
-Build the LaTeX spec with:
+From the repository root, build the LaTeX spec with:
 
 ```sh
 make spec
@@ -123,18 +114,15 @@ Then open `technical-spec/midgard.pdf`.
 
 ## Git hooks
 
-Contributors must enable the project's standardized git hooks:
+From the repository root, install the project's hooks once per clone:
 
 ```sh
-make enable-git-hooks
+bash .githooks/install
 ```
 
 See [`CONTRIBUTING.md`](https://github.com/Anastasia-Labs/midgard/blob/main/CONTRIBUTING.md)
 for the full contribution workflow and review expectations.
 
-<Callout type="warn" title="Transaction validity windows">
-Do not edge-trigger `validFrom` at the current wall-clock or tip-derived slot when
-building SDK or node transactions. Backdate it by at least 30 seconds where the protocol
-rules allow. A validity interval that starts exactly at the tip can be rejected by the
-time the transaction reaches a block.
-</Callout>
+L1 transaction validity bounds are protocol-dependent. Use the SDK builders and
+the transaction-finalization rules referenced by the node runbooks; arbitrary
+wall-clock offsets are not a substitute for the deployed rule.

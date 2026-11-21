@@ -3,7 +3,571 @@
   "version": "0.1.0",
   "description": "Manual Midgard fault-proof tooling",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "midgard-source": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./block-replay": {
+      "midgard-source": "./src/block-replay.ts",
+      "import": "./dist/block-replay.js"
+    },
+    "./canonical-decodability": {
+      "midgard-source": "./src/canonical-decodability/index.ts",
+      "import": "./dist/canonical-decodability/index.js"
+    },
+    "./committed-field-shape": {
+      "midgard-source": "./src/committed-field-shape/index.ts",
+      "import": "./dist/committed-field-shape/index.js"
+    },
+    "./direct-purpose-family": {
+      "midgard-source": "./src/direct-purpose-family/index.ts",
+      "import": "./dist/direct-purpose-family/index.js"
+    },
+    "./distinct-asset-accumulation-limit": {
+      "midgard-source": "./src/distinct-asset-accumulation-limit/index.ts",
+      "import": "./dist/distinct-asset-accumulation-limit/index.js"
+    },
+    "./evidence": {
+      "midgard-source": "./src/evidence/index.ts",
+      "import": "./dist/evidence/index.js"
+    },
+    "./execution-native-script-invalid": {
+      "midgard-source": "./src/execution-native-script-invalid/index.ts",
+      "import": "./dist/execution-native-script-invalid/index.js"
+    },
+    "./execution-source-script-decoding": {
+      "midgard-source": "./src/execution-source-script-decoding/index.ts",
+      "import": "./dist/execution-source-script-decoding/index.js"
+    },
+    "./field-item-width-illegal": {
+      "midgard-source": "./src/field-item-width-illegal/index.ts",
+      "import": "./dist/field-item-width-illegal/index.js"
+    },
+    "./field-preimage-length-mismatch": {
+      "midgard-source": "./src/field-preimage-length-mismatch/index.ts",
+      "import": "./dist/field-preimage-length-mismatch/index.js"
+    },
+    "./funding/plain-funding-output": {
+      "midgard-source": "./src/funding/plain-funding-output.ts",
+      "import": "./dist/funding/plain-funding-output.js"
+    },
+    "./funding/proof-materials-address": {
+      "midgard-source": "./src/funding/proof-materials-address.ts",
+      "import": "./dist/funding/proof-materials-address.js"
+    },
+    "./inspect-contracts": {
+      "midgard-source": "./src/inspect-contracts.ts",
+      "import": "./dist/inspect-contracts.js"
+    },
+    "./l2-tx-mistag": {
+      "midgard-source": "./src/l2-tx-mistag/index.ts",
+      "import": "./dist/l2-tx-mistag/index.js"
+    },
+    "./ledger-at": {
+      "midgard-source": "./src/ledger-at.ts",
+      "import": "./dist/ledger-at.js"
+    },
+    "./ledger-output-proof-plan": {
+      "midgard-source": "./src/ledger-output-proof-plan.ts",
+      "import": "./dist/ledger-output-proof-plan.js"
+    },
+    "./local-fault-bound": {
+      "midgard-source": "./src/local-fault-bound.ts",
+      "import": "./dist/local-fault-bound.js"
+    },
+    "./min-ada": {
+      "midgard-source": "./src/min-ada/index.ts",
+      "import": "./dist/min-ada/index.js"
+    },
+    "./mint-authorization": {
+      "midgard-source": "./src/mint-authorization/index.ts",
+      "import": "./dist/mint-authorization/index.js"
+    },
+    "./mint-declared-asset-limit": {
+      "midgard-source": "./src/mint-declared-asset-limit/index.ts",
+      "import": "./dist/mint-declared-asset-limit/index.js"
+    },
+    "./mint-item-non-canonical": {
+      "midgard-source": "./src/mint-item-non-canonical/index.ts",
+      "import": "./dist/mint-item-non-canonical/index.js"
+    },
+    "./missing-redeemer": {
+      "midgard-source": "./src/missing-redeemer/index.ts",
+      "import": "./dist/missing-redeemer/index.js"
+    },
+    "./missing-script-source": {
+      "midgard-source": "./src/missing-script-source/index.ts",
+      "import": "./dist/missing-script-source/index.js"
+    },
+    "./missing-signature": {
+      "midgard-source": "./src/missing-signature/index.ts",
+      "import": "./dist/missing-signature/index.js"
+    },
+    "./native-script-decoding/artifact": {
+      "midgard-source": "./src/native-script-decoding/artifact.ts",
+      "import": "./dist/native-script-decoding/artifact.js"
+    },
+    "./native-script-invalid": {
+      "midgard-source": "./src/native-script-invalid/index.ts",
+      "import": "./dist/native-script-invalid/index.js"
+    },
+    "./network-id": {
+      "midgard-source": "./src/network-id/index.ts",
+      "import": "./dist/network-id/index.js"
+    },
+    "./observer-order-invalid": {
+      "midgard-source": "./src/observer-order-invalid/index.ts",
+      "import": "./dist/observer-order-invalid/index.js"
+    },
+    "./observers-forbidden-on-untagged-network": {
+      "midgard-source": "./src/observers-forbidden-on-untagged-network/index.ts",
+      "import": "./dist/observers-forbidden-on-untagged-network/index.js"
+    },
+    "./output-reference-script-decoding": {
+      "midgard-source": "./src/output-reference-script-decoding/index.ts",
+      "import": "./dist/output-reference-script-decoding/index.js"
+    },
+    "./prepare-da-hash-preimage": {
+      "midgard-source": "./src/prepare-da-hash-preimage.ts",
+      "import": "./dist/prepare-da-hash-preimage.js"
+    },
+    "./prepare-double-withdraw": {
+      "midgard-source": "./src/prepare-double-withdraw.ts",
+      "import": "./dist/prepare-double-withdraw.js"
+    },
+    "./prepare-invalid-range": {
+      "midgard-source": "./src/prepare-invalid-range.ts",
+      "import": "./dist/prepare-invalid-range.js"
+    },
+    "./prepare-invalid-signature": {
+      "midgard-source": "./src/prepare-invalid-signature.ts",
+      "import": "./dist/prepare-invalid-signature.js"
+    },
+    "./prepare-min-fee": {
+      "midgard-source": "./src/prepare-min-fee.ts",
+      "import": "./dist/prepare-min-fee.js"
+    },
+    "./prepare-reference-input-no-idx": {
+      "midgard-source": "./src/prepare-reference-input-no-idx.ts",
+      "import": "./dist/prepare-reference-input-no-idx.js"
+    },
+    "./prepare-zero-input": {
+      "midgard-source": "./src/prepare-zero-input.ts",
+      "import": "./dist/prepare-zero-input.js"
+    },
+    "./protected-output-signer-missing": {
+      "midgard-source": "./src/protected-output-signer-missing/index.ts",
+      "import": "./dist/protected-output-signer-missing/index.js"
+    },
+    "./proven-correction-removal": {
+      "midgard-source": "./src/proven-correction-removal.ts",
+      "import": "./dist/proven-correction-removal.js"
+    },
+    "./receive-purpose-language": {
+      "midgard-source": "./src/receive-purpose-language/index.ts",
+      "import": "./dist/receive-purpose-language/index.js"
+    },
+    "./redeemer-canonicity": {
+      "midgard-source": "./src/redeemer-canonicity/index.ts",
+      "import": "./dist/redeemer-canonicity/index.js"
+    },
+    "./remove-fraudulent-block": {
+      "midgard-source": "./src/remove-fraudulent-block.ts",
+      "import": "./dist/remove-fraudulent-block.js"
+    },
+    "./remove-unattested-block": {
+      "midgard-source": "./src/remove-unattested-block.ts",
+      "import": "./dist/remove-unattested-block.js"
+    },
+    "./replayed-ledger": {
+      "midgard-source": "./src/replayed-ledger.ts",
+      "import": "./dist/replayed-ledger.js"
+    },
+    "./replayed-ledger.checkpoint-file": {
+      "midgard-source": "./src/replayed-ledger.checkpoint-file.ts",
+      "import": "./dist/replayed-ledger.checkpoint-file.js"
+    },
+    "./resolved-output-non-canonical": {
+      "midgard-source": "./src/resolved-output-non-canonical/index.ts",
+      "import": "./dist/resolved-output-non-canonical/index.js"
+    },
+    "./retained-payload-replay-source": {
+      "midgard-source": "./src/retained-payload-replay-source.ts",
+      "import": "./dist/retained-payload-replay-source.js"
+    },
+    "./runtime": {
+      "midgard-source": "./src/runtime.ts",
+      "import": "./dist/runtime.js"
+    },
+    "./script-decode": {
+      "midgard-source": "./src/script-decode/index.ts",
+      "import": "./dist/script-decode/index.js"
+    },
+    "./script-integrity-hash-mismatch": {
+      "midgard-source": "./src/script-integrity-hash-mismatch/index.ts",
+      "import": "./dist/script-integrity-hash-mismatch/index.js"
+    },
+    "./script-integrity-hash-missing/artifact": {
+      "midgard-source": "./src/script-integrity-hash-missing/artifact.ts",
+      "import": "./dist/script-integrity-hash-missing/artifact.js"
+    },
+    "./signer-witness-scan": {
+      "midgard-source": "./src/signer-witness-scan/index.ts",
+      "import": "./dist/signer-witness-scan/index.js"
+    },
+    "./spend-input-signer-missing": {
+      "midgard-source": "./src/spend-input-signer-missing/index.ts",
+      "import": "./dist/spend-input-signer-missing/index.js"
+    },
+    "./transaction-output-non-canonical": {
+      "midgard-source": "./src/transaction-output-non-canonical/index.ts",
+      "import": "./dist/transaction-output-non-canonical/index.js"
+    },
+    "./transition-trace/detect": {
+      "midgard-source": "./src/transition-trace/detect.ts",
+      "import": "./dist/transition-trace/detect.js"
+    },
+    "./transition-trace/errors": {
+      "midgard-source": "./src/transition-trace/errors.ts",
+      "import": "./dist/transition-trace/errors.js"
+    },
+    "./transition-trace/fetch": {
+      "midgard-source": "./src/transition-trace/fetch.ts",
+      "import": "./dist/transition-trace/fetch.js"
+    },
+    "./transition-trace/phas": {
+      "midgard-source": "./src/transition-trace/phas.ts",
+      "import": "./dist/transition-trace/phas.js"
+    },
+    "./transition-trace/workflow": {
+      "midgard-source": "./src/transition-trace/workflow.ts",
+      "import": "./dist/transition-trace/workflow.js"
+    },
+    "./unused-redeemer": {
+      "midgard-source": "./src/unused-redeemer/index.ts",
+      "import": "./dist/unused-redeemer/index.js"
+    },
+    "./unused-script-witness": {
+      "midgard-source": "./src/unused-script-witness/index.ts",
+      "import": "./dist/unused-script-witness/index.js"
+    },
+    "./validation-trace-dispute/actions": {
+      "midgard-source": "./src/validation-trace-dispute/actions.ts",
+      "import": "./dist/validation-trace-dispute/actions.js"
+    },
+    "./validation-trace-dispute/defender": {
+      "midgard-source": "./src/validation-trace-dispute/defender.ts",
+      "import": "./dist/validation-trace-dispute/defender.js"
+    },
+    "./validation-trace-dispute/replay-hold": {
+      "midgard-source": "./src/validation-trace-dispute/replay-hold.ts",
+      "import": "./dist/validation-trace-dispute/replay-hold.js"
+    },
+    "./validation-trace-dispute/stage-unbuilt": {
+      "midgard-source": "./src/validation-trace-dispute/stage-unbuilt.ts",
+      "import": "./dist/validation-trace-dispute/stage-unbuilt.js"
+    },
+    "./value-not-preserved": {
+      "midgard-source": "./src/value-not-preserved/index.ts",
+      "import": "./dist/value-not-preserved/index.js"
+    },
+    "./wallet-only-validity": {
+      "midgard-source": "./src/wallet-only-validity.ts",
+      "import": "./dist/wallet-only-validity.js"
+    },
+    "./witness-script-decoding": {
+      "midgard-source": "./src/witness-script-decoding/index.ts",
+      "import": "./dist/witness-script-decoding/index.js"
+    },
+    "./workflow/actuation-permit": {
+      "midgard-source": "./src/workflow/actuation-permit.ts",
+      "import": "./dist/workflow/actuation-permit.js"
+    },
+    "./workflow/adapters": {
+      "midgard-source": "./src/workflow/adapters.ts",
+      "import": "./dist/workflow/adapters.js"
+    },
+    "./workflow/artifact-codec": {
+      "midgard-source": "./src/workflow/artifact-codec.ts",
+      "import": "./dist/workflow/artifact-codec.js"
+    },
+    "./workflow/catalogue-replay": {
+      "midgard-source": "./src/workflow/catalogue-replay.ts",
+      "import": "./dist/workflow/catalogue-replay.js"
+    },
+    "./workflow/classification": {
+      "midgard-source": "./src/workflow/classification.ts",
+      "import": "./dist/workflow/classification.js"
+    },
+    "./workflow/cli": {
+      "midgard-source": "./src/workflow/cli.ts",
+      "import": "./dist/workflow/cli.js"
+    },
+    "./workflow/collateral-forfeiture": {
+      "midgard-source": "./src/workflow/collateral-forfeiture.ts",
+      "import": "./dist/workflow/collateral-forfeiture.js"
+    },
+    "./workflow/complete-replay": {
+      "midgard-source": "./src/workflow/complete-replay.ts",
+      "import": "./dist/workflow/complete-replay.js"
+    },
+    "./workflow/completed-verification": {
+      "midgard-source": "./src/workflow/completed-verification.ts",
+      "import": "./dist/workflow/completed-verification.js"
+    },
+    "./workflow/deployment-manifest-binding": {
+      "midgard-source": "./src/workflow/deployment-manifest-binding.ts",
+      "import": "./dist/workflow/deployment-manifest-binding.js"
+    },
+    "./workflow/detection-subject": {
+      "midgard-source": "./src/workflow/detection-subject.ts",
+      "import": "./dist/workflow/detection-subject.js"
+    },
+    "./workflow/double-spend-adapter": {
+      "midgard-source": "./src/workflow/double-spend-adapter.ts",
+      "import": "./dist/workflow/double-spend-adapter.js"
+    },
+    "./workflow/family-application": {
+      "midgard-source": "./src/workflow/family-application.ts",
+      "import": "./dist/workflow/family-application.js"
+    },
+    "./workflow/family-application-registry": {
+      "midgard-source": "./src/workflow/family-application-registry.ts",
+      "import": "./dist/workflow/family-application-registry.js"
+    },
+    "./workflow/field-carriage-prerequisite": {
+      "midgard-source": "./src/workflow/field-carriage-prerequisite.ts",
+      "import": "./dist/workflow/field-carriage-prerequisite.js"
+    },
+    "./workflow/forced-rejection-reason": {
+      "midgard-source": "./src/workflow/forced-rejection-reason.ts",
+      "import": "./dist/workflow/forced-rejection-reason.js"
+    },
+    "./workflow/funding-measurements": {
+      "midgard-source": "./src/workflow/funding-measurements.ts",
+      "import": "./dist/workflow/funding-measurements.js"
+    },
+    "./workflow/funding-requirements": {
+      "midgard-source": "./src/workflow/funding-requirements.ts",
+      "import": "./dist/workflow/funding-requirements.js"
+    },
+    "./workflow/funding-requirements-test-support": {
+      "midgard-source": "./src/workflow/funding-requirements-test-support.ts",
+      "import": "./dist/workflow/funding-requirements-test-support.js"
+    },
+    "./workflow/funding-reservation-permit": {
+      "midgard-source": "./src/workflow/funding-reservation-permit.ts",
+      "import": "./dist/workflow/funding-reservation-permit.js"
+    },
+    "./workflow/header-classifier": {
+      "midgard-source": "./src/workflow/header-classifier.ts",
+      "import": "./dist/workflow/header-classifier.js"
+    },
+    "./workflow/input-set-uniqueness": {
+      "midgard-source": "./src/workflow/input-set-uniqueness.ts",
+      "import": "./dist/workflow/input-set-uniqueness.js"
+    },
+    "./workflow/installed-categories": {
+      "midgard-source": "./src/workflow/installed-categories.ts",
+      "import": "./dist/workflow/installed-categories.js"
+    },
+    "./workflow/journal": {
+      "midgard-source": "./src/workflow/journal.ts",
+      "import": "./dist/workflow/journal.js"
+    },
+    "./workflow/l1-source": {
+      "midgard-source": "./src/workflow/l1-source.ts",
+      "import": "./dist/workflow/l1-source.js"
+    },
+    "./workflow/missing-signature-adapter": {
+      "midgard-source": "./src/workflow/missing-signature-adapter.ts",
+      "import": "./dist/workflow/missing-signature-adapter.js"
+    },
+    "./workflow/missing-signature-state": {
+      "midgard-source": "./src/workflow/missing-signature-state.ts",
+      "import": "./dist/workflow/missing-signature-state.js"
+    },
+    "./workflow/orchestrator": {
+      "midgard-source": "./src/workflow/orchestrator.ts",
+      "import": "./dist/workflow/orchestrator.js"
+    },
+    "./workflow/own-thread-reclaim": {
+      "midgard-source": "./src/workflow/own-thread-reclaim.ts",
+      "import": "./dist/workflow/own-thread-reclaim.js"
+    },
+    "./workflow/pending-continuation": {
+      "midgard-source": "./src/workflow/pending-continuation.ts",
+      "import": "./dist/workflow/pending-continuation.js"
+    },
+    "./workflow/proof-chunk-prerequisite": {
+      "midgard-source": "./src/workflow/proof-chunk-prerequisite.ts",
+      "import": "./dist/workflow/proof-chunk-prerequisite.js"
+    },
+    "./workflow/raw-datum-preimage-prerequisite": {
+      "midgard-source": "./src/workflow/raw-datum-preimage-prerequisite.ts",
+      "import": "./dist/workflow/raw-datum-preimage-prerequisite.js"
+    },
+    "./workflow/raw-l1-family-derivation": {
+      "midgard-source": "./src/workflow/raw-l1-family-derivation.ts",
+      "import": "./dist/workflow/raw-l1-family-derivation.js"
+    },
+    "./workflow/raw-l1-publication-observation": {
+      "midgard-source": "./src/workflow/raw-l1-publication-observation.ts",
+      "import": "./dist/workflow/raw-l1-publication-observation.js"
+    },
+    "./workflow/raw-l1-snapshot": {
+      "midgard-source": "./src/workflow/raw-l1-snapshot.ts",
+      "import": "./dist/workflow/raw-l1-snapshot.js"
+    },
+    "./workflow/release-economics-policy": {
+      "midgard-source": "./src/workflow/release-economics-policy.ts",
+      "import": "./dist/workflow/release-economics-policy.js"
+    },
+    "./workflow/release-finality-policy": {
+      "midgard-source": "./src/workflow/release-finality-policy.ts",
+      "import": "./dist/workflow/release-finality-policy.js"
+    },
+    "./workflow/replay-requirements": {
+      "midgard-source": "./src/workflow/replay-requirements.ts",
+      "import": "./dist/workflow/replay-requirements.js"
+    },
+    "./workflow/runtime": {
+      "midgard-source": "./src/workflow/runtime.ts",
+      "import": "./dist/workflow/runtime.js"
+    },
+    "./workflow/runtime-funding-fee": {
+      "midgard-source": "./src/workflow/runtime-funding-fee.ts",
+      "import": "./dist/workflow/runtime-funding-fee.js"
+    },
+    "./workflow/runtime-funding-policy": {
+      "midgard-source": "./src/workflow/runtime-funding-policy.ts",
+      "import": "./dist/workflow/runtime-funding-policy.js"
+    },
+    "./workflow/signed-transaction-reconciliation": {
+      "midgard-source": "./src/workflow/signed-transaction-reconciliation.ts",
+      "import": "./dist/workflow/signed-transaction-reconciliation.js"
+    },
+    "./workflow/signed-transaction-retirement": {
+      "midgard-source": "./src/workflow/signed-transaction-retirement.ts",
+      "import": "./dist/workflow/signed-transaction-retirement.js"
+    },
+    "./workflow/sqlite-busy": {
+      "midgard-source": "./src/workflow/sqlite-busy.ts",
+      "import": "./dist/workflow/sqlite-busy.js"
+    },
+    "./workflow/superseded-attempt-read-schedule": {
+      "midgard-source": "./src/workflow/superseded-attempt-read-schedule.ts",
+      "import": "./dist/workflow/superseded-attempt-read-schedule.js"
+    },
+    "./workflow/transaction-boundary": {
+      "midgard-source": "./src/workflow/transaction-boundary.ts",
+      "import": "./dist/workflow/transaction-boundary.js"
+    },
+    "./workflow/wallet-only-send-gate": {
+      "midgard-source": "./src/workflow/wallet-only-send-gate.ts",
+      "import": "./dist/workflow/wallet-only-send-gate.js"
+    },
+    "./test-support/raw-l1-terminal-fixture": {
+      "midgard-source": "./tests/support/raw-l1-terminal-fixture.ts",
+      "types": "./tests/support/raw-l1-terminal-fixture.ts"
+    },
+    "./testing/installed-workflow": {
+      "midgard-source": "./tests/support/installed-workflow.ts"
+    },
+    "./test-support/transition-history-fixture": {
+      "midgard-source": "./tests/helpers/transition-history-fixture.ts",
+      "types": "./tests/helpers/transition-history-fixture.ts"
+    },
+    "./test-support/fixture-ledger": {
+      "midgard-source": "./tests/support/fixture-ledger.ts",
+      "types": "./tests/support/fixture-ledger.ts"
+    },
+    "./test-support/predecessor-ledger": {
+      "midgard-source": "./tests/support/predecessor-ledger.ts",
+      "types": "./tests/support/predecessor-ledger.ts"
+    },
+    "./test-support/retained-reason-classifier": {
+      "midgard-source": "./tests/support/retained-reason-classifier.ts",
+      "types": "./tests/support/retained-reason-classifier.ts"
+    },
+    "./test-support/retained-transaction": {
+      "midgard-source": "./tests/support/retained-transaction.ts",
+      "types": "./tests/support/retained-transaction.ts"
+    },
+    "./test-support/canonical-block-evidence-fixture": {
+      "midgard-source": "./tests/helpers/canonical-block-evidence-fixture.ts",
+      "types": "./tests/helpers/canonical-block-evidence-fixture.ts"
+    },
+    "./test-support/input-existence-prepare": {
+      "midgard-source": "./src/input-existence/prepare.ts",
+      "types": "./src/input-existence/prepare.ts"
+    },
+    "./test-support/family-l1-observation": {
+      "midgard-source": "./src/workflow/family-l1-observation.ts",
+      "types": "./src/workflow/family-l1-observation.ts"
+    },
+    "./test-support/value-conservation-adapter": {
+      "midgard-source": "./src/value-not-preserved/adapter.ts",
+      "types": "./src/value-not-preserved/adapter.ts"
+    },
+    "./test-support/transition-trace-l1-events": {
+      "midgard-source": "./src/transition-trace/l1-events.ts",
+      "types": "./src/transition-trace/l1-events.ts"
+    },
+    "./test-support/cross-block-raw-emulator": {
+      "midgard-source": "./tests/support/cross-block-raw-emulator.ts",
+      "types": "./tests/support/cross-block-raw-emulator.ts"
+    },
+    "./test-support/wallet-only-send-always-open": {
+      "midgard-source": "./tests/support/wallet-only-send-always-open.ts",
+      "types": "./tests/support/wallet-only-send-always-open.ts"
+    },
+    "./test-support/transition-trace-retained": {
+      "midgard-source": "./tests/support/transition-trace-retained.ts",
+      "types": "./tests/support/transition-trace-retained.ts"
+    },
+    "./test-support/fabricated-history-witness": {
+      "midgard-source": "./src/fabricated-history-witness.ts",
+      "types": "./src/fabricated-history-witness.ts"
+    },
+    "./test-support/prepare-fabricated-deposit": {
+      "midgard-source": "./src/prepare-fabricated-deposit.ts",
+      "types": "./src/prepare-fabricated-deposit.ts"
+    },
+    "./test-support/prepare-fabricated-withdrawal": {
+      "midgard-source": "./src/prepare-fabricated-withdrawal.ts",
+      "types": "./src/prepare-fabricated-withdrawal.ts"
+    },
+    "./test-support/forced-order-settlement": {
+      "midgard-source": "./tests/support/forced-order-settlement.ts",
+      "types": "./tests/support/forced-order-settlement.ts"
+    },
+    "./test-support/retired-family-proof": {
+      "midgard-source": "./tests/support/emulator/retired-family-proof.ts",
+      "types": "./tests/support/emulator/retired-family-proof.ts"
+    },
+    "./test-support/history-pair": {
+      "midgard-source": "./tests/support/emulator/history-pair.ts",
+      "types": "./tests/support/emulator/history-pair.ts"
+    },
+    "./test-support/transition-trace-reconstruct": {
+      "midgard-source": "./src/transition-trace/reconstruct.ts",
+      "types": "./src/transition-trace/reconstruct.ts"
+    },
+    "./test-support/funding-measurement": {
+      "midgard-source": "./tests/support/funding-measurement.ts",
+      "types": "./tests/support/funding-measurement.ts"
+    },
+    "./test-support/validation-trace-defender-scene": {
+      "midgard-source": "./tests/support/validation-trace-defender-scene.ts",
+      "types": "./tests/support/validation-trace-defender-scene.ts"
+    },
+    "./test-support/validation-trace-challenger-runner": {
+      "midgard-source": "./tests/support/validation-trace-challenger-runner.ts",
+      "types": "./tests/support/validation-trace-challenger-runner.ts"
+    }
+  },
   "type": "module",
   "bin": {
     "midgard-fault-proofs": "./dist/bin.js"
@@ -12,12 +576,21 @@
     "dist"
   ],
   "scripts": {
+    "fixtures:withdrawal-mistag-agreement:sync": "node scripts/generate-withdrawal-mistag-agreement-goldens.mjs",
+    "fixtures:withdrawal-mistag-agreement:check": "node scripts/generate-withdrawal-mistag-agreement-goldens.mjs --check",
     "clean": "rimraf dist",
-    "build": "tsup src/index.ts --format esm --dts --clean && tsup src/bin.ts --format esm",
+    "build": "node ../../scripts/contrib.mjs build --package @al-ft/midgard-fault-proofs",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "node ../scripts/package-test.mjs",
+    "test:fast": "MIDGARD_TEST_TIER=fast node ../scripts/package-test.mjs",
+    "test:slow": "MIDGARD_TEST_TIER=slow node ../scripts/package-test.mjs",
+    "bench": "vitest run --config vitest.bench.config.ts",
+    "test:traced-refusals": "node scripts/run-traced-refusals.mjs",
+    "check:builder-exports": "node scripts/check-builder-exports.mjs",
+    "test:cardano-capability-p2-retained-da": "node tests/fixtures/verify-cardano-capability-p2-retained-da-v1.mjs",
+    "build:contrib-raw": "node ../scripts/package-tasks.mjs build"
   },
   "keywords": [
     "cardano",
@@ -30,16 +603,180 @@
   "dependencies": {
     "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
     "@al-ft/midgard-core": "workspace:*",
+    "@al-ft/midgard-l1-follower": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
-    "@harmoniclabs/cbor": "1.6.6",
-    "@lucid-evolution/lucid": "0.6.0",
-    "effect": "^3.14.22"
+    "@al-ft/midgard-validation": "workspace:*",
+    "@lucid-evolution/lucid": "0.8.9",
+    "effect": "^3.14.22",
+    "json-bigint": "npm:@cardanosolutions/json-bigint@1.1.0",
+    "typescript": "^5.7.3"
   },
   "devDependencies": {
+    "@al-ft/midgard-test-support": "workspace:*",
+    "@lucid-evolution/scalus-uplc": "0.2.2",
+    "@lucid-evolution/uplc": "0.5.3",
+    "@types/json-bigint": "1.0.4",
     "@types/node": "^22.17.0",
+    "midgard-node": "workspace:*",
+    "midgard-watcher": "workspace:*",
     "rimraf": "^6.0.1",
     "tsup": "^8.4.0",
-    "typescript": "^5.7.3",
-    "vitest": "^3.0.7"
+    "vitest": "^5.0.3"
+  },
+  "midgardTasks": {
+    "build": {
+      "steps": [
+        {
+          "command": [
+            "tsup",
+            "src/index.ts",
+            "src/block-replay.ts",
+            "src/canonical-decodability/index.ts",
+            "src/committed-field-shape/index.ts",
+            "src/direct-purpose-family/index.ts",
+            "src/distinct-asset-accumulation-limit/index.ts",
+            "src/evidence/index.ts",
+            "src/execution-native-script-invalid/index.ts",
+            "src/execution-source-script-decoding/index.ts",
+            "src/field-item-width-illegal/index.ts",
+            "src/field-preimage-length-mismatch/index.ts",
+            "src/funding/plain-funding-output.ts",
+            "src/funding/proof-materials-address.ts",
+            "src/inspect-contracts.ts",
+            "src/l2-tx-mistag/index.ts",
+            "src/ledger-at.ts",
+            "src/ledger-output-proof-plan.ts",
+            "src/local-fault-bound.ts",
+            "src/min-ada/index.ts",
+            "src/mint-authorization/index.ts",
+            "src/mint-declared-asset-limit/index.ts",
+            "src/mint-item-non-canonical/index.ts",
+            "src/missing-redeemer/index.ts",
+            "src/missing-script-source/index.ts",
+            "src/missing-signature/index.ts",
+            "src/native-script-decoding/artifact.ts",
+            "src/native-script-invalid/index.ts",
+            "src/network-id/index.ts",
+            "src/observer-order-invalid/index.ts",
+            "src/observers-forbidden-on-untagged-network/index.ts",
+            "src/output-reference-script-decoding/index.ts",
+            "src/prepare-da-hash-preimage.ts",
+            "src/prepare-double-withdraw.ts",
+            "src/prepare-invalid-range.ts",
+            "src/prepare-invalid-signature.ts",
+            "src/prepare-min-fee.ts",
+            "src/prepare-reference-input-no-idx.ts",
+            "src/prepare-zero-input.ts",
+            "src/protected-output-signer-missing/index.ts",
+            "src/proven-correction-removal.ts",
+            "src/receive-purpose-language/index.ts",
+            "src/redeemer-canonicity/index.ts",
+            "src/remove-fraudulent-block.ts",
+            "src/remove-unattested-block.ts",
+            "src/replayed-ledger.checkpoint-file.ts",
+            "src/replayed-ledger.ts",
+            "src/resolved-output-non-canonical/index.ts",
+            "src/retained-payload-replay-source.ts",
+            "src/runtime.ts",
+            "src/script-decode/index.ts",
+            "src/script-integrity-hash-mismatch/index.ts",
+            "src/script-integrity-hash-missing/artifact.ts",
+            "src/signer-witness-scan/index.ts",
+            "src/spend-input-signer-missing/index.ts",
+            "src/transaction-output-non-canonical/index.ts",
+            "src/transition-trace/detect.ts",
+            "src/transition-trace/errors.ts",
+            "src/transition-trace/fetch.ts",
+            "src/transition-trace/phas.ts",
+            "src/transition-trace/workflow.ts",
+            "src/unused-redeemer/index.ts",
+            "src/unused-script-witness/index.ts",
+            "src/validation-trace-dispute/actions.ts",
+            "src/validation-trace-dispute/defender.ts",
+            "src/validation-trace-dispute/replay-hold.ts",
+            "src/validation-trace-dispute/stage-unbuilt.ts",
+            "src/value-not-preserved/index.ts",
+            "src/wallet-only-validity.ts",
+            "src/witness-script-decoding/index.ts",
+            "src/workflow/actuation-permit.ts",
+            "src/workflow/adapters.ts",
+            "src/workflow/artifact-codec.ts",
+            "src/workflow/catalogue-replay.ts",
+            "src/workflow/classification.ts",
+            "src/workflow/cli.ts",
+            "src/workflow/collateral-forfeiture.ts",
+            "src/workflow/complete-replay.ts",
+            "src/workflow/completed-verification.ts",
+            "src/workflow/deployment-manifest-binding.ts",
+            "src/workflow/detection-subject.ts",
+            "src/workflow/double-spend-adapter.ts",
+            "src/workflow/family-application-registry.ts",
+            "src/workflow/family-application.ts",
+            "src/workflow/field-carriage-prerequisite.ts",
+            "src/workflow/forced-rejection-reason.ts",
+            "src/workflow/funding-measurements.ts",
+            "src/workflow/funding-requirements-test-support.ts",
+            "src/workflow/funding-requirements.ts",
+            "src/workflow/funding-reservation-permit.ts",
+            "src/workflow/header-classifier.ts",
+            "src/workflow/input-set-uniqueness.ts",
+            "src/workflow/installed-categories.ts",
+            "src/workflow/journal.ts",
+            "src/workflow/l1-source.ts",
+            "src/workflow/missing-signature-adapter.ts",
+            "src/workflow/missing-signature-state.ts",
+            "src/workflow/orchestrator.ts",
+            "src/workflow/own-thread-reclaim.ts",
+            "src/workflow/pending-continuation.ts",
+            "src/workflow/proof-chunk-prerequisite.ts",
+            "src/workflow/raw-datum-preimage-prerequisite.ts",
+            "src/workflow/raw-l1-family-derivation.ts",
+            "src/workflow/raw-l1-publication-observation.ts",
+            "src/workflow/raw-l1-snapshot.ts",
+            "src/workflow/release-economics-policy.ts",
+            "src/workflow/release-finality-policy.ts",
+            "src/workflow/replay-requirements.ts",
+            "src/workflow/runtime-funding-fee.ts",
+            "src/workflow/runtime-funding-policy.ts",
+            "src/workflow/runtime.ts",
+            "src/workflow/signed-transaction-reconciliation.ts",
+            "src/workflow/signed-transaction-retirement.ts",
+            "src/workflow/sqlite-busy.ts",
+            "src/workflow/superseded-attempt-read-schedule.ts",
+            "src/workflow/transaction-boundary.ts",
+            "src/workflow/wallet-only-send-gate.ts",
+            "--format",
+            "esm",
+            "--clean"
+          ]
+        },
+        {
+          "command": [
+            "tsup",
+            "src/bin.ts",
+            "--format",
+            "esm"
+          ]
+        }
+      ],
+      "outputs": [
+        "dist"
+      ]
+    },
+    "test": {
+      "command": [
+        "vitest",
+        "run"
+      ],
+      "prerequisites": [
+        {
+          "kind": "build",
+          "package": "@al-ft/midgard-core"
+        },
+        {
+          "kind": "blueprint"
+        }
+      ]
+    }
   }
 }

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Principle Fix Root Causes"
+  short_description: "Apply when debugging. Trace each symptom to its root cause and f"
+  default_prompt: "Use $principle-fix-root-causes for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

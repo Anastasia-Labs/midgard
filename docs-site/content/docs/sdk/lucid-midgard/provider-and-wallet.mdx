@@ -39,8 +39,8 @@ with tag `2`, and `MidgardV1` with tag `128`. Missing, extra, `PlutusV1`, `Plutu
 or unknown tags **fail closed** until a protocol migration updates the shared constants.
 
 If the endpoint is unavailable, `MidgardNodeProvider.create(...)` fails rather than
-guessing, unless you supply an explicit fallback configuration. Fallback-derived values
-stay visible in `diagnostics()` and in `config()`, and are never presented as node facts.
+guessing. Its options contain `endpoint` and an optional `fetch` implementation;
+there is no fallback protocol configuration.
 
 The library hard-codes no fee policy, slot assumption, network identity, or maximum
 transaction size.
@@ -54,7 +54,9 @@ transaction size.
 Address queries take an address string. Credential scans and Cardano provider queries
 are intentionally absent. Batch out-ref queries reject duplicate request keys and error
 on missing results by default; `{ missing: "omit" }` preserves request order and skips
-them.
+them. `getUtxosByOutRefs` and `getUtxosByUnit` are optional provider capabilities.
+The concrete HTTP provider does not implement `getUtxosByUnit`, so `utxoByUnit`
+raises `ProviderCapabilityError` with that provider.
 
 ## Switching providers
 
@@ -72,23 +74,24 @@ existing builder or an in-flight `complete()`.
 Wallet selection mirrors Lucid ergonomics, but the signing domain is explicit. A
 `MidgardWallet` signs a **Midgard-native body hash**, not a Cardano transaction hash.
 
-| Adapter | Use |
-| --- | --- |
-| `selectWallet.fromSeed(seedPhrase)` | Local seed phrase. |
-| `selectWallet.fromPrivateKey(privateKey)` | Local private key. |
-| `selectWallet.fromExternalSigner(signer)` | An external signer that returns a witness over the body hash. |
-| `selectWallet.fromAddress(address, utxos?)` | Read-only. Builds and balances; cannot sign. |
+| Adapter                                            | Use                                                           |
+| -------------------------------------------------- | ------------------------------------------------------------- |
+| `selectWallet.fromSeed(seedPhrase)`                | Local seed phrase.                                            |
+| `selectWallet.fromPrivateKey(privateKey, address)` | Local private key.                                            |
+| `selectWallet.fromExternalSigner(signer)`          | An external signer that returns a witness over the body hash. |
+| `selectWallet.fromAddress(address, utxos?)`        | Read-only. Builds and balances; cannot sign.                  |
 
-Every vkey witness must verify against `nativeTx.compact.transactionBodyHash`. The
+Every vkey witness must verify against `computeMidgardNativeTxId(nativeTx)`. The
 library verifies witnesses immediately after signing and before submission, and
 `walletFromExternalSigner` additionally checks that the returned witness key hash
 matches the wallet identity.
 
 <Callout type="error" title="A Cardano signature is not a Midgard signature">
-Cardano-domain signatures are invalid for Midgard-native transactions. There is no path
-that completes a Cardano transaction and relies on node conversion as a normal
-submission method. A browser wallet that signs Cardano transaction hashes cannot sign
-Midgard transactions: any browser adapter must prove it signs the correct bytes.
+  Cardano-domain signatures are invalid for Midgard-native transactions. There
+  is no path that completes a Cardano transaction and relies on node conversion
+  as a normal submission method. A browser wallet that signs Cardano transaction
+  hashes cannot sign Midgard transactions: any browser adapter must prove it
+  signs the correct bytes.
 </Callout>
 
 ## Network id

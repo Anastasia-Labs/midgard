@@ -1,0 +1,6 @@
+interface:
+  display_name: "Poteto Mode"
+  short_description: "Use pstack rigor for an engineering task in Midgard: choose a pl"
+  default_prompt: "Use $poteto-mode for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

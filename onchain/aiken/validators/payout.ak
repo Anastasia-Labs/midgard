@@ -1,29 +1,26 @@
-use aiken/cbor
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use cardano/address.{Address}
+use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{
   InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Spend, Transaction,
+  Withdraw,
 }
 use cardano/transaction as tx
 use midgard/common/utils
+use midgard/event_history/retirement
 use midgard/hub_oracle as hub
-use midgard/ledger_state
 use midgard/payout
 use midgard/reserve
-use midgard/transition_trace
-use midgard/user_events/withdrawal as withdrawal_lib
 
 fn singleton_asset_name_with_policy(
   value: Value,
   policy_id: PolicyId,
 ) -> AssetName {
-  expect [Pair(asset_name, 1)] =
-    value
-      |> assets.tokens(policy_id)
-      |> dict.to_pairs
+  expect [Pair(asset_name, 1)] = value
+    |> assets.tokens(policy_id)
+    |> dict.to_pairs
   asset_name
 }
 
@@ -80,12 +77,9 @@ fn reserve_change_value(
   when reserve_change_output_index is {
     None -> assets.zero
     Some(output_index) -> {
-      expect Some(Output {
-        address,
-        value,
-        datum: NoDatum,
-        reference_script: None,
-      }) = outputs |> list.at(output_index)
+      expect
+          Some(Output { address, value, datum: NoDatum, reference_script: None })
+        = outputs |> list.at(output_index)
       expect address == reserve_addr
       expect !assets.is_zero(value)
       value
@@ -145,8 +139,7 @@ validator spend(hub_oracle: ScriptHash) {
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    let Transaction { inputs, outputs, reference_inputs, redeemers, mint, .. } =
-      tx
+    let Transaction { inputs, outputs, reference_inputs, redeemers, mint, .. } = tx
 
     expect Some(payout_datum) = datum
     let payout_datum_data: Data = payout_datum
@@ -162,78 +155,90 @@ validator spend(hub_oracle: ScriptHash) {
         reserve_spend_redeemer_index,
         payout_spend_redeemer_index,
       } -> {
-        let hub.Datum {
-          payout: payout_policy_id,
-          payout_addr,
-          reserve_addr,
-          ..
-        } = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+        let
+            hub.Datum {
+              payout: payout_policy_id,
+              payout_addr,
+              reserve_addr,
+              ..
+            }
+          = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
-        expect Some(Input {
-          output_reference: payout_out_ref,
-          output: Output {
-            address: payout_input_address,
-            value: payout_input_value,
-            datum: InlineDatum(input_datum_data),
-            ..
-          },
-        }) = inputs |> list.at(payout_input_index)
+        expect
+            Some(Input {
+              output_reference: payout_out_ref,
+              output: Output {
+                address: payout_input_address,
+                value: payout_input_value,
+                datum: InlineDatum(input_datum_data),
+                ..
+              },
+            })
+          = inputs |> list.at(payout_input_index)
         expect payout_out_ref == own_out_ref
         expect payout_input_address == payout_addr
         expect input_datum_data == payout_datum_data
 
-        let payout_asset_name =
-          singleton_asset_name_with_policy(payout_input_value, payout_policy_id)
+        let payout_asset_name = singleton_asset_name_with_policy(
+          payout_input_value,
+          payout_policy_id,
+        )
         expect
           count_inputs_with_nft(inputs, payout_policy_id, payout_asset_name) == 1
         expect count_inputs_with_policy_id(inputs, payout_policy_id) == 1
 
-        expect Some(Input {
-          output_reference: reserve_out_ref,
-          output: Output {
-            address: reserve_input_address,
-            value: reserve_input_value,
-            datum: NoDatum,
-            reference_script: None,
-          },
-        }) = inputs |> list.at(reserve_input_index)
+        expect
+            Some(Input {
+              output_reference: reserve_out_ref,
+              output: Output {
+                address: reserve_input_address,
+                value: reserve_input_value,
+                datum: NoDatum,
+                reference_script: None,
+              },
+            })
+          = inputs |> list.at(reserve_input_index)
         expect reserve_input_address == reserve_addr
         expect
           list.count(inputs, fn(input) { input.output.address == reserve_addr }) == 1
 
-        expect reserve.Spend {
-          reserve_input_index: reserve_redeemer_reserve_input_index,
-          payout_input_index: reserve_redeemer_payout_input_index,
-          payout_spend_redeemer_index: reserve_redeemer_payout_spend_redeemer_index,
-          hub_ref_input_index: reserve_redeemer_hub_ref_input_index,
-        }: reserve.SpendRedeemer =
-          utils.get_redeemer_at(
-            redeemers,
-            Spend(reserve_out_ref),
-            reserve_spend_redeemer_index,
-          )
+        expect
+            reserve.Spend {
+              reserve_input_index: reserve_redeemer_reserve_input_index,
+              payout_input_index: reserve_redeemer_payout_input_index,
+              payout_spend_redeemer_index: reserve_redeemer_payout_spend_redeemer_index,
+              hub_ref_input_index: reserve_redeemer_hub_ref_input_index,
+            }: reserve.SpendRedeemer
+          = utils.get_redeemer_at(
+          redeemers,
+          Spend(reserve_out_ref),
+          reserve_spend_redeemer_index,
+        )
         expect reserve_redeemer_reserve_input_index == reserve_input_index
         expect reserve_redeemer_payout_input_index == payout_input_index
         expect
           reserve_redeemer_payout_spend_redeemer_index == payout_spend_redeemer_index
         expect reserve_redeemer_hub_ref_input_index == hub_ref_input_index
-        expect payout.AddFunds {
-          reserve_input_index: self_reserve_input_index,
-          ..
-        }: payout.SpendRedeemer =
-          utils.get_redeemer_at(
-            redeemers,
-            Spend(own_out_ref),
-            payout_spend_redeemer_index,
-          )
+        expect
+            payout.AddFunds {
+              reserve_input_index: self_reserve_input_index,
+              ..
+            }: payout.SpendRedeemer
+          = utils.get_redeemer_at(
+          redeemers,
+          Spend(own_out_ref),
+          payout_spend_redeemer_index,
+        )
         expect self_reserve_input_index == reserve_input_index
 
-        expect Some(Output {
-          address: payout_output_address,
-          value: payout_output_value,
-          datum: InlineDatum(output_datum_data),
-          reference_script: None,
-        }) = outputs |> list.at(payout_output_index)
+        expect
+            Some(Output {
+              address: payout_output_address,
+              value: payout_output_value,
+              datum: InlineDatum(output_datum_data),
+              reference_script: None,
+            })
+          = outputs |> list.at(payout_output_index)
         expect payout_output_address == payout_addr
         expect output_datum_data == payout_datum_data
         expect
@@ -245,28 +250,29 @@ validator spend(hub_oracle: ScriptHash) {
           count_outputs_with_nft(outputs, payout_policy_id, payout_asset_name) == 1
         expect count_outputs_with_policy_id(outputs, payout_policy_id) == 1
 
-        let current_value =
-          value_without_nft(
-            payout_input_value,
-            payout_policy_id,
-            payout_asset_name,
-          )
-        let payout_output_without_nft =
-          value_without_nft(
-            payout_output_value,
-            payout_policy_id,
-            payout_asset_name,
-          )
-        let collected_value =
-          assets.merge(payout_output_without_nft, assets.negate(current_value))
-        let change_value =
-          reserve_change_value(
-            outputs,
-            reserve_addr,
-            reserve_change_output_index,
-          )
-        let remaining_needed =
-          assets.merge(target_value, assets.negate(payout_output_without_nft))
+        let current_value = value_without_nft(
+          payout_input_value,
+          payout_policy_id,
+          payout_asset_name,
+        )
+        let payout_output_without_nft = value_without_nft(
+          payout_output_value,
+          payout_policy_id,
+          payout_asset_name,
+        )
+        let collected_value = assets.merge(
+          payout_output_without_nft,
+          assets.negate(current_value),
+        )
+        let change_value = reserve_change_value(
+          outputs,
+          reserve_addr,
+          reserve_change_output_index,
+        )
+        let remaining_needed = assets.merge(
+          target_value,
+          assets.negate(payout_output_without_nft),
+        )
 
         expect
           value_is_nonnegative(
@@ -289,39 +295,47 @@ validator spend(hub_oracle: ScriptHash) {
         burn_redeemer_index,
         hub_ref_input_index,
       } -> {
-        let hub.Datum { payout: payout_policy_id, payout_addr, .. } =
-          hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+        let hub.Datum { payout: payout_policy_id, payout_addr, .. } = hub.get_datum(
+          reference_inputs,
+          hub_oracle,
+          hub_ref_input_index,
+        )
 
-        expect Some(Input {
-          output_reference: payout_out_ref,
-          output: Output {
-            address: payout_input_address,
-            value: payout_input_value,
-            datum: InlineDatum(input_datum_data),
-            ..
-          },
-        }) = inputs |> list.at(payout_input_index)
+        expect
+            Some(Input {
+              output_reference: payout_out_ref,
+              output: Output {
+                address: payout_input_address,
+                value: payout_input_value,
+                datum: InlineDatum(input_datum_data),
+                ..
+              },
+            })
+          = inputs |> list.at(payout_input_index)
         expect payout_out_ref == own_out_ref
         expect payout_input_address == payout_addr
         expect input_datum_data == payout_datum_data
 
-        let payout_asset_name =
-          singleton_asset_name_with_policy(payout_input_value, payout_policy_id)
+        let payout_asset_name = singleton_asset_name_with_policy(
+          payout_input_value,
+          payout_policy_id,
+        )
         expect count_inputs_with_policy_id(inputs, payout_policy_id) == 1
-        let payout_input_without_nft =
-          value_without_nft(
-            payout_input_value,
-            payout_policy_id,
-            payout_asset_name,
-          )
+        let payout_input_without_nft = value_without_nft(
+          payout_input_value,
+          payout_policy_id,
+          payout_asset_name,
+        )
         expect payout_input_without_nft == target_value
 
-        expect Some(Output {
-          address: l1_output_address,
-          value: l1_output_value,
-          datum: l1_output_datum,
-          reference_script: None,
-        }) = outputs |> list.at(l1_output_index)
+        expect
+            Some(Output {
+              address: l1_output_address,
+              value: l1_output_value,
+              datum: l1_output_datum,
+              reference_script: None,
+            })
+          = outputs |> list.at(l1_output_index)
         expect l1_output_address == payout_datum.l1_address
         expect l1_output_datum == payout_datum.l1_datum
         expect l1_output_value == target_value
@@ -339,31 +353,33 @@ validator spend(hub_oracle: ScriptHash) {
             },
           )
 
-        expect payout.BurnPayout {
-          payout_input_index: burn_payout_input_index,
-          payout_asset_name: burn_payout_asset_name,
-          payout_spend_redeemer_index: burn_payout_spend_redeemer_index,
-          hub_ref_input_index: burn_hub_ref_input_index,
-        }: payout.MintRedeemer =
-          utils.get_redeemer_at(
-            redeemers,
-            Mint(payout_policy_id),
-            burn_redeemer_index,
-          )
+        expect
+            payout.BurnPayout {
+              payout_input_index: burn_payout_input_index,
+              payout_asset_name: burn_payout_asset_name,
+              payout_spend_redeemer_index: burn_payout_spend_redeemer_index,
+              hub_ref_input_index: burn_hub_ref_input_index,
+            }: payout.MintRedeemer
+          = utils.get_redeemer_at(
+          redeemers,
+          Mint(payout_policy_id),
+          burn_redeemer_index,
+        )
         expect burn_payout_input_index == payout_input_index
         expect burn_payout_asset_name == payout_asset_name
         expect burn_hub_ref_input_index == hub_ref_input_index
-        expect payout.ConcludeWithdrawal {
-          payout_input_index: self_payout_input_index,
-          l1_output_index: self_l1_output_index,
-          burn_redeemer_index: self_burn_redeemer_index,
-          hub_ref_input_index: self_hub_ref_input_index,
-        }: payout.SpendRedeemer =
-          utils.get_redeemer_at(
-            redeemers,
-            Spend(own_out_ref),
-            burn_payout_spend_redeemer_index,
-          )
+        expect
+            payout.ConcludeWithdrawal {
+              payout_input_index: self_payout_input_index,
+              l1_output_index: self_l1_output_index,
+              burn_redeemer_index: self_burn_redeemer_index,
+              hub_ref_input_index: self_hub_ref_input_index,
+            }: payout.SpendRedeemer
+          = utils.get_redeemer_at(
+          redeemers,
+          Spend(own_out_ref),
+          burn_payout_spend_redeemer_index,
+        )
         expect self_payout_input_index == payout_input_index
         expect self_l1_output_index == l1_output_index
         expect self_burn_redeemer_index == burn_redeemer_index
@@ -379,7 +395,10 @@ validator spend(hub_oracle: ScriptHash) {
   }
 }
 
-validator mint(hub_oracle: ScriptHash) {
+validator mint(
+  hub_oracle: ScriptHash,
+  withdrawal_retirement_observer: ScriptHash,
+) {
   mint(redeemer: payout.MintRedeemer, own_policy: PolicyId, tx: Transaction) {
     let Transaction { inputs, reference_inputs, redeemers, mint, .. } = tx
 
@@ -387,25 +406,25 @@ validator mint(hub_oracle: ScriptHash) {
       payout.MintPayout {
         withdrawal_utxo_out_ref,
         withdrawal_input_index,
-        withdrawal_spend_redeemer_index,
+        retirement_withdraw_redeemer_index,
         hub_ref_input_index,
       } -> {
-        let hub.Datum {
-          payout: payout_policy_id,
-          withdrawal: withdrawal_policy_id,
-          withdrawal_addr,
-          ..
-        } = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+        let
+            hub.Datum {
+              payout: payout_policy_id,
+              withdrawal: withdrawal_policy_id,
+              withdrawal_addr,
+              ..
+            }
+          = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
         expect own_policy == payout_policy_id
 
-        expect [Pair(payout_asset_name, 1)] =
-          mint
-            |> assets.tokens(own_policy)
-            |> dict.to_pairs
-        expect [Pair(withdrawal_asset_name, -1)] =
-          mint
-            |> assets.tokens(withdrawal_policy_id)
-            |> dict.to_pairs
+        expect [Pair(payout_asset_name, 1)] = mint
+          |> assets.tokens(own_policy)
+          |> dict.to_pairs
+        expect [Pair(withdrawal_asset_name, -1)] = mint
+          |> assets.tokens(withdrawal_policy_id)
+          |> dict.to_pairs
         expect payout_asset_name == withdrawal_asset_name
         expect
           mint == assets.merge(
@@ -413,14 +432,16 @@ validator mint(hub_oracle: ScriptHash) {
             assets.from_asset(withdrawal_policy_id, withdrawal_asset_name, -1),
           )
 
-        expect Some(Input {
-          output_reference,
-          output: Output {
-            address: withdrawal_input_address,
-            value: withdrawal_input_value,
-            ..
-          },
-        }) = inputs |> list.at(withdrawal_input_index)
+        expect
+            Some(Input {
+              output_reference,
+              output: Output {
+                address: withdrawal_input_address,
+                value: withdrawal_input_value,
+                ..
+              },
+            })
+          = inputs |> list.at(withdrawal_input_index)
         expect output_reference == withdrawal_utxo_out_ref
         expect withdrawal_input_address == withdrawal_addr
         expect
@@ -430,15 +451,22 @@ validator mint(hub_oracle: ScriptHash) {
             withdrawal_asset_name,
           ) == 1
 
-        expect withdrawal_lib.SpendRedeemer {
-          purpose: withdrawal_lib.InitializePayout,
-          ..
-        }: withdrawal_lib.SpendRedeemer =
-          utils.get_redeemer_at(
-            redeemers,
-            Spend(withdrawal_utxo_out_ref),
-            withdrawal_spend_redeemer_index,
+        // The deployment pins this semantic observer. Its exact zero-valued
+        // withdrawal validates history removal, finality, membership and funds.
+        expect
+          list.has(
+            tx.withdrawals,
+            Pair(Script(withdrawal_retirement_observer), 0),
           )
+        expect delegated: retirement.Args = utils.get_redeemer_at(
+          redeemers,
+          Withdraw(Script(withdrawal_retirement_observer)),
+          retirement_withdraw_redeemer_index,
+        )
+        expect delegated.hub_reference_index == hub_ref_input_index
+        expect delegated.witness.order_input_index == withdrawal_input_index
+        expect
+          delegated.witness.purpose == retirement.InitializeWithdrawalPayout
 
         True
       }
@@ -449,25 +477,29 @@ validator mint(hub_oracle: ScriptHash) {
         payout_spend_redeemer_index,
         hub_ref_input_index,
       } -> {
-        let hub.Datum { payout: payout_policy_id, .. } =
-          hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+        let hub.Datum { payout: payout_policy_id, .. } = hub.get_datum(
+          reference_inputs,
+          hub_oracle,
+          hub_ref_input_index,
+        )
         expect own_policy == payout_policy_id
         expect mint == assets.from_asset(own_policy, payout_asset_name, -1)
 
-        expect Some(Input { output_reference, output: Output { value, .. } }) =
-          inputs |> list.at(payout_input_index)
+        expect Some(Input { output_reference, output: Output { value, .. } }) = inputs
+          |> list.at(payout_input_index)
         expect assets.quantity_of(value, own_policy, payout_asset_name) == 1
 
-        expect payout.ConcludeWithdrawal {
-          payout_input_index: spend_payout_input_index,
-          hub_ref_input_index: spend_hub_ref_input_index,
-          ..
-        }: payout.SpendRedeemer =
-          utils.get_redeemer_at(
-            redeemers,
-            Spend(output_reference),
-            payout_spend_redeemer_index,
-          )
+        expect
+            payout.ConcludeWithdrawal {
+              payout_input_index: spend_payout_input_index,
+              hub_ref_input_index: spend_hub_ref_input_index,
+              ..
+            }: payout.SpendRedeemer
+          = utils.get_redeemer_at(
+          redeemers,
+          Spend(output_reference),
+          payout_spend_redeemer_index,
+        )
         expect spend_payout_input_index == payout_input_index
         expect spend_hub_ref_input_index == hub_ref_input_index
 
@@ -539,13 +571,6 @@ const withdrawal_ref: OutputReference =
 
 const withdrawal_phas_root =
   #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-
-const withdrawal_root =
-  transition_trace.commit_counted_root(
-    transition_trace.WithdrawalsRootDomain,
-    withdrawal_phas_root,
-    1,
-  )
 
 fn ada(quantity: Int) -> Value {
   assets.from_lovelace(quantity)
@@ -643,23 +668,21 @@ fn add_funds_tx(
   reserve_change_address: Address,
   mint: Value,
 ) -> Transaction {
-  let payout_redeemer: Data =
-    payout.AddFunds {
-      payout_input_index: 1,
-      payout_output_index: 0,
-      reserve_input_index: 0,
-      reserve_change_output_index: Some(1),
-      reserve_spend_redeemer_index: 0,
-      payout_spend_redeemer_index: 1,
-      hub_ref_input_index: 0,
-    }
-  let reserve_redeemer: Data =
-    reserve.Spend {
-      reserve_input_index: 0,
-      payout_input_index: 1,
-      payout_spend_redeemer_index: 1,
-      hub_ref_input_index: 0,
-    }
+  let payout_redeemer: Data = payout.AddFunds {
+    payout_input_index: 1,
+    payout_output_index: 0,
+    reserve_input_index: 0,
+    reserve_change_output_index: Some(1),
+    reserve_spend_redeemer_index: 0,
+    payout_spend_redeemer_index: 1,
+    hub_ref_input_index: 0,
+  }
+  let reserve_redeemer: Data = reserve.Spend {
+    reserve_input_index: 0,
+    payout_input_index: 1,
+    payout_spend_redeemer_index: 1,
+    hub_ref_input_index: 0,
+  }
 
   Transaction {
     ..tx.placeholder,
@@ -813,13 +836,12 @@ fn custom_add_funds_tx(
   extra_inputs: List<Input>,
   extra_outputs: List<Output>,
 ) -> Transaction {
-  let payout_redeemer_data: Data =
-    custom_add_funds_redeemer(
-      when reserve_change is {
-        None -> None
-        Some(_) -> Some(1)
-      },
-    )
+  let payout_redeemer_data: Data = custom_add_funds_redeemer(
+    when reserve_change is {
+      None -> None
+      Some(_) -> Some(1)
+    },
+  )
   let reserve_redeemer_data: Data = custom_reserve_redeemer()
   Transaction {
     ..tx.placeholder,
@@ -879,14 +901,13 @@ test payout_add_funds_accepts_exact_collection() {
 }
 
 test payout_add_funds_rejects_datum_mutation() fail {
-  let mutated_datum: Data =
-    payout.Datum {
-      l2_value: payout_value_pairs(8),
-      l1_address: address.from_script(
-        #"66666666666666666666666666666666666666666666666666666666",
-      ),
-      l1_datum: NoDatum,
-    }
+  let mutated_datum: Data = payout.Datum {
+    l2_value: payout_value_pairs(8),
+    l1_address: address.from_script(
+      #"66666666666666666666666666666666666666666666666666666666",
+    ),
+    l1_datum: NoDatum,
+  }
   spend.spend(
     hub_policy,
     Some(payout_datum()),
@@ -979,26 +1000,24 @@ test payout_add_funds_accepts_exact_multi_asset_collection() {
 
 test payout_add_funds_accepts_deterministic_partial_then_final_collection() {
   let datum = multi_asset_payout_datum()
-  let first_collection =
-    custom_add_funds_tx(
-      datum,
-      multi_asset_value(2, 1),
-      multi_asset_value(2, 1),
-      multi_asset_value(4, 2),
-      None,
-      [],
-      [],
-    )
-  let final_collection =
-    custom_add_funds_tx(
-      datum,
-      multi_asset_value(4, 2),
-      multi_asset_value(8, 10),
-      multi_asset_value(7, 4),
-      Some(multi_asset_value(5, 8)),
-      [],
-      [],
-    )
+  let first_collection = custom_add_funds_tx(
+    datum,
+    multi_asset_value(2, 1),
+    multi_asset_value(2, 1),
+    multi_asset_value(4, 2),
+    None,
+    [],
+    [],
+  )
+  let final_collection = custom_add_funds_tx(
+    datum,
+    multi_asset_value(4, 2),
+    multi_asset_value(8, 10),
+    multi_asset_value(7, 4),
+    Some(multi_asset_value(5, 8)),
+    [],
+    [],
+  )
 
   and {
     spend.spend(
@@ -1020,8 +1039,11 @@ test payout_add_funds_accepts_deterministic_partial_then_final_collection() {
 
 test payout_add_funds_rejects_no_positive_needed_asset_contribution() fail {
   let datum = multi_asset_payout_datum()
-  let unrelated_value =
-    assets.from_asset(unused_token_policy, unused_token_asset, 1)
+  let unrelated_value = assets.from_asset(
+    unused_token_policy,
+    unused_token_asset,
+    1,
+  )
   spend.spend(
     hub_policy,
     Some(datum),
@@ -1190,6 +1212,7 @@ test payout_conclude_accepts_exact_burn_and_destination() {
     ),
     mint.mint(
       hub_policy,
+      withdrawal_retirement_observer,
       payout_burn_redeemer(),
       payout_policy,
       valid_payout_conclusion_tx(),
@@ -1198,13 +1221,12 @@ test payout_conclude_accepts_exact_burn_and_destination() {
 }
 
 test payout_conclude_rejects_wrong_destination_address() fail {
-  let bad_output =
-    Output {
-      ..payout_destination_output(7),
-      address: address.from_script(
-        #"99999999999999999999999999999999999999999999999999999999",
-      ),
-    }
+  let bad_output = Output {
+    ..payout_destination_output(7),
+    address: address.from_script(
+      #"99999999999999999999999999999999999999999999999999999999",
+    ),
+  }
   spend.spend(
     hub_policy,
     Some(payout_datum()),
@@ -1213,6 +1235,40 @@ test payout_conclude_rejects_wrong_destination_address() fail {
     payout_conclusion_tx(
       7,
       bad_output,
+      [],
+      assets.from_asset(payout_policy, payout_asset, -1),
+    ),
+  )
+}
+
+test payout_conclude_rejects_wrong_destination_datum() fail {
+  let bad_output = Output {
+    ..payout_destination_output(7),
+    datum: InlineDatum(payout_datum_data()),
+  }
+  spend.spend(
+    hub_policy,
+    Some(payout_datum()),
+    payout_conclusion_spend_redeemer(),
+    payout_ref,
+    payout_conclusion_tx(
+      7,
+      bad_output,
+      [],
+      assets.from_asset(payout_policy, payout_asset, -1),
+    ),
+  )
+}
+
+test payout_conclude_rejects_underfunded_target_output() fail {
+  spend.spend(
+    hub_policy,
+    Some(payout_datum()),
+    payout_conclusion_spend_redeemer(),
+    payout_ref,
+    payout_conclusion_tx(
+      7,
+      payout_destination_output(6),
       [],
       assets.from_asset(payout_policy, payout_asset, -1),
     ),
@@ -1235,13 +1291,12 @@ test payout_conclude_rejects_surplus_accumulator_value() fail {
 }
 
 test payout_conclude_rejects_continuing_payout_output() fail {
-  let continuation =
-    Output {
-      address: address.from_script(payout_policy),
-      value: ada(2),
-      datum: InlineDatum(payout_datum_data()),
-      reference_script: None,
-    }
+  let continuation = Output {
+    address: address.from_script(payout_policy),
+    value: ada(2),
+    datum: InlineDatum(payout_datum_data()),
+    reference_script: None,
+  }
   spend.spend(
     hub_policy,
     Some(payout_datum()),
@@ -1259,6 +1314,7 @@ test payout_conclude_rejects_continuing_payout_output() fail {
 test payout_burn_rejects_unrelated_mint() fail {
   mint.mint(
     hub_policy,
+    withdrawal_retirement_observer,
     payout_burn_redeemer(),
     payout_policy,
     payout_conclusion_tx(
@@ -1277,52 +1333,39 @@ test payout_burn_rejects_unrelated_mint() fail {
   )
 }
 
-fn withdrawal_spend_redeemer_data() -> Data {
-  let redeemer: Data =
-    withdrawal_lib.SpendRedeemer {
-      input_index: 0,
-      output_index: 0,
-      hub_ref_input_index: 0,
-      settlement_ref_input_index: 0,
-      burn_redeemer_index: 0,
-      payout_mint_redeemer_index: 1,
-      membership_proof: transition_trace.RootMembershipProof {
-        domain: transition_trace.WithdrawalsRootDomain,
-        root: withdrawal_root,
+const withdrawal_retirement_observer: ScriptHash =
+  #"93939393939393939393939393939393939393939393939393939393"
+
+fn retirement_redeemer_data() -> Data {
+  let redeemer: Data = retirement.Args {
+    hub_reference_index: 0,
+    witness: retirement.Witness {
+      predecessor_input_index: 1,
+      order_input_index: 0,
+      predecessor_output_index: 0,
+      funds_output_index: 1,
+      structural_refund_output_index: None,
+      confirmed_reference_index: 1,
+      settlement_reference_index: 2,
+      external_reference_index: None,
+      membership: retirement.Membership {
         phas_root: withdrawal_phas_root,
         count: 1,
-        key: cbor.serialise(withdrawal_ref),
-        value: cbor.serialise(
-          ledger_state.WithdrawalInfo {
-            body: ledger_state.WithdrawalBody {
-              l2_outref: withdrawal_ref,
-              l2_owner: #"11111111111111111111111111111111111111111111111111111111",
-              l2_value: payout_value_pairs(7),
-              l1_address: address.from_script(
-                #"66666666666666666666666666666666666666666666666666666666",
-              ),
-              l1_datum: NoDatum,
-            },
-            signature: Pair(#"01", #"02"),
-            validity: ledger_state.WithdrawalIsValid,
-          },
-        ),
         proof: [],
       },
-      inclusion_proof_script_withdraw_redeemer_index: 0,
-      purpose: withdrawal_lib.InitializePayout,
-    }
+      purpose: retirement.InitializeWithdrawalPayout,
+    },
+  }
   redeemer
 }
 
 fn mint_payout_tx(minted_value: Value) -> Transaction {
-  let mint_redeemer: Data =
-    payout.MintPayout {
-      withdrawal_utxo_out_ref: withdrawal_ref,
-      withdrawal_input_index: 0,
-      withdrawal_spend_redeemer_index: 0,
-      hub_ref_input_index: 0,
-    }
+  let mint_redeemer: Data = payout.MintPayout {
+    withdrawal_utxo_out_ref: withdrawal_ref,
+    withdrawal_input_index: 0,
+    retirement_withdraw_redeemer_index: 0,
+    hub_ref_input_index: 0,
+  }
   Transaction {
     ..tx.placeholder,
     inputs: [
@@ -1338,20 +1381,25 @@ fn mint_payout_tx(minted_value: Value) -> Transaction {
     ],
     reference_inputs: [hub_ref_input()],
     redeemers: [
-      Pair(Spend(withdrawal_ref), withdrawal_spend_redeemer_data()),
+      Pair(
+        Withdraw(Script(withdrawal_retirement_observer)),
+        retirement_redeemer_data(),
+      ),
       Pair(Mint(payout_policy), mint_redeemer),
     ],
     mint: minted_value,
+    withdrawals: [Pair(Script(withdrawal_retirement_observer), 0)],
   }
 }
 
 test payout_mint_accepts_matching_withdrawal_burn() {
   mint.mint(
     hub_policy,
+    withdrawal_retirement_observer,
     payout.MintPayout {
       withdrawal_utxo_out_ref: withdrawal_ref,
       withdrawal_input_index: 0,
-      withdrawal_spend_redeemer_index: 0,
+      retirement_withdraw_redeemer_index: 0,
       hub_ref_input_index: 0,
     },
     payout_policy,
@@ -1367,10 +1415,11 @@ test payout_mint_accepts_matching_withdrawal_burn() {
 test payout_mint_rejects_asset_name_mismatch() fail {
   mint.mint(
     hub_policy,
+    withdrawal_retirement_observer,
     payout.MintPayout {
       withdrawal_utxo_out_ref: withdrawal_ref,
       withdrawal_input_index: 0,
-      withdrawal_spend_redeemer_index: 0,
+      retirement_withdraw_redeemer_index: 0,
       hub_ref_input_index: 0,
     },
     payout_policy,
@@ -1380,5 +1429,109 @@ test payout_mint_rejects_asset_name_mismatch() fail {
         assets.from_asset(withdrawal_policy, payout_asset, -1),
       ),
     ),
+  )
+}
+
+fn check_history_payout_mint(transaction: Transaction) -> Bool {
+  mint.mint(
+    hub_policy,
+    withdrawal_retirement_observer,
+    payout.MintPayout {
+      withdrawal_utxo_out_ref: withdrawal_ref,
+      withdrawal_input_index: 0,
+      retirement_withdraw_redeemer_index: 0,
+      hub_ref_input_index: 0,
+    },
+    payout_policy,
+    transaction,
+  )
+}
+
+fn valid_history_payout_mint() -> Transaction {
+  mint_payout_tx(
+    assets.merge(
+      assets.from_asset(payout_policy, payout_asset, 1),
+      assets.from_asset(withdrawal_policy, payout_asset, -1),
+    ),
+  )
+}
+
+test payout_mint_requires_retirement_withdrawal() fail {
+  check_history_payout_mint(
+    Transaction { ..valid_history_payout_mint(), withdrawals: [] },
+  )
+}
+
+test payout_mint_requires_zero_retirement_withdrawal() fail {
+  check_history_payout_mint(
+    Transaction {
+      ..valid_history_payout_mint(),
+      withdrawals: [Pair(Script(withdrawal_retirement_observer), 1)],
+    },
+  )
+}
+
+test payout_mint_rejects_different_retirement_purpose() fail {
+  expect args: retirement.Args = retirement_redeemer_data()
+  let wrong: Data = retirement.Args {
+    ..args,
+    witness: retirement.Witness {
+      ..args.witness,
+      purpose: retirement.AbsorbDeposit,
+    },
+  }
+  check_history_payout_mint(
+    Transaction {
+      ..valid_history_payout_mint(),
+      redeemers: [Pair(Withdraw(Script(withdrawal_retirement_observer)), wrong)],
+    },
+  )
+}
+
+test payout_mint_binds_retiring_order_input() fail {
+  expect args: retirement.Args = retirement_redeemer_data()
+  let wrong: Data = retirement.Args {
+    ..args,
+    witness: retirement.Witness { ..args.witness, order_input_index: 1 },
+  }
+  check_history_payout_mint(
+    Transaction {
+      ..valid_history_payout_mint(),
+      redeemers: [Pair(Withdraw(Script(withdrawal_retirement_observer)), wrong)],
+    },
+  )
+}
+
+test payout_mint_binds_retirement_hub_reference() fail {
+  expect args: retirement.Args = retirement_redeemer_data()
+  let wrong: Data = retirement.Args { ..args, hub_reference_index: 1 }
+  check_history_payout_mint(
+    Transaction {
+      ..valid_history_payout_mint(),
+      redeemers: [Pair(Withdraw(Script(withdrawal_retirement_observer)), wrong)],
+    },
+  )
+}
+
+test payout_mint_rejects_unrelated_observer_redeemer() fail {
+  check_history_payout_mint(
+    Transaction {
+      ..valid_history_payout_mint(),
+      redeemers: [
+        Pair(Withdraw(Script(withdrawal_policy)), retirement_redeemer_data()),
+      ],
+    },
+  )
+}
+
+test payout_mint_allows_other_withdrawals_with_exact_retirement() {
+  check_history_payout_mint(
+    Transaction {
+      ..valid_history_payout_mint(),
+      withdrawals: [
+        Pair(Script(withdrawal_retirement_observer), 0),
+        Pair(Script(withdrawal_policy), 0),
+      ],
+    },
   )
 }

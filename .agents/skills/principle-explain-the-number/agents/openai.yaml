@@ -1,0 +1,6 @@
+interface:
+  display_name: "Principle Explain The Number"
+  short_description: "Apply before you trust, report, or act on a number you measured:"
+  default_prompt: "Use $principle-explain-the-number for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

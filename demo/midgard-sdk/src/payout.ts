@@ -1,7 +1,8 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { AddressSchema, OutputReferenceSchema, ValueSchema } from "@/common.js";
-import { CardanoDatumSchema } from "@/ledger-state.js";
+import { AddressSchema, OutputReferenceSchema, ValueSchema } from "./common.js";
+import { CardanoDatumSchema } from "./ledger-state.js";
 
 export const PayoutDatumSchema = Data.Object({
   l2_value: ValueSchema,
@@ -9,7 +10,7 @@ export const PayoutDatumSchema = Data.Object({
   l1_datum: CardanoDatumSchema,
 });
 export type PayoutDatum = Data.Static<typeof PayoutDatumSchema>;
-export const PayoutDatum = PayoutDatumSchema as unknown as PayoutDatum;
+export const PayoutDatum = asDataType<PayoutDatum>(PayoutDatumSchema);
 
 export const PayoutSpendRedeemerSchema = Data.Enum([
   Data.Object({
@@ -33,15 +34,16 @@ export const PayoutSpendRedeemerSchema = Data.Enum([
   }),
 ]);
 export type PayoutSpendRedeemer = Data.Static<typeof PayoutSpendRedeemerSchema>;
-export const PayoutSpendRedeemer =
-  PayoutSpendRedeemerSchema as unknown as PayoutSpendRedeemer;
+export const PayoutSpendRedeemer = asDataType<PayoutSpendRedeemer>(
+  PayoutSpendRedeemerSchema,
+);
 
 export const PayoutMintRedeemerSchema = Data.Enum([
   Data.Object({
     MintPayout: Data.Object({
       withdrawal_utxo_out_ref: OutputReferenceSchema,
       withdrawal_input_index: Data.Integer(),
-      withdrawal_spend_redeemer_index: Data.Integer(),
+      retirement_withdraw_redeemer_index: Data.Integer(),
       hub_ref_input_index: Data.Integer(),
     }),
   }),
@@ -55,5 +57,6 @@ export const PayoutMintRedeemerSchema = Data.Enum([
   }),
 ]);
 export type PayoutMintRedeemer = Data.Static<typeof PayoutMintRedeemerSchema>;
-export const PayoutMintRedeemer =
-  PayoutMintRedeemerSchema as unknown as PayoutMintRedeemer;
+export const PayoutMintRedeemer = asDataType<PayoutMintRedeemer>(
+  PayoutMintRedeemerSchema,
+);

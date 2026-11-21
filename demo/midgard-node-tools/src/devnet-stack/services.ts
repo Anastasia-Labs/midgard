@@ -1,0 +1,196 @@
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { assertRoleL1Env } from "@al-ft/midgard-l1-follower";
+
+import {
+  COMMITTEE_SIZE,
+  type CommitteeConfigModule,
+  committeeEnvironment,
+  grantPublicReader,
+  preflightCommitteeConfigs,
+  publicRetainedDaEnvironment,
+} from "./da.js";
+import type { DeployContext } from "./deploy.js";
+import { recordedL1Origin } from "./deployment-origin.js";
+import { codeStamp, runtimeDistTargets } from "./dist-freshness.js";
+import { walletInfos } from "./identities.js";
+import { servicePorts } from "./layout.js";
+import {
+  type HubOracleOneShot,
+  nodeEnvironment,
+  preflightNodeConfig,
+} from "./node-env.js";
+import {
+  enduranceReasons,
+  runEnduranceMaintainer,
+} from "./reserve-float-chain.js";
+import type {
+  InProcessMaintainer,
+  ServiceSpec,
+  SupervisorPaths,
+} from "./supervisor.js";
+import { preflightWatcherConfigs, watcherServiceSpecs } from "./watcher.js";
+import type { WatcherModule } from "./watcher-release.js";
+
+/**
+ * The node publishes readiness once startup is done. Its startup steps ride
+ * out transient failures within their budgets (the database 15 min, the L1
+ * node 10 min, the protocol status STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS
+ * 120 x 5 s), then wait for the follower to reach the tip and apply its
+ * first view; past a budget the node exits non-zero and the supervisor
+ * restarts it. An hour covers those budgets and a first catch-up.
+ */
+export const NODE_START_GRACE_MS = 60 * 60_000;
+
+export const supervisorPaths = (
+  context: Pick<DeployContext, "layout">,
+  specs?: readonly ServiceSpec[],
+): SupervisorPaths => ({
+  runDir: context.layout.runDir,
+  runtimeCodeStamp: () => codeStamp(runtimeDistTargets(context.layout)),
+  serviceSpecs: specs,
+  deploymentBinding: existsSync(context.layout.contractManifest)
+    ? createHash("sha256")
+        .update(readFileSync(context.layout.contractManifest))
+        .digest("hex")
+    : undefined,
+  pidDir: join(context.layout.state, "services"),
+  events: context.layout.supervisorEvents,
+  serviceLog: context.layout.serviceLog,
+});
+
+/**
+ * Every long-running process of the stack. Each is a host process on this
+ * controller's Node binary, reading only the run's own records.
+ */
+export const serviceSpecs = (
+  context: DeployContext,
+  oneShot: HubOracleOneShot,
+): ServiceSpec[] => {
+  const { layout, run, identities, artifacts } = context;
+  const ports = servicePorts(run);
+  // Every committee follower and the node start from the run's recorded
+  // origin; without one no service is specified.
+  const l1Origin = recordedL1Origin(layout, oneShot);
+  const committees: ServiceSpec[] = Array.from(
+    { length: COMMITTEE_SIZE },
+    (_, index) => {
+      const base = `http://127.0.0.1:${ports.committeeApi(index)}`;
+      return {
+        name: `da-committee-${index}`,
+        command: process.execPath,
+        args: [join(layout.daRoot, "dist/index.js")],
+        cwd: layout.daRoot,
+        env: committeeEnvironment({
+          layout,
+          run,
+          identities,
+          transportBinary: artifacts.transportBinary,
+          index,
+          l1Origin,
+        }),
+        healthUrl: `${base}/healthz`,
+        readyUrl: `${base}/readyz`,
+      };
+    },
+  );
+  const node = `http://127.0.0.1:${ports.nodeHttp}`;
+  return roleProcessesFailClosed([
+    ...committees,
+    {
+      name: "public-retained-da",
+      command: process.execPath,
+      args: [join(layout.daRoot, "dist/public-retained-da.js")],
+      cwd: layout.daRoot,
+      env: publicRetainedDaEnvironment({ layout, run, identities }),
+      healthUrl: `http://127.0.0.1:${ports.publicRetainedDaHealth}/healthz`,
+      readyUrl: `http://127.0.0.1:${ports.publicRetainedDaHealth}/readyz`,
+      // Its tables exist once member 0 has migrated its store.
+      prestart: () => grantPublicReader(layout, run, identities),
+    },
+    {
+      name: "node",
+      command: process.execPath,
+      args: [join(layout.nodeRoot, "dist/index.js"), "listen"],
+      cwd: layout.nodeRoot,
+      env: nodeEnvironment({
+        ...context,
+        oneShot,
+        l1Origin,
+        role: "listen",
+      }),
+      healthUrl: `${node}/healthz`,
+      readyUrl: `${node}/readyz`,
+      startGraceMs: NODE_START_GRACE_MS,
+    },
+    ...watcherServiceSpecs(context),
+  ]);
+};
+
+/**
+ * Runs every service's own configuration parsers over this run's
+ * configurations before L1 starts: the watcher's, the node's, and the DA
+ * committee's and its public reader's. Facts only the deployment fixes are
+ * stand-ins; each service parses the real ones again when it starts.
+ */
+export const preflightServiceConfigs = async (
+  context: DeployContext,
+  parsers: {
+    readonly watcher: WatcherModule;
+    readonly committee: CommitteeConfigModule;
+  },
+): Promise<void> => {
+  preflightWatcherConfigs(context, parsers.watcher);
+  await preflightNodeConfig(context);
+  preflightCommitteeConfigs(context, parsers.committee);
+};
+
+/**
+ * Every service the stack starts is a role process (node `listen`, the DA
+ * committee and its public reader, the watcher), reading L1 only through its
+ * follower (option E). The harness is a tool and may use Kupmios, but none of
+ * that reaches a role: a spec whose environment carries a Kupo, Ogmios,
+ * Blockfrost or tool `L1_ACCESS` setting is refused before anything starts.
+ * The supervisor passes a service only `PATH`, `HOME` and this environment.
+ */
+export const roleProcessesFailClosed = (
+  specs: ServiceSpec[],
+): ServiceSpec[] => {
+  for (const spec of specs) assertRoleL1Env(spec.env, spec.name);
+  return specs;
+};
+
+/** What the endurance maintainer and its status report read. */
+const enduranceInputs = (context: DeployContext) => ({
+  layout: context.layout,
+  run: context.run,
+  wallets: walletInfos(context.identities),
+});
+
+/**
+ * The work the run's supervisor keeps in its own process beside its services:
+ * the reserve float and the endurance reasons, for the run's life. It
+ * restarts with the dists (specsDigest's code stamp covers the supervisor's
+ * bundle), and a fault of it never stops a service.
+ */
+export const supervisorMaintainers = (
+  context: DeployContext,
+): InProcessMaintainer[] => [
+  {
+    name: "endurance",
+    run: (signal) =>
+      runEnduranceMaintainer({ ...enduranceInputs(context), signal }),
+  },
+];
+
+/** The endurance reasons for status; a report that fails reads as its error. */
+export const enduranceReport = (
+  context: DeployContext,
+): Promise<readonly string[] | string> =>
+  Promise.resolve()
+    .then(() => enduranceReasons(enduranceInputs(context)))
+    .catch((error: unknown) => String(error));
+
+export { specsDigest } from "./service-recovery-scope.js";

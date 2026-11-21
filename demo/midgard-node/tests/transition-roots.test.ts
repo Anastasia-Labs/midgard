@@ -1,26 +1,28 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { it } from "@effect/vitest";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
 import {
-  buildAdjacentTraceProof,
   buildAuthenticatedRootFromDataEntries,
+  buildRootMembershipProof,
+  buildRootNonMembershipProof,
+  verifyRootCountProof,
+} from "../src/workers/commit-block-header/transition-roots.validate-count-proof.js";
+import { verifyEventToStepProof } from "../src/workers/commit-block-header/transition-roots.verify-event-to-step-proof.js";
+import {
+  buildAdjacentTraceProof,
   buildEventToStepMembershipProof,
   buildEventToStepNonMembershipProof,
   buildEventToStepRoot,
   buildIndexedTraceProof,
-  buildRootMembershipProof,
-  buildRootNonMembershipProof,
   buildTransitionTraceRoot,
   verifyAdjacentTraceProof,
-  verifyEventToStepProof,
   verifyIndexedTraceProof,
-  verifyRootCountProof,
   verifyRootMembershipProof,
   verifyRootNonMembershipProof,
-} from "../src/workers/commit-block-header/transition-roots.js";
+} from "../src/workers/commit-block-header/transition-roots.verify-indexed-trace-proof.js";
 import {
   depositEventKey,
   h28,
@@ -35,14 +37,16 @@ const transitionStep = ({
   pre,
   post,
   phase = "Withdrawal",
+  schemaVersion = SDK.TRANSITION_STEP_SCHEMA_VERSION,
 }: {
   readonly stepIndex: bigint;
   readonly eventKey: SDK.EventKey;
   readonly pre: string;
   readonly post: string;
   readonly phase?: SDK.TransitionPhase;
+  readonly schemaVersion?: bigint;
 }): SDK.TransitionStep => ({
-  schema_version: 1n,
+  schema_version: schemaVersion,
   step_index: stepIndex,
   event_key: eventKey,
   phase,
@@ -59,7 +63,7 @@ describe("transition root primitives", () => {
     () =>
       Effect.gen(function* () {
         const root = yield* buildAuthenticatedRootFromDataEntries({
-          domain: SDK.ROOT_DOMAINS.transactions,
+          domain: SDK.ROOT_DOMAINS.transactionsV1,
           entries: [
             { key: h32(1), value: h32(11) },
             { key: h32(2), value: h32(12) },
@@ -85,7 +89,7 @@ describe("transition root primitives", () => {
           keySchema: SDK.H32Schema,
           valueSchema: SDK.H32Schema,
           options: {
-            expectedDomain: SDK.ROOT_DOMAINS.transactions,
+            expectedDomain: SDK.ROOT_DOMAINS.transactionsV1,
             expectedRoot: root.root,
             expectedCount: 2n,
           },
@@ -94,7 +98,7 @@ describe("transition root primitives", () => {
           witness: nonMembership,
           keySchema: SDK.H32Schema,
           options: {
-            expectedDomain: SDK.ROOT_DOMAINS.transactions,
+            expectedDomain: SDK.ROOT_DOMAINS.transactionsV1,
             expectedRoot: root.root,
             expectedCount: 2n,
           },
@@ -206,6 +210,79 @@ describe("transition root primitives", () => {
       expect(sparse._tag).toBe("Left");
       expect(duplicate._tag).toBe("Left");
     }),
+  );
+
+  it.effect(
+    "rejects TransitionStepV1 schema versions 0 and 2 during root construction",
+    () =>
+      Effect.gen(function* () {
+        for (const schemaVersion of [0n, 2n]) {
+          const result = yield* buildTransitionTraceRoot([
+            transitionStep({
+              stepIndex: 0n,
+              eventKey: withdrawalEventKey(1),
+              pre: h32(1),
+              post: h32(2),
+              schemaVersion,
+            }),
+          ]).pipe(Effect.either);
+
+          expect(result._tag).toBe("Left");
+          if (result._tag === "Left") {
+            expect(String(result.left.cause)).toContain(
+              `TransitionStepV1 schema_version must equal ${SDK.TRANSITION_STEP_SCHEMA_VERSION.toString()}`,
+            );
+            expect(String(result.left.cause)).toContain(
+              `got=${schemaVersion.toString()}`,
+            );
+          }
+        }
+      }),
+  );
+
+  it.effect(
+    "rejects TransitionStepV1 schema versions 0 and 2 in indexed proofs",
+    () =>
+      Effect.gen(function* () {
+        const root = yield* buildTransitionTraceRoot([
+          transitionStep({
+            stepIndex: 0n,
+            eventKey: withdrawalEventKey(1),
+            pre: h32(1),
+            post: h32(2),
+          }),
+        ]);
+        const indexed = yield* buildIndexedTraceProof({
+          root,
+          stepIndex: 0n,
+        });
+
+        for (const schemaVersion of [0n, 2n]) {
+          const result = yield* verifyIndexedTraceProof(
+            {
+              ...indexed,
+              value: {
+                ...indexed.value,
+                schema_version: schemaVersion,
+              },
+            },
+            {
+              expectedRoot: root.root,
+              expectedCount: 1n,
+            },
+          ).pipe(Effect.either);
+
+          expect(result._tag).toBe("Left");
+          if (result._tag === "Left") {
+            expect(String(result.left.cause)).toContain(
+              `TransitionStepV1 schema_version must equal ${SDK.TRANSITION_STEP_SCHEMA_VERSION.toString()}`,
+            );
+            expect(String(result.left.cause)).toContain(
+              `got=${schemaVersion.toString()}`,
+            );
+          }
+        }
+      }),
   );
 
   it.effect("proves dense trace out-of-range non-membership", () =>

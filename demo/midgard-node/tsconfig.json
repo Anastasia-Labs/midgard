@@ -4,10 +4,11 @@
     "allowUnusedLabels": false,
     "declaration": true,
     "forceConsistentCasingInFileNames": true,
-    "lib": ["es2022", "dom"],
+    "lib": ["es2022", "dom", "dom.iterable"],
     "esModuleInterop": true,
     "module": "NodeNext",
     "moduleResolution": "nodenext",
+    "customConditions": ["midgard-source"],
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "noEmitOnError": true,
@@ -20,10 +21,7 @@
     "strict": true,
     "target": "es2020",
     "outDir": "dist",
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    }
+    "rootDir": ".."
   },
   "ts-node": {
     "esm": true,

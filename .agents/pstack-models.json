@@ -1,0 +1,75 @@
+{
+  "roles": {
+    "feature, refactoring": {
+      "provider": "native"
+    },
+    "bug-fix": {
+      "provider": "native"
+    },
+    "perf-issue": {
+      "provider": "native"
+    },
+    "hillclimb": {
+      "provider": "native"
+    },
+    "judgment and prose": {
+      "provider": "native"
+    },
+    "hardest tasks": {
+      "provider": "native"
+    },
+    "how explorer": {
+      "provider": "native"
+    },
+    "how explainer": {
+      "provider": "native"
+    },
+    "why investigators": {
+      "provider": "native"
+    },
+    "why synthesizer": {
+      "provider": "native"
+    },
+    "reflect tooling": {
+      "provider": "native"
+    },
+    "reflect judgment, divergent, synthesizer": {
+      "provider": "native"
+    },
+    "swarm workers": {
+      "provider": "native"
+    },
+    "arena runners": [
+      {
+        "provider": "codex"
+      },
+      {
+        "provider": "claude"
+      }
+    ],
+    "arena cross-judge pool": [
+      {
+        "provider": "codex"
+      },
+      {
+        "provider": "claude"
+      }
+    ],
+    "architect runners": [
+      {
+        "provider": "codex"
+      },
+      {
+        "provider": "claude"
+      }
+    ],
+    "interrogate reviewers": [
+      {
+        "provider": "codex"
+      },
+      {
+        "provider": "claude"
+      }
+    ]
+  }
+}

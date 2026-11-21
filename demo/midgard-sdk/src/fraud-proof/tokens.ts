@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 export const FraudProofTokenDatumSchema = Data.Object({
@@ -6,8 +7,9 @@ export const FraudProofTokenDatumSchema = Data.Object({
 export type FraudProofTokenDatum = Data.Static<
   typeof FraudProofTokenDatumSchema
 >;
-export const FraudProofTokenDatum =
-  FraudProofTokenDatumSchema as unknown as FraudProofTokenDatum;
+export const FraudProofTokenDatum = asDataType<FraudProofTokenDatum>(
+  FraudProofTokenDatumSchema,
+);
 
 export const FraudProofTokenSpendRedeemerSchema = Data.Enum([
   Data.Literal("Never"),
@@ -16,7 +18,7 @@ export type FraudProofTokenSpendRedeemer = Data.Static<
   typeof FraudProofTokenSpendRedeemerSchema
 >;
 export const FraudProofTokenSpendRedeemer =
-  FraudProofTokenSpendRedeemerSchema as unknown as FraudProofTokenSpendRedeemer;
+  asDataType<FraudProofTokenSpendRedeemer>(FraudProofTokenSpendRedeemerSchema);
 
 export const FraudProofTokenMintRedeemerSchema = Data.Object({
   computation_thread_token_asset_name: Data.Bytes(),
@@ -26,4 +28,4 @@ export type FraudProofTokenMintRedeemer = Data.Static<
   typeof FraudProofTokenMintRedeemerSchema
 >;
 export const FraudProofTokenMintRedeemer =
-  FraudProofTokenMintRedeemerSchema as unknown as FraudProofTokenMintRedeemer;
+  asDataType<FraudProofTokenMintRedeemer>(FraudProofTokenMintRedeemerSchema);

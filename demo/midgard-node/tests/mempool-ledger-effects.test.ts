@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { compactLedgerEffects } from "@/database/mempool.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import type { ProcessedTx } from "@/utils.js";
+import { compactLedgerEffects } from "../src/database/mempool.js";
+import * as Ledger from "../src/database/utils/ledger.js";
+import type { ProcessedTx } from "../src/utils.js";
 
 const bytes = (value: number, length = 32): Buffer =>
   Buffer.alloc(length, value);

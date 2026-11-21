@@ -1,0 +1,88 @@
+/**
+ * The pending-table marks of landed blocks (plan §7.3, N3): every write that
+ * makes a landed row processed marks the rows it includes in its own
+ * transaction (the processing insert, a reland, and the rebase that applies
+ * the row), and a rollback that takes the block off the landed chain clears
+ * them (`mempoolInclusions.ts`). A block's import checks leave with its
+ * row (`importChecks.ts`). A foreign block's named events get the node's
+ * rows as it is processed (`recordNamedEvents`); they are ingestion's rows,
+ * so nothing here removes them.
+ */
+import { Effect } from "effect";
+
+import {
+  type NamedEvents,
+  recordNamedEvents,
+} from "../database/follower-events.named.js";
+import * as ImportChecksDB from "../database/importChecks.js";
+import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
+import type { ForcedAdmissionDivergences } from "../forced-orders/admission-divergence.js";
+import type { ImportChecks } from "../import-check/deadline.js";
+import {
+  deleteRows,
+  insertRow,
+  type LandedBlockRow,
+  setState,
+} from "./store.js";
+
+/** Marks the pending-table rows each block in `rows` includes. */
+export const markRows = (
+  rows: readonly Pick<LandedBlockRow, "headerHash" | "txIds">[],
+) =>
+  Effect.forEach(
+    rows,
+    (row) => MempoolInclusionsDB.markIncluded(row.headerHash, row.txIds),
+    { discard: true },
+  );
+
+/** Processes a landed block: inserts its row, writes the rows of the
+ * events it names that the node lacks (`named`, from its replay; a forced
+ * row's admission divergence is named in `divergences`), marks the
+ * pending-table rows it includes, and records the import checks it leaves. */
+export const processRow = (
+  row: LandedBlockRow,
+  checks?: ImportChecks,
+  named?: NamedEvents,
+  divergences?: ForcedAdmissionDivergences,
+) =>
+  Effect.gen(function* () {
+    yield* insertRow(row);
+    if (named !== undefined) yield* recordNamedEvents(named, divergences);
+    yield* markRows([row]);
+    if (checks !== undefined)
+      yield* ImportChecksDB.recordChecks(
+        row.headerHash,
+        checks.deadlineMs,
+        checks.checks,
+      );
+  });
+
+/**
+ * A rollback took the processed rows `left` off the landed chain: an
+ * applied row (foreign, or own) stays as `removed` until the rebase reverts
+ * it (and disposes of an own row's journal), every other row goes, and the
+ * marks they set are cleared, so the rows they included are pending again.
+ * The removed rows `relands` landed again before a rebase reverted them:
+ * they are processed again and mark their rows again.
+ */
+export const rollBackRows = (
+  left: readonly LandedBlockRow[],
+  relands: readonly LandedBlockRow[],
+) =>
+  Effect.gen(function* () {
+    yield* setState(
+      left.filter((row) => row.applied).map((row) => row.headerHash),
+      "removed",
+    );
+    const deleted = left
+      .filter((row) => !row.applied)
+      .map((row) => row.headerHash);
+    yield* deleteRows(deleted);
+    yield* ImportChecksDB.deleteChecksOfBlocks(deleted);
+    yield* MempoolInclusionsDB.clearMarks(left.map((row) => row.headerHash));
+    yield* setState(
+      relands.map((row) => row.headerHash),
+      "processed",
+    );
+    yield* markRows(relands);
+  });

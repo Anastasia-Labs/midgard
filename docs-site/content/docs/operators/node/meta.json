@@ -5,12 +5,15 @@
     "server-http-api",
     "cli-reference",
     "initialization-deployment",
+    "operator-lifecycle",
+    "operational-runbooks",
     "database",
     "background-fibers",
     "deposits-withdrawals",
     "reserve-payout",
     "compatibility-rules",
     "benchmarks",
-    "e2e-testing-flow"
+    "e2e-testing-flow",
+    "preprod-public-deploy"
   ]
 }

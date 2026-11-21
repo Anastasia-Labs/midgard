@@ -1,0 +1,5356 @@
+//// R5 item 1 (#617): validator-level vectors for the cek decomposition.
+////
+//// Index 11 of the validation-dispute machine used to be one aggregate
+//// "direct" resolver. It is now `cek_v1` (a `prepare_selected` over a group
+//// of four) plus one semantic validator per auxiliary kind:
+////
+////   0  `cek_finish_semantic_v1`               hand-off to ValueAndMint, no auxiliary
+////   1  `cek_execution_selection_semantic_v1`  `NativeExecutionScanWitness` + decode record
+////   2  `cek_context_step_semantic_v1`         context-build step, §8 door
+////   3  `cek_core_step_semantic_v1`            `CekCoreStepWitness`
+////
+//// These vectors drive every one of the five validators through `main.spend`
+//// on the smallest honest step of its kind, pin the redeemer wire layouts
+//// (the 9f191e9a lesson: an ABI that moves without a golden moves again,
+//// silently), and show that each semantic validator refuses the other
+//// kinds' honest steps and that the prepare refuses the retired group
+//// cardinality. The semantic partition itself -- every wrapper against every
+//// kind -- is proven at the library level in
+//// `lib/midgard/validation-machine-tests/tests-parity.test.ak` (`cek_kinds_partition_the_cek_step_space`);
+//// what these add is that the deployed validators reach those wrappers with
+//// the right arguments, commit to the right evidence hash, and read the
+//// decode record through the `cek_execution_selection_yields` validators.
+
+use aiken/builtin
+use aiken/cbor
+use aiken/collection/list
+use aiken/crypto.{blake2b_256}
+use aiken/primitive/bytearray
+use cardano/address
+use cardano/assets
+use cardano/transaction as l1
+use fraud_proofs/validation_trace/cek_context_control as context_control
+use fraud_proofs/validation_trace/cek_context_item_bind as context_item_bind
+use fraud_proofs/validation_trace/cek_context_item_hash as context_item_hash
+use fraud_proofs/validation_trace/cek_context_item_return as context_item_return
+use fraud_proofs/validation_trace/cek_context_item_selection_continue as context_item_selection_continue
+use fraud_proofs/validation_trace/cek_context_item_selection_finish as context_item_selection_finish
+use fraud_proofs/validation_trace/cek_context_mint_init as context_mint_init
+use fraud_proofs/validation_trace/cek_context_mint_item as context_mint_item
+use fraud_proofs/validation_trace/cek_context_observer_authenticate as context_observer_authenticate
+use fraud_proofs/validation_trace/cek_context_observer_fold as context_observer_fold
+use fraud_proofs/validation_trace/cek_context_output as context_output
+use fraud_proofs/validation_trace/cek_context_redeemer_begin as context_redeemer_begin
+use fraud_proofs/validation_trace/cek_context_redeemer_select_authenticate as redeemer_select_authenticate
+use fraud_proofs/validation_trace/cek_context_redeemer_select_finish as redeemer_select_finish
+use fraud_proofs/validation_trace/cek_context_reference as context_reference
+use fraud_proofs/validation_trace/cek_context_settle as context_settle
+use fraud_proofs/validation_trace/cek_context_signer as context_signer
+use fraud_proofs/validation_trace/cek_context_spend as context_spend
+use fraud_proofs/validation_trace/cek_context_step_semantic_v1 as context_bind
+use fraud_proofs/validation_trace/cek_core_arm_case_constant as core_case_constant
+use fraud_proofs/validation_trace/cek_core_arm_compute as core_compute
+use fraud_proofs/validation_trace/cek_core_settle as core_settle
+use fraud_proofs/validation_trace/cek_core_step_semantic_v1 as core_validator
+use fraud_proofs/validation_trace/cek_execution_selection_semantic_v1 as selection_validator
+use fraud_proofs/validation_trace/cek_execution_selection_yields as selection_yields
+use fraud_proofs/validation_trace/cek_finish_semantic_v1 as finish_validator
+use fraud_proofs/validation_trace/cek_v1 as prepare_validator
+use midgard/bounded_item_v1
+use midgard/cek_builtin_v1
+use midgard/cek_constant_v1
+use midgard/cek_context_chain as context_chain
+use midgard/cek_context_item as context_item
+use midgard/cek_context_observer as context_observer
+use midgard/cek_context_redeemer.{
+  RedeemerInitialPending, RedeemerSelectionPending,
+} as context_redeemer
+use midgard/cek_context_step as context_step
+use midgard/cek_data_v1
+use midgard/cek_machine_v1
+use midgard/cek_proof_v1
+use midgard/cek_selection_yield as selection_yield
+use midgard/cek_semantic_chain as core_chain
+use midgard/computation_thread as ct
+use midgard/forced_submission_fixture as forced_fixture
+use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/compact.{
+  encode_native_tx_body_compact, native_tx_id_for_version,
+}
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_versioned_script}
+use midgard/fraud_proofs/native_tx/transaction.{midgard_transaction_to_compact}
+use midgard/fraud_proofs/native_tx/types.{
+  MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
+  MidgardVersionedScript, NativeCardanoScript, PlutusV3Script, TxIsValid,
+  native_tx_version_v1,
+}
+use midgard/fraud_proofs/thread_census_fixture_v1 as census
+use midgard/redeemer_item_proof_v1 as redeemer_item
+use midgard/script_context_v1
+use midgard/script_decode_v1.{Decoded, Refused, ScriptDecodeRecordV1}
+use midgard/script_proof_v1
+use midgard/script_sources_redeemer_normalization_v1.{
+  CekContextItemStepPending, CekContextItemStepVerified,
+}
+use midgard/validation_machine/cek as cek_semantics
+use midgard/validation_machine/machine_types.{
+  CekContextControlV1, CekCoreStepWitness, CekMintContextItemWitness,
+  CekRedeemerContextControlV1, CekRedeemerContextSelectWitness,
+  CekRedeemerContextSkipWitness, CekWitnessControlV1, NativeExecutionScanWitness,
+  NativeScriptsControlV1, NoAuxiliaryWitness, RedeemerItemStepWitness,
+  RedeemerScanBeginWitness, ValidationAuxiliaryWitnessV1,
+  ValidationOneStepEvidenceV1, ValidationOneStepWitnessV1,
+}
+use midgard/validation_machine/one_step as vm_one_step
+use midgard/validation_machine/shared.{
+  mint_asset_leaf_hash, prepend_mint_asset_summary,
+}
+use midgard/validation_machine/witness as vm_witness
+use midgard/validation_machine_field_door_v1 as field_door
+use midgard/validation_machine_tests/constants.{test_l1_slot_config}
+use midgard/validation_merkle_v1
+use midgard/validation_resolution_v1.{
+  PreparedValidationResolutionStateV1, ValidationResolutionStateV1,
+  hash_one_step_evidence, prepare_semantic_resolution,
+  prepared_resolution_version, resolution_version, winning_resolution,
+}
+use midgard/validation_resolver_v1.{PrepareSelected}
+use midgard/validation_semantic_v1 as semantic
+use midgard/validation_trace_v1
+
+/// The mid-step continue transaction as the thread's fraud prover submits it:
+/// prover-only moves need the prover's signature, and the moves anyone may
+/// Every hop's transaction left honest.
+fn honest_at(_hop: ByteArray) -> fn(l1.Transaction) -> l1.Transaction {
+  census.honest
+}
+
+/// make accept it too.
+fn prover_continue_tx(
+  asset_name: ByteArray,
+  output_state: Data,
+) -> l1.Transaction {
+  l1.Transaction {
+    ..fixture.continue_mid_step_l1_tx_v1(asset_name, output_state),
+    extra_signatories: [fixture.fraud_prover_key_hash],
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shared fixtures
+// ---------------------------------------------------------------------------
+
+const h_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+const h_b = #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+const h_c = #"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+const h_28_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+const zero = #"0000000000000000000000000000000000000000000000000000000000000000"
+
+const validation_context_cbor =
+  #"8701546d6964676172642d636f6e73656e7375732d763118640000001864"
+
+const ct_asset = "cek-split-thread"
+
+/// The deployed group, in semantic-resolver order. Only the slot under test
+/// is the next-step hash the L1 fixture pays to; the others are the
+/// unrelated step hash so a mis-routed index fails on the output script.
+fn group_with_slot(slot: Int) -> List<ByteArray> {
+  [
+    if slot == 0 {
+      fixture.next_step_script_hash
+    } else {
+      fixture.step_script_hash
+    },
+    if slot == 1 {
+      fixture.next_step_script_hash
+    } else {
+      fixture.step_script_hash
+    },
+    if slot == 2 {
+      fixture.next_step_script_hash
+    } else {
+      fixture.step_script_hash
+    },
+    if slot == 3 {
+      fixture.next_step_script_hash
+    } else {
+      fixture.step_script_hash
+    },
+  ]
+}
+
+fn empty_v1_transaction() -> MidgardTransaction {
+  let empty_mint: Data = builtin.list_data([])
+  MidgardTransaction {
+    version: native_tx_version_v1,
+    validity: TxIsValid,
+    body: MidgardTransactionBody {
+      inputs: [],
+      reference_inputs: [],
+      outputs: [],
+      fee: 0,
+      validity_interval_start: -1,
+      validity_interval_end: -1,
+      required_observers: [],
+      required_signers: [],
+      mint: empty_mint,
+      script_integrity_hash: zero,
+      auxiliary_data_hash: zero,
+      network_id: 255,
+    },
+    witness_set: MidgardTransactionWitnessSet {
+      addr_tx_wits: [],
+      script_tx_wits: [],
+      redeemer_tx_wits: [],
+    },
+  }
+}
+
+/// The native control of a transaction with nothing to resolve, sign,
+/// spend, mint or execute (the twin of the lib test module's
+/// `empty_native_control_fixture`, restricted to witness-free transactions).
+fn empty_native_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
+  let proof_source = forced_fixture.from_native_transaction(tx)
+  let empty = validation_merkle_v1.build_frontier([])
+  NativeScriptsControlV1 {
+    compact_cbor: proof_source.compact_cbor,
+    witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
+    field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
+    context_cbor: validation_context_cbor,
+    resolved_input_count: 0,
+    spend_input_count: 0,
+    resolved_item_peaks: validation_merkle_v1.empty_frontier(),
+    signer_count: empty.count,
+    signer_frontier_commitment: validation_merkle_v1.frontier_commitment(
+      empty.count,
+      empty.peaks,
+    ),
+    source_count: 0,
+    source_peaks: validation_merkle_v1.empty_frontier(),
+    redeemer_count: 0,
+    redeemer_peaks: validation_merkle_v1.empty_frontier(),
+    purpose_count: 0,
+    purpose_peaks: validation_merkle_v1.empty_frontier(),
+    output_count: 0,
+    output_peaks: validation_merkle_v1.empty_frontier(),
+    output_descriptor_peaks: validation_merkle_v1.empty_frontier(),
+    mint_count: 0,
+    mint_peaks: validation_merkle_v1.empty_frontier(),
+    execution_count: 0,
+    execution_peaks: validation_merkle_v1.empty_frontier(),
+    execution_cursor: 0,
+    language_bitmap: 0,
+    resolution_schedule_hash: vm_witness.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
+  }
+}
+
+/// A cek-phase machine state over `tx` whose work root commits to the given
+/// cek witness control fields, paired with the work witness bytes.
+fn cek_state(
+  tx: MidgardTransaction,
+  control: NativeScriptsControlV1,
+  context_control_cbor: ByteArray,
+  execution_cursor: Int,
+  active_state_hash: ByteArray,
+  execution_cpu_limit: Int,
+  execution_memory_limit: Int,
+  program_script_hash: ByteArray,
+  program_counter: Int,
+  execution_cpu: Int,
+  execution_memory: Int,
+) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let work_witness_cbor = vm_witness.encode_cek_witness_v1(
+    control,
+    context_control_cbor,
+    execution_cursor,
+    0,
+    0,
+    active_state_hash,
+    execution_cpu_limit,
+    execution_memory_limit,
+    program_script_hash,
+    -1,
+    -1,
+  )
+  Pair(
+    validation_trace_v1.ValidationMachineStateV1 {
+      machine_version: validation_trace_v1.machine_version,
+      event_key_hash: h_a,
+      transaction_id: tx_id,
+      transaction_commitment: forced_fixture.commitment_of_native_transaction(
+        tx,
+      ),
+      validation_context_hash: validation_trace_v1.hash_validation_context(
+        validation_context_cbor,
+      ),
+      source_kind: validation_trace_v1.Forced,
+      prior_ledger_root: h_c,
+      phase: validation_trace_v1.Cek,
+      program_counter,
+      work_root: validation_trace_v1.hash_work_witness(
+        validation_trace_v1.Cek,
+        program_counter,
+        work_witness_cbor,
+      ),
+      execution_cpu,
+      execution_memory,
+      verdict: validation_trace_v1.Pending,
+      rejection_code_hash: zero,
+    },
+    work_witness_cbor,
+  )
+}
+
+/// One honest cek step of some kind: the pre-state, the transition, the
+/// auxiliary the kind's validator rebuilds from its action, and the decode
+/// record the selection validator reads (`None` for every other kind and for
+/// a selection that needs none).
+type CekStepFixtureV1 {
+  kind: Int,
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  record: Option<ScriptDecodeRecordV1>,
+}
+
+fn step_fixture(
+  kind: Int,
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  work_witness_cbor: ByteArray,
+  post: validation_trace_v1.ValidationMachineStateV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  record: Option<ScriptDecodeRecordV1>,
+) -> CekStepFixtureV1 {
+  CekStepFixtureV1 {
+    kind,
+    pre,
+    transition: ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+    auxiliary,
+    record,
+  }
+}
+
+/// Kind 0: the hand-off. A transaction with no execution at all
+/// (`execution_count == 0`) has nothing to select, so its whole cek phase is
+/// this one step.
+fn finish_fixture() -> CekStepFixtureV1 {
+  let tx = empty_v1_transaction()
+  let control = empty_native_control(tx)
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    control,
+    #"",
+    0,
+    #"",
+    0,
+    0,
+    #"",
+    40,
+    0,
+    0,
+  )
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    phase: validation_trace_v1.ValueAndMint,
+    program_counter: 41,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      41,
+      vm_witness.encode_value_and_mint_witness_v1(control),
+    ),
+  }
+  step_fixture(0, pre, work_witness_cbor, post, NoAuxiliaryWitness, None)
+}
+
+/// The one-node program `(program 1.1.0 (error))` as PlutusV3 script bytes:
+/// the CBOR byte string around its Flat encoding.
+fn one_node_script() -> ByteArray {
+  #"4401010061"
+}
+
+/// The decode record of `script_hash` for the one-node program.
+fn one_node_record(script_hash: ByteArray) -> ScriptDecodeRecordV1 {
+  Decoded {
+    script_hash,
+    language: 3,
+    program_version: 1,
+    term_root: cek_proof_v1.hash_error_term_v1(),
+    phase2_class: 0,
+  }
+}
+
+/// The decode record of `selection_fixture`'s script.
+fn selection_record() -> ScriptDecodeRecordV1 {
+  one_node_record(
+    script_proof_v1.versioned_script_hash(
+      MidgardVersionedScript {
+        language: PlutusV3Script,
+        script_bytes: one_node_script(),
+      },
+    ),
+  )
+}
+
+fn singleton_field_item_chunk_proof(
+  field_index: Int,
+  key: ByteArray,
+) -> bounded_item_v1.ChunkProofV1 {
+  bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index,
+    item_index: 0,
+    total_length: bytearray.length(key),
+    chunk_index: 0,
+    chunk: key,
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: bounded_item_v1.hash_chunk(field_index, 0, 0, key),
+      },
+    ],
+    siblings: [],
+  }
+}
+
+/// Kind 1: selecting the single PlutusV3 execution of a transaction whose
+/// one script is the one-node program, read through its decode record.
+fn selection_fixture() -> CekStepFixtureV1 {
+  let tx = empty_v1_transaction()
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: one_node_script(),
+  }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let subject = #"00"
+  let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
+    0,
+    #"00",
+    3,
+    script_hash,
+    bytearray.length(script_cbor),
+    script_item_commitment,
+  )
+  let purpose_leaf = script_proof_v1.purpose_leaf_hash(
+    0,
+    0,
+    script_hash,
+    subject,
+  )
+  let execution_leaf = script_proof_v1.execution_leaf_hash(
+    3,
+    purpose_leaf,
+    source_leaf,
+    h_c,
+  )
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
+  let execution_frontier = validation_merkle_v1.build_frontier([execution_leaf])
+  let control = NativeScriptsControlV1 {
+    ..empty_native_control(tx),
+    source_count: 1,
+    source_peaks: source_frontier.peaks,
+    purpose_count: 1,
+    purpose_peaks: purpose_frontier.peaks,
+    execution_count: 1,
+    execution_peaks: execution_frontier.peaks,
+    execution_cursor: 1,
+    language_bitmap: 1,
+  }
+  let context_control = CekContextControlV1 {
+    stage: 0,
+    language_tag: 3,
+    program_term_root: cek_proof_v1.hash_error_term_v1(),
+    purpose_kind: 0,
+    purpose_index: 0,
+    script_hash,
+    subject,
+    redeemer_leaf: h_c,
+    redeemer_context_control_hash: #"",
+    execution_memory_limit: 0,
+    execution_cpu_limit: 0,
+    reference_items: cek_data_v1.empty_data_list_summary_v1(),
+    spend_items: cek_data_v1.empty_data_list_summary_v1(),
+    output_items: cek_data_v1.empty_data_list_summary_v1(),
+    signer_items: cek_data_v1.empty_data_list_summary_v1(),
+    observer_count: 0,
+    observer_items: cek_data_v1.empty_data_pair_summary_v1(),
+    previous_observer: #"",
+    observer_summary: cek_data_v1.DataSummaryV1 {
+      root: #"",
+      cbor_length: 0,
+      memory: 0,
+    },
+    mint_cursor: 0,
+    current_mint_policy: #"",
+    current_mint_assets: cek_data_v1.empty_data_pair_summary_v1(),
+    mint_policies: cek_data_v1.empty_data_pair_summary_v1(),
+    mint_summary: cek_data_v1.DataSummaryV1 {
+      root: #"",
+      cbor_length: 0,
+      memory: 0,
+    },
+  }
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    control,
+    #"",
+    0,
+    #"",
+    0,
+    0,
+    #"",
+    40,
+    0,
+    0,
+  )
+  let Pair(post, _) = cek_state(
+    tx,
+    control,
+    vm_witness.encode_cek_context_control_v1(context_control),
+    0,
+    #"",
+    0,
+    0,
+    script_hash,
+    41,
+    0,
+    0,
+  )
+  step_fixture(
+    1,
+    pre,
+    work_witness_cbor,
+    post,
+    NativeExecutionScanWitness {
+      execution_index: 0,
+      language_tag: 3,
+      purpose_kind: 0,
+      purpose_index: 0,
+      script_hash,
+      subject,
+      purpose_siblings: [],
+      source_index: 0,
+      origin_kind: 0,
+      source_key: #"00",
+      script_total_length: bytearray.length(script_cbor),
+      script_item_commitment,
+      source_siblings: [],
+      redeemer_leaf: h_c,
+      execution_siblings: [],
+      first_chunk_proof: singleton_field_item_chunk_proof(6, script_cbor),
+    },
+    Some(one_node_record(script_hash)),
+  )
+}
+
+/// Kind 1 again, over the case #629 turned on: a transaction whose only
+/// script execution is native. The language bitmap records Plutus languages
+/// only, so it is `0` here, yet the execution is still there to select --
+/// one selection step, exactly as the machine's trace emits it. Because it
+/// is the last (and only) execution, the selection the step makes *is* the
+/// hand-off to ValueAndMint, so its claimed successor is byte-for-byte the
+/// successor the finish branch would have to claim. That makes the pair
+/// below a clean read of the discriminator alone: the selection validator
+/// accepts this step and the finish validator must refuse it.
+fn native_only_selection_fixture() -> CekStepFixtureV1 {
+  let tx = empty_v1_transaction()
+  // The smallest native script: `ScriptPubkey(h_28_a)`, whose versioned
+  // encoding is the 36-byte `[0, h#"8200581c..."]` the scan reads a
+  // `language_tag == 0` header out of.
+  let script = MidgardVersionedScript {
+    language: NativeCardanoScript,
+    script_bytes: #"8200581c" |> bytearray.concat(h_28_a),
+  }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let subject = #"00"
+  let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
+    0,
+    #"00",
+    0,
+    script_hash,
+    bytearray.length(script_cbor),
+    script_item_commitment,
+  )
+  let purpose_leaf = script_proof_v1.purpose_leaf_hash(
+    0,
+    0,
+    script_hash,
+    subject,
+  )
+  // A native execution carries no redeemer, so its execution leaf binds the
+  // empty redeemer leaf.
+  let execution_leaf = script_proof_v1.execution_leaf_hash(
+    0,
+    purpose_leaf,
+    source_leaf,
+    #"",
+  )
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
+  let execution_frontier = validation_merkle_v1.build_frontier([execution_leaf])
+  let control = NativeScriptsControlV1 {
+    ..empty_native_control(tx),
+    source_count: 1,
+    source_peaks: source_frontier.peaks,
+    purpose_count: 1,
+    purpose_peaks: purpose_frontier.peaks,
+    execution_count: 1,
+    execution_peaks: execution_frontier.peaks,
+    execution_cursor: 1,
+    language_bitmap: 0,
+  }
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    control,
+    #"",
+    0,
+    #"",
+    0,
+    0,
+    #"",
+    40,
+    0,
+    0,
+  )
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    phase: validation_trace_v1.ValueAndMint,
+    program_counter: 41,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      41,
+      vm_witness.encode_value_and_mint_witness_v1(control),
+    ),
+  }
+  step_fixture(
+    1,
+    pre,
+    work_witness_cbor,
+    post,
+    NativeExecutionScanWitness {
+      execution_index: 0,
+      language_tag: 0,
+      purpose_kind: 0,
+      purpose_index: 0,
+      script_hash,
+      subject,
+      purpose_siblings: [],
+      source_index: 0,
+      origin_kind: 0,
+      source_key: #"00",
+      script_total_length: bytearray.length(script_cbor),
+      script_item_commitment,
+      source_siblings: [],
+      redeemer_leaf: #"",
+      execution_siblings: [],
+      first_chunk_proof: singleton_field_item_chunk_proof(6, script_cbor),
+    },
+    // A native selection selects no program, so it reads no decode record.
+    None,
+  )
+}
+
+/// Kind 2: the mint-context initialisation (context stage 6) of a
+/// transaction that mints nothing -- the smallest context step, and one
+/// with no auxiliary, so the door is reached but never opened.
+fn context_step_fixture() -> CekStepFixtureV1 {
+  let tx = empty_v1_transaction()
+  let singleton = validation_merkle_v1.build_frontier([h_a])
+  let control = NativeScriptsControlV1 {
+    ..empty_native_control(tx),
+    purpose_count: 1,
+    purpose_peaks: singleton.peaks,
+    execution_count: 1,
+    execution_peaks: singleton.peaks,
+    execution_cursor: 1,
+    language_bitmap: 1,
+  }
+  expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
+    [],
+    False,
+  )
+  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1(
+    control.purpose_count,
+  )
+  let init_control = CekContextControlV1 {
+    stage: 6,
+    language_tag: 3,
+    program_term_root: h_a,
+    purpose_kind: 0,
+    purpose_index: 0,
+    script_hash: h_28_a,
+    subject: #"00",
+    redeemer_leaf: h_c,
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+      redeemer_context,
+    ),
+    execution_memory_limit: 10,
+    execution_cpu_limit: 20,
+    reference_items: cek_data_v1.empty_data_list_summary_v1(),
+    spend_items: cek_data_v1.empty_data_list_summary_v1(),
+    output_items: cek_data_v1.empty_data_list_summary_v1(),
+    signer_items: cek_data_v1.empty_data_list_summary_v1(),
+    observer_count: 0,
+    observer_items: cek_data_v1.empty_data_pair_summary_v1(),
+    previous_observer: #"",
+    observer_summary,
+    mint_cursor: 0,
+    current_mint_policy: #"",
+    current_mint_assets: cek_data_v1.empty_data_pair_summary_v1(),
+    mint_policies: cek_data_v1.empty_data_pair_summary_v1(),
+    mint_summary: cek_data_v1.DataSummaryV1 {
+      root: #"",
+      cbor_length: 0,
+      memory: 0,
+    },
+  }
+  let successor_control = CekContextControlV1 {
+    ..init_control,
+    stage: 9,
+    mint_summary: cek_data_v1.map_data_summary_v1(
+      cek_data_v1.empty_data_pair_summary_v1(),
+    ),
+  }
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    control,
+    vm_witness.encode_cek_context_control_v1(init_control),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    47,
+    0,
+    0,
+  )
+  let Pair(post, _) = cek_state(
+    tx,
+    control,
+    vm_witness.encode_cek_context_control_v1(successor_control),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    48,
+    0,
+    0,
+  )
+  step_fixture(2, pre, work_witness_cbor, post, NoAuxiliaryWitness, None)
+}
+
+/// Kind 3: one active core step, a `ComputeApplication` over two leaf terms
+/// (the lib module's `cek_active_core_step_fixture`).
+fn core_step_fixture() -> CekStepFixtureV1 {
+  let application_root = cek_proof_v1.hash_application_term_v1(h_a, h_b)
+  let machine_pre = cek_machine_v1.MachineStateV1 {
+    mode: cek_machine_v1.mode_compute,
+    execution_index: 0,
+    focus_root: application_root,
+    environment_root: cek_proof_v1.empty_environment_root_v1,
+    continuation_root: cek_proof_v1.empty_continuation_root_v1,
+    auxiliary: 0,
+    cpu: 10,
+    memory: 11,
+  }
+  let continuation_root = cek_proof_v1.hash_apply_argument_continuation_v1(
+    h_b,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+  )
+  let machine_post = cek_machine_v1.MachineStateV1 {
+    ..machine_pre,
+    focus_root: h_a,
+    continuation_root,
+    cpu: 16010,
+    memory: 111,
+  }
+  core_step_fixture_of(
+    machine_pre,
+    machine_post,
+    cek_machine_v1.ComputeApplication { function: h_a, argument: h_b },
+  )
+}
+
+/// Kind 3 over one active core step from `machine_pre` to `machine_post`.
+fn core_step_fixture_of(
+  machine_pre: cek_machine_v1.MachineStateV1,
+  machine_post: cek_machine_v1.MachineStateV1,
+  witness: cek_machine_v1.CoreStepWitnessV1,
+) -> CekStepFixtureV1 {
+  let tx = empty_v1_transaction()
+  let purpose_frontier = validation_merkle_v1.build_frontier([h_a])
+  let execution_frontier = validation_merkle_v1.build_frontier([h_b])
+  let control = NativeScriptsControlV1 {
+    ..empty_native_control(tx),
+    purpose_count: 1,
+    purpose_peaks: purpose_frontier.peaks,
+    execution_count: 1,
+    execution_peaks: execution_frontier.peaks,
+    execution_cursor: 1,
+    language_bitmap: 1,
+  }
+  let active_pre_hash = cek_proof_v1.hash_machine_state_v1(
+    machine_pre.mode,
+    machine_pre.execution_index,
+    machine_pre.focus_root,
+    machine_pre.environment_root,
+    machine_pre.continuation_root,
+    machine_pre.auxiliary,
+    machine_pre.cpu,
+    machine_pre.memory,
+  )
+  let active_post_hash = cek_proof_v1.hash_machine_state_v1(
+    machine_post.mode,
+    machine_post.execution_index,
+    machine_post.focus_root,
+    machine_post.environment_root,
+    machine_post.continuation_root,
+    machine_post.auxiliary,
+    machine_post.cpu,
+    machine_post.memory,
+  )
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    control,
+    #"",
+    0,
+    active_pre_hash,
+    1000000,
+    1000000,
+    h_28_a,
+    40,
+    machine_pre.cpu,
+    machine_pre.memory,
+  )
+  let Pair(post, _) = cek_state(
+    tx,
+    control,
+    #"",
+    0,
+    active_post_hash,
+    1000000,
+    1000000,
+    h_28_a,
+    41,
+    machine_post.cpu,
+    machine_post.memory,
+  )
+  step_fixture(
+    3,
+    pre,
+    work_witness_cbor,
+    post,
+    CekCoreStepWitness {
+      step: cek_machine_v1.CoreStepEvidenceV1 {
+        pre: machine_pre,
+        post: machine_post,
+        witness,
+      },
+    },
+    None,
+  )
+}
+
+/// Kind 3 over a `case` on the integer constant 1 with two branches, which
+/// selects the second (`ReturnCaseConstant`, core group 11).
+fn case_constant_core_step_fixture() -> CekStepFixtureV1 {
+  let constant = cek_constant_v1.ConstantWitnessV1 {
+    type_cbor: #"9f00ff",
+    payload_cbor: cbor.serialise(builtin.i_data(1)),
+  }
+  let branches = cek_proof_v1.hash_sequence_node_v1(
+    h_a,
+    cek_proof_v1.hash_sequence_node_v1(
+      h_b,
+      cek_proof_v1.empty_sequence_root_v1,
+      1,
+    ),
+    2,
+  )
+  let machine_pre = cek_machine_v1.MachineStateV1 {
+    mode: cek_machine_v1.mode_return,
+    execution_index: 0,
+    focus_root: cek_constant_v1.constant_root_v1(constant),
+    environment_root: cek_proof_v1.empty_environment_root_v1,
+    continuation_root: cek_proof_v1.hash_case_continuation_v1(
+      2,
+      branches,
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+    ),
+    auxiliary: 0,
+    cpu: 10,
+    memory: 11,
+  }
+  let machine_post = cek_machine_v1.MachineStateV1 {
+    ..machine_pre,
+    mode: cek_machine_v1.mode_case_select,
+    focus_root: branches,
+    environment_root: cek_proof_v1.empty_sequence_root_v1,
+    continuation_root: cek_proof_v1.hash_case_select_continuation_v1(
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      0,
+    ),
+    auxiliary: 1,
+  }
+  core_step_fixture_of(
+    machine_pre,
+    machine_post,
+    cek_machine_v1.ReturnCaseConstant {
+      scrutinee: cek_builtin_v1.ConstantValue(constant),
+      material: cek_builtin_v1.SemanticBuiltinWitnessV1 {
+        data_nodes: [],
+        list_nodes: [],
+        pair_nodes: [],
+        scalar_preimages: [],
+      },
+      branches_count: 2,
+      branches_root: branches,
+      captured_environment: cek_proof_v1.empty_environment_root_v1,
+      tail: cek_proof_v1.empty_continuation_root_v1,
+    },
+  )
+}
+
+fn fixture_of_kind(kind: Int) -> CekStepFixtureV1 {
+  if kind == 0 {
+    finish_fixture()
+  } else if kind == 1 {
+    selection_fixture()
+  } else if kind == 2 {
+    context_step_fixture()
+  } else {
+    core_step_fixture()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Resolution and prepared states
+// ---------------------------------------------------------------------------
+
+fn resolution(f: CekStepFixtureV1) -> ValidationResolutionStateV1 {
+  ValidationResolutionStateV1 {
+    version: resolution_version,
+    pre_state: f.pre,
+    operator_successor_hash: h_b,
+    challenger_successor_hash: validation_trace_v1.hash_machine_state(
+      f.transition.claimed_successor,
+    ),
+  }
+}
+
+fn auxiliary_data(f: CekStepFixtureV1) -> Data {
+  let auxiliary: Data = f.auxiliary
+  auxiliary
+}
+
+fn prepared(f: CekStepFixtureV1) -> PreparedValidationResolutionStateV1 {
+  let transition: Data = f.transition
+  PreparedValidationResolutionStateV1 {
+    version: prepared_resolution_version,
+    resolution: resolution(f),
+    evidence_hash: hash_one_step_evidence(transition, auxiliary_data(f)),
+  }
+}
+
+fn resolver_datum(
+  f: CekStepFixtureV1,
+) -> ct.StepDatum<ValidationResolutionStateV1> {
+  ct.StepDatum {
+    fraud_prover: fixture.fraud_prover_key_hash,
+    data: Some(resolution(f)),
+  }
+}
+
+fn semantic_datum(
+  base: PreparedValidationResolutionStateV1,
+) -> ct.StepDatum<PreparedValidationResolutionStateV1> {
+  ct.StepDatum { fraud_prover: fixture.fraud_prover_key_hash, data: Some(base) }
+}
+
+fn winning_output() -> Data {
+  let output: Data = winning_resolution()
+  output
+}
+
+// ---------------------------------------------------------------------------
+// Wire-layout goldens
+// ---------------------------------------------------------------------------
+
+type PrepareWireMirrorV1 {
+  PrepareSelectedMirror {
+    input_index: Int,
+    output_index: Int,
+    semantic_resolver_index: Int,
+    transition: ValidationOneStepWitnessV1,
+    auxiliary: Data,
+  }
+}
+
+type FinishWireMirrorV1 {
+  VerifyFinishMirror {
+    input_index: Int,
+    output_index: Int,
+    transition: ValidationOneStepWitnessV1,
+  }
+}
+
+type SelectionWireMirrorV1 {
+  VerifyExecutionSelectionMirror {
+    input_index: Int,
+    output_index: Int,
+    transition: ValidationOneStepWitnessV1,
+    auxiliary: ValidationAuxiliaryWitnessV1,
+    yield_ref_input_indices: List<Int>,
+    record_reference_input_index: Int,
+  }
+}
+
+type ContextWireMirrorV1 {
+  VerifyContextStepMirror {
+    input_index: Int,
+    output_index: Int,
+    transition: ValidationOneStepWitnessV1,
+    auxiliary: ValidationAuxiliaryWitnessV1,
+  }
+}
+
+type CoreWireMirrorV1 {
+  VerifyCoreStepMirror {
+    input_index: Int,
+    output_index: Int,
+    transition: ValidationOneStepWitnessV1,
+    step: cek_machine_v1.CoreStepEvidenceV1,
+  }
+}
+
+fn golden_state() -> validation_trace_v1.ValidationMachineStateV1 {
+  validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: zero,
+    transaction_id: zero,
+    transaction_commitment: zero,
+    validation_context_hash: zero,
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: zero,
+    phase: validation_trace_v1.Cek,
+    program_counter: 0,
+    work_root: zero,
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero,
+  }
+}
+
+fn golden_transition() -> ValidationOneStepWitnessV1 {
+  ValidationOneStepWitnessV1 {
+    work_witness_cbor: #"",
+    claimed_successor: golden_state(),
+  }
+}
+
+/// The prepare keeps the shared `validation_resolver_v1.PrepareSelected`
+/// shape (with the auxiliary as opaque `Data`) -- the same redeemer every
+/// other prepare-selected phase takes.
+test prepare_selected_wire_layout_is_pinned() {
+  let auxiliary: Data = NoAuxiliaryWitness
+  let real: validation_resolver_v1.PrepareSelectedSpendRedeemer = ct.Continue(
+    PrepareSelected {
+      input_index: 1,
+      output_index: 2,
+      semantic_resolver_index: 3,
+      transition: golden_transition(),
+      auxiliary,
+    },
+  )
+  let mirror: ct.StepRedeemer<PrepareWireMirrorV1> = ct.Continue(
+    PrepareSelectedMirror {
+      input_index: 1,
+      output_index: 2,
+      semantic_resolver_index: 3,
+      transition: golden_transition(),
+      auxiliary,
+    },
+  )
+  let mirror_data: Data = mirror
+  expect decoded: validation_resolver_v1.PrepareSelectedSpendRedeemer = mirror_data
+  and {
+    cbor.serialise(real) == cbor.serialise(mirror),
+    decoded == real,
+  }
+}
+
+test finish_wire_layout_is_pinned() {
+  let real: finish_validator.SpendRedeemer = ct.Continue(
+    finish_validator.VerifyFinish {
+      input_index: 1,
+      output_index: 2,
+      transition: golden_transition(),
+    },
+  )
+  let mirror: ct.StepRedeemer<FinishWireMirrorV1> = ct.Continue(
+    VerifyFinishMirror {
+      input_index: 1,
+      output_index: 2,
+      transition: golden_transition(),
+    },
+  )
+  let mirror_data: Data = mirror
+  expect decoded: finish_validator.SpendRedeemer = mirror_data
+  and {
+    cbor.serialise(real) == cbor.serialise(mirror),
+    decoded == real,
+  }
+}
+
+test execution_selection_wire_layout_is_pinned() {
+  let f = selection_fixture()
+  let real: selection_validator.SpendRedeemer = ct.Continue(
+    selection_yield.VerifyExecutionSelection {
+      input_index: 1,
+      output_index: 2,
+      transition: golden_transition(),
+      auxiliary: f.auxiliary,
+      yield_ref_input_indices: [0, 1],
+      record_reference_input_index: 2,
+    },
+  )
+  let mirror: ct.StepRedeemer<SelectionWireMirrorV1> = ct.Continue(
+    VerifyExecutionSelectionMirror {
+      input_index: 1,
+      output_index: 2,
+      transition: golden_transition(),
+      auxiliary: f.auxiliary,
+      yield_ref_input_indices: [0, 1],
+      record_reference_input_index: 2,
+    },
+  )
+  let mirror_data: Data = mirror
+  expect decoded: selection_validator.SpendRedeemer = mirror_data
+  and {
+    cbor.serialise(real) == cbor.serialise(mirror),
+    decoded == real,
+  }
+}
+
+test context_step_wire_layout_is_pinned() {
+  let real: context_bind.SpendRedeemer = ct.Continue(
+    context_chain.VerifyContext {
+      input_index: 1,
+      output_index: 2,
+      transition: golden_transition(),
+      auxiliary: NoAuxiliaryWitness,
+    },
+  )
+  let mirror: ct.StepRedeemer<ContextWireMirrorV1> = ct.Continue(
+    VerifyContextStepMirror {
+      input_index: 1,
+      output_index: 2,
+      transition: golden_transition(),
+      auxiliary: NoAuxiliaryWitness,
+    },
+  )
+  let mirror_data: Data = mirror
+  expect decoded: context_bind.SpendRedeemer = mirror_data
+  and {
+    cbor.serialise(real) == cbor.serialise(mirror),
+    decoded == real,
+  }
+}
+
+test core_step_wire_layout_is_pinned() {
+  let f = core_step_fixture()
+  expect CekCoreStepWitness { step } = f.auxiliary
+  let step_data: Data = step
+  let real: core_validator.SpendRedeemer = ct.Continue(
+    core_validator.VerifyCoreStep {
+      input_index: 1,
+      output_index: 2,
+      transition: golden_transition(),
+      step: step_data,
+    },
+  )
+  let mirror: ct.StepRedeemer<CoreWireMirrorV1> = ct.Continue(
+    VerifyCoreStepMirror {
+      input_index: 1,
+      output_index: 2,
+      transition: golden_transition(),
+      step,
+    },
+  )
+  let mirror_data: Data = mirror
+  expect decoded: core_validator.SpendRedeemer = mirror_data
+  and {
+    cbor.serialise(real) == cbor.serialise(mirror),
+    decoded == real,
+  }
+}
+
+/// The evidence each semantic validator commits to is exactly
+/// `hash_one_step_evidence(transition, <auxiliary the validator rebuilds>)`,
+/// which is what the prepare installed -- so the core validator's
+/// `CekCoreStepWitness { step }` reconstruction and the finish validator's
+/// fixed `NoAuxiliaryWitness` both round-trip through the prepare.
+test every_kind_commits_to_the_prepared_evidence_hash() {
+  let finish = finish_fixture()
+  let selection = selection_fixture()
+  let context = context_step_fixture()
+  let core = core_step_fixture()
+  let transition_of = fn(f: CekStepFixtureV1) -> Data {
+    let transition: Data = f.transition
+    transition
+  }
+  expect CekCoreStepWitness { step } = core.auxiliary
+  let rebuilt_core: Data = CekCoreStepWitness { step }
+  let rebuilt_finish: Data = NoAuxiliaryWitness
+  and {
+    prepared(finish).evidence_hash == hash_one_step_evidence(
+      transition_of(finish),
+      rebuilt_finish,
+    ),
+    prepared(core).evidence_hash == hash_one_step_evidence(
+      transition_of(core),
+      rebuilt_core,
+    ),
+    prepared(selection).evidence_hash != prepared(finish).evidence_hash,
+    prepared(context).evidence_hash != prepared(finish).evidence_hash,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Prepare vectors
+// ---------------------------------------------------------------------------
+
+fn run_prepare(
+  f: CekStepFixtureV1,
+  group: List<ByteArray>,
+  semantic_resolver_index: Int,
+  output_state: Data,
+) -> Bool {
+  shaped_prepare(honest_at, f, group, semantic_resolver_index, output_state)
+}
+
+/// `run_prepare`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_prepare(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  f: CekStepFixtureV1,
+  group: List<ByteArray>,
+  semantic_resolver_index: Int,
+  output_state: Data,
+) -> Bool {
+  prepare_validator.main.spend(
+    group,
+    fixture.computation_thread_policy_id,
+    Some(resolver_datum(f)),
+    ct.Continue(
+      PrepareSelected {
+        input_index: 0,
+        output_index: 0,
+        semantic_resolver_index,
+        transition: f.transition,
+        auxiliary: auxiliary_data(f),
+      },
+    ),
+    fixture.own_out_ref(),
+    at("prepare_validator")(prover_continue_tx(ct_asset, output_state)),
+  )
+}
+
+fn expected_prepared_output(f: CekStepFixtureV1) -> Data {
+  let output: Data = prepare_semantic_resolution(
+    resolution(f),
+    f.transition,
+    auxiliary_data(f),
+  )
+  output
+}
+
+fn prepare_routes_kind(kind: Int) -> Bool {
+  let f = fixture_of_kind(kind)
+  let output = expected_prepared_output(f)
+  let expected: Data = prepared(f)
+  and {
+    output == expected,
+    run_prepare(f, group_with_slot(kind), kind, output),
+  }
+}
+
+test prepare_routes_the_finish_kind_to_slot_zero() {
+  prepare_routes_kind(0)
+}
+
+test prepare_routes_the_execution_selection_kind_to_slot_one() {
+  prepare_routes_kind(1)
+}
+
+test prepare_routes_the_context_step_kind_to_slot_two() {
+  prepare_routes_kind(2)
+}
+
+test prepare_routes_the_core_step_kind_to_slot_three() {
+  prepare_routes_kind(3)
+}
+
+test prepare_refuses_a_fifth_semantic_resolver_index() fail {
+  let f = finish_fixture()
+  run_prepare(
+    f,
+    [
+      fixture.step_script_hash,
+      fixture.step_script_hash,
+      fixture.step_script_hash,
+      fixture.step_script_hash,
+    ],
+    4,
+    expected_prepared_output(f),
+  )
+}
+
+/// A wrong index routes the thread to a slot whose hash is not the output's
+/// script, so the hand-off fails on the output script pin.
+test prepare_refuses_a_misrouted_index() fail {
+  let f = finish_fixture()
+  run_prepare(f, group_with_slot(0), 1, expected_prepared_output(f))
+}
+
+/// The phase pin: a resolution state parked in ValueAndMint cannot be
+/// prepared through the cek resolver.
+test prepare_refuses_a_value_and_mint_phase_state() fail {
+  let f = finish_fixture()
+  let foreign_pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..f.pre,
+    phase: validation_trace_v1.ValueAndMint,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      f.pre.program_counter,
+      f.transition.work_witness_cbor,
+    ),
+  }
+  let foreign = CekStepFixtureV1 { ..f, pre: foreign_pre }
+  run_prepare(foreign, group_with_slot(0), 0, expected_prepared_output(foreign))
+}
+
+// ---------------------------------------------------------------------------
+// Semantic vectors: each validator on its honest kind, then on the others
+// ---------------------------------------------------------------------------
+
+fn run_finish(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+) -> Bool {
+  shaped_finish(honest_at, base, transition)
+}
+
+/// `run_finish`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_finish(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+) -> Bool {
+  finish_validator.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(semantic_datum(base)),
+    ct.Continue(
+      finish_validator.VerifyFinish {
+        input_index: 0,
+        output_index: 0,
+        transition,
+      },
+    ),
+    fixture.own_out_ref(),
+    at("finish_validator")(prover_continue_tx(ct_asset, winning_output())),
+  )
+}
+
+/// The policy the selection validators take for the decode family.
+const decode_policy_id =
+  #"50505050505050505050505050505050505050505050505050505050"
+
+fn selection_roles() {
+  list.zip(
+    [selection_yield.authenticate_role, selection_yield.successor_role],
+    [
+      #"10101010101010101010101010101010101010101010101010101010",
+      #"20202020202020202020202020202020202020202020202020202020",
+    ],
+  )
+}
+
+fn record_script_hash(record: ScriptDecodeRecordV1) -> ByteArray {
+  when record is {
+    Decoded { script_hash, .. } -> script_hash
+    Refused { script_hash, .. } -> script_hash
+  }
+}
+
+/// Runs the selection validator and both yields with `record`, when there is
+/// one, at reference input 2 under the decode token named by its own hash.
+fn run_selection(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  record: Option<ScriptDecodeRecordV1>,
+) -> Bool {
+  shaped_selection(honest_at, base, transition, auxiliary, record)
+}
+
+/// `run_selection`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_selection(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  record: Option<ScriptDecodeRecordV1>,
+) -> Bool {
+  shaped_selection_with_token(
+    at,
+    base,
+    transition,
+    auxiliary,
+    record,
+    when record is {
+      Some(r) -> record_script_hash(r)
+      None -> #""
+    },
+  )
+}
+
+/// `run_selection` with the record output holding the decode token named
+/// `token_name`, or no decode token when `token_name` is empty.
+fn run_selection_with_token(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  record: Option<ScriptDecodeRecordV1>,
+  token_name: ByteArray,
+) -> Bool {
+  shaped_selection_with_token(
+    honest_at,
+    base,
+    transition,
+    auxiliary,
+    record,
+    token_name,
+  )
+}
+
+fn shaped_selection_with_token(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  record: Option<ScriptDecodeRecordV1>,
+  token_name: ByteArray,
+) -> Bool {
+  let raw_aux: Data = auxiliary
+  let action = selection_yield.VerifyExecutionSelection {
+    input_index: 0,
+    output_index: 0,
+    transition,
+    auxiliary: raw_aux,
+    yield_ref_input_indices: [0, 1],
+    record_reference_input_index: when record is {
+      Some(_) -> 2
+      None -> -1
+    },
+  }
+  let redeemer: selection_validator.SpendRedeemer = ct.Continue(action)
+  let raw_redeemer: Data = redeemer
+  let datum = semantic_datum(base)
+  let raw_datum: Data = datum
+  let input = fixture.ct_thread_input(ct_asset)
+  let template = prover_continue_tx(ct_asset, winning_output())
+  let roles = selection_roles()
+  let reward_redeemer: Data = 0
+  let yield_inputs = list.map(
+    roles,
+    fn(pair) {
+      l1.Input {
+        ..input,
+        output: l1.Output {
+          address: address.from_script(pair.2nd),
+          value: assets.from_asset(
+            fixture.test_certificate_policy_id,
+            pair.1st,
+            1,
+          ),
+          datum: l1.NoDatum,
+          reference_script: Some(pair.2nd),
+        },
+      }
+    },
+  )
+  let record_inputs = when record is {
+    Some(r) -> {
+      let raw_record: Data = r
+      [
+        l1.Input {
+          ..input,
+          output: l1.Output {
+            address: address.from_script(decode_policy_id),
+            value: if token_name == #"" {
+              assets.from_lovelace(2000000)
+            } else {
+              assets.from_asset(decode_policy_id, token_name, 1)
+            },
+            datum: l1.InlineDatum(raw_record),
+            reference_script: None,
+          },
+        },
+      ]
+    }
+    None -> []
+  }
+  let tx = at("selection_validator")(
+    l1.Transaction {
+      ..template,
+      inputs: [
+        l1.Input {
+          ..input,
+          output: l1.Output { ..input.output, datum: l1.InlineDatum(raw_datum) },
+        },
+      ],
+      reference_inputs: list.concat(yield_inputs, record_inputs),
+      withdrawals: list.map(
+        roles,
+        fn(pair) { Pair(address.Script(pair.2nd), 0) },
+      ),
+      redeemers: [
+        Pair(l1.Spend(fixture.own_out_ref()), raw_redeemer),
+        ..list.map(
+          roles,
+          fn(pair) {
+            Pair(l1.Withdraw(address.Script(pair.2nd)), reward_redeemer)
+          },
+        )
+      ],
+    },
+  )
+  and {
+    selection_validator.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      fixture.test_certificate_policy_id,
+      Some(datum),
+      redeemer,
+      fixture.own_out_ref(),
+      tx,
+    ),
+    selection_yields.authenticate.withdraw(
+      fixture.step_script_hash,
+      reward_redeemer,
+      address.Script(fixture.step_script_hash),
+      tx,
+    ),
+    selection_yields.successor.withdraw(
+      fixture.step_script_hash,
+      decode_policy_id,
+      reward_redeemer,
+      address.Script(fixture.step_script_hash),
+      tx,
+    ),
+  }
+}
+
+// Retain the aggregate verifier as a parity oracle; production uses the
+// independently exercised binder/control/leaf/settlement continuation chain.
+fn run_context_step(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  let tx = prover_continue_tx(ct_asset, winning_output())
+  let auxiliary_data: Data = auxiliary
+  semantic.continue_winning(
+    validation_trace_v1.Cek,
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(semantic_datum(base)),
+    0,
+    0,
+    transition,
+    auxiliary_data,
+    cek_semantics.verify_cek_context_step_semantics_v1(
+      base.resolution.pre_state,
+      transition,
+      auxiliary,
+      field_door.MachineFieldDoorV1 {
+        reference_inputs: tx.reference_inputs,
+        certificate_policy_id: fixture.test_certificate_policy_id,
+      },
+      test_l1_slot_config,
+    ),
+    fixture.own_out_ref(),
+    tx,
+  )
+}
+
+fn run_core_step(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  step: cek_machine_v1.CoreStepEvidenceV1,
+) -> Bool {
+  shaped_core_step(honest_at, base, transition, step)
+}
+
+/// `run_core_step`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_core_step(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  step: cek_machine_v1.CoreStepEvidenceV1,
+) -> Bool {
+  let step_data: Data = step
+  let witness_data: Data = step.witness
+  let prepared_data: Data = base
+  let bound = core_chain.CoreBound {
+    prepared: prepared_data,
+    pre: step.pre,
+    post: step.post,
+    witness_hash: blake2b_256(cbor.serialise(witness_data)),
+    arm: builtin.un_constr_data(witness_data).1st,
+    group: core_chain.core_group(step.pre.mode, witness_data),
+    progress: 0,
+    facts: builtin.constr_data(0, []),
+  }
+  let next: Data = bound
+  and {
+    core_validator.main.spend(
+      [fixture.next_step_script_hash],
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(base)),
+      ct.Continue(
+        core_validator.VerifyCoreStep {
+          input_index: 0,
+          output_index: 0,
+          transition,
+          step: step_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      at("core_validator")(prover_continue_tx(ct_asset, next)),
+    ),
+    run_core_compute_chain(bound, witness_data),
+    core_settle.main.spend(
+      fixture.next_step_script_hash,
+      [1],
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(core_chain.CoreBound { ..bound, progress: 1 }),
+        },
+      ),
+      ct.Continue(
+        core_settle.Settle {
+          input_index: 0,
+          output_index: 0,
+          transition,
+          witness: witness_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      at("core_settle")(prover_continue_tx(ct_asset, winning_output())),
+    ),
+  }
+}
+
+/// Runs the semantic validator of kind `kind` over the prepared state and
+/// transition of fixture `f`, with the auxiliary shape kind `kind` carries
+/// (taken from the kind's own honest fixture when `f` is of another kind).
+fn run_kind(kind: Int, f: CekStepFixtureV1) -> Bool {
+  let own = if f.kind == kind {
+    f
+  } else {
+    fixture_of_kind(kind)
+  }
+  if kind == 0 {
+    run_finish(prepared(f), f.transition)
+  } else if kind == 1 {
+    run_selection(prepared(f), f.transition, own.auxiliary, own.record)
+  } else if kind == 2 {
+    run_context_step(prepared(f), f.transition, own.auxiliary)
+  } else {
+    expect CekCoreStepWitness { step } = own.auxiliary
+    run_core_step(prepared(f), f.transition, step)
+  }
+}
+
+test finish_validator_wins_the_hand_off() {
+  run_kind(0, finish_fixture())
+}
+
+test execution_selection_validator_wins_with_the_decode_record() {
+  run_kind(1, selection_fixture())
+}
+
+test context_step_validator_wins_the_mint_context_initialisation() {
+  run_kind(2, context_step_fixture())
+}
+
+test core_step_validator_wins_the_application_step() {
+  run_kind(3, core_step_fixture())
+}
+
+/// Runs the case-constant core step of fixture `f` bound to `group`: the
+/// semantic validator, the case-constant arm and the settle validator. Only
+/// slot `group` of the arm table is the next-step hash, so a step the
+/// semantic validator routes to another group fails on the output script.
+fn run_case_constant_core_step(group: Int, f: CekStepFixtureV1) -> Bool {
+  expect CekCoreStepWitness { step } = f.auxiliary
+  let base = prepared(f)
+  let step_data: Data = step
+  let witness_data: Data = step.witness
+  let prepared_data: Data = base
+  let bound = core_chain.CoreBound {
+    prepared: prepared_data,
+    pre: step.pre,
+    post: step.post,
+    witness_hash: blake2b_256(cbor.serialise(witness_data)),
+    arm: builtin.un_constr_data(witness_data).1st,
+    group,
+    progress: 0,
+    facts: builtin.constr_data(0, []),
+  }
+  let next: Data = bound
+  let settled = core_chain.CoreBound { ..bound, progress: 1 }
+  let arm_script_hashes = list.map(
+    list.range(0, 11),
+    fn(slot) {
+      if slot == group {
+        fixture.next_step_script_hash
+      } else {
+        fixture.step_script_hash
+      }
+    },
+  )
+  and {
+    core_validator.main.spend(
+      arm_script_hashes,
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(base)),
+      ct.Continue(
+        core_validator.VerifyCoreStep {
+          input_index: 0,
+          output_index: 0,
+          transition: f.transition,
+          step: step_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, next),
+    ),
+    core_case_constant.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(bound),
+        },
+      ),
+      ct.Continue(
+        core_chain.VerifyArm {
+          input_index: 0,
+          output_index: 0,
+          witness: witness_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, settled),
+    ),
+    core_settle.main.spend(
+      fixture.next_step_script_hash,
+      list.repeat(1, 12),
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(settled),
+        },
+      ),
+      ct.Continue(
+        core_settle.Settle {
+          input_index: 0,
+          output_index: 0,
+          transition: f.transition,
+          witness: witness_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, winning_output()),
+    ),
+  }
+}
+
+// A `case` on a constant is routed to group 11, the case-constant arm.
+test core_step_validator_wins_a_case_constant_step_in_group_11() {
+  run_case_constant_core_step(11, case_constant_core_step_fixture())
+}
+
+test core_step_validator_refuses_a_case_constant_step_in_group_1() fail {
+  run_case_constant_core_step(1, case_constant_core_step_fixture())
+}
+
+/// A Plutus selection runs only the program its decode record states: the
+/// selection validator refuses it with no record, with a record that does
+/// not hold the decode token named by its own hash, with a record of another
+/// script, and with a `Refused` record of the selected script.
+test execution_selection_validator_refuses_a_missing_record() fail {
+  let f = selection_fixture()
+  run_selection(prepared(f), f.transition, f.auxiliary, None)
+}
+
+test execution_selection_validator_refuses_a_record_without_its_token() fail {
+  let f = selection_fixture()
+  run_selection_with_token(
+    prepared(f),
+    f.transition,
+    f.auxiliary,
+    f.record,
+    #"",
+  )
+}
+
+test execution_selection_validator_refuses_a_record_under_another_token() fail {
+  let f = selection_fixture()
+  run_selection_with_token(
+    prepared(f),
+    f.transition,
+    f.auxiliary,
+    f.record,
+    h_28_a,
+  )
+}
+
+test execution_selection_validator_refuses_another_scripts_record() fail {
+  let f = selection_fixture()
+  run_selection(
+    prepared(f),
+    f.transition,
+    f.auxiliary,
+    Some(one_node_record(h_28_a)),
+  )
+}
+
+test execution_selection_validator_refuses_a_refused_record() fail {
+  let f = selection_fixture()
+  expect Some(Decoded { script_hash, .. }) = f.record
+  run_selection(
+    prepared(f),
+    f.transition,
+    f.auxiliary,
+    Some(Refused { script_hash, language: 3, class: 1, bit_offset: 0 }),
+  )
+}
+
+/// Kind partition at the validator boundary. Each semantic validator is run
+/// over every OTHER kind's honest prepared state and transition; the
+/// evidence hash the prepare installed for that kind never matches the
+/// auxiliary this validator reconstructs, and even where it could (kind 0
+/// against kind 2: both `NoAuxiliaryWitness`) the control discriminator
+/// refuses. Each row is its own `fail` test so a regression names the pair.
+test finish_validator_refuses_an_execution_selection() fail {
+  run_kind(0, selection_fixture())
+}
+
+test finish_validator_refuses_a_context_step() fail {
+  run_kind(0, context_step_fixture())
+}
+
+test finish_validator_refuses_a_core_step() fail {
+  run_kind(0, core_step_fixture())
+}
+
+test execution_selection_validator_refuses_the_hand_off() fail {
+  run_kind(1, finish_fixture())
+}
+
+test execution_selection_validator_refuses_a_context_step() fail {
+  run_kind(1, context_step_fixture())
+}
+
+test execution_selection_validator_refuses_a_core_step() fail {
+  run_kind(1, core_step_fixture())
+}
+
+test context_step_validator_refuses_the_hand_off() fail {
+  run_kind(2, finish_fixture())
+}
+
+test context_step_validator_refuses_an_execution_selection() fail {
+  run_kind(2, selection_fixture())
+}
+
+test context_step_validator_refuses_a_core_step() fail {
+  run_kind(2, core_step_fixture())
+}
+
+test core_step_validator_refuses_the_hand_off() fail {
+  run_kind(3, finish_fixture())
+}
+
+test core_step_validator_refuses_an_execution_selection() fail {
+  run_kind(3, selection_fixture())
+}
+
+test core_step_validator_refuses_a_context_step() fail {
+  run_kind(3, context_step_fixture())
+}
+
+/// The evidence pin at the semantic boundary: a prepared state whose hash
+/// was computed over another auxiliary (here the retired aggregate shape's
+/// habit of committing the selection under `NoAuxiliaryWitness`) is refused
+/// even though the transition itself is honest.
+test finish_validator_refuses_a_foreign_evidence_commitment() fail {
+  let f = finish_fixture()
+  let selection = selection_fixture()
+  let foreign = PreparedValidationResolutionStateV1 {
+    ..prepared(f),
+    evidence_hash: prepared(selection).evidence_hash,
+  }
+  run_finish(foreign, f.transition)
+}
+
+test finish_validator_refuses_a_swapped_claimed_successor() fail {
+  let f = finish_fixture()
+  let swapped = ValidationOneStepWitnessV1 {
+    ..f.transition,
+    claimed_successor: validation_trace_v1.ValidationMachineStateV1 {
+      ..f.transition.claimed_successor,
+      work_root: h_b,
+    },
+  }
+  run_finish(prepared(f), swapped)
+}
+
+test finish_validator_refuses_a_wrong_award_output() fail {
+  let f = finish_fixture()
+  let base = prepared(f)
+  let not_winning: Data = base
+  finish_validator.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(semantic_datum(base)),
+    ct.Continue(
+      finish_validator.VerifyFinish {
+        input_index: 0,
+        output_index: 0,
+        transition: f.transition,
+      },
+    ),
+    fixture.own_out_ref(),
+    prover_continue_tx(ct_asset, not_winning),
+  )
+}
+
+/// The shared cek guards -- the discriminator each wrapper pins and the
+/// well-formedness of the cek witness against the pre-state -- are what the
+/// kind partition above cannot see: every fixture it runs is honest in all
+/// of them. The negatives below break exactly one of those shared guards
+/// each.
+///
+/// A control that still has an execution to select (`execution_cursor 0 <
+/// execution_count 1` with `language_bitmap 1`, the selection fixture's
+/// control) is an execution selection and not the hand-off, so the finish
+/// validator must refuse it however well formed the claimed successor is.
+fn pending_execution_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: one_node_script(),
+  }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let source_leaf = script_proof_v1.source_descriptor_leaf_hash(
+    0,
+    #"00",
+    3,
+    script_hash,
+    bytearray.length(script_cbor),
+    script_item_commitment,
+  )
+  let purpose_leaf = script_proof_v1.purpose_leaf_hash(0, 0, script_hash, #"00")
+  let execution_leaf = script_proof_v1.execution_leaf_hash(
+    3,
+    purpose_leaf,
+    source_leaf,
+    h_c,
+  )
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
+  let execution_frontier = validation_merkle_v1.build_frontier([execution_leaf])
+  NativeScriptsControlV1 {
+    ..empty_native_control(tx),
+    source_count: 1,
+    source_peaks: source_frontier.peaks,
+    purpose_count: 1,
+    purpose_peaks: purpose_frontier.peaks,
+    execution_count: 1,
+    execution_peaks: execution_frontier.peaks,
+    execution_cursor: 1,
+    language_bitmap: 1,
+  }
+}
+
+test finish_validator_refuses_a_hand_off_with_pending_executions() fail {
+  let tx = empty_v1_transaction()
+  let control = pending_execution_control(tx)
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    control,
+    #"",
+    0,
+    #"",
+    0,
+    0,
+    #"",
+    40,
+    0,
+    0,
+  )
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    phase: validation_trace_v1.ValueAndMint,
+    program_counter: 41,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      41,
+      vm_witness.encode_value_and_mint_witness_v1(control),
+    ),
+  }
+  let f = step_fixture(
+    0,
+    pre,
+    work_witness_cbor,
+    post,
+    NoAuxiliaryWitness,
+    None,
+  )
+  run_finish(prepared(f), f.transition)
+}
+
+/// #629: the same guard read from the other side. A native-only transaction
+/// (`language_bitmap == 0`) with one execution still pending is an execution
+/// selection, and the selection validator wins on it -- the language bitmap
+/// takes no part in the discrimination, only the cursor does.
+test execution_selection_validator_wins_a_native_only_selection() {
+  run_kind(1, native_only_selection_fixture())
+}
+
+/// #629, the negative twin. The very same pre-state and claimed successor
+/// -- an impeccably formed ValueAndMint hand-off under `NoAuxiliaryWitness`,
+/// so the prepared evidence hash is the one the finish validator rebuilds --
+/// is refused by the finish validator, because a cursor short of the
+/// execution count is never the hand-off however empty the bitmap is. Restore
+/// `|| language_bitmap == 0` to the finish discriminator and this vector is
+/// accepted; restore `language_bitmap != 0` to the selection discriminator
+/// and the positive above is refused.
+test finish_validator_refuses_a_native_only_selection() fail {
+  let honest = native_only_selection_fixture()
+  let f = CekStepFixtureV1 { ..honest, kind: 0, auxiliary: NoAuxiliaryWitness }
+  run_finish(prepared(f), f.transition)
+}
+
+/// And the aggregate route agrees: `verify_cek`'s else-branch is the
+/// execution selection, so the four kinds still cover the native-only step.
+test native_only_selection_is_an_honest_machine_step() {
+  let f = native_only_selection_fixture()
+  vm_one_step.verify_cek_one_step_v1(
+    f.pre,
+    ValidationOneStepEvidenceV1 {
+      transition: f.transition,
+      auxiliary: f.auxiliary,
+    },
+    field_door.MachineFieldDoorV1 {
+      reference_inputs: [],
+      certificate_policy_id: #"",
+    },
+    test_l1_slot_config,
+    None,
+  )
+}
+
+/// `pre.transaction_commitment` is what binds the cek control's native
+/// transaction proof to the transaction under dispute; a hand-off that is
+/// honest in every other field but whose pre-state commits to a different
+/// transaction must be refused.
+test finish_validator_refuses_a_foreign_transaction_commitment() fail {
+  let f = finish_fixture()
+  let forged = CekStepFixtureV1 {
+    ..f,
+    pre: validation_trace_v1.ValidationMachineStateV1 {
+      ..f.pre,
+      transaction_commitment: zero,
+    },
+    transition: ValidationOneStepWitnessV1 {
+      ..f.transition,
+      claimed_successor: validation_trace_v1.ValidationMachineStateV1 {
+        ..f.transition.claimed_successor,
+        transaction_commitment: zero,
+      },
+    },
+  }
+  run_finish(prepared(forged), forged.transition)
+}
+
+/// The cek cursor is bounded by the control's execution count, and the two
+/// places that bound lives are what make this vector awkward to build:
+/// `encode_cek_witness_v1` refuses to *encode* an out-of-bound cursor, so an
+/// honest encode cannot produce the witness, and the well-formedness guard
+/// refuses to *accept* one. The vector is therefore the honest hand-off
+/// witness with its encoded cursor byte bumped by hand -- the last nine
+/// bytes of a hand-off witness are `cursor, completed_cpu,
+/// completed_memory, active_state_hash, program_script_hash,
+/// execution_cpu_limit, execution_memory_limit, purpose_kind,
+/// purpose_index`, all empty or zero except the `-1, -1` purpose key, so
+/// the cursor is the byte at `length - 9`. The positive below pins that layout;
+/// without it the negative could start bumping some other byte and still
+/// look like a refusal.
+///
+/// The accept path re-encodes the witness through that same encoder, so the
+/// well-formedness bound is defence in depth rather than the sole gate:
+/// drop it and this vector is refused by the encoder's own `expect`
+/// instead, a crash where there was a `False`. What the negative pins is
+/// the refusal, which is the property the machine needs.
+test finish_witness_tail_layout_is_pinned() {
+  let witness_cbor = finish_fixture().transition.work_witness_cbor
+  let length = bytearray.length(witness_cbor)
+  bytearray.slice(witness_cbor, length - 9, length - 1) == #"000000404000002020"
+}
+
+fn witness_with_cursor_past_the_execution_count(
+  witness_cbor: ByteArray,
+) -> ByteArray {
+  let length = bytearray.length(witness_cbor)
+  bytearray.take(witness_cbor, length - 9)
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(bytearray.drop(witness_cbor, length - 8))
+}
+
+test finish_validator_refuses_a_cek_cursor_past_the_execution_count() fail {
+  let honest = finish_fixture()
+  let work_witness_cbor = witness_with_cursor_past_the_execution_count(
+    honest.transition.work_witness_cbor,
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..honest.pre,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Cek,
+      40,
+      work_witness_cbor,
+    ),
+  }
+  let f = step_fixture(
+    0,
+    pre,
+    work_witness_cbor,
+    honest.transition.claimed_successor,
+    NoAuxiliaryWitness,
+    None,
+  )
+  run_finish(prepared(f), f.transition)
+}
+
+/// Sanity on the fixtures themselves: every honest step is accepted by the
+/// aggregate evidence route the machine defines, so a validator that
+/// accepts it is agreeing with the machine and not with a broken vector.
+test every_fixture_is_an_honest_machine_step() {
+  let door = field_door.MachineFieldDoorV1 {
+    reference_inputs: [],
+    certificate_policy_id: #"",
+  }
+  and {
+    vm_one_step.verify_cek_one_step_v1(
+      finish_fixture().pre,
+      ValidationOneStepEvidenceV1 {
+        transition: finish_fixture().transition,
+        auxiliary: NoAuxiliaryWitness,
+      },
+      door,
+      test_l1_slot_config,
+      None,
+    ),
+    vm_one_step.verify_cek_one_step_v1(
+      selection_fixture().pre,
+      ValidationOneStepEvidenceV1 {
+        transition: selection_fixture().transition,
+        auxiliary: selection_fixture().auxiliary,
+      },
+      door,
+      test_l1_slot_config,
+      Some(selection_record()),
+    ),
+    vm_one_step.verify_cek_one_step_v1(
+      context_step_fixture().pre,
+      ValidationOneStepEvidenceV1 {
+        transition: context_step_fixture().transition,
+        auxiliary: NoAuxiliaryWitness,
+      },
+      door,
+      test_l1_slot_config,
+      None,
+    ),
+    vm_one_step.verify_cek_one_step_v1(
+      core_step_fixture().pre,
+      ValidationOneStepEvidenceV1 {
+        transition: core_step_fixture().transition,
+        auxiliary: core_step_fixture().auxiliary,
+      },
+      door,
+      test_l1_slot_config,
+      None,
+    ),
+  }
+}
+
+fn core_chain_bound(f: CekStepFixtureV1) -> core_chain.CoreBound {
+  expect CekCoreStepWitness { step } = f.auxiliary
+  let prepared_data: Data = prepared(f)
+  let witness_data: Data = step.witness
+  core_chain.CoreBound {
+    prepared: prepared_data,
+    pre: step.pre,
+    post: step.post,
+    witness_hash: blake2b_256(cbor.serialise(witness_data)),
+    arm: builtin.un_constr_data(witness_data).1st,
+    group: 0,
+    progress: 0,
+    facts: builtin.constr_data(0, []),
+  }
+}
+
+fn run_core_compute_chain(
+  bound: core_chain.CoreBound,
+  witness_data: Data,
+) -> Bool {
+  shaped_core_compute_chain(honest_at, bound, witness_data)
+}
+
+/// `run_core_compute_chain`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_core_compute_chain(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  bound: core_chain.CoreBound,
+  witness_data: Data,
+) -> Bool {
+  let next: Data = core_chain.CoreBound { ..bound, progress: 1 }
+  core_compute.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bound),
+      },
+    ),
+    ct.Continue(
+      core_chain.VerifyArm {
+        input_index: 0,
+        output_index: 0,
+        witness: witness_data,
+      },
+    ),
+    fixture.own_out_ref(),
+    at("core_compute")(prover_continue_tx(ct_asset, next)),
+  )
+}
+
+test bounded_core_compute_chain_agrees_with_the_original() {
+  let f = core_step_fixture()
+  expect CekCoreStepWitness { step } = f.auxiliary
+  let step_data: Data = step
+  let witness_data: Data = step.witness
+  let bound = core_chain_bound(f)
+  let next: Data = bound
+  and {
+    cek_semantics.verify_cek_core_step_semantics_v1(
+      prepared(f).resolution.pre_state,
+      f.transition,
+      step,
+    ),
+    core_validator.main.spend(
+      [fixture.next_step_script_hash],
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(prepared(f))),
+      ct.Continue(
+        core_validator.VerifyCoreStep {
+          input_index: 0,
+          output_index: 0,
+          transition: f.transition,
+          step: step_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, next),
+    ),
+    run_core_compute_chain(bound, witness_data),
+    core_settle.main.spend(
+      fixture.next_step_script_hash,
+      [1],
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(core_chain.CoreBound { ..bound, progress: 1 }),
+        },
+      ),
+      ct.Continue(
+        core_settle.Settle {
+          input_index: 0,
+          output_index: 0,
+          transition: f.transition,
+          witness: witness_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, winning_output()),
+    ),
+  }
+}
+
+test bounded_core_compute_refuses_substituted_witness() fail {
+  let f = core_step_fixture()
+  expect run_core_compute_chain(core_chain_bound(f), builtin.constr_data(6, []))
+}
+
+test bounded_core_settle_refuses_omitted_arm() fail {
+  let f = core_step_fixture()
+  expect CekCoreStepWitness { step } = f.auxiliary
+  let witness_data: Data = step.witness
+  expect
+    core_settle.main.spend(
+      fixture.next_step_script_hash,
+      [1],
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(core_chain_bound(f)),
+        },
+      ),
+      ct.Continue(
+        core_settle.Settle {
+          input_index: 0,
+          output_index: 0,
+          transition: f.transition,
+          witness: witness_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, winning_output()),
+    )
+}
+
+fn context_staged_fixture(f: CekStepFixtureV1) -> context_chain.ContextStaged {
+  let cek = vm_witness.cek_witness_control_v1(f.transition)
+  let auxiliary: Data = f.auxiliary
+  let prepared_data: Data = prepared(f)
+  let control_data: Data = cek
+  context_chain.ContextStaged {
+    bound: context_chain.ContextBound {
+      prepared: prepared_data,
+      control: control_data,
+      auxiliary_hash: blake2b_256(cbor.serialise(auxiliary)),
+      transaction_id: f.pre.transaction_id,
+      source_kind: f.pre.source_kind,
+    },
+    context: vm_witness.cek_context_control_from_cbor(cek.context_control_cbor),
+    native: context_step.native_facts(cek.control),
+    execution_cursor: cek.execution_cursor,
+  }
+}
+
+fn context_chain_action(f: CekStepFixtureV1) -> context_chain.ContextAction {
+  let auxiliary: Data = f.auxiliary
+  context_chain.VerifyContext {
+    input_index: 0,
+    output_index: 0,
+    transition: f.transition,
+    auxiliary,
+  }
+}
+
+test bounded_context_mint_chain_agrees_with_original() {
+  shaped_context_mint_chain(honest_at)
+}
+
+/// `context_mint_chain`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_context_mint_chain(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = context_step_fixture()
+  let staged = context_staged_fixture(f)
+  let bound_data: Data = staged.bound
+  let staged_data: Data = staged
+  let auxiliary: Data = f.auxiliary
+  let verified = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext {
+      next: context_step.next_mint_init(
+        staged.context,
+        staged.native,
+        auxiliary,
+      ),
+    },
+  }
+  let verified_data: Data = verified
+  let action = ct.Continue(context_chain_action(f))
+  let next_hash = fixture.next_step_script_hash
+  and {
+    run_kind(2, f),
+    context_bind.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(prepared(f))),
+      action,
+      fixture.own_out_ref(),
+      at("context_bind")(prover_continue_tx(ct_asset, bound_data)),
+    ),
+    context_control.main.spend(
+      [
+        next_hash, next_hash, next_hash, next_hash, next_hash, next_hash,
+        next_hash, next_hash,
+      ],
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged.bound),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      at("context_control")(prover_continue_tx(ct_asset, staged_data)),
+    ),
+    context_mint_init.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      at("context_mint_init")(prover_continue_tx(ct_asset, verified_data)),
+    ),
+    context_settle.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(verified),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      at("context_settle")(prover_continue_tx(ct_asset, winning_output())),
+    ),
+  }
+}
+
+test bounded_context_mint_refuses_substituted_auxiliary() fail {
+  let f = context_step_fixture()
+  let staged = context_staged_fixture(f)
+  let action = context_chain.VerifyContext {
+    ..context_chain_action(f),
+    auxiliary: builtin.constr_data(0, [builtin.i_data(1)]),
+  }
+  expect
+    context_mint_init.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged),
+        },
+      ),
+      ct.Continue(action),
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, winning_output()),
+    )
+}
+
+test bounded_context_refuses_an_honest_operator_successor() fail {
+  let honest = context_step_fixture()
+  let dishonest_post = validation_trace_v1.ValidationMachineStateV1 {
+    ..honest.transition.claimed_successor,
+    work_root: h_c,
+  }
+  let f = CekStepFixtureV1 {
+    ..honest,
+    transition: ValidationOneStepWitnessV1 {
+      ..honest.transition,
+      claimed_successor: dishonest_post,
+    },
+  }
+  let original_staged = context_staged_fixture(f)
+  let original_prepared = prepared(f)
+  let honest_operator_prepared: Data = PreparedValidationResolutionStateV1 {
+    ..original_prepared,
+    resolution: ValidationResolutionStateV1 {
+      ..original_prepared.resolution,
+      operator_successor_hash: validation_trace_v1.hash_machine_state(
+        honest.transition.claimed_successor,
+      ),
+    },
+  }
+  let staged = context_chain.ContextStaged {
+    ..original_staged,
+    bound: context_chain.ContextBound {
+      ..original_staged.bound,
+      prepared: honest_operator_prepared,
+    },
+  }
+  let staged_data: Data = staged
+  let auxiliary: Data = f.auxiliary
+  let verified = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext {
+      next: context_step.next_mint_init(
+        staged.context,
+        staged.native,
+        auxiliary,
+      ),
+    },
+  }
+  expect
+    context_settle.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(verified),
+        },
+      ),
+      ct.Continue(context_chain_action(f)),
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, winning_output()),
+    )
+}
+
+test bounded_context_refuses_substituted_source_transaction() fail {
+  let original = context_step_fixture()
+  let f = CekStepFixtureV1 {
+    ..original,
+    pre: validation_trace_v1.ValidationMachineStateV1 {
+      ..original.pre,
+      transaction_id: h_c,
+    },
+  }
+  let bound_data: Data = context_staged_fixture(f).bound
+  expect
+    context_bind.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(prepared(f))),
+      ct.Continue(context_chain_action(f)),
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, bound_data),
+    )
+}
+
+fn run_empty_context_chain(stage: Int) -> Bool {
+  shaped_empty_context_chain(honest_at, stage)
+}
+
+/// `run_empty_context_chain`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_empty_context_chain(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  stage: Int,
+) -> Bool {
+  let tx = empty_v1_transaction()
+  let original = context_staged_fixture(context_step_fixture())
+  expect cek: CekWitnessControlV1 = original.bound.control
+  let context = CekContextControlV1 {
+    ..original.context,
+    stage,
+    observer_summary: vm_witness.empty_data_summary_v1(),
+  }
+  let next_context = if stage < 5 {
+    CekContextControlV1 { ..context, stage: stage + 1 }
+  } else {
+    expect context_chain.ContinueContext { next } = context_observer.next_observer(
+      context_chain.ContextStaged { ..original, context },
+      context_observer.EmptyObservers,
+    )
+    next
+  }
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    cek.control,
+    vm_witness.encode_cek_context_control_v1(context),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    47,
+    0,
+    0,
+  )
+  let Pair(post, _) = cek_state(
+    tx,
+    cek.control,
+    vm_witness.encode_cek_context_control_v1(next_context),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    48,
+    0,
+    0,
+  )
+  let f = step_fixture(
+    2,
+    pre,
+    work_witness_cbor,
+    post,
+    NoAuxiliaryWitness,
+    None,
+  )
+  let staged = context_staged_fixture(f)
+  let bound_data: Data = staged.bound
+  let staged_data: Data = staged
+  let verified = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext { next: next_context },
+  }
+  let verified_data: Data = verified
+  let action = ct.Continue(context_chain_action(f))
+  let next_hash = fixture.next_step_script_hash
+  let datum = Some(
+    ct.StepDatum {
+      fraud_prover: fixture.fraud_prover_key_hash,
+      data: Some(staged),
+    },
+  )
+  let tx_leaf = prover_continue_tx(ct_asset, verified_data)
+  let leaf = when stage is {
+    1 ->
+      context_reference.main.spend(
+        next_hash,
+        fixture.computation_thread_policy_id,
+        datum,
+        action,
+        fixture.own_out_ref(),
+        at("context_reference")(tx_leaf),
+      )
+    2 ->
+      context_spend.main.spend(
+        next_hash,
+        fixture.computation_thread_policy_id,
+        datum,
+        action,
+        fixture.own_out_ref(),
+        at("context_spend")(tx_leaf),
+      )
+    3 ->
+      context_output.main.spend(
+        next_hash,
+        fixture.computation_thread_policy_id,
+        datum,
+        action,
+        fixture.own_out_ref(),
+        at("context_output")(tx_leaf),
+      )
+    4 ->
+      context_signer.main.spend(
+        next_hash,
+        fixture.computation_thread_policy_id,
+        datum,
+        action,
+        fixture.own_out_ref(),
+        at("context_signer")(tx_leaf),
+      )
+    5 -> {
+      let pending = context_observer.ObserverPending {
+        staged: staged_data,
+        opening: context_observer.EmptyObservers,
+      }
+      let pending_data: Data = pending
+      and {
+        context_observer_authenticate.main.spend(
+          next_hash,
+          fixture.computation_thread_policy_id,
+          fixture.test_certificate_policy_id,
+          datum,
+          action,
+          fixture.own_out_ref(),
+          at("context_observer_authenticate")(
+            prover_continue_tx(ct_asset, pending_data),
+          ),
+        ),
+        context_observer_fold.main.spend(
+          next_hash,
+          fixture.computation_thread_policy_id,
+          Some(
+            ct.StepDatum {
+              fraud_prover: fixture.fraud_prover_key_hash,
+              data: Some(pending),
+            },
+          ),
+          action,
+          fixture.own_out_ref(),
+          at("context_observer_fold")(tx_leaf),
+        ),
+      }
+    }
+    _ -> fail
+  }
+  and {
+    run_kind(2, f),
+    context_bind.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(prepared(f))),
+      action,
+      fixture.own_out_ref(),
+      at("context_bind")(prover_continue_tx(ct_asset, bound_data)),
+    ),
+    context_control.main.spend(
+      list.repeat(next_hash, 14),
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged.bound),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      at("context_control")(prover_continue_tx(ct_asset, staged_data)),
+    ),
+    leaf,
+    context_settle.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(verified),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      at("context_settle")(prover_continue_tx(ct_asset, winning_output())),
+    ),
+  }
+}
+
+test bounded_context_reference_empty_chain() {
+  run_empty_context_chain(1)
+}
+
+test bounded_context_spend_empty_chain() {
+  run_empty_context_chain(2)
+}
+
+test bounded_context_output_empty_chain() {
+  run_empty_context_chain(3)
+}
+
+test bounded_context_signer_empty_chain() {
+  run_empty_context_chain(4)
+}
+
+test bounded_context_observer_empty_chain() {
+  run_empty_context_chain(5)
+}
+
+fn run_context_descriptor_handoff(finish: Bool) -> Bool {
+  shaped_context_descriptor_handoff(honest_at, finish)
+}
+
+/// `run_context_descriptor_handoff`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_context_descriptor_handoff(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  finish: Bool,
+) -> Bool {
+  let bytes = #"8400004100820a14"
+  let commitment = bounded_item_v1.from_bytes(8, 0, bytes)
+  let proof = bounded_item_v1.ChunkProofV1 {
+    version: 1,
+    field_index: 8,
+    item_index: 0,
+    total_length: 8,
+    chunk_index: 0,
+    chunk: bytes,
+    frontier: validation_merkle_v1.build_frontier(
+      [bounded_item_v1.hash_chunk(8, 0, 0, bytes)],
+    ).peaks,
+    siblings: [],
+  }
+  let initial = redeemer_item.initial_control_v1(
+    redeemer_item.mode_descriptor,
+    0,
+    1,
+    8,
+    commitment,
+    0,
+    0,
+  )
+  let header_witness = redeemer_item.RedeemerItemProofWitnessV1 {
+    action: redeemer_item.RedeemerItemOpenHeader,
+    chunk_proof: Some(proof),
+    next_chunk_proof: None,
+  }
+  expect Some(redeemer_item.RedeemerItemProofAdvanced { control: tail }) = redeemer_item.step_v1(
+    initial,
+    header_witness,
+  )
+  let current = if finish {
+    tail
+  } else {
+    initial
+  }
+  let item_witness = if finish {
+    redeemer_item.RedeemerItemProofWitnessV1 {
+      ..header_witness,
+      action: redeemer_item.RedeemerItemOpenTail,
+    }
+  } else {
+    header_witness
+  }
+  expect Some(redeemer_item.RedeemerItemProofAdvanced { control: next_item }) = redeemer_item.step_v1(
+    current,
+    item_witness,
+  )
+  let original = context_staged_fixture(context_step_fixture())
+  expect cek: CekWitnessControlV1 = original.bound.control
+  let leaf = script_proof_v1.redeemer_item_leaf_hash(0, 8, commitment)
+  let native = NativeScriptsControlV1 {
+    ..cek.control,
+    redeemer_count: 1,
+    redeemer_peaks: validation_merkle_v1.build_frontier([leaf]).peaks,
+  }
+  let context = CekContextControlV1 {
+    ..original.context,
+    stage: 0,
+    execution_memory_limit: 0,
+    execution_cpu_limit: 0,
+    observer_summary: vm_witness.empty_data_summary_v1(),
+    redeemer_leaf: leaf,
+    redeemer_context_control_hash: redeemer_item.hash_control_v1(current),
+  }
+  let next_context = if finish {
+    CekContextControlV1 {
+      ..context,
+      stage: 1,
+      execution_memory_limit: next_item.execution_memory,
+      execution_cpu_limit: next_item.execution_steps,
+      redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+        vm_witness.initial_cek_redeemer_context_control_v1(native.purpose_count),
+      ),
+    }
+  } else {
+    CekContextControlV1 {
+      ..context,
+      redeemer_context_control_hash: redeemer_item.hash_control_v1(next_item),
+    }
+  }
+  let tx = empty_v1_transaction()
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    native,
+    vm_witness.encode_cek_context_control_v1(context),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    47,
+    0,
+    0,
+  )
+  let Pair(post, _) = cek_state(
+    tx,
+    native,
+    vm_witness.encode_cek_context_control_v1(next_context),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    48,
+    0,
+    0,
+  )
+  let auxiliary = RedeemerItemStepWitness {
+    redeemer_control: None,
+    control: current,
+    witness: item_witness,
+  }
+  let f = step_fixture(2, pre, work_witness_cbor, post, auxiliary, None)
+  let staged = context_staged_fixture(f)
+  let staged_data: Data = staged
+  let auxiliary_data: Data = auxiliary
+  let witness_data: Data = item_witness
+  let pending = CekContextItemStepPending {
+    staged: staged_data,
+    item_control: current,
+    item_witness_hash: blake2b_256(cbor.serialise(witness_data)),
+    claimed_next: next_item,
+  }
+  let pending_data: Data = pending
+  let verified = CekContextItemStepVerified {
+    staged: staged_data,
+    next: next_item,
+  }
+  let verified_data: Data = verified
+  let context_verified = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext { next: next_context },
+  }
+  let context_verified_data: Data = context_verified
+  let action = ct.Continue(context_chain_action(f))
+  let verified_datum = Some(
+    ct.StepDatum {
+      fraud_prover: fixture.fraud_prover_key_hash,
+      data: Some(verified),
+    },
+  )
+  let next_hash = fixture.next_step_script_hash
+  let return_path = if finish {
+    context_item_selection_finish.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      verified_datum,
+      action,
+      fixture.own_out_ref(),
+      at("context_item_selection_finish")(
+        prover_continue_tx(ct_asset, context_verified_data),
+      ),
+    )
+  } else {
+    let result = context_item.ItemHashResult {
+      verified: verified_data,
+      next_hash: redeemer_item.hash_control_v1(next_item),
+    }
+    let result_data: Data = result
+    and {
+      context_item_hash.main.spend(
+        next_hash,
+        fixture.computation_thread_policy_id,
+        verified_datum,
+        action,
+        fixture.own_out_ref(),
+        at("context_item_hash")(prover_continue_tx(ct_asset, result_data)),
+      ),
+      context_item_selection_continue.main.spend(
+        next_hash,
+        fixture.computation_thread_policy_id,
+        Some(
+          ct.StepDatum {
+            fraud_prover: fixture.fraud_prover_key_hash,
+            data: Some(result),
+          },
+        ),
+        action,
+        fixture.own_out_ref(),
+        at("context_item_selection_continue")(
+          prover_continue_tx(ct_asset, context_verified_data),
+        ),
+      ),
+    }
+  }
+  and {
+    run_kind(2, f),
+    context_item_bind.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged),
+        },
+      ),
+      ct.Continue(
+        context_item.VerifyItem {
+          input_index: 0,
+          output_index: 0,
+          transition: f.transition,
+          auxiliary: auxiliary_data,
+          claimed_next: next_item,
+        },
+      ),
+      fixture.own_out_ref(),
+      at("context_item_bind")(prover_continue_tx(ct_asset, pending_data)),
+    ),
+    context_item_return.main.spend(
+      list.repeat(next_hash, 5),
+      fixture.computation_thread_policy_id,
+      verified_datum,
+      action,
+      fixture.own_out_ref(),
+      at("context_item_return")(prover_continue_tx(ct_asset, verified_data)),
+    ),
+    return_path,
+    context_settle.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(context_verified),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      at("context_settle")(prover_continue_tx(ct_asset, winning_output())),
+    ),
+  }
+}
+
+test bounded_context_descriptor_header_handoff_and_return() {
+  run_context_descriptor_handoff(False)
+}
+
+test bounded_context_descriptor_tail_handoff_and_return() {
+  run_context_descriptor_handoff(True)
+}
+
+// ---- The stage-9 item bind ----
+//
+// At stage 9 item-bind checks no field of the presented item control on its
+// own: `active_scan_hash` pins the control the select built, and the item
+// proof never rewrites its mode, index, count, commitment or tag. These spend
+// item-bind from an honest post-select redeemer control; each fail twin
+// presents a forged item control that only the pin can refuse.
+
+/// The descriptor bytes of witness item `item_index`: a spend at pointer 0,
+/// then a mint at pointer 0.
+fn stage9_item_bytes(item_index: Int) -> ByteArray {
+  if item_index == 0 {
+    #"8400004100820a14"
+  } else {
+    #"8401004100820a14"
+  }
+}
+
+/// The item control an honest select of witness item `item_index` builds.
+fn stage9_item_control(
+  item_index: Int,
+) -> redeemer_item.RedeemerItemProofControlV1 {
+  let bytes = stage9_item_bytes(item_index)
+  redeemer_item.initial_control_v1(
+    redeemer_item.mode_descriptor,
+    item_index,
+    2,
+    bytearray.length(bytes),
+    bounded_item_v1.from_bytes(8, item_index, bytes),
+    item_index,
+    0,
+  )
+}
+
+/// Spend item-bind at stage 9 after the select of item 0, presenting the item
+/// control `forge` makes of the honest one with the header witness of the
+/// item it names. The claimed next control is the one `step_v1` yields.
+fn run_stage9_item_bind(
+  forge: fn(redeemer_item.RedeemerItemProofControlV1) ->
+    redeemer_item.RedeemerItemProofControlV1,
+) -> Bool {
+  let honest = stage9_item_control(0)
+  let presented = forge(honest)
+  let bytes = stage9_item_bytes(presented.item_index)
+  let witness = redeemer_item.RedeemerItemProofWitnessV1 {
+    action: redeemer_item.RedeemerItemOpenHeader,
+    chunk_proof: Some(
+      bounded_item_v1.ChunkProofV1 {
+        version: 1,
+        field_index: 8,
+        item_index: presented.item_index,
+        total_length: bytearray.length(bytes),
+        chunk_index: 0,
+        chunk: bytes,
+        frontier: validation_merkle_v1.build_frontier(
+          [bounded_item_v1.hash_chunk(8, presented.item_index, 0, bytes)],
+        ).peaks,
+        siblings: [],
+      },
+    ),
+    next_chunk_proof: None,
+  }
+  expect Some(redeemer_item.RedeemerItemProofAdvanced { control: next_item }) = redeemer_item.step_v1(
+    presented,
+    witness,
+  )
+  let current = CekRedeemerContextControlV1 {
+    ..vm_witness.initial_cek_redeemer_context_control_v1(2),
+    active_scan_hash: redeemer_item.hash_control_v1(honest),
+    active_redeemer_leaf: script_proof_v1.redeemer_item_leaf_hash(
+      0,
+      honest.total_length,
+      honest.item_commitment,
+    ),
+    purpose_bound: 1,
+  }
+  let auxiliary = RedeemerItemStepWitness {
+    redeemer_control: Some(current),
+    control: presented,
+    witness,
+  }
+  let auxiliary_data: Data = auxiliary
+  let f = context_step_fixture()
+  let original = context_staged_fixture(f)
+  let staged = context_chain.ContextStaged {
+    ..original,
+    bound: context_chain.ContextBound {
+      ..original.bound,
+      auxiliary_hash: blake2b_256(cbor.serialise(auxiliary_data)),
+    },
+    context: CekContextControlV1 {
+      ..original.context,
+      stage: 9,
+      redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+        current,
+      ),
+    },
+  }
+  let staged_data: Data = staged
+  let witness_data: Data = witness
+  let pending: Data = CekContextItemStepPending {
+    staged: staged_data,
+    item_control: presented,
+    item_witness_hash: blake2b_256(cbor.serialise(witness_data)),
+    claimed_next: next_item,
+  }
+  context_item_bind.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(staged),
+      },
+    ),
+    ct.Continue(
+      context_item.VerifyItem {
+        input_index: 0,
+        output_index: 0,
+        transition: f.transition,
+        auxiliary: auxiliary_data,
+        claimed_next: next_item,
+      },
+    ),
+    fixture.own_out_ref(),
+    prover_continue_tx(ct_asset, pending),
+  )
+}
+
+test bounded_context_stage9_item_bind_accepts_the_selected_item() {
+  run_stage9_item_bind(fn(control) { control })
+}
+
+test bounded_context_stage9_item_bind_refuses_a_forged_item_count() fail {
+  run_stage9_item_bind(
+    fn(control) {
+      redeemer_item.RedeemerItemProofControlV1 {
+        ..control,
+        item_count: control.item_count + 1,
+      }
+    },
+  )
+}
+
+test bounded_context_stage9_item_bind_refuses_a_flipped_mode() fail {
+  run_stage9_item_bind(
+    fn(control) {
+      redeemer_item.RedeemerItemProofControlV1 {
+        ..control,
+        mode: redeemer_item.mode_data,
+      }
+    },
+  )
+}
+
+test bounded_context_stage9_item_bind_refuses_another_item() fail {
+  run_stage9_item_bind(fn(_) { stage9_item_control(1) })
+}
+
+/// The context-binding wire the SDK binder is checked against: prepared, work
+/// witness, transaction ID, auxiliary, bound and staged. The SDK fixtures
+/// `cek-context-binding.json` (normal) and `cek-context-binding-forced.json`
+/// hold these exact bytes.
+fn context_binding_wire(f: CekStepFixtureV1) -> Data {
+  let staged = context_staged_fixture(f)
+  let prepared_data: Data = prepared(f)
+  let auxiliary: Data = f.auxiliary
+  let bound_data: Data = staged.bound
+  let staged_data: Data = staged
+  builtin.constr_data(
+    0,
+    [
+      prepared_data,
+      builtin.b_data(f.transition.work_witness_cbor),
+      builtin.b_data(f.pre.transaction_id),
+      auxiliary,
+      bound_data,
+      staged_data,
+    ],
+  )
+}
+
+test bounded_context_binding_wire_matches_sdk() {
+  let vector = context_binding_wire(context_step_fixture())
+  blake2b_256(cbor.serialise(vector)) == #"a66cdb35e3859293b52cab5d69f51a68e45a1ed5ad85a6e69f46707716063719"
+}
+
+test bounded_context_binding_wire_matches_sdk_for_a_normal_source() {
+  let f = context_step_fixture()
+  let vector = context_binding_wire(
+    CekStepFixtureV1 {
+      ..f,
+      pre: validation_trace_v1.ValidationMachineStateV1 {
+        ..f.pre,
+        source_kind: validation_trace_v1.Normal,
+      },
+    },
+  )
+  blake2b_256(cbor.serialise(vector)) == #"6d4cd3dd905defae44264ee450434a3e80bbd7aad7966d7acd174a5f33ad65d1"
+}
+
+// ---------------------------------------------------------------------------
+// Stage 8: the mixed-width mint ordering closure at the deployed validator
+// ---------------------------------------------------------------------------
+//
+// Stage 6 appends the mint leaves in strictly ascending (policy id, asset
+// name) byte order, the order of the execution context's mint map. The fold
+// builds that map head-first, so step `mint_cursor` opens frontier leaf
+// `mint_count - 1 - mint_cursor`: the index is the control's, and each step
+// has one successor.
+
+fn mint_low_leaf() -> ByteArray {
+  mint_asset_leaf_hash(h_28_a, #"00", 7)
+}
+
+fn mint_high_leaf() -> ByteArray {
+  mint_asset_leaf_hash(h_28_a, #"ff", 1)
+}
+
+fn mint_item_witness(
+  asset_name: ByteArray,
+  quantity: Int,
+  siblings: List<ByteArray>,
+) -> ValidationAuxiliaryWitnessV1 {
+  CekMintContextItemWitness {
+    policy_id: h_28_a,
+    asset_name,
+    quantity,
+    siblings,
+  }
+}
+
+/// A stage-8 step over two same-policy assets: the frontier authenticates
+/// `#"00"` at index 0 and `#"ff"` at index 1, while the fold walks them
+/// descending. `cursor` is the fold
+/// position the pre-state records, `assets` its committed map head chain.
+fn mint_stage_fixture(
+  cursor: Int,
+  assets: cek_data_v1.DataSequenceSummaryV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  successor: CekContextControlV1,
+) -> CekStepFixtureV1 {
+  let tx = empty_v1_transaction()
+  let singleton = validation_merkle_v1.build_frontier([h_a])
+  let mint = validation_merkle_v1.build_frontier(
+    [mint_low_leaf(), mint_high_leaf()],
+  )
+  let control = NativeScriptsControlV1 {
+    ..empty_native_control(tx),
+    purpose_count: 1,
+    purpose_peaks: singleton.peaks,
+    execution_count: 1,
+    execution_peaks: singleton.peaks,
+    execution_cursor: 1,
+    language_bitmap: 1,
+    mint_count: 2,
+    mint_peaks: mint.peaks,
+  }
+  let item_control = mint_stage_control(cursor, assets)
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    control,
+    vm_witness.encode_cek_context_control_v1(item_control),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    47,
+    0,
+    0,
+  )
+  let Pair(post, _) = cek_state(
+    tx,
+    control,
+    vm_witness.encode_cek_context_control_v1(successor),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    48,
+    0,
+    0,
+  )
+  step_fixture(2, pre, work_witness_cbor, post, auxiliary, None)
+}
+
+fn mint_stage_control(
+  cursor: Int,
+  assets: cek_data_v1.DataSequenceSummaryV1,
+) -> CekContextControlV1 {
+  CekContextControlV1 {
+    ..context_staged_fixture(context_step_fixture()).context,
+    stage: 8,
+    mint_cursor: cursor,
+    current_mint_policy: h_28_a,
+    current_mint_assets: assets,
+  }
+}
+
+fn mint_head_assets(
+  asset_name: ByteArray,
+  quantity: Int,
+) -> cek_data_v1.DataSequenceSummaryV1 {
+  prepend_mint_asset_summary(
+    asset_name,
+    quantity,
+    cek_data_v1.empty_data_pair_summary_v1(),
+  )
+}
+
+/// The honest descending step: the fold already committed `#"ff"` (frontier
+/// index 1) and now authenticates `#"00"` at frontier index 0.
+fn mint_item_fixture() -> CekStepFixtureV1 {
+  let assets = mint_head_assets(#"ff", 1)
+  mint_stage_fixture(
+    1,
+    assets,
+    mint_item_witness(#"00", 7, [mint_high_leaf()]),
+    CekContextControlV1 {
+      ..mint_stage_control(1, assets),
+      mint_cursor: 2,
+      current_mint_assets: prepend_mint_asset_summary(#"00", 7, assets),
+    },
+  )
+}
+
+/// Same step, a different auxiliary. The evidence hash follows the auxiliary,
+/// so each negative is a prover who committed to the forged item, not one
+/// caught by the binding alone.
+fn mint_item_variant(
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> CekStepFixtureV1 {
+  CekStepFixtureV1 { ..mint_item_fixture(), auxiliary }
+}
+
+fn mint_item_staged(f: CekStepFixtureV1) -> context_chain.ContextStaged {
+  context_staged_fixture(f)
+}
+
+/// What the fold would publish if the claimed item were admitted.
+fn mint_item_claim(
+  f: CekStepFixtureV1,
+  asset_name: ByteArray,
+  quantity: Int,
+) -> context_chain.ContextVerified {
+  let staged = mint_item_staged(f)
+  let staged_data: Data = staged
+  context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext {
+      next: CekContextControlV1 {
+        ..staged.context,
+        mint_cursor: staged.context.mint_cursor + 1,
+        current_mint_assets: prepend_mint_asset_summary(
+          asset_name,
+          quantity,
+          staged.context.current_mint_assets,
+        ),
+      },
+    },
+  }
+}
+
+fn mint_item_claim_data(
+  f: CekStepFixtureV1,
+  asset_name: ByteArray,
+  quantity: Int,
+) -> Data {
+  let claimed: Data = mint_item_claim(f, asset_name, quantity)
+  claimed
+}
+
+fn run_mint_item_hop(f: CekStepFixtureV1, output_state: Data) -> Bool {
+  shaped_mint_item_hop(honest_at, f, output_state)
+}
+
+/// `run_mint_item_hop`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_mint_item_hop(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  f: CekStepFixtureV1,
+  output_state: Data,
+) -> Bool {
+  context_mint_item.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(mint_item_staged(f)),
+      },
+    ),
+    ct.Continue(context_chain_action(f)),
+    fixture.own_out_ref(),
+    at("context_mint_item")(prover_continue_tx(ct_asset, output_state)),
+  )
+}
+
+test context_mint_item_validator_wins_the_permuted_membership_step() {
+  let f = mint_item_fixture()
+  let staged = mint_item_staged(f)
+  let staged_data: Data = staged
+  let bound_data: Data = staged.bound
+  let auxiliary: Data = f.auxiliary
+  let verified = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext {
+      next: context_step.next_mint_item(
+        staged.context,
+        staged.native,
+        auxiliary,
+      ),
+    },
+  }
+  let verified_data: Data = verified
+  let action = ct.Continue(context_chain_action(f))
+  let next_hash = fixture.next_step_script_hash
+  and {
+    // The item the fold authenticates sits at frontier index 0 while the
+    // fold cursor is 1: the descending walk is proven, not assumed.
+    verified == mint_item_claim(f, #"00", 7),
+    run_kind(2, f),
+    context_bind.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(prepared(f))),
+      action,
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, bound_data),
+    ),
+    context_control.main.spend(
+      [
+        next_hash, next_hash, next_hash, next_hash, next_hash, next_hash,
+        next_hash, next_hash, next_hash,
+      ],
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged.bound),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, staged_data),
+    ),
+    run_mint_item_hop(f, verified_data),
+    context_settle.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(verified),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, winning_output()),
+    ),
+  }
+}
+
+/// The stage-8 control before its first item.
+fn mint_pristine(staged: context_chain.ContextStaged) -> CekContextControlV1 {
+  CekContextControlV1 {
+    ..staged.context,
+    mint_cursor: 0,
+    current_mint_policy: #"",
+    current_mint_assets: cek_data_v1.empty_data_pair_summary_v1(),
+  }
+}
+
+/// The first step opens the last leaf, `#"ff"` at frontier index 1.
+test context_mint_item_opens_the_last_leaf_first() {
+  let staged = mint_item_staged(mint_item_fixture())
+  let auxiliary: Data = mint_item_witness(#"ff", 1, [mint_low_leaf()])
+  context_step.next_mint_item(mint_pristine(staged), staged.native, auxiliary) == CekContextControlV1 {
+    ..mint_pristine(staged),
+    mint_cursor: 1,
+    current_mint_policy: h_28_a,
+    current_mint_assets: mint_head_assets(#"ff", 1),
+  }
+}
+
+/// A first step that opens the lower leaf, skipping `#"ff"`, has no successor.
+test context_mint_item_refuses_a_lower_first_index() fail {
+  let staged = mint_item_staged(mint_item_fixture())
+  let auxiliary: Data = mint_item_witness(#"00", 7, [mint_high_leaf()])
+  let next = context_step.next_mint_item(
+    mint_pristine(staged),
+    staged.native,
+    auxiliary,
+  )
+  next.mint_cursor == 1
+}
+
+/// The right item with the other leaf's path: membership at the derived
+/// index refuses it.
+test context_mint_item_refuses_a_foreign_membership_path() fail {
+  let f = mint_item_variant(mint_item_witness(#"00", 7, [mint_low_leaf()]))
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
+}
+
+/// The whole stage-8 walk over two policies, `h_28_a` {`00`: 7, `ff`: 1} and
+/// `#"bb..bb"` {`01`: 2}: three item steps open leaves 2, 1 and 0, then the
+/// terminal step publishes the context's mint map. Every step of an honest
+/// walk has its successor, and the TypeScript fold
+/// (`cek-context.mint-item-step.test.ts`) reaches the same summary root.
+test context_mint_walk_over_two_policies_ends_in_the_mint_map() {
+  let h_28_b = #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  let leaves = [
+    mint_low_leaf(),
+    mint_high_leaf(),
+    mint_asset_leaf_hash(h_28_b, #"01", 2),
+  ]
+  let frontier = validation_merkle_v1.build_frontier(leaves)
+  let staged = mint_item_staged(mint_item_fixture())
+  let native = context_step.NativeFacts {
+    ..staged.native,
+    mint_count: 3,
+    mint_peaks: frontier.peaks,
+  }
+  let item = fn(policy_id, asset_name, quantity, siblings) {
+    let auxiliary: Data = CekMintContextItemWitness {
+      policy_id,
+      asset_name,
+      quantity,
+      siblings,
+    }
+    auxiliary
+  }
+  let no_auxiliary: Data = NoAuxiliaryWitness
+  let first = context_step.next_mint_item(
+    mint_pristine(staged),
+    native,
+    item(h_28_b, #"01", 2, []),
+  )
+  let second = context_step.next_mint_item(
+    first,
+    native,
+    item(h_28_a, #"ff", 1, [mint_low_leaf()]),
+  )
+  let third = context_step.next_mint_item(
+    second,
+    native,
+    item(h_28_a, #"00", 7, [mint_high_leaf()]),
+  )
+  let done = context_step.next_mint_item(third, native, no_auxiliary)
+  let empty = cek_data_v1.empty_data_pair_summary_v1()
+  let policies = cek_data_v1.prepend_data_pair_summary_v1(
+    cek_data_v1.semantic_data_summary_v1(builtin.b_data(h_28_a)),
+    cek_data_v1.map_data_summary_v1(
+      prepend_mint_asset_summary(
+        #"00",
+        7,
+        prepend_mint_asset_summary(#"ff", 1, empty),
+      ),
+    ),
+    cek_data_v1.prepend_data_pair_summary_v1(
+      cek_data_v1.semantic_data_summary_v1(builtin.b_data(h_28_b)),
+      cek_data_v1.map_data_summary_v1(
+        prepend_mint_asset_summary(#"01", 2, empty),
+      ),
+      empty,
+    ),
+  )
+  and {
+    done.stage == 9,
+    done.mint_cursor == 3,
+    done.mint_summary == cek_data_v1.map_data_summary_v1(policies),
+    done.mint_summary.root == mint_walk_two_policies_root,
+  }
+}
+
+/// Opening the lower policy's leaf while the higher policy still has its
+/// leaf 2 unopened has no successor.
+test context_mint_walk_refuses_the_lower_policy_first() fail {
+  let h_28_b = #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  let frontier = validation_merkle_v1.build_frontier(
+    [mint_low_leaf(), mint_high_leaf(), mint_asset_leaf_hash(h_28_b, #"01", 2)],
+  )
+  let staged = mint_item_staged(mint_item_fixture())
+  let native = context_step.NativeFacts {
+    ..staged.native,
+    mint_count: 3,
+    mint_peaks: frontier.peaks,
+  }
+  let auxiliary: Data = mint_item_witness(#"ff", 1, [mint_low_leaf()])
+  context_step.next_mint_item(mint_pristine(staged), native, auxiliary).mint_cursor == 1
+}
+
+const mint_walk_two_policies_root =
+  #"eb30636005ea5bbb5a821dad0fb2af9df94c1cb5520da94cadeb15bbf72e3ebf"
+
+/// A repeated item: the fold re-authenticates the pair it already committed.
+/// That leaf is a member at index 1, not at the derived index 0.
+test context_mint_item_refuses_a_repeated_item() fail {
+  let f = mint_item_variant(mint_item_witness(#"ff", 1, [mint_low_leaf()]))
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"ff", 1))
+}
+
+/// A producer that walks ascending: at cursor 1 the derived index is 0, so
+/// opening `#"ff"` (a member at index 1) is refused.
+test context_mint_item_refuses_an_ascending_execution_order() fail {
+  let assets = mint_head_assets(#"00", 7)
+  let f = mint_stage_fixture(
+    1,
+    assets,
+    mint_item_witness(#"ff", 1, [mint_low_leaf()]),
+    CekContextControlV1 {
+      ..mint_stage_control(1, assets),
+      mint_cursor: 2,
+      current_mint_assets: prepend_mint_asset_summary(#"ff", 1, assets),
+    },
+  )
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"ff", 1))
+}
+
+/// An omitted item: the fold claims the terminal transition while the
+/// authenticated count still has an asset left.
+test context_mint_item_refuses_an_omitted_item() fail {
+  let assets = mint_head_assets(#"ff", 1)
+  let f = mint_stage_fixture(
+    1,
+    assets,
+    NoAuxiliaryWitness,
+    CekContextControlV1 {
+      ..mint_stage_control(1, assets),
+      stage: 9,
+      current_mint_policy: #"",
+      current_mint_assets: cek_data_v1.empty_data_pair_summary_v1(),
+    },
+  )
+  let staged = mint_item_staged(f)
+  let staged_data: Data = staged
+  let claimed: Data = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext {
+      next: CekContextControlV1 {
+        ..staged.context,
+        stage: 9,
+        current_mint_policy: #"",
+        current_mint_assets: cek_data_v1.empty_data_pair_summary_v1(),
+      },
+    },
+  }
+  expect run_mint_item_hop(f, claimed)
+}
+
+/// One item too many: the authenticated count is exhausted, so the only
+/// admissible transition is the terminal one.
+test context_mint_item_refuses_an_item_past_the_authenticated_count() fail {
+  let assets = prepend_mint_asset_summary(#"00", 7, mint_head_assets(#"ff", 1))
+  let f = mint_stage_fixture(
+    2,
+    assets,
+    mint_item_witness(#"00", 7, [mint_high_leaf()]),
+    CekContextControlV1 { ..mint_stage_control(2, assets), mint_cursor: 3 },
+  )
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 7))
+}
+
+/// A malformed checkpoint: the stage-6 initialisation datum handed to the
+/// stage-8 item validator.
+test context_mint_item_refuses_a_foreign_stage_checkpoint() fail {
+  let f = context_step_fixture()
+  expect
+    run_mint_item_hop(f, mint_item_claim_data(mint_item_fixture(), #"00", 7))
+}
+
+/// A forged successor: the fold publishes a next control the item does not
+/// produce. The item hop pins the exact output state.
+test context_mint_item_refuses_a_forged_successor() fail {
+  let f = mint_item_fixture()
+  expect run_mint_item_hop(f, mint_item_claim_data(f, #"00", 8))
+}
+
+/// The same forgery reaching settlement: the claimed successor work root no
+/// longer equals the one the published next control encodes.
+test context_mint_item_refuses_a_forged_successor_at_settlement() fail {
+  let f = mint_item_fixture()
+  expect
+    context_settle.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(mint_item_claim(f, #"00", 8)),
+        },
+      ),
+      ct.Continue(context_chain_action(f)),
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, winning_output()),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Redeemer ledger order in the split redeemer select
+// ---------------------------------------------------------------------------
+//
+// Two purposes on the execution frontier, spend at 0 and mint at 1. The
+// witness list holds the mint redeemer before the spend redeemer, the
+// reverse of ledger order: item 0 is the mint redeemer, item 1 the spend
+// redeemer. With `native_mint` the mint policy is a native script, so it
+// takes no redeemer and the spend redeemer is the only item. The execution
+// leaf at `purpose_bound - 1` admits one step: a select of exactly its
+// purpose and item, or, for a native execution, a skip.
+
+const redeemer_select_other_hash =
+  #"dddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+
+fn redeemer_select_item(item_index: Int) -> ByteArray {
+  cbor.serialise(builtin.i_data(item_index + 100))
+}
+
+fn redeemer_select_commitment(item_index: Int) -> ByteArray {
+  bounded_item_v1.from_bytes(
+    redeemer_item.redeemer_field_index,
+    item_index,
+    redeemer_select_item(item_index),
+  )
+}
+
+/// The item's chunk-frontier root; every item here fits one chunk.
+fn redeemer_select_leaf(item_index: Int) -> ByteArray {
+  script_proof_v1.redeemer_item_leaf_hash(
+    item_index,
+    bytearray.length(redeemer_select_item(item_index)),
+    redeemer_select_commitment(item_index),
+  )
+}
+
+fn redeemer_select_count(native_mint: Bool) -> Int {
+  if native_mint {
+    1
+  } else {
+    2
+  }
+}
+
+fn redeemer_select_leaves(native_mint: Bool) -> List<ByteArray> {
+  if native_mint {
+    [redeemer_select_leaf(0)]
+  } else {
+    [redeemer_select_leaf(0), redeemer_select_leaf(1)]
+  }
+}
+
+fn redeemer_select_subject(frontier_index: Int) -> ByteArray {
+  if frontier_index == 0 {
+    h_c
+  } else {
+    h_28_a
+  }
+}
+
+fn redeemer_select_source(frontier_index: Int) -> ByteArray {
+  if frontier_index == 0 {
+    h_a
+  } else {
+    h_b
+  }
+}
+
+fn redeemer_select_purpose_leaf(frontier_index: Int) -> ByteArray {
+  script_proof_v1.purpose_leaf_hash(
+    frontier_index,
+    0,
+    h_28_a,
+    redeemer_select_subject(frontier_index),
+  )
+}
+
+fn redeemer_select_execution_leaf(
+  native_mint: Bool,
+  frontier_index: Int,
+) -> ByteArray {
+  if frontier_index == 0 {
+    script_proof_v1.execution_leaf_hash(
+      3,
+      redeemer_select_purpose_leaf(0),
+      h_a,
+      redeemer_select_leaf(redeemer_select_count(native_mint) - 1),
+    )
+  } else if native_mint {
+    script_proof_v1.execution_leaf_hash(
+      0,
+      redeemer_select_purpose_leaf(1),
+      h_b,
+      #"",
+    )
+  } else {
+    script_proof_v1.execution_leaf_hash(
+      3,
+      redeemer_select_purpose_leaf(1),
+      h_b,
+      redeemer_select_leaf(0),
+    )
+  }
+}
+
+fn redeemer_select_executions(native_mint: Bool) -> List<ByteArray> {
+  [
+    redeemer_select_execution_leaf(native_mint, 0),
+    redeemer_select_execution_leaf(native_mint, 1),
+  ]
+}
+
+/// The genuine membership path of `frontier_index`: the other leaf.
+fn redeemer_select_siblings(
+  native_mint: Bool,
+  frontier_index: Int,
+) -> List<ByteArray> {
+  [redeemer_select_execution_leaf(native_mint, 1 - frontier_index)]
+}
+
+/// A Plutus select of the purpose at `named` consuming item `item_index`,
+/// genuine in every field except that `length_delta` is added to the
+/// item's length.
+fn redeemer_select_auxiliary(
+  control: CekRedeemerContextControlV1,
+  item_index: Int,
+  named: Int,
+  length_delta: Int,
+) -> Data {
+  let auxiliary: ValidationAuxiliaryWitnessV1 = CekRedeemerContextSelectWitness {
+    control,
+    item_index,
+    total_length: bytearray.length(redeemer_select_item(item_index)) + length_delta,
+    item_commitment: redeemer_select_commitment(item_index),
+    purpose_kind: named,
+    purpose_index: 0,
+    script_hash: h_28_a,
+    subject: redeemer_select_subject(named),
+    execution_language_tag: 3,
+    source_leaf: redeemer_select_source(named),
+    execution_siblings: redeemer_select_siblings(False, named),
+  }
+  let auxiliary_data: Data = auxiliary
+  auxiliary_data
+}
+
+/// A skip of the purpose at `named`, with that purpose's own leaf, source
+/// and genuine execution path.
+fn redeemer_skip_auxiliary(
+  native_mint: Bool,
+  control: CekRedeemerContextControlV1,
+  named: Int,
+) -> ValidationAuxiliaryWitnessV1 {
+  CekRedeemerContextSkipWitness {
+    control,
+    purpose_leaf: redeemer_select_purpose_leaf(named),
+    source_leaf: redeemer_select_source(named),
+    execution_siblings: redeemer_select_siblings(native_mint, named),
+  }
+}
+
+fn redeemer_select_staged(
+  native_mint: Bool,
+  control: CekRedeemerContextControlV1,
+  auxiliary: Data,
+) -> context_chain.ContextStaged {
+  let original = context_staged_fixture(context_step_fixture())
+  expect cek: CekWitnessControlV1 = original.bound.control
+  let executions = validation_merkle_v1.build_frontier(
+    redeemer_select_executions(native_mint),
+  )
+  let bound_control: Data = CekWitnessControlV1 {
+    ..cek,
+    control: NativeScriptsControlV1 {
+      ..cek.control,
+      execution_count: executions.count,
+      execution_peaks: executions.peaks,
+    },
+  }
+  context_chain.ContextStaged {
+    ..original,
+    bound: context_chain.ContextBound {
+      ..original.bound,
+      control: bound_control,
+      auxiliary_hash: blake2b_256(cbor.serialise(auxiliary)),
+    },
+    context: CekContextControlV1 {
+      ..original.context,
+      stage: 9,
+      redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+        control,
+      ),
+    },
+    native: context_step.NativeFacts {
+      ..original.native,
+      redeemer_count: redeemer_select_count(native_mint),
+      redeemer_peaks: validation_merkle_v1.build_frontier(
+        redeemer_select_leaves(native_mint),
+      ).peaks,
+      purpose_count: 2,
+      purpose_peaks: validation_merkle_v1.build_frontier(
+        [redeemer_select_purpose_leaf(0), redeemer_select_purpose_leaf(1)],
+      ).peaks,
+    },
+  }
+}
+
+/// The pending selection the validator yields for
+/// `redeemer_select_auxiliary(control, item_index, named, length_delta)`:
+/// the frontier is always `purpose_bound - 1`, whatever the witness names.
+fn redeemer_select_pending(
+  staged: context_chain.ContextStaged,
+  control: CekRedeemerContextControlV1,
+  item_index: Int,
+  named: Int,
+  length_delta: Int,
+) -> RedeemerSelectionPending {
+  let staged_data: Data = staged
+  RedeemerSelectionPending {
+    staged: staged_data,
+    control,
+    item_index,
+    item_count: staged.native.redeemer_count,
+    total_length: bytearray.length(redeemer_select_item(item_index)) + length_delta,
+    item_commitment: redeemer_select_commitment(item_index),
+    redeemer_leaf: redeemer_select_leaf(item_index),
+    purpose_frontier: control.purpose_bound - 1,
+    purpose_kind: named,
+    purpose_index: 0,
+    script_hash: h_28_a,
+    subject: redeemer_select_subject(named),
+  }
+}
+
+fn redeemer_select_action(auxiliary: Data) -> context_chain.ContextRedeemer {
+  ct.Continue(
+    context_chain.VerifyContext {
+      ..context_chain_action(context_step_fixture()),
+      auxiliary,
+    },
+  )
+}
+
+fn run_redeemer_select_authenticate(
+  control: CekRedeemerContextControlV1,
+  item_index: Int,
+  named: Int,
+  length_delta: Int,
+) -> Bool {
+  shaped_redeemer_select_authenticate(
+    honest_at,
+    control,
+    item_index,
+    named,
+    length_delta,
+  )
+}
+
+/// `run_redeemer_select_authenticate`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_redeemer_select_authenticate(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  control: CekRedeemerContextControlV1,
+  item_index: Int,
+  named: Int,
+  length_delta: Int,
+) -> Bool {
+  let auxiliary = redeemer_select_auxiliary(
+    control,
+    item_index,
+    named,
+    length_delta,
+  )
+  let staged = redeemer_select_staged(False, control, auxiliary)
+  let pending: Data = redeemer_select_pending(
+    staged,
+    control,
+    item_index,
+    named,
+    length_delta,
+  )
+  redeemer_select_authenticate.main.spend(
+    fixture.next_step_script_hash,
+    redeemer_select_other_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(staged),
+      },
+    ),
+    redeemer_select_action(auxiliary),
+    fixture.own_out_ref(),
+    at("redeemer_select_authenticate")(prover_continue_tx(ct_asset, pending)),
+  )
+}
+
+fn redeemer_skip_successor(
+  staged: context_chain.ContextStaged,
+  control: CekRedeemerContextControlV1,
+) -> context_chain.ContextVerified {
+  let staged_data: Data = staged
+  context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext {
+      next: CekContextControlV1 {
+        ..staged.context,
+        redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+          CekRedeemerContextControlV1 {
+            ..control,
+            purpose_bound: control.purpose_bound - 1,
+          },
+        ),
+      },
+    },
+  }
+}
+
+/// A skip at the purpose bound, verified by the select-authenticate
+/// validator applied with `settle_script_hash`. The transaction continues
+/// the thread to `fixture.next_step_script_hash` either way.
+fn run_redeemer_skip_authenticate(
+  native_mint: Bool,
+  control: CekRedeemerContextControlV1,
+  initialize_script_hash: ByteArray,
+  settle_script_hash: ByteArray,
+) -> Bool {
+  let auxiliary: Data = redeemer_skip_auxiliary(
+    native_mint,
+    control,
+    control.purpose_bound - 1,
+  )
+  let staged = redeemer_select_staged(native_mint, control, auxiliary)
+  let verified: Data = redeemer_skip_successor(staged, control)
+  redeemer_select_authenticate.main.spend(
+    initialize_script_hash,
+    settle_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(staged),
+      },
+    ),
+    redeemer_select_action(auxiliary),
+    fixture.own_out_ref(),
+    prover_continue_tx(ct_asset, verified),
+  )
+}
+
+/// A control with one redeemer folded and the given purpose bound.
+fn redeemer_select_after_one(bound: Int) -> CekRedeemerContextControlV1 {
+  CekRedeemerContextControlV1 {
+    ..vm_witness.initial_cek_redeemer_context_control_v1(2),
+    cursor: 1,
+    map_items: cek_data_v1.prepend_data_pair_summary_v1(
+      cek_data_v1.semantic_data_summary_v1(builtin.i_data(0)),
+      cek_data_v1.semantic_data_summary_v1(builtin.i_data(1)),
+      cek_data_v1.empty_data_pair_summary_v1(),
+    ),
+    purpose_bound: bound,
+  }
+}
+
+test redeemer_select_authenticate_takes_the_highest_purpose_first() {
+  run_redeemer_select_authenticate(
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    0,
+    1,
+    0,
+  )
+}
+
+test redeemer_select_authenticate_takes_a_purpose_below_the_bound() {
+  run_redeemer_select_authenticate(redeemer_select_after_one(1), 1, 0, 0)
+}
+
+// With both purposes open, a select of the spend purpose (frontier 0) and
+// its genuine path skips the mint purpose at the frontier; the step above
+// shows the same witness is honest once the bound is 1.
+test redeemer_select_authenticate_refuses_a_select_that_skips_a_purpose() fail {
+  run_redeemer_select_authenticate(
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    1,
+    0,
+    0,
+  )
+}
+
+// The mint purpose at the frontier with the spend purpose's redeemer item.
+test redeemer_select_authenticate_refuses_another_redeemer_item() fail {
+  run_redeemer_select_authenticate(
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    1,
+    1,
+    0,
+  )
+}
+
+// After the spend purpose (frontier 0) the bound is 0, so the mint
+// purpose above it, the retired witness-list order's second select, is
+// refused.
+test redeemer_select_authenticate_refuses_a_purpose_at_or_above_the_bound() fail {
+  run_redeemer_select_authenticate(redeemer_select_after_one(0), 0, 1, 0)
+}
+
+test redeemer_select_authenticate_refuses_the_same_purpose_twice() fail {
+  run_redeemer_select_authenticate(redeemer_select_after_one(1), 0, 1, 0)
+}
+
+test redeemer_select_authenticate_refuses_a_forged_item_length() fail {
+  run_redeemer_select_authenticate(
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    0,
+    1,
+    1,
+  )
+}
+
+test redeemer_select_authenticate_skips_a_native_execution() {
+  run_redeemer_skip_authenticate(
+    True,
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    redeemer_select_other_hash,
+    fixture.next_step_script_hash,
+  )
+}
+
+// The skip continues to the settle validator; a thread routed to any other
+// hash, here the initialize validator's, is refused.
+test redeemer_select_authenticate_refuses_a_skip_to_another_hash() fail {
+  run_redeemer_skip_authenticate(
+    True,
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    fixture.next_step_script_hash,
+    redeemer_select_other_hash,
+  )
+}
+
+test redeemer_select_authenticate_refuses_a_skip_of_a_plutus_execution() fail {
+  run_redeemer_skip_authenticate(
+    False,
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    redeemer_select_other_hash,
+    fixture.next_step_script_hash,
+  )
+}
+
+/// The honest stage-9 skip of the native mint policy as one monolithic
+/// step, for the split parity below.
+fn redeemer_skip_step_fixture() -> CekStepFixtureV1 {
+  let tx = empty_v1_transaction()
+  let executions = validation_merkle_v1.build_frontier(
+    redeemer_select_executions(True),
+  )
+  let control = NativeScriptsControlV1 {
+    ..empty_native_control(tx),
+    redeemer_count: 1,
+    redeemer_peaks: validation_merkle_v1.build_frontier(
+      redeemer_select_leaves(True),
+    ).peaks,
+    purpose_count: 2,
+    purpose_peaks: validation_merkle_v1.build_frontier(
+      [redeemer_select_purpose_leaf(0), redeemer_select_purpose_leaf(1)],
+    ).peaks,
+    execution_count: executions.count,
+    execution_peaks: executions.peaks,
+    execution_cursor: 2,
+    language_bitmap: 1,
+  }
+  let redeemers = vm_witness.initial_cek_redeemer_context_control_v1(2)
+  let original = context_staged_fixture(context_step_fixture()).context
+  let context = CekContextControlV1 {
+    ..original,
+    stage: 9,
+    mint_summary: cek_data_v1.map_data_summary_v1(
+      cek_data_v1.empty_data_pair_summary_v1(),
+    ),
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+      redeemers,
+    ),
+  }
+  let next_context = CekContextControlV1 {
+    ..context,
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+      CekRedeemerContextControlV1 { ..redeemers, purpose_bound: 1 },
+    ),
+  }
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    control,
+    vm_witness.encode_cek_context_control_v1(context),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    53,
+    0,
+    0,
+  )
+  let Pair(post, _) = cek_state(
+    tx,
+    control,
+    vm_witness.encode_cek_context_control_v1(next_context),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    54,
+    0,
+    0,
+  )
+  step_fixture(
+    2,
+    pre,
+    work_witness_cbor,
+    post,
+    redeemer_skip_auxiliary(True, redeemers, 1),
+    None,
+  )
+}
+
+/// The skip through the split chain (bind, control, select-authenticate,
+/// settle) wins exactly where the monolithic context step wins.
+test redeemer_skip_split_agrees_with_original() {
+  let f = redeemer_skip_step_fixture()
+  let staged = context_staged_fixture(f)
+  let bound_data: Data = staged.bound
+  let staged_data: Data = staged
+  expect CekRedeemerContextSkipWitness { control, .. } = f.auxiliary
+  let verified = redeemer_skip_successor(staged, control)
+  let verified_data: Data = verified
+  let action = ct.Continue(context_chain_action(f))
+  let next_hash = fixture.next_step_script_hash
+  and {
+    run_kind(2, f),
+    context_bind.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(prepared(f))),
+      action,
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, bound_data),
+    ),
+    context_control.main.spend(
+      [
+        next_hash, next_hash, next_hash, next_hash, next_hash, next_hash,
+        next_hash, next_hash, next_hash, next_hash,
+      ],
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged.bound),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, staged_data),
+    ),
+    redeemer_select_authenticate.main.spend(
+      redeemer_select_other_hash,
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(staged),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, verified_data),
+    ),
+    context_settle.main.spend(
+      next_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(verified),
+        },
+      ),
+      action,
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, winning_output()),
+    ),
+  }
+}
+
+fn run_redeemer_select_finish(next_bound: Int) -> Bool {
+  shaped_redeemer_select_finish(honest_at, next_bound)
+}
+
+/// `run_redeemer_select_finish`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_redeemer_select_finish(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  next_bound: Int,
+) -> Bool {
+  let control = vm_witness.initial_cek_redeemer_context_control_v1(2)
+  let auxiliary = redeemer_select_auxiliary(control, 0, 1, 0)
+  let staged = redeemer_select_staged(False, control, auxiliary)
+  let selection = redeemer_select_pending(staged, control, 0, 1, 0)
+  let summary = cek_data_v1.semantic_data_summary_v1(builtin.i_data(0))
+  let pending = RedeemerInitialPending {
+    selection,
+    purpose: Some(summary),
+    initial_hash: h_c,
+  }
+  let next_redeemers = CekRedeemerContextControlV1 {
+    ..control,
+    active_scan_hash: h_c,
+    active_redeemer_leaf: selection.redeemer_leaf,
+    active_purpose: summary,
+    purpose_bound: next_bound,
+  }
+  let next: Data = context_chain.ContextVerified {
+    staged: selection.staged,
+    successor: context_chain.ContinueContext {
+      next: context_redeemer.context_successor(staged, next_redeemers),
+    },
+  }
+  redeemer_select_finish.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(pending),
+      },
+    ),
+    redeemer_select_action(auxiliary),
+    fixture.own_out_ref(),
+    at("redeemer_select_finish")(prover_continue_tx(ct_asset, next)),
+  )
+}
+
+test redeemer_select_finish_lowers_the_bound_to_the_selected_purpose() {
+  run_redeemer_select_finish(1)
+}
+
+test redeemer_select_finish_refuses_a_successor_that_keeps_the_bound() fail {
+  run_redeemer_select_finish(2)
+}
+
+// ---------------------------------------------------------------------------
+// Census: who funds and who signs each move
+// ---------------------------------------------------------------------------
+//
+// Each hop runs inside its honest chain with only its own transaction
+// reshaped. A lone thread input pays up to the cap and no more; beside another
+// input the thread keeps its value. The award hops (finish, the selection
+// without a traversal, the core and context settles) are open to anyone; every
+// other hop is the prover's alone.
+
+/// Reshapes only `hop`'s transaction.
+fn only(
+  hop: ByteArray,
+  shape: fn(l1.Transaction) -> l1.Transaction,
+) -> fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction {
+  fn(h) {
+    if h == hop {
+      shape
+    } else {
+      census.honest
+    }
+  }
+}
+
+fn unsigned_paying_the_cap(tx: l1.Transaction) -> l1.Transaction {
+  census.without_signers(census.lone_input_paying(census.cap)(tx))
+}
+
+fn census_prepare(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = fixture_of_kind(0)
+  shaped_prepare(at, f, group_with_slot(0), 0, expected_prepared_output(f))
+}
+
+fn census_finish(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = finish_fixture()
+  shaped_finish(at, prepared(f), f.transition)
+}
+
+fn census_selection(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = selection_fixture()
+  shaped_selection(at, prepared(f), f.transition, f.auxiliary, f.record)
+}
+
+fn census_core_step(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = core_step_fixture()
+  expect CekCoreStepWitness { step } = f.auxiliary
+  shaped_core_step(at, prepared(f), f.transition, step)
+}
+
+fn census_core_compute(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = core_step_fixture()
+  expect CekCoreStepWitness { step } = f.auxiliary
+  shaped_core_compute_chain(at, core_chain_bound(f), step.witness)
+}
+
+fn census_context_mint_chain(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_context_mint_chain(at)
+}
+
+fn census_context_reference(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 1)
+}
+
+fn census_context_spend(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 2)
+}
+
+fn census_context_output(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 3)
+}
+
+fn census_context_signer(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 4)
+}
+
+fn census_context_observers(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 5)
+}
+
+fn census_descriptor_header(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_context_descriptor_handoff(at, False)
+}
+
+fn census_descriptor_tail(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_context_descriptor_handoff(at, True)
+}
+
+fn census_mint_item(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = mint_item_fixture()
+  shaped_mint_item_hop(at, f, mint_item_claim_data(f, #"00", 7))
+}
+
+fn census_redeemer_select_authenticate(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_redeemer_select_authenticate(
+    at,
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    0,
+    1,
+    0,
+  )
+}
+
+fn census_redeemer_select_finish(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_redeemer_select_finish(at, 1)
+}
+
+test census_the_prover_moves_prepare_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_prepare(
+      only("prepare_validator", census.lone_input_paying(census.cap)),
+    ),
+    census_prepare(only("prepare_validator", census.beside_wallet_input(0))),
+  }
+}
+
+test census_prepare_unsigned_is_refused() fail {
+  census_prepare(only("prepare_validator", census.without_signers))
+}
+
+test census_prepare_paying_over_the_cap_is_refused() fail {
+  census_prepare(
+    only("prepare_validator", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_prepare_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_prepare(only("prepare_validator", census.beside_wallet_input(1)))
+}
+
+test census_anyone_moves_finish_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_finish(only("finish_validator", unsigned_paying_the_cap)),
+    census_finish(only("finish_validator", census.beside_wallet_input(0))),
+  }
+}
+
+test census_finish_paying_over_the_cap_is_refused() fail {
+  census_finish(
+    only("finish_validator", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_finish_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_finish(only("finish_validator", census.beside_wallet_input(1)))
+}
+
+test census_anyone_moves_execution_selection_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_selection(only("selection_validator", unsigned_paying_the_cap)),
+    census_selection(only("selection_validator", census.beside_wallet_input(0))),
+  }
+}
+
+test census_execution_selection_paying_over_the_cap_is_refused() fail {
+  census_selection(
+    only("selection_validator", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_execution_selection_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_selection(only("selection_validator", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_core_step_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_core_step(
+      only("core_validator", census.lone_input_paying(census.cap)),
+    ),
+    census_core_step(only("core_validator", census.beside_wallet_input(0))),
+  }
+}
+
+test census_core_step_unsigned_is_refused() fail {
+  census_core_step(only("core_validator", census.without_signers))
+}
+
+test census_core_step_paying_over_the_cap_is_refused() fail {
+  census_core_step(
+    only("core_validator", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_core_step_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_core_step(only("core_validator", census.beside_wallet_input(1)))
+}
+
+test census_anyone_moves_core_settle_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_core_step(only("core_settle", unsigned_paying_the_cap)),
+    census_core_step(only("core_settle", census.beside_wallet_input(0))),
+  }
+}
+
+test census_core_settle_paying_over_the_cap_is_refused() fail {
+  census_core_step(
+    only("core_settle", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_core_settle_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_core_step(only("core_settle", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_core_compute_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_core_compute(
+      only("core_compute", census.lone_input_paying(census.cap)),
+    ),
+    census_core_compute(only("core_compute", census.beside_wallet_input(0))),
+  }
+}
+
+test census_core_compute_unsigned_is_refused() fail {
+  census_core_compute(only("core_compute", census.without_signers))
+}
+
+test census_core_compute_paying_over_the_cap_is_refused() fail {
+  census_core_compute(
+    only("core_compute", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_core_compute_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_core_compute(only("core_compute", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_bind_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_mint_chain(
+      only("context_bind", census.lone_input_paying(census.cap)),
+    ),
+    census_context_mint_chain(
+      only("context_bind", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_bind_unsigned_is_refused() fail {
+  census_context_mint_chain(only("context_bind", census.without_signers))
+}
+
+test census_context_bind_paying_over_the_cap_is_refused() fail {
+  census_context_mint_chain(
+    only("context_bind", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_bind_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_mint_chain(only("context_bind", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_control_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_mint_chain(
+      only("context_control", census.lone_input_paying(census.cap)),
+    ),
+    census_context_mint_chain(
+      only("context_control", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_control_unsigned_is_refused() fail {
+  census_context_mint_chain(only("context_control", census.without_signers))
+}
+
+test census_context_control_paying_over_the_cap_is_refused() fail {
+  census_context_mint_chain(
+    only("context_control", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_control_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_mint_chain(
+    only("context_control", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_mint_init_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_mint_chain(
+      only("context_mint_init", census.lone_input_paying(census.cap)),
+    ),
+    census_context_mint_chain(
+      only("context_mint_init", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_mint_init_unsigned_is_refused() fail {
+  census_context_mint_chain(only("context_mint_init", census.without_signers))
+}
+
+test census_context_mint_init_paying_over_the_cap_is_refused() fail {
+  census_context_mint_chain(
+    only("context_mint_init", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_mint_init_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_mint_chain(
+    only("context_mint_init", census.beside_wallet_input(1)),
+  )
+}
+
+test census_anyone_moves_context_settle_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_mint_chain(only("context_settle", unsigned_paying_the_cap)),
+    census_context_mint_chain(
+      only("context_settle", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_settle_paying_over_the_cap_is_refused() fail {
+  census_context_mint_chain(
+    only("context_settle", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_settle_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_mint_chain(
+    only("context_settle", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_reference_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_reference(
+      only("context_reference", census.lone_input_paying(census.cap)),
+    ),
+    census_context_reference(
+      only("context_reference", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_reference_unsigned_is_refused() fail {
+  census_context_reference(only("context_reference", census.without_signers))
+}
+
+test census_context_reference_paying_over_the_cap_is_refused() fail {
+  census_context_reference(
+    only("context_reference", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_reference_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_reference(
+    only("context_reference", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_spend_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_spend(
+      only("context_spend", census.lone_input_paying(census.cap)),
+    ),
+    census_context_spend(only("context_spend", census.beside_wallet_input(0))),
+  }
+}
+
+test census_context_spend_unsigned_is_refused() fail {
+  census_context_spend(only("context_spend", census.without_signers))
+}
+
+test census_context_spend_paying_over_the_cap_is_refused() fail {
+  census_context_spend(
+    only("context_spend", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_spend_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_spend(only("context_spend", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_output_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_output(
+      only("context_output", census.lone_input_paying(census.cap)),
+    ),
+    census_context_output(only("context_output", census.beside_wallet_input(0))),
+  }
+}
+
+test census_context_output_unsigned_is_refused() fail {
+  census_context_output(only("context_output", census.without_signers))
+}
+
+test census_context_output_paying_over_the_cap_is_refused() fail {
+  census_context_output(
+    only("context_output", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_output_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_output(only("context_output", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_signer_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_signer(
+      only("context_signer", census.lone_input_paying(census.cap)),
+    ),
+    census_context_signer(only("context_signer", census.beside_wallet_input(0))),
+  }
+}
+
+test census_context_signer_unsigned_is_refused() fail {
+  census_context_signer(only("context_signer", census.without_signers))
+}
+
+test census_context_signer_paying_over_the_cap_is_refused() fail {
+  census_context_signer(
+    only("context_signer", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_signer_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_signer(only("context_signer", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_observer_authenticate_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_observers(
+      only(
+        "context_observer_authenticate",
+        census.lone_input_paying(census.cap),
+      ),
+    ),
+    census_context_observers(
+      only("context_observer_authenticate", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_observer_authenticate_unsigned_is_refused() fail {
+  census_context_observers(
+    only("context_observer_authenticate", census.without_signers),
+  )
+}
+
+test census_context_observer_authenticate_paying_over_the_cap_is_refused() fail {
+  census_context_observers(
+    only(
+      "context_observer_authenticate",
+      census.lone_input_paying(census.cap + 1),
+    ),
+  )
+}
+
+test census_context_observer_authenticate_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_observers(
+    only("context_observer_authenticate", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_observer_fold_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_observers(
+      only("context_observer_fold", census.lone_input_paying(census.cap)),
+    ),
+    census_context_observers(
+      only("context_observer_fold", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_observer_fold_unsigned_is_refused() fail {
+  census_context_observers(
+    only("context_observer_fold", census.without_signers),
+  )
+}
+
+test census_context_observer_fold_paying_over_the_cap_is_refused() fail {
+  census_context_observers(
+    only("context_observer_fold", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_observer_fold_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_observers(
+    only("context_observer_fold", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_bind_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_header(
+      only("context_item_bind", census.lone_input_paying(census.cap)),
+    ),
+    census_descriptor_header(
+      only("context_item_bind", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_bind_unsigned_is_refused() fail {
+  census_descriptor_header(only("context_item_bind", census.without_signers))
+}
+
+test census_context_item_bind_paying_over_the_cap_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_bind", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_item_bind_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_bind", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_return_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_header(
+      only("context_item_return", census.lone_input_paying(census.cap)),
+    ),
+    census_descriptor_header(
+      only("context_item_return", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_return_unsigned_is_refused() fail {
+  census_descriptor_header(only("context_item_return", census.without_signers))
+}
+
+test census_context_item_return_paying_over_the_cap_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_return", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_item_return_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_return", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_hash_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_header(
+      only("context_item_hash", census.lone_input_paying(census.cap)),
+    ),
+    census_descriptor_header(
+      only("context_item_hash", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_hash_unsigned_is_refused() fail {
+  census_descriptor_header(only("context_item_hash", census.without_signers))
+}
+
+test census_context_item_hash_paying_over_the_cap_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_hash", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_item_hash_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_hash", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_selection_continue_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_header(
+      only(
+        "context_item_selection_continue",
+        census.lone_input_paying(census.cap),
+      ),
+    ),
+    census_descriptor_header(
+      only("context_item_selection_continue", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_selection_continue_unsigned_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_selection_continue", census.without_signers),
+  )
+}
+
+test census_context_item_selection_continue_paying_over_the_cap_is_refused() fail {
+  census_descriptor_header(
+    only(
+      "context_item_selection_continue",
+      census.lone_input_paying(census.cap + 1),
+    ),
+  )
+}
+
+test census_context_item_selection_continue_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_selection_continue", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_selection_finish_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_tail(
+      only(
+        "context_item_selection_finish",
+        census.lone_input_paying(census.cap),
+      ),
+    ),
+    census_descriptor_tail(
+      only("context_item_selection_finish", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_selection_finish_unsigned_is_refused() fail {
+  census_descriptor_tail(
+    only("context_item_selection_finish", census.without_signers),
+  )
+}
+
+test census_context_item_selection_finish_paying_over_the_cap_is_refused() fail {
+  census_descriptor_tail(
+    only(
+      "context_item_selection_finish",
+      census.lone_input_paying(census.cap + 1),
+    ),
+  )
+}
+
+test census_context_item_selection_finish_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_tail(
+    only("context_item_selection_finish", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_mint_item_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_mint_item(
+      only("context_mint_item", census.lone_input_paying(census.cap)),
+    ),
+    census_mint_item(only("context_mint_item", census.beside_wallet_input(0))),
+  }
+}
+
+test census_context_mint_item_unsigned_is_refused() fail {
+  census_mint_item(only("context_mint_item", census.without_signers))
+}
+
+test census_context_mint_item_paying_over_the_cap_is_refused() fail {
+  census_mint_item(
+    only("context_mint_item", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_mint_item_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_mint_item(only("context_mint_item", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_redeemer_select_authenticate_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_redeemer_select_authenticate(
+      only("redeemer_select_authenticate", census.lone_input_paying(census.cap)),
+    ),
+    census_redeemer_select_authenticate(
+      only("redeemer_select_authenticate", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_redeemer_select_authenticate_unsigned_is_refused() fail {
+  census_redeemer_select_authenticate(
+    only("redeemer_select_authenticate", census.without_signers),
+  )
+}
+
+test census_redeemer_select_authenticate_paying_over_the_cap_is_refused() fail {
+  census_redeemer_select_authenticate(
+    only(
+      "redeemer_select_authenticate",
+      census.lone_input_paying(census.cap + 1),
+    ),
+  )
+}
+
+test census_redeemer_select_authenticate_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_redeemer_select_authenticate(
+    only("redeemer_select_authenticate", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_redeemer_select_finish_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_redeemer_select_finish(
+      only("redeemer_select_finish", census.lone_input_paying(census.cap)),
+    ),
+    census_redeemer_select_finish(
+      only("redeemer_select_finish", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_redeemer_select_finish_unsigned_is_refused() fail {
+  census_redeemer_select_finish(
+    only("redeemer_select_finish", census.without_signers),
+  )
+}
+
+test census_redeemer_select_finish_paying_over_the_cap_is_refused() fail {
+  census_redeemer_select_finish(
+    only("redeemer_select_finish", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_redeemer_select_finish_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_redeemer_select_finish(
+    only("redeemer_select_finish", census.beside_wallet_input(1)),
+  )
+}
+
+/// The settle step of a context seed. Starting an execution spends Cardano's
+/// startup cost, so the claimed successor's running budget grows by
+/// `startup_cpu` and `startup_memory` over the pre-state's.
+fn settle_context_seed(startup_cpu: Int, startup_memory: Int) -> Bool {
+  let tx = empty_v1_transaction()
+  let original = context_staged_fixture(context_step_fixture())
+  expect cek: CekWitnessControlV1 = original.bound.control
+  let context = CekContextControlV1 { ..original.context, stage: 13 }
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    cek.control,
+    vm_witness.encode_cek_context_control_v1(context),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    55,
+    7,
+    9,
+  )
+  // The leaf step authenticated the initial state; settlement only carries it.
+  let initial_state_hash = h_c
+  let next_work = vm_witness.encode_cek_witness_v1(
+    cek.control,
+    #"",
+    0,
+    0,
+    0,
+    initial_state_hash,
+    20,
+    10,
+    h_28_a,
+    0,
+    0,
+  )
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: 56,
+    execution_cpu: pre.execution_cpu + startup_cpu,
+    execution_memory: pre.execution_memory + startup_memory,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Cek,
+      56,
+      next_work,
+    ),
+  }
+  let f = step_fixture(
+    2,
+    pre,
+    work_witness_cbor,
+    post,
+    NoAuxiliaryWitness,
+    None,
+  )
+  let staged_data: Data = context_staged_fixture(f)
+  let verified = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.StartExecution {
+      initial_state_hash,
+      execution_cpu_limit: 20,
+      execution_memory_limit: 10,
+      purpose_kind: 0,
+      purpose_index: 0,
+    },
+  }
+  context_settle.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(verified),
+      },
+    ),
+    ct.Continue(context_chain_action(f)),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+  )
+}
+
+test context_settle_seed_spends_the_startup_cost() {
+  settle_context_seed(100, 100)
+}
+
+test context_settle_seed_refuses_one_cpu_less_than_the_startup_cost() fail {
+  settle_context_seed(99, 100)
+}
+
+test context_settle_seed_refuses_one_memory_less_than_the_startup_cost() fail {
+  settle_context_seed(100, 99)
+}
+
+test context_settle_seed_refuses_a_free_start() fail {
+  settle_context_seed(0, 0)
+}
+
+/// The stage-0 redeemer begin of the bounded context chain. The frontier
+/// commits the honest item length; the begin witness and its claimed
+/// successor both carry the honest length plus `length_delta`, so only the
+/// length-bearing redeemer leaf can tell them apart.
+fn run_context_redeemer_begin(length_delta: Int) -> Bool {
+  let bytes = #"8400004100820a14"
+  let commitment = bounded_item_v1.from_bytes(8, 0, bytes)
+  let length = bytearray.length(bytes) + length_delta
+  let honest_leaf = script_proof_v1.redeemer_item_leaf_hash(
+    0,
+    bytearray.length(bytes),
+    commitment,
+  )
+  let original = context_staged_fixture(context_step_fixture())
+  expect cek: CekWitnessControlV1 = original.bound.control
+  let native = NativeScriptsControlV1 {
+    ..cek.control,
+    redeemer_count: 1,
+    redeemer_peaks: validation_merkle_v1.build_frontier([honest_leaf]).peaks,
+  }
+  let context = CekContextControlV1 {
+    ..original.context,
+    stage: 0,
+    execution_memory_limit: 0,
+    execution_cpu_limit: 0,
+    observer_summary: vm_witness.empty_data_summary_v1(),
+    redeemer_leaf: honest_leaf,
+    redeemer_context_control_hash: #"",
+  }
+  let item_control = redeemer_item.initial_control_v1(
+    redeemer_item.mode_descriptor,
+    0,
+    1,
+    length,
+    commitment,
+    0,
+    0,
+  )
+  let next_context = CekContextControlV1 {
+    ..context,
+    redeemer_context_control_hash: redeemer_item.hash_control_v1(item_control),
+  }
+  let tx = empty_v1_transaction()
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    native,
+    vm_witness.encode_cek_context_control_v1(context),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    47,
+    0,
+    0,
+  )
+  let Pair(post, _) = cek_state(
+    tx,
+    native,
+    vm_witness.encode_cek_context_control_v1(next_context),
+    0,
+    #"",
+    0,
+    0,
+    h_28_a,
+    48,
+    0,
+    0,
+  )
+  let auxiliary = RedeemerScanBeginWitness {
+    item_index: 0,
+    item_count: 1,
+    total_length: length,
+    item_commitment: commitment,
+    siblings: [],
+  }
+  let f = step_fixture(2, pre, work_witness_cbor, post, auxiliary, None)
+  let staged = context_staged_fixture(f)
+  let staged_data: Data = staged
+  let verified: Data = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.ContinueContext { next: next_context },
+  }
+  context_redeemer_begin.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(staged),
+      },
+    ),
+    ct.Continue(context_chain_action(f)),
+    fixture.own_out_ref(),
+    prover_continue_tx(ct_asset, verified),
+  )
+}
+
+test bounded_context_redeemer_begin_accepts_the_committed_length() {
+  run_context_redeemer_begin(0)
+}
+
+test bounded_context_redeemer_begin_refuses_length_plus_one() fail {
+  run_context_redeemer_begin(1)
+}
+
+test bounded_context_redeemer_begin_refuses_length_minus_one() fail {
+  run_context_redeemer_begin(-1)
+}

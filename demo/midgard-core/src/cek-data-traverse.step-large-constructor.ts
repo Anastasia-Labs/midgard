@@ -1,0 +1,318 @@
+import {
+  advanceValidatedMidgardCekDataBytes,
+  finalizeValidatedMidgardCekDataBytes,
+} from "./cek-data-bytes.content-plan.js";
+import { MidgardCekDataBytesStages } from "./cek-data-bytes.js";
+import {
+  finalizeMidgardCekDataFrame,
+  hashMidgardCekDataFrame,
+  initialMidgardCekDataLargeConstrFrame,
+} from "./cek-data-frame.js";
+import {
+  advanceValidatedMidgardCekDataInteger,
+  finalizeValidatedMidgardCekDataInteger,
+  initialMidgardCekDataIntegerControl,
+  MidgardCekDataIntegerStages,
+  parseMidgardCekDataLargeConstructorSyntax,
+} from "./cek-data-integer.js";
+import {
+  type MidgardCekDataTraverseAction,
+  type MidgardCekDataTraverseControl,
+  MidgardCekDataTraverseStages,
+} from "./cek-data-traverse.is-well-formed-midgard-cek-data-traverse-control.js";
+import {
+  advanced,
+  attachSummary,
+  exactSourceBytes,
+  sequenceHeaderStage,
+  stepHeadMap,
+  stepHeadScalar,
+  stepHeadSequence,
+} from "./cek-data-traverse.parse-midgard-cek-data-nodes.js";
+import { readCanonicalCborArgument } from "./cek-data-traverse.read-canonical-cbor-argument-wide.js";
+import { finalizeValidatedMidgardCekSourceBlob } from "./cek-source-blob.js";
+
+// Every step receives the control `advanceMidgardCekDataTraverse` has just
+// validated, so its integer, bytes and blob children are validated too.
+
+/**
+ * A large constructor head (tag 102 over a two-element array): the
+ * constructor index is a minimal major-0 head of at least 128 (Cardano reads
+ * it with `decodeWord64`; smaller alternatives use tags 121-127 and
+ * 1280-1400). Its encoded length is read from the window after the three-byte
+ * prefix; the field sequence header is read once the integer is streamed
+ * (`stepLargeFields`).
+ */
+export const stepHeadLargeConstructor = ({
+  control,
+  bytes,
+}: {
+  readonly control: MidgardCekDataTraverseControl;
+  readonly bytes: Buffer;
+}): MidgardCekDataTraverseControl | null => {
+  if (
+    bytes.length < 3 ||
+    !bytes.subarray(0, 3).equals(Buffer.from("d86682", "hex"))
+  ) {
+    return null;
+  }
+  const index = readCanonicalCborArgument(bytes, 3);
+  if (index === null || index.major !== 0 || index.value < 128) return null;
+  const constructorCborLength = index.nextOffset - 3;
+  const offset = control.offset + 3;
+  if (offset + constructorCborLength >= control.sourceLength) return null;
+  return advanced({
+    ...control,
+    stage: MidgardCekDataTraverseStages.LargeConstructor,
+    offset,
+    integer: initialMidgardCekDataIntegerControl({
+      sourceStart: control.sourceStart + offset,
+      sourceLength: constructorCborLength,
+    }),
+  });
+};
+
+export const stepHead = ({
+  control,
+  sourceBytes,
+  action,
+}: {
+  readonly control: MidgardCekDataTraverseControl;
+  readonly sourceBytes?: Uint8Array | null;
+  readonly action: MidgardCekDataTraverseAction;
+}): MidgardCekDataTraverseControl | null => {
+  const bytes = exactSourceBytes({ control, sourceBytes });
+  if (bytes === null || action === null) return null;
+  // Non-head actions are rejected by this phase-specific dispatcher.
+  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
+  switch (action.kind) {
+    case "headScalar":
+      return stepHeadScalar({ control, bytes });
+    case "headSequence":
+      return stepHeadSequence({ control, bytes });
+    case "headMap":
+      return stepHeadMap({ control, bytes });
+    case "headLargeConstructor":
+      return stepHeadLargeConstructor({ control, bytes });
+    default:
+      return null;
+  }
+};
+
+export const stepInteger = ({
+  control,
+  sourceBytes,
+  action,
+}: {
+  readonly control: MidgardCekDataTraverseControl;
+  readonly sourceBytes?: Uint8Array | null;
+  readonly action: MidgardCekDataTraverseAction;
+}): MidgardCekDataTraverseControl | null => {
+  const integer = control.integer!;
+  if (integer.stage === MidgardCekDataIntegerStages.Terminal) {
+    if (sourceBytes !== null && sourceBytes !== undefined) {
+      return null;
+    }
+    if (action === null || action.kind !== "attachScalar") {
+      return null;
+    }
+    const summary = finalizeValidatedMidgardCekDataInteger(integer);
+    return summary === null
+      ? null
+      : attachSummary({
+          control,
+          summary,
+          parent: action.parent,
+          offset: control.offset + integer.sourceLength,
+        });
+  }
+  if (action !== null) return null;
+  const nextInteger = advanceValidatedMidgardCekDataInteger({
+    control: integer,
+    sourceBytes,
+    sourceEnd: control.sourceStart + control.sourceLength,
+  });
+  return nextInteger === null
+    ? null
+    : advanced({ ...control, integer: nextInteger });
+};
+
+export const stepBytes = ({
+  control,
+  sourceBytes,
+  action,
+}: {
+  readonly control: MidgardCekDataTraverseControl;
+  readonly sourceBytes?: Uint8Array | null;
+  readonly action: MidgardCekDataTraverseAction;
+}): MidgardCekDataTraverseControl | null => {
+  const byteControl = control.bytes!;
+  if (byteControl.stage === MidgardCekDataBytesStages.Terminal) {
+    if (sourceBytes !== null && sourceBytes !== undefined) {
+      return null;
+    }
+    if (action === null || action.kind !== "attachScalar") {
+      return null;
+    }
+    const summary = finalizeValidatedMidgardCekDataBytes(byteControl);
+    return summary === null
+      ? null
+      : attachSummary({
+          control,
+          summary,
+          parent: action.parent,
+          offset: control.offset + byteControl.sourceLength,
+        });
+  }
+  if (action !== null) return null;
+  const nextBytes = advanceValidatedMidgardCekDataBytes({
+    control: byteControl,
+    sourceBytes,
+    sourceEnd: control.sourceStart + control.sourceLength,
+  });
+  return nextBytes === null ? null : advanced({ ...control, bytes: nextBytes });
+};
+
+export const stepLargeConstructor = ({
+  control,
+  sourceBytes,
+  action,
+}: {
+  readonly control: MidgardCekDataTraverseControl;
+  readonly sourceBytes?: Uint8Array | null;
+  readonly action: MidgardCekDataTraverseAction;
+}): MidgardCekDataTraverseControl | null => {
+  const integer = control.integer!;
+  if (integer.stage === MidgardCekDataIntegerStages.Terminal) {
+    if (
+      action !== null ||
+      (sourceBytes !== null && sourceBytes !== undefined)
+    ) {
+      return null;
+    }
+    return advanced({
+      ...control,
+      stage: MidgardCekDataTraverseStages.LargeFields,
+      offset: control.offset + integer.sourceLength,
+    });
+  }
+  if (action !== null) return null;
+  if (
+    integer.stage === MidgardCekDataIntegerStages.Syntax &&
+    (sourceBytes === null ||
+      sourceBytes === undefined ||
+      parseMidgardCekDataLargeConstructorSyntax({
+        syntaxBytes: sourceBytes,
+        sourceLength: integer.sourceLength,
+      }) === null)
+  ) {
+    return null;
+  }
+  const nextInteger = advanceValidatedMidgardCekDataInteger({
+    control: integer,
+    sourceBytes,
+    sourceEnd: control.sourceStart + control.sourceLength,
+  });
+  return nextInteger === null
+    ? null
+    : advanced({ ...control, integer: nextInteger });
+};
+
+export const stepLargeFields = ({
+  control,
+  sourceBytes,
+  action,
+}: {
+  readonly control: MidgardCekDataTraverseControl;
+  readonly sourceBytes?: Uint8Array | null;
+  readonly action: MidgardCekDataTraverseAction;
+}): MidgardCekDataTraverseControl | null => {
+  if (action !== null) return null;
+  const bytes = exactSourceBytes({ control, sourceBytes });
+  const integer = control.integer!;
+  const constructorCborRoot = finalizeValidatedMidgardCekSourceBlob(
+    integer.blob!,
+  );
+  const stage = bytes === null ? null : sequenceHeaderStage(bytes[0]);
+  if (stage === null || constructorCborRoot === null) {
+    return null;
+  }
+  const frame = initialMidgardCekDataLargeConstrFrame({
+    constructorCborRoot,
+    constructorCborLength: BigInt(integer.sourceLength),
+    constructorMemory: integer.memory,
+    tail: control.frameRoot,
+  });
+  return advanced({
+    ...control,
+    stage,
+    offset: control.offset + 1,
+    frameRoot: Buffer.from(hashMidgardCekDataFrame(frame)),
+    integer: null,
+  });
+};
+
+/**
+ * `Close` reads the head window: with no action it closes the open-ended
+ * frame at the authenticated 0xff break; a head action instead reads the next
+ * child, whose head the window then holds.
+ */
+export const stepClose = ({
+  control,
+  sourceBytes,
+  action,
+}: {
+  readonly control: MidgardCekDataTraverseControl;
+  readonly sourceBytes?: Uint8Array | null;
+  readonly action: MidgardCekDataTraverseAction;
+}): MidgardCekDataTraverseControl | null => {
+  if (action !== null) return stepHead({ control, sourceBytes, action });
+  const bytes = exactSourceBytes({ control, sourceBytes });
+  return bytes !== null && bytes[0] === 0xff
+    ? advanced({
+        ...control,
+        stage: MidgardCekDataTraverseStages.Fold,
+        offset: control.offset + 1,
+      })
+    : null;
+};
+
+export const stepFinalizeFrame = ({
+  control,
+  action,
+}: {
+  readonly control: MidgardCekDataTraverseControl;
+  readonly action: Extract<
+    MidgardCekDataTraverseAction,
+    { readonly kind: "finalizeFrame" }
+  >;
+}): MidgardCekDataTraverseControl | null => {
+  if (!hashMidgardCekDataFrame(action.frame).equals(control.frameRoot)) {
+    return null;
+  }
+  const summary = finalizeMidgardCekDataFrame(action.frame);
+  if (summary === null) return null;
+  if (action.frame.tail.length === 0) {
+    return attachSummary({
+      control: { ...control, frameRoot: Buffer.alloc(0) },
+      summary,
+      parent: action.parent,
+      offset: control.offset,
+    });
+  }
+  if (
+    action.parent === null ||
+    !hashMidgardCekDataFrame(action.parent).equals(action.frame.tail)
+  ) {
+    return null;
+  }
+  return attachSummary({
+    control: {
+      ...control,
+      frameRoot: Buffer.from(action.frame.tail),
+    },
+    summary,
+    parent: action.parent,
+    offset: control.offset,
+  });
+};

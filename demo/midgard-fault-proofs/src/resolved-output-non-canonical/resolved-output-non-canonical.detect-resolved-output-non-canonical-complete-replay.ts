@@ -1,0 +1,219 @@
+import {
+  decodeMidgardInputFieldPreimage,
+  decodeMidgardSpendInputItem,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+} from "@al-ft/midgard-core";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
+import { EMPTY_MERKLE_TREE_ROOT, Proof } from "@al-ft/midgard-sdk/core";
+import {
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
+  type VerdictSubject,
+} from "@al-ft/midgard-sdk/fraud-proof";
+import { Data } from "@lucid-evolution/lucid";
+
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { claimedIndex } from "../evidence/claimed-coordinate.js";
+import { type CheckedLedger } from "../ledger-at.js";
+import {
+  buildTrieView,
+  requireProof,
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
+import {
+  type AuthenticatedPriorLedgerOutput,
+  fail,
+  outRefKey,
+  prepareResolvedOutputAbsentInputEvidence,
+  prepareResolvedOutputNonCanonicalEvidence,
+  type ResolvedOutputCoordinate,
+  type ResolvedOutputPriorLedgerReplay,
+  type ResolvedOutputWorkflowEvidence,
+} from "./resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
+
+/**
+ * Reconstructs the complete predecessor view from the classifier-admitted
+ * predecessor's public retained-DA payload. No caller-provided output or
+ * proof can cross this boundary: descriptor membership and every raw output
+ * are re-derived. A header committing the empty previous ledger has an empty
+ * prior view and needs no predecessor.
+ */
+export const deriveResolvedOutputPriorLedgerReplay = async ({
+  block,
+  predecessor,
+}: {
+  readonly block: CanonicalBlockEvidence;
+  readonly predecessor: CheckedLedger | undefined;
+}): Promise<ResolvedOutputPriorLedgerReplay> => {
+  if (predecessor === undefined) {
+    if (block.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT)
+      return fail("authenticated predecessor history is absent");
+    return Object.freeze({
+      priorRoot: EMPTY_MERKLE_TREE_ROOT,
+      outputs: new Map(),
+    });
+  }
+  if (predecessor.utxosRoot !== block.header.prevUtxosRoot)
+    return fail("authenticated predecessor history is substituted");
+  // The checked ledger holds raw output bytes; the authenticated ledger root
+  // commits their descriptors. Use its descriptor view and pair it with the
+  // exact output by its canonical ledger key.
+  const descriptorEntries = predecessor.trie.entries;
+  const outputPreimages = new Map(
+    [...predecessor.outputs].map(([key, output]) => [
+      key,
+      output.toString("hex"),
+    ]),
+  );
+  const trie = await buildTrieView(descriptorEntries);
+  if (trie.root !== block.header.prevUtxosRoot)
+    return fail("reconstructed predecessor trie root changed");
+  const outputs = new Map<
+    string,
+    Omit<AuthenticatedPriorLedgerOutput, "priorRoot">
+  >();
+  for (const entry of descriptorEntries) {
+    const decoded = decodeMidgardSpendInputItem(entry.key);
+    const transactionId = Buffer.from(decoded.txId).toString("hex");
+    const outputIndex = decoded.outputIndex;
+    const key = outRefKey(transactionId, outputIndex);
+    const outputCborHex = outputPreimages.get(entry.key.toString("hex"));
+    if (outputCborHex === undefined)
+      return fail("predecessor ledger omitted a live output preimage");
+    const membershipProofCborHex = requireProof(
+      trie,
+      entry.key,
+      `resolved output ${key}`,
+    );
+    outputs.set(key, {
+      transactionId,
+      outputIndex,
+      descriptorCborHex: entry.value.toString("hex"),
+      outputCborHex,
+      membershipProofCborHex,
+      membershipProof: Data.from(membershipProofCborHex, Proof),
+    });
+  }
+  return Object.freeze({
+    priorRoot: block.header.prevUtxosRoot,
+    outputs,
+  });
+};
+
+/**
+ * Package-owned complete replay route. It visits every spend and reference
+ * input of every accepted transaction, plus every forced rejection carrying
+ * this exact reason. The supplied predecessor view is not an operator hint:
+ * callers must pass the complete view reconstructed from retained predecessor
+ * DA whose root is the challenged header's authenticated `prevUtxosRoot`.
+ */
+export const detectResolvedOutputNonCanonicalCompleteReplay = ({
+  block,
+  priorLedger,
+}: {
+  readonly block: CanonicalBlockEvidence;
+  readonly priorLedger: ResolvedOutputPriorLedgerReplay;
+}): readonly ResolvedOutputWorkflowEvidence[] => {
+  if (priorLedger.priorRoot !== block.header.prevUtxosRoot)
+    return fail("predecessor replay root differs from authenticated header");
+  const detections: ResolvedOutputWorkflowEvidence[] = [];
+  const inspect = (
+    bytes: Uint8Array,
+    subject: VerdictSubject,
+    coordinate: ResolvedOutputCoordinate,
+  ): void => {
+    const material = (
+      subject.source_kind === 1n
+        ? deriveMidgardForcedTxFaultEvidenceMaterial
+        : deriveMidgardNativeTxFaultEvidenceMaterial
+    )(bytes);
+    const selected = decodeMidgardInputFieldPreimage(
+      material.fieldPreimages[coordinate.sourceKind]!,
+    )[coordinate.inputIndex];
+    if (selected === undefined) return;
+    const transactionId = Buffer.from(selected.txId).toString("hex");
+    const resolved = priorLedger.outputs.get(
+      outRefKey(transactionId, selected.outputIndex),
+    );
+    if (resolved === undefined && subject.source_kind === 0n) return;
+    if (resolved === undefined)
+      return fail("complete predecessor replay omitted a resolved input");
+    try {
+      detections.push(
+        prepareResolvedOutputNonCanonicalEvidence({
+          subject,
+          coordinate,
+          canonicalTransactionCbor: bytes,
+          resolved: { ...resolved, priorRoot: priorLedger.priorRoot },
+        }),
+      );
+    } catch (cause) {
+      if (
+        cause instanceof Error &&
+        cause.message.endsWith(
+          "authenticated output agrees with the operator verdict",
+        )
+      )
+        return;
+      throw cause;
+    }
+  };
+  block.transactions.forEach((transaction) => {
+    const bytes = Buffer.from(transaction.txCbor, "hex");
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(bytes);
+    const subject = acceptedVerdictSubject(
+      material.transactionId.toString("hex"),
+    );
+    ([0, 1] as const).forEach((sourceKind) => {
+      const inputs = decodeMidgardInputFieldPreimage(
+        material.fieldPreimages[sourceKind]!,
+      );
+      inputs.forEach((_input, inputIndex) =>
+        inspect(bytes, subject, { sourceKind, inputIndex }),
+      );
+    });
+  });
+  block.reconstruction.forcedTransactions.forEach((transaction) => {
+    if (transaction.value.verdict === "ForcedTxValid") return;
+    const reason = transaction.value.verdict.ForcedTxInvalid.reason;
+    if (
+      typeof reason === "string" ||
+      !("InputSpentOutputNonCanonical" in reason)
+    )
+      return;
+    const coordinate = reason.InputSpentOutputNonCanonical;
+    const subject = forcedVerdictSubject({
+      transactionId: transaction.value.tx_id,
+      sourceKey: transaction.key,
+      rejectionReason: reason,
+    });
+    const sourceKind = coordinate.source_kind;
+    const inputIndex =
+      sourceKind === 0n || sourceKind === 1n
+        ? claimedIndex(
+            coordinate.input_index,
+            decodeMidgardInputFieldPreimage(
+              deriveMidgardForcedTxFaultEvidenceMaterial(
+                transaction.fullTransactionCbor,
+              ).fieldPreimages[Number(sourceKind)]!,
+            ).length,
+          )
+        : undefined;
+    // A coordinate naming no input of the transaction resolves no output,
+    // so the rejection is contradicted outright.
+    if (inputIndex === undefined) {
+      detections.push(
+        prepareResolvedOutputAbsentInputEvidence({
+          subject,
+          canonicalTransactionCbor: transaction.fullTransactionCbor,
+          priorRoot: priorLedger.priorRoot,
+        }),
+      );
+      return;
+    }
+    inspect(transaction.fullTransactionCbor, subject, {
+      sourceKind: sourceKind === 0n ? 0 : 1,
+      inputIndex,
+    });
+  });
+  return Object.freeze(detections);
+};

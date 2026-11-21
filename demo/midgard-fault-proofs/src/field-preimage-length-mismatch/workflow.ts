@@ -1,0 +1,209 @@
+import { createHash } from "node:crypto";
+
+import {
+  decodeMidgardNativeTxProofFieldLengths,
+  selectMidgardFieldCarriageTier,
+} from "@al-ft/midgard-core";
+
+export const FIELD_PREIMAGE_LENGTH_WORKFLOW =
+  "midgard-field-preimage-length-mismatch-workflow-v1" as const;
+
+export type FieldPreimageLengthDirection =
+  | "wrongfulAcceptance"
+  | "wrongfulRejection";
+
+export type PreparedFieldPreimageLengthWorkflow = Readonly<{
+  schemaVersion: typeof FIELD_PREIMAGE_LENGTH_WORKFLOW;
+  headerHash: string;
+  transactionId: string;
+  sourceKind: "normal" | "forced";
+  direction: FieldPreimageLengthDirection;
+  fieldIndex: number;
+  declaredLength: number;
+  actualLength: number;
+  preimageHex: string;
+  carriage: "Inline" | "RawUtxo" | "Certified";
+  evidenceDigest: string;
+}>;
+
+/**
+ * A forced `FieldPreimageLengthMismatch` rejection naming a field outside the
+ * native layout. No field is opened, so it carries no lengths or preimage.
+ */
+export type PreparedFieldPreimageLengthOutOfDomain = Readonly<{
+  schemaVersion: typeof FIELD_PREIMAGE_LENGTH_WORKFLOW;
+  headerHash: string;
+  transactionId: string;
+  sourceKind: "forced";
+  direction: "wrongfulRejection";
+  outOfDomainFieldIndex: bigint;
+  evidenceDigest: string;
+}>;
+
+export type PreparedFieldPreimageLengthEvidence =
+  | PreparedFieldPreimageLengthWorkflow
+  | PreparedFieldPreimageLengthOutOfDomain;
+
+export const fieldPreimageLengthOutOfDomain = (
+  prepared: PreparedFieldPreimageLengthEvidence,
+): prepared is PreparedFieldPreimageLengthOutOfDomain =>
+  "outOfDomainFieldIndex" in prepared;
+
+const exactHex = (value: string, bytes: number, label: string): string => {
+  if (!new RegExp(`^[0-9a-f]{${(bytes * 2).toString()}}$`, "u").test(value)) {
+    throw new Error(`${label} must be canonical ${bytes.toString()}-byte hex`);
+  }
+  return value;
+};
+
+export const prepareFieldPreimageLengthWorkflow = ({
+  headerHash,
+  transactionId,
+  direction,
+  sourceKind,
+  fieldIndex,
+  fieldPreimageLengthsCbor,
+  fieldPreimage,
+  forcedRejectionReason,
+}: {
+  readonly headerHash: string;
+  readonly transactionId: string;
+  readonly direction: FieldPreimageLengthDirection;
+  readonly sourceKind: "normal" | "forced";
+  readonly fieldIndex: number;
+  readonly fieldPreimageLengthsCbor: Uint8Array;
+  readonly fieldPreimage: Uint8Array;
+  readonly forcedRejectionReason?: unknown;
+}): PreparedFieldPreimageLengthWorkflow => {
+  if (!Number.isInteger(fieldIndex) || fieldIndex < 0 || fieldIndex >= 9) {
+    throw new Error("field index is outside 0..8");
+  }
+  if (direction === "wrongfulRejection" && sourceKind !== "forced")
+    throw new Error("wrongful rejection requires a forced source");
+  const declaredLength = decodeMidgardNativeTxProofFieldLengths(
+    fieldPreimageLengthsCbor,
+  )[fieldIndex]!;
+  const actualLength = fieldPreimage.length;
+  if (actualLength > 32_768) {
+    throw new Error("field preimage exceeds the V1 consensus bound");
+  }
+  const reason = forcedRejectionReason;
+  if (direction === "wrongfulRejection") {
+    if (
+      typeof reason !== "object" ||
+      reason === null ||
+      Array.isArray(reason) ||
+      Object.keys(reason).length !== 1 ||
+      !("FieldPreimageLengthMismatch" in reason)
+    ) {
+      throw new Error(
+        "forced rejection must carry only FieldPreimageLengthMismatch",
+      );
+    }
+    const payload = (
+      reason as {
+        readonly FieldPreimageLengthMismatch?: {
+          readonly field_index?: unknown;
+        };
+      }
+    ).FieldPreimageLengthMismatch;
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      Object.keys(payload).length !== 1 ||
+      payload.field_index !== BigInt(fieldIndex)
+    ) {
+      throw new Error("forced rejection field coordinate differs");
+    }
+  } else if (reason !== undefined) {
+    throw new Error("wrongful acceptance must not carry a rejection reason");
+  }
+  const mismatch = declaredLength !== actualLength;
+  if (
+    (direction === "wrongfulAcceptance" && !mismatch) ||
+    (direction === "wrongfulRejection" && mismatch)
+  ) {
+    throw new Error("evidence does not contradict the selected verdict");
+  }
+  const preimageHex = Buffer.from(fieldPreimage).toString("hex");
+  const normalizedHeader = exactHex(headerHash, 28, "header hash");
+  const normalizedTx = exactHex(transactionId, 32, "transaction id");
+  const evidenceDigest = createHash("sha256")
+    .update(FIELD_PREIMAGE_LENGTH_WORKFLOW)
+    .update(sourceKind)
+    .update(direction)
+    .update(normalizedHeader, "hex")
+    .update(normalizedTx, "hex")
+    .update(Buffer.from([fieldIndex]))
+    .update(Buffer.from(fieldPreimageLengthsCbor))
+    .update(Buffer.from(fieldPreimage))
+    .digest("hex");
+  return Object.freeze({
+    schemaVersion: FIELD_PREIMAGE_LENGTH_WORKFLOW,
+    headerHash: normalizedHeader,
+    transactionId: normalizedTx,
+    direction,
+    sourceKind,
+    fieldIndex,
+    declaredLength,
+    actualLength,
+    preimageHex,
+    carriage: selectMidgardFieldCarriageTier(actualLength),
+    evidenceDigest,
+  });
+};
+
+const FIELD_COUNT = 9n;
+const REJECTION_CODEC_LIMIT = 1n << 64n;
+
+export const prepareFieldPreimageLengthOutOfDomainWorkflow = ({
+  headerHash,
+  transactionId,
+  fieldIndex,
+}: {
+  readonly headerHash: string;
+  readonly transactionId: string;
+  readonly fieldIndex: bigint;
+}): PreparedFieldPreimageLengthOutOfDomain => {
+  if (fieldIndex >= 0n && fieldIndex < FIELD_COUNT)
+    throw new Error("field index is inside 0..8");
+  if (
+    fieldIndex < -REJECTION_CODEC_LIMIT ||
+    fieldIndex >= REJECTION_CODEC_LIMIT
+  )
+    throw new Error("field index is outside the rejection codec");
+  const normalizedHeader = exactHex(headerHash, 28, "header hash");
+  const normalizedTx = exactHex(transactionId, 32, "transaction id");
+  const evidenceDigest = createHash("sha256")
+    .update(FIELD_PREIMAGE_LENGTH_WORKFLOW)
+    .update("forced")
+    .update("wrongfulRejection")
+    .update("outOfDomain")
+    .update(normalizedHeader, "hex")
+    .update(normalizedTx, "hex")
+    .update(fieldIndex.toString())
+    .digest("hex");
+  return Object.freeze({
+    schemaVersion: FIELD_PREIMAGE_LENGTH_WORKFLOW,
+    headerHash: normalizedHeader,
+    transactionId: normalizedTx,
+    sourceKind: "forced",
+    direction: "wrongfulRejection",
+    outOfDomainFieldIndex: fieldIndex,
+    evidenceDigest,
+  });
+};
+
+export type FieldPreimageLengthAction =
+  | "init"
+  | "dispatch"
+  | "authenticate"
+  | "finalize"
+  | "remove"
+  | "complete";
+
+export type FieldPreimageLengthSubmissionKind =
+  | Exclude<FieldPreimageLengthAction, "complete">
+  | "cancelDispatch"
+  | "cancelAuthentication"
+  | "cancelTerminal";

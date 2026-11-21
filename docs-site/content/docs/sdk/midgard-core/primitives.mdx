@@ -11,12 +11,13 @@ consumers pull in only what they need.
 
 An `Assets` map is `Readonly<Record<AssetUnit, bigint>>`, where a unit is either
 `"lovelace"` or a policy/asset-name string. The module provides normalized
-arithmetic that always drops zero-quantity units:
+arithmetic and normalization helpers:
 
 - `normalizeAssets`: coerces values to `bigint` and removes zero entries.
 - `addAssets` / `subtractAssetsDelta`, add or subtract maps, dropping units that
   net to zero.
-- `negateAssets`: negate every quantity.
+- `negateAssets`: negate every quantity, retaining any zero entries until
+  normalization.
 - `assetsEqual`: normalized equality.
 
 It also exports the constants `LOVELACE_UNIT`, `ADA_POLICY_ID` (empty string),
@@ -52,15 +53,15 @@ Constants and limits for the Midgard data-availability transport layer
 
 - Protocol/version constants: `DA_TRANSPORT_PROTOCOL_VERSION`, hash and witness
   lengths, and the libp2p runtime-manifest schema/identity constants.
-- `DA_TRANSPORT_LIMITS_V1`: payload, response, chunk, and gossip size caps,
+- `DA_TRANSPORT_LIMITS`: payload, response, chunk, and gossip size caps,
   stream limits, request timeout, and minimum retention days.
 - Signing domains (`DaTransportSigningDomain`), gossip topics (`DaGossipTopic`),
-  and the on-chain attestation domain (`DA_ON_CHAIN_ATTESTATION_V1_DOMAIN`).
+  and the on-chain attestation domain (`DA_ON_CHAIN_ATTESTATION_DOMAIN`).
 
 <Callout type="info">
-These are transport-layer constants shared by the node's DA components. The
-transaction-building side of DA attestations lives in the SDK, see
-[DA attestation & payload](/docs/sdk/midgard-sdk/da-and-oracle).
+  These are transport-layer constants shared by the node's DA components. The
+  transaction-building side of DA attestations lives in the SDK, see [DA
+  attestation & payload](/docs/sdk/midgard-sdk/da-and-oracle).
 </Callout>
 
 ## Error formatting: `@al-ft/midgard-core/error-format`
@@ -70,7 +71,7 @@ string, with options to include the `cause` chain or a stack trace. It keeps
 logs and operator-facing failure messages consistent without scattering ad hoc
 stringification across the codebase.
 
-```ts
+```ts twoslash
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 
 try {

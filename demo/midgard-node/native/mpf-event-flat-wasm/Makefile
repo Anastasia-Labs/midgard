@@ -1,4 +1,4 @@
-.PHONY: check build differential
+.PHONY: check build
 
 check:
 	cargo fmt --check
@@ -6,6 +6,3 @@ check:
 
 build:
 	wasm-pack build --locked --target nodejs --release --out-dir ../../.architecture-f-wasm
-
-differential: build
-	node ../../scripts/mpf-event-flat-wasm-prototype.mjs

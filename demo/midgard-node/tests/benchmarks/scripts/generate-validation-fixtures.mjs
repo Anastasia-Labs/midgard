@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { outRefToCbor } from "@al-ft/lucid-midgard";
 import {
   Emulator,
   Lucid,
   generateEmulatorAccount,
-  utxoToTransactionInput,
   utxoToTransactionOutput,
 } from "@lucid-evolution/lucid";
 
@@ -65,11 +65,13 @@ const ledgerEntries = [];
 for (const wallet of walletContexts) {
   const utxos = await emulator.getUtxos(wallet.address);
   for (const utxo of utxos) {
-    const outRef = utxoToTransactionInput(utxo);
+    // The ledger `outref` column is the §5.3 field-0/1 item form
+    // (`82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes), not CML's
+    // minimal-index `TransactionInput` CBOR.
     const output = utxoToTransactionOutput(utxo);
     ledgerEntries.push({
       txIdHex: utxo.txHash,
-      outRefCborHex: Buffer.from(outRef.to_cbor_bytes()).toString("hex"),
+      outRefCborHex: outRefToCbor(utxo).toString("hex"),
       outputCborHex: Buffer.from(output.to_cbor_bytes()).toString("hex"),
       address: utxo.address,
     });

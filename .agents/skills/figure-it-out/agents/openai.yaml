@@ -1,0 +1,6 @@
+interface:
+  display_name: "Figure It Out"
+  short_description: "Design an auditable playbook when no narrower one fits: a large "
+  default_prompt: "Use $figure-it-out for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

@@ -3,12 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   createSlotAwareDueWorkRegistry,
   type SlotAwareDueWork,
-} from "@/fibers/slot-aware-due-work.js";
+} from "../src/fibers/slot-aware-due-work.js";
 import {
   DEFERRABLE_SUBMIT_TIMING_OWNERS,
   slotAwareDueWorkFromSubmitTiming,
   type SubmitTimingNotDuePlanWithDueWorkEvidence,
-} from "@/transactions/submit-timing-due-work.js";
+} from "../src/transactions/submit-timing-due-work.js";
 
 const entry: SlotAwareDueWork = {
   kind: "commit_scheduler_refresh",
@@ -29,6 +29,7 @@ describe("slot-aware due-work registry", () => {
     expect(Object.keys(DEFERRABLE_SUBMIT_TIMING_OWNERS).sort()).toEqual([
       "commit_scheduler_refresh",
       "merge_submit_validity",
+      "operator_watchdog",
     ]);
   });
 
@@ -153,7 +154,7 @@ describe("slot-aware due-work registry", () => {
       deltaSlots: 10,
       waitMs: 10_000,
       slotLengthMs: 1_000,
-      slotSource: "local_ogmios_tip",
+      slotSource: "l1_node_tip",
       invalidBeforeSlot: 18,
       reason: "wait_ms=10000,max_inline_wait_ms=5000",
       dependencyKey: "merge:header:18",

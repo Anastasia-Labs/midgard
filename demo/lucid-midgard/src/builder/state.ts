@@ -2,10 +2,11 @@ import { CML } from "@lucid-evolution/lucid";
 
 import { BuilderInvariantError } from "../core/errors.js";
 import { outRefLabel } from "../core/out-ref.js";
-import type {
-  AuthoredOutput,
-  PlutusDataLike,
-  ScriptRefLike,
+import {
+  type AuthoredOutput,
+  type PlutusDataLike,
+  redeemerDataCbor,
+  type ScriptRefLike,
 } from "../core/output.js";
 import type {
   BuilderScriptState,
@@ -100,8 +101,13 @@ export const validatorScriptSource = (
   );
 };
 
+// A CML value is recorded as its committed bytes here, because once cloned
+// it is indistinguishable from caller-supplied bytes, which are only checked.
 export const cloneRedeemer = (redeemer: Redeemer): Redeemer => ({
-  data: clonePlutusDataLike(redeemer.data),
+  data:
+    typeof redeemer.data === "string" || redeemer.data instanceof Uint8Array
+      ? clonePlutusDataLike(redeemer.data)
+      : redeemerDataCbor(redeemer.data),
   exUnits:
     redeemer.exUnits === undefined
       ? undefined

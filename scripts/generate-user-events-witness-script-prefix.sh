@@ -5,6 +5,7 @@ mock_raw="7777777777777777777777777777777777777777777777777777777777777777"
 mock_data="5820${mock_raw}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+aiken="$script_dir/aiken"
 project_dir="$(cd "$script_dir/../onchain/aiken" && pwd)"
 
 tmp_dir="$(mktemp -d)"
@@ -18,7 +19,7 @@ generate_prefix() {
   local applied_blueprint="$3"
 
   echo "🧪 Applying mock user-events witness nonce for ${env_name}..."
-  aiken blueprint apply \
+  "$aiken" blueprint apply \
     --module user_events/witness \
     --validator main \
     --in "$blueprint" \
@@ -86,18 +87,27 @@ default_applied_blueprint="$tmp_dir/default-applied.plutus.json"
 testnet_applied_blueprint="$tmp_dir/testnet-applied.plutus.json"
 
 echo "🏗️  Building default Aiken blueprint..."
-aiken build --out "$default_blueprint" >/dev/null
+"$aiken" build --out "$default_blueprint" >/dev/null
 generate_prefix "default" "$default_blueprint" "$default_applied_blueprint"
 default_prefix="$prefix"
-update_prefix "env/default.ak" "$default_prefix"
 
 echo "🏗️  Building testnet Aiken blueprint..."
-aiken build --env testnet --out "$testnet_blueprint" >/dev/null
+"$aiken" build --env testnet --out "$testnet_blueprint" >/dev/null
 generate_prefix "testnet" "$testnet_blueprint" "$testnet_applied_blueprint"
 testnet_prefix="$prefix"
-update_prefix "env/testnet.ak" "$testnet_prefix"
+if [ "$default_prefix" != "$testnet_prefix" ]; then
+  echo "User-events witness prefix unexpectedly depends on the deployment profile" >&2
+  exit 1
+fi
+update_prefix "../../config/deployments/env.ak.template" "$default_prefix"
+node ../../demo/scripts/deployment-profiles.mjs generate "${1:-preprod-testing}"
 
-echo "🎨 Formatting Aiken sources..."
-aiken fmt >/dev/null
+# Format only the files this script writes. A bare `aiken fmt` formats the
+# whole project, which rewrites about 250 unrelated .ak files even on a clean
+# tree (measured 2026-09-28 at 2b310bfa6) and mixes them into uncommitted work.
+# CI checks only env/default.ak and env/testnet.ak after this script, and runs
+# the whole-project format check as its own step.
+echo "🎨 Formatting generated Aiken environments..."
+"$aiken" fmt env/*.ak >/dev/null
 
 echo "✅ User-events witness script prefix generated."

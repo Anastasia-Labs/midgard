@@ -1,30 +1,26 @@
-export * from "./active-operators.js";
-export * from "./cbor.js";
-export * from "./common.js";
-export * from "./da-attestation.js";
-export * from "./da-payload.js";
-export * from "./escape-hatch.js";
+/**
+ * `@al-ft/midgard-sdk`: every layer of the SDK. Workspace code imports the
+ * layer it needs (`@al-ft/midgard-sdk/core`, `/state-queue`, `/da`,
+ * `/operators`, `/users`, `/deployment`, `/fraud-proof`); each layer imports
+ * only the layers below it, and this root re-exports all of them.
+ *
+ * The layers are listed lowest first, one per comment so the export sort
+ * keeps that order. Each name is exported by one layer only, the one owning
+ * its module (`core` carries the fault-proof contract-identity modules, for
+ * example), so a test stubs a name on that layer and sees the stub through
+ * this root as well.
+ */
+// Layer 0.
+export * from "./layers/core.js";
+// Layer 1, over core.
+export * from "./layers/state-queue.js";
+// Layer 2, over state-queue.
+export * from "./layers/da.js";
+// Layer 2, over state-queue.
+export * from "./layers/operators.js";
+// Layer 2, over state-queue.
+export * from "./layers/users.js";
+// Layer 3, over da.
+export * from "./layers/deployment.js";
+// Layer 4, over deployment.
 export * from "./fraud-proof/index.js";
-export * from "./fraud-proofs/transition-trace.js";
-export * from "./hub-oracle.js";
-export * from "./initialization.js";
-export * from "./ledger-constants.js";
-export * from "./ledger-state.js";
-export * from "./linked-list.js";
-export * from "./operator-lifecycle.js";
-export * from "./payout.js";
-export * from "./phas-membership.js";
-export * from "./protocol-parameters.js";
-export * from "./reference-scripts.js";
-export * from "./registered-operators.js";
-export * from "./reserve.js";
-export * from "./reserve-payout.js";
-export * from "./retired-operators.js";
-export * from "./scheduler.js";
-export * from "./scheduler-refresh.js";
-export * from "./settlement.js";
-export * from "./state-queue.js";
-export * from "./state-queue-production.js";
-export * from "./transition-trace.js";
-export * from "./tx-context-redeemer.js";
-export * from "./user-events/index.js";

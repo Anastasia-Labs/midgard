@@ -21,8 +21,41 @@ plus datum helpers such as `encodeRegisteredOperatorDatumValue`. The
 `active-operators`, `registered-operators`, and `retired-operators` modules cover the
 per-list operations.
 
+The `operator-lifecycle/` directory holds the exit and recovery side:
+
+- `directory.ts`: `fetchOperatorDirectorySnapshotProgram` reads the three
+  lists, the scheduler, and the hub oracle in one snapshot, with lookups such
+  as `findNodeByKey`, `findAnchorNodeForKey`, and `schedulerCurrentOperator`.
+- `status.ts`: `deriveOperatorStatus` answers where a key sits, whether it is
+  a duplicate, whether it holds the shift, and when its bond unlocks;
+  `assertOperatorNotInDirectory` is the registration skip check.
+- `strike.ts`: `fetchNeglectedUserEventProgram` reads the earliest deposit,
+  withdrawal or tx order the state queue has not delivered
+  (`selectNeglectedUserEvent` picks among candidates read elsewhere);
+  `planInactivityTakeover` decides from that event whether the scheduled
+  operator can be struck now, and answers `no-neglected-event` when there is
+  none; `buildStrikeInactiveOperatorTxProgram` builds the strike, which cites
+  the event and hands the shift to the next operator.
+- `exit.ts`: `deriveRetireOperatorWitnesses` and
+  `buildUnsignedRetireOperatorTxProgram` build voluntary and forced
+  retirements (`retiredOperatorBondTranche` gives the retired node's
+  lovelace); `deriveRecoverOperatorBondWitnesses` and
+  `buildUnsignedRecoverOperatorBondTxProgram` return the bond after the hold;
+  `buildUnsignedSlashDuplicateOperatorTxProgram` removes a duplicate
+  registration with a `DuplicateProof` from another list, paying the bounty
+  (`fraudProverRewardLovelace`) to the enterprise address of
+  `bountyClaimantKeyHash`, which the builder adds as a required signer.
+
+Forced retirement and duplicate slashing pay the penalty as the transaction
+fee. The on-chain check is an equality, so those builders complete the
+transaction without coin selection and balance it to the lovelace, returning
+any remainder to the submitter as an explicit output instead of a change
+output. A duplicate slash leaves no remainder, because the bond is exactly the
+penalty plus the bounty; the builder refuses to pay a remainder to the
+claimant's bounty address, which may receive only the bounty.
+
 ## Related
 
 - On-chain: [Operator Directory](/docs/onchain/operator-directory)
-- Node commands: `register-active-operator`, `activate-operator`, see the
-  [CLI reference](/docs/operators/node/cli-reference)
+- Node commands and runbook: [Operator Lifecycle](/docs/operators/node/operator-lifecycle)
+  and the [CLI reference](/docs/operators/node/cli-reference)

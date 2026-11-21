@@ -1,0 +1,54 @@
+import { cekContextReferenceScripts } from "@al-ft/midgard-sdk/core";
+import { type ValidationTraceDisputeFaultProofContracts } from "@al-ft/midgard-sdk/fraud-proof";
+import {
+  Emulator,
+  generateEmulatorAccount,
+  Lucid,
+  PROTOCOL_PARAMETERS_DEFAULT,
+} from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
+import {
+  alwaysSucceedsBlueprintPath,
+  readBlueprint,
+  realBlueprintPath,
+} from "./support/emulator/blueprints.js";
+import { buildMinimalFaultProofContracts } from "./support/emulator/contracts.build-minimal-fault-proof-contracts.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+
+describe("CEK context tail publication", () => {
+  it("publishes each parameterized continuation under the real L1 limit", async () => {
+    const real = readBlueprint(realBlueprintPath);
+    const publisher = generateEmulatorAccount({ lovelace: 40_000_000_000n });
+    const emulator = new Emulator([publisher], {
+      ...EMULATOR_PROTOCOL_PARAMETERS,
+      maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+    });
+    const lucid = await Lucid(emulator, "Custom");
+    lucid.selectWallet.fromSeed(publisher.seedPhrase);
+    const nonce = (await lucid.wallet().getUtxos())[0]!;
+    const contracts = await buildMinimalFaultProofContracts(
+      real,
+      readBlueprint(alwaysSucceedsBlueprintPath),
+      nonce,
+      { realValidationTraceDispute: true, alwaysFraudProofCatalogue: true },
+    );
+    const family = (
+      contracts as typeof contracts & ValidationTraceDisputeFaultProofContracts
+    ).validationTraceDispute;
+    const publications = cekContextReferenceScripts(
+      family.cekContextStages,
+      family.cekContextItemStages,
+    );
+    for (const { deploymentEntry: key, validator: contract } of publications) {
+      const result = await publishPlainReferenceScriptUtxo({
+        lucid,
+        script: contract.spendingScript,
+        label: `CEK context ${key}`,
+      });
+      const measurement = result.publicationMeasurement;
+      expect(measurement.l1ByteMargin, key).toBeGreaterThanOrEqual(512);
+    }
+  }, 900_000);
+});

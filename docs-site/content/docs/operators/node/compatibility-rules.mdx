@@ -8,8 +8,10 @@ operators, watchers, and the on-chain deployment consistent.
 
 ## No backward compatibility before launch
 
-Midgard has not launched, and the node ships no compatibility modes, fallback
-paths, alias lookups, legacy-format support, or migration shims. Do not expect an
+Undeployed Midgard versions have no backward-compatibility contract. Replace
+prelaunch wire and schema versions in place rather than adding compatibility
+layers. Existing runtime paths do not create a promise to preserve old formats.
+Do not expect an
 older database, configuration, or deployment shape to keep working across
 updates. "Compatibility" on this page means agreement between a node, its peers,
 and the deployed contracts, not compatibility with earlier versions of Midgard.
@@ -34,8 +36,9 @@ no state-changing operations.
 
 ## Transaction finalization
 
-Always finalize transactions with local UPLC evaluation:
-`.complete({ localUPLCEval: true })`, never `false`.
+For Cardano L1 transactions built with Lucid Evolution, always finalize with
+local UPLC evaluation: `.complete({ localUPLCEval: true })`, never `false`.
+Lucid Midgard L2 completion has its own API and validation semantics.
 
 Do not edge-trigger `validFrom` at the current wall-clock time or a tip-derived
 slot; node submit validation can lag, producing `OutsideValidityInterval` races.

@@ -6,15 +6,17 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
+import { HttpServerResponse } from "@effect/platform";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { extractStateQueueErrorCode } from "@/commands/listen-response.js";
 import {
-  diagnoseMissingBlockTxs,
-  preflightDecodeBlockTxs,
-} from "@/transactions/state-queue/merge-to-confirmed-state.js";
+  extractStateQueueErrorCode,
+  handleStateQueueGetFailure,
+} from "../src/commands/listen-response.js";
+import { preflightDecodeBlockTxs } from "../src/transactions/state-queue/merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
+import { diagnoseMissingBlockTxs } from "../src/transactions/state-queue/merge-to-confirmed-state.merge-options.js";
 
 type TxFixture = {
   readonly cborHex: string;
@@ -25,6 +27,29 @@ const txFixture = JSON.parse(
 )[0] as TxFixture;
 
 describe("merge error code extraction", () => {
+  it("refuses undeclared upstream merge-code text in the actual HTTP error body", async () => {
+    const injected = "E_MERGE_" + "AB".repeat(32);
+    for (const error of [
+      new SDK.StateQueueError({
+        message: "merge failed",
+        cause: { error_code: injected },
+      }),
+      new SDK.StateQueueError({
+        message: `${injected}: private upstream bytes`,
+        cause: "provider rejected",
+      }),
+    ]) {
+      expect(extractStateQueueErrorCode(error)).toBeUndefined();
+      const response = await Effect.runPromise(
+        handleStateQueueGetFailure("block", error),
+      );
+      expect(response.status).toBe(500);
+      const body = await HttpServerResponse.toWeb(response).json();
+      expect(body.error_code).toBe("E_STATE_QUEUE_UNAVAILABLE");
+      expect(JSON.stringify(body)).not.toContain(injected);
+    }
+  });
+
   it("prefers error_code from StateQueueError cause payload", () => {
     const error = new SDK.StateQueueError({
       message: "merge failed",

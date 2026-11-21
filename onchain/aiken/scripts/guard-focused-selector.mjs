@@ -1,0 +1,295 @@
+#!/usr/bin/env node
+
+// Fail-closed wrapper for focused `aiken check -m <selector>` invocations.
+//
+// A bare `aiken check -m <selector>` whose selector matches no module and no
+// test prints an empty report and exits 0. Every gate that cites such a command
+// therefore reports success while executing nothing, which is how issue #519's
+// finding V-1 turned Q44's two 17-test selectors into a green gate that ran
+// zero tests. This wrapper turns "0 tests collected" — and any nonzero aiken
+// status, unparseable report, or failing test — into a nonzero exit whose
+// diagnostic names the exact selector that collected nothing.
+//
+// Use it wherever a focused selector is the evidence. When the exact expected
+// test names are known, prefer scripts/run-focused-check.mjs, which pins the
+// exact count as well.
+//
+// `--all` runs the whole suite (`aiken check` with no `-m`) under the same
+// rules: it prints the collected count and fails on zero, on any failing
+// test, and on a missing report.
+//
+// Each passing selector's line also carries `exUnits`: its largest unit-test
+// memory and CPU readings, each as a share of the GOAL_SPEC §3.3 basis.
+//
+// Complete CI coverage uses a fresh source-derived module plan and raw reports:
+//   --plan-shards <count> [--seed <uint32>] --output <plan.json>
+//   --shard <index> --plan <plan.json> --output <artifact.json>
+//   --collect-shards --plan <plan.json> --reports <directory>
+// Optional collector --baseline <report.json> proves exact full-record equality
+// in a controlled measurement. CI derives coverage from current source modules.
+
+import { spawnSync } from "node:child_process";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { runShardInvocation } from "./complete-test-shards.mjs";
+import { SCRIPT_BUDGET_BASIS } from "../../../demo/midgard-core/src/script-budgets.ts";
+import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
+
+const MAX_SELECTOR_COUNT = 64;
+const MAX_SELECTOR_LENGTH = 256;
+const VALID_SELECTOR = /^[a-z0-9_][a-z0-9_/]*$/u;
+const VALID_ENVIRONMENT = /^[a-z0-9_-]+$/u;
+
+export const ALL_MODULES = "--all";
+const ALL_MODULES_LABEL = "(all modules)";
+const MAX_LISTED_FAILURES = 20;
+
+export const usage =
+  "usage: node scripts/guard-focused-selector.mjs <module-selector> [<module-selector> ...] | --all";
+
+export const parseSelectors = (args) => {
+  if (
+    args.length === 0 ||
+    args.length > MAX_SELECTOR_COUNT ||
+    args.some(
+      (selector) =>
+        selector.length > MAX_SELECTOR_LENGTH || !VALID_SELECTOR.test(selector),
+    )
+  ) {
+    throw new Error(usage);
+  }
+  if (new Set(args).size !== args.length) {
+    throw new Error("module selectors must be unique");
+  }
+  return args;
+};
+
+// `--all` alone selects the whole suite; otherwise every argument is a module
+// selector. `--all` mixed with selectors is refused rather than guessed at.
+export const parseInvocation = (args) =>
+  args.length === 1 && args[0] === ALL_MODULES
+    ? [ALL_MODULES]
+    : parseSelectors(args);
+
+const describeSelector = (selector) =>
+  selector === ALL_MODULES ? ALL_MODULES_LABEL : selector;
+
+// The failing entries of a report, so a red full-suite run names its tests.
+const failingTests = (report) =>
+  (Array.isArray(report?.modules) ? report.modules : []).flatMap((module) =>
+    (Array.isArray(module?.tests) ? module.tests : [])
+      .filter((test) => test?.status !== "pass")
+      .map((test) => ({ module: module?.name, ...test })),
+  );
+
+const listFailures = (report) => {
+  const failures = failingTests(report);
+  if (failures.length === 0) {
+    return "";
+  }
+  const listed = failures
+    .slice(0, MAX_LISTED_FAILURES)
+    .map((failure) => `\n  ${JSON.stringify(failure)}`)
+    .join("");
+  const more =
+    failures.length > MAX_LISTED_FAILURES
+      ? `\n  ... and ${String(failures.length - MAX_LISTED_FAILURES)} more`
+      : "";
+  return `${listed}${more}`;
+};
+
+const share = (units, basis) => `${((100 * units) / basis).toFixed(1)}%`;
+
+// The largest execution units a report's unit tests measured, against the
+// GOAL_SPEC §3.3 basis. `aiken check` prints units per test and compares them
+// to nothing; a test is not a transaction, so this is a reading, not a gate.
+// Property tests report no units and are not counted.
+export const exUnitsSummary = (report) => {
+  const measured = (
+    Array.isArray(report?.modules) ? report.modules : []
+  ).flatMap((module) =>
+    (Array.isArray(module?.tests) ? module.tests : [])
+      .filter(
+        (test) =>
+          Number.isSafeInteger(test?.execution_units?.mem) &&
+          Number.isSafeInteger(test?.execution_units?.cpu),
+      )
+      .map((test) => ({
+        test: `${String(module.name)}.${String(test.title)}`,
+        ...test.execution_units,
+      })),
+  );
+  if (measured.length === 0) {
+    return { unitTests: 0 };
+  }
+  const largest = (key) =>
+    measured.reduce((top, next) => (next[key] > top[key] ? next : top));
+  const mem = largest("mem");
+  const cpu = largest("cpu");
+  return {
+    unitTests: measured.length,
+    maxMem: {
+      test: mem.test,
+      mem: mem.mem,
+      ofBasis: share(mem.mem, SCRIPT_BUDGET_BASIS.mem),
+    },
+    maxCpu: {
+      test: cpu.test,
+      cpu: cpu.cpu,
+      ofBasis: share(cpu.cpu, SCRIPT_BUDGET_BASIS.cpu),
+    },
+  };
+};
+
+// `result` is the shape spawnSync returns: { stdout, status, error }.
+export const evaluateSelectorReport = (selector, result) => {
+  const label = describeSelector(selector);
+  if (result.error !== undefined && result.error !== null) {
+    return {
+      selector,
+      ok: false,
+      diagnostic: `focused selector ${label}: Aiken could not be executed: ${result.error.message}`,
+    };
+  }
+
+  let report;
+  try {
+    report = JSON.parse(result.stdout);
+  } catch {
+    return {
+      selector,
+      ok: false,
+      diagnostic: `focused selector ${label}: Aiken did not return its structured test report (status ${String(result.status)}); with its output captured, Aiken prints no compile error, so rerun under a pseudo-terminal to read it: script -qec "aiken check" /dev/null`,
+    };
+  }
+
+  const summary = report?.summary;
+  if (
+    typeof summary?.total !== "number" ||
+    typeof summary?.passed !== "number" ||
+    typeof summary?.failed !== "number"
+  ) {
+    return {
+      selector,
+      ok: false,
+      diagnostic: `focused selector ${label}: Aiken report has no numeric summary`,
+    };
+  }
+
+  const { total, passed, failed } = summary;
+  if (total === 0) {
+    return {
+      selector,
+      total,
+      passed,
+      failed,
+      ok: false,
+      diagnostic: `focused selector ${label} collected 0 tests; a selector that matches no module and no test cannot establish anything, so this gate fails closed`,
+    };
+  }
+  if (failed !== 0 || passed !== total) {
+    return {
+      selector,
+      total,
+      passed,
+      failed,
+      ok: false,
+      diagnostic: `focused selector ${label}: collected=${String(total)}, passed=${String(passed)}, failed=${String(failed)}${listFailures(report)}`,
+    };
+  }
+  if (
+    result.status !== 0 ||
+    (result.signal !== undefined && result.signal !== null)
+  ) {
+    return {
+      selector,
+      total,
+      passed,
+      failed,
+      ok: false,
+      diagnostic: `focused selector ${label}: Aiken exited with status ${String(result.status)}`,
+    };
+  }
+
+  return {
+    selector,
+    total,
+    passed,
+    failed,
+    exUnits: exUnitsSummary(report),
+    ok: true,
+  };
+};
+
+export const runSelector = (selector, { projectDirectory, environment }) => {
+  const args =
+    selector === ALL_MODULES
+      ? ["check", "--plain-numbers"]
+      : ["check", "-m", selector, "--plain-numbers"];
+  if (environment !== undefined) {
+    args.push("--env", environment);
+  }
+  const result = spawnSync(aikenBinary(), args, {
+    cwd: projectDirectory,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+  return evaluateSelectorReport(selector, result);
+};
+
+const isMain =
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMain) {
+  let exitCode = 1;
+  try {
+    const args = process.argv.slice(2);
+    const environment = process.env.MIDGARD_AIKEN_ENV;
+    if (environment !== undefined && !VALID_ENVIRONMENT.test(environment)) {
+      throw new Error("MIDGARD_AIKEN_ENV contains an invalid environment name");
+    }
+    const context = {
+      projectDirectory: resolve(dirname(fileURLToPath(import.meta.url)), ".."),
+      environment,
+    };
+
+    if (["--plan-shards", "--shard", "--collect-shards"].includes(args[0])) {
+      process.stdout.write(
+        `${JSON.stringify(runShardInvocation(args, context))}\n`,
+      );
+      process.exitCode = 0;
+      exitCode = 0;
+    } else {
+      const selectors = parseInvocation(args);
+
+      const outcomes = selectors.map((selector) =>
+        runSelector(selector, context),
+      );
+      for (const outcome of outcomes) {
+        if (outcome.ok) {
+          process.stdout.write(
+            `${JSON.stringify({
+              selector: describeSelector(outcome.selector),
+              collected: outcome.total,
+              passed: outcome.passed,
+              failed: outcome.failed,
+              exUnits: outcome.exUnits,
+            })}\n`,
+          );
+        } else {
+          console.error(outcome.diagnostic);
+        }
+      }
+      exitCode = outcomes.every((outcome) => outcome.ok) ? 0 : 1;
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+  } finally {
+    process.exitCode = exitCode;
+  }
+}

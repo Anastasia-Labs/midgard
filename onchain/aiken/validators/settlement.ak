@@ -1,4 +1,6 @@
+use aiken/builtin
 use aiken/collection/dict
+use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{AssetName, PolicyId}
@@ -15,7 +17,42 @@ use midgard/settlement.{
   AttachResolutionClaim, Datum, DisproveResolutionClaim, MintRedeemer, Remove,
   ResolutionClaim, Resolve, Spawn, SpendRedeemer,
 }
-use midgard/state_queue
+
+fn decode_mint_redeemer(redeemer_data: Data) -> MintRedeemer {
+  let Pair(redeemer_tag, redeemer_fields) = builtin.un_constr_data(
+    redeemer_data,
+  )
+
+  when redeemer_tag is {
+    0 -> {
+      expect
+          [
+            settlement_id_data, output_index_data,
+            state_queue_merge_redeemer_index_data, hub_ref_input_index_data,
+          ]
+        = redeemer_fields
+      expect settlement_id: ByteArray = settlement_id_data
+      expect output_index: Int = output_index_data
+      expect state_queue_merge_redeemer_index: Int = state_queue_merge_redeemer_index_data
+      expect hub_ref_input_index: Int = hub_ref_input_index_data
+      Spawn {
+        settlement_id,
+        output_index,
+        state_queue_merge_redeemer_index,
+        hub_ref_input_index,
+      }
+    }
+    1 -> {
+      expect [settlement_id_data,
+            input_index_data, spend_redeemer_index_data] = redeemer_fields
+      expect settlement_id: ByteArray = settlement_id_data
+      expect input_index: Int = input_index_data
+      expect spend_redeemer_index: Int = spend_redeemer_index_data
+      Remove { settlement_id, input_index, spend_redeemer_index }
+    }
+    _ -> fail
+  }
+}
 
 validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
   spend(
@@ -26,13 +63,15 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
   ) {
     expect Some(datum) = m_datum
 
-    let Datum {
-      deposits_root,
-      withdrawals_root,
-      forced_transactions_root,
-      transactions_root: _transactions_root,
-      resolution_claim,
-    } = datum
+    let
+        Datum {
+          deposits_root,
+          withdrawals_root,
+          forced_transactions_root,
+          transactions_root: _transactions_root,
+          resolution_claim,
+        }
+      = datum
 
     when redeemer is {
       AttachResolutionClaim {
@@ -44,14 +83,16 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
         operator,
         scheduler_ref_input_index,
       } -> {
-        let Transaction {
-          inputs,
-          reference_inputs,
-          outputs,
-          extra_signatories,
-          redeemers,
-          ..
-        } = tx
+        let
+            Transaction {
+              inputs,
+              reference_inputs,
+              outputs,
+              extra_signatories,
+              redeemers,
+              ..
+            }
+          = tx
 
         // 1. The spent input must not have a resolution claim.
         expect resolution_claim == None
@@ -61,74 +102,69 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
 
         // 3. Specified input must be authentic, and reproduced properly at the
         //    indicated output index.
-        let
-          input,
-          output,
-        <-
-          singular_utxo_indexer.one_to_one(
-            input_index: settlement_input_index,
-            output_index: settlement_output_index,
-            own_ref: own_out_ref,
-            inputs: inputs,
-            outputs: outputs,
-            // Double satisfaction prevented by requiring the input NFT to be
-            // reproduced at the output.
-            double_satisfaction_prevented: True,
-          )
+        let input, output <- singular_utxo_indexer.one_to_one(
+          input_index: settlement_input_index,
+          output_index: settlement_output_index,
+          own_ref: own_out_ref,
+          inputs: inputs,
+          outputs: outputs,
+          // Double satisfaction prevented by requiring the input NFT to be
+          // reproduced at the output.
+          double_satisfaction_prevented: True,
+        )
 
         // 4. The transaction must include the Midgard hub oracle NFT in a
         //    reference input.
         // 5. hub_oracle.{active_operators, scheduler}
-        let hub.Datum { active_operators_addr, scheduler, .. } =
-          hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+        let hub.Datum { active_operators_addr, scheduler, .. } = hub.get_datum(
+          reference_inputs,
+          hub_oracle,
+          hub_ref_input_index,
+        )
 
         // 6. The transaction must include an input (`operator_node`), spent via
         //    the `UpdateBondHoldNewSettlement` redeemer, of an
         //    `active_operators` node with a key matching the resolution claim's
         //    operator.
-        expect active_operators.UpdateBondHoldNewSettlement {
-          active_operator,
-          resolution_time,
-          ..
-        } =
-          utils.get_spending_redeemer_data_at(
-            script_address: active_operators_addr,
-            input_index: active_operators_node_input_index,
-            redeemer_index: active_operators_redeemer_index,
-            inputs: inputs,
-            redeemers: redeemers,
-          )
+        expect
+            active_operators.UpdateBondHoldNewSettlement {
+              active_operator,
+              resolution_time,
+              ..
+            }
+          = utils.get_spending_redeemer_data_at(
+          script_address: active_operators_addr,
+          input_index: active_operators_node_input_index,
+          redeemer_index: active_operators_redeemer_index,
+          inputs: inputs,
+          redeemers: redeemers,
+        )
         expect operator == active_operator
 
         // 7. The active operators redeemer provides a validated resolution
         //    time, which must be used as the settlement claim's resolution time.
-        let cont_output_datum_data =
-          utils.authenticate_input_output_and_get_output_datum_data(
-            input,
-            output,
-            settlement_policy_id,
-          )
-        let expected_output_datum_data: Data =
-          Datum {
-            ..datum,
-            resolution_claim: Some(
-              ResolutionClaim { resolution_time, operator },
-            ),
-          }
+        let cont_output_datum_data = utils.authenticate_input_output_and_get_output_datum_data(
+          input,
+          output,
+          settlement_policy_id,
+        )
+        let expected_output_datum_data: Data = Datum {
+          ..datum,
+          resolution_claim: Some(ResolutionClaim { resolution_time, operator }),
+        }
         expect cont_output_datum_data == expected_output_datum_data
 
         // 8. The transaction must include the `scheduler` UTxO as a reference
         //    input, indicating that the current operator matches the resolution
         //    claim's operator.
-        expect scheduler.ActiveOperator { operator: schedulers_operator, .. } =
-          scheduler.get_datum(
-            reference_inputs,
-            scheduler,
-            scheduler_ref_input_index,
-          )
+        expect scheduler.ActiveOperator { operator: schedulers_operator, .. } = scheduler.get_datum(
+          reference_inputs,
+          scheduler,
+          scheduler_ref_input_index,
+        )
         expect operator == schedulers_operator
 
-        // Done. 
+        // Done.
         True
       }
       DisproveResolutionClaim {
@@ -144,61 +180,64 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
         membership_proof,
         inclusion_proof_script_withdraw_redeemer_index,
       } -> {
-        let Transaction {
-          inputs,
-          reference_inputs,
-          outputs,
-          validity_range,
-          redeemers,
-          ..
-        } = tx
+        let
+            Transaction {
+              inputs,
+              reference_inputs,
+              outputs,
+              validity_range,
+              redeemers,
+              ..
+            }
+          = tx
 
         // 1. The spent input must have a resolution claim.
-        expect Some(ResolutionClaim {
-          resolution_time,
-          operator: resolution_operator,
-        }) = resolution_claim
+        expect
+            Some(ResolutionClaim {
+              resolution_time,
+              operator: resolution_operator,
+            })
+          = resolution_claim
         expect operator == resolution_operator
 
         // 2. Specified input must be authentic, and reproduced properly at the
         //    indicated output index.
-        let
+        let input, output <- singular_utxo_indexer.one_to_one(
+          input_index: settlement_input_index,
+          output_index: settlement_output_index,
+          own_ref: own_out_ref,
+          inputs: inputs,
+          outputs: outputs,
+          // Double satisfaction prevented by requiring the input NFT to be
+          // reproduced at the output.
+          double_satisfaction_prevented: True,
+        )
+        let cont_output_datum_data = utils.authenticate_input_output_and_get_output_datum_data(
           input,
           output,
-        <-
-          singular_utxo_indexer.one_to_one(
-            input_index: settlement_input_index,
-            output_index: settlement_output_index,
-            own_ref: own_out_ref,
-            inputs: inputs,
-            outputs: outputs,
-            // Double satisfaction prevented by requiring the input NFT to be
-            // reproduced at the output.
-            double_satisfaction_prevented: True,
-          )
-        let cont_output_datum_data =
-          utils.authenticate_input_output_and_get_output_datum_data(
-            input,
-            output,
-            settlement_policy_id,
-          )
+          settlement_policy_id,
+        )
 
         // 3. The spent input must be reproduced without a resolution claim.
-        let expected_datum_data: Data =
-          Datum { ..datum, resolution_claim: None }
+        let expected_datum_data: Data = Datum {
+          ..datum,
+          resolution_claim: None,
+        }
         expect cont_output_datum_data == expected_datum_data
 
         // 4. The transaction must include the Midgard hub oracle NFT in a
         //    reference input.
         // 5. hub_oracle.{active_operators, retired_operators, deposit, withdrawal, tx_order}
-        let hub.Datum {
-          active_operators,
-          retired_operators,
-          deposit: deposit_script_hash,
-          withdrawal: withdrawal_script_hash,
-          tx_order: tx_order_script_hash,
-          ..
-        } = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+        let
+            hub.Datum {
+              active_operators,
+              retired_operators,
+              deposit: deposit_script_hash,
+              withdrawal: withdrawal_script_hash,
+              tx_order: tx_order_script_hash,
+              ..
+            }
+          = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
         // 6. The transaction must include either a deposit, a withdrawal order,
         //    or an L2 transaction order as a reference input. The validity of
@@ -225,44 +264,41 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
 
         // 7. The transaction's time-validity inclusive upper bound must be
         //    earlier than the resolution claim's resolution time.
-        let valid_to =
-          utils.get_inclusive_upper_bound_of_interval(validity_range)
+        let valid_to = utils.get_inclusive_upper_bound_of_interval(
+          validity_range,
+        )
         expect valid_to < resolution_time
 
         // 8. Depending on whether the fraudulent operator is in the active set
         //    or retired, retrieve the slashing reason from the set's burn
         //    redeemer.
-        let slashing_reason_from_operators_set =
-          if operator_is_active {
-            operator_directory.cross_validate_slashing_reason(
-              operator,
-              active_operators,
-              operators_redeemer_index,
-              fn(redeemer_data: Data) {
-                expect active_operators.SlashOperator { slashing_arguments, .. } =
-                  redeemer_data
-                slashing_arguments
-              },
-              redeemers,
-            )
-          } else {
-            operator_directory.cross_validate_slashing_reason(
-              operator,
-              retired_operators,
-              operators_redeemer_index,
-              fn(redeemer_data: Data) {
-                expect retired_operators.SlashOperator { slashing_arguments } =
-                  redeemer_data
-                slashing_arguments
-              },
-              redeemers,
-            )
-          }
+        let slashing_reason_from_operators_set = if operator_is_active {
+          operator_directory.cross_validate_slashing_reason(
+            operator,
+            active_operators,
+            operators_redeemer_index,
+            fn(redeemer_data: Data) {
+              expect active_operators.SlashOperator { slashing_arguments, .. } = redeemer_data
+              slashing_arguments
+            },
+            redeemers,
+          )
+        } else {
+          operator_directory.cross_validate_slashing_reason(
+            operator,
+            retired_operators,
+            operators_redeemer_index,
+            fn(redeemer_data: Data) {
+              expect retired_operators.SlashOperator { slashing_arguments } = redeemer_data
+              slashing_arguments
+            },
+            redeemers,
+          )
+        }
 
         // 9. The reason for slashing the operator in either case must be due to
         //    a bad settlement resolution claim.
-        expect SlashOperatorForBadSettlement { .. } =
-          slashing_reason_from_operators_set
+        expect SlashOperatorForBadSettlement { .. } = slashing_reason_from_operators_set
 
         // Done.
         True
@@ -284,19 +320,21 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
 }
 
 validator mint(hub_oracle: ScriptHash) {
-  mint(redeemer: MintRedeemer, own_policy: PolicyId, tx: Transaction) {
-    let Transaction {
-      inputs,
-      reference_inputs,
-      outputs,
-      mint,
-      redeemers,
-      extra_signatories,
-      validity_range,
-      ..
-    } = tx
+  mint(redeemer_data: Data<MintRedeemer>, own_policy: PolicyId, tx: Transaction) {
+    let
+        Transaction {
+          inputs,
+          reference_inputs,
+          outputs,
+          mint,
+          redeemers,
+          extra_signatories,
+          validity_range,
+          ..
+        }
+      = tx
 
-    when redeemer is {
+    when decode_mint_redeemer(redeemer_data) is {
       Spawn {
         settlement_id,
         output_index,
@@ -306,8 +344,11 @@ validator mint(hub_oracle: ScriptHash) {
         // 1. The transaction must include the Midgard hub oracle NFT in a
         //    reference input.
         // 2. hub_oracle.{state_queue}
-        let hub.Datum { state_queue, settlement_addr, .. } =
-          hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+        let hub.Datum { state_queue, settlement_addr, .. } = hub.get_datum(
+          reference_inputs,
+          hub_oracle,
+          hub_ref_input_index,
+        )
 
         // 3. The transaction must fold a `state_queue` node via the Merge To
         //    Confirmed State redeemer. Let `merged_block` be the block being
@@ -317,22 +358,57 @@ validator mint(hub_oracle: ScriptHash) {
         //    > [!NOTE]
         //    > We trust the redeemer arguments provided to state queue because
         //    > we expect it to check them.
-        let state_queue_redeemer_data =
-          redeemers
-            |> utils.get_redeemer_at(
-                Mint(state_queue),
-                state_queue_merge_redeemer_index,
-              )
+        let state_queue_redeemer_data = redeemers
+          |> utils.get_redeemer_at(
+              Mint(state_queue),
+              state_queue_merge_redeemer_index,
+            )
         //
-        expect state_queue.MergeToConfirmedState {
-          header_node_key,
-          m_settlement_redeemer_index,
-          merged_block_transactions_root,
-          merged_block_deposits_root,
-          merged_block_withdrawals_root,
-          merged_block_forced_transactions_root,
-          ..
-        } = state_queue_redeemer_data
+        // Cross-script redeemers enter through the raw PlutusData map. Decode
+        // the exact state-queue ABI at that boundary so constructor, arity,
+        // option shape, and each settlement commitment are authenticated
+        // before use.
+        let Pair(state_queue_redeemer_constructor, state_queue_redeemer_fields)
+          = builtin.un_constr_data(state_queue_redeemer_data)
+        expect state_queue_redeemer_constructor == 6
+        expect list.length(state_queue_redeemer_fields) == 19
+        expect Some(header_node_key_data) = list.at(
+          state_queue_redeemer_fields,
+          1,
+        )
+        expect Some(settlement_redeemer_index_option_data) = list.at(
+          state_queue_redeemer_fields,
+          4,
+        )
+        expect Some(merged_block_withdrawals_root_data) = list.at(
+          state_queue_redeemer_fields,
+          5,
+        )
+        expect Some(merged_block_forced_transactions_root_data) = list.at(
+          state_queue_redeemer_fields,
+          6,
+        )
+        expect Some(merged_block_transactions_root_data) = list.at(
+          state_queue_redeemer_fields,
+          7,
+        )
+        expect Some(merged_block_deposits_root_data) = list.at(
+          state_queue_redeemer_fields,
+          8,
+        )
+        let header_node_key = builtin.un_b_data(header_node_key_data)
+        let merged_block_withdrawals_root = builtin.un_b_data(
+          merged_block_withdrawals_root_data,
+        )
+        let merged_block_forced_transactions_root = builtin.un_b_data(
+          merged_block_forced_transactions_root_data,
+        )
+        let merged_block_transactions_root = builtin.un_b_data(
+          merged_block_transactions_root_data,
+        )
+        let merged_block_deposits_root = builtin.un_b_data(
+          merged_block_deposits_root_data,
+        )
         // We verify this redeemer argument so that other scripts can use it:
         expect header_node_key == settlement_id
         // Provision of redeemer index in state queue's redeemer shows that at
@@ -341,39 +417,41 @@ validator mint(hub_oracle: ScriptHash) {
         //
         // Another solution would be checking the absence of settlement minting
         // by the state queue policy, which would be more expensive.
-        expect Some(_) = m_settlement_redeemer_index
+        expect Pair(0, [settlement_redeemer_index_data]) = builtin.un_constr_data(
+          settlement_redeemer_index_option_data,
+        )
+        expect _settlement_redeemer_index = builtin.un_i_data(
+          settlement_redeemer_index_data,
+        )
 
         // 4. The transaction must produce an authentic settlement utxo with an
         //    NFT which its asset name matches `header_hash`. Let
         //    `new_settlement` be the new settlement utxo.
-        let settlement_output_datum_data =
-          outputs
-            |> utils.get_authentic_output_datum_at_address_with_nft_at(
-                expected_address: settlement_addr,
-                nft_policy_id: own_policy,
-                nft_asset_name: settlement_id,
-                output_index: output_index,
-              )
+        let settlement_output_datum_data = outputs
+          |> utils.get_authentic_output_datum_at_address_with_nft_at(
+              expected_address: settlement_addr,
+              nft_policy_id: own_policy,
+              nft_asset_name: settlement_id,
+              output_index: output_index,
+            )
 
         // 5. `merged_block` and `new_settlement` must match on all these
         //    fields: `deposits_root`, `withdrawals_root`, `transactions_root`.
         // 6. The `resolution_claim` of `new_settlement` must be empty.
-        let expected_produced_settlement_datum: Data =
-          Datum {
-            deposits_root: merged_block_deposits_root,
-            withdrawals_root: merged_block_withdrawals_root,
-            forced_transactions_root: merged_block_forced_transactions_root,
-            transactions_root: merged_block_transactions_root,
-            resolution_claim: None,
-          }
+        let expected_produced_settlement_datum: Data = Datum {
+          deposits_root: merged_block_deposits_root,
+          withdrawals_root: merged_block_withdrawals_root,
+          forced_transactions_root: merged_block_forced_transactions_root,
+          transactions_root: merged_block_transactions_root,
+          resolution_claim: None,
+        }
         expect
           settlement_output_datum_data == expected_produced_settlement_datum
 
         // 7. Only the new settlement NFT may be minted under this policy.
-        expect [Pair(minted_settlement_id, 1)] =
-          mint
-            |> assets.tokens(own_policy)
-            |> dict.to_pairs
+        expect [Pair(minted_settlement_id, 1)] = mint
+          |> assets.tokens(own_policy)
+          |> dict.to_pairs
         expect minted_settlement_id == settlement_id
 
         // Done.
@@ -382,35 +460,39 @@ validator mint(hub_oracle: ScriptHash) {
       Remove { settlement_id, input_index, spend_redeemer_index } -> {
         // 1. The transaction must spend the specified settlement UTxO. Let
         //    `removed_settlement` be that UTxO.
-        expect Input {
-          output: Output { datum: InlineDatum(input_datum_data), .. },
-          output_reference: input_outref,
-        } =
-          inputs
-            |> utils.get_authentic_input_with_nft_at(
-                own_policy,
-                settlement_id,
-                input_index,
-              )
+        expect
+            Input {
+              output: Output { datum: InlineDatum(input_datum_data), .. },
+              output_reference: input_outref,
+            }
+          = inputs
+          |> utils.get_authentic_input_with_nft_at(
+              own_policy,
+              settlement_id,
+              input_index,
+            )
 
         // 2. The redeemer used for spending the `removed_settlement` must be
         //    `Resolve`. This also validates the specified NFT is getting burnt.
-        expect Resolve { settlement_id: settlement_id_from_spend_redeemer }: SpendRedeemer =
-          redeemers
-            |> utils.get_redeemer_at(Spend(input_outref), spend_redeemer_index)
+        expect
+            Resolve { settlement_id: settlement_id_from_spend_redeemer }: SpendRedeemer
+          = redeemers
+          |> utils.get_redeemer_at(Spend(input_outref), spend_redeemer_index)
 
         // 3. The `settlement_id` included in the spending redeemer must match
         //    the ID provided in the burning redeemer.
         expect settlement_id == settlement_id_from_spend_redeemer
 
         // 4. The `resolution_claim` of `removed_settlement` must not be empty.
-        expect Datum {
-          resolution_claim: Some(ResolutionClaim {
-            resolution_time: unwrapped_time_of_claimed_as_resolved,
-            operator: operator_vkey,
-          }),
-          ..
-        } = input_datum_data
+        expect
+            Datum {
+              resolution_claim: Some(ResolutionClaim {
+                resolution_time: unwrapped_time_of_claimed_as_resolved,
+                operator: operator_vkey,
+              }),
+              ..
+            }
+          = input_datum_data
 
         // 5. The transaction must be signed by the `operator` of
         //    `resolution_claim`.
@@ -419,8 +501,9 @@ validator mint(hub_oracle: ScriptHash) {
         // 6. The transaction's time-validity lower bound must match or exceed
         //    the `resolution_time` of the `resolution_claim`.
         //    TODO: Is ensuring inclusivity of significance here?
-        let valid_from =
-          utils.get_inclusive_lower_bound_of_interval(validity_range)
+        let valid_from = utils.get_inclusive_lower_bound_of_interval(
+          validity_range,
+        )
         expect unwrapped_time_of_claimed_as_resolved <= valid_from
 
         // Done.
@@ -439,50 +522,135 @@ const test_settlement_policy: PolicyId =
 
 const test_settlement_id: AssetName = #"aa"
 
-test exact_settlement_policy_mint_accepts_only_settlement_nft() {
-  let mint = assets.from_asset(test_settlement_policy, test_settlement_id, 1)
-  expect [Pair(minted_settlement_id, 1)] =
-    mint
-      |> assets.tokens(test_settlement_policy)
-      |> dict.to_pairs
-  minted_settlement_id == test_settlement_id
+test settlement_mint_redeemer_parser_preserves_spawn_field_order() {
+  expect
+      Spawn {
+        settlement_id,
+        output_index,
+        state_queue_merge_redeemer_index,
+        hub_ref_input_index,
+      }
+    = decode_mint_redeemer(
+    builtin.constr_data(
+      0,
+      [
+        builtin.b_data(#"aa"),
+        builtin.i_data(1),
+        builtin.i_data(2),
+        builtin.i_data(3),
+      ],
+    ),
+  )
+  settlement_id == #"aa" && output_index == 1 && state_queue_merge_redeemer_index == 2 && hub_ref_input_index == 3
 }
 
-test exact_settlement_policy_mint_rejects_extra_same_policy_token() fail {
-  let mint =
-    assets.merge(
-      assets.from_asset(test_settlement_policy, test_settlement_id, 1),
-      assets.from_asset(test_settlement_policy, #"bb", 1),
-    )
-  expect [Pair(minted_settlement_id, 1)] =
-    mint
-      |> assets.tokens(test_settlement_policy)
-      |> dict.to_pairs
-  minted_settlement_id == test_settlement_id
+test settlement_mint_redeemer_parser_preserves_remove_field_order() {
+  expect Remove { settlement_id, input_index, spend_redeemer_index } = decode_mint_redeemer(
+    builtin.constr_data(
+      1,
+      [builtin.b_data(#"bb"), builtin.i_data(4), builtin.i_data(5)],
+    ),
+  )
+  settlement_id == #"bb" && input_index == 4 && spend_redeemer_index == 5
 }
 
-test exact_settlement_policy_mint_rejects_wrong_same_policy_token() fail {
-  let mint = assets.from_asset(test_settlement_policy, #"bb", 1)
-  expect [Pair(minted_settlement_id, 1)] =
-    mint
-      |> assets.tokens(test_settlement_policy)
-      |> dict.to_pairs
-  minted_settlement_id == test_settlement_id
+// V-21 (#532). The three rejection tests below were written as
+// `expect _ = decode_mint_redeemer(...)`. `_` is irrefutable, so the `expect`
+// itself could never reject anything; the rejection has always come from inside
+// `decode_mint_redeemer` (the `_ -> fail` arm for an unknown tag, and the
+// arity/type `expect`s inside the Spawn and Remove arms). That was sound but
+// assertion-shaped: nothing in the test forced the decode except a binding form
+// whose only job was to look like an assertion.
+//
+// They now scrutinise the decoded value in a `when`, which structurally forces
+// the decode and is exhaustively True for every value `MintRedeemer` can hold.
+// A `fail` test is green only when its body is False or crashes, so the body
+// being unconditionally True on any successful decode means these tests can be
+// green for exactly one reason: `decode_mint_redeemer` rejected the input. The
+// two `..._preserves_..._field_order` tests above are the positive controls
+// showing the same decoder accepts the well-formed Spawn and Remove encodings.
+fn decoded_mint_redeemer_is_total(redeemer: MintRedeemer) -> Bool {
+  when redeemer is {
+    Spawn { .. } -> True
+    Remove { .. } -> True
+  }
 }
 
-test exact_settlement_policy_mint_allows_other_policy_mints() {
-  let mint =
-    assets.merge(
-      assets.from_asset(test_settlement_policy, test_settlement_id, 1),
-      assets.from_asset(
-        #"22222222222222222222222222222222222222222222222222222222",
-        #"cc",
-        1,
+test settlement_mint_redeemer_parser_rejects_unknown_tag() fail {
+  decoded_mint_redeemer_is_total(
+    decode_mint_redeemer(builtin.constr_data(2, [])),
+  )
+}
+
+test settlement_mint_redeemer_parser_rejects_spawn_wrong_arity() fail {
+  decoded_mint_redeemer_is_total(
+    decode_mint_redeemer(
+      builtin.constr_data(
+        0,
+        [builtin.b_data(#"aa"), builtin.i_data(1), builtin.i_data(2)],
       ),
-    )
-  expect [Pair(minted_settlement_id, 1)] =
-    mint
-      |> assets.tokens(test_settlement_policy)
-      |> dict.to_pairs
+    ),
+  )
+}
+
+test settlement_mint_redeemer_parser_rejects_remove_wrong_type() fail {
+  decoded_mint_redeemer_is_total(
+    decode_mint_redeemer(
+      builtin.constr_data(
+        1,
+        [builtin.b_data(#"bb"), builtin.b_data(#"04"), builtin.i_data(5)],
+      ),
+    ),
+  )
+}
+
+// V-22 (#532). The four tests below were named `exact_settlement_policy_mint_*`
+// but execute no settlement code at all — they build a `Value` with
+// `assets.from_asset`/`assets.merge` and assert properties of the Aiken stdlib
+// `assets`/`dict` modules. The "exactly one settlement NFT" invariant they
+// appeared to cover lives inside the `mint` handler at the top of this file,
+// which no test in this repository invokes. They are renamed to state what they
+// actually pin (the stdlib token-shape restatement the handler relies on); the
+// settlement `mint`/`spend` handler coverage gap is reported separately and is
+// NOT closed by these tests.
+test stdlib_token_shape_yields_only_the_settlement_nft() {
+  let mint = assets.from_asset(test_settlement_policy, test_settlement_id, 1)
+  expect [Pair(minted_settlement_id, 1)] = mint
+    |> assets.tokens(test_settlement_policy)
+    |> dict.to_pairs
+  minted_settlement_id == test_settlement_id
+}
+
+test stdlib_token_shape_rejects_an_extra_same_policy_token() fail {
+  let mint = assets.merge(
+    assets.from_asset(test_settlement_policy, test_settlement_id, 1),
+    assets.from_asset(test_settlement_policy, #"bb", 1),
+  )
+  expect [Pair(minted_settlement_id, 1)] = mint
+    |> assets.tokens(test_settlement_policy)
+    |> dict.to_pairs
+  minted_settlement_id == test_settlement_id
+}
+
+test stdlib_token_shape_rejects_a_wrong_same_policy_token() fail {
+  let mint = assets.from_asset(test_settlement_policy, #"bb", 1)
+  expect [Pair(minted_settlement_id, 1)] = mint
+    |> assets.tokens(test_settlement_policy)
+    |> dict.to_pairs
+  minted_settlement_id == test_settlement_id
+}
+
+test stdlib_token_shape_ignores_other_policy_mints() {
+  let mint = assets.merge(
+    assets.from_asset(test_settlement_policy, test_settlement_id, 1),
+    assets.from_asset(
+      #"22222222222222222222222222222222222222222222222222222222",
+      #"cc",
+      1,
+    ),
+  )
+  expect [Pair(minted_settlement_id, 1)] = mint
+    |> assets.tokens(test_settlement_policy)
+    |> dict.to_pairs
   minted_settlement_id == test_settlement_id
 }

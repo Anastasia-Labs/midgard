@@ -1,0 +1,6 @@
+interface:
+  display_name: "Arena"
+  short_description: "Compare independent candidates, select a base, and combine the s"
+  default_prompt: "Use $arena for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

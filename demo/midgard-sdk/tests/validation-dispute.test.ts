@@ -1,0 +1,370 @@
+import {
+  buildMidgardValidationTraceTree,
+  openMidgardValidationDispute,
+} from "@al-ft/midgard-core";
+import { Constr, Data } from "@lucid-evolution/lucid";
+import { describe, expect, it } from "vitest";
+
+import {
+  CaseThread,
+  PreparedValidationResolutionDatum,
+  type PreparedValidationResolutionDatum as PreparedValidationResolutionDatumData,
+  ValidationAuxiliaryWitness,
+  ValidationAwardSpendRedeemer,
+  type ValidationAwardSpendRedeemer as ValidationAwardSpendRedeemerData,
+  ValidationBoundarySpendRedeemer,
+  type ValidationBoundarySpendRedeemer as ValidationBoundarySpendRedeemerData,
+  ValidationCanonicalDecodePrepareSelectedSpendRedeemer,
+  type ValidationCanonicalDecodePrepareSelectedSpendRedeemer as ValidationCanonicalDecodePrepareSelectedSpendRedeemerData,
+  validationCaseThreadDataFromCore,
+  ValidationCekExecutionSelectionSpendRedeemer,
+  type ValidationCekExecutionSelectionSpendRedeemer as ValidationCekExecutionSelectionSpendRedeemerData,
+  ValidationDisputeTurnSchema,
+  ValidationGameSpendRedeemer,
+  ValidationMachinePhaseSchema,
+  ValidationMachineSourceKindSchema,
+  type ValidationMachineState,
+  ValidationMachineVerdictSchema,
+  ValidationOneStepEvidence,
+  type ValidationOneStepEvidence as ValidationOneStepEvidenceData,
+  ValidationOneStepWitness,
+  ValidationPrepareSelectedSpendRedeemer,
+  type ValidationPrepareSelectedSpendRedeemer as ValidationPrepareSelectedSpendRedeemerData,
+  type ValidationResolutionState,
+  validationTraceDescriptorDataFromCore,
+  ValidationTraceProof,
+  validationTraceProofDataFromCore,
+  WinningValidationResolutionDatum,
+  type WinningValidationResolutionDatum as WinningValidationResolutionDatumData,
+} from "../src/index.js";
+
+const hash = (byte: number): Buffer => Buffer.alloc(32, byte);
+
+describe("validation dispute ABI", () => {
+  it("freezes every dispute-turn, phase, verdict, and source-kind tag", () => {
+    const nullaryVectors = [
+      ...[
+        "CanonicalDecode",
+        "CompactBinding",
+        "StaticLedgerRules",
+        "InputSets",
+        "Signatures",
+        "PhaseANativeScripts",
+        "PhaseAScriptPreconditions",
+        "ResolveInputs",
+        "ScriptSources",
+        "NativeScripts",
+        "ScriptIntegrity",
+        "Cek",
+        "ValueAndMint",
+        "Terminal",
+      ].map((value, tag) => ({
+        value,
+        schema: ValidationMachinePhaseSchema,
+        expected:
+          tag <= 6
+            ? `d8${(0x79 + tag).toString(16)}80`
+            : `d905${(tag - 7).toString(16).padStart(2, "0")}80`,
+      })),
+      ...["Pending", "Accepted", "Rejected"].map((value, tag) => ({
+        value,
+        schema: ValidationMachineVerdictSchema,
+        expected: `d8${(0x79 + tag).toString(16)}80`,
+      })),
+      ...["Normal", "Forced"].map((value, tag) => ({
+        value,
+        schema: ValidationMachineSourceKindSchema,
+        expected: `d8${(0x79 + tag).toString(16)}80`,
+      })),
+    ] as const;
+    for (const { value, schema, expected } of nullaryVectors) {
+      expect(Data.to(value as never, schema as never)).toBe(expected);
+    }
+
+    expect(
+      Data.to(
+        { AwaitingOperator: { midpoint: 1n } } as never,
+        ValidationDisputeTurnSchema as never,
+      ),
+    ).toBe("d8799f01ff");
+    expect(
+      Data.to(
+        {
+          AwaitingChallenger: {
+            midpoint: 1n,
+            operator_midpoint_hash: "aa".repeat(32),
+          },
+        } as never,
+        ValidationDisputeTurnSchema as never,
+      ),
+    ).toBe(`d87a9f015820${"aa".repeat(32)}ff`);
+    expect(
+      Data.to("ReadyForOneStep" as never, ValidationDisputeTurnSchema as never),
+    ).toBe("d87b80");
+
+    expect(() => Data.from("d87c80", ValidationDisputeTurnSchema)).toThrow();
+    expect(() =>
+      Data.from("d8799f0102ff", ValidationDisputeTurnSchema),
+    ).toThrow();
+    expect(() => Data.from("d9050f80", ValidationMachinePhaseSchema)).toThrow();
+  });
+
+  it("round-trips exact descriptors, proofs, case threads, and reveal redeemers", () => {
+    const operator = buildMidgardValidationTraceTree(
+      [hash(1), hash(2), hash(3)],
+      "accepted",
+    );
+    const challenger = buildMidgardValidationTraceTree(
+      [hash(1), hash(2), hash(4)],
+      "accepted",
+    );
+    const dispute = openMidgardValidationDispute({
+      operatorDescriptor: operator.descriptor,
+      challengerDescriptor: challenger.descriptor,
+      sourceTimeUpper: 1_000,
+    });
+    const threadData = validationCaseThreadDataFromCore({
+      dispute,
+      caseId: "c1".repeat(32),
+      startedAt: 1_000n,
+      defenderVkh: "d1".repeat(28),
+    });
+    expect(Data.from(Data.to(threadData, CaseThread), CaseThread)).toEqual(
+      threadData,
+    );
+
+    const proofData = validationTraceProofDataFromCore(operator.proofs[1]!);
+    expect(
+      Data.from(Data.to(proofData, ValidationTraceProof), ValidationTraceProof),
+    ).toEqual(proofData);
+
+    const redeemer: ValidationGameSpendRedeemer = {
+      Continue: [
+        {
+          RevealOperator: {
+            input_index: 0n,
+            output_index: 0n,
+            proof: proofData,
+          },
+        },
+      ],
+    };
+    expect(
+      Data.from(
+        Data.to(redeemer, ValidationGameSpendRedeemer),
+        ValidationGameSpendRedeemer,
+      ),
+    ).toEqual(redeemer);
+
+    expect(
+      validationTraceDescriptorDataFromCore(operator.descriptor).trace_root,
+    ).toEqual(threadData.defender_root);
+  });
+
+  it("round-trips staged, direct, and award resolution V1 shapes", () => {
+    const state: ValidationMachineState = {
+      machine_version: 1n,
+      event_key_hash: "01".repeat(32),
+      transaction_id: "02".repeat(32),
+      transaction_commitment: "03".repeat(32),
+      validation_context_hash: "04".repeat(32),
+      source_kind: "Forced",
+      prior_ledger_root: "05".repeat(32),
+      phase: "CanonicalDecode",
+      program_counter: 0n,
+      work_root: "06".repeat(32),
+      execution_cpu: 0n,
+      execution_memory: 0n,
+      verdict: "Pending",
+      rejection_code_hash: "00".repeat(32),
+    };
+    const terminalAward: ValidationBoundarySpendRedeemerData = {
+      Continue: [
+        {
+          AwardTerminalPadding: {
+            input_index: 2n,
+            output_index: 3n,
+            terminal_state: {
+              ...state,
+              phase: "Terminal",
+              verdict: "Accepted",
+            },
+          },
+        },
+      ],
+    };
+    const terminalCbor = Data.to(
+      terminalAward,
+      ValidationBoundarySpendRedeemer,
+    );
+    expect(Data.from(terminalCbor, ValidationBoundarySpendRedeemer)).toEqual(
+      terminalAward,
+    );
+    const rawTerminal = Data.from(terminalCbor) as Constr<Constr<unknown>>;
+    expect(rawTerminal.index).toBe(1); // Continue
+    expect(rawTerminal.fields[0]!.index).toBe(1); // AwardTerminalPadding
+    expect(rawTerminal.fields[0]!.fields).toHaveLength(3);
+    const resolution: ValidationResolutionState = {
+      version: 1n,
+      pre_state: state,
+      operator_successor_hash: "08".repeat(32),
+      challenger_successor_hash: "09".repeat(32),
+    };
+    const transition = {
+      work_witness_cbor: "8100",
+      claimed_successor: { ...state, program_counter: 1n },
+    };
+    const auxiliary = "NoAuxiliaryWitness" as const;
+    const evidence: ValidationOneStepEvidenceData = {
+      transition,
+      auxiliary,
+    };
+    expect(
+      Data.from(
+        Data.to(transition, ValidationOneStepWitness),
+        ValidationOneStepWitness,
+      ),
+    ).toEqual(transition);
+    const prepared: PreparedValidationResolutionDatumData = {
+      fraud_prover: "0a".repeat(28),
+      data: {
+        version: 1n,
+        resolution,
+        evidence_hash: "0b".repeat(32),
+      },
+    };
+    expect(
+      Data.from(
+        Data.to(prepared, PreparedValidationResolutionDatum),
+        PreparedValidationResolutionDatum,
+      ),
+    ).toEqual(prepared);
+
+    const prepareSelected: ValidationPrepareSelectedSpendRedeemerData = {
+      Continue: [
+        {
+          input_index: 0n,
+          output_index: 0n,
+          semantic_resolver_index: 0n,
+          transition,
+          auxiliary,
+        },
+      ],
+    };
+    expect(
+      Data.from(
+        Data.to(prepareSelected, ValidationPrepareSelectedSpendRedeemer),
+        ValidationPrepareSelectedSpendRedeemer,
+      ),
+    ).toEqual(prepareSelected);
+    // Option B (#620): the canonical-decode prepare redeemer is transition-only
+    // — one four-field constructor, no auxiliary, and no retired by-hash arm.
+    const canonicalDecodePrepareSelected: ValidationCanonicalDecodePrepareSelectedSpendRedeemerData =
+      {
+        Continue: [
+          {
+            input_index: 0n,
+            output_index: 0n,
+            semantic_resolver_index: 0n,
+            transition,
+          },
+        ],
+      };
+    const canonicalDecodePrepareSelectedCbor = Data.to(
+      canonicalDecodePrepareSelected,
+      ValidationCanonicalDecodePrepareSelectedSpendRedeemer,
+    );
+    expect(
+      Data.from(
+        canonicalDecodePrepareSelectedCbor,
+        ValidationCanonicalDecodePrepareSelectedSpendRedeemer,
+      ),
+    ).toEqual(canonicalDecodePrepareSelected);
+    // Wire pin: `Continue(PrepareSelected{input, output, resolver, transition})`
+    // — constructor 1 wrapping constructor 0 with exactly four fields.
+    expect(canonicalDecodePrepareSelectedCbor).toBe(
+      Data.to(
+        new Constr(1, [
+          new Constr(0, [
+            0n,
+            0n,
+            0n,
+            Data.from(Data.to(transition, ValidationOneStepWitness)),
+          ]),
+        ]),
+      ),
+    );
+
+    const selection = {
+      Continue: [
+        {
+          input_index: 0n,
+          output_index: 1n,
+          transition,
+          auxiliary: evidence.auxiliary,
+          yield_ref_input_indices: [2n, 3n],
+          record_reference_input_index: 4n,
+        },
+      ],
+    } satisfies ValidationCekExecutionSelectionSpendRedeemerData;
+    const selectionCbor = Data.to(
+      selection,
+      ValidationCekExecutionSelectionSpendRedeemer,
+    );
+    expect(selectionCbor).toBe(
+      Data.to(
+        new Constr(1, [
+          new Constr(0, [
+            0n,
+            1n,
+            Data.from(Data.to(transition, ValidationOneStepWitness)),
+            Data.from(Data.to(evidence.auxiliary, ValidationAuxiliaryWitness)),
+            [2n, 3n],
+            4n,
+          ]),
+        ]),
+      ),
+    );
+    expect(
+      Data.from(selectionCbor, ValidationCekExecutionSelectionSpendRedeemer),
+    ).toEqual(selection);
+    expect(() =>
+      Data.to(
+        {
+          Continue: [
+            { ...selection.Continue[0], yield_ref_input_indices: [2n] },
+          ],
+        },
+        ValidationCekExecutionSelectionSpendRedeemer,
+      ),
+    ).toThrow();
+
+    expect(
+      Data.from(
+        Data.to(evidence, ValidationOneStepEvidence),
+        ValidationOneStepEvidence,
+      ),
+    ).toEqual(evidence);
+
+    const winning: WinningValidationResolutionDatumData = {
+      fraud_prover: prepared.fraud_prover,
+      data: { version: 1n },
+    };
+    expect(
+      Data.from(
+        Data.to(winning, WinningValidationResolutionDatum),
+        WinningValidationResolutionDatum,
+      ),
+    ).toEqual(winning);
+
+    const award: ValidationAwardSpendRedeemerData = {
+      CloseAwardedThread: { input_index: 0n, case_input_index: 1n },
+    };
+    expect(
+      Data.from(
+        Data.to(award, ValidationAwardSpendRedeemer),
+        ValidationAwardSpendRedeemer,
+      ),
+    ).toEqual(award);
+  });
+});

@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Address,
   Assets,
@@ -22,17 +23,22 @@ import {
   GenericErrorFields,
   isHexString,
   LucidError,
-  makeReturn,
   MidgardValidators,
   MintingValidator,
   ScriptHashSchema,
   UnspecifiedNetworkError,
-} from "@/common.js";
+} from "./common.js";
+import {
+  CORRECTION_LOCK_ASSET_NAME,
+  CorrectionLockDatum,
+} from "./correction-lock.js";
 import {
   authenticateUTxOs,
   AuthenticUTxO,
   fetchSingleAuthenticUTxOProgram,
-} from "@/internals.js";
+  type UnexpectedAuthenticUTxOCountFields,
+  unexpectedAuthenticUTxOCountFields,
+} from "./internals.js";
 
 export type HubOracleConfig = {
   hubOracleAddress: Address;
@@ -87,7 +93,7 @@ export const HubOracleDatumSchema = Data.Object({
   reserve_observer: ScriptHashSchema,
 });
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
-export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
+export const HubOracleDatum = asDataType<HubOracleDatum>(HubOracleDatumSchema);
 
 export type HubOracleUTxO = AuthenticUTxO<HubOracleDatum>;
 
@@ -202,22 +208,39 @@ export const incompleteHubOracleInitTxProgram = (
       const datum = yield* makeHubOracleDatum(params.validators);
       const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 
-      const assets: Assets = {
+      const hubOracleAssets: Assets = {
         [toUnit(params.hubOracleMintValidator.policyId, HUB_ORACLE_ASSET_NAME)]:
           1n,
+      };
+      const correctionLockAssets: Assets = {
+        [toUnit(
+          params.hubOracleMintValidator.policyId,
+          CORRECTION_LOCK_ASSET_NAME,
+        )]: 1n,
       };
 
       return lucid
         .newTx()
         .collectFrom([params.oneShotNonceUTxO])
-        .mintAssets(assets, Data.void())
+        .mintAssets(
+          {
+            ...hubOracleAssets,
+            ...correctionLockAssets,
+          },
+          Data.void(),
+        )
         .pay.ToAddressWithData(
           credentialToAddress(
             network,
             scriptHashToCredential(params.hubOracleMintValidator.policyId),
           ),
           { kind: "inline", value: encodedDatum },
-          assets,
+          hubOracleAssets,
+        )
+        .pay.ToContract(
+          params.validators.correctionLock.spendingScriptAddress,
+          { kind: "inline", value: Data.to("Idle", CorrectionLockDatum) },
+          correctionLockAssets,
         )
         .attach.MintingPolicy(params.hubOracleMintValidator.mintingScript);
     } else {
@@ -228,9 +251,9 @@ export const incompleteHubOracleInitTxProgram = (
     }
   });
 
-export class HubOracleError extends EffectData.TaggedError(
-  "HubOracleError",
-)<GenericErrorFields> {}
+export class HubOracleError extends EffectData.TaggedError("HubOracleError")<
+  GenericErrorFields & UnexpectedAuthenticUTxOCountFields
+> {}
 
 const validateHubOracleOneShotNonceMarkerHex = (
   markerHex: string,
@@ -332,16 +355,10 @@ export const fetchHubOracleUTxOProgram = (
       policyId: config.hubOraclePolicyId,
       utxoLabel: "hub oracle",
       conversionFunction: utxosToHubOracleUTxOs,
-      onUnexpectedAuthenticUTxOCount: () =>
+      onUnexpectedAuthenticUTxOCount: (count) =>
         new HubOracleError({
           message: "Failed to fetch the hub oracle UTxO",
-          cause:
-            "Exactly one hub oracle UTxO was expected, but none or more were found",
+          ...unexpectedAuthenticUTxOCountFields("hub oracle", count),
         }),
     },
   );
-
-export const fetchHubOracleUTxO = (
-  lucid: LucidEvolution,
-  config: HubOracleConfig,
-) => makeReturn(fetchHubOracleUTxOProgram(lucid, config)).unsafeRun();

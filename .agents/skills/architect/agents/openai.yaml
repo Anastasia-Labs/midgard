@@ -1,0 +1,6 @@
+interface:
+  display_name: "Architect"
+  short_description: "Sketch types, signatures, and module structure before code, then"
+  default_prompt: "Use $architect for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false
