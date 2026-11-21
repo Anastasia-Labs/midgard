@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
 import {
   createLedgerStore,
+  EMPTY_LEDGER_ROOT,
   type Ledger,
   LedgerNotRetained,
   LedgerOutputMissing,
@@ -22,6 +23,7 @@ import {
   event,
   expectLedgerMatches,
   type OpenLedgerStorage,
+  testLedgerEntries,
   testLedgerEntry,
   testOutRef,
   UNDECODABLE_ENTRY,
@@ -317,6 +319,48 @@ export const describeLedgerStoreSweepConformance = (
         await expect(store.at(dropped.root)).rejects.toBeInstanceOf(
           LedgerNotRetained,
         );
+      } finally {
+        await opened.close();
+      }
+    });
+
+    it("sweeps every page of records, not only the first", async () => {
+      const opened = await open();
+      try {
+        const store = createLedgerStore(opened.storage);
+        const range = (from: number, count: number) =>
+          Array.from({ length: count }, (_, index) => from + index);
+        // More nodes, and more outputs, than one sweep page lists.
+        const a = await (
+          await store.at(EMPTY_LEDGER_ROOT)
+        ).apply(event([], range(0, 4_500)));
+        await store.persist(a);
+        const mutations = event(range(0, 1_500), range(10_000, 100));
+        const b = await a.apply(mutations);
+        await store.persist(b);
+        expect(await store.retain(new Set([b.root]))).toEqual({
+          notRetained: new Set(),
+        });
+        await expect(store.at(a.root)).rejects.toBeInstanceOf(
+          LedgerNotRetained,
+        );
+        const bEntries = appliedEntries(testLedgerEntries(0, 4_500), mutations);
+        const listed: string[] = [];
+        for await (const { outRef } of (await store.at(b.root)).entries())
+          listed.push(outRef.toString("hex"));
+        expect(listed.sort()).toEqual(
+          bEntries.map(({ outRef }) => outRef.toString("hex")).sort(),
+        );
+        const only = await open();
+        try {
+          const fresh = createLedgerStore(only.storage);
+          await fresh.persist(await fresh.admit(bEntries, b.root));
+          expect(await opened.storage.counts()).toEqual(
+            await only.storage.counts(),
+          );
+        } finally {
+          await only.close();
+        }
       } finally {
         await opened.close();
       }
