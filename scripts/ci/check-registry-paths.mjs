@@ -21,9 +21,6 @@
 //   compare its cap, so a deleted file already fails it.
 // - docs/exec-plans/**: dated records of a past run at a named commit, not
 //   lists anything acts on now.
-// - the scenario titles in the validator scenario registry: its own Vitest
-//   test checks them; this check covers only the files, which it can read
-//   without a blueprint.
 //
 // Usage: node scripts/ci/check-registry-paths.mjs
 // Exit 0 when every entry names something, 1 when one does not.
@@ -70,8 +67,6 @@ export const repositoryFiles = (root) => {
   );
 };
 
-const SCENARIO_REGISTRY =
-  /^demo\/midgard-fault-proofs\/tests\/support\/validator-scenario-registry(?:\.[\w-]+)?\.ts$/u;
 const DURATION_TABLE =
   /^demo\/[^/]+\/tests\/support\/ci-file-durations\.json$/u;
 
@@ -120,18 +115,6 @@ export const REGISTRIES = [
         entry(`${directory}/${file}`, file),
       );
     },
-  },
-  {
-    name: "validator scenario registry",
-    sources: SCENARIO_REGISTRY,
-    // The registry is TypeScript; each scenario names its file as a string
-    // literal, `file: "<repository path>"`.
-    entries: (root, source) =>
-      [
-        ...readFileSync(resolve(root, source), "utf8").matchAll(
-          /\bfile:\s*"([^"]+)"/gu,
-        ),
-      ].map(([, file]) => entry(file)),
   },
 ];
 

@@ -85,11 +85,6 @@ change. The rule and its completion bar live in
 [docs/agents/contracts.md](../../../docs/agents/contracts.md#scenario-coverage);
 this section is how to make the negative real. [review]
 
-A new validator or fault-proof family names its two scenarios in
-`demo/midgard-fault-proofs/tests/support/validator-scenario-registry.ts`. The
-check proves the named tests exist, not that the failing one reaches the
-validator's refusal. [ci: Midgard Node CI/Test fault-proof tooling]
-
 - **The negative must reach the validator.** Assert the script failure, not
   "it threw". The operator-exit suite shows the shape: builder-side refusals
   are listed and rejected as proof of nothing, and the refusal must match

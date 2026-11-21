@@ -19,11 +19,6 @@ Provide lucid-evolution emulator scenarios for every contract: a successful happ
 path and rejection where the validator must refuse. These scenarios verify that
 the deployed, parameterized validator behaves as intended. [review]
 
-Each blueprint validator and fault-proof family names its passing and failing
-scenarios in `demo/midgard-fault-proofs/tests/support/validator-scenario-registry.ts`,
-or sits in its shrink-only unmapped list with a reason.
-[ci: Midgard Node CI/Test fault-proof tooling]
-
 When validator parameters are added, removed, reordered, or retyped, update every
 affected off-chain builder, parameter application, deployment fixture, and
 emulator scenario in the same change. Re-run the affected scenarios in both

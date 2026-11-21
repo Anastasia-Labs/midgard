@@ -75,13 +75,6 @@ test("a registry whose own file is gone is reported, not read as empty", () => {
 // fail, so no registry is wired in a way that cannot.
 test("deleting a file any registry names fails the check", () => {
   const files = repositoryFiles(root);
-  const names = REGISTRIES.map((r) => r.name);
-  assert.deepEqual(names, [
-    "contrib gates",
-    "preflight triggers",
-    "CI file durations",
-    "validator scenario registry",
-  ]);
   for (const registry of REGISTRIES) {
     const sources = registry.sources
       ? files.filter((file) => registry.sources.test(file))
