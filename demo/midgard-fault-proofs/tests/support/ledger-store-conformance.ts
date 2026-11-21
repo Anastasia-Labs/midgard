@@ -22,18 +22,16 @@ import {
   LedgerMutationRefused,
   LedgerNotRetained,
   type LedgerStorage,
+  type LedgerStorageCounts,
   type LedgerStore,
 } from "../../src/ledger-store/index.js";
 import {
   keyValuePhasResolutionProofs,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
+import { describeLedgerStoreCrashConformance } from "./ledger-store-conformance-crash.js";
+import { describeLedgerStoreRandomConformance } from "./ledger-store-conformance-random.js";
 import { describeLedgerStoreRetainConformance } from "./ledger-store-conformance-retain.js";
-import { describeLedgerStoreSweepConformance } from "./ledger-store-conformance-sweeps.js";
-import {
-  gatedStorage,
-  interruptedStorage,
-} from "./ledger-store-sweep-faults.js";
 
 export type OpenedLedgerStorage = {
   readonly storage: LedgerStorage;
@@ -167,6 +165,24 @@ export const event = (
   ...inserted.map((n) => ({ type: "insert" as const, ...testLedgerEntry(n) })),
 ];
 
+/** Record counts of a fresh store over `open` holding only `ledgers`. */
+export const countsOfOnly = async (
+  open: OpenLedgerStorage,
+  ledgers: readonly (readonly LedgerEntry[])[],
+): Promise<LedgerStorageCounts> => {
+  const opened = await open();
+  try {
+    const store = createLedgerStore(opened.storage);
+    for (const entries of ledgers)
+      await store.persist(
+        await store.admit(entries, await ledgerEntriesRoot(entries)),
+      );
+    return await opened.storage.counts();
+  } finally {
+    await opened.close();
+  }
+};
+
 const unknownRoot = "ab".repeat(32);
 
 const BASE = [...testLedgerEntries(0, 40), testLedgerEntry(UNDECODABLE_ENTRY)];
@@ -182,21 +198,6 @@ export const describeLedgerStoreConformance = (
     const opened = await open();
     try {
       await run(createLedgerStore(opened.storage), opened.storage);
-    } finally {
-      await opened.close();
-    }
-  };
-
-  /** Record counts of a fresh store holding only `ledgers`. */
-  const countsOfOnly = async (ledgers: readonly (readonly LedgerEntry[])[]) => {
-    const opened = await open();
-    try {
-      const store = createLedgerStore(opened.storage);
-      for (const entries of ledgers)
-        await store.persist(
-          await store.admit(entries, await ledgerEntriesRoot(entries)),
-        );
-      return await opened.storage.counts();
     } finally {
       await opened.close();
     }
@@ -278,7 +279,7 @@ export const describeLedgerStoreConformance = (
     });
 
     it("refuses roots it does not retain and snapshots that do not open their root", async () => {
-      await withStore(async (store) => {
+      await withStore(async (store, storage) => {
         const ledger = await store.admit(BASE, await ledgerEntriesRoot(BASE));
         await expect(store.at(ledger.root)).rejects.toBeInstanceOf(
           LedgerNotRetained,
@@ -291,9 +292,11 @@ export const describeLedgerStoreConformance = (
         await expect(store.at(unknownRoot)).rejects.toBeInstanceOf(
           LedgerNotRetained,
         );
-        expect(await store.retain(new Set([ledger.root, unknownRoot]))).toEqual(
-          { notRetained: new Set([unknownRoot]) },
-        );
+        const before = await storage.counts();
+        expect(
+          await store.retain(new Set([ledger.root, unknownRoot, next.root])),
+        ).toEqual({ notRetained: new Set([unknownRoot, next.root]) });
+        expect(await storage.counts()).toEqual(before);
         await expectLedgerMatches(await store.at(ledger.root), BASE);
         await expect(
           store.admit(BASE.slice(1), ledger.root),
@@ -337,83 +340,6 @@ export const describeLedgerStoreConformance = (
       });
     });
 
-    it("retain deletes everything its roots do not reach, earlier persisted roots included", async () => {
-      await withStore(async (store, storage) => {
-        const a = await store.admit(BASE, await ledgerEntriesRoot(BASE));
-        await store.persist(a);
-        const b = await a.apply(event([0, 1], [400, 401]));
-        await store.persist(b);
-        const c = await b.apply(event([2, 400], [402]));
-        await store.persist(c);
-        const d = await a.apply(event([3], [403]));
-        await store.persist(d);
-        const cEntries = appliedEntries(
-          appliedEntries(BASE, event([0, 1], [400, 401])),
-          event([2, 400], [402]),
-        );
-        await store.retain(new Set([c.root]));
-        for (const dropped of [a, b, d])
-          await expect(store.at(dropped.root)).rejects.toBeInstanceOf(
-            LedgerNotRetained,
-          );
-        await expectLedgerMatches(await store.at(c.root), cEntries);
-        expect(await storage.counts()).toEqual(await countsOfOnly([cEntries]));
-        expect(await store.retain(new Set([EMPTY_LEDGER_ROOT]))).toEqual({
-          notRetained: new Set(),
-        });
-        await expect(store.at(c.root)).rejects.toBeInstanceOf(
-          LedgerNotRetained,
-        );
-        expect(await storage.counts()).toEqual({
-          nodes: 0,
-          outputs: 0,
-          roots: 0,
-        });
-        await expectLedgerMatches(await store.at(EMPTY_LEDGER_ROOT), []);
-      });
-    });
-
-    it.each([
-      ["leaves", "a new store"],
-      ["leaves", "the same store"],
-    ] as const)(
-      "finishes a sweep that died after deleting %s before %s persists again",
-      async (deletes, next) => {
-        let opened = await open();
-        try {
-          const first = createLedgerStore(
-            interruptedStorage(opened.storage, deletes),
-          );
-          const a = await first.admit(BASE, await ledgerEntriesRoot(BASE));
-          await first.persist(a);
-          const mutations = event([0], [600, 601]);
-          const dropped = await a.apply(mutations);
-          await first.persist(dropped);
-          await expect(first.retain(new Set([a.root]))).rejects.toThrow(
-            "the process died mid-sweep",
-          );
-          let store = first;
-          if (next === "a new store") {
-            opened = await opened.reopen();
-            store = createLedgerStore(opened.storage);
-          }
-          // Re-creating the dropped ledger makes its nodes recur.
-          const again = await (await store.at(a.root)).apply(mutations);
-          expect(again.root).toBe(dropped.root);
-          await store.persist(again);
-          const entries = appliedEntries(BASE, mutations);
-          await expectLedgerMatches(await store.at(again.root), entries);
-          await expectLedgerMatches(await store.at(a.root), BASE);
-          await store.retain(new Set([a.root, again.root]));
-          expect(await opened.storage.counts()).toEqual(
-            await countsOfOnly([BASE, entries]),
-          );
-        } finally {
-          await opened.close();
-        }
-      },
-    );
-
     it("refuses a second store over the same storage", async () => {
       await withStore(async (_store, storage) => {
         expect(() => createLedgerStore(storage)).toThrow(
@@ -421,48 +347,8 @@ export const describeLedgerStoreConformance = (
         );
       });
     });
-
-    it("keeps a root persisted while a sweep runs, with the dropped nodes it reuses", async () => {
-      const opened = await open();
-      try {
-        const gate = gatedStorage(opened.storage);
-        const store = createLedgerStore(gate.storage);
-        const a = await store.admit(BASE, await ledgerEntriesRoot(BASE));
-        await store.persist(a);
-        const kept = await a.apply(event([0, 1], [500, 501]));
-        await store.persist(kept);
-        const dropped = await a.apply(event([2, 3, 4], [502]));
-        await store.persist(dropped);
-        const sweeping = store.retain(new Set([kept.root]));
-        await gate.atGate;
-        await expect(store.at(dropped.root)).rejects.toBeInstanceOf(
-          LedgerNotRetained,
-        );
-        // Built on the dropped root: it shares nodes the sweep has not marked.
-        const late = await dropped.apply(event([5], [503]));
-        await store.persist(late);
-        gate.release();
-        await sweeping;
-        const keptEntries = appliedEntries(BASE, event([0, 1], [500, 501]));
-        const lateEntries = appliedEntries(
-          appliedEntries(BASE, event([2, 3, 4], [502])),
-          event([5], [503]),
-        );
-        await expectLedgerMatches(await store.at(kept.root), keptEntries);
-        await expectLedgerMatches(await store.at(late.root), lateEntries);
-        for (const gone of [a, dropped])
-          await expect(store.at(gone.root)).rejects.toBeInstanceOf(
-            LedgerNotRetained,
-          );
-        await store.retain(new Set([kept.root, late.root]));
-        expect(await opened.storage.counts()).toEqual(
-          await countsOfOnly([keptEntries, lateEntries]),
-        );
-      } finally {
-        await opened.close();
-      }
-    });
   });
-  describeLedgerStoreSweepConformance(adapter, open);
   describeLedgerStoreRetainConformance(adapter, open);
+  describeLedgerStoreRandomConformance(adapter, open);
+  describeLedgerStoreCrashConformance(adapter, open);
 };

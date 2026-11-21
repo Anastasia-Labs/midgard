@@ -17,8 +17,8 @@ export {
 export type { Ledger, LedgerMutation, LedgerRead } from "./ledger.js";
 export { createMemoryLedgerStorage } from "./memory.js";
 export type {
-  LedgerBlockWrite,
   LedgerStorage,
+  LedgerStorageChange,
   LedgerStorageCounts,
   NodeHash,
   OutRefHex,

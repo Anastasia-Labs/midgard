@@ -1,8 +1,9 @@
 /**
  * The storage seam under `LedgerStore`: trie nodes keyed by hash, outputs
- * keyed by out-ref, and the set of retained roots. Every adapter (memory,
- * SQLite for the watcher, LevelDB for the node) implements this interface and
- * nothing else; the trie engine, persistence and the mark-and-sweep live
+ * keyed by out-ref, each with a reference count, the set of retained roots,
+ * and a queue of nodes waiting for deletion. Every adapter (memory, SQLite
+ * for the watcher, LevelDB for the node) implements this interface and
+ * nothing else; the trie engine, persistence and the reference counting live
  * above it, in one place.
  *
  * Nodes are stored in the vendored trie library's own serialised shape, the
@@ -33,86 +34,71 @@ export type StoredBranch = {
 
 export type StoredNode = StoredLeaf | StoredBranch;
 
-/** One `persist`: everything a block adds, written atomically. */
-export type LedgerBlockWrite = {
-  /** The persisted ledger's root; it joins the retained set. */
-  readonly root: NodeHash;
-  /** Nodes the store did not hold. */
-  readonly nodes: ReadonlyMap<NodeHash, StoredNode>;
-  /** Outputs of leaves the block added, carried by the block. */
-  readonly outputs: ReadonlyMap<OutRefHex, Buffer>;
-  /**
-   * Held nodes reachable from `root` that the running sweep has not marked.
-   * Empty when no sweep runs.
-   */
-  readonly keptNodes: readonly NodeHash[];
-  /**
-   * Held outputs `root` relies on: that of every new leaf whose output the
-   * block does not carry (a leaf the trie moved), sweep running or not, and
-   * that of every leaf under a node in `keptNodes`.
-   *
-   * Every kept record must be held: otherwise `writeBlock` writes nothing and
-   * fails with `LedgerNodeMissing` or `LedgerOutputMissing`. A kept record
-   * survives a running sweep exactly as if rewritten now.
-   */
-  readonly keptOutputs: readonly OutRefHex[];
+/**
+ * One atomic write. The store computes every count itself and hands the
+ * adapter absolute values. The adapter applies the whole change or nothing.
+ */
+export type LedgerStorageChange = {
+  /** Nodes not held before, with their reference counts. */
+  readonly putNodes: ReadonlyMap<
+    NodeHash,
+    { readonly node: StoredNode; readonly refs: number }
+  >;
+  /** New reference counts of held nodes. */
+  readonly nodeRefs: ReadonlyMap<NodeHash, number>;
+  /** Held nodes to delete; their counts go with them. */
+  readonly deleteNodes: readonly NodeHash[];
+  /** Outputs not held before, with their reference counts. */
+  readonly putOutputs: ReadonlyMap<
+    OutRefHex,
+    { readonly output: Buffer; readonly refs: number }
+  >;
+  /** New reference counts of held outputs. */
+  readonly outputRefs: ReadonlyMap<OutRefHex, number>;
+  /** Held outputs to delete; their counts go with them. */
+  readonly deleteOutputs: readonly OutRefHex[];
+  readonly addRoots: readonly NodeHash[];
+  readonly removeRoots: readonly NodeHash[];
+  /** Hashes that join the dead queue. */
+  readonly queueDead: readonly NodeHash[];
+  /** Hashes that leave the dead queue; disjoint from `queueDead`. */
+  readonly unqueueDead: readonly NodeHash[];
 };
 
 export type LedgerStorageCounts = {
   readonly nodes: number;
   readonly outputs: number;
   readonly roots: number;
+  /** The sum of the held nodes' reference counts. */
+  readonly nodeRefs: number;
+  /** The sum of the held outputs' reference counts. */
+  readonly outputRefs: number;
+  /** Hashes in the dead queue. */
+  readonly dead: number;
 };
 
 /**
  * One adapter's records. A single `LedgerStore` is the only writer of an
- * adapter while it is open, and it never runs two sweeps at once.
+ * adapter while it is open.
  *
- * Sweep protocol: `beginSweep` replaces the retained set, records that a
- * sweep is running, and starts a sweep epoch. Records written or kept after
- * it are never offered by `sweepNodes` / `sweepOutputs`, and `deleteSwept`
- * skips them even when offered before. `endSweep` removes the roots the
- * sweep found incomplete from the retained set, closes the epoch and clears
- * the record. A sweep deletes in key order, not parents before children, so
- * until it ends a held node may have lost a descendant: the store finishes an
- * unfinished sweep (`unfinishedSweep`) before it relies on held nodes again.
+ * A held node's reference count is the number of held branch nodes that list
+ * it as a child, plus one when it is a retained root; a held output's is the
+ * number of held leaf nodes with its out-ref key. A node whose count reaches
+ * zero joins the dead queue and stays held until the store deletes it.
  */
 export interface LedgerStorage {
   readNodes(hashes: readonly NodeHash[]): Promise<(StoredNode | undefined)[]>;
   readOutputs(outRefs: readonly OutRefHex[]): Promise<(Buffer | undefined)[]>;
+  /** Reference counts; `undefined` when the node is not held. */
+  nodeRefs(hashes: readonly NodeHash[]): Promise<(number | undefined)[]>;
+  /** Reference counts; `undefined` when the output is not held. */
+  outputRefs(outRefs: readonly OutRefHex[]): Promise<(number | undefined)[]>;
   isRetained(root: NodeHash): Promise<boolean>;
-  /** Writes one block atomically, or nothing when a kept record is not
-   * held. */
-  writeBlock(block: LedgerBlockWrite): Promise<void>;
-  /**
-   * Replaces the retained set with `retained` and records that a sweep is
-   * running, in one atomic write, then starts a sweep epoch.
-   */
-  beginSweep(retained: ReadonlySet<NodeHash>): Promise<void>;
-  /** Up to `limit` node hashes stored before `beginSweep`, ascending, after
-   * `after`. */
-  sweepNodes(after: NodeHash | undefined, limit: number): Promise<NodeHash[]>;
-  /** As `sweepNodes`, for outputs. */
-  sweepOutputs(
-    after: OutRefHex | undefined,
-    limit: number,
-  ): Promise<OutRefHex[]>;
-  /** Deletes the given records, except those written or kept since
-   * `beginSweep`. */
-  deleteSwept(records: {
-    readonly nodes: readonly NodeHash[];
-    readonly outputs: readonly OutRefHex[];
-  }): Promise<void>;
-  /**
-   * Removes `dropped` from the retained set and clears the record that a
-   * sweep is running, in one atomic write, then closes the sweep epoch.
-   */
-  endSweep(dropped: ReadonlySet<NodeHash>): Promise<void>;
-  /**
-   * The retained set, when a sweep began and never ended (its process died,
-   * or its store failed mid-sweep); otherwise `undefined`.
-   */
-  unfinishedSweep(): Promise<ReadonlySet<NodeHash> | undefined>;
+  retainedRoots(): Promise<NodeHash[]>;
+  /** Up to `limit` hashes in the dead queue. */
+  deadNodes(limit: number): Promise<NodeHash[]>;
+  /** Applies `change` in one atomic write. */
+  write(change: LedgerStorageChange): Promise<void>;
   /** Record counts, for tests and measurements. */
   counts(): Promise<LedgerStorageCounts>;
 }

@@ -4,9 +4,9 @@
  * `node:sqlite`.
  *
  * Nodes are kept in the trie library's JSON shape, keyed by their 32 hash
- * bytes. Every node and output row carries the write epoch it was last
- * written or kept in; a sweep deletes only rows stamped at or before the
- * epoch it began in.
+ * bytes, and outputs keyed by their out-ref bytes; each row carries its
+ * reference count. The dead queue is a table of node hashes. Every change is
+ * one IMMEDIATE transaction.
  */
 import { DatabaseSync } from "node:sqlite";
 
@@ -15,9 +15,9 @@ import {
   SqliteProcessMutex,
 } from "@al-ft/midgard-core/sqlite-process-mutex";
 
-import { LedgerNodeMissing, LedgerOutputMissing } from "./errors.js";
 import type {
   LedgerStorage,
+  LedgerStorageChange,
   NodeHash,
   OutRefHex,
   StoredNode,
@@ -29,29 +29,25 @@ export type SqliteLedgerStorage = LedgerStorage & {
 };
 
 const SCHEMA = `
-  CREATE TABLE IF NOT EXISTS ledger_meta (
-    key TEXT PRIMARY KEY,
-    value INTEGER NOT NULL
-  ) WITHOUT ROWID;
   CREATE TABLE IF NOT EXISTS ledger_nodes (
     hash BLOB PRIMARY KEY,
-    node TEXT NOT NULL,
-    epoch INTEGER NOT NULL
+    refs INTEGER NOT NULL,
+    node TEXT NOT NULL
   ) WITHOUT ROWID;
   CREATE TABLE IF NOT EXISTS ledger_outputs (
     out_ref BLOB PRIMARY KEY,
-    output BLOB NOT NULL,
-    epoch INTEGER NOT NULL
+    refs INTEGER NOT NULL,
+    output BLOB NOT NULL
   ) WITHOUT ROWID;
   CREATE TABLE IF NOT EXISTS ledger_roots (
     root BLOB PRIMARY KEY
   ) WITHOUT ROWID;
+  CREATE TABLE IF NOT EXISTS ledger_dead (
+    hash BLOB PRIMARY KEY
+  ) WITHOUT ROWID;
 `;
 
 const bytes = (hex: string): Buffer => Buffer.from(hex, "hex");
-/** Whether a keep found no row to stamp. */
-const missed = ({ changes }: { changes: number | bigint }): boolean =>
-  Number(changes) === 0;
 const hex = (value: Uint8Array): string => Buffer.from(value).toString("hex");
 
 /**
@@ -77,7 +73,6 @@ export const openSqliteLedgerStorage = (path: string): SqliteLedgerStorage => {
       PRAGMA synchronous = FULL;
       PRAGMA busy_timeout = 5000;
       ${SCHEMA}
-      INSERT OR IGNORE INTO ledger_meta (key, value) VALUES ('write_epoch', 1);
     `);
   } catch (error) {
     database.close();
@@ -86,96 +81,88 @@ export const openSqliteLedgerStorage = (path: string): SqliteLedgerStorage => {
   }
 
   const statement = {
-    epoch: database.prepare(
-      "SELECT value FROM ledger_meta WHERE key = 'write_epoch'",
-    ),
-    setEpoch: database.prepare(
-      "UPDATE ledger_meta SET value = ? WHERE key = 'write_epoch'",
-    ),
     node: database.prepare("SELECT node FROM ledger_nodes WHERE hash = ?"),
+    nodeRefs: database.prepare("SELECT refs FROM ledger_nodes WHERE hash = ?"),
+    putNode: database.prepare(
+      "INSERT INTO ledger_nodes (hash, refs, node) VALUES (?, ?, ?)",
+    ),
+    setNodeRefs: database.prepare(
+      "UPDATE ledger_nodes SET refs = ? WHERE hash = ?",
+    ),
+    deleteNode: database.prepare("DELETE FROM ledger_nodes WHERE hash = ?"),
     output: database.prepare(
       "SELECT output FROM ledger_outputs WHERE out_ref = ?",
     ),
-    root: database.prepare("SELECT 1 AS held FROM ledger_roots WHERE root = ?"),
-    putNode: database.prepare(
-      `INSERT INTO ledger_nodes (hash, node, epoch) VALUES (?, ?, ?)
-       ON CONFLICT (hash) DO UPDATE SET epoch = excluded.epoch`,
+    outputRefs: database.prepare(
+      "SELECT refs FROM ledger_outputs WHERE out_ref = ?",
     ),
     putOutput: database.prepare(
-      `INSERT INTO ledger_outputs (out_ref, output, epoch) VALUES (?, ?, ?)
-       ON CONFLICT (out_ref) DO UPDATE SET epoch = excluded.epoch`,
+      "INSERT INTO ledger_outputs (out_ref, refs, output) VALUES (?, ?, ?)",
     ),
-    keepNode: database.prepare(
-      "UPDATE ledger_nodes SET epoch = ? WHERE hash = ?",
+    setOutputRefs: database.prepare(
+      "UPDATE ledger_outputs SET refs = ? WHERE out_ref = ?",
     ),
-    keepOutput: database.prepare(
-      "UPDATE ledger_outputs SET epoch = ? WHERE out_ref = ?",
+    deleteOutput: database.prepare(
+      "DELETE FROM ledger_outputs WHERE out_ref = ?",
     ),
+    root: database.prepare("SELECT 1 AS held FROM ledger_roots WHERE root = ?"),
+    roots: database.prepare("SELECT root FROM ledger_roots"),
     putRoot: database.prepare(
       "INSERT OR IGNORE INTO ledger_roots (root) VALUES (?)",
     ),
-    clearRoots: database.prepare("DELETE FROM ledger_roots"),
     deleteRoot: database.prepare("DELETE FROM ledger_roots WHERE root = ?"),
-    roots: database.prepare("SELECT root FROM ledger_roots"),
-    sweepRunning: database.prepare(
-      "SELECT 1 AS held FROM ledger_meta WHERE key = 'sweep_running'",
+    dead: database.prepare("SELECT hash FROM ledger_dead LIMIT ?"),
+    queueDead: database.prepare(
+      "INSERT OR IGNORE INTO ledger_dead (hash) VALUES (?)",
     ),
-    beginSweep: database.prepare(
-      "INSERT OR IGNORE INTO ledger_meta (key, value) VALUES ('sweep_running', 1)",
+    unqueueDead: database.prepare("DELETE FROM ledger_dead WHERE hash = ?"),
+    countNodes: database.prepare(
+      "SELECT COUNT(*) AS n, COALESCE(SUM(refs), 0) AS refs FROM ledger_nodes",
     ),
-    endSweep: database.prepare(
-      "DELETE FROM ledger_meta WHERE key = 'sweep_running'",
+    countOutputs: database.prepare(
+      "SELECT COUNT(*) AS n, COALESCE(SUM(refs), 0) AS refs FROM ledger_outputs",
     ),
-    sweepNodes: database.prepare(
-      `SELECT hash AS key FROM ledger_nodes WHERE epoch <= ? AND hash > ?
-       ORDER BY hash LIMIT ?`,
+    countRoots: database.prepare(
+      "SELECT COUNT(*) AS n, 0 AS refs FROM ledger_roots",
     ),
-    sweepOutputs: database.prepare(
-      `SELECT out_ref AS key FROM ledger_outputs WHERE epoch <= ? AND out_ref > ?
-       ORDER BY out_ref LIMIT ?`,
+    countDead: database.prepare(
+      "SELECT COUNT(*) AS n, 0 AS refs FROM ledger_dead",
     ),
-    deleteNode: database.prepare(
-      "DELETE FROM ledger_nodes WHERE hash = ? AND epoch <= ?",
-    ),
-    deleteOutput: database.prepare(
-      "DELETE FROM ledger_outputs WHERE out_ref = ? AND epoch <= ?",
-    ),
-    countNodes: database.prepare("SELECT COUNT(*) AS n FROM ledger_nodes"),
-    countOutputs: database.prepare("SELECT COUNT(*) AS n FROM ledger_outputs"),
-    countRoots: database.prepare("SELECT COUNT(*) AS n FROM ledger_roots"),
   };
 
-  const writeEpoch = () =>
-    Number((statement.epoch.get() as { value: number | bigint }).value);
-  let sweepEpoch: number | undefined;
+  const refsOf = (query: typeof statement.nodeRefs, keys: readonly string[]) =>
+    keys.map((key) => {
+      const row = query.get(bytes(key)) as
+        | { refs: number | bigint }
+        | undefined;
+      return row === undefined ? undefined : Number(row.refs);
+    });
 
-  const transaction = (run: () => void) => {
-    database.exec("BEGIN IMMEDIATE");
-    try {
-      run();
-      database.exec("COMMIT");
-    } catch (error) {
-      database.exec("ROLLBACK");
-      throw error;
-    }
+  const apply = (change: LedgerStorageChange) => {
+    for (const [hash, { node, refs }] of change.putNodes)
+      statement.putNode.run(bytes(hash), refs, JSON.stringify(node));
+    for (const [hash, refs] of change.nodeRefs)
+      statement.setNodeRefs.run(refs, bytes(hash));
+    for (const hash of change.deleteNodes)
+      statement.deleteNode.run(bytes(hash));
+    for (const [outRef, { output, refs }] of change.putOutputs)
+      statement.putOutput.run(bytes(outRef), refs, output);
+    for (const [outRef, refs] of change.outputRefs)
+      statement.setOutputRefs.run(refs, bytes(outRef));
+    for (const outRef of change.deleteOutputs)
+      statement.deleteOutput.run(bytes(outRef));
+    for (const root of change.addRoots) statement.putRoot.run(bytes(root));
+    for (const root of change.removeRoots)
+      statement.deleteRoot.run(bytes(root));
+    for (const hash of change.queueDead) statement.queueDead.run(bytes(hash));
+    for (const hash of change.unqueueDead)
+      statement.unqueueDead.run(bytes(hash));
   };
 
-  const page = (
-    query: typeof statement.sweepNodes,
-    after: string | undefined,
-    limit: number,
-  ): string[] => {
-    if (sweepEpoch === undefined) return [];
-    const rows = query.all(
-      sweepEpoch,
-      after === undefined ? Buffer.alloc(0) : bytes(after),
-      limit,
-    ) as { key: Uint8Array }[];
-    return rows.map(({ key }) => hex(key));
+  const count = (query: typeof statement.countNodes) => {
+    const row = query.get() as { n: number | bigint; refs: number | bigint };
+    return { n: Number(row.n), refs: Number(row.refs) };
   };
-
-  const count = (query: typeof statement.countNodes) =>
-    Number((query.get() as { n: number | bigint }).n);
 
   return {
     readNodes: async (hashes: readonly NodeHash[]) =>
@@ -194,66 +181,39 @@ export const openSqliteLedgerStorage = (path: string): SqliteLedgerStorage => {
           | undefined;
         return row === undefined ? undefined : Buffer.from(row.output);
       }),
+    nodeRefs: async (hashes) => refsOf(statement.nodeRefs, hashes),
+    outputRefs: async (outRefs) => refsOf(statement.outputRefs, outRefs),
     isRetained: async (root) => statement.root.get(bytes(root)) !== undefined,
-    writeBlock: async (block) =>
-      transaction(() => {
-        const epoch = writeEpoch();
-        for (const [hash, node] of block.nodes)
-          statement.putNode.run(bytes(hash), JSON.stringify(node), epoch);
-        for (const [outRef, output] of block.outputs)
-          statement.putOutput.run(bytes(outRef), output, epoch);
-        for (const hash of block.keptNodes)
-          if (missed(statement.keepNode.run(epoch, bytes(hash))))
-            throw new LedgerNodeMissing(hash);
-        for (const outRef of block.keptOutputs)
-          if (missed(statement.keepOutput.run(epoch, bytes(outRef))))
-            throw new LedgerOutputMissing(outRef);
-        statement.putRoot.run(bytes(block.root));
-      }),
-    beginSweep: async (retained) => {
-      const epoch = writeEpoch();
-      transaction(() => {
-        statement.setEpoch.run(epoch + 1);
-        statement.clearRoots.run();
-        for (const root of retained) statement.putRoot.run(bytes(root));
-        statement.beginSweep.run();
-      });
-      sweepEpoch = epoch;
+    retainedRoots: async () =>
+      (statement.roots.all() as { root: Uint8Array }[]).map(({ root }) =>
+        hex(root),
+      ),
+    deadNodes: async (limit) =>
+      (statement.dead.all(limit) as { hash: Uint8Array }[]).map(({ hash }) =>
+        hex(hash),
+      ),
+    write: async (change) => {
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        apply(change);
+        database.exec("COMMIT");
+      } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+      }
     },
-    sweepNodes: async (after, limit) =>
-      page(statement.sweepNodes, after, limit),
-    sweepOutputs: async (after, limit) =>
-      page(statement.sweepOutputs, after, limit),
-    deleteSwept: async (records) => {
-      const epoch = sweepEpoch;
-      if (epoch === undefined) throw new Error("no sweep is running");
-      transaction(() => {
-        for (const hash of records.nodes)
-          statement.deleteNode.run(bytes(hash), epoch);
-        for (const outRef of records.outputs)
-          statement.deleteOutput.run(bytes(outRef), epoch);
-      });
+    counts: async () => {
+      const nodes = count(statement.countNodes);
+      const outputs = count(statement.countOutputs);
+      return {
+        nodes: nodes.n,
+        outputs: outputs.n,
+        roots: count(statement.countRoots).n,
+        nodeRefs: nodes.refs,
+        outputRefs: outputs.refs,
+        dead: count(statement.countDead).n,
+      };
     },
-    endSweep: async (dropped) => {
-      transaction(() => {
-        for (const root of dropped) statement.deleteRoot.run(bytes(root));
-        statement.endSweep.run();
-      });
-      sweepEpoch = undefined;
-    },
-    unfinishedSweep: async () =>
-      statement.sweepRunning.get() === undefined
-        ? undefined
-        : new Set(
-            (statement.roots.all() as { root: Uint8Array }[]).map(({ root }) =>
-              hex(root),
-            ),
-          ),
-    counts: async () => ({
-      nodes: count(statement.countNodes),
-      outputs: count(statement.countOutputs),
-      roots: count(statement.countRoots),
-    }),
     close: () => {
       try {
         database.close();
