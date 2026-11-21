@@ -95,6 +95,10 @@ const exclusive = () => {
   };
 };
 
+/** Resolves after one turn of the event loop, in which timers and I/O run. */
+const nextTurn = (): Promise<void> =>
+  new Promise((resolve) => setImmediate(resolve));
+
 const toLedgerSource = (storage: LedgerStorage): LedgerSource => ({
   node: async (hash) => (await storage.readNodes([hash]))[0],
   outputs: async (outRefs) => await storage.readOutputs(outRefs),
@@ -376,7 +380,10 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
       // every write called later.
       const requested = new Set(roots);
       await writeLock(() => replaceRetained(requested));
-      while (await writeLock(drainBatch));
+      // The event loop gets a turn between batches: over storage whose calls
+      // never wait, a long deletion would otherwise hold timers and I/O off
+      // until it ends.
+      while (await writeLock(drainBatch)) await nextTurn();
       const held = await retainedRoots();
       const notRetained = new Set<string>();
       for (const root of requested)
