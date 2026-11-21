@@ -330,6 +330,56 @@ export const describeLedgerStoreRetainConformance = (
       });
     });
 
+    it("lets a persist called during a deletion in between its batches", async () => {
+      const opened = await open();
+      try {
+        /** The writes, in order: a persist's, or a deletion batch's. */
+        const writes: ("persist" | "batch")[] = [];
+        let duringDeletion: (() => void) | undefined;
+        const storage: LedgerStorage = {
+          ...opened.storage,
+          write: async (change) => {
+            await opened.storage.write(change);
+            if (change.addRoots.length > 0) writes.push("persist");
+            else if (change.removeRoots.length === 0) {
+              writes.push("batch");
+              const start = duringDeletion;
+              duringDeletion = undefined;
+              start?.();
+            }
+          },
+        };
+        const store = createLedgerStore(storage);
+        const entries = base();
+        const a = await store.admit(entries, await ledgerEntriesRoot(entries));
+        await store.persist(a);
+        const bMutations = event([0, 1], [710, 711]);
+        const b = await a.apply(bMutations);
+        await store.persist(b);
+        const c = await b.apply(event([2, 710], [712]));
+        await store.persist(c);
+        const pMutations = event([3], [713]);
+        const p = await (await store.at(a.root)).apply(pMutations);
+        let persisting: Promise<void> | undefined;
+        duringDeletion = () => {
+          persisting = store.persist(p);
+        };
+        writes.length = 0;
+        await store.retain(new Set([a.root, p.root]));
+        await persisting;
+        expect(writes.indexOf("persist")).toBe(1);
+        expect(writes.lastIndexOf("batch")).toBeGreaterThan(1);
+        await expectKeepsExactly(
+          store,
+          opened.storage,
+          [entries, appliedEntries(entries, pMutations)],
+          [b.root, c.root],
+        );
+      } finally {
+        await opened.close();
+      }
+    });
+
     it("keeps a root persisted right after a retain is called, with the dropped nodes it reuses", async () => {
       await withStore(async (store, storage) => {
         const entries = base();

@@ -93,7 +93,8 @@ export interface LedgerStorage {
   nodeRefs(hashes: readonly NodeHash[]): Promise<(number | undefined)[]>;
   /** Reference counts; `undefined` when the output is not held. */
   outputRefs(outRefs: readonly OutRefHex[]): Promise<(number | undefined)[]>;
-  isRetained(root: NodeHash): Promise<boolean>;
+  /** Every retained root. The store reads them once and then keeps its own
+   * copy current. */
   retainedRoots(): Promise<NodeHash[]>;
   /** Up to `limit` hashes in the dead queue. */
   deadNodes(limit: number): Promise<NodeHash[]>;
