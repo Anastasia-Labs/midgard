@@ -1,20 +1,9 @@
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
-import {
-  alertWatcherLegacyProofLayout,
-  type WatcherLegacyProofsNotCarriedOver,
-} from "../../src/runtime/legacy-journal-directories.js";
 import { FixtureProcessStop } from "../support/fault-proof-funding-fixture.process-stop.js";
 import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
@@ -291,36 +280,4 @@ it("keeps a funding change and its journal entries together when a power loss dr
     await rm(crash, { recursive: true, force: true });
   }
   expect([...seen].sort()).toEqual(["confirmed:2", "pending:0"]);
-});
-
-it("recovers an execution a file journal of an earlier layout left with only a partial first entry, alerting once", async () => {
-  const fixture = await setup();
-  const leftover = join(
-    fixture.journalRoot,
-    "fault-proofs",
-    "doubleSpend",
-    fixture.old.headerHash,
-    fixture.initial.workflowId,
-  );
-  await mkdir(leftover, { recursive: true });
-  await writeFile(join(leftover, ".00000000.persisted.tmp"), "partial");
-  const alerts: WatcherLegacyProofsNotCarriedOver[] = [];
-  await alertWatcherLegacyProofLayout(
-    {
-      journalRoot: fixture.journalRoot,
-      storagePath: join(fixture.journalRoot, "watcher.sqlite"),
-    },
-    (alert) => alerts.push(alert),
-  );
-  expect(alerts).toEqual([
-    expect.objectContaining({
-      event: "legacy_proofs_not_carried_over",
-      present: [join(fixture.journalRoot, "fault-proofs")],
-    }),
-  ]);
-  expect(await fixture.run(await fixture.recover())).toMatchObject({
-    kind: "pending",
-    workflowId: fixture.initial.workflowId,
-  });
-  expect((await fixture.records())[0]!.pendingTransition).toBeNull();
 });

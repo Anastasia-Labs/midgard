@@ -211,19 +211,7 @@ Every watcher SQLite file, the journals included, must sit on a local disk,
 never a network filesystem (NFS, SMB and the like): those break SQLite's file
 locking and its write-ahead log.
 
-The file journals of earlier development formats (`fault-decisions/`,
-`fault-proof-queue-v1/`, `fault-proof-completions-v1/` and the per-proof
-`fault-proofs/` in the workflow journal directory), and the
-`watcher_prover_funding_handoff_v1` and `watcher_prover_funding_abandonment_v1`
-tables of an earlier `watcher.sqlite`, are ignored, not refused: nothing
-imports them, the journals start fresh, readiness never waits on them, and
-none of them is deleted. At start the watcher logs one `legacy_journal_ignored`
-warning naming each non-empty decision, queue or completion journal. When
-`fault-proofs/` is non-empty or either legacy table holds rows, it logs one
-error-level `legacy_proofs_not_carried_over` alert naming each of them:
-in-flight proofs from the old layout are not carried over, and the watcher
-neither imports nor resumes them. The launch deployment starts with a fresh
-data directory; before reusing an older one, follow
+The launch deployment starts with a fresh data directory; before reusing an older one, follow
 [state reset rules](../../docs/agents/state-reset.md). Upgrading a watcher to
 this release needs a fresh watcher journal. When `/v1/status` shows no
 queued or active proof, stop the watcher, move `watcher-journals.sqlite` and
