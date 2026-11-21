@@ -8,8 +8,9 @@
  * present from `beginSweep` to `endSweep`. The adapter never writes or deletes
  * the `__root__` marker, and a sweep considers only node keys.
  *
- * Outputs are not kept here: `readOutputs` is injected, and output writes and
- * the output sweep are no-ops.
+ * Outputs are not kept here: `readOutputs` is injected, and output writes,
+ * kept outputs and the output sweep are no-ops. Kept nodes are not checked:
+ * the store reads them under its write lock, so none can be missing.
  *
  * While a sweep runs (`LedgerStore.retain`), nothing else may write this
  * database: the adapter tells records written during the sweep apart only by

@@ -1,4 +1,5 @@
 /** The in-memory storage adapter, for tests and short-lived ledgers. */
+import { LedgerNodeMissing, LedgerOutputMissing } from "./errors.js";
 import type {
   LedgerStorage,
   NodeHash,
@@ -69,6 +70,10 @@ export const createMemoryLedgerStorage = (): LedgerStorage => {
       outRefs.map((outRef) => outputs.get(outRef)?.value),
     isRetained: async (root) => roots.has(root),
     writeBlock: async (block) => {
+      const node = block.keptNodes.find((hash) => !nodes.has(hash));
+      if (node !== undefined) throw new LedgerNodeMissing(node);
+      const output = block.keptOutputs.find((outRef) => !outputs.has(outRef));
+      if (output !== undefined) throw new LedgerOutputMissing(output);
       for (const [hash, node] of block.nodes)
         nodes.set(hash, { value: node, epoch: writeEpoch });
       for (const [outRef, output] of block.outputs)

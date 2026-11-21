@@ -15,6 +15,7 @@ import {
   SqliteProcessMutex,
 } from "@al-ft/midgard-core/sqlite-process-mutex";
 
+import { LedgerNodeMissing, LedgerOutputMissing } from "./errors.js";
 import type {
   LedgerStorage,
   NodeHash,
@@ -48,6 +49,9 @@ const SCHEMA = `
 `;
 
 const bytes = (hex: string): Buffer => Buffer.from(hex, "hex");
+/** Whether a keep found no row to stamp. */
+const missed = ({ changes }: { changes: number | bigint }): boolean =>
+  Number(changes) === 0;
 const hex = (value: Uint8Array): string => Buffer.from(value).toString("hex");
 
 /**
@@ -198,9 +202,11 @@ export const openSqliteLedgerStorage = (path: string): SqliteLedgerStorage => {
         for (const [outRef, output] of block.outputs)
           statement.putOutput.run(bytes(outRef), output, epoch);
         for (const hash of block.keptNodes)
-          statement.keepNode.run(epoch, bytes(hash));
+          if (missed(statement.keepNode.run(epoch, bytes(hash))))
+            throw new LedgerNodeMissing(hash);
         for (const outRef of block.keptOutputs)
-          statement.keepOutput.run(epoch, bytes(outRef));
+          if (missed(statement.keepOutput.run(epoch, bytes(outRef))))
+            throw new LedgerOutputMissing(outRef);
         statement.putRoot.run(bytes(block.root));
       }),
     beginSweep: async (retained) => {

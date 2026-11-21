@@ -5,28 +5,39 @@
 import type { LedgerStorage } from "../../src/ledger-store/index.js";
 
 /**
- * A storage whose first `sweepNodes` page is held back until `release`: the
- * sweep has listed its candidates but deleted none of them yet.
+ * A storage whose first sweep is held back until `release`. At `"nodes"` the
+ * first `sweepNodes` page is held: the sweep has listed its candidates but
+ * deleted none of them yet. At `"outputs"` the first empty `sweepOutputs`
+ * page is held: the sweep has deleted every output it will delete and has
+ * not ended.
  */
-export const gatedStorage = (storage: LedgerStorage) => {
+export const gatedStorage = (
+  storage: LedgerStorage,
+  at: "nodes" | "outputs" = "nodes",
+) => {
   let reached!: () => void;
   let release!: () => void;
   const atGate = new Promise<void>((resolve) => (reached = resolve));
   const opened = new Promise<void>((resolve) => (release = resolve));
-  let first = true;
+  let held = false;
+  const hold = async (page: string[], holds: boolean) => {
+    if (holds && !held) {
+      held = true;
+      reached();
+      await opened;
+    }
+    return page;
+  };
   return {
     atGate,
     release: () => release(),
     storage: {
       ...storage,
-      sweepNodes: async (after: string | undefined, limit: number) => {
-        const page = await storage.sweepNodes(after, limit);
-        if (first) {
-          first = false;
-          reached();
-          await opened;
-        }
-        return page;
+      sweepNodes: async (after: string | undefined, limit: number) =>
+        await hold(await storage.sweepNodes(after, limit), at === "nodes"),
+      sweepOutputs: async (after: string | undefined, limit: number) => {
+        const page = await storage.sweepOutputs(after, limit);
+        return await hold(page, at === "outputs" && page.length === 0);
       },
     } satisfies LedgerStorage,
   };

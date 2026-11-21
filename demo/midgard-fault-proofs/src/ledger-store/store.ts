@@ -43,6 +43,9 @@ export interface LedgerStore {
    * hold, and the outputs of its new leaves, in one atomic write, and retains
    * the root. Nodes of intermediate `apply` steps are never written. Only a
    * ledger obtained from this store (by `at`, `admit` or `apply`) is accepted.
+   * A ledger that reaches a node or an output the store no longer holds (one
+   * derived from a root a sweep has since dropped) is refused with
+   * `LedgerNodeMissing` or `LedgerOutputMissing`, and nothing is written.
    */
   persist(ledger: Ledger): Promise<void>;
   /**
@@ -135,9 +138,10 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
       pending.push(...children(node));
       if (node.__kind !== "Leaf") return;
       const output = overlayOutput(ledger.overlay, node.key);
+      // A leaf the trie moved is a new node whose output the overlay does not
+      // carry: it must still be held.
       if (output !== undefined) outputs.set(node.key, output);
-      else if (marks !== undefined && !marks.outputs.has(node.key))
-        keptOutputs.push(node.key);
+      else keptOutputs.push(node.key);
     };
     while (pending.length > 0) {
       const batch = takeUnseen(pending.splice(0, READ_BATCH), seen);

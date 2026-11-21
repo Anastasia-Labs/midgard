@@ -39,14 +39,22 @@ export type LedgerBlockWrite = {
   readonly root: NodeHash;
   /** Nodes the store did not hold. */
   readonly nodes: ReadonlyMap<NodeHash, StoredNode>;
-  /** Outputs of leaves the block added. */
+  /** Outputs of leaves the block added, carried by the block. */
   readonly outputs: ReadonlyMap<OutRefHex, Buffer>;
   /**
-   * Records already held, reachable from `root`, that the running sweep has
-   * not marked. They must survive that sweep, exactly as if rewritten now.
+   * Held nodes reachable from `root` that the running sweep has not marked.
    * Empty when no sweep runs.
    */
   readonly keptNodes: readonly NodeHash[];
+  /**
+   * Held outputs `root` relies on: that of every new leaf whose output the
+   * block does not carry (a leaf the trie moved), sweep running or not, and
+   * that of every leaf under a node in `keptNodes`.
+   *
+   * Every kept record must be held: otherwise `writeBlock` writes nothing and
+   * fails with `LedgerNodeMissing` or `LedgerOutputMissing`. A kept record
+   * survives a running sweep exactly as if rewritten now.
+   */
   readonly keptOutputs: readonly OutRefHex[];
 };
 
@@ -72,7 +80,8 @@ export interface LedgerStorage {
   readNodes(hashes: readonly NodeHash[]): Promise<(StoredNode | undefined)[]>;
   readOutputs(outRefs: readonly OutRefHex[]): Promise<(Buffer | undefined)[]>;
   isRetained(root: NodeHash): Promise<boolean>;
-  /** Writes one block atomically. */
+  /** Writes one block atomically, or nothing when a kept record is not
+   * held. */
   writeBlock(block: LedgerBlockWrite): Promise<void>;
   /**
    * Replaces the retained set with `retained` and records that a sweep is
