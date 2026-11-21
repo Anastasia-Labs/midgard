@@ -68,6 +68,10 @@
       "midgard-source": "./src/ledger-at.ts",
       "import": "./dist/ledger-at.js"
     },
+    "./ledger-store": {
+      "midgard-source": "./src/ledger-store/index.ts",
+      "import": "./dist/ledger-store/index.js"
+    },
     "./ledger-output-proof-plan": {
       "midgard-source": "./src/ledger-output-proof-plan.ts",
       "import": "./dist/ledger-output-proof-plan.js"
@@ -562,6 +566,10 @@
     "./test-support/validation-trace-challenger-runner": {
       "midgard-source": "./tests/support/validation-trace-challenger-runner.ts",
       "types": "./tests/support/validation-trace-challenger-runner.ts"
+    },
+    "./test-support/ledger-store-conformance": {
+      "midgard-source": "./tests/support/ledger-store-conformance.ts",
+      "types": "./tests/support/ledger-store-conformance.ts"
     }
   },
   "type": "module",
@@ -641,6 +649,7 @@
             "src/inspect-contracts.ts",
             "src/l2-tx-mistag/index.ts",
             "src/ledger-at.ts",
+            "src/ledger-store/index.ts",
             "src/ledger-output-proof-plan.ts",
             "src/local-fault-bound.ts",
             "src/min-ada/index.ts",
