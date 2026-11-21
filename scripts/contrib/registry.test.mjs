@@ -1,14 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import {
-  artifactChannels,
-  channelIdentity,
-  dependencyPins,
-} from "./artifacts.mjs";
+import { artifactChannels, channelIdentity } from "./artifacts.mjs";
 import { compact, main, parse } from "../contrib.mjs";
 import { classifyProgress, redact } from "./diagnostics.mjs";
 import { enrollBuilds } from "./enroll-builds.mjs";
@@ -112,31 +108,9 @@ test("diagnostic redaction removes secret fields, transaction bytes and URL keys
   );
 });
 
-test("artifact identities follow the existing registry and Git dependencies have public immutable pins", (t) => {
+test("artifact identities follow the existing registry", () => {
   const channels = artifactChannels(root).channels;
   assert.ok(channelIdentity(root, channels[0]).sha256);
-  assert.ok(dependencyPins(root).length > 0);
-  const scratch = fixture(t);
-  const path = resolve(scratch, "demo/example/package.json");
-  const pkg = JSON.parse(readFileSync(path));
-  pkg.dependencies = { unavailable: "file:/tmp/private.tgz" };
-  writeFileSync(path, JSON.stringify(pkg));
-  assert.throws(() => dependencyPins(scratch), /nonportable/u);
-  pkg.dependencies = { unavailable: "github:owner/project#main" };
-  writeFileSync(path, JSON.stringify(pkg));
-  assert.throws(() => dependencyPins(scratch), /immutable/u);
-});
-
-test("dependency pin audits include workspace overrides", (t) => {
-  const scratch = fixture(t);
-  const config = resolve(scratch, "demo/pnpm-workspace.yaml");
-  writeFileSync(config, "overrides:\n  unavailable: file:/tmp/private.tgz\n");
-  assert.throws(() => dependencyPins(scratch), /nonportable/u);
-  writeFileSync(
-    config,
-    "overrides:\n  unavailable: github:owner/project#main\n",
-  );
-  assert.throws(() => dependencyPins(scratch), /immutable/u);
 });
 
 test("byte measurements deduplicate exact serialized content and refuse over-bound inputs", async (t) => {

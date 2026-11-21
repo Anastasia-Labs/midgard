@@ -37,19 +37,8 @@ Native delegation stays on the current host. Cross-provider design or review
 uses the installed `codex` and `claude` CLIs with bounded read-only execution.
 Both CLIs need working authentication through their existing setup. The parent
 supplies sanitized instructions, source, and diff excerpts in a prompt file.
-The dispatcher neither logs in nor copies credentials.
-
-Preview a Claude seat from a Codex session without calling a provider:
-
-```bash
-node .agents/skills/poteto-mode/scripts/dispatch.mjs \
-  --role 'interrogate reviewers' --seat 1 --host codex \
-  --workspace "$PWD" --prompt /tmp/review-brief.txt \
-  --output /tmp/claude-verdict.txt --dry-run
-```
-
-Remove `--dry-run` to run it. The result file is created exclusively; choose a
-new path for each seat. An unavailable CLI, denied model, empty response,
+The parent neither logs in nor copies credentials. Write each seat's result to
+a new path. An unavailable CLI, denied model, empty response,
 timeout, or failed process remains a coverage gap. Cross-provider review does
 not claim both providers ran when one failed. Writable work uses native agents
 and the current permission policy.
@@ -68,7 +57,6 @@ Midgard's tools and authorization rules.
 
 The port replaces model-slug defaults, custom agent registration, transcript
 paths, cloud-only spawning, webhook UI assumptions, and the Bun script package.
-The Node dispatcher and TSV helper use built-in modules and ship negative tests.
 PR state uses GitHub tools or `gh`; program coordination uses task-local records
 and actual host agent tools. The optional upstream Benny automation templates
 are not installed as services or scheduled jobs. No task is scheduled by setup.
@@ -81,17 +69,8 @@ plans choose live and performance gates based on the changed behavior.
 
 ```bash
 node scripts/ci/check-agent-skills.mjs
-node --test .agents/skills/poteto-mode/scripts/dispatch.test.mjs
-node --test .agents/skills/show-me-your-work/scripts/log.test.mjs
-node .agents/skills/poteto-mode/scripts/dispatch.mjs \
-  --check-config .agents/pstack-models.json
 node scripts/preflight.mjs
 ```
-
-The existing Agent Skills CI discovers the new helper tests without another
-workflow. Provider invocation tests use subprocess fixtures to exercise literal
-stdin, errors, limits, and output preservation without model access. They do not
-prove account entitlement or live model behavior.
 
 ## Provenance
 
@@ -106,25 +85,3 @@ Host references used while porting:
 - [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).
 - [Claude skills](https://code.claude.com/docs/en/skills).
 - [Claude CLI](https://code.claude.com/docs/en/cli-reference).
-
-## Validation of this port
-
-On 2026-10-03:
-
-| Check | Result |
-| --- | --- |
-| `node scripts/preflight.mjs` | Passed all eight selected checks, including docs-site build and typecheck. |
-| `node scripts/ci/check-agent-skills.mjs` | Passed; 64 skills and the Claude symlink checked. |
-| `node --test .agents/skills/poteto-mode/scripts/dispatch.test.mjs .agents/skills/show-me-your-work/scripts/log.test.mjs` | Passed all 10 tests after the final adapter fix. |
-| Dispatcher `--check-config .agents/pstack-models.json` | Passed. |
-| Prettier `--check` on the configuration and four new helper/test files | Passed. |
-| Prospective instruction/link validation with the repository validators | Passed on all new files, including untracked files that normal tracked-file checks omit. |
-| YAML frontmatter, Codex interface fields, and invocation policies | Validated for all 49 new skills. |
-| Installed Codex MCP inventory with adapter overrides | Verified every configured server disabled before inference. |
-| `git diff --check` | Flagged the pre-existing `.gitignore` blank line at EOF; that user edit was preserved. |
-
-The full preflight ran before the final MCP argument fix. Helper tests,
-prospective instruction/link checks, configuration validation, and formatting
-were checked after that fix. The later `--pre-push` slice judged committed HEAD
-only and is not used as evidence for the uncommitted port. No live model call,
-login, merge, deployment, or scheduled job was performed.

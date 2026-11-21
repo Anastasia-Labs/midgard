@@ -354,12 +354,6 @@ const toolingTestInputs = (root) => {
     ],
     "scripts/preflight/run.test.mjs": PREFLIGHT_IMPORTS,
     "scripts/preflight/sdk-suite-evidence.test.mjs": PREFLIGHT_IMPORTS,
-    "scripts/release/docker-build-plan.test.mjs": [
-      `${DEMO}/*/Dockerfile`,
-      `${DEMO}/*/package.json`,
-      `${DEMO}/*/tsup.config.ts`,
-      PACKAGE_TASKS,
-    ],
     "scripts/release/pack-files.test.mjs": ["LICENSE"],
     "scripts/release/sdk-packages.test.mjs": [
       "LICENSE",

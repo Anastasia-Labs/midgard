@@ -173,7 +173,6 @@ export const verifyReceipt = (root, path) => {
       "gate",
       "artifact",
       "boundary",
-      "reproduce",
       "devnet-generation",
       "acceptance-execution",
       "preflight-step",

@@ -47,7 +47,7 @@ that a reader would miss.
    printed.
 
    For an executable channel, use `node scripts/contrib.mjs artifacts check --channel <id>`.
-   Read [the guarded regeneration contract](../../../docs/agents/contrib.md#artifact-regeneration-and-clean-reproducibility)
+   Read [the guarded regeneration contract](../../../docs/agents/contrib.md#artifact-regeneration)
    before generating: it prepares compiled prerequisites, records identities
    and validates output ownership. The channel table remains the owner.
 

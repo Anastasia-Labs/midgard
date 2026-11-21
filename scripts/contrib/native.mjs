@@ -15,7 +15,6 @@ import { pinnedPnpm } from "./pnpm.mjs";
 import { writeReceipt } from "./receipts.mjs";
 import { withResource } from "./resources.mjs";
 import { NATIVE_RECIPES } from "./native-recipes.mjs";
-export { NATIVE_RECIPES } from "./native-recipes.mjs";
 
 // Tools report from the recipe's toolsDirectory, so a toolchain the sources
 // select there (a Go module's go directive) is the one recorded.

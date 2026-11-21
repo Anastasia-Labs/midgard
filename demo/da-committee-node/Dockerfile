@@ -31,7 +31,6 @@ WORKDIR /workspace/demo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches ./patches
 COPY vendor ./vendor
-# BEGIN GENERATED manifests
 COPY da-committee-node/package.json ./da-committee-node/package.json
 COPY l1-node-transport/package.json ./l1-node-transport/package.json
 COPY lucid-midgard/package.json ./lucid-midgard/package.json
@@ -45,9 +44,7 @@ COPY midgard-test-support/package.json ./midgard-test-support/package.json
 COPY midgard-user-cli/package.json ./midgard-user-cli/package.json
 COPY midgard-validation/package.json ./midgard-validation/package.json
 COPY midgard-watcher/package.json ./midgard-watcher/package.json
-# END GENERATED manifests
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile --filter da-committee-node...
-# BEGIN GENERATED sources
 COPY scripts/package-tasks.mjs ./scripts/package-tasks.mjs
 COPY scripts/lib/vendored-imports.mjs ./scripts/lib/vendored-imports.mjs
 COPY l1-node-transport ./l1-node-transport
@@ -56,15 +53,12 @@ COPY midgard-sdk ./midgard-sdk
 COPY midgard-l1-follower ./midgard-l1-follower
 COPY midgard-validation ./midgard-validation
 COPY da-committee-node ./da-committee-node
-# END GENERATED sources
-# BEGIN GENERATED builds
 RUN pnpm --filter @al-ft/l1-node-transport run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-l1-follower run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw
 RUN pnpm --filter da-committee-node run build:contrib-raw
-# END GENERATED builds
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm --filter da-committee-node deploy --prod /prod/da
 # Explicit public target: generate its actual profile in the image build,
 # authenticate the independent onchain input, and rebuild the production closure.
@@ -80,14 +74,12 @@ COPY --from=onchain /plutus.json /workspace/onchain/aiken/plutus.json
 COPY --from=onchain /plutus.json.deployment.json /workspace/onchain/aiken/plutus.json.deployment.json
 RUN node scripts/deployment-profiles.mjs generate "$MIDGARD_DEPLOYMENT_PROFILE" \
   && node ../scripts/release/check-image-inputs.mjs "$MIDGARD_DEPLOYMENT_PROFILE" "$MIDGARD_RELEASE_REVISION" /workspace/public-build-inputs.json
-# BEGIN GENERATED public-builds
 RUN pnpm --filter @al-ft/l1-node-transport run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-l1-follower run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw
 RUN pnpm --filter da-committee-node run build:contrib-raw
-# END GENERATED public-builds
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm --filter da-committee-node deploy --prod /prod/public-da-committee-node
 

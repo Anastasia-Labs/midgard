@@ -47,37 +47,24 @@ native child with inherited context, MCP access, or messaging.
 
 ## External read-only review and design
 
-The bundled dispatcher uses installed CLIs, argument arrays, and stdin.
-It does not launch a shell or bypass approval/sandbox controls. Supply relevant
-repository instructions, exact diffs, source excerpts, and the review rubric
-in a sanitized prompt file. CLI seats return text; the parent owns saving
-artifacts and applying changes. Runtime commands and MCP investigation belong
-to the parent or native workers.
+The parent runs the installed `codex` or `claude` CLI itself, with argument
+arrays and the prompt on stdin, never through a shell, and without bypassing
+approval or sandbox controls. Supply relevant repository instructions, exact
+diffs, source excerpts, and the review rubric in a sanitized prompt file. CLI
+seats return text; the parent owns saving artifacts and applying changes.
+Runtime commands and MCP investigation belong to the parent or native workers.
+Seat 0 uses Codex and seat 1 Claude in the shipped panels. Write each seat's
+output to a new path.
 
-```bash
-node .agents/skills/poteto-mode/scripts/dispatch.mjs \
-  --role 'interrogate reviewers' --seat 0 --host codex \
-  --workspace /absolute/path/to/midgard \
-  --prompt /tmp/review-brief.txt --output /tmp/codex-review.txt --dry-run
-```
+Run Codex with a read-only sandbox, approval policy `never`, ephemeral
+history, disabled hooks/plugins/apps, and every configured MCP server disabled.
+Run Claude in print mode with only Read/Glob/Grep tools, no MCP servers or
+hooks, no session persistence, and `dontAsk` permissions. These restrictions
+deliberately exclude runtime tests, external writes, and writable candidate
+generation. Managed host policies can further restrict access. Check the CLI
+help when a version rejects a flag; an unsupported invocation remains a failure.
 
-Seat 0 uses Codex and seat 1 Claude in the shipped panels. Change `--host`
-to `claude` when that is the current host. Remove `--dry-run` to execute.
-The dry run validates paths and configuration and prints the executable,
-arguments, workspace, and output path without printing the prompt or starting
-a provider process. Codex execution additionally enumerates configured MCP
-servers, adds per-server disable overrides, and verifies that all are disabled
-before inference; these dynamic overrides are resolved only on execution. Output creation is exclusive; choose a new path per seat.
-
-Codex runs with a read-only sandbox, approval policy `never`, ephemeral
-history, disabled hooks/plugins/apps, and verified per-server MCP disable overrides. Claude runs
-in print mode with only Read/Glob/Grep tools, no MCP servers or hooks, no
-session persistence, and `dontAsk` permissions. These restrictions deliberately
-exclude runtime tests, external writes, and writable candidate generation.
-Managed host policies can further restrict access. Check the CLI help when a
-version rejects a flag; an unsupported invocation remains a failure.
-
-The process has a bounded timeout and output size. A failed, timed-out, or
+Bound the process's time and output size. A failed, timed-out, or
 empty response is not a reviewer verdict. Resolve missing capabilities with
 existing authorization; do not change global settings or log in automatically.
 For writable work use native agents within the user's existing permission

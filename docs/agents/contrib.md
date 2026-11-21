@@ -24,9 +24,9 @@ Read [evidence and ownership](contrib/evidence-and-resources.md) for the command
 
 Read [reusable behavior gates and fixtures](contrib/gates-and-fixtures.md) for the commands, ownership and limits.
 
-## Artifact regeneration and clean reproducibility
+## Artifact regeneration
 
-Read [artifact regeneration and clean reproducibility](contrib/artifacts-and-reproducibility.md) for the commands, ownership and limits.
+Read [artifact regeneration](contrib/artifact-regeneration.md) for the commands, ownership and limits.
 
 ## Integration and program resumes
 

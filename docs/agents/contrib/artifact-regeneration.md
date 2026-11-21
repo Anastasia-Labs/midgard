@@ -1,12 +1,10 @@
-# Artifact regeneration and clean reproducibility
+# Artifact regeneration
 
 ```sh
 node scripts/contrib.mjs artifacts list
 node scripts/contrib.mjs artifacts check --channel native-tx-vector-v1
 node scripts/contrib.mjs artifacts sync --channel native-tx-vector-v1
 node scripts/contrib.mjs artifacts builds
-node scripts/contrib.mjs reproduce --plan
-node scripts/contrib.mjs reproduce --execute
 ```
 
 Select channels through the existing affected-channels tool before running
@@ -26,15 +24,6 @@ ignored file inside a source directory may be imported, and Git cannot overlay
 it, so it is refused instead of earning a pass from a different input. Commit
 or make that input reproducible through its declared owner before retrying.
 Ignored paths outside source directories are not inputs and do not block.
-
-The reproducibility lane resolves pinned Git commits from their public remotes,
-performs a frozen install and selected blueprint/workspace builds in a fresh
-checkout, then builds both native owners and checks every executable artifact
-channel. Manual/historical channels remain explicit inventory gaps. Absolute
-private tarball/link dependencies and unpinned Git branches
-are refused. Local caches are allowed for speed; remote pin resolution is
-performed independently. A failed or unavailable compiler is a failure, not
-evidence of a successful clean build.
 
 `node scripts/contrib/review-controls.mjs` checks the fixed boundary controls
 and reintroduces each reviewed artifact/path defect in disposable copies. CI

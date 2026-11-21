@@ -10,9 +10,7 @@ import {
   realpathSync,
   rmSync,
   lstatSync,
-  readFileSync,
 } from "node:fs";
-import { createRequire } from "node:module";
 import { relative, resolve } from "node:path";
 
 import { matchesAny } from "../preflight/derive.mjs";
@@ -40,55 +38,6 @@ import { applyPacket, createPacket, git } from "./workspace.mjs";
 
 import { artifactChannels, channelIdentity } from "./channels.mjs";
 export { artifactChannels, channelIdentity } from "./channels.mjs";
-
-export const dependencyPins = (root) => {
-  const pins = new Map();
-  const configPath = resolve(root, "demo/pnpm-workspace.yaml");
-  const overrides = existsSync(configPath)
-    ? createRequire(new URL("../../demo/package.json", import.meta.url))(
-        "yaml",
-      ).parse(readFileSync(configPath, "utf8"))?.overrides
-    : undefined;
-  const packages = [
-    ...workspacePackages(root),
-    { name: "workspace overrides", dependencies: overrides },
-    ...(existsSync(resolve(root, "demo/package.json"))
-      ? [json(resolve(root, "demo/package.json"))]
-      : []),
-  ];
-  for (const pkg of packages)
-    for (const [name, value] of Object.entries({
-      ...pkg.dependencies,
-      ...pkg.devDependencies,
-    })) {
-      if (typeof value !== "string") continue;
-      if (
-        /^(?:file:|link:)\//u.test(value) ||
-        /(?:\/tmp\/|\/home\/)/u.test(value)
-      )
-        throw new Error(
-          `nonportable dependency ${pkg.name}:${name}=${value}; vendor/publish it and update the lockfile`,
-        );
-      if (value.startsWith("github:")) {
-        const match = value.match(
-          /^github:([^#]+)#([a-f0-9]{40})(?:&path:.*)?$/u,
-        );
-        if (!match)
-          throw new Error(
-            `Git dependency must name an immutable commit: ${name}=${value}`,
-          );
-        pins.set(value, {
-          name,
-          url: `https://github.com/${match[1]}.git`,
-          commit: match[2],
-        });
-      } else if (/^(?:git[+:]|https:\/\/.*\.git)/u.test(value))
-        throw new Error(
-          `use an auditable github:owner/repository#40-character-commit pin: ${name}=${value}`,
-        );
-    }
-  return [...pins.values()];
-};
 
 // A detached worktree makes the existing path-relative generators usable in a
 // disposable checkout. Overlay source edits, never dependency stores, secrets

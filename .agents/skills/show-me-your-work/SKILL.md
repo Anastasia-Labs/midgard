@@ -10,13 +10,7 @@ Read [the host adapter](../poteto-mode/references/host-adapter.md) before access
 
 Keep one append-only TSV per task with columns `ts`, `phase`, `decision`, `why`, `evidence`, and `result`. Each cell is one line. Evidence is a resolving file, commit, PR, trace, or command-output reference. A mistaken row gets a superseding row.
 
-Use the Node helper:
-
-```bash
-node .agents/skills/show-me-your-work/scripts/log.mjs <logfile> <phase> <decision> <why> <evidence> <result>
-```
-
-It creates the header, stamps UTC time, strips cell tabs/newlines, and escapes spreadsheet formulas. Keep a single writer. Use a task-specific scratch path by default; commit a sanitized trail only when the requested deliverable needs it.
+Write the header row once, stamp each row with UTC time, keep tabs and newlines out of every cell, and prefix a cell that starts with `=`, `+`, `-` or `@` with `'` so a spreadsheet does not run it as a formula. Keep a single writer. Use a task-specific scratch path by default; commit a sanitized trail only when the requested deliverable needs it.
 
 Log meaningful forks, verified units, pivots, reversions, and blockers. A new conversation or replacement agent starts with phase `start`, naming its run and the range it did not write. On a later turn, check whether another run appended before continuing.
 

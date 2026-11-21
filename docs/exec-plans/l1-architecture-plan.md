@@ -1914,9 +1914,8 @@ The harness is therefore part of the tickets. It has four parts:
 3. Vitest bench files under the existing bench config
    (`demo/midgard-node/vitest.bench.config.ts`), one per B-target. Each writes
    a JSON report.
-4. Registration with the existing CI regression gate
-   (`scripts/ci/check-benchmark-regression.mjs:3-4`: 10% over the trailing
-   median of 5 runs).
+4. A CI regression gate that fails at 10% over the trailing median of 5 runs;
+   no such gate exists yet.
 
 | # | Measures | Workload | Target | Ticket |
 |---|---|---|---|---|

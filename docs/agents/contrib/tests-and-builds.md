@@ -301,10 +301,6 @@ generated wrappers. [script: scripts/contrib/enroll-builds.mjs]
 
 `build:contrib-raw` is a generated adapter to the same task executor, copied
 into the isolated demo Docker context with `scripts/package-tasks.mjs`.
-`scripts/release/docker-build-plan.mjs --write` generates manifest, source,
-dependency-build and public-build blocks in all three images from that graph;
-`--check` detects drift. Native stages and cache mounts retain their existing
-owners. [script: scripts/release/docker-build-plan.mjs]
 
 Native build recipes enter `contrib native`.
 Build freshness binds the checkout,
@@ -403,8 +399,7 @@ worktrees and source archives must not discover an unrelated ancestor repository
 Its native receipt records source, compiler and binary identities instead.
 Watcher TypeScript rebuilds preserve `dist/native`; only the declared Go binary
 is excluded from JavaScript output identities. Native receipts still bind its
-bytes. Clean reproduction rechecks both owners after all artifact checks, so
-a later build or generator cannot silently erase an earlier native result.
+bytes.
 
 Guarded children use Corepack to select each project's declared package manager,
 including bare `pnpm --dir ...` inside nested recipes. The demo pins pnpm 11 and

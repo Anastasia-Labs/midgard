@@ -30,13 +30,6 @@ excluded. The final percentages are about **0.62% / 0.12%**, compared with
 **1.14% / 0.22%**, so the improvement is not solely a larger file count. Both
 measures are below the supplied Lodestar figures of 1.6% / 0.5%.
 
-Reproduce the inventory from the repository root:
-
-```sh
-node demo/scripts/module-sizes.mjs --base HEAD \
-  --exclude-prefix demo/midgard-node-tools/src/full-stack/ --json
-```
-
 In total, **713 TS/JS originals and four Go/Rust
 originals** were divided. Existing entrypoints retain their public exports;
 implementation facets live alongside their original files. Writable bindings

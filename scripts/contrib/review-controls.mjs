@@ -51,18 +51,6 @@ const controls = [
     testFile: "identity.test.mjs",
   },
   {
-    name: "reproduction-final-native",
-    file: "reproduction.mjs",
-    change: (text) =>
-      text.replace(
-        /      for \(const name of plan\.nativePackages\) \{\n        const verdict = checkNative[\s\S]*?\n      \}/u,
-        "",
-      ),
-    match: "reproduction refuses a native output deleted",
-    failure: /deleted native output cannot earn a reproduction pass/u,
-    testFile: "operations.test.mjs",
-  },
-  {
     name: "workspace-missing-registration",
     file: "workspace.mjs",
     change: (text) =>

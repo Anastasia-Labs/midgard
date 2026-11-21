@@ -44,7 +44,6 @@ COPY vendor ./vendor
 # edge (production and dev) that midgard-node declares; only the production
 # chain's sources are copied and built below, and `deploy --prod` ships only
 # that chain. midgard-node-tools is dev-only and never enters the image.
-# BEGIN GENERATED manifests
 COPY da-committee-node/package.json ./da-committee-node/package.json
 COPY l1-node-transport/package.json ./l1-node-transport/package.json
 COPY lucid-midgard/package.json ./lucid-midgard/package.json
@@ -58,7 +57,6 @@ COPY midgard-test-support/package.json ./midgard-test-support/package.json
 COPY midgard-user-cli/package.json ./midgard-user-cli/package.json
 COPY midgard-validation/package.json ./midgard-validation/package.json
 COPY midgard-watcher/package.json ./midgard-watcher/package.json
-# END GENERATED manifests
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm install --frozen-lockfile --filter midgard-node...
 
@@ -66,7 +64,6 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 # compiler recipes directly; shared-checkout leases and Git receipts belong to
 # contributor builds, and the repository tooling is outside this demo context.
 FROM workspace AS build
-# BEGIN GENERATED sources
 COPY scripts/package-tasks.mjs ./scripts/package-tasks.mjs
 COPY scripts/lib/vendored-imports.mjs ./scripts/lib/vendored-imports.mjs
 COPY l1-node-transport ./l1-node-transport
@@ -77,8 +74,6 @@ COPY midgard-sdk ./midgard-sdk
 COPY midgard-l1-follower ./midgard-l1-follower
 COPY midgard-fault-proofs ./midgard-fault-proofs
 COPY midgard-node ./midgard-node
-# END GENERATED sources
-# BEGIN GENERATED builds
 RUN pnpm --filter @al-ft/l1-node-transport run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw
@@ -87,7 +82,6 @@ RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-l1-follower run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw
 RUN pnpm --filter midgard-node run build:contrib-raw
-# END GENERATED builds
 # Same store as the install step: `deploy --prod` re-resolves the git-hosted
 # merkle-patricia-forestry dependency, and only a store that already holds the
 # prepared package avoids re-running its `prepare` build (which needs the
@@ -109,7 +103,6 @@ COPY --from=onchain /plutus.json /workspace/onchain/aiken/plutus.json
 COPY --from=onchain /plutus.json.deployment.json /workspace/onchain/aiken/plutus.json.deployment.json
 RUN node scripts/deployment-profiles.mjs generate "$MIDGARD_DEPLOYMENT_PROFILE" \
   && node ../scripts/release/check-image-inputs.mjs "$MIDGARD_DEPLOYMENT_PROFILE" "$MIDGARD_RELEASE_REVISION" /workspace/public-build-inputs.json
-# BEGIN GENERATED public-builds
 RUN pnpm --filter @al-ft/l1-node-transport run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw
@@ -118,7 +111,6 @@ RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-l1-follower run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw
 RUN pnpm --filter midgard-node run build:contrib-raw
-# END GENERATED public-builds
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm --filter midgard-node deploy --prod /prod/public-midgard-node
 

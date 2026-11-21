@@ -9,7 +9,6 @@ import {
   campaignView,
   runCampaign,
 } from "./contrib/campaign.mjs";
-import { reproduce } from "./contrib/reproduction.mjs";
 import { buildPackage, checkBuild } from "./contrib/build.mjs";
 import { captureHttp, diagnostics } from "./contrib/diagnostics.mjs";
 import { checkBoundaries, symbolOwners } from "./contrib/discovery.mjs";
@@ -74,7 +73,6 @@ export const HELP = `Midgard deterministic contributor tools (run from any cwd)
   node scripts/contrib.mjs measure --file FILE [--file FILE] [--maximum-bytes N]
   node scripts/contrib.mjs diagnose --snapshot FILE [--package NAME]
   node scripts/contrib.mjs diagnose --url LOCAL_URL [--output FILE]
-  node scripts/contrib.mjs reproduce [--plan | --execute]
   node scripts/contrib.mjs devnet plan | generate --run-id ID
   node scripts/contrib.mjs devnet campaign run --input CAMPAIGN_JSON [--plan]
   node scripts/contrib.mjs acceptance --input STACK_CONFIG [--plan]
@@ -313,13 +311,13 @@ export const main = async (argv) => {
       throw new Error("unknown or non-synthetic proof kind");
     if (
       options.plan &&
-      !["prepare", "gate", "reproduce", "acceptance"].includes(command) &&
+      !["prepare", "gate", "acceptance"].includes(command) &&
       !campaign
     )
       throw new Error(
         `--plan is not supported for ${command}; no command was executed`,
       );
-    if (options.execute && !["prepare", "reproduce"].includes(command))
+    if (options.execute && command !== "prepare")
       throw new Error(`--execute is not supported for ${command}`);
     if (
       options["source-only"] &&
@@ -364,7 +362,6 @@ export const main = async (argv) => {
         "acceptance",
         "gate",
         "artifacts",
-        "reproduce",
         "worktree",
         "mutate",
       ].includes(command) &&
@@ -372,7 +369,6 @@ export const main = async (argv) => {
         !options.plan &&
         !(command === "prepare" && !options.execute) &&
         !(command === "artifacts" && ["list", "builds"].includes(action)) &&
-        !(command === "reproduce" && !options.execute) &&
         action !== "list")
     ) {
       const pnpm = checkPnpm({ root, run: pinnedPnpmVersion });
@@ -519,11 +515,6 @@ export const main = async (argv) => {
             snapshot: required("snapshot"),
             name: options.package,
           });
-    else if (command === "reproduce" && !action)
-      result = await reproduce(root, {
-        ...execution,
-        execute: options.execute,
-      });
     else if (command === "devnet" && ["plan", "generate"].includes(action))
       result =
         action === "plan"
