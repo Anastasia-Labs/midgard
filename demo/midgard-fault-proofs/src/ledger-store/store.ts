@@ -61,7 +61,8 @@ export interface LedgerStore {
   /**
    * Drops every retained root that `roots` does not name, and deletes every
    * node and output no retained root reaches any more. A ledger value whose
-   * root is dropped stops being readable.
+   * root is dropped stops being readable. `roots` is read when `retain` is
+   * called; changing the set afterwards changes nothing.
    *
    * The retained set is replaced in the order of calls: a `persist` called
    * after `retain` lands after the replacement, so its root is kept. The
@@ -370,13 +371,15 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
     },
 
     retain: async (roots) => {
-      // Called before the first await, so the replacement takes its place in
-      // the write order when `retain` is called.
-      await writeLock(() => replaceRetained(roots));
+      // Before the first await, so both run when `retain` is called: `roots`
+      // is copied, and the replacement is queued on the write lock ahead of
+      // every write called later.
+      const requested = new Set(roots);
+      await writeLock(() => replaceRetained(requested));
       while (await writeLock(drainBatch));
       const held = await retainedRoots();
       const notRetained = new Set<string>();
-      for (const root of roots)
+      for (const root of requested)
         if (root !== EMPTY_LEDGER_ROOT && !held.has(root))
           notRetained.add(root);
       return { notRetained };

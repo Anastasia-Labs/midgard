@@ -209,6 +209,28 @@ export const describeLedgerStoreRetainConformance = (
         }),
     );
 
+    it("reads the requested roots when retain is called", async () => {
+      await withStore(async (store) => {
+        const entries = base();
+        const a = await store.admit(entries, await ledgerEntriesRoot(entries));
+        await store.persist(a);
+        const bMutations = event([0], [450]);
+        const b = await a.apply(bMutations);
+        await store.persist(b);
+        const window = new Set([a.root, b.root]);
+        const retaining = store.retain(window);
+        // The caller reuses its set at once.
+        window.delete(a.root);
+        window.add("ab".repeat(32));
+        expect(await retaining).toEqual({ notRetained: new Set() });
+        await expectLedgerMatches(await store.at(a.root), entries);
+        await expectLedgerMatches(
+          await store.at(b.root),
+          appliedEntries(entries, bMutations),
+        );
+      });
+    });
+
     it("drops the parent of a fork, then one of its children", async () => {
       await withStore(async (store, storage) => {
         const entries = base();
