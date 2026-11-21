@@ -18,10 +18,7 @@ This record also kept speculative commit building as an opt-in behind
 
 Architecture G requires final-build differential and crash/recovery coverage,
 50k and retained-growth root/candidate gates, release-image verification, a
-clean live lifecycle, and the complete soak on matching identities. The
-[operator closure](../../benchmark-scenarios/phase-3-architecture-g-closure.md)
-and [soak procedure](../../benchmark-scenarios/phase-3-architecture-g-soak.md)
-provide the retained acceptance commands.
+clean live lifecycle, and the complete soak on matching identities.
 
 Speculative building, while it existed, did not authorize submitting children
 of unconfirmed L1 commits. The one-hour gate (`docs/benchmark-scenarios/phase-4-pipelined-one-hour.md`,

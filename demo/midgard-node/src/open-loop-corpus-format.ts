@@ -4,9 +4,9 @@
  *
  * The corpus itself is produced and consumed by the stress tooling in
  * midgard-node-tools, but the row format is also read on the node side — the
- * mpf-engine-probe worker replays corpora and the stage-B validation benchmark
- * feeds them to the validation pool — so the format lives here, where both can
- * reach it without the operator package depending on its own test tooling.
+ * stage-B validation benchmark feeds corpora to the validation pool — so the
+ * format lives here, where both can reach it without the operator package
+ * depending on its own test tooling.
  */
 import {
   computeMidgardNativeTxId,

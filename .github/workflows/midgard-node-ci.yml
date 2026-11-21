@@ -1028,19 +1028,14 @@ jobs:
           path: ${{ runner.temp }}/ci-file-durations
           if-no-files-found: warn
 
-  # The native MPF owner crate, and the offline throughput gates that followed
-  # it in the old serial job. The gates are pure `node --test` suites, so they
-  # run whether or not the crate builds.
+  # The native MPF owner crate.
   native-mpf:
-    name: Native MPF owner and throughput gates
+    name: Native MPF owner
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      # The candidate-input gate imports lucid-midgard's dist.
       - uses: ./.github/actions/demo-setup
-        with:
-          prebuild: lucid-midgard
       - name: Install native MPF Rust toolchain
         run: rustup toolchain install 1.91.0 --profile minimal --component rustfmt
       - name: Cache the native MPF cargo build
@@ -1053,14 +1048,6 @@ jobs:
         run: |
           pnpm --dir demo/midgard-node run native:mpf-owner:check
           pnpm --dir demo/midgard-node run native:mpf-owner:build
-      - name: Verify offline throughput gates
-        if: ${{ !cancelled() }}
-        run: |
-          pnpm --dir demo/midgard-node run test:mpf:architecture-g-corpus
-          pnpm --dir demo/midgard-node run test:mpf:architecture-g-gate-config
-          pnpm --dir demo/midgard-node run test:mpf:architecture-g-soak
-          pnpm --dir demo/midgard-node run test:mpf:architecture-g-closure
-          node --test demo/midgard-node/scripts/throughput-load-watchdog.test.mjs
 
   installed-boundaries:
     name: Installed package boundaries

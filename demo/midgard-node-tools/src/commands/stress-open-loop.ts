@@ -4,9 +4,9 @@ import type {
 } from "midgard-node/open-loop-corpus-format";
 import { percentileOfUnsorted as percentile } from "midgard-node/percentile";
 
-// The row wire format lives on the node side (the mpf-engine-probe worker and
-// the stage-B benchmark read corpora too); re-export it so the rest of the
-// tooling keeps one import site for corpus rows.
+// The row wire format lives on the node side (the stage-B benchmark reads
+// corpora too); re-export it so the rest of the tooling keeps one import site
+// for corpus rows.
 export {
   type OpenLoopCorpusRow,
   type OpenLoopCorpusShape,

@@ -27,17 +27,11 @@ State the class before any rate or latency number. Never headline
 
 ## Use canonical scenarios
 
-Treat repository scenario docs and package scripts as the source of truth. Read
-the one matching the request rather than copying an old local command:
-
-- `docs/benchmark-scenarios/mixed-workload-multi-io.md`;
-- `docs/benchmark-scenarios/phase-2-validation-gates.md`;
-- `docs/benchmark-scenarios/phase-3-architecture-g-closure.md`; or
-- `docs/benchmark-scenarios/phase-3-architecture-g-soak.md`.
-
-Run the named gate and verifier from `demo/midgard-node/package.json`. Do not
-substitute an ad hoc smoke for a named scenario. Never cite ignored or missing
-local `logs/` paths as durable repository evidence.
+Treat the package scripts as the source of truth rather than copying an old
+local command: run `stress:valid` or the matching `bench:l2:*` script from
+`demo/midgard-node/package.json`. Do not substitute an ad hoc smoke for a named
+run. Never cite ignored or missing local `logs/` paths as durable repository
+evidence.
 
 ## Placement and comparability
 
@@ -116,7 +110,7 @@ only with L1 observation evidence.
 
 Always report:
 
-- exact scenario/gate/verifier commands;
+- exact commands and environment overrides;
 - git commit and dirty-state status;
 - placement and resource isolation;
 - manifest/corpus/config hashes;

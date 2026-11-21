@@ -660,34 +660,9 @@
     "reason": "makeAiken is the dominant indivisible declaration (200 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-node/scripts/mpf-architecture-g-gate-config.test.mjs",
-    "max": 1636,
-    "reason": "Retained test registration “Phase 3 evidence resolves the explicit current Phase 1 binding and rejects every stale identity edge” (141 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-node/scripts/phase3-architecture-g-soak.mjs",
-    "max": 626,
-    "reason": "run is the dominant indivisible declaration (404 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-node/scripts/phase3-architecture-g-soak.test.mjs",
-    "max": 1248,
-    "reason": "Retained test registration “Phase 3 pre-lifecycle evidence and load-generator isolation” (505 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-node/scripts/throughput-valid-stress.mjs",
-    "max": 3706,
+    "max": 3536,
     "reason": "The stress CLI retains its main execution and coupled producer, submission, metrics and cleanup state. Independent schema/reporting helpers were extracted. Dividing this remaining cohort requires an explicit lifecycle API so cancellation, admission order and resource cleanup remain consistent."
-  },
-  {
-    "file": "midgard-node/scripts/verify-phase2-benchmark-report.verify-phase2-benchmark-reports.mjs",
-    "max": 652,
-    "reason": "verifyPhase2BenchmarkReports is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-node/scripts/verify-phase3-architecture-g-soak-report.evaluate-phase3-architecture-gsoak-report.mjs",
-    "max": 751,
-    "reason": "evaluatePhase3ArchitectureGSoakReport is the dominant indivisible declaration (708 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-node/src/database/migrations/sql/0001_initial_schema.sql",
@@ -740,11 +715,6 @@
     "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-node/src/workers/mpf-engine-probe.ts",
-    "max": 554,
-    "reason": "This self-identifying probe executable captures its own source path/hash and runs an ordered native-engine verification sequence. Moving its execution changes the recorded identity and process boundary; a dedicated probe redesign is needed before splitting it."
-  },
-  {
     "file": "midgard-node/tests/availability-challenge-command.test.ts",
     "max": 559,
     "reason": "Retained test registration “operational availability commands” (505 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
@@ -771,8 +741,8 @@
   },
   {
     "file": "midgard-node/tests/benchmark-regression.test.mjs",
-    "max": 1640,
-    "reason": "Retained test registration “Phase 1 formal scenario contracts” (554 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 905,
+    "reason": "One suite covers the throughput drill's corpus reader, report summaries and open-loop scheduler; its registrations share suite-local corpus fixtures and temporary directories. Dividing it is a separate test-harness split, not a declaration move."
   },
   {
     "file": "midgard-node/tests/benchmarks/validation-stage-b.bench.ts",
@@ -895,11 +865,6 @@
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
-    "file": "midgard-node/tests/mpf-commit-candidate-probe-artifacts.test.ts",
-    "max": 556,
-    "reason": "Retained test registration “Architecture G commit-candidate probe V1 artifacts” (325 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-node/tests/mpf-native-owner-service.test.ts",
     "max": 681,
     "reason": "Retained test registration (731 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
@@ -918,11 +883,6 @@
     "file": "midgard-node/tests/operator-lifecycle-emulator.test.ts",
     "max": 960,
     "reason": "Retained test registration “operator lifecycle emulator” (895 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
-    "file": "midgard-node/tests/phase2-benchmark-report.test.ts",
-    "max": 744,
-    "reason": "Retained test registration “Phase 2 benchmark report gate” (732 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/production-lifecycle-streaming-emulator.test.ts",

@@ -387,8 +387,6 @@ refuses to start unless `MPF_NATIVE_OWNER_BINARY_PATH`,
 `MPF_NATIVE_OWNER_SIDECAR_PATH` are all set; see
 [Architecture G is the only MPF engine](../../docs/midgard/decisions/architecture-g-sole-mpf-engine.md).
 
-- `pnpm bench:l2:scenario:<name>`: run a named benchmark scenario and write a
-  scenario artifact under `benchmark-results/<git-sha>/`.
 - `pnpm stress:nominal`: run the lower-rate sustained activity generator.
 
 ## Reconciliation Commands
@@ -929,20 +927,9 @@ STRESS_CORPUS_SHAPE=fanout \
 pnpm stress:valid
 ```
 
-Named scenarios set their rate, duration, and acceptance gates consistently:
-
-```sh
-pnpm bench:l2:scenario:find-max-ramp
-pnpm bench:l2:scenario:accept-2500-tps-gate
-pnpm bench:l2:scenario:soak-10min-at-max
-pnpm bench:l2:scenario:burst-2x-target
-```
-
-The scenario wrapper does not currently enforce corpus mode. Set both
-`STRESS_CORPUS_PATH` and `STRESS_CORPUS_SLICE_ID` for comparable Class A
-evidence; if they are absent, the engine falls back to the legacy transaction
-builder path. Use `--dry-run` directly with `scripts/benchmark-scenario.mjs` to
-inspect the resolved scenario environment before a run.
+Set both `STRESS_CORPUS_PATH` and `STRESS_CORPUS_SLICE_ID` for comparable
+Class A evidence; if they are absent, the engine falls back to the legacy
+transaction builder path.
 The benchmark env also requires no-op calibration by default: start
 `pnpm stress:noop` separately and set `STRESS_NOOP_ENDPOINT` to that echo
 server, or explicitly disable the requirement for a non-gating diagnostic run.

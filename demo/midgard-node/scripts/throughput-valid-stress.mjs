@@ -15,9 +15,6 @@ import "./native-tx-workload-utils.mjs";
 import "./throughput-valid-stress-corpus.mjs";
 import "./lib/benchmark-http-client.mjs";
 import "./lib/deadline-batched-schedule.mjs";
-import "./phase3-architecture-g-soak-preflight.mjs";
-import "./phase3-architecture-g-load-generator-isolation.mjs";
-import "./phase1-formal-identity.mjs";
 import "./throughput-valid-stress.create-runtime-sampler.mjs";
 import "./throughput-valid-stress.summarize-cursor-continuity.mjs";
 
@@ -41,16 +38,6 @@ import {
   outputHasMultiAssets,
   parseEnv,
 } from "./native-tx-workload-utils.mjs";
-import {
-  loadPhase1FormalBindingSync,
-  PHASE1_FORMAL_SCENARIO,
-  sha256FileSync,
-  validatePhase1BindingEnvironment,
-  validatePhase1FormalCorpus,
-  verifyPhase1LivePreflight,
-} from "./phase1-formal-identity.mjs";
-import { consumePhase3LoadGeneratorIsolation } from "./phase3-architecture-g-load-generator-isolation.mjs";
-import { consumePhase3SoakCorpusPreflight } from "./phase3-architecture-g-soak-preflight.mjs";
 import {
   acceptedStatuses,
   BENCHMARK_WINDOWS_MS,
@@ -191,40 +178,6 @@ const corpusReadAheadRows = Number.parseInt(
   10,
 );
 
-const corpusPreflightRequired =
-  String(envValue("STRESS_CORPUS_PREFLIGHT_REQUIRED", "false"))
-    .trim()
-    .toLowerCase() === "true";
-
-const corpusPreflightPath = envValue("STRESS_CORPUS_PREFLIGHT_PATH", null);
-
-const corpusPreflightSha256 = envValue("STRESS_CORPUS_PREFLIGHT_SHA256", null);
-
-const corpusPreflightSourceIdentitySha256 = envValue(
-  "STRESS_CORPUS_PREFLIGHT_SOURCE_IDENTITY_SHA256",
-  null,
-);
-
-const corpusPreflightPhase1BindingSha256 = envValue(
-  "STRESS_CORPUS_PREFLIGHT_PHASE1_BINDING_SHA256",
-  null,
-);
-
-const loadGeneratorIsolationRequired =
-  String(envValue("STRESS_LOAD_GENERATOR_ISOLATION_REQUIRED", "false"))
-    .trim()
-    .toLowerCase() === "true";
-
-const loadGeneratorIsolationPath = envValue(
-  "STRESS_LOAD_GENERATOR_ISOLATION_PATH",
-  null,
-);
-
-const loadGeneratorIsolationSha256 = envValue(
-  "STRESS_LOAD_GENERATOR_ISOLATION_SHA256",
-  null,
-);
-
 const requireNoOpCalibration =
   String(envValue("STRESS_REQUIRE_NOOP_CALIBRATION", "false"))
     .trim()
@@ -339,23 +292,6 @@ const scenarioName = String(envValue("STRESS_SCENARIO_NAME", "custom")).trim();
 const formalBenchmark =
   String(envValue("STRESS_FORMAL_BENCHMARK", "false")).trim().toLowerCase() ===
   "true";
-
-const phase1FormalBinding =
-  formalBenchmark && scenarioName === PHASE1_FORMAL_SCENARIO
-    ? (() => {
-        const binding = loadPhase1FormalBindingSync(
-          envValue("STRESS_PHASE1_BINDING_PATH"),
-        );
-        return validatePhase1BindingEnvironment({
-          binding,
-          env: stressEnv,
-          scenarioId: sha256FileSync(
-            path.join(__dirname, "benchmark-scenario.mjs"),
-          ),
-          engineId: sha256FileSync(__filename),
-        });
-      })()
-    : null;
 
 const loadGeneratorPlacement = String(
   envValue("STRESS_LOAD_GENERATOR_PLACEMENT", "unspecified"),
@@ -632,27 +568,6 @@ if (!Number.isFinite(corpusReadAheadRows) || corpusReadAheadRows <= 0) {
   throw new Error("STRESS_CORPUS_READAHEAD_ROWS must be a positive integer");
 }
 
-const corpusPreflightValues = [
-  corpusPreflightPath,
-  corpusPreflightSha256,
-  corpusPreflightSourceIdentitySha256,
-  corpusPreflightPhase1BindingSha256,
-];
-
-const corpusPreflightEnabled = corpusPreflightValues.every(
-  (value) => typeof value === "string" && value.trim().length > 0,
-);
-
-if (
-  (corpusPreflightRequired && !corpusPreflightEnabled) ||
-  (!corpusPreflightEnabled &&
-    corpusPreflightValues.some((value) => value !== null))
-) {
-  throw new Error(
-    "full corpus preflight requires path, artifact SHA-256, source-identity SHA-256, and Phase 1 binding SHA-256",
-  );
-}
-
 if (!Number.isFinite(utxosPerWallet) || utxosPerWallet <= 0) {
   throw new Error("STRESS_UTXOS_PER_WALLET must be a positive integer");
 }
@@ -714,13 +629,6 @@ if (formalBenchmark) {
     );
   }
 }
-
-const loadGeneratorIsolation = loadGeneratorIsolationRequired
-  ? consumePhase3LoadGeneratorIsolation({
-      artifactPath: loadGeneratorIsolationPath,
-      artifactSha256: loadGeneratorIsolationSha256,
-    })
-  : null;
 
 if (!Number.isFinite(measuredSec) || measuredSec <= 0) {
   throw new Error("STRESS_MEASURED_SEC must be a positive number");
@@ -2678,12 +2586,10 @@ const main = async () => {
       scenarioName,
       scenarioClass,
       formalBenchmark,
-      phase1FormalIdentity: null,
       loadGenerator: {
         placement: loadGeneratorPlacement,
         cohosted: loadGeneratorCohosted,
         clockOffsetMs,
-        isolation: loadGeneratorIsolation,
       },
       observabilityProfile,
       maxChains: maxChains ?? "auto",
@@ -2806,9 +2712,6 @@ const main = async () => {
     let corpusArtifactIdentity = null;
     let corpusIndexEntries = [];
     let corpusValidation = null;
-    let corpusPreflightIdentity = null;
-    let phase1FormalIdentity = null;
-    let phase1FormalLivePreflight = null;
     let noOpCalibration = { enabled: false, required: requireNoOpCalibration };
 
     if (usingCorpus) {
@@ -2836,61 +2739,23 @@ const main = async () => {
         corpusShape,
         maxChains,
       });
-      if (corpusPreflightEnabled) {
-        const consumed = consumePhase3SoakCorpusPreflight({
-          artifactPath: corpusPreflightPath,
-          artifactSha256: corpusPreflightSha256,
-          expectedSourceIdentitySha256: corpusPreflightSourceIdentitySha256,
-          expectedPhase1BindingSha256: corpusPreflightPhase1BindingSha256,
-          corpusPath,
-          indexPath: corpusIndexPath,
-          manifestPath: corpusManifestPath,
-          manifest: corpusManifest,
-          fullIndex,
-          selectedEntries: corpusIndexEntries,
-          corpusSliceId,
-          corpusShape,
-        });
-        corpusArtifactIdentity = consumed.corpusArtifactIdentity;
-        corpusValidation = consumed.validation;
-        corpusPreflightIdentity = consumed.artifactIdentity;
-      } else {
-        corpusArtifactIdentity = await verifyCorpusArtifactIdentity({
-          corpusPath,
-          indexPath: corpusIndexPath,
-          manifestPath: corpusManifestPath,
-          manifest: corpusManifest,
-        });
-        corpusValidation = await validateCorpusSlice({
-          corpusPath,
-          indexEntries: corpusIndexEntries,
-        });
-      }
+      corpusArtifactIdentity = await verifyCorpusArtifactIdentity({
+        corpusPath,
+        indexPath: corpusIndexPath,
+        manifestPath: corpusManifestPath,
+        manifest: corpusManifest,
+      });
+      corpusValidation = await validateCorpusSlice({
+        corpusPath,
+        indexEntries: corpusIndexEntries,
+      });
       configForReport.corpus.artifactIdentity = corpusArtifactIdentity;
-      configForReport.corpus.preflight = corpusPreflightIdentity;
-      if (phase1FormalBinding !== null) {
-        phase1FormalIdentity = validatePhase1FormalCorpus({
-          binding: phase1FormalBinding,
-          corpusManifest,
-          corpusArtifactIdentity,
-          selectedIndexEntries: corpusIndexEntries,
-        });
-        configForReport.phase1FormalIdentity = phase1FormalIdentity;
-      }
       const availableRows = corpusRowsForEntries(corpusIndexEntries);
       const requiredRows = estimateRequiredCorpusRows();
       if (availableRows < requiredRows) {
         throw new Error(
           `corpus_exhausted_preflight: selected slice has ${availableRows} rows, estimated worst-case need is ${requiredRows}`,
         );
-      }
-      if (phase1FormalIdentity !== null) {
-        setPhase("phase1-live-preflight");
-        phase1FormalLivePreflight = await verifyPhase1LivePreflight({
-          expected: phase1FormalIdentity.livePreflight,
-          fetchUtxos,
-        });
-        configForReport.phase1FormalLivePreflight = phase1FormalLivePreflight;
       }
       uniquePrebuiltTxIdCount = corpusValidation.uniqueTxHashes;
       selectedChains = corpusIndexEntries.map((entry) => ({
@@ -3483,12 +3348,9 @@ const main = async () => {
             shape: corpusShape,
             validation: corpusValidation,
             artifactIdentity: corpusArtifactIdentity,
-            preflight: corpusPreflightIdentity,
             consumption: corpusConsumption,
           }
         : null,
-      phase1FormalIdentity,
-      phase1FormalLivePreflight,
       calibration:
         "enabled" in noOpCalibration && noOpCalibration.enabled === false
           ? null
@@ -3568,8 +3430,6 @@ const main = async () => {
         git,
         runtime: runtimeMetadata,
       },
-      runIdentity: phase1FormalIdentity,
-      livePreflight: phase1FormalLivePreflight,
       config: configForReport,
       clientSelfCheck,
       calibration: {

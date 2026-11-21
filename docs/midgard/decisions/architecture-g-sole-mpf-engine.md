@@ -44,14 +44,11 @@ This ruling does not say that Architecture G passed its acceptance gates. The
 owner did not rule on them, and none has a retained passing report on the
 current revision. These gates stay open and block mainnet:
 
-- the 24-hour live soak on matching identities
-  ([soak procedure](../../benchmark-scenarios/phase-3-architecture-g-soak.md));
-- the 50k and retained-growth root and candidate gates
-  ([operator closure](../../benchmark-scenarios/phase-3-architecture-g-closure.md));
-- release-image verification of the shipped owner binary
-  (`scripts/phase3-architecture-g-release-image.mjs` and its verifier);
+- the 24-hour live soak on matching identities;
+- the 50k and retained-growth root and candidate gates;
+- release-image verification of the shipped owner binary;
 - the final-build differential and crash/recovery coverage and a clean live
-  lifecycle, as listed in the operator closure.
+  lifecycle.
 
 Deleting the other engines does not discharge any of these. A failed gate stays
 failed; changing defaults, inflating limits or shortening runs cannot

@@ -1898,8 +1898,9 @@ per-block L1 work against state size, rollback cost, or committee tick cost:
 - the group-commit A/B bench measures Postgres commit grouping
   (`demo/midgard-node/tests/benchmarks/phase1-group-commit-ab.bench.ts:45`);
 - the validation and codec benches measure L2 tx validation;
-- the Architecture G soak measures MPF growth under L2 load, and needs 24 hours
-  at 5,000 TPS (`docs/benchmark-scenarios/phase-3-architecture-g-soak.md:11-19`);
+- the Architecture G soak measured MPF growth under L2 load over 24 hours at
+  5,000 TPS; its tooling was deleted once Architecture G became the only
+  engine;
 - the Phase 4 one-hour pipelined-commit gate was deleted with speculative
   building (#752), and no replacement gate was filed.
 
