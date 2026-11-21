@@ -15,8 +15,10 @@ import {
   type LedgerMutation,
   LedgerNodeMissing,
   type LedgerWitness,
+  LedgerWitnessRefused,
   recordWitness,
   type StoredNode,
+  type WitnessBranch,
   type WitnessNode,
 } from "../src/ledger-store/index.js";
 import {
@@ -253,7 +255,9 @@ describe("ledgerFromWitness refuses what does not open the root", () => {
     ).toThrow(/has no witnessed leaf/);
   });
 
-  it("refuses a leaf away from its key's path and a node at two paths", async () => {
+  /** The two-entry ledger's root branch, built by hand: its two leaves sit
+   * at nibbles `a` and `b`; `spare` is an empty slot. */
+  const twoLeafRoot = async () => {
     const [left, right] = testLedgerEntries(0, 2).sort((a, b) =>
       keyPath(a) < keyPath(b) ? -1 : 1,
     );
@@ -264,7 +268,7 @@ describe("ledgerFromWitness refuses what does not open the root", () => {
       value: ledgerEntryLeaf(entry, "test").leaf.toString("hex"),
     });
     const [l, r] = [leaf(left!), leaf(right!)];
-    const branch = (slots: Record<number, WitnessNode>): WitnessNode => ({
+    const branch = (slots: Record<number, WitnessNode>): WitnessBranch => ({
       __kind: "Branch",
       prefix: "",
       children: Array.from({ length: 16 }, (_, nibble) =>
@@ -277,6 +281,39 @@ describe("ledgerFromWitness refuses what does not open the root", () => {
     // The two-entry root opens with the honest shape.
     expect(hashOf(honest)).toBe(await ledgerEntriesRoot([left!, right!]));
     const spare = [...Array(16).keys()].find((n) => n !== a && n !== b)!;
+    return { left: left!, right: right!, l, r, a, b, spare, honest, branch };
+  };
+
+  it("refuses a branch child equal to the empty slot's hash", async () => {
+    const { left, right, l, r, honest, spare } = await twoLeafRoot();
+    const children = [...honest.children];
+    children[spare] = "00".repeat(32);
+    const forged: WitnessBranch = { ...honest, children };
+    // The trie hashes an all-zero child exactly as an empty slot, so the
+    // forged branch opens the honest root.
+    expect(hashOf(forged)).toBe(hashOf(honest));
+    const opened = (() => {
+      try {
+        return ledgerFromWitness(hashOf(honest), {
+          nodes: [forged, l, r],
+          outputs: [],
+        });
+      } catch (error) {
+        return error;
+      }
+    })();
+    expect(opened).toBeInstanceOf(LedgerWitnessRefused);
+    expect((opened as Error).message).toMatch(/empty slot/);
+    // The honest witness collapses to the one remaining leaf on delete.
+    const after = await ledgerFromWitness(hashOf(honest), {
+      nodes: [honest, l, r],
+      outputs: [],
+    }).apply([{ type: "delete", outRef: left.outRef }]);
+    expect(after.root).toBe(await ledgerEntriesRoot([right]));
+  });
+
+  it("refuses a leaf away from its key's path and a node at two paths", async () => {
+    const { l, r, a, b, spare, branch } = await twoLeafRoot();
     const swapped = branch({ [spare]: l, [b]: r });
     expect(() =>
       ledgerFromWitness(hashOf(swapped), {

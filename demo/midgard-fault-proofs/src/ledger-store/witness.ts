@@ -48,6 +48,8 @@ const PATH_NIBBLES = HASH_BYTES * 2;
 const NIBBLES = /^[0-9a-f]*$/;
 const HASH = /^[0-9a-f]{64}$/;
 const BYTES = /^(?:[0-9a-f]{2})+$/;
+/** What `nodeHash` hashes an empty child slot as. */
+const EMPTY_SLOT_HASH = "00".repeat(HASH_BYTES);
 
 const digest = (...parts: readonly Uint8Array[]): Buffer =>
   Buffer.from(midgardBlake2b(Buffer.concat(parts), { dkLen: HASH_BYTES }));
@@ -99,6 +101,9 @@ const checkShape = (node: WitnessNode, index: number): void => {
     if (child === null) continue;
     if (typeof child !== "string" || !HASH.test(child))
       refuse("child is not a node hash");
+    // The trie hashes an empty slot as this value, so a child equal to it
+    // would add a slot the hash does not see.
+    if (child === EMPTY_SLOT_HASH) refuse("child is the empty slot's hash");
     present += 1;
   }
   if (present < 2) refuse("a branch has at least two children");
@@ -161,8 +166,8 @@ export const recordWitness = (
 
 /**
  * The ledger with `root` as far as `witness` opens it. Refuses
- * (`LedgerWitnessRefused`) a witness with a malformed node, a node not
- * reachable from `root` through witnessed nodes, a node reached at two
+ * (`LedgerWitnessRefused`) a witness with a malformed node (a branch child
+ * equal to the empty slot's hash included), a node not reachable from `root` through witnessed nodes, a node reached at two
  * different paths, a leaf not at its key's path, or an output that is not
  * the value of a witnessed leaf. Reading a node the witness does not hold
  * fails with `LedgerNodeMissing`. The ledger cannot be persisted.
