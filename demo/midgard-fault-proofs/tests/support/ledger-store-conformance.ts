@@ -38,11 +38,10 @@ export type OpenedLedgerStorage = {
   readonly storage: LedgerStorage;
   readonly close: () => Promise<void>;
   /**
-   * Closes these records and opens them again, as a restarted process would.
-   * An adapter that keeps nothing past its process leaves it out, and its
-   * storage is reused as it is.
+   * Closes these records and opens them again, as a restarted process would:
+   * a new storage object over the same records.
    */
-  readonly reopen?: () => Promise<OpenedLedgerStorage>;
+  readonly reopen: () => Promise<OpenedLedgerStorage>;
 };
 
 export type OpenLedgerStorage = () => Promise<OpenedLedgerStorage>;
@@ -291,9 +290,9 @@ export const describeLedgerStoreConformance = (
         await expect(store.at(unknownRoot)).rejects.toBeInstanceOf(
           LedgerNotRetained,
         );
-        await expect(
-          store.retain(new Set([ledger.root, unknownRoot])),
-        ).rejects.toBeInstanceOf(LedgerNotRetained);
+        expect(await store.retain(new Set([ledger.root, unknownRoot]))).toEqual(
+          { notRetained: new Set([unknownRoot]) },
+        );
         await expectLedgerMatches(await store.at(ledger.root), BASE);
         await expect(
           store.admit(BASE.slice(1), ledger.root),
@@ -358,7 +357,9 @@ export const describeLedgerStoreConformance = (
           );
         await expectLedgerMatches(await store.at(c.root), cEntries);
         expect(await storage.counts()).toEqual(await countsOfOnly([cEntries]));
-        await store.retain(new Set([EMPTY_LEDGER_ROOT]));
+        expect(await store.retain(new Set([EMPTY_LEDGER_ROOT]))).toEqual({
+          notRetained: new Set(),
+        });
         await expect(store.at(c.root)).rejects.toBeInstanceOf(
           LedgerNotRetained,
         );
@@ -373,7 +374,6 @@ export const describeLedgerStoreConformance = (
 
     it.each([
       ["leaves", "a new store"],
-      ["nothing", "a new store"],
       ["leaves", "the same store"],
     ] as const)(
       "finishes a sweep that died after deleting %s before %s persists again",
@@ -393,7 +393,7 @@ export const describeLedgerStoreConformance = (
           );
           let store = first;
           if (next === "a new store") {
-            if (opened.reopen !== undefined) opened = await opened.reopen();
+            opened = await opened.reopen();
             store = createLedgerStore(opened.storage);
           }
           // Re-creating the dropped ledger makes its nodes recur.
@@ -412,6 +412,14 @@ export const describeLedgerStoreConformance = (
         }
       },
     );
+
+    it("refuses a second store over the same storage", async () => {
+      await withStore(async (_store, storage) => {
+        expect(() => createLedgerStore(storage)).toThrow(
+          /already owns this storage/,
+        );
+      });
+    });
 
     it("keeps a root persisted while a sweep runs, with the dropped nodes it reuses", async () => {
       const opened = await open();

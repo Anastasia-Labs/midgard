@@ -72,3 +72,27 @@ export const interruptedStorage = (
     },
   };
 };
+
+/**
+ * A storage whose next sweep, once `holeAt(hash)` has named a node, deletes
+ * that node as the sweep begins, through the sweep's own deletion: a retained
+ * root then reaches a node that is not held.
+ */
+export const holedStorage = (storage: LedgerStorage) => {
+  let hole: string | undefined;
+  return {
+    holeAt: (hash: string) => {
+      hole = hash;
+    },
+    storage: {
+      ...storage,
+      beginSweep: async (retained) => {
+        await storage.beginSweep(retained);
+        if (hole === undefined) return;
+        const nodes = [hole];
+        hole = undefined;
+        await storage.deleteSwept({ nodes, outputs: [] });
+      },
+    } satisfies LedgerStorage,
+  };
+};
