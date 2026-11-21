@@ -574,6 +574,10 @@
     "./test-support/ledger-store-conformance": {
       "midgard-source": "./tests/support/ledger-store-conformance.ts",
       "types": "./tests/support/ledger-store-conformance.ts"
+    },
+    "./test-support/ledger-store-exit-bench": {
+      "midgard-source": "./tests/support/ledger-store-exit-bench.ts",
+      "types": "./tests/support/ledger-store-exit-bench.ts"
     }
   },
   "type": "module",
