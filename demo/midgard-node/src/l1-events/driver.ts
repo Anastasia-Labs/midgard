@@ -128,8 +128,7 @@ export const isFatalHold = (hold: DriverHold): boolean => FATAL.has(hold);
  * bounded time (`transientFailure`) or `notRetried`. The effectful caller
  * supplies it (`failureHold`, `services/l1-follower.failure-hold.ts`): the
  * classification names the node transport's error classes and the provider
- * retry policy, which this module keeps out of its imports (the determinism
- * lint, `tests/l1-events-lint.test.ts`).
+ * retry policy, which this module keeps out of its imports.
  */
 export type FailureHold = (
   reason: string,

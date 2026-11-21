@@ -2,9 +2,9 @@
  * The status of this node's block journals, derived in one place from the
  * facts (plan §8.2, §8.3, #753); no journal stores a copy. Pure SQL
  * fragments with no service behind them: the forced-order derivation's
- * modules reach them (`l1-admission-identity.ts`), and the S3 determinism
- * lint holds everything it reaches to no clock, randomness or network. The
- * reads over them are `pendingBlockFinalizations.derived-status.ts`.
+ * modules reach them (`l1-admission-identity.ts`), and a derivation reads no
+ * clock, randomness or network. The reads over them are
+ * `pendingBlockFinalizations.derived-status.ts`.
  *
  * - `folded`: `confirmed_ledger` holds it: it is the frontier or a
  *   retained fold, whatever landed row is left (a frontier set at the

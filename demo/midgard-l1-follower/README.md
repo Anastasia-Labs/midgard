@@ -404,10 +404,10 @@ createTemporalRegistry(specs): TemporalRegistry // throws RegistryError
 ```
 
 A derivation must be a pure function of the block, the facts and the role's
-own class B/C content: no clock, randomness or network (enforced by the
-determinism lint). A rewind deletes rows whose start or slot is above the
-target and reopens versioned rows closed above it, children before parents.
-Pruning deletes rows k deep per their `retention`. A role may also insert
+own class B/C content: no clock, randomness or network. A rewind deletes rows
+whose start or slot is above the target and reopens versioned rows closed above
+it, children before parents. Pruning deletes rows k deep per their
+`retention`. A role may also insert
 `l1_event_keys` rows (`kind`, `key`, `origin_outref`, `first_canonical_slot`);
 the rewind removes keys first seen above its target.
 
@@ -463,8 +463,6 @@ No module outside `src/heads.ts` compares a value against
 ```ts
 lintSchema(sets: readonly MigrationSet[], registry?: TemporalRegistry): SchemaLintProblem[]
 declaredTables(sets: readonly MigrationSet[]): DeclaredTable[]
-lintDeterminism(files: readonly { path: string; source: string }[], options?: { bannedModules?: string[] }): DeterminismProblem[]
-lintDeterminismSource(path: string, source: string, options?): DeterminismProblem[]
 ```
 
 `lintSchema` fails a `CREATE TABLE` without a class and retention header, an
@@ -479,8 +477,8 @@ class, in the catalog `l1_follower_tables`, and refuses a migration whose
 table lacks its header. The bookkeeping tables (`l1_follower_migrations`,
 `l1_follower_tables`, `l1_follower_writer`, `l1_follower_tracked_set`, in
 `FOLLOWER_BOOKKEEPING_DDL`)
-are created before any migration and are not in the catalog. The lints load the TypeScript
-compiler, so they are kept out of the runtime entry point.
+are created before any migration and are not in the catalog. Only tests use
+the lint, so it is kept out of the runtime entry point.
 
 ### Wallet seed (§5.3 step 4)
 

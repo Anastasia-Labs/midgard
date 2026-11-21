@@ -4,8 +4,8 @@
  * from a failure that is not transient. It names the L1 node transport's
  * error classes and the provider retry policy (which jitters its backoff),
  * so it lives outside the pure event driver (`l1-events/driver.ts`), which
- * the determinism lint keeps free of the network and of randomness; the
- * driver takes `failureHold` as an option.
+ * stays free of the network and of randomness; the driver takes
+ * `failureHold` as an option.
  */
 import {
   SidecarExitedError,

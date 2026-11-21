@@ -1,7 +1,7 @@
 /**
  * A header's newest queue terminal (N4), as a SQL fragment with no service
- * behind it, so a module the S3 determinism lint reaches (the own-block
- * status, `pendingBlockFinalizations.status-sql.ts`) can read it.
+ * behind it, so a pure derivation (the own-block status,
+ * `pendingBlockFinalizations.status-sql.ts`) can read it.
  */
 import type { SqlClient } from "@effect/sql";
 
