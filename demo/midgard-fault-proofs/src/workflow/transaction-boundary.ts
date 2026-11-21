@@ -207,11 +207,11 @@ export type OutsideWorkflowSubmission<Built> = Built extends unknown
   : never;
 
 /**
- * Submits a built transaction directly, outside any workflow's in-flight
- * set or lease: after a crash nothing knows it was sent. For the diagnostic
- * CLI and tests; for the chain-driven proven-correction removal, which needs
- * none because the correction lock and fraud-proof record on L1 say what is
- * left to remove, so anyone can resume it; and for field-grammar certification
+ * Submits a built transaction directly, outside any workflow's lease. For
+ * the diagnostic CLI and tests; for the chain-driven proven-correction
+ * removal, which needs none because the correction lock and fraud-proof
+ * record on L1 say what is left to remove, so anyone can resume it; and for
+ * field-grammar certification
  * (`certifyFaultProofFieldGrammar`), the one builder that submits.
  * Refuses a provider that reports another hash, naming the transaction by
  * `label`, and waits for confirmation only when `awaitConfirmation` is set.

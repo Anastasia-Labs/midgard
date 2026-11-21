@@ -42,7 +42,6 @@ import { runOrResumeManifestBoundFamilyWorkflow } from "../workflow/manifest-bou
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { createStructuredDataPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { workflowStepTransaction } from "../workflow/step-transaction.js";
-import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   admitWithdrawalMistagWorkflowArtifact,
@@ -334,5 +333,4 @@ export const runOrResumeManifestBoundWithdrawalMistagWorkflow = (input: {
   workflow: ManifestBoundWithdrawalMistagWorkflow;
   sources: readonly RetainedDaPayloadSource[];
   run: WorkflowRun;
-  walletOnlySend: WalletOnlySend;
 }) => runOrResumeManifestBoundFamilyWorkflow(input);

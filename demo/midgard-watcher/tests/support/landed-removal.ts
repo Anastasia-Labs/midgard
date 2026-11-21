@@ -96,7 +96,10 @@ export const landedRemoval = async (
               decisionDigest,
               authority: {
                 authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-                capture,
+                capture: async () => ({
+                  snapshot: await capture(),
+                  pending: [],
+                }),
               },
             }),
   };

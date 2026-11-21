@@ -88,9 +88,8 @@ import type { PreparedNetworkIdWrongfulRejection } from "./wrongful-rejection.js
 
 /**
  * Concrete last-header adapter. It captures the actual signed transaction at
- * the post-local-evaluation/pre-network boundary, hands that hash to the
- * shared orchestrator's in-flight set, then submits exactly the captured
- * body.
+ * the post-local-evaluation/pre-network boundary, then submits exactly the
+ * captured body.
  */
 export const createNetworkIdWorkflowAdapter = (
   config: NetworkIdWorkflowAdapterConfig,
@@ -299,6 +298,8 @@ export const createNetworkIdWorkflowAdapter = (
     if (rawStage?.kind === "removed") {
       return { kind: "completed", terminal: rawStage.terminal };
     }
+    if (rawStage?.kind === "pending")
+      return { kind: "pending", reason: rawStage.reason };
     const state =
       rawStage === undefined ? await live(prepared.headerHash) : undefined;
     const proofUnit =
@@ -599,25 +600,11 @@ export const createNetworkIdWorkflowAdapter = (
         };
       }
     }
-    // Init is read from finding no thread of ours at any step: a move of
-    // ours in flight between two of them leaves both empty until it lands.
     return {
       kind: "action_required",
       action: action("init", {
         fraudulentBlockOutRef: stateQueueOutRef,
       }),
-      absentAt: [
-        config.contracts.steps[0].spendingScriptAddress,
-        config.contracts.steps[1].spendingScriptAddress,
-        config.contracts.fraudProof.spendingScriptAddress,
-        ...(admitted.direction === "accepted"
-          ? []
-          : [requireForcedStep().spendingScriptAddress]),
-        ...(admitted.direction === "forced" &&
-        config.contracts.forcedScan !== undefined
-          ? [config.contracts.forcedScan.spendingScriptAddress]
-          : []),
-      ],
     };
   };
 
@@ -1103,8 +1090,7 @@ export const createNetworkIdWorkflowAdapter = (
         transaction,
         ...(mutationLease === undefined ? {} : { mutationLease }),
       });
-      // The runner reads the signed body back from the preflight to hold
-      // the inputs it spends while it is in flight.
+      // The runner refuses a preflight that carries no signed body.
       return bindWorkflowPreflightTransaction(
         {
           actionId: context.action.actionId,

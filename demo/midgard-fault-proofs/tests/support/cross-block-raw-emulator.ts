@@ -1,3 +1,4 @@
+import type { PendingTransaction } from "@al-ft/midgard-l1-follower/mempool";
 import {
   layerMethod,
   type MethodLayer,
@@ -22,6 +23,7 @@ import {
   type FraudProofRawL1Transaction,
   type FraudProofRawL1Utxo,
 } from "../../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import { layerEmulatorMempool } from "./emulator-pending.js";
 // Emulator exposes no native header hash. This encoder belongs only to this
 // mocked raw-authority test domain; height/slot come from its real public API.
 export const syntheticEmulatorPoint = (blockHeight: number, slot: number) => {
@@ -64,12 +66,20 @@ export const observeEmulatorSubmissions = (
 export const recordCrossBlockRawEmulator = (
   options: {
     /**
-     * Records only this emulator's submissions, through a layer on the
-     * emulator itself that never needs restoring and that leaves its reads
-     * as they are. The layer dispatches to the prototype's submitTx at each
-     * call, so a prototype layer installed after it still sees every one.
+     * Records only this emulator's submissions, through layers on the
+     * emulator itself that never need restoring. The submit layer dispatches
+     * to the prototype's submitTx at each call, so a prototype layer
+     * installed after it still sees every one.
      */
     readonly emulator?: Emulator;
+    /**
+     * The emulator mempool's transactions at each capture, in order, from an
+     * `emulatorPending` the caller installed. When omitted, the recorder
+     * layers the mempool over the provider reads itself, from the bytes it
+     * records (`layerEmulatorMempool`): every read, as every capture, is the
+     * ledger with the node's mempool applied.
+     */
+    readonly pending?: () => readonly PendingTransaction[];
   } = {},
 ) => {
   const rows: Omit<
@@ -95,22 +105,6 @@ export const recordCrossBlockRawEmulator = (
   // Layers, not vi.spyOn: a caller may stack its own observer on submitTx
   // (see @al-ft/midgard-test-support/method-layer), and both must see every
   // real submission.
-  // Match the raw authority's canonical view when prerequisite discovery reads
-  // a checkpoint through Lucid while its spending transaction is in the mempool.
-  const outRefReads =
-    options.emulator === undefined
-      ? layerMethod(
-          Emulator.prototype,
-          "getUtxosByOutRef",
-          () =>
-            async function (this: Emulator, outRefs) {
-              return outRefs.flatMap(({ txHash, outputIndex }) => {
-                const entry = this.ledger[txHash + outputIndex];
-                return entry === undefined ? [] : [entry.utxo];
-              });
-            },
-        )
-      : { restore: () => {} };
   const record = (next: Emulator["submitTx"]) =>
     async function (this: Emulator, cbor: string) {
       const tx = CML.Transaction.from_cbor_hex(cbor);
@@ -137,6 +131,9 @@ export const recordCrossBlockRawEmulator = (
       const acceptedTime = this.now();
       const hash = await next.call(this, cbor);
       recorded.emulator = this;
+      // The same bytes sent again, after a mempool dropped them, are the one
+      // transaction already recorded.
+      if (signedCbors.has(hash)) return hash;
       signedCbors.set(hash, cbor);
       acceptedTransactions.set(hash, {
         txHash: hash,
@@ -164,6 +161,12 @@ export const recordCrossBlockRawEmulator = (
             return Emulator.prototype.submitTx.call(this, cbor);
           }),
         );
+  const mempool =
+    options.pending === undefined
+      ? layerEmulatorMempool(options.emulator ?? Emulator.prototype, (txHash) =>
+          signedCbors.get(txHash),
+        )
+      : undefined;
   // A recorded row's bytes never change, so each is decoded once, by its
   // hash: the units its inputs and outputs carry, and its outputs as raw
   // UTxOs. Decoding them again at every capture left cardano-multiplatform-lib
@@ -268,7 +271,7 @@ export const recordCrossBlockRawEmulator = (
           );
         return { ...recorded };
       };
-      return {
+      const snapshot = {
         schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
         deploymentIdentityDigest: request.deploymentIdentityDigest,
         blueprintHash: request.blueprintHash,
@@ -317,13 +320,17 @@ export const recordCrossBlockRawEmulator = (
         })),
         transactions,
       } satisfies FraudProofRawL1Snapshot;
+      return {
+        snapshot,
+        pending: options.pending?.() ?? mempool!.pending(emulator),
+      };
     },
   };
   return {
     authority,
     restore: () => {
+      mempool?.restore();
       submissions.restore();
-      outRefReads.restore();
     },
     rows,
     signedCbors,

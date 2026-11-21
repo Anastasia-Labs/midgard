@@ -8,10 +8,7 @@ import {
 import { CML } from "@lucid-evolution/lucid";
 
 import { rawToUtxo } from "../workflow/raw-l1-family-derivation.state-queue-topology.js";
-import type {
-  FraudProofRawL1Transaction,
-  FraudProofRawL1Utxo,
-} from "../workflow/raw-l1-snapshot.js";
+import type { FraudProofRawL1Utxo } from "../workflow/raw-l1-snapshot.js";
 
 /** An output a resolve move of ours read: whether it is at our staging
  * address and, there, its inline datum and the run it stages, with the
@@ -57,7 +54,7 @@ export const sameDatum = (left: string, right: string): boolean => {
 
 /** Whether the key `keyHash` signed `transaction`. */
 export const signedBy = (
-  transaction: FraudProofRawL1Transaction,
+  transaction: Readonly<{ witnessSetCbor: string }>,
   keyHash: string,
 ): boolean => {
   const witnesses = CML.TransactionWitnessSet.from_cbor_hex(

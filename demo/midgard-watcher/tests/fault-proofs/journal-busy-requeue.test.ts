@@ -2,7 +2,6 @@ import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import type { WorkflowAdapterRunnerInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
 import { verifyCompletedFraudProofWorkflow } from "@al-ft/midgard-fault-proofs/workflow/completed-verification";
-import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import { WORKFLOW_RUNNER_FACTORIES } from "@al-ft/midgard-fault-proofs/workflow/runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,7 +21,6 @@ import {
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
 import { landedRemoval } from "../support/landed-removal.js";
-import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
   recordObjectives,
@@ -136,19 +134,16 @@ const setup = async () => {
   });
   const setAlert = vi.fn();
 
-  // One watcher process: its in-flight set, supervisor and readiness. The
+  // One watcher process: its supervisor and readiness. The
   // requeue wakes the decision driver once the hold clears.
   const start = (wake: () => void = () => undefined) => {
-    const inFlight = createWorkflowInFlight();
     const supervisor = createWatcherFaultProofSupervisor({
       proofRetention: storelessProofRetention,
       journalRoot: fixture.journalRoot,
-      inFlight,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: TEST_JOURNAL_KEY,
-      l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
       journalBusyRequeue: { wake },
       execution: createWatcherFaultProofExecution({
         application: {
@@ -159,7 +154,6 @@ const setup = async () => {
             verifyCompleted,
           ),
         },
-        inFlight,
         runtimeConfigPath: "/unused-journal-busy-test.json",
         deploymentFingerprint: deploymentIdentity.manifestId,
         operationsSink: { recordProofStep: vi.fn(), setAlert },

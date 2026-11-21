@@ -17,23 +17,19 @@ import {
  *   right an on-time run has: a fresh submission for each later step, and a
  *   new attempt for a step whose transaction expired. It is marked late for
  *   the execution's alert.
- * - `reconcile`: at or past maturity while a transaction this process sent
- *   for the objective can still land (`sending`); the run only continues
- *   what is in flight.
- * - `observe`: at or past maturity with nothing in flight, as after a
- *   restart. No removal of ours can land any more, but one may have landed
- *   already: the chain is asked first. A landed removal completes the
- *   objective; otherwise it is held by name (`watcherProofStartDeadlinePassed`).
+ * - `observe`: at or past maturity. No removal of ours can land any more,
+ *   but one may have landed already: the chain is asked first. A landed
+ *   removal completes the objective; otherwise it is held by name
+ *   (`watcherProofStartDeadlinePassed`).
  */
 export const watcherProofStartTiming = (
   job: WatcherFaultProofJob,
-  sending: boolean,
   nowMs: bigint,
-): "on_time" | "late" | "reconcile" | "observe" => {
+): "on_time" | "late" | "observe" => {
   if (job.deadline === null || nowMs < BigInt(job.deadline.latestSafeStartAtMs))
     return "on_time";
   if (nowMs < BigInt(job.deadline.maturityAtMs)) return "late";
-  return sending ? "reconcile" : "observe";
+  return "observe";
 };
 
 /** The hold of an objective at or past its header's maturity whose removal

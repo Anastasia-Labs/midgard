@@ -5,8 +5,7 @@
  * observation; anything else fails the run.
  *
  * The calling test mocks the manifest binding and the L1 observation port
- * with `hooks` (both are hoisted into the test file); the port's signed
- * recovery is the emulator's, as the watcher's follower gives it.
+ * with `hooks` (both are hoisted into the test file).
  */
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
@@ -19,7 +18,6 @@ import {
 } from "../../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
-import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { installedWorkflowEmulatorClock } from "./installed-workflow.advance-emulator-observation.js";
 import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
 import { installApplicationClock } from "./script-decode-installed-host.js";
@@ -56,7 +54,6 @@ export const INSTALLED_OUTPUT_REFERENCE = {
 export type InstalledHooks = {
   binding: unknown;
   authority: unknown;
-  recovery: unknown;
 };
 
 export type InstalledScenario = Readonly<{
@@ -133,7 +130,14 @@ export const runInstalled = async (
   let close: (() => Promise<void>) | undefined;
   let cleanup: (() => void) | undefined;
   try {
-    hooks.authority = recorder.authority;
+    // Each capture is an observation of the application's clock.
+    hooks.authority = {
+      ...recorder.authority,
+      capture: async (request) => {
+        await clock?.observation();
+        return await recorder.authority.capture(request);
+      },
+    } satisfies typeof recorder.authority;
     const harness = await makeFaultProofEmulatorHarness({
       ...(scenario.referenceScriptAuthTimelockMs === undefined
         ? {}
@@ -143,7 +147,6 @@ export const runInstalled = async (
           }),
       contractOptions: scenario.contractOptions,
     });
-    hooks.recovery = emulatorSignedTransactionRecovery(harness.emulator);
     const committed = await commitScriptDecodeBlock({
       harness,
       definition: scenario.definition,
@@ -192,7 +195,8 @@ export const runInstalled = async (
       let result: TurnResult | undefined;
       let stopped: { readonly error: unknown } | undefined;
       try {
-        result = await application.turn();
+        // A process stopped at an observation never ends its turn.
+        result = await Promise.race([application.turn(), clock.stopped()]);
       } catch (error) {
         stopped = { error };
       }

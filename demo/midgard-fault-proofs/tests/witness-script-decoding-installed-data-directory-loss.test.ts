@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 const hooks = vi.hoisted(() => ({
   binding: undefined as unknown,
   authority: undefined as unknown,
-  recovery: undefined as unknown,
 }));
 vi.mock("../src/workflow/deployment-manifest-binding.js", async (load) => ({
   ...(await load<
@@ -14,9 +13,6 @@ vi.mock("../src/workflow/deployment-manifest-binding.js", async (load) => ({
 vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
   const actual =
     await load<typeof import("../src/workflow/family-l1-observation.js")>();
-  const { withFraudProofL1Recovery } = await import(
-    "../src/workflow/l1-source.js"
-  );
   return {
     ...actual,
     createFraudProofFamilyL1ObservationPort: (
@@ -24,15 +20,12 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
         typeof actual.createFraudProofFamilyL1ObservationPort
       >[0],
     ) =>
-      withFraudProofL1Recovery(
-        actual.createFraudProofFamilyRawL1ObservationPort({
-          ...input,
-          authority: hooks.authority as Parameters<
-            typeof actual.createFraudProofFamilyRawL1ObservationPort
-          >[0]["authority"],
-        }),
-        hooks.recovery as Parameters<typeof withFraudProofL1Recovery>[1],
-      ),
+      actual.createFraudProofFamilyRawL1ObservationPort({
+        ...input,
+        authority: hooks.authority as Parameters<
+          typeof actual.createFraudProofFamilyRawL1ObservationPort
+        >[0]["authority"],
+      }),
   };
 });
 

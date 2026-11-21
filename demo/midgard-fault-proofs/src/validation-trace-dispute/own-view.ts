@@ -3,8 +3,8 @@
  * cases and record, the receipts of the threads it closed, its staging
  * outputs and what its resolve moves read of them, and its field
  * publications. Every read of the family's own state goes through this one
- * port, read from the chain (own-view.chain.ts) and, for what this process
- * has in flight, from the process's in-flight set. */
+ * port, read from the ledger with our node's mempool applied
+ * (own-view.chain.ts). */
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
@@ -26,24 +26,6 @@ export type ValidationTraceOwnReceipt = Readonly<{
 export type ValidationTraceOwnPublication = Readonly<{
   outRef: string;
   datumCbor: string;
-}>;
-
-/** A transaction this process submitted for the workflow that the chain
- * does not show applied yet. */
-export type ValidationTraceInFlight = Readonly<{
-  txHash: string;
-  /** The outputs it creates, each with its inline datum, if any. */
-  creates: readonly Readonly<{
-    outRef: string;
-    address: string;
-    datumCbor: string | undefined;
-  }>[];
-  /** The out-refs it spends. */
-  spends: readonly string[];
-  /** The out-refs it reads, as reference inputs. */
-  reads: readonly string[];
-  /** The last slot it is valid in, where it is bounded. */
-  validTo: number | undefined;
 }>;
 
 /** The family's own state on one challenged block. */
@@ -83,25 +65,19 @@ export interface ValidationTraceOwnView {
   readonly signedStagings: () => Promise<
     readonly SignedValidationTraceStaging[]
   >;
-  /** Each resolve move of ours that landed, with the out-refs it read and
-   * the outputs it paid, oldest first. */
+  /** Each resolve move of ours in the next view, with how deep the ledger
+   * holds it, the out-refs it read and the outputs it paid, oldest first. */
   readonly resolveReads: () => Promise<readonly ValidationTraceResolveReader[]>;
   /** Our field publications either carriage prerequisite left. */
   readonly publications: () => Promise<
     readonly ValidationTraceOwnPublication[]
   >;
-  /** The transactions this process submitted for the workflow that may
-   * still land: read only so that what one of them publishes or spends back
-   * is not published or spent back a second time while it is unseen. A send
-   * of a process that has since stopped is missing from it; the restart
-   * wait covers wallet-only sends. */
-  readonly inFlight: () => Promise<readonly ValidationTraceInFlight[]>;
 }
 
 /** What the own view of a workflow is read from. */
 export type ValidationTraceOwnViewContext = Pick<
   FraudProofWorkflowAdapterContext,
-  "workflowId" | "identity" | "artifact" | "inFlight"
+  "workflowId" | "identity" | "artifact"
 >;
 
 /** The own view of the workflow `context` runs. */

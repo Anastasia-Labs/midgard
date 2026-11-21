@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { withOwnKeyActions } from "../src/validation-trace-dispute/own-key-actions.js";
 import {
@@ -28,15 +28,6 @@ const failures = [
   ],
 ] as const;
 
-/** A read of where a sent transaction stands that fails with `error`. */
-const followFailing = (error: Error) => {
-  const adapter = makeAdapter();
-  vi.spyOn(chainOf(adapter), "observeSignedTransaction").mockRejectedValue(
-    error,
-  );
-  return { adapter };
-};
-
 const steps = {
   preflight: (error: Error) => {
     const adapter = makeAdapter();
@@ -53,14 +44,9 @@ const steps = {
   }),
 } as const;
 
-const waits = {
-  ...steps,
-  "following a sent transaction": followFailing,
-} as const;
-
 describe("fraud-proof workflow L1 wait errors", () => {
   it.each(
-    Object.keys(waits).flatMap((step) =>
+    Object.keys(steps).flatMap((step) =>
       failures.map(([name, make]) => [step, name, make] as const),
     ),
   )("%s hands %s to its caller", async (step, _name, make) => {
@@ -69,25 +55,9 @@ describe("fraud-proof workflow L1 wait errors", () => {
       run({
         evidence: await canonicalEvidence(),
         process: createTestWorkflowProcess(),
-        ...waits[step as keyof typeof waits](error),
+        ...steps[step as keyof typeof steps](error),
       }),
     ).rejects.toBe(error);
-  });
-
-  it("following a sent transaction yields any other failure for the next observation, sending nothing more", async () => {
-    const { adapter } = followFailing(new Error("integrity failure"));
-    const process = createTestWorkflowProcess();
-    const result = await run({
-      evidence: await canonicalEvidence(),
-      process,
-      adapter,
-    });
-    expect(result).toMatchObject({
-      kind: "pending",
-      resumeOnObservation: true,
-      reason: expect.stringContaining("integrity failure"),
-    });
-    expect(process.sent()).toHaveLength(1);
   });
 
   it.each(Object.keys(steps))(

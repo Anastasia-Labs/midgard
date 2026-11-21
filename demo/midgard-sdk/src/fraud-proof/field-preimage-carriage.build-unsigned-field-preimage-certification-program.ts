@@ -37,10 +37,6 @@ import {
  * publication and certification can never share a transaction: reference inputs
  * are resolved against the UTxO set as it stands *before* the transaction, so
  * an output the same transaction creates is not available to it.
- *
- * The transaction spends only wallet coins, so the caller bounds it with
- * `validTo` (POSIX ms): a copy rebuilt after a restart cannot land beside one
- * built before it once that bound has passed.
  */
 export const buildUnsignedFieldPreimageCertificationProgram = (
   lucid: LucidEvolution,
@@ -53,7 +49,6 @@ export const buildUnsignedFieldPreimageCertificationProgram = (
     compactCbor,
     sourceKind,
     witnessSetCompactCbor,
-    validTo,
   }: {
     readonly plan: MidgardFieldCarriagePlan;
     readonly certificatePolicyId: string;
@@ -64,8 +59,6 @@ export const buildUnsignedFieldPreimageCertificationProgram = (
     readonly compactCbor: string;
     readonly sourceKind: 0n | 1n;
     readonly witnessSetCompactCbor: string;
-    /** The transaction's upper validity bound, POSIX ms. */
-    readonly validTo: number;
   },
 ): Effect.Effect<TxSignBuilder, Error> =>
   Effect.tryPromise({
@@ -118,7 +111,6 @@ export const buildUnsignedFieldPreimageCertificationProgram = (
           { kind: "inline", value: certification.datumCbor },
           { lovelace, [unit]: 1n },
         )
-        .validTo(validTo)
         .complete({ localUPLCEval: true });
     },
     catch: (cause) =>

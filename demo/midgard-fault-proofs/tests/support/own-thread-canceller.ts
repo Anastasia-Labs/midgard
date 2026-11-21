@@ -43,16 +43,10 @@ export const ownThreadCancelDeploymentOf = (h: Harness) => {
 
 /** A fresh canceller over the harness, as a watcher (re)started now opens
  * one: nothing carried over but the chain. */
-export const ownThreadCancellerOf = (h: Harness) => {
-  const holds: { outRefs: readonly string[]; untilMs: number }[] = [];
-  const canceller = createOwnThreadCanceller({
+export const ownThreadCancellerOf = (h: Harness) => ({
+  canceller: createOwnThreadCanceller({
     lucid: h.proverLucid,
     signer: h.proverSigner,
     deployment: ownThreadCancelDeploymentOf(h),
-    holdWalletInputs: (hold) => {
-      holds.push(hold);
-      return () => undefined;
-    },
-  });
-  return { canceller, holds };
-};
+  }),
+});

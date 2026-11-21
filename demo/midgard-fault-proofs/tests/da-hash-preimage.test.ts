@@ -46,7 +46,6 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { signedWorkflowTransactionFixture } from "./support/signed-workflow-transaction.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import { createFixtureChain } from "./workflow.make-adapter.js";
 
@@ -439,22 +438,20 @@ describe("production da-hash-preimage workflow V1", () => {
     const process = createTestWorkflowProcess();
     const run = () =>
       runDaHashPreimageWorkflowFromRetainedDa({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         deploymentFingerprint,
         observation: routed.observation,
         sources: [routed.source],
         registry: createFraudProofWorkflowRegistry({
-          adapters: [adapter],
+          adapters: [process.recording(adapter)],
           launchScope: ["daHashPreimage"],
         }),
         run: process.run({
           category: "daHashPreimage",
           headerHash: routed.headerHash,
         }),
-        terminalVerifier: {
-          ...terminalVerifierOf(async ({ candidate }) => candidate),
-          observeSignedTransaction: chain.observeSignedTransaction,
-        },
+        terminalVerifier: terminalVerifierOf(
+          async ({ candidate }) => candidate,
+        ),
         releaseFinalityAuthority: {
           authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
           verifyForWorkflow: async () => ({

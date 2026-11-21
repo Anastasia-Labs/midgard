@@ -17,8 +17,6 @@ import { plutusItemScript } from "../script-decode/item-record.js";
 import {
   findScriptDecodeRecord,
   fitScriptDecodeWalk,
-  refreshScriptDecodeLedgerParameters,
-  SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS,
   scriptDecodeLedgerLimits,
 } from "../script-decode/record.js";
 import { resumeScriptDecodeRun } from "../script-decode/resume.js";
@@ -45,7 +43,6 @@ import {
 } from "./script-decode-prerequisite.actions.js";
 import { scriptDecodeReferenceCandidates } from "./script-decode-prerequisite.deployment.js";
 import {
-  SCRIPT_DECODE_RECORD_HELD,
   type ScriptDecodeItemForAction,
   type ScriptDecodePrerequisitePort,
   ScriptDecodeRecordHeldError,
@@ -63,10 +60,7 @@ import {
 } from "./transaction-boundary.js";
 import { isWorkflowFundingShortfall } from "./workflow-funding-shortfall.js";
 
-/**
- * How long a signed Walk or Finish stays valid. Stage and Bind spend only
- * wallet coins and carry the shorter wallet-only window instead.
- */
+/** How long a signed script-decode transaction stays valid. */
 export const SCRIPT_DECODE_VALIDITY_MS = 15 * 60_000;
 
 const outRefOf = (utxo: UTxO): string =>
@@ -86,17 +80,12 @@ export const createScriptDecodePrerequisitePort = <
   signer,
   deployment,
   itemForAction,
-  maxAttempts = SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS,
-  refreshLedgerParameters = refreshScriptDecodeLedgerParameters(lucid),
 }: {
   readonly category: Category;
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
   readonly deployment: () => ScriptDecodeDeployment;
   readonly itemForAction: ScriptDecodeItemForAction;
-  /** Submissions of one action this process makes before it is held. */
-  readonly maxAttempts?: number;
-  readonly refreshLedgerParameters?: () => Promise<void>;
 }): ScriptDecodePrerequisitePort<Category> => {
   const scriptOf = async (input: {
     readonly action: Parameters<ScriptDecodeItemForAction>[0]["action"];
@@ -129,7 +118,7 @@ export const createScriptDecodePrerequisitePort = <
         scriptDecodeStagingDatums(script.scriptBytes),
       );
     },
-    inspect: async ({ baseAction, artifact, attempts, holder }) => {
+    inspect: async ({ baseAction, artifact, holder }) => {
       const script = await scriptOf({ action: baseAction, artifact });
       if (script === undefined) return { kind: "not_required" };
       const { scriptHashHex, scriptBytes, language } = script;
@@ -145,25 +134,17 @@ export const createScriptDecodePrerequisitePort = <
       const required = (
         stage: Parameters<typeof scriptDecodeAction>[0]["stage"],
         fields: Parameters<typeof scriptDecodeAction>[0]["fields"],
-        absentAt?: readonly string[],
-      ) => {
-        const action = scriptDecodeAction({
-          category,
-          baseAction,
-          scriptHashHex,
-          stage,
-          fields,
-        } as Parameters<typeof scriptDecodeAction>[0]);
-        const absent = absentAt === undefined ? {} : { absentAt };
-        return attempts(action.actionId) >= maxAttempts
-          ? ({
-              kind: "held",
-              action,
-              reason: `${SCRIPT_DECODE_RECORD_HELD}: ${action.actionId} did not land on any of its ${maxAttempts.toString()} attempts`,
-              ...absent,
-            } as const)
-          : ({ kind: "required", action, ...absent } as const);
-      };
+      ) =>
+        ({
+          kind: "required",
+          action: scriptDecodeAction({
+            category,
+            baseAction,
+            scriptHashHex,
+            stage,
+            fields,
+          } as Parameters<typeof scriptDecodeAction>[0]),
+        }) as const;
       const staged = await stagedChunks({ scriptBytes, holder });
       if (staged.kind === "publish") {
         return required("script_decode_stage", {
@@ -184,18 +165,14 @@ export const createScriptDecodePrerequisitePort = <
         scriptBytes,
         scriptHashHex,
       });
-      // No record and no run, both read at the validator's address: a Walk
-      // or Finish of ours in flight there leaves it empty until it lands.
-      if (resumed === undefined)
-        return required("script_decode_bind", {}, [
-          deployment().validator.spendingScriptAddress,
-        ]);
+      // No record and no run, both read at the validator's address.
+      if (resumed === undefined) return required("script_decode_bind", {});
       const runOutRef = outRefOf(resumed.runUtxo);
       return scriptDecodeWalkRecord(resumed.cursor) === undefined
         ? required("script_decode_walk", { runOutRef })
         : required("script_decode_finish", { runOutRef });
     },
-    capture: async ({ action, artifact, attempts, holder }) => {
+    capture: async ({ action, artifact, holder }) => {
       const parsed = parseScriptDecodeAction(action, category);
       const script = await scriptOf({ action: parsed.baseAction, artifact });
       if (script?.scriptHashHex !== parsed.scriptHashHex) {
@@ -209,11 +186,6 @@ export const createScriptDecodePrerequisitePort = <
         new WorkflowActionChangedError(
           `${category} script decode ${what} is no longer on chain`,
         );
-      // An attempt that did not land is refitted against freshly read ledger
-      // limits.
-      if (attempts > 0) {
-        await refreshLedgerParameters();
-      }
       signer.selectWallet(lucid);
       const validTo =
         lucid.slotToUnixTime(lucid.currentSlot()) + SCRIPT_DECODE_VALIDITY_MS;
@@ -250,6 +222,7 @@ export const createScriptDecodePrerequisitePort = <
               lucid,
               datum,
               address: signer.proofMaterialsAddress,
+              validTo,
             });
             break;
           }
@@ -261,6 +234,7 @@ export const createScriptDecodePrerequisitePort = <
               scriptHashHex,
               initialRun: startScriptDecodeWalk(language, scriptBytes).run,
               staging: await staging(),
+              validTo,
             });
             break;
           case "script_decode_walk": {

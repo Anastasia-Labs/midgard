@@ -28,10 +28,11 @@ export {
   type LedgerProviderOptions,
   type LedgerTip,
 } from "./ledger-provider.js";
+export { pendingOutsideFacts, type PendingSource } from "./pending.js";
+export { type PlainOutputsAnswer } from "./plain-read.js";
 export {
   L1FollowerProvider,
   type L1FollowerProviderOptions,
-  type PlainOutputsAnswer,
 } from "./provider.js";
 export {
   describeLedgerRejection,

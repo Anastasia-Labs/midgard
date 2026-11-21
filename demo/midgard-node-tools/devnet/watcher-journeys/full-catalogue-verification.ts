@@ -137,26 +137,29 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
   const raw: FraudProofRawL1SnapshotAuthority = {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
     capture: async (request) => ({
-      ...seed,
-      deploymentIdentityDigest: request.deploymentIdentityDigest,
-      blueprintHash: request.blueprintHash,
-      finalityPolicyDigest: request.finalityPolicyDigest,
-      headerHash: request.headerHash,
-      scopes: request.scopes.map((scope) => ({
-        ...scope,
-        utxos:
-          seed.scopes.find((existing) => existing.address === scope.address)
-            ?.utxos ?? [],
-      })),
-      historyUnits: request.historyUnits,
-      history: request.historyUnits.map((unit) => {
-        const value = seed.history.find((existing) => existing.unit === unit);
-        if (value === undefined)
-          throw new Error(
-            "Local raw authority has no coverage for requested event unit",
-          );
-        return value;
-      }),
+      pending: [],
+      snapshot: {
+        ...seed,
+        deploymentIdentityDigest: request.deploymentIdentityDigest,
+        blueprintHash: request.blueprintHash,
+        finalityPolicyDigest: request.finalityPolicyDigest,
+        headerHash: request.headerHash,
+        scopes: request.scopes.map((scope) => ({
+          ...scope,
+          utxos:
+            seed.scopes.find((existing) => existing.address === scope.address)
+              ?.utxos ?? [],
+        })),
+        historyUnits: request.historyUnits,
+        history: request.historyUnits.map((unit) => {
+          const value = seed.history.find((existing) => existing.unit === unit);
+          if (value === undefined)
+            throw new Error(
+              "Local raw authority has no coverage for requested event unit",
+            );
+          return value;
+        }),
+      },
     }),
   };
   const deploymentFingerprint = "d1".repeat(32);

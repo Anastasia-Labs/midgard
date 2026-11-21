@@ -31,15 +31,18 @@ export const captureInput = (snapshot: FraudProofRawL1Snapshot) => {
   const authority: FraudProofRawL1SnapshotAuthority = {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
     capture: async (request) => ({
-      ...snapshot,
-      scopes: request.scopes.map((scope) => ({
-        ...scope,
-        utxos: snapshot.scopes.find(({ role }) => role === scope.role)!.utxos,
-      })),
-      historyUnits: request.historyUnits,
-      history: request.historyUnits.map(
-        (unit) => snapshot.history.find((entry) => entry.unit === unit)!,
-      ),
+      snapshot: {
+        ...snapshot,
+        scopes: request.scopes.map((scope) => ({
+          ...scope,
+          utxos: snapshot.scopes.find(({ role }) => role === scope.role)!.utxos,
+        })),
+        historyUnits: request.historyUnits,
+        history: request.historyUnits.map(
+          (unit) => snapshot.history.find((entry) => entry.unit === unit)!,
+        ),
+      },
+      pending: [],
     }),
   };
   const binding = {

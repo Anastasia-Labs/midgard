@@ -160,10 +160,9 @@ export const createWorkflowActuationPermitController = (input: {
 }): WorkflowActuationPermitController => createController(input);
 
 /**
- * Historical classification grants only the following of transactions this
- * process already sent for the fault: never runnable classification or
- * submission authority. The caller grants it only while its in-flight set
- * holds a transaction of the objective (`in-flight.ts`).
+ * Historical classification grants reconciliation only: observation and
+ * the reclaim of our own outputs, never runnable classification or
+ * submission authority for a fault move.
  */
 export const createWorkflowReconciliationPermitController = (input: {
   readonly decision: HeaderFaultDecision;

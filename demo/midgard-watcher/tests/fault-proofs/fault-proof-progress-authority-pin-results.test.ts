@@ -14,7 +14,6 @@ import {
   setupClassifiedFaultFixture,
 } from "../support/classified-fault-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
-import { inFlightOf } from "../support/in-flight-fixture.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
@@ -51,7 +50,6 @@ const newFaultWith = async (retention: WatcherProofRetention) => {
     categories: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
     retention,
-    ...inFlightOf(),
   });
   const header = {
     header: fixture.fixture.header,

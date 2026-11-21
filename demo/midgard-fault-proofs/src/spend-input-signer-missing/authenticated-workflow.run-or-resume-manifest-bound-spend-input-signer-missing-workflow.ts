@@ -10,7 +10,6 @@ import {
   type ManifestBoundFamilyWorkflowWithRecovery,
   withManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
-import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   createSpendInputSignerMissingBoundConfig,
@@ -99,16 +98,13 @@ export const executeManifestBoundSpendInputSignerMissingWorkflow = async ({
   workflow,
   sources,
   run,
-  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundSpendInputSignerMissingWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly run: WorkflowRun;
-  readonly walletOnlySend: WalletOnlySend;
 }) =>
   await executeManifestBoundFamilyRecovery({
     ...workflow,
     sources,
     run,
-    walletOnlySend,
   });

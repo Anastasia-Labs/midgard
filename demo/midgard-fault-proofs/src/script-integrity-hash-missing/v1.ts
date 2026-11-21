@@ -22,7 +22,6 @@ import type { FieldCarriageRequirement } from "../workflow/field-carriage-prereq
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import type { FraudProofWorkflowRunResult } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import type { WorkflowRun } from "../workflow/workflow-run.js";
 import { createScriptIntegrityHashMissingTransactionPort } from "./actuator.create-script-integrity-hash-missing-transaction-port.js";
 import type { ScriptIntegrityHashMissingWorkflowReferenceScripts } from "./actuator.resolve-field.js";
@@ -220,12 +219,10 @@ export const executeManifestBoundScriptIntegrityHashMissingWorkflow = async ({
   workflow,
   sources,
   run,
-  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundScriptIntegrityHashMissingWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly run: WorkflowRun;
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   if (
     workflowActuationAuthorizingDecisionDigest(run) !== workflow.decisionDigest
@@ -248,6 +245,5 @@ export const executeManifestBoundScriptIntegrityHashMissingWorkflow = async ({
     run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-    walletOnlySend,
   });
 };

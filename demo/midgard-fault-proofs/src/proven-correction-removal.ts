@@ -9,7 +9,7 @@
  * ordinary builder, holding no admitted decision and no journal. The
  * record's prover is paid, whoever submits.
  */
-import { outRefLabel, parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
+import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   type CorrectionLockDatum,
   fetchCorrectionLockUTxOProgram,
@@ -17,12 +17,9 @@ import {
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk/core";
 import {
-  CML,
   type LucidEvolution,
   type Network,
   toUnit,
-  utxoToCore,
-  type WalletApi,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -31,7 +28,6 @@ import {
   selectOwnFraudProofRecord,
 } from "./fraud-proof-record-selection.js";
 import { buildRemovalContracts } from "./remove-fraudulent-block.assemble-removal-contracts.js";
-import { STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS } from "./remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
 import { loadStateQueueTopology } from "./remove-fraudulent-block.load-state-queue-topology.js";
 import type {
   StateQueueMutationLeaseCoordinator,
@@ -39,12 +35,6 @@ import type {
 } from "./remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import { submitRemoveFraudulentBlock } from "./remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "./runtime.js";
-import {
-  type LocallyEvaluatedTransaction,
-  workflowTransactionCollateralInputOutRefs,
-  workflowTransactionInputOutRefs,
-} from "./workflow/transaction-boundary.js";
-import { balanceCbor } from "./workflow/workflow-wallet.js";
 
 /** A fraud-proof correction: the queued header a proven record convicts,
  * and that record's asset name. */
@@ -97,81 +87,11 @@ const namesCorrection = (
 };
 
 /**
- * A signer whose wallet offers every coin except those `heldOutRefs` names,
- * read afresh on each wallet read: an action outside any workflow never
- * spends, or sits as collateral on, a coin a workflow's in-flight
- * transaction or build holds. Signing and submission go to the original
- * wallet.
- */
-export const excludeHeldWalletCoins = ({
-  signer,
-  heldOutRefs,
-}: {
-  readonly signer: ResolvedProverSigner;
-  readonly heldOutRefs: () => readonly string[];
-}): ResolvedProverSigner =>
-  Object.freeze({
-    ...signer,
-    selectWallet: (lucid: LucidEvolution): void => {
-      signer.selectWallet(lucid);
-      const original = lucid.wallet();
-      const unheld = async () => {
-        const held = new Set(heldOutRefs());
-        return (await original.getUtxos()).filter(
-          (utxo) => !held.has(outRefLabel(utxo)),
-        );
-      };
-      const addressHex = CML.Address.from_bech32(signer.address).to_hex();
-      const api: WalletApi = Object.freeze({
-        getNetworkId: async () =>
-          CML.Address.from_bech32(signer.address).to_raw_bytes()[0]! & 0x0f,
-        getUtxos: async () =>
-          (await unheld()).map((utxo) => utxoToCore(utxo).to_cbor_hex()),
-        getBalance: async () => balanceCbor(await unheld()),
-        getUsedAddresses: async () => [addressHex],
-        getUnusedAddresses: async () => [],
-        getChangeAddress: async () => addressHex,
-        getRewardAddresses: async () => [],
-        signTx: async (tx) =>
-          (
-            await original.signTx(CML.Transaction.from_cbor_hex(tx))
-          ).to_cbor_hex(),
-        signData: async (address, payload) =>
-          await original.signMessage(
-            CML.Address.from_hex(address).to_bech32(),
-            payload,
-          ),
-        submitTx: async (tx) => await original.submitTx(tx),
-        getCollateral: async () => [],
-        experimental: Object.freeze({
-          getCollateral: async () => [],
-          on: () => undefined,
-          off: () => undefined,
-        }),
-      });
-      lucid.selectWallet.fromAPI(api);
-    },
-  });
-
-/** Holds wallet coins for an action outside any workflow until `untilMs`
- * (wall clock) or the returned release; throws when one is taken. */
-export type HoldWalletInputs = (input: {
-  readonly outRefs: readonly string[];
-  readonly untilMs: number;
-}) => () => void;
-
-/**
  * Starts the removal of a proven correction's header, or finishes the one a
  * lock Locked under it is waiting for, citing a proven record of it: the
  * signer's own when it holds one, else the lowest out-ref. Nothing is
  * submitted when no such record is on L1, the live lock is Locked under
  * another correction, or the lock is Idle and the header is no longer queued.
- *
- * Before each removal transaction is submitted, the signer's coins it spends
- * or offers as collateral are held through `holdWalletInputs` until its
- * validity ends; a hold refused fails the removal before that submission.
- * The holds are released once the removal is confirmed. A failed removal
- * leaves them to expire, as its last transaction may still land.
  */
 export const driveProvenCorrectionRemoval = async ({
   lucid,
@@ -181,7 +101,6 @@ export const driveProvenCorrectionRemoval = async ({
   signer,
   stateQueueMutationLeaseCoordinator,
   correction,
-  holdWalletInputs,
   validFrom,
   validTo,
 }: {
@@ -192,7 +111,6 @@ export const driveProvenCorrectionRemoval = async ({
   readonly signer: ResolvedProverSigner;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   readonly correction: ProvenFraudProofCorrection;
-  readonly holdWalletInputs: HoldWalletInputs;
   readonly validFrom?: bigint;
   readonly validTo?: bigint;
 }): Promise<ProvenCorrectionRemoval> => {
@@ -243,33 +161,6 @@ export const driveProvenCorrectionRemoval = async ({
       return Object.freeze({ kind: "finished" });
   } else if (!namesCorrection(live.datum, correction))
     return Object.freeze({ kind: "finished" });
-  const releases: (() => void)[] = [];
-  /** When a transaction with this TTL can no longer land. */
-  const expiresAtMs = (ttl: bigint | undefined): number =>
-    ttl === undefined
-      ? Date.now() + Number(STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS)
-      : lucid.slotToUnixTime(Number(ttl));
-  const holdOwnCoins = async ({
-    signed,
-  }: LocallyEvaluatedTransaction): Promise<void> => {
-    // Collateral may be a spent input too.
-    const spent = await lucid.utxosByOutRef(
-      [
-        ...new Set([
-          ...workflowTransactionInputOutRefs(signed),
-          ...workflowTransactionCollateralInputOutRefs(signed),
-        ]),
-      ].map(parseOutRefLabel),
-    );
-    releases.push(
-      holdWalletInputs({
-        outRefs: spent
-          .filter(({ address }) => address === signer.address)
-          .map(outRefLabel),
-        untilMs: expiresAtMs(signed.toTransaction().body().ttl()),
-      }),
-    );
-  };
   return Object.freeze({
     kind: "proven",
     fraudProofOutRef,
@@ -289,10 +180,6 @@ export const driveProvenCorrectionRemoval = async ({
         : { stateQueueMutationLeaseCoordinator }),
       ...(validFrom === undefined ? {} : { validFrom }),
       ...(validTo === undefined ? {} : { validTo }),
-      beforeSubmit: holdOwnCoins,
-    }).then((result) => {
-      for (const release of releases) release();
-      return result;
     }),
   });
 };

@@ -173,8 +173,8 @@ export const captureRetainedPlutusIdentityOrigins = async (
   };
   const authority: FraudProofRawL1SnapshotAuthority = {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-    capture: async (request) =>
-      ({
+    capture: async (request) => ({
+      snapshot: {
         schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
         deploymentIdentityDigest: request.deploymentIdentityDigest,
         blueprintHash: request.blueprintHash,
@@ -243,7 +243,9 @@ export const captureRetainedPlutusIdentityOrigins = async (
             resolvedReferenceInputs: [],
           },
         ],
-      }) satisfies FraudProofRawL1Snapshot,
+      } satisfies FraudProofRawL1Snapshot,
+      pending: [],
+    }),
   };
   // Only fields consumed by raw event capture are supplied; this does not claim
   // that a deployment manifest or an actual Cardano transaction was admitted.

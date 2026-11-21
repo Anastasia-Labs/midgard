@@ -36,11 +36,7 @@ import {
 /** A Certified-tier opening (600 outputs), its carriage, and the harness. */
 export const certifiedOpening = async ({
   certificateUtxos,
-  observeSignedTransaction,
-}: Pick<
-  Parameters<typeof forcedHarness>[0],
-  "certificateUtxos" | "observeSignedTransaction"
->) => {
+}: Pick<Parameters<typeof forcedHarness>[0], "certificateUtxos">) => {
   const prepared = await forcedPrepared({
     outputNetworkIds: Array.from({ length: 600 }, () => 0),
   });
@@ -63,7 +59,6 @@ export const certifiedOpening = async ({
     forcedScanDatum: scanDatum(prepared, "ready"),
     walletUtxos: wallet,
     certificateUtxos,
-    observeSignedTransaction,
   });
   const certificate = (
     txHash: string,

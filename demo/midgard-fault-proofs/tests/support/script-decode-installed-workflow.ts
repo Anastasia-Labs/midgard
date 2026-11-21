@@ -3,9 +3,10 @@
  * a real emulator deployment of a script-decoding family.
  *
  * Every turn is what the watcher does for one admitted objective: the
- * registry's admitted runner (`WORKFLOW_RUNNER_FACTORIES`) loads the
- * runtime and runs the workflow over the watcher process's in-flight set,
- * which a restart empties. Only the manifest is stood in for: the
+ * family's application record, as the registry's admitted runner
+ * (`WORKFLOW_RUNNER_FACTORIES`) builds it, loads the runtime and runs the
+ * workflow; what it submits is recorded by the watcher process the turn runs
+ * in, which a restart replaces. Only the manifest is stood in for: the
  * binding is the emulator deployment's (the calling test mocks the manifest
  * binding and the L1 observation port with it).
  */
@@ -21,20 +22,23 @@ import {
 } from "midgard-watcher";
 import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture.build-watcher-deployment-authority-fixture";
 
-import { WALLET_ONLY_VALIDITY_MS } from "../../src/wallet-only-validity.js";
 import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import type { WorkflowAdapterRunnerInput } from "../../src/workflow/adapters.js";
+import type {
+  FamilyApplicationRecord,
+  FamilyApplicationWorkflowIdentity,
+} from "../../src/workflow/family-application.assert-family-definition-roster.js";
+import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-application-registry.js";
 import { familyStepContractNames } from "../../src/workflow/family-definition.family-definition.js";
 import { createFraudProofFamilyRawL1ObservationPort } from "../../src/workflow/family-l1-observation.js";
 import { authenticatedStateQueueObservationDigest } from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import { classifyHeader } from "../../src/workflow/header-classifier.classify-header.js";
 import { createHeaderClassifier } from "../../src/workflow/header-classifier.create-header-classifier.js";
-import type { InFlightTransaction } from "../../src/workflow/in-flight.js";
 import {
-  WORKFLOW_RUNNER_FACTORIES,
+  createFamilyApplicationWorkflowRunner,
   WORKFLOW_RUNTIME_CONFIG,
 } from "../../src/workflow/runtime.js";
 import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.deployment.js";
-import type { WalletOnlySend } from "../../src/workflow/wallet-only-send-gate.js";
 import { restrictWorkflowWallet } from "../../src/workflow/workflow-wallet.js";
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import {
@@ -54,8 +58,11 @@ import {
   fixtureLeaseCoordinator,
   FixtureRetainedDaSource,
 } from "./script-decode-installed-host.js";
-import { walletOnlySendAlwaysOpenOn } from "./wallet-only-send-always-open.js";
-import { createTestWorkflowProcess } from "./workflow-process.js";
+import {
+  createTestWorkflowProcess,
+  recordingRecord,
+  type SentTransaction,
+} from "./workflow-process.js";
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
 type Recorder = ReturnType<typeof recordCrossBlockRawEmulator>;
@@ -322,87 +329,75 @@ export const installScriptDecodeApplication = async ({
   const slotConfig = harness.proverLucid.config().slotConfig;
   const stateQueueMutationLeaseCoordinator = fixtureLeaseCoordinator();
   const signer = harness.proverSigner;
-  /**
-   * The watcher process: the admitted runner, the process's in-flight set and
-   * its restart wait. Booting again is a restart. The first process starts on
-   * a chain nothing of ours was sent on, so its wait is already over; a
-   * restarted one sends nothing that spends only wallet coins until one
-   * wallet-only validity window has passed on the emulator's clock, so a
-   * copy the stopped process sent can no longer land beside a rebuilt one.
-   */
-  const boot = (restarted: boolean) => {
-    const runner = WORKFLOW_RUNNER_FACTORIES[category](
-      async ({ invocation }) => {
-        // The watcher's loader body (`buildCommonInfrastructure`).
-        const execution = invocation as Partial<
-          Parameters<typeof runner.runOrResume>[0]
-        >;
-        // The deployment's genesis slot mapping, as the watcher's Lucid takes
-        // it from the manifest (a bare emulator Lucid starts its mapping now).
-        const lucid = await Lucid(emulator, "Custom", { slotConfig });
-        const restricted =
-          execution.sends === undefined
-            ? signer
-            : restrictWorkflowWallet({ signer, sends: execution.sends });
-        restricted.selectWallet(lucid);
-        return {
-          schemaVersion: WORKFLOW_RUNTIME_CONFIG,
-          infrastructure: {
-            manifest: {},
-            blueprintJson: binding.blueprintJson,
-            deploymentInfo,
-            headerHash: invocation.headerHash,
-            ...(execution.decisionDigest === undefined
-              ? {}
-              : { decisionDigest: execution.decisionDigest }),
-            lucid,
-            signer: restricted,
-            l1Source: {} as never,
-            stateQueueMutationLeaseCoordinator,
-          },
-          resolveReferenceScript: async ({
-            contractName,
-          }: {
-            readonly contractName: string;
-          }) => {
-            const utxo = roster.get(contractName);
-            if (utxo === undefined)
-              throw new Error(`no published reference for ${contractName}`);
-            return utxo;
-          },
-          retainedDaSources: sources,
-          close: async () => undefined,
-        } as never;
-      },
-    );
-    const alwaysOpen = walletOnlySendAlwaysOpenOn(harness.proverLucid);
-    const notBeforeMs = emulator.now() + WALLET_ONLY_VALIDITY_MS;
-    const walletOnlySend: WalletOnlySend = restarted
-      ? Object.freeze({
-          open: () => emulator.now() >= notBeforeMs,
-          latestValidToSlot: alwaysOpen.latestValidToSlot,
-        })
-      : alwaysOpen;
-    return {
-      runner,
-      process: createTestWorkflowProcess(),
-      walletOnlySend,
-    } as const;
-  };
-  let instance = boot(false);
+  /** The watcher process the turns run in; `restart` replaces it. */
+  let process = createTestWorkflowProcess();
+  const runner = createFamilyApplicationWorkflowRunner(
+    recordingRecord(
+      // The registry erases each record's config; its own `bindConfig`
+      // produces it and its own `constructWorkflow` consumes it.
+      FAMILY_APPLICATION_REGISTRY[category] as FamilyApplicationRecord<
+        typeof category,
+        unknown,
+        FamilyApplicationWorkflowIdentity<typeof category>
+      >,
+      (adapter) => process.recording(adapter),
+    ),
+    async ({ invocation }) => {
+      // The watcher's loader body (`buildCommonInfrastructure`).
+      const execution = invocation as Partial<WorkflowAdapterRunnerInput>;
+      // The deployment's genesis slot mapping, as the watcher's Lucid takes
+      // it from the manifest (a bare emulator Lucid starts its mapping now).
+      const lucid = await Lucid(emulator, "Custom", { slotConfig });
+      const restricted =
+        execution.objectiveWallet === undefined
+          ? signer
+          : restrictWorkflowWallet({
+              signer,
+              objectiveWallet: execution.objectiveWallet,
+            });
+      restricted.selectWallet(lucid);
+      return {
+        schemaVersion: WORKFLOW_RUNTIME_CONFIG,
+        infrastructure: {
+          manifest: {},
+          blueprintJson: binding.blueprintJson,
+          deploymentInfo,
+          headerHash: invocation.headerHash,
+          ...(execution.decisionDigest === undefined
+            ? {}
+            : { decisionDigest: execution.decisionDigest }),
+          lucid,
+          signer: restricted,
+          l1Source: {} as never,
+          stateQueueMutationLeaseCoordinator,
+        },
+        resolveReferenceScript: async ({
+          contractName,
+        }: {
+          readonly contractName: string;
+        }) => {
+          const utxo = roster.get(contractName);
+          if (utxo === undefined)
+            throw new Error(`no published reference for ${contractName}`);
+          return utxo;
+        },
+        retainedDaSources: sources,
+        close: async () => undefined,
+      } as never;
+    },
+  );
   /** What earlier processes sent, oldest first. */
-  const before: InFlightTransaction[] = [];
+  const before: SentTransaction[] = [];
   /** One watcher application turn for the objective. */
   const turn = async () =>
-    (await instance.runner.runOrResume({
+    (await runner.runOrResume({
       category,
       deploymentFingerprint: fingerprint,
       headerHash,
       decisionDigest: decision.decisionDigest,
       actuationPermit: permit,
-      sends: instance.process.sends({ category, headerHash }),
+      objectiveWallet: process.objectiveWallet({ category, headerHash }),
       runtimeConfigPath: RUNTIME_CONFIG_PATH,
-      walletOnlySend: instance.walletOnlySend,
     })) as {
       readonly kind: string;
       readonly reason?: string;
@@ -413,15 +408,15 @@ export const installScriptDecodeApplication = async ({
     l1,
     fingerprint,
     turn,
-    /** Stops the watcher process and starts another, which holds nothing
-     * the stopped one had in flight. */
+    /** Stops the watcher process and starts another, which has sent
+     * nothing. */
     restart: () => {
-      before.push(...instance.process.sent());
-      instance = boot(true);
+      before.push(...process.sent());
+      process = createTestWorkflowProcess();
     },
     /** Every transaction the watcher sent for the objective, across
      * restarts, oldest first. */
-    sent: () => Object.freeze([...before, ...instance.process.sent()]),
+    sent: () => Object.freeze([...before, ...process.sent()]),
     close: async () => undefined,
   } as const;
 };

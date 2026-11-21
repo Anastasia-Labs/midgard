@@ -6,9 +6,9 @@
  * transaction a run; once every run's output is at confirmation depth, our
  * plan fills those outputs in and the move goes. The outputs are found by
  * our own view (own-view.ts) alone, by their content where no move of ours
- * read them yet, so a runner started again over it stages nothing twice; an
- * output no longer live is staged again, unless a staging of ours in
- * flight creates one for the run, which is waited on instead. Each output no
+ * read them yet, so a runner started again over it stages nothing twice: one
+ * our node's mempool holds is live and waits for its depth, and an output no
+ * longer live is staged again. Each output no
  * thread of ours needs any more is spent back by our key
  * (one-step-staging-sweep.ts), and each a thread of ours at the
  * PrepareSelected move's holder will read is held from every sweep
@@ -26,10 +26,7 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import {
-  type FraudProofSignedTransactionRecovery,
-  isFraudProofL1WaitError,
-} from "../workflow/l1-source.js";
+import { isFraudProofL1WaitError } from "../workflow/l1-source.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -52,10 +49,7 @@ import {
   validationTraceStagingSigner,
   type ValidationTraceStagingStep,
 } from "./one-step-staging-funding.js";
-import {
-  validationTraceStagingHolds,
-  validationTraceStagingsSent,
-} from "./one-step-staging-holds.js";
+import { validationTraceStagingHolds } from "./one-step-staging-holds.js";
 import {
   type SignedValidationTraceStaging,
   VALIDATION_TRACE_STAGING,
@@ -87,21 +81,10 @@ export const VALIDATION_TRACE_STAGING_SHALLOW =
 const digestOf = (datumCbor: string): string =>
   createHash("sha256").update(Buffer.from(datumCbor, "hex")).digest("hex");
 
-/** The staging of `run` this process sends next: one generation past each
- * staging of it the process saw land final, so a run whose landed output
- * the L1 provider does not show is staged again at once, taking no grace
- * for provider lag. A restart counts again from none. */
-const stageAction = (
-  run: string,
-  landed: ((actionId: string) => boolean) | undefined,
-) => {
-  let generation = 0;
-  while (
-    landed?.(`validation-trace-stage:${run}:${generation.toString()}`) === true
-  )
-    generation += 1;
-  return Object.freeze({
-    actionId: `validation-trace-stage:${run}:${generation.toString()}`,
+/** The staging of `run`. */
+const stageAction = (run: string) =>
+  Object.freeze({
+    actionId: `validation-trace-stage:${run}:0`,
     input: Object.freeze({
       schemaVersion: VALIDATION_TRACE_STAGING,
       category: CATEGORY,
@@ -109,7 +92,6 @@ const stageAction = (
       run,
     }),
   });
-};
 
 /**
  * Our staging of the staged steps of our threads: `wrap`, which stages a
@@ -122,7 +104,7 @@ export const validationTraceStaging = ({
   signer,
   deployment,
   caseHistory,
-  signedRecovery,
+  releaseDepth,
   materialOf,
   confirmationDepth = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
   ownView,
@@ -132,7 +114,8 @@ export const validationTraceStaging = ({
   readonly deployment: ValidationTraceDisputeDeployment;
   /** Where each case's threads are read from. */
   readonly caseHistory: ValidationTraceCaseHistory;
-  readonly signedRecovery: FraudProofSignedTransactionRecovery;
+  /** How deep the ledger holds a transaction of ours once it is final. */
+  readonly releaseDepth: number;
   readonly materialOf: (
     headerHash: string,
   ) => ValidationTraceClaimMaterial | undefined;
@@ -178,17 +161,17 @@ export const validationTraceStaging = ({
     confirmationDepth,
   });
 
-  const stagingsOf = validationTraceStagingsSent(ownView, address);
+  const stagingsOf = async (context: FraudProofWorkflowAdapterContext) =>
+    await ownView(context).stagings();
 
   /**
    * The live staging output our own view shows for the run `datumCbor`,
    * and whether it is deep enough: the latest one a resolve move read, as
    * a thread's evidence names it, else the latest staged, else one found by
-   * its content. While none is live, one a staging of ours in flight
-   * creates is waited on.
+   * its content.
    */
   const usable = async (
-    { stagings, readers, byContent, unseen }: ValidationTraceStagingJournal,
+    { stagings, readers, byContent }: ValidationTraceStagingJournal,
     datumCbor: string,
   ) => {
     const candidates = stagings
@@ -206,8 +189,7 @@ export const validationTraceStaging = ({
     ])
       if ((await live(staging)) !== undefined)
         return { staging, ready: await deep(staging) };
-    const sent = unseen?.find((staging) => staging.datumCbor === datumCbor);
-    return sent === undefined ? undefined : { staging: sent, ready: false };
+    return undefined;
   };
 
   /** The latest staging output our own view shows for the run `datumCbor`
@@ -324,7 +306,7 @@ export const validationTraceStaging = ({
     const [planned, ...rest] = missing;
     if (planned !== undefined) {
       const digest = digestOf(planned.datumCbor);
-      const action = stageAction(digest, context.landed);
+      const action = stageAction(digest);
       if (context.unbuiltActionIds?.has(action.actionId))
         return {
           kind: "pending",
@@ -359,14 +341,13 @@ export const validationTraceStaging = ({
   const sweep = validationTraceStagingSweep({
     lucid,
     deployment,
-    signedRecovery,
+    releaseDepth,
     live,
     usable,
     stagings: stagingsOf,
     plans: holds.plans,
     traced: (context) =>
       materialOf(ownView(context).artifact().headerHash) !== undefined,
-    inFlight: async (context) => await ownView(context).inFlight(),
     select: (actionId, reclaim) => reclaims.set(actionId, reclaim),
   });
 

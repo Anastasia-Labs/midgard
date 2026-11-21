@@ -1,7 +1,6 @@
 /** A thread of ours on a header removed against a record this run did not
  * create, as the orchestrator rows see it: the chain our L1 port reads, a
  * cancel port over it, and `makeAdapter`'s family with its header removed. */
-import { isFinal } from "@al-ft/midgard-l1-follower/heads";
 import { expect, vi } from "vitest";
 
 import type {
@@ -36,8 +35,9 @@ export const resolution = {
 };
 
 /** The chain as our L1 port reads it: our thread standing until its cancel
- * lands, then that cancel at its depth. `l1` is the same chain as the run
- * follows its sent transactions on. */
+ * lands, spent by the cancel while the node's mempool holds it, then that
+ * cancel at its depth. `l1` is the same chain the family's own transactions
+ * land on. */
 export const chain = async ({
   thread = OUR_THREAD,
 }: {
@@ -45,8 +45,9 @@ export const chain = async ({
 } = {}) => {
   const state: {
     standing: boolean;
+    pending: boolean;
     reclaimDepth: number | undefined;
-  } = { standing: true, reclaimDepth: undefined };
+  } = { standing: true, pending: false, reclaimDepth: undefined };
   const reclaim = await signedWorkflowTransactionFixture();
   const reclaimTx = reclaim.input.transactionHash;
   const l1 = createFixtureChain();
@@ -56,13 +57,16 @@ export const chain = async ({
     reclaimTx,
     reclaimSigned: reclaim.signed,
     l1,
+    /** The node's mempool takes the cancel. */
+    accept: () => {
+      if (state.standing) state.pending = true;
+      l1.accept(reclaimTx);
+    },
     land: (depth: number) => {
       state.standing = false;
+      state.pending = false;
       state.reclaimDepth = depth;
       l1.land(reclaimTx);
-      if (!isFinal(depth, { securityParameter: FINAL_DEPTH - 1 }))
-        l1.reversible.add(reclaimTx);
-      else l1.reversible.delete(reclaimTx);
     },
     threads: () => ({
       ...(state.standing
@@ -71,6 +75,7 @@ export const chain = async ({
               threadOutRef: thread,
               step: 2 as const,
               lovelace: THREAD_LOVELACE,
+              ...(state.pending ? { pendingSpend: reclaimTx } : {}),
             },
           }
         : {}),
@@ -90,7 +95,8 @@ export const chain = async ({
 
 export type Ledger = Awaited<ReturnType<typeof chain>>;
 
-/** A cancel port over `ledger`, as one process instance holds it. */
+/** A cancel port over `ledger`, as one process instance holds it: a
+ * submitted cancel waits in the node's mempool until `ledger.land`. */
 export const reclaimPort = (
   ledger: Ledger,
   preflight: OwnThreadReclaimPort["preflight"] = async ({ actionId }) =>
@@ -114,8 +120,14 @@ export const reclaimPort = (
   observe: vi.fn(async () => ledger.threads()),
   preflight: vi.fn(preflight),
   submit: vi.fn(
-    async ({ preflight: built }: { readonly preflight: { txHash: string } }) =>
-      built.txHash,
+    async ({
+      preflight: built,
+    }: {
+      readonly preflight: { txHash: string };
+    }) => {
+      ledger.accept();
+      return built.txHash;
+    },
   ),
 });
 

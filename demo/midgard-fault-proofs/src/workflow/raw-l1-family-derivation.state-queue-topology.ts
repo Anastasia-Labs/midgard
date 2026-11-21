@@ -19,10 +19,10 @@ import {
   type ComputationThreadStep,
 } from "./computation-thread-steps.js";
 import { type FraudProofWorkflowTerminal } from "./journal.js";
+import type { FraudProofRawL1Scopes } from "./next-state.js";
 import type {
   FraudProofRawL1ComputationStepRole,
   FraudProofRawL1ScopeRole,
-  FraudProofRawL1Snapshot,
   FraudProofRawL1Utxo,
 } from "./raw-l1-snapshot.js";
 
@@ -96,6 +96,13 @@ export type FraudProofRawL1FamilyStage =
       readonly nextRemovalOutRef: string;
     }
   | {
+      /** The header is live on the ledger and a removal of it is in our
+       * node's mempool: nothing is required, and nothing is complete, until
+       * the ledger shows the removal. */
+      readonly kind: "pending";
+      readonly reason: string;
+    }
+  | {
       readonly kind: "removed";
       readonly terminal: FraudProofWorkflowTerminal;
     };
@@ -141,9 +148,9 @@ export const outRef = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
 export const scope = (
-  snapshot: FraudProofRawL1Snapshot,
+  snapshot: FraudProofRawL1Scopes,
   role: FraudProofRawL1ScopeRole,
-): FraudProofRawL1Snapshot["scopes"][number] => {
+): FraudProofRawL1Scopes["scopes"][number] => {
   const matches = snapshot.scopes.filter(
     (candidate) => candidate.role === role,
   );
@@ -174,7 +181,7 @@ export const unitHolders = ({
   role,
   unit,
 }: {
-  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly snapshot: FraudProofRawL1Scopes;
   readonly role: FraudProofRawL1ScopeRole;
   readonly unit: string;
 }): readonly FraudProofRawL1Utxo[] =>
@@ -240,7 +247,7 @@ export const stateQueueTopology = async ({
   snapshot,
   definition,
 }: {
-  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly snapshot: FraudProofRawL1Scopes;
   readonly definition: FraudProofRawL1TerminalDefinition;
 }): Promise<{
   readonly ordered: readonly StateQueueUTxO[];

@@ -52,6 +52,11 @@
       "midgard-source": "./src/protocol-parameters.ts",
       "types": "./dist/protocol-parameters.d.ts",
       "import": "./dist/protocol-parameters.js"
+    },
+    "./mempool": {
+      "midgard-source": "./src/mempool/overlay.ts",
+      "types": "./dist/mempool/overlay.d.ts",
+      "import": "./dist/mempool/overlay.js"
     }
   },
   "scripts": {
@@ -102,6 +107,7 @@
             "src/events/index.ts",
             "src/native-reward-account.ts",
             "src/protocol-parameters.ts",
+            "src/mempool/overlay.ts",
             "--format",
             "esm",
             "--dts",

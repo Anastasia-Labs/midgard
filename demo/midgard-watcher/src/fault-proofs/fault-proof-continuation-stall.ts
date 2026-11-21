@@ -1,10 +1,8 @@
 import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
-import { FAULT_PROOF_RESTART_WAIT } from "@al-ft/midgard-fault-proofs/workflow/wallet-only-send-gate";
 
 import { WATCHER_PACKAGE_NAME } from "../runtime/package-name.js";
 import { holdWatcherFaultProofOnFunding } from "./fault-proof-funding-hold.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
-import { holdWatcherFaultProofForResubmission } from "./fault-proof-resubmission-hold.js";
 
 /**
  * An objective whose runner session made no progress within its
@@ -75,31 +73,22 @@ const namedStateOf = (
     : undefined;
 };
 
-/** A run handed back pending, to resume on a later observation. It names
- * the restart wait when the run was left with only actions that wait holds
- * (`FAULT_PROOF_RESTART_WAIT`), which readiness shows until a run ends
- * otherwise. */
+/** A run handed back pending, to resume on a later observation. */
 export type WatcherFaultProofPendingOutcome = Readonly<{
   kind: "pending";
   resume: "await_observation";
   reason: string;
-  namedState?: typeof FAULT_PROOF_RESTART_WAIT;
 }>;
 
 /** The pending outcome of a run's pending `result`. */
 export const watcherFaultProofPendingOutcome = (
   result: Readonly<{ kind: unknown; reason: unknown }>,
-): WatcherFaultProofPendingOutcome => {
-  const named = namedStateOf(result);
-  return Object.freeze({
+): WatcherFaultProofPendingOutcome =>
+  Object.freeze({
     kind: "pending",
     resume: "await_observation",
     reason: String(result.reason),
-    ...(named?.name === FAULT_PROOF_RESTART_WAIT
-      ? { namedState: FAULT_PROOF_RESTART_WAIT }
-      : {}),
   });
-};
 
 /** The reasons of the actions a run skipped as unbuilt, each an alarm. */
 const alarmsOf = (result: object): readonly string[] => {
@@ -134,9 +123,8 @@ const withAlarms = (
 };
 
 /**
- * Holds a pending objective under its name: one that needs a new submission
- * after its header matured, one paused because the prover wallet cannot
- * fund it, one in a state its family named, one whose session stalled, or
+ * Holds a pending objective under its name: one paused because the prover
+ * wallet cannot fund it, one in a state its family named, one whose session stalled, or
  * one still awaiting its counterparty past the response deadline (as of
  * `nowMs`) and its slack. The last two, and a named state its family marks
  * as an alarm, are also logged at error level. A funding, named-state or
@@ -151,8 +139,6 @@ export const holdWatcherFaultProofPending = (
   result: Readonly<{ kind: unknown; reason: unknown }>,
   nowMs: number = Date.now(),
 ): Readonly<{ kind: "pending"; reason: string }> | undefined => {
-  const resubmission = holdWatcherFaultProofForResubmission(holds, job, result);
-  if (resubmission !== undefined) return resubmission;
   const objective = `${job.category}/${job.headerHash}`;
   const alarms = alarmsOf(result);
   if (result.kind === "pending") {

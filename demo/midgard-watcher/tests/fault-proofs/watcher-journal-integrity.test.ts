@@ -4,7 +4,6 @@ import { DatabaseSync } from "node:sqlite";
 import { setTimeout as pause } from "node:timers/promises";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import { h28 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -18,7 +17,6 @@ import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-sc
 import { handleWatcherOperationsHttpRequest } from "../../src/runtime/operations-observability.handle-http-request.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
-import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
   journalDirectory,
@@ -42,12 +40,10 @@ const DEPLOYMENT = "dd".repeat(32);
 
 const startSupervisor = (journalRoot: string) => {
   const supervisor = createWatcherFaultProofSupervisor({
-    inFlight: createWorkflowInFlight(),
     journalRoot,
     deploymentFingerprint: DEPLOYMENT,
     deadlineAlertHeadroomMs: MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
     queueAuthenticationKey: TEST_JOURNAL_KEY,
-    l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
     proofRetention: storelessProofRetention,
     execution: {
       verifyCompleted: async () => {

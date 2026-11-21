@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { installWorkflowApplicationRegistry } from "../src/workflow/adapters.js";
 import { runFraudProofWorkflowCli } from "../src/workflow/cli.js";
-import { createWorkflowInFlight } from "../src/workflow/in-flight.js";
 import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
@@ -17,7 +16,7 @@ import {
   createManifestBoundWorkflowRunner,
   WORKFLOW_RUNNER_FACTORIES,
 } from "../src/workflow/runtime.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
+import { createWorkflowObjectiveWallet } from "../src/workflow/workflow-run.js";
 import {
   admittedActuation,
   DEPLOYMENT,
@@ -97,18 +96,16 @@ const runnerFor = async (
     }),
     loadRuntime: async () => loadedRuntime(actuation, { close }),
   });
-  const inFlight = createWorkflowInFlight();
   let sessions = 0;
   const runOrResume = async () => {
     if (sessions++ > 0) actuation = await admittedActuation();
     return await runner.runOrResume({
-      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       category: "doubleSpend",
       deploymentFingerprint: DEPLOYMENT,
       headerHash: actuation.headerHash,
       decisionDigest: actuation.decisionDigest,
       actuationPermit: actuation.actuationPermit,
-      sends: inFlight.forObjective({
+      objectiveWallet: createWorkflowObjectiveWallet({
         category: "doubleSpend",
         headerHash: actuation.headerHash,
       }),
@@ -412,14 +409,13 @@ describe("bounded pending continuation", () => {
     );
     await expect(
       runFraudProofWorkflowCli({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         category: "doubleSpend",
         deploymentFingerprint: DEPLOYMENT,
         headerHash: actuation.headerHash,
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
         runtimeConfigPath: "/etc/midgard/runtime.json",
-        sends: createWorkflowInFlight().forObjective({
+        objectiveWallet: createWorkflowObjectiveWallet({
           category: "doubleSpend",
           headerHash: actuation.headerHash,
         }),

@@ -9,11 +9,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  driveProvenCorrectionRemoval,
-  excludeHeldWalletCoins,
-  type HoldWalletInputs,
-} from "../src/proven-correction-removal.js";
+import { driveProvenCorrectionRemoval } from "../src/proven-correction-removal.js";
 import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
 import { network } from "./support/emulator/blueprints.js";
 import {
@@ -89,20 +85,10 @@ const otherCaller = async (fixture: ProvedDoubleSpendFixture) => {
   const lucid = await Lucid(fixture.emulator, "Custom", {
     slotConfig: fixture.proverLucid.config().slotConfig,
   });
-  // An in-flight transaction of a workflow holds the larger coin.
-  const held = `${fundingTxHash}#0`;
-  return {
-    lucid,
-    held,
-    signer: excludeHeldWalletCoins({
-      signer,
-      heldOutRefs: () => [held],
-    }),
-  };
+  return { lucid, signer };
 };
 
-/** A signed transaction's inputs and collateral at `address`, and when it
- * can no longer land. */
+/** A signed transaction's inputs and collateral at `address`. */
 const walletCoinsOf = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,
   cbor: string,
@@ -121,11 +107,8 @@ const walletCoinsOf = async (
     ...outRefs(body.inputs()),
     ...outRefs(body.collateral_inputs()),
   ]);
-  const ttl = body.ttl();
   return {
     collateral: outRefs(body.collateral_inputs()).map(outRefLabel),
-    expiresAtMs:
-      ttl === undefined ? undefined : lucid.slotToUnixTime(Number(ttl)),
     wallet: [
       ...new Set(
         spent.filter((utxo) => utxo.address === address).map(outRefLabel),
@@ -134,50 +117,22 @@ const walletCoinsOf = async (
   };
 };
 
-/** The removal's wallet holds and submissions, in the order they happen;
- * `submitFailure`, when given, fails every submission after recording it. */
-const walletEvents = (
-  fixture: ProvedDoubleSpendFixture,
-  refuse?: (outRefs: readonly string[]) => Error | undefined,
-  submitFailure?: Error,
-) => {
-  const events: (
-    | Readonly<{
-        kind: "hold";
-        outRefs: readonly string[];
-        untilMs: number;
-        release: () => void;
-      }>
-    | Readonly<{
-        kind: "submit";
-        coins: Awaited<ReturnType<typeof walletCoinsOf>>;
-      }>
-  )[] = [];
-  /** Records every submission from now on, with the wallet coins it
-   * spends while they are unspent. */
+/** The removal's submissions, in the order they happen, with the wallet
+ * coins each spends while they are unspent. */
+const walletEvents = (fixture: ProvedDoubleSpendFixture) => {
+  const events: Awaited<ReturnType<typeof walletCoinsOf>>[] = [];
+  /** Records every submission from now on. */
   const watch = (
     lucid: Awaited<ReturnType<typeof Lucid>>,
     walletAddress: string,
   ) => {
     const submit = fixture.emulator.submitTx.bind(fixture.emulator);
     vi.spyOn(fixture.emulator, "submitTx").mockImplementation(async (cbor) => {
-      events.push({
-        kind: "submit",
-        coins: await walletCoinsOf(lucid, cbor, walletAddress),
-      });
-      if (submitFailure !== undefined) throw submitFailure;
+      events.push(await walletCoinsOf(lucid, cbor, walletAddress));
       return await submit(cbor);
     });
   };
-  const hold: HoldWalletInputs = ({ outRefs, untilMs }) => {
-    expect(untilMs).toBeGreaterThan(Date.now());
-    const refused = refuse?.(outRefs);
-    if (refused !== undefined) throw refused;
-    const release = vi.fn();
-    events.push({ kind: "hold", outRefs, untilMs, release });
-    return release;
-  };
-  return { events, hold, watch };
+  return { events, watch };
 };
 
 const finish = async (
@@ -195,7 +150,6 @@ const finish = async (
     network,
     signer: caller.signer,
     correction,
-    holdWalletInputs: wallet?.hold ?? (() => () => undefined),
     validFrom: now - 120_000n,
     validTo: now + 300_000n,
   });
@@ -218,25 +172,11 @@ describe("driving a proven fraud-proof correction from L1", () => {
     expect((await started.removal).fraudProver).toBe(
       fixture.proverPaymentKeyHash,
     );
-    // Each peel held its own wallet coins, collateral included, before it
-    // was submitted, until its TTL; the confirmed removal released every
-    // hold.
-    expect(wallet.events.map(({ kind }) => kind)).toEqual([
-      "hold",
-      "submit",
-      "hold",
-      "submit",
-    ]);
-    for (let index = 0; index < wallet.events.length; index += 2) {
-      const [held, submitted] = wallet.events.slice(index, index + 2);
-      if (held?.kind !== "hold" || submitted?.kind !== "submit")
-        throw new Error("a submission was not held first");
-      const { collateral, wallet: coins } = submitted.coins;
+    // Each peel posts collateral from the caller's own wallet coins.
+    expect(wallet.events).toHaveLength(2);
+    for (const { collateral, wallet: coins } of wallet.events) {
       expect(collateral.length).toBeGreaterThan(0);
       expect(coins).toEqual(expect.arrayContaining(collateral));
-      expect([...held.outRefs].sort()).toEqual(coins);
-      expect(held.untilMs).toBe(submitted.coins.expiresAtMs);
-      expect(held.release).toHaveBeenCalledOnce();
     }
 
     expect(await lockDatum(fixture)).toBe("Idle");
@@ -256,18 +196,11 @@ describe("driving a proven fraud-proof correction from L1", () => {
       fraudProofAssetName: fixture.step04Result.fraudProofAssetName,
     });
 
-    const { lucid, held, result: started } = await finish(fixture, lock);
+    const { result: started } = await finish(fixture, lock);
     if (started.kind !== "proven") throw new Error(started.kind);
     expect(started.fraudProofOutRef).toBe(outRefLabel(fixture.fraudProofUtxo));
     const removed = await started.removal;
     expect(removed.fraudProver).toBe(fixture.proverPaymentKeyHash);
-    // Paid from the caller's unheld coin; the held one is untouched.
-    const [txHash, outputIndex] = held.split("#");
-    expect(
-      await lucid.utxosByOutRef([
-        { txHash: txHash!, outputIndex: Number(outputIndex) },
-      ]),
-    ).toHaveLength(1);
 
     expect(await lockDatum(fixture)).toBe("Idle");
     await expectStateQueueHeaderOrder({
@@ -277,41 +210,6 @@ describe("driving a proven fraud-proof correction from L1", () => {
     });
     // The finalized view still shows the lock; the live one has moved on.
     expect((await finish(fixture, lock)).result.kind).toBe("finished");
-  }, 240_000);
-
-  it("submits nothing when a wallet coin of the removal is already taken", async () => {
-    const { fixture, lock } = await interruptedRemoval();
-    const before = await lockDatum(fixture);
-    const wallet = walletEvents(fixture, (outRefs) =>
-      outRefs.length === 0 ? undefined : new Error("prover coin is held"),
-    );
-    const { result: started } = await finish(fixture, lock, wallet);
-    if (started.kind !== "proven") throw new Error(started.kind);
-    await expect(started.removal).rejects.toThrow("prover coin is held");
-    expect(wallet.events).toEqual([]);
-    expect(await lockDatum(fixture)).toEqual(before);
-    await expectStateQueueHeaderOrder({
-      lucid: fixture.funderLucid,
-      contracts: fixture.contracts,
-      expectedHeaderHashes: [fixture.headerHash],
-    });
-  }, 240_000);
-
-  it("keeps a failed removal's holds, as its transaction may still land", async () => {
-    const { fixture, lock } = await interruptedRemoval();
-    const wallet = walletEvents(
-      fixture,
-      undefined,
-      new Error("node lost the removal"),
-    );
-    const { result: started } = await finish(fixture, lock, wallet);
-    if (started.kind !== "proven") throw new Error(started.kind);
-    await expect(started.removal).rejects.toThrow("node lost the removal");
-    expect(wallet.events.map(({ kind }) => kind)).toEqual(["hold", "submit"]);
-    const [held] = wallet.events;
-    if (held?.kind !== "hold") throw new Error("the submission was not held");
-    expect(held.outRefs.length).toBeGreaterThan(0);
-    expect(held.release).not.toHaveBeenCalled();
   }, 240_000);
 
   it("submits nothing for a correction no proven record names", async () => {

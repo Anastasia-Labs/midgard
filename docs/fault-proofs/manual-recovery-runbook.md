@@ -16,15 +16,13 @@ Completion: no new workflow can submit while recovery is in progress.
 
 ## 2. Read every transaction of ours from L1
 
-The watcher keeps no local record of what it sent: its in-flight
-transactions live in process memory only. Read the prover wallet's and the
-objective's transactions from the watcher's L1 follower and classify each as
-confirmed, rolled back, definitely absent, or still in flight. A transaction
-that spends only wallet coins is in flight until its short validity bound has
-passed.
+The watcher keeps no record of what it sent. Read the prover wallet's and
+the objective's transactions from the watcher's L1 follower and the node's
+mempool, and classify each as confirmed, rolled back, pending in the mempool,
+or absent. An absent one is built again by the watcher's next pass.
 
-Completion: every transaction of ours has an authenticated terminal
-observation, or its validity bound has passed, or recovery remains paused.
+Completion: every transaction of ours has an authenticated observation, or
+recovery remains paused.
 
 ## 3. Re-read protocol state
 
@@ -42,8 +40,9 @@ Restart the production watcher with the same journal directory. A fault still
 in the finalized queue is admitted again, and its category runner reads the
 workflow's progress from the chain: a completed proof that has not removed the
 header resumes at removal, and a confirmed removal resumes at terminal
-verification. A next transaction that spends only wallet coins waits out one
-wallet-only validity window first (`fault_proof_restart_wait`).
+verification. The chain read includes the L1 node's mempool, so a
+transaction the previous process sent that is still pending counts as sent,
+and the next action is built on its outputs.
 
 The manual `resume-workflow` CLI is diagnostic unless invoked through the
 application owner that supplies the admitted permits and runtime registry.
@@ -65,13 +64,11 @@ ours on the header.
   finality agreement.
 - Concurrent challenger win: verify the target is already removed and the bond
   paid; the watcher reads it as an idempotent terminal result.
-- An objective held as `fault_proof_resubmission_required` or
-  `fault_proof_start_deadline_passed`: its header has matured, or (for a
-  resubmission hold) the signed objective is not the watcher's current proof
-  target, and the watcher holds reconciliation-only authority, so a restart
-  does not resubmit it. Preserve the journals and escalate while the challenge window
-  is open; proving is permissionless, so another challenger can still prove
-  the fault.
+- An objective held as `fault_proof_start_deadline_passed`: its header has
+  matured with no removal of ours landed, so a restart does not run it again.
+  Preserve the journals and escalate while the challenge window is open;
+  proving is permissionless, so another challenger can still prove the
+  fault.
 - Reference-script or deployment mismatch: stop. Repair by deploying a coherent
   identity; never substitute a locally rebuilt hash into an existing manifest.
 

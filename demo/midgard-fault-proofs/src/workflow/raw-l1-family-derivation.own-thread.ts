@@ -1,4 +1,7 @@
+import type { PendingTransaction } from "@al-ft/midgard-l1-follower/mempool";
+
 import type { ComputationThreadStep } from "./computation-thread-steps.js";
+import { type FraudProofNextView, nextViewOf } from "./next-state.js";
 import { historicalTransactions } from "./raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
 import { authenticateFamilySnapshot } from "./raw-l1-family-derivation.derive-terminal.js";
 import {
@@ -14,34 +17,29 @@ import type {
 } from "./raw-l1-snapshot.js";
 
 /**
- * Our live computation thread on the header. Init, Open and a case's
- * VerifySource let any number of threads stand on one header, each carrying
- * the same unit; another prover's, or one whose datum does not decode, is no
- * part of our workflow. Among ours the newest comes first, so the successor
- * our own last move created stays the thread we act on, then the furthest
- * step, then the lowest out-ref.
+ * Our live computation thread on the header in `view`. Init, Open and a
+ * case's VerifySource let any number of threads stand on one header, each
+ * carrying the same unit; another prover's, or one whose datum does not
+ * decode, is no part of our workflow. Among ours the newest comes first (a
+ * pending transaction's output is newer than every ledger output), so the
+ * successor our own last move created stays the thread we act on, then the
+ * furthest step, then the lowest out-ref.
  */
 export const ownThread = ({
-  snapshot,
+  view,
   definition,
   threadUnit,
 }: {
-  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly view: Pick<FraudProofNextView, "scopes" | "createdRank">;
   readonly definition: FraudProofRawL1FamilyDefinition;
   readonly threadUnit: string;
 }):
   | { readonly step: ComputationThreadStep; readonly raw: FraudProofRawL1Utxo }
   | undefined => {
-  const createdAt = new Map(
-    snapshot.transactions.map(
-      (transaction) =>
-        [transaction.txHash, BigInt(transaction.inclusionPoint.slot)] as const,
-    ),
-  );
   const created = (raw: FraudProofRawL1Utxo) =>
-    createdAt.get(raw.outRef.split("#")[0]!) ?? -1n;
+    view.createdRank(raw.outRef.split("#")[0]!);
   const threads = definition.computationThread.steps.flatMap((step, index) =>
-    unitHolders({ snapshot, role: step.role, unit: threadUnit })
+    unitHolders({ snapshot: view, role: step.role, unit: threadUnit })
       .filter((raw) =>
         ownsThread({
           raw,
@@ -69,10 +67,15 @@ export type FraudProofStandingThread = Readonly<{
   threadOutRef: string;
   step: ComputationThreadStep;
   lovelace: string;
+  /** The transaction in the node's mempool that spends the thread, while
+   * one does: the thread stands on the ledger until that transaction lands,
+   * and is no longer ours to act on. */
+  pendingSpend?: string;
 }>;
 
-/** Our threads on the header as L1 shows them: the one still standing, if
- * any, and every transaction that spent one of ours, at its depth. */
+/** Our threads on the header as L1 shows them: the one still standing on
+ * the ledger, if any, and every ledger transaction that spent one of ours,
+ * at its depth. */
 export type FraudProofOwnThreads = Readonly<{
   standing?: FraudProofStandingThread;
   spends: readonly Readonly<{
@@ -82,28 +85,44 @@ export type FraudProofOwnThreads = Readonly<{
   }>[];
 }>;
 
+/** The standing thread `thread`, marked with the first transaction of
+ * `pending` that spends it. */
 export const standingThreadOf = (
   thread: NonNullable<ReturnType<typeof ownThread>>,
-): FraudProofStandingThread => ({
-  threadOutRef: thread.raw.outRef,
-  step: thread.step,
-  lovelace: (rawToUtxo(thread.raw).assets.lovelace ?? 0n).toString(),
-});
+  pending: readonly PendingTransaction[],
+): FraudProofStandingThread => {
+  const spender = pending.find((transaction) =>
+    transaction.spends.includes(thread.raw.outRef),
+  );
+  return {
+    threadOutRef: thread.raw.outRef,
+    step: thread.step,
+    lovelace: (rawToUtxo(thread.raw).assets.lovelace ?? 0n).toString(),
+    ...(spender === undefined ? {} : { pendingSpend: spender.txHash }),
+  };
+};
 
 /**
  * Our threads over an admitted family snapshot, by the one ownership rule of
  * `ownThread`: a thread at one of the family's step addresses, holding one
- * thread unit, under a step datum naming our key.
+ * thread unit, under a step datum naming our key. `pending` is the node's
+ * mempool at the snapshot's tip; it only marks a standing thread it spends.
  */
 export const deriveFraudProofRawL1OwnThreads = ({
   snapshot,
+  pending,
   definition,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
+  readonly pending: readonly PendingTransaction[];
   readonly definition: FraudProofRawL1FamilyDefinition;
 }): FraudProofOwnThreads => {
   const { threadUnit } = authenticateFamilySnapshot({ snapshot, definition });
-  const standing = ownThread({ snapshot, definition, threadUnit });
+  const standing = ownThread({
+    view: nextViewOf({ snapshot, pending: [] }),
+    definition,
+    threadUnit,
+  });
   const ours = (raw: FraudProofRawL1Utxo) => {
     if (outputQuantity(raw, threadUnit) !== 1n) return false;
     const address = rawToUtxo(raw).address;
@@ -126,7 +145,9 @@ export const deriveFraudProofRawL1OwnThreads = ({
       })),
   );
   return {
-    ...(standing === undefined ? {} : { standing: standingThreadOf(standing) }),
+    ...(standing === undefined
+      ? {}
+      : { standing: standingThreadOf(standing, pending) }),
     spends,
   };
 };

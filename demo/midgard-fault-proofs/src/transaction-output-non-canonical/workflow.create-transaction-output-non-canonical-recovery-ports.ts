@@ -79,6 +79,10 @@ export const transactionOutputStageFromL1 = (
       throw new Error(
         "transactionOutputNonCanonical L1 stage exceeds five-step topology",
       );
+    case "pending":
+      throw new Error(
+        `transactionOutputNonCanonical L1 stage requires no action: ${stage.reason}`,
+      );
     case "proof_token":
       return "proven";
     case "removed":

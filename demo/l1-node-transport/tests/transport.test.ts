@@ -35,7 +35,7 @@ describe("sidecar handshake", () => {
       execFileSync(sidecarBinary, ["--protocol-version"], {
         encoding: "utf8",
       }).trim(),
-    ).toBe("2");
+    ).toBe("3");
   });
 
   it("refuses an unsupported version, the previous one included, with a fatal frame and exit 64", async () => {
@@ -52,9 +52,9 @@ describe("sidecar handshake", () => {
     child.stdin.write(
       encodeFrame({
         type: "hello",
-        // Version 1 predates no-deadline queries: an old client is refused
-        // at hello, not at its first such query.
-        version: 1,
+        // Version 2 predates the mempool listing: an old client is refused
+        // at hello, not at its first listing.
+        version: 2,
         socketPath: "/nonexistent",
         networkMagic: MAGIC,
       }),
@@ -472,5 +472,28 @@ describe("local state query, submit and monitor", () => {
     expect((await transport.mempoolSizes()).txCount).toBe(1n);
     await node.command({ op: "clearMempool" });
     expect(await transport.hasTx(sample.id as string)).toBe(false);
+  });
+
+  it("lists the mempool byte-exact in submission order, and an empty one as no transactions", async () => {
+    const node = await mockNode();
+    const [tip] = await node.extend(1);
+    const sample = await node.command({ op: "sampleTx" });
+    const first = Uint8Array.from(Buffer.from(sample.tx as string, "hex"));
+    // The same transaction flagged phase-2 invalid ([body, witnesses, false,
+    // null]): other bytes, so the listing's order is visible.
+    expect(first[first.length - 2]).toBe(0xf5);
+    const second = Uint8Array.from(first);
+    second[second.length - 2] = 0xf4;
+    const transport = transportFor(node.socketPath);
+    expect(await transport.mempoolTxs()).toEqual({
+      acquiredSlot: BigInt(tip!.slot),
+      txs: [],
+    });
+    expect(await transport.submit(first, 6)).toEqual({ accepted: true });
+    expect(await transport.submit(second, 6)).toEqual({ accepted: true });
+    const listed = await transport.mempoolTxs();
+    expect(listed.txs.map(hex)).toEqual([hex(first), hex(second)]);
+    await node.command({ op: "clearMempool" });
+    expect((await transport.mempoolTxs()).txs).toEqual([]);
   });
 });

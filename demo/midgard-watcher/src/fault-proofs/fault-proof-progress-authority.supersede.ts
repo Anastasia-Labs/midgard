@@ -16,9 +16,8 @@ import type {
 /**
  * The progress authority's supersede. A durable fault decision a fresh
  * classification of the same observation no longer reproduces is replaced
- * once nothing of it is in flight: no job of it is queued or active and no
- * transaction this process sent for it can still land. Its rows and its
- * decision row are forgotten; then the fresh fault is
+ * once no job of it is queued or active. Its rows and its decision row are
+ * forgotten; then the fresh fault is
  * recorded as a live decision. What an earlier transaction left on L1 (a
  * partial proof) is abandoned. Removing the row is the supersession, so a
  * decision that returns later (A to B to A) is recorded afresh. The work is
@@ -27,11 +26,6 @@ import type {
 export const createProgressSupersede = (input: {
   readonly retention?: WatcherProofRetention;
   readonly onObjectiveSettled?: (objective: WatcherProofObjective) => void;
-  /** Whether a transaction this process sent for the objective can still
-   * land (`WorkflowInFlight.sending`). */
-  readonly sending: (objective: WatcherProofObjective) => boolean;
-  /** Drops the objective's part of the in-flight set. */
-  readonly forgetInFlight: (objective: WatcherProofObjective) => void;
   readonly initialize: () => Promise<void>;
   readonly cleanup: WatcherProofObjectiveCleanup;
   readonly objectives: ReadonlyMap<
@@ -58,7 +52,6 @@ export const createProgressSupersede = (input: {
     ) => Object.freeze({ kind: "held" as const, reason, detail });
     if (input.held(key)) return holding("objective_held");
     if (input.cleanup.pending(prior)) return holding("job_pending");
-    if (input.sending(prior)) return holding("submission_unresolved");
     const objective = input.objectives.get(key);
     input.forgetObjective(key);
     input.decisions.delete(prior.decisionDigest);
@@ -84,7 +77,6 @@ export const createProgressSupersede = (input: {
           category === prior.category && headerHash === prior.headerHash,
       );
     if (failure !== undefined) return holding("cleanup_failed", failure.detail);
-    input.forgetInFlight(prior);
     if (fresh.decision === "fault_detected")
       await (await input.openDecisions()).appendLiveDecision(fresh);
     input.pruneDecisions();

@@ -112,6 +112,7 @@ const admitStage = <Category extends FraudProofCatalogueCategoryName>({
     }
     return stage;
   }
+  if (stage.kind === "pending") return stage;
   canonicalOutRef(stage.stateQueueBlockOutRef, "state-queue block outRef");
   if (stage.kind === "step") {
     if (stage.step < 1 || stage.step > spec.stepCount) {
@@ -144,6 +145,9 @@ export const cursorFamilyObservation = <
   const admitted = admitStage({ spec, headerHash, provenance, stage });
   if (admitted.kind === "removed") {
     return { kind: "completed", terminal: admitted.terminal };
+  }
+  if (admitted.kind === "pending") {
+    return { kind: "pending", reason: admitted.reason };
   }
   if (admitted.kind === "not_started") {
     return {

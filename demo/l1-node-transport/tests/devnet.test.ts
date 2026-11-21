@@ -288,6 +288,12 @@ describe.skipIf(!enabled)("real node conformance (devnet)", () => {
       Uint8Array.from(Buffer.from(envelope.cborHex, "hex")),
     );
     expect(result).toEqual({ accepted: true });
+    // The listing holds the transaction exactly as submitted.
+    const listedHex = async (): Promise<string[]> =>
+      (await transport!.mempoolTxs()).txs.map((tx) =>
+        Buffer.from(tx).toString("hex"),
+      );
+    expect(await listedHex()).toContain(envelope.cborHex);
     const cliHasTx = (): boolean =>
       (
         JSON.parse(
@@ -316,6 +322,7 @@ describe.skipIf(!enabled)("real node conformance (devnet)", () => {
     }
     expect(present).toBe(false);
     expect(cliHasTx()).toBe(false);
+    expect(await listedHex()).not.toContain(envelope.cborHex);
     const included = decodeCbor(
       await transport!.query({
         query: "utxo_by_txin",

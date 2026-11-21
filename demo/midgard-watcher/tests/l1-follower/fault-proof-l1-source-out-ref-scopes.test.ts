@@ -1,4 +1,3 @@
-import { fraudProofSignedTransactionRecovery } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import {
   admitFraudProofRawL1Snapshot,
   type FraudProofRawL1Snapshot,
@@ -22,7 +21,6 @@ import {
 import {
   RELEASE,
   requestFor,
-  signedOf,
   sourceOver,
 } from "../support/l1-follower-raw-source-fixture.js";
 
@@ -37,12 +35,14 @@ const capture = async (
   reads: FollowerRawReads,
   request: ReturnType<typeof requestFor>,
 ): Promise<FraudProofRawL1Snapshot> =>
-  (await sourceOver(fx, reads)
-    .snapshotAuthority({
-      releaseFinality: RELEASE,
-      observationDepth: "inclusion",
-    })
-    .capture(request)) as FraudProofRawL1Snapshot;
+  (
+    await sourceOver(fx, reads)
+      .snapshotAuthority({
+        releaseFinality: RELEASE,
+        observationDepth: "inclusion",
+      })
+      .capture(request)
+  ).snapshot as FraudProofRawL1Snapshot;
 
 const OUR_DATUM = Buffer.from("d87980", "hex");
 
@@ -140,9 +140,11 @@ describe("snapshot authority: out-ref scopes", () => {
     observationDepth: "inclusion" | "recovery_finality" = "inclusion",
   ) =>
     (
-      (await sourceOver(fx, fx.reads())
-        .snapshotAuthority({ releaseFinality: RELEASE, observationDepth })
-        .capture(scopedRequest(fx.header, outRefs))) as FraudProofRawL1Snapshot
+      (
+        await sourceOver(fx, fx.reads())
+          .snapshotAuthority({ releaseFinality: RELEASE, observationDepth })
+          .capture(scopedRequest(fx.header, outRefs))
+      ).snapshot as FraudProofRawL1Snapshot
     ).scopes[0]!.utxos.map(({ outRef }) => outRef);
 
   /** One of our transactions: spends V#0 (live at T) and pays T a datum. */
@@ -155,13 +157,13 @@ describe("snapshot authority: out-ref scopes", () => {
 
   // Each case: how our transaction stands once the follower has pruned.
   it.each([
-    ["not yet landed", "rebroadcast"],
-    ["dropped", "rebroadcast"],
-    ["expired", "expired"],
-    ["rolled back for good", "rebroadcast"],
+    ["not yet landed"],
+    ["dropped"],
+    ["expired"],
+    ["rolled back for good"],
   ] as const)(
-    "after pruning, reads the output of our transaction %s as absent, and signed recovery goes ahead",
-    async (state, recovered) => {
+    "after pruning, reads the output of our transaction %s as absent",
+    async (state) => {
       const fx = await fixture();
       const tx = ours(
         fx,
@@ -175,13 +177,6 @@ describe("snapshot authority: out-ref scopes", () => {
       }
       await pruneFixture(fx);
       expect(await heldAt(fx, [`${txHash}#0`])).toEqual([]);
-      const recovery = fraudProofSignedTransactionRecovery(
-        sourceOver(fx, fx.reads()),
-        RELEASE,
-      );
-      expect(
-        (await recovery.observeSignedTransaction(signedOf(tx))).status,
-      ).toBe(recovered);
       if (state === "not yet landed") {
         await fx.forward([tx]);
         expect(await heldAt(fx, [`${txHash}#0`])).toEqual([`${txHash}#0`]);

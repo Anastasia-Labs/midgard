@@ -297,7 +297,6 @@ export const mintItemSharedRunnerIdentity = async () => {
     category,
     observe,
     observeHeader: unexpected,
-    observeSignedTransaction: unexpected,
     transactionConfirmed: async () => true,
     rawL1: { authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY },
     publications: {

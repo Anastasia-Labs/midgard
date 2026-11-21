@@ -4,28 +4,21 @@
  *
  * The cancel spends the thread itself, so it cannot land twice: a second
  * cancel of the same thread, whoever sends it and whenever, fails at build
- * or at submission for want of its input. That needs no stored record, no
- * restart wait and no reconcile: what is left to cancel is what the chain
- * still holds. A cancel that cannot be built or funded now is simply built
+ * or at submission for want of its input. That needs no stored record and
+ * no reconcile: what is left to cancel is what the chain still holds. A cancel that cannot be built or funded now is simply built
  * again later. Submission refuses any transaction that is not exactly such
  * a cancel: it spends the thread, burns its one token, and pays only our
  * wallet.
  *
- * The fee is paid from the signer's wallet. The caller passes a signer
- * whose wallet offers no coin a workflow holds (`excludeHeldWalletCoins`),
- * and the coins the cancel spends or offers as collateral are held through
- * `holdWalletInputs` until its validity ends, so no workflow takes them
- * while it may still land.
+ * The fee is paid from the signer's wallet.
  */
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
-import type { HoldWalletInputs } from "./proven-correction-removal.js";
 import {
   outRefLabel,
   parseOutRef,
   type ResolvedProverSigner,
 } from "./runtime.js";
-import { walletOnlyValidTo } from "./wallet-only-validity.js";
 import {
   FAMILY_OWN_THREAD_CANCELS,
   type OwnThreadCancelDeployment,
@@ -37,7 +30,6 @@ import { addMintedAssets } from "./workflow/minted-assets.js";
 import {
   type LocallyEvaluatedTransaction,
   submitCapturedTransaction,
-  workflowTransactionCollateralInputOutRefs,
   workflowTransactionInputOutRefs,
 } from "./workflow/transaction-boundary.js";
 import { isWorkflowFundingShortfall } from "./workflow/workflow-funding-shortfall.js";
@@ -55,8 +47,6 @@ export type OwnThreadCancelOutcome =
       txHash: string;
       /** The lovelace the thread held, back to our wallet less the fee. */
       reclaimedLovelace: bigint;
-      /** When the cancel can no longer land (wall clock, ms). */
-      validToMs: number;
     }>
   | Readonly<{ kind: "spent_elsewhere" }>
   | Readonly<{ kind: "withdrawn" }>
@@ -104,7 +94,7 @@ const requireOwnThreadCancel = async ({
   readonly threadOutRef: string;
   readonly unit: string;
   readonly walletAddress: string;
-}): Promise<readonly string[]> => {
+}): Promise<void> => {
   const refuse = (what: string): never => {
     throw new Error(`own-thread cancel ${transaction.txHash} ${what}`);
   };
@@ -137,29 +127,20 @@ const requireOwnThreadCancel = async ({
     collateralReturn.address().to_bech32() !== walletAddress
   )
     refuse("returns collateral to an address other than our wallet");
-  return [
-    ...new Set([
-      ...inputs.filter((input) => input !== threadOutRef),
-      ...workflowTransactionCollateralInputOutRefs(transaction.signed),
-    ]),
-  ];
 };
 
 /**
  * The canceller of our threads over one deployment: `signer` signs and its
- * wallet pays, `holdWalletInputs` holds the coins each cancel spends until
- * its validity ends.
+ * wallet pays.
  */
 export const createOwnThreadCanceller = ({
   lucid,
   signer,
   deployment,
-  holdWalletInputs,
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
   readonly deployment: OwnThreadCancelDeployment;
-  readonly holdWalletInputs: HoldWalletInputs;
 }): OwnThreadCanceller => {
   const threadGone = async (threadOutRef: string): Promise<boolean> =>
     (await lucid.utxosByOutRef([parseOutRef(threadOutRef, "thread")]))
@@ -197,7 +178,6 @@ export const createOwnThreadCanceller = ({
           signer,
           deployment,
           subject,
-          validTo: walletOnlyValidTo(lucid),
         });
       } catch (cause) {
         return await settle(
@@ -210,24 +190,14 @@ export const createOwnThreadCanceller = ({
       const { transaction, computationThreadUnit, reclaimedLovelace } =
         built.cancel;
       if (!(await stillDue())) return Object.freeze({ kind: "withdrawn" });
-      const ttl = transaction.signed.toTransaction().body().ttl();
-      if (ttl === undefined)
-        return Object.freeze({
-          kind: "failed",
-          reason: `own-thread cancel ${transaction.txHash} carries no validity bound`,
-        });
-      const validToMs = lucid.slotToUnixTime(Number(ttl));
       try {
-        const walletCoins = await requireOwnThreadCancel({
+        await requireOwnThreadCancel({
           lucid,
           transaction,
           threadOutRef,
           unit: computationThreadUnit,
           walletAddress: signer.address,
         });
-        // Released only by expiry: once submitted, the cancel may land
-        // until its validity ends, whatever the provider answered.
-        holdWalletInputs({ outRefs: walletCoins, untilMs: validToMs });
       } catch (cause) {
         return await settle(threadOutRef, cause, "failed");
       }
@@ -240,7 +210,6 @@ export const createOwnThreadCanceller = ({
           kind: "submitted",
           txHash,
           reclaimedLovelace,
-          validToMs,
         });
       } catch (cause) {
         return await settle(threadOutRef, cause, "failed");

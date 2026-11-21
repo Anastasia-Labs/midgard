@@ -20,7 +20,6 @@ import { describe, expect, it, vi } from "vitest";
 const hooks = vi.hoisted(() => ({
   binding: undefined as unknown,
   authority: undefined as unknown,
-  recovery: undefined as unknown,
 }));
 vi.mock("../src/workflow/deployment-manifest-binding.js", async (load) => ({
   ...(await load<
@@ -31,9 +30,6 @@ vi.mock("../src/workflow/deployment-manifest-binding.js", async (load) => ({
 vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
   const actual =
     await load<typeof import("../src/workflow/family-l1-observation.js")>();
-  const { withFraudProofL1Recovery } = await import(
-    "../src/workflow/l1-source.js"
-  );
   return {
     ...actual,
     createFraudProofFamilyL1ObservationPort: (
@@ -41,15 +37,12 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
         typeof actual.createFraudProofFamilyL1ObservationPort
       >[0],
     ) =>
-      withFraudProofL1Recovery(
-        actual.createFraudProofFamilyRawL1ObservationPort({
-          ...input,
-          authority: hooks.authority as Parameters<
-            typeof actual.createFraudProofFamilyRawL1ObservationPort
-          >[0]["authority"],
-        }),
-        hooks.recovery as Parameters<typeof withFraudProofL1Recovery>[1],
-      ),
+      actual.createFraudProofFamilyRawL1ObservationPort({
+        ...input,
+        authority: hooks.authority as Parameters<
+          typeof actual.createFraudProofFamilyRawL1ObservationPort
+        >[0]["authority"],
+      }),
   };
 });
 
@@ -84,14 +77,9 @@ import {
 } from "./support/witness-field-carriage-installed-run.js";
 
 /**
- * Polls the runner waits, the certificate retired, before its certify
- * transaction is past the recovery depth.
- */
-const HOLD_POLLS = 100;
-
-/**
  * The prover's wallet retires the application's certificate at `outRef`
- * (spends it and burns its token) in a block of its own. Returns the
+ * (spends it and burns its token) in a block of its own, once a block has
+ * taken the certify transaction if it is still in the mempool. Returns the
  * outputs the retirement pays back to the wallet.
  */
 const retireCertificate = async (
@@ -100,7 +88,9 @@ const retireCertificate = async (
   outRef: string,
 ): Promise<readonly string[]> => {
   const [txHash, index] = outRef.split("#");
-  const utxo = harness.emulator.ledger[`${txHash!}${index!}`]!.utxo;
+  const key = `${txHash!}${index!}`;
+  if (harness.emulator.ledger[key] === undefined) harness.emulator.awaitBlock();
+  const utxo = harness.emulator.ledger[key]!.utxo;
   const { policyId, mintingScript } =
     harness.contracts.fieldPreimageCertificate;
   const unit = Object.keys(utxo.assets).find((asset) =>
@@ -174,10 +164,10 @@ describe("witness field carriage recovered from the chain, in the installed watc
     let spent: string | undefined;
     const moved = new Set<string>();
     const { run, watch, harness, cost } = await runWith(hooks, () => [], {
-      // While the runner waits on a confirmation, once a later publication
-      // is on chain (so the first is confirmed) and before the certificate:
-      // the prover's wallet spends the first publication's output back to
-      // itself.
+      // At an observation once a later publication is sent and before the
+      // certificate: a block takes what the mempool holds, so the first is
+      // confirmed, and the prover's wallet spends the first publication's
+      // output back to itself.
       during: ({ clock }, { harness, watch }) => {
         clock.state.onPoll = async () => {
           if (spent !== undefined) return;
@@ -189,7 +179,10 @@ describe("witness field carriage recovered from the chain, in the installed watc
             return;
           const [first] = carriage.publications[0]!.outputs;
           const [txHash, index] = first!.outRef.split("#");
-          const utxo = harness.emulator.ledger[`${txHash!}${index!}`]?.utxo;
+          const key = `${txHash!}${index!}`;
+          if (harness.emulator.ledger[key] === undefined)
+            harness.emulator.awaitBlock();
+          const utxo = harness.emulator.ledger[key]?.utxo;
           if (utxo === undefined) return;
           spent = first!.outRef;
           await removeOutput(
@@ -224,9 +217,8 @@ describe("witness field carriage recovered from the chain, in the installed watc
     const certify = carriage.certificates[0]!.transaction;
     expect(certify.referenceInputs).toContain(published[1]!.outRef);
     expect(certify.referenceInputs).not.toContain(spent);
-    // Exactly one publication is added, the one in its place. The
-    // publication in flight when the output went lands and is the result for
-    // its chunk: it is never published again.
+    // Exactly one publication is added, the one in its place. The later
+    // publication is the result for its chunk: it is never published again.
     const others = (rows: readonly { kind: string }[]) =>
       rows.map(({ kind }) => kind).filter((kind) => kind !== "publish");
     const publishes = (rows: readonly { kind: string }[]) =>
@@ -407,7 +399,6 @@ describe("witness field carriage recovered from the chain, in the installed watc
     "certifies the field once more when its own wallet retires the certificate %s",
     async (_, when) => {
       let retired: string | undefined;
-      let held = 0;
       const withheld = new Set<string>();
       const moved = new Set<string>();
       const retire = async (
@@ -442,24 +433,15 @@ describe("witness field carriage recovered from the chain, in the installed watc
         },
         during: ({ clock }, { harness, watch }) => {
           clock.state.onPoll = async () => {
-            if (retired === undefined) {
-              // "landed": the certify transaction is in the block this poll
-              // added, and the application has not reconciled it yet.
-              const [certificate] = fieldCarriageOf(
-                watch,
-                sitesOf(harness),
-              ).certificates;
-              if (when === "landed" && certificate !== undefined)
-                await retire(watch, harness, certificate.output.outRef);
-              return;
-            }
-            // The runner waits while the certify transaction is within the
-            // recovery depth; then time passes it.
-            held += 1;
-            if (held === HOLD_POLLS)
-              harness.emulator.awaitBlock(
-                DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth,
-              );
+            if (retired !== undefined) return;
+            // "landed": the certify transaction is sent, and lands before
+            // the application reconciles it.
+            const [certificate] = fieldCarriageOf(
+              watch,
+              sitesOf(harness),
+            ).certificates;
+            if (when === "landed" && certificate !== undefined)
+              await retire(watch, harness, certificate.output.outRef);
           };
           return () => {
             clock.state.onPoll = undefined;
@@ -468,7 +450,6 @@ describe("witness field carriage recovered from the chain, in the installed watc
       });
       expect(retired).toBeDefined();
       expect(withheld.size).toBe(when === "read" ? 1 : 0);
-      expect(held).toBeGreaterThanOrEqual(HOLD_POLLS);
       expect(run.convicted).toBe(true);
       // The retired certificate and exactly one of the same field in its
       // place, which the proof reads.
@@ -484,10 +465,7 @@ describe("witness field carriage recovered from the chain, in the installed watc
         rows.map(({ kind }) => kind).filter((kind) => kind !== "certify");
       expect(others(cost)).toEqual(others(baseline));
       expect(certifies(cost)).toBe(certifies(baseline) + 1);
-      // Waiting on the same confirmation sends nothing more: over the
-      // HOLD_POLLS wait the run sends only one more certification and the
-      // step built again, not one a poll.
-      expect(run.polls).toBeGreaterThan(HOLD_POLLS);
+      // The run sends only one more certification and the step built again.
       expect(run.sent.length).toBeLessThanOrEqual(baselineSent + 2);
     },
     900_000,

@@ -63,7 +63,6 @@ import {
 } from "./family-application-registry.resolve-roster-parts.js";
 import { type FamilyCategory } from "./family-definition.js";
 import type { FraudProofL1Source } from "./l1-source.js";
-import { type WalletOnlySend } from "./wallet-only-send-gate.js";
 import type { WorkflowRun } from "./workflow-run.js";
 
 /**
@@ -87,7 +86,6 @@ const decisionDigestCursorFamilyApplicationRecord = <
       readonly workflow: Workflow;
       readonly sources: readonly RetainedDaPayloadSource[];
       readonly run: WorkflowRun;
-      readonly walletOnlySend: WalletOnlySend;
     }) => Promise<unknown>;
   }>,
 ): FamilyApplicationRecord<Category, Config, Workflow> => {
@@ -120,8 +118,8 @@ const decisionDigestCursorFamilyApplicationRecord = <
       return bound as Config;
     },
     constructWorkflow: family.constructWorkflow,
-    execute: async ({ workflow, sources, run, walletOnlySend }) =>
-      await family.execute({ workflow, sources, run, walletOnlySend }),
+    execute: async ({ workflow, sources, run }) =>
+      await family.execute({ workflow, sources, run }),
     bindsDecisionDigest: true,
   });
 };

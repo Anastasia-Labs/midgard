@@ -8,7 +8,7 @@ and offers four things:
 - chain-sync streams with a credit window;
 - local state queries;
 - transaction submission;
-- mempool membership.
+- mempool membership and listing.
 
 The transport only moves bytes. It makes no qualification, depth, finality
 or validity decision. Raw blocks, transactions, ledger answers and rejection
@@ -105,7 +105,7 @@ The client has these behaviours:
   (binary, socket, magic, request timeout). Every caller in a process shares that instance,
   so a role holds one node connection.
 
-## Frame protocol (version 1)
+## Frame protocol (version 3)
 
 The sidecar speaks frames on stdin (client to sidecar) and stdout (sidecar
 to client). Stderr carries free-text diagnostics only.
@@ -120,8 +120,8 @@ u32 big-endian headerLength | u32 big-endian payloadLength | header | payload
   keys are refused. Nesting is at most 16 levels, with at most 4,096
   array elements and 64 map pairs.
 - **payload.** Raw bytes, 0..64 MiB. Only `submit` (client),
-  `cs_roll_forward`, `lsq_result` and `submit_rejected` (sidecar) carry
-  one. Any other frame with a payload is malformed.
+  `cs_roll_forward`, `lsq_result`, `submit_rejected` and
+  `monitor_txs_result` (sidecar) carry one. Any other frame with a payload is malformed.
 - **frame order.** Frames on one side are written whole and in order.
 - **request ids.** Requests carry a client-chosen `id` (an unsigned
   integer). The answer echoes it. Answers to different request kinds may
@@ -141,25 +141,26 @@ u32 big-endian headerLength | u32 big-endian payloadLength | header | payload
 The first client frame must be `hello`:
 
 ```
-{type: "hello", version: 2, socketPath: text, networkMagic: uint, requestDeadlineMs: uint}
+{type: "hello", version: 3, socketPath: text, networkMagic: uint, requestDeadlineMs: uint}
 ```
 
 `requestDeadlineMs` (1..86,400,000) bounds each ledger-state request and
 submission (see "Request deadline").
 
 The sidecar dials the node and runs the N2C handshake. On success it
-answers `{type: "hello_ok", version: 2, nodeToClientVersion: uint}`. A
+answers `{type: "hello_ok", version: 3, nodeToClientVersion: uint}`. A
 handshake the node refuses ends the session with `fatal
 node_handshake_failed`; a connection the node drops during the handshake
 ends it with `fatal node_connection_lost`. Both exit with status 69.
 
 `midgard-l1-node-transport --protocol-version` prints the frame protocol
-version (`2`) and exits.
+version (`3`) and exits.
 
 A version mismatch ends the session with `fatal version_unsupported` and
 exit status 64, so a client and a sidecar of different versions fail at
 startup. Version 2 added `noDeadline` on `lsq_query`; a version 1 sidecar
-would refuse such a query only when it is first sent.
+would refuse such a query only when it is first sent. Version 3 added
+`monitor_txs`.
 
 ### Client to sidecar
 
@@ -175,21 +176,23 @@ would refuse such a query only when it is first sent.
 | `submit`         | `id, era?` + payload: the raw transaction                           | `submit_accepted` or `submit_rejected` (+ raw reason) or `error` |
 | `monitor_has_tx` | `id, txId (32 bytes)`                                               | `monitor_has_tx_result {has}`                                    |
 | `monitor_sizes`  | `id`                                                                | `monitor_sizes_result {capacity, size, txCount}`                 |
+| `monitor_txs`    | `id`                                                                | `monitor_txs_result {slot}` (+ the mempool)                      |
 
 ### Sidecar to client
 
-| type                     | fields                                                                            |
-| ------------------------ | --------------------------------------------------------------------------------- |
-| `cs_opened`              | `id, stream, point (the intersection), tip`                                       |
-| `cs_intersect_not_found` | `id, stream, tip`                                                                 |
-| `cs_roll_forward`        | `stream, seq, point, blockNo, blockType, prevHash?, tip` + payload: the raw block |
-| `cs_roll_backward`       | `stream, seq, point, tip`                                                         |
-| `cs_failed`              | `stream, code, message`: the stream ended; the session lives on                   |
-| `lsq_result`             | `id` + payload: the node's raw answer                                             |
-| `submit_accepted`        | `id`                                                                              |
-| `submit_rejected`        | `id` + payload: the node's raw rejection reason                                   |
-| `error`                  | `id, code, message`: one request refused; the session lives on                    |
-| `fatal`                  | `code, message`: the session ends; it is the last frame                           |
+| type                     | fields                                                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `cs_opened`              | `id, stream, point (the intersection), tip`                                                               |
+| `cs_intersect_not_found` | `id, stream, tip`                                                                                         |
+| `cs_roll_forward`        | `stream, seq, point, blockNo, blockType, prevHash?, tip` + payload: the raw block                         |
+| `cs_roll_backward`       | `stream, seq, point, tip`                                                                                 |
+| `cs_failed`              | `stream, code, message`: the stream ended; the session lives on                                           |
+| `lsq_result`             | `id` + payload: the node's raw answer                                                                     |
+| `submit_accepted`        | `id`                                                                                                      |
+| `submit_rejected`        | `id` + payload: the node's raw rejection reason                                                           |
+| `monitor_txs_result`     | `id, slot` (the snapshot's acquired slot) + payload: a CBOR array of the mempool's transactions, in order |
+| `error`                  | `id, code, message`: one request refused; the session lives on                                            |
+| `fatal`                  | `code, message`: the session ends; it is the last frame                                                   |
 
 ### Chain-sync streams
 
@@ -333,8 +336,14 @@ Parameter lists hold 1..4,096 items.
 - **Undecodable transactions.** A transaction the node cannot decode makes
   the node close the connection. The sidecar then ends with `fatal
 node_connection_lost` and the supervisor restarts it.
-- **Mempool snapshots.** `monitor_has_tx` and `monitor_sizes` each acquire
-  a fresh mempool snapshot and release it.
+- **Mempool snapshots.** `monitor_has_tx`, `monitor_sizes` and
+  `monitor_txs` each acquire a fresh mempool snapshot and release it.
+- **Mempool listing.** `monitor_txs` sends `MsgNextTx` until the reply that
+  carries no transaction, so one answer lists the whole snapshot in mempool
+  order. Each entry is the transaction's bytes exactly as the node holds them
+  (the content of `[era, tag24(bytes)]`). The node's mempool capacity bounds
+  a listing far below the payload bound; a listing over it would answer
+  `error result_too_large`.
 - **Transaction ids.** `MsgHasTx` carries the hard-fork transaction id
   `[era, txId]`, using the Conway index. The node matches ids by hash, so
   this finds a transaction of any Shelley-based era. The stock gouroboros

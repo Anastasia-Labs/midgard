@@ -1,5 +1,7 @@
+import { decodeCbor } from "./cbor.js";
 import type { Frame } from "./frame.js";
 import {
+  bytesOf,
   type ChainPoint,
   encodePoint,
   encodeQuery,
@@ -8,6 +10,7 @@ import {
   isTransportFailedReason,
   type LedgerQuery,
   natural,
+  TransportProtocolError,
   type TransportReadiness,
   type TransportUnreadyReason,
 } from "./protocol.js";
@@ -21,6 +24,7 @@ import {
   type L1NodeTransportOptions,
   type LedgerStateSession,
   type MempoolSizes,
+  type MempoolTransactions,
   type QueryOptions,
   type SubmitResult,
   TransportTimeoutError,
@@ -392,6 +396,22 @@ export class L1NodeTransport {
       capacity: natural(answer.header.capacity, "mempool capacity"),
       size: natural(answer.header.size, "mempool size"),
       txCount: natural(answer.header.txCount, "mempool transaction count"),
+    };
+  }
+
+  /**
+   * Every transaction of one fresh mempool snapshot, in mempool order. One
+   * listing is bounded by the node's mempool capacity.
+   */
+  async mempoolTxs(): Promise<MempoolTransactions> {
+    const sidecar = await this.#readySidecar();
+    const answer = await this.#call(sidecar, { type: "monitor_txs" });
+    const listed = decodeCbor(answer.payload);
+    if (!Array.isArray(listed))
+      throw new TransportProtocolError("the mempool listing is not an array");
+    return {
+      acquiredSlot: natural(answer.header.slot, "mempool snapshot slot"),
+      txs: listed.map((tx) => bytesOf(tx, undefined, "mempool transaction")),
     };
   }
 

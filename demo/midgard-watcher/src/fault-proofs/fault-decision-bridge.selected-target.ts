@@ -142,7 +142,7 @@ export type BridgeDependencies = Readonly<{
   readRecords(): Promise<readonly WatcherPersistedFaultDecisionRecord[]>;
   /**
    * Replaces a durable fault the fresh classification no longer reproduces,
-   * or holds it while any of its work is in flight.
+   * or holds it while any of its work is pending.
    */
   supersede(
     request: WatcherDecisionSupersedeRequest,

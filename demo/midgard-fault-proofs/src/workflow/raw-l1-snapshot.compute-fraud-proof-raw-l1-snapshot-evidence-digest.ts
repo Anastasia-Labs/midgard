@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
+import type { PendingTransaction } from "@al-ft/midgard-l1-follower/mempool";
 import type { EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
@@ -189,12 +190,26 @@ export const computeFraudProofRawL1SnapshotEvidenceDigest = (
 };
 
 /**
+ * One capture: the ledger snapshot exactly as the source returned it, which
+ * the reader admits, and the transactions of our node's mempool at the same
+ * tip, in mempool order. The pending transactions say what to do next; they
+ * never enter the admitted snapshot or its digest, and nothing in them is
+ * ledger evidence.
+ */
+export type FraudProofRawL1Capture = Readonly<{
+  snapshot: unknown;
+  pending: readonly PendingTransaction[];
+}>;
+
+/**
  * Provider-specific implementations return untrusted bytes. Admission and all
  * stage/terminal derivation stay in this package.
  */
 export interface FraudProofRawL1SnapshotAuthority {
   readonly authorityVersion: typeof FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY;
-  capture(request: FraudProofRawL1SnapshotRequest): Promise<unknown>;
+  capture(
+    request: FraudProofRawL1SnapshotRequest,
+  ): Promise<FraudProofRawL1Capture>;
 }
 
 const HEX_32 = /^[0-9a-f]{64}$/u;

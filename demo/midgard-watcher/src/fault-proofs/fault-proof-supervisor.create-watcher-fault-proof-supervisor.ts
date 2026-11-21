@@ -1,13 +1,8 @@
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   isWorkflowActuationRevokedError,
   type WorkflowActuationRevokedError,
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
-import {
-  createWorkflowInFlight,
-  type WorkflowInFlight,
-} from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application.js";
@@ -23,7 +18,6 @@ import type {
   WatcherFaultProofSupervisor,
   WatcherJournalBusyRequeue,
 } from "./fault-proof-supervisor.validate-job.js";
-import type { WatcherL1Clock } from "./wallet-only-send-open.js";
 
 /** A deadline alert's headroom: the longest single-stage deadline. */
 export const watcherDeadlineAlertHeadroomMs = (
@@ -43,13 +37,9 @@ export const watcherDeadlineAlertHeadroomMs = (
 
 export const createWatcherFaultProofSupervisor = (input: {
   readonly journalRoot: string;
-  /** The process's in-flight set, which the execution's runs record into. */
-  readonly inFlight: WorkflowInFlight;
   readonly deploymentFingerprint: string;
   readonly deadlineAlertHeadroomMs: number;
   readonly queueAuthenticationKey: Uint8Array;
-  /** The L1 chain the restart wait reads. */
-  readonly l1Clock: WatcherL1Clock;
   readonly execution: Pick<
     WatcherFaultProofExecution,
     "verifyCompleted" | "execute"
@@ -70,17 +60,13 @@ export const createWatcherFaultProofSupervisor = (input: {
   readonly sweepProofMaterials?: SupervisorDependencies["sweepProofMaterials"];
   /** Whether the views hold sweepable materials (a failed sweep's retry). */
   readonly proofMaterialsSweepable?: SupervisorDependencies["proofMaterialsSweepable"];
-  /** Follows the sends of objectives no run drives at each pass at tip. */
-  readonly observeSignedTransaction?: SupervisorDependencies["observeSignedTransaction"];
 }): WatcherFaultProofSupervisor =>
   createSupervisor({
     journalRoot: input.journalRoot,
-    inFlight: input.inFlight,
     deploymentFingerprint: input.deploymentFingerprint,
     deadlineAlertHeadroomMs: input.deadlineAlertHeadroomMs,
     queueAuthenticationKey: input.queueAuthenticationKey,
     nowMs: Date.now,
-    l1Clock: input.l1Clock,
     exposeUnsafeRunnerForTest: false,
     proofRetention: input.proofRetention,
     ...(input.journalBusyRequeue === undefined
@@ -141,22 +127,15 @@ export const createWatcherFaultProofSupervisor = (input: {
       ...(input.proofMaterialsSweepable === undefined
         ? {}
         : { proofMaterialsSweepable: input.proofMaterialsSweepable }),
-      ...(input.observeSignedTransaction === undefined
-        ? {}
-        : { observeSignedTransaction: input.observeSignedTransaction }),
     }),
   }) as WatcherFaultProofSupervisor;
 
 /** Test-only dependency seam; production category admission cannot be changed. */
 export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
   readonly journalRoot: string;
-  /** Defaults to an empty in-flight set. */
-  readonly inFlight?: WorkflowInFlight;
   readonly deploymentFingerprint: string;
   readonly deadlineAlertHeadroomMs?: number;
   readonly unsafeNowMsForTest?: () => number;
-  /** Defaults to no applied block, so the restart wait never opens. */
-  readonly unsafeL1ClockForTest?: WatcherL1Clock;
   readonly unsafeQueueAuthenticationKeyForTest?: Uint8Array;
   readonly run: (
     job: WatcherFaultProofJob,
@@ -177,7 +156,6 @@ export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
       ? {}
       : { proofRetention: input.unsafeProofRetentionForTest }),
     journalRoot: input.journalRoot,
-    inFlight: input.inFlight ?? createWorkflowInFlight(),
     deploymentFingerprint: input.deploymentFingerprint,
     deadlineAlertHeadroomMs:
       input.deadlineAlertHeadroomMs ??
@@ -186,10 +164,6 @@ export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
       input.unsafeQueueAuthenticationKeyForTest ??
       Uint8Array.from({ length: 32 }, () => 0xa5),
     nowMs: input.unsafeNowMsForTest ?? (() => 0),
-    l1Clock: input.unsafeL1ClockForTest ?? {
-      slotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preview,
-      appliedSlot: () => null,
-    },
     exposeUnsafeRunnerForTest: true,
     dependencies: Object.freeze({
       categories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,

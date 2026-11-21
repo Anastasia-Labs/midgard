@@ -25,7 +25,6 @@ import {
   SCRIPT_DECODE_REFERENCE_SCRIPTS,
   scriptDecodeDeploymentFromReferences,
 } from "../workflow/script-decode-prerequisite.deployment.js";
-import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   type BoundContext,
@@ -173,16 +172,13 @@ export const executeManifestBoundWitnessScriptDecodingWorkflow = async ({
   workflow,
   sources,
   run,
-  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundWitnessScriptDecodingWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly run: WorkflowRun;
-  readonly walletOnlySend: WalletOnlySend;
 }) =>
   await executeManifestBoundFamilyRecovery({
     ...workflow,
     sources,
     run,
-    walletOnlySend,
   });

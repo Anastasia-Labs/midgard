@@ -8,8 +8,7 @@
  * closes the case, each output comes back to our wallet before the case's
  * ending, a reclaim that authority admits by its kind; the ending waits on
  * no spend back's finality: once a spend back rolls back, its outputs are
- * live again, the process signs nothing new for them, and a proof-materials
- * sweep selects them. */
+ * live again and the next runs spend them back again. */
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
@@ -27,8 +26,8 @@ import {
   liveCase,
 } from "./validation-trace-dispute-one-step-case.js";
 import {
-  expectLeftForTheSweepAfterRollback,
   expectSelectedForSweep,
+  expectSpentBackAgainAfterRollback,
 } from "./validation-trace-dispute-staging-left-for-sweep.js";
 
 /** How many blocks under the tip a transaction is final, once the header
@@ -103,9 +102,8 @@ const isClosedWithoutOurClose = (result: FraudProofWorkflowRunResult) =>
  * The defender closes the case; then each output of `staged` comes back to
  * our wallet under the reconciliation-only permit before the run ends as a
  * case closed without our close. The ending waits on no spend back's
- * finality: once each spend back rolls back, the outputs are live again, the
- * next runs sign nothing new for them, each waiting on a spend back that may
- * still land, and a proof-materials view selects them for a later sweep.
+ * finality: once each spend back rolls back, the outputs are live again, and
+ * the next runs spend them back again and end as before.
  */
 export const expectSpentBackOnClose = async (
   held: HeldScene,
@@ -136,13 +134,11 @@ export const expectSpentBackOnClose = async (
   const described = history.map(describeRun).join("\n");
   expect(isClosedWithoutOurClose(history.at(-1)!), described).toBe(true);
   expect(await liveOf(held), described).toStrictEqual([]);
-  await expectLeftForTheSweepAfterRollback({
+  await expectSpentBackAgainAfterRollback({
     scene,
     outputs,
     runOnce: async () => await turns().runOnce(),
     describe: describeRun,
-    held: (result) =>
-      result.kind === "pending" &&
-      result.reason.includes("is held by another action of this process"),
+    ended: isClosedWithoutOurClose,
   });
 };

@@ -3,7 +3,6 @@ import {
   encodeDaPayloadByHeaderResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
 import {
   DaLibp2pRetainedDaSource,
   type RetainedDaFetchAttempt,
@@ -17,7 +16,6 @@ import {
   defineFamilyApplication,
   type FamilyCommonInfrastructure,
 } from "@al-ft/midgard-fault-proofs/workflow/family-application";
-import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowTerminalVerifier,
@@ -27,6 +25,7 @@ import {
   createManifestBoundWorkflowRunner,
   WORKFLOW_RUNTIME_CONFIG,
 } from "@al-ft/midgard-fault-proofs/workflow/runtime";
+import { createWorkflowObjectiveWallet } from "@al-ft/midgard-fault-proofs/workflow/workflow-run";
 import { describe, expect, it, vi } from "vitest";
 
 import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
@@ -111,12 +110,11 @@ const invocation = (
   actuationPermit: Object.freeze({
     permitVersion: "midgard-production-workflow-actuation-permit-v1",
   }),
-  sends: createWorkflowInFlight().forObjective({
+  objectiveWallet: createWorkflowObjectiveWallet({
     category: "doubleSpend",
     headerHash: "ab".repeat(28),
   }),
   runtimeConfigPath: "/etc/midgard/watcher-v1.json",
-  walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
   ...overrides,
 });
 

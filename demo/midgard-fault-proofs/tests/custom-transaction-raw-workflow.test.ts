@@ -30,7 +30,6 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 
 const categories = [
@@ -153,7 +152,6 @@ const fixtureFor = async (category: Category) => {
           workflow,
           sources,
           run,
-          walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         } as unknown as Parameters<
           typeof executeManifestBoundMintDeclaredAssetLimitWorkflow
         >[0])
@@ -161,7 +159,6 @@ const fixtureFor = async (category: Category) => {
           workflow,
           sources,
           run,
-          walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         } as unknown as Parameters<
           typeof executeManifestBoundObserversForbiddenWorkflow
         >[0]);
@@ -215,7 +212,6 @@ it.each(categories)(
     };
     await expect(
       runFraudProofWorkflowFromRetainedDa({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         deploymentFingerprint,
         observation: fixture.observation,
         sources: fixture.sources,

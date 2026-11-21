@@ -6,10 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { isWorkflowActuationRevokedError } from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import { bindWorkflowRunActuation } from "../src/workflow/actuation-permit.js";
-import {
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-  type FraudProofFamilyWorkflowAdapter,
-} from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import type { FraudProofWorkflowTerminalVerifier } from "../src/workflow/orchestrator.js";
 import { runAdmittedFraudProofWorkflow } from "../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
@@ -17,7 +14,6 @@ import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-bo
 import { releaseFinality } from "./support/raw-l1-terminal-fixture.output.js";
 import { signedWorkflowTransactionFixture } from "./support/signed-workflow-transaction.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN_ON_PREVIEW } from "./support/wallet-only-send-always-open.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
   makeAdapter,
@@ -33,7 +29,7 @@ import {
 
 const ACTION = { actionId: "step-one", input: { actionKind: "step-one" } };
 
-type Stage = "preflight" | "follow" | "terminal_verify";
+type Stage = "preflight" | "submit" | "terminal_verify";
 
 /** A run whose permit is revoked while it is in `stage`. */
 const scene = async (stage: Stage) => {
@@ -76,6 +72,8 @@ const scene = async (stage: Stage) => {
       ),
     submit: async ({ preflight }) => {
       sent.push(preflight.txHash);
+      // The target moves while the sent transaction is submitted.
+      if (stage === "submit") revoke();
       return { kind: "submitted" as const, txHash: preflight.txHash };
     },
   };
@@ -86,20 +84,9 @@ const scene = async (stage: Stage) => {
           revoke();
           return candidate;
         })
-      : stage === "follow"
-        ? {
-            verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-            verify: terminalVerifier.verify,
-            // The target moves while the sent transaction is followed.
-            observeSignedTransaction: async () => {
-              revoke();
-              return { status: "pending" } as never;
-            },
-          }
-        : terminalVerifier;
+      : terminalVerifier;
   const run = () =>
     runAdmittedFraudProofWorkflow({
-      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN_ON_PREVIEW,
       deploymentFingerprint: DEPLOYMENT,
       category: "doubleSpend",
       headerHash,
@@ -127,7 +114,7 @@ const scene = async (stage: Stage) => {
 };
 
 describe("workflow: a permit revoked mid-run", () => {
-  it.each(["preflight", "follow", "terminal_verify"] as const)(
+  it.each(["preflight", "submit", "terminal_verify"] as const)(
     "hands the revocation back from %s",
     async (stage) => {
       const { sent, run } = await scene(stage);
@@ -138,14 +125,11 @@ describe("workflow: a permit revoked mid-run", () => {
             (result) => result,
             (error: unknown) => error,
           );
-      // A follow that finds its transaction still pending holds the run; the
-      // revocation is handed back when the run next asserts its permit, at
-      // the start of the next run (or of the session's next poll).
-      if (stage === "follow")
-        expect(await attempt()).toMatchObject({ kind: "pending" });
+      // A revocation during a submit is handed back when the run next
+      // asserts its permit, before it observes again.
       expect(isWorkflowActuationRevokedError(await attempt())).toBe(true);
-      // Only the follow stage sent anything, before its permit was revoked.
-      expect(sent).toHaveLength(stage === "follow" ? 1 : 0);
+      // Only the submit stage sent anything, before its permit was revoked.
+      expect(sent).toHaveLength(stage === "submit" ? 1 : 0);
     },
   );
 });

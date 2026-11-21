@@ -8,7 +8,6 @@ import type {
   WatcherProofRetentionTarget,
 } from "../../src/l1-follower/proof-retention.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
-import { inFlightOf } from "../support/in-flight-fixture.js";
 import {
   journalDirectory,
   recordObjectives,
@@ -104,7 +103,6 @@ const restartOver = async (count: number, marked: boolean, k = K) => {
     categories: ["doubleSpend"],
     authenticationKey: TEST_JOURNAL_KEY,
     retention: recorded.retention,
-    ...inFlightOf(),
   });
   await authority.admit({
     observation: progressObservation({ deploymentFingerprint }),

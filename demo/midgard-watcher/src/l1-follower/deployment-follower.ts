@@ -1,4 +1,5 @@
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
+import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import { parseFaultProofBlueprint } from "@al-ft/midgard-sdk/core";
 import { buildComputationThreadValidator } from "@al-ft/midgard-sdk/deployment";
 
@@ -14,10 +15,15 @@ import {
   type WatcherFollowerRuntimeInput,
 } from "./follower-runtime.js";
 import { parseHubOracleOneShot } from "./hub-oracle-one-shot.js";
+import { createWatcherPendingRead } from "./pending-read.js";
 
 export type WatcherDeploymentFollower = WatcherFollowerRuntime &
   Readonly<{
-    /** The fault-proof families' L1: follower sources and the provider. */
+    /**
+     * The fault-proof families' L1: follower sources and a provider over
+     * the same store, both reading the node's mempool applied to the
+     * follower's facts (`pending-read.ts`).
+     */
     faultProofL1: WatcherFaultProofL1;
   }>;
 
@@ -134,6 +140,13 @@ export const openWatcherDeploymentFollower = (
               : { recordedOrigin: point(recorded) }),
           },
   });
+  // One read for captures and builds: a build reads the mempool listing
+  // the pass derived its action from.
+  const pending = createWatcherPendingRead({
+    store: follower.store,
+    node: follower.transport,
+    nodeTip: () => follower.provider.readTip(),
+  });
   return Object.freeze({
     ...follower,
     faultProofL1: Object.freeze({
@@ -141,11 +154,15 @@ export const openWatcherDeploymentFollower = (
         createWatcherFaultProofL1Source({
           store: follower.store,
           rawReads: follower.rawReads,
-          node: follower.transport,
+          pending,
           sourceId: `${WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX}${sourceId}`,
           proofRetention: follower.proofRetention,
         }),
-      provider: follower.provider,
+      provider: new L1FollowerProvider({
+        store: follower.store,
+        transport: follower.transport,
+        pending: pending.latest,
+      }),
     }),
   });
 };

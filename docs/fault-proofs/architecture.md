@@ -63,13 +63,11 @@ slot and handing over pending work use the same serialized boundary as intake.
 A new observation does not mutate the running permit. Explicit loss of chain
 authority revokes active and pending permits; handover revalidates authority.
 
-The workflow keeps nothing on disk about what it sent. Each run reads the
-family's progress from the chain; the transactions this process sent that
-are not yet final live in an in-memory in-flight set, which holds their
-wallet coins out of every other build until each lands or its validity bound
-passes. After a restart, a next transaction that spends only wallet coins
-waits one wallet-only validity window, a step that spends the proof thread
-cannot land twice, and publications are found by content. A completion is
+The workflow keeps no record of what it sent. Each run reads the family's
+progress from the ledger with the node's mempool overlaid: a transaction we
+sent is in a block or the mempool, and if it is in neither, the next pass
+builds it again. A step that spends the proof thread cannot land twice, and
+publications are found by content. A completion is
 acknowledged only after canonical terminal verification, without opening a
 signer or invoking the runner; its marker binds the terminal transaction
 hash. Past the latest safe start, a run keeps full submission authority until the

@@ -103,8 +103,10 @@ import {
 } from "./support/family-common-infrastructure.js";
 import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
-import { createTestWorkflowProcess } from "./support/workflow-process.js";
+import {
+  createTestWorkflowProcess,
+  recordingRecord,
+} from "./support/workflow-process.js";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -392,26 +394,31 @@ it.each([
       }),
     );
     const close = vi.fn(async () => undefined);
+    // A restarted process: it has sent nothing.
+    const process = createTestWorkflowProcess();
     const runner = createManifestBoundWorkflowRunner({
-      record: defineFamilyApplication({
-        category,
-        roster: {},
-        requires: [],
-        // The record binds the authorizing decision out of the loaded
-        // infrastructure; the wrong-decision mode binds the stale one.
-        bindConfig: ({ infrastructure }) => ({
-          decisionDigest:
-            mode === "wrong authorizing decision"
-              ? decision.decisionDigest
-              : infrastructure.decisionDigest!,
+      record: recordingRecord(
+        defineFamilyApplication({
+          category,
+          roster: {},
+          requires: [],
+          // The record binds the authorizing decision out of the loaded
+          // infrastructure; the wrong-decision mode binds the stale one.
+          bindConfig: ({ infrastructure }) => ({
+            decisionDigest:
+              mode === "wrong authorizing decision"
+                ? decision.decisionDigest
+                : infrastructure.decisionDigest!,
+          }),
+          constructWorkflow: async (config) => ({
+            ...workflow,
+            decisionDigest: config.decisionDigest,
+          }),
+          execute: executeManifestBoundFieldPreimageLengthWorkflow,
+          bindsDecisionDigest: false,
         }),
-        constructWorkflow: async (config) => ({
-          ...workflow,
-          decisionDigest: config.decisionDigest,
-        }),
-        execute: executeManifestBoundFieldPreimageLengthWorkflow,
-        bindsDecisionDigest: false,
-      }),
+        process.recording,
+      ),
       loadRuntime: async ({ invocation }) => {
         if (
           !("decisionDigest" in invocation) ||
@@ -432,17 +439,14 @@ it.each([
         };
       },
     });
-    // A restarted process: nothing is in flight and nothing is held.
-    const process = createTestWorkflowProcess();
     const resume = async () =>
       (await runner.runOrResume({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         category,
         deploymentFingerprint,
         headerHash,
         decisionDigest: freshDecision.decisionDigest,
         actuationPermit: controller.permit,
-        sends: process.sends({ category, headerHash }),
+        objectiveWallet: process.objectiveWallet({ category, headerHash }),
         runtimeConfigPath: "/fixture/field-runtime.json",
       })) as FraudProofWorkflowRunResult;
     if (mode !== "reconciliation-only") {

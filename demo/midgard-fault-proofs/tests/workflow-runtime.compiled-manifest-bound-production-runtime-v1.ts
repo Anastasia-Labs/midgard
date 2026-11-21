@@ -23,7 +23,6 @@ import {
 import { applyFamilyApplicationRecord } from "../src/workflow/family-application.apply-family-application-record.js";
 import { defineFamilyApplication } from "../src/workflow/family-application.assert-family-definition-roster.js";
 import { FAMILY_APPLICATION_REGISTRY } from "../src/workflow/family-application-registry.family-application-registry.js";
-import { createWorkflowInFlight } from "../src/workflow/in-flight.js";
 import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
 import {
   createFamilyApplicationWorkflowRunner,
@@ -33,11 +32,11 @@ import {
 } from "../src/workflow/runtime.js";
 import * as runtime from "../src/workflow/runtime.js";
 import {
+  createWorkflowObjectiveWallet,
   createWorkflowRun,
   type WorkflowRun,
 } from "../src/workflow/workflow-run.js";
 import { familyCommonInfrastructureForTest } from "./support/family-common-infrastructure.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import {
   admittedActuation,
   DEPLOYMENT,
@@ -50,9 +49,9 @@ import {
   retainedDaSource,
 } from "./workflow-runtime.loaded-runtime.js";
 
-/** A fresh in-flight set's part for `actuation`'s objective. */
-const sendsOf = (actuation: Readonly<{ headerHash: string }>) =>
-  createWorkflowInFlight().forObjective({
+/** A fresh wallet wiring for `actuation`'s objective. */
+const objectiveWalletOf = (actuation: Readonly<{ headerHash: string }>) =>
+  createWorkflowObjectiveWallet({
     category: "doubleSpend",
     headerHash: actuation.headerHash,
   });
@@ -307,7 +306,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     ).toThrow("not installed through the authenticated immutable boundary");
   });
 
-  it("constructs the exact workflow and runs it over the invocation's in-flight set", async () => {
+  it("constructs the exact workflow and runs it over the invocation's objective wallet", async () => {
     const actuation = await admittedActuation();
     const close = vi.fn(async () => undefined);
     const loadRuntime = vi.fn(async () => loadedRuntime(actuation, { close }));
@@ -315,9 +314,9 @@ describe("compiled manifest-bound production runtime V1", () => {
     const constructWorkflow = vi.fn(async (_config: unknown) =>
       recoverableDoubleSpendWorkflow(actuation.headerHash),
     );
-    const sends = sendsOf(actuation);
+    const objectiveWallet = objectiveWalletOf(actuation);
     const execute = vi.fn(async ({ run }: { readonly run: WorkflowRun }) => {
-      expect(run.sends).toBe(sends);
+      expect(run.objectiveWallet).toBe(objectiveWallet);
       expect(workflowActuationDecisionDigest(run)).toBe(
         actuation.decisionDigest,
       );
@@ -330,13 +329,12 @@ describe("compiled manifest-bound production runtime V1", () => {
     expect(runner.runnerVersion).toBe(WORKFLOW_ADAPTER_RUNNER);
     await expect(
       runner.runOrResume({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         category: "doubleSpend",
         deploymentFingerprint: DEPLOYMENT,
         headerHash: actuation.headerHash,
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
-        sends,
+        objectiveWallet,
         runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
       }),
     ).resolves.toStrictEqual({ kind: "executed" });
@@ -395,13 +393,12 @@ describe("compiled manifest-bound production runtime V1", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       const running = runner.runOrResume({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         category: "doubleSpend",
         deploymentFingerprint: DEPLOYMENT,
         headerHash: actuation.headerHash,
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
-        sends: sendsOf(actuation),
+        objectiveWallet: objectiveWalletOf(actuation),
         runtimeConfigPath: "/etc/midgard/runtime.json",
       });
       await vi.advanceTimersByTimeAsync(0);
@@ -447,13 +444,12 @@ describe("compiled manifest-bound production runtime V1", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       const running = runner.runOrResume({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         category: "doubleSpend",
         deploymentFingerprint: DEPLOYMENT,
         headerHash: actuation.headerHash,
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
-        sends: sendsOf(actuation),
+        objectiveWallet: objectiveWalletOf(actuation),
         runtimeConfigPath: "/etc/midgard/runtime.json",
       });
       const rejected = running.catch((error: unknown) => error);
@@ -472,7 +468,7 @@ describe("compiled manifest-bound production runtime V1", () => {
   it("yields pending ownership contention even with a submission permit", async () => {
     const actuation = await admittedActuation();
     const run = bindWorkflowRunActuation({
-      run: createWorkflowRun(sendsOf(actuation)),
+      run: createWorkflowRun(objectiveWalletOf(actuation)),
       permit: actuation.actuationPermit,
       decisionDigest: actuation.decisionDigest,
       deploymentFingerprint: DEPLOYMENT,
@@ -502,7 +498,7 @@ describe("compiled manifest-bound production runtime V1", () => {
   it("returns a pending reconciliation without occupying the execution slot", async () => {
     const actuation = await admittedActuation();
     const run = bindWorkflowRunActuation({
-      run: createWorkflowRun(sendsOf(actuation)),
+      run: createWorkflowRun(objectiveWalletOf(actuation)),
       permit: actuation.actuationPermit,
       decisionDigest: actuation.decisionDigest,
       deploymentFingerprint: DEPLOYMENT,
@@ -529,7 +525,7 @@ describe("compiled manifest-bound production runtime V1", () => {
   it("returns every non-pending continuation result unchanged", async () => {
     const actuation = await admittedActuation();
     const run = bindWorkflowRunActuation({
-      run: createWorkflowRun(sendsOf(actuation)),
+      run: createWorkflowRun(objectiveWalletOf(actuation)),
       permit: actuation.actuationPermit,
       decisionDigest: actuation.decisionDigest,
       deploymentFingerprint: DEPLOYMENT,
@@ -584,13 +580,12 @@ describe("compiled manifest-bound production runtime V1", () => {
     let rejected: unknown;
     try {
       await runner.runOrResume({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         category: "doubleSpend",
         deploymentFingerprint: DEPLOYMENT,
         headerHash: actuation.headerHash,
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
-        sends: sendsOf(actuation),
+        objectiveWallet: objectiveWalletOf(actuation),
         runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
       });
     } catch (error) {
@@ -614,7 +609,7 @@ describe("compiled manifest-bound production runtime V1", () => {
   it("checks the live permit at every shared workflow actuation boundary", async () => {
     const actuation = await admittedActuation();
     const run = bindWorkflowRunActuation({
-      run: createWorkflowRun(sendsOf(actuation)),
+      run: createWorkflowRun(objectiveWalletOf(actuation)),
       permit: actuation.actuationPermit,
       decisionDigest: actuation.decisionDigest,
       deploymentFingerprint: DEPLOYMENT,
@@ -732,9 +727,8 @@ describe("compiled manifest-bound production runtime V1", () => {
       headerHash: actuation.headerHash,
       decisionDigest: actuation.decisionDigest,
       actuationPermit: actuation.actuationPermit,
-      sends: sendsOf(actuation),
+      objectiveWallet: objectiveWalletOf(actuation),
       runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
-      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
     });
     const driveGenericRunOrResume = async ({
       loaded,
@@ -951,13 +945,12 @@ describe("compiled manifest-bound production runtime V1", () => {
           async () => loadedRuntime(actuation),
         );
         return await runner.runOrResume({
-          walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
           category: "doubleSpend",
           deploymentFingerprint: DEPLOYMENT,
           headerHash: actuation.headerHash,
           decisionDigest: actuation.decisionDigest,
           actuationPermit: actuation.actuationPermit,
-          sends: sendsOf(actuation),
+          objectiveWallet: objectiveWalletOf(actuation),
           runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
         });
       };

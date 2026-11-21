@@ -1,24 +1,19 @@
 /**
  * The proof-materials reader over the L1 follower: bounded reads of the
- * follower's facts, each at the point of its own snapshot, so the view
- * memoises per point and a sweep's standing comes from the follower too.
+ * follower's facts with the node's mempool applied, each at the point of its
+ * own snapshot (the ledger point and the mempool transactions applied), so
+ * the view memoises per point.
  */
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import type { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import type { Provider } from "@lucid-evolution/lucid";
 
-import type {
-  ProofMaterialsReader,
-  ProofMaterialsSweepState,
-} from "./proof-materials-view.js";
+import type { ProofMaterialsReader } from "./proof-materials-view.js";
 
 /** What the reader needs of the follower's provider. */
 export type ProofMaterialsFollower = Pick<
   L1FollowerProvider,
-  | "plainOutputsByDatum"
-  | "plainOutputsExceptDatums"
-  | "factsPoint"
-  | "getTransactionStatus"
+  "plainOutputsByDatum" | "plainOutputsExceptDatums" | "factsPoint"
 >;
 
 /** Whether `provider` answers the follower's bounded plain-output reads. */
@@ -29,8 +24,7 @@ export const isProofMaterialsFollower = (
   return (
     typeof candidate.plainOutputsByDatum === "function" &&
     typeof candidate.plainOutputsExceptDatums === "function" &&
-    typeof candidate.factsPoint === "function" &&
-    typeof candidate.getTransactionStatus === "function"
+    typeof candidate.factsPoint === "function"
   );
 };
 
@@ -40,23 +34,14 @@ const outRefs = (labels: readonly string[]) =>
     return { txHash, outputIndex };
   });
 
-/**
- * The reader of `address` over `follower`. A sweep has landed once the
- * follower applied it (a phase-two failure spends no input, so it is over
- * too), is pending while the node's mempool holds it, and is absent
- * otherwise.
- */
+/** The reader of `address` over `follower`. */
 export const followerProofMaterialsReader = (
   follower: ProofMaterialsFollower,
   address: string,
 ): ProofMaterialsReader =>
   Object.freeze({
-    byDatum: async (requests, excluded) =>
-      await follower.plainOutputsByDatum({
-        address,
-        requests,
-        excluded: outRefs(excluded),
-      }),
+    byDatum: async (requests) =>
+      await follower.plainOutputsByDatum({ address, requests }),
     exceptDatums: async (datums, excluded, limit) =>
       await follower.plainOutputsExceptDatums({
         address,
@@ -65,12 +50,4 @@ export const followerProofMaterialsReader = (
         limit,
       }),
     point: async () => await follower.factsPoint(),
-    sweepState: async (txHash): Promise<ProofMaterialsSweepState> => {
-      const { status } = await follower.getTransactionStatus(txHash);
-      return status === "confirmed" || status === "failed"
-        ? "landed"
-        : status === "pending"
-          ? "pending"
-          : "absent";
-    },
   });

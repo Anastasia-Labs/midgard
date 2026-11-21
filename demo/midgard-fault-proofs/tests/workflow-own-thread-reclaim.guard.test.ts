@@ -1,8 +1,6 @@
 /** The edges of reclaiming our thread on a removed header. The cancel waits
  * until the removal itself is past rollback recovery, so a rollback that
- * drops the removal leaves the run as it was. The run resolves only once its
- * cancel is past rollback recovery, not a block earlier. And the
- * orchestrator itself refuses to resolve against another prover's record
+ * drops the removal leaves the run as it was. And the orchestrator itself refuses to resolve against another prover's record
  * while the adapter still sees a thread of ours, wrapped or not. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -64,33 +62,6 @@ const unwrappedSeeing = (
 });
 
 describe("workflow: reclaim edges on a header another record removed", () => {
-  it("still waits on our cancel one block short of release finality", async () => {
-    const evidence = await canonicalEvidence();
-    const process = createTestWorkflowProcess();
-    const ledger = await chain();
-    const port = reclaimPort(ledger);
-    const adapter = decorate(removedByAnotherProver(ledger), port);
-    expect(
-      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
-    ).toBe("pending");
-    expect(port.submit).toHaveBeenCalledTimes(1);
-    ledger.land(FINAL_DEPTH - 1);
-    expect(
-      await run({ evidence, adapter, process, chain: ledger.l1 }),
-    ).toMatchObject({
-      kind: "pending",
-      reason: expect.stringContaining(
-        `reclaim ${ledger.reclaimTx} of our thread ${OUR_THREAD} awaits release finality`,
-      ),
-    });
-    ledger.land(FINAL_DEPTH);
-    expectReclaimedThenResolved(
-      await run({ evidence, adapter, process, chain: ledger.l1 }),
-      resolution,
-      ledger,
-    );
-  });
-
   it("sends no cancel until the removal itself is past rollback recovery", async () => {
     const evidence = await canonicalEvidence();
     const process = createTestWorkflowProcess();
@@ -106,9 +77,7 @@ describe("workflow: reclaim edges on a header another record removed", () => {
       port,
     );
     for (depth of [1, FINAL_DEPTH - 1])
-      expect(
-        await run({ evidence, adapter, process, chain: ledger.l1 }),
-      ).toMatchObject({
+      expect(await run({ evidence, adapter, process })).toMatchObject({
         kind: "pending",
         reason: expect.stringContaining(
           `header removal awaits release finality before our thread ${OUR_THREAD} is reclaimed`,
@@ -117,13 +86,11 @@ describe("workflow: reclaim edges on a header another record removed", () => {
     expect(port.preflight).not.toHaveBeenCalled();
     expect(port.submit).not.toHaveBeenCalled();
     depth = FINAL_DEPTH;
-    expect(
-      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
-    ).toBe("pending");
+    expect((await run({ evidence, adapter, process })).kind).toBe("pending");
     expect(port.submit).toHaveBeenCalledTimes(1);
     ledger.land(FINAL_DEPTH);
     expectReclaimedThenResolved(
-      await run({ evidence, adapter, process, chain: ledger.l1 }),
+      await run({ evidence, adapter, process }),
       { ...resolution, confirmationDepth: FINAL_DEPTH },
       ledger,
     );
@@ -139,9 +106,7 @@ describe("workflow: reclaim edges on a header another record removed", () => {
       convictedOnOurKey(() => depth),
       port,
     );
-    expect(
-      await run({ evidence, adapter, process, chain: ledger.l1 }),
-    ).toMatchObject({
+    expect(await run({ evidence, adapter, process })).toMatchObject({
       kind: "pending",
       reason: expect.stringContaining(
         `header removal awaits release finality before our thread ${OUR_THREAD} is reclaimed`,
@@ -150,14 +115,10 @@ describe("workflow: reclaim edges on a header another record removed", () => {
     expect(port.preflight).not.toHaveBeenCalled();
     expect(port.submit).not.toHaveBeenCalled();
     depth = FINAL_DEPTH;
-    expect(
-      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
-    ).toBe("pending");
+    expect((await run({ evidence, adapter, process })).kind).toBe("pending");
     expect(port.submit).toHaveBeenCalledTimes(1);
     ledger.land(FINAL_DEPTH);
-    expect(
-      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
-    ).toBe("completed");
+    expect((await run({ evidence, adapter, process })).kind).toBe("completed");
     expect(ledger.threads()).toEqual({
       spends: [expect.objectContaining({ txHash: ledger.reclaimTx })],
     });
@@ -178,9 +139,7 @@ describe("workflow: reclaim edges on a header another record removed", () => {
       false,
     );
     const adapter = decorate(base, port);
-    expect(
-      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
-    ).toBe("pending");
+    expect((await run({ evidence, adapter, process })).kind).toBe("pending");
     // The removal is rolled back and never re-lands: the header is live
     // again, our thread still stands, and the run takes its own next step.
     removed = false;
@@ -188,7 +147,6 @@ describe("workflow: reclaim edges on a header another record removed", () => {
       evidence,
       adapter,
       process,
-      chain: ledger.l1,
     });
     expect(port.preflight).not.toHaveBeenCalled();
     expect(port.submit).not.toHaveBeenCalled();
@@ -214,9 +172,7 @@ describe("workflow: reclaim edges on a header another record removed", () => {
     const ledger = await chain();
     const adapter = unwrappedSeeing(removedByAnother(), ledger);
     for (let pass = 0; pass < 2; pass += 1)
-      expect(
-        await run({ evidence, adapter, process, chain: ledger.l1 }),
-      ).toMatchObject({
+      expect(await run({ evidence, adapter, process })).toMatchObject({
         kind: "pending",
         resumeOnObservation: true,
         namedState: {
@@ -229,22 +185,19 @@ describe("workflow: reclaim edges on a header another record removed", () => {
       });
     // Once our thread is gone, the resolution goes through.
     ledger.land(FINAL_DEPTH);
-    expect(
-      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
-    ).toBe("resolved_by_another_record");
+    expect((await run({ evidence, adapter, process })).kind).toBe(
+      "resolved_by_another_record",
+    );
   });
 
   it("holds under the operator's alarm, never resolving, while the adapter cannot list our threads", async () => {
     const evidence = await canonicalEvidence();
     const process = createTestWorkflowProcess();
-    const ledger = await chain();
     // No view of our threads at all: nothing says none of ours stands.
     const { observeOwnThreads, ...blind } = removedByAnother();
     void observeOwnThreads;
     for (let pass = 0; pass < 3; pass += 1)
-      expect(
-        await run({ evidence, adapter: blind, process, chain: ledger.l1 }),
-      ).toMatchObject({
+      expect(await run({ evidence, adapter: blind, process })).toMatchObject({
         kind: "pending",
         resumeOnObservation: true,
         namedState: {

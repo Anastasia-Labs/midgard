@@ -134,7 +134,6 @@ export {
 } from "./validation-trace-dispute/stage-unbuilt.js";
 export { VALIDATION_TRACE_DISPUTE_REFERENCE_SCRIPTS } from "./validation-trace-dispute/workflow.js";
 export * from "./value-not-preserved/index.js";
-export { WALLET_ONLY_VALIDITY_MS } from "./wallet-only-validity.js";
 export * from "./withdrawal-classification-fault.js";
 export * from "./withdrawal-mistag/index.js";
 export * from "./withdrawal-mistag/workflow.js";

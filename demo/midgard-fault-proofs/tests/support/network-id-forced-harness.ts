@@ -53,7 +53,6 @@ import {
   type JournalJsonObject,
 } from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofRawL1FamilyStage } from "../../src/workflow/raw-l1-family-derivation.js";
-import type { SignedTransactionRecoveryObservation } from "../../src/workflow/signed-transaction-reconciliation.js";
 import {
   h28,
   h32,
@@ -290,7 +289,6 @@ export const forcedHarness = ({
   withoutRawL1 = false,
   walletUtxos = [],
   certificateUtxos,
-  observeSignedTransaction,
 }: {
   /** The forced contradiction, or another direction's durable artifact. */
   readonly prepared:
@@ -319,11 +317,6 @@ export const forcedHarness = ({
    * the expected datum and token; absent, every exact observation confirms.
    */
   readonly certificateUtxos?: readonly UTxO[];
-  /** Canonical signed-transaction recovery; absent in the bare raw-L1 stub. */
-  readonly observeSignedTransaction?: (input: {
-    readonly transactionHash: string;
-    readonly signedTransactionCborHex: string;
-  }) => Promise<SignedTransactionRecoveryObservation>;
 }) => {
   const unit = threadUnit(prepared.headerHash);
   const forcedUtxos =
@@ -408,9 +401,6 @@ export const forcedHarness = ({
     },
     transactionConfirmed: async () => true,
     observe: async () => stage,
-    ...(observeSignedTransaction === undefined
-      ? {}
-      : { observeSignedTransaction }),
   };
   const config = {
     lucid,

@@ -12,7 +12,6 @@ import {
   fixture as terminalFixture,
   rollBackTerminalFixture,
 } from "@al-ft/midgard-fault-proofs/test-support/raw-l1-terminal-fixture";
-import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
@@ -42,15 +41,12 @@ import {
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { readyzReasons } from "../support/fault-proof-readyz-reasons.js";
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
-import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import {
   recordingProofRetention as recordingRetention,
   storelessProofRetention,
 } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
-import { registerFaultProofResubmissionVisibilityTest } from "./fault-proof-objective-progress.hold-visibility.js";
 import { registerLateStartTests } from "./fault-proof-objective-progress.late-start.js";
-import { registerReleasedInFlightTests } from "./fault-proof-objective-progress.released-in-flight.js";
 const finishControl = vi.hoisted(() => ({
   beforeFinish: async (): Promise<void> => undefined,
   beforeRegister: async (): Promise<void> => undefined,
@@ -142,11 +138,10 @@ const AWAITING_INCLUSION = Object.freeze({
 
 /**
  * One classified doubleSpend fault under a fresh journal root, run by a
- * mocked runner over each process's real in-flight set, with its completion
- * checked by the real verification against a raw L1 view the test sets:
- * by default the target is still live; `landRemoval` shows our removal.
- * Each `createSupervisor` is one watcher process, with an empty in-flight
- * set, as after a restart.
+ * mocked runner, with its completion checked by the real verification
+ * against a raw L1 view the test sets: by default the target is still live;
+ * `landRemoval` shows our removal. Each `createSupervisor` is one watcher
+ * process, as after a restart.
  */
 export const setup = async (
   headerEndTime = BigInt(Date.now()),
@@ -206,27 +201,14 @@ export const setup = async (
   let beforeRun = async (_input: WorkflowAdapterRunnerInput): Promise<void> =>
     undefined;
   let afterRun = async (result: unknown): Promise<unknown> => result;
-  // Whether a run submits its transaction into the process's in-flight set.
-  let sends = false;
   const runOrResume = vi.fn(async (invocation: WorkflowAdapterRunnerInput) => {
     if (runOrResume.mock.calls.length === 2) secondRunStarted.resolve();
     await beforeRun(invocation);
-    if (sends)
-      invocation.sends.record({
-        actionId: "init",
-        txHash: "a1".repeat(32),
-        signedTransactionCborHex: "84a0a0f5f6",
-        inputs: [`${"b1".repeat(32)}#0`],
-        walletInputs: [`${"b1".repeat(32)}#0`],
-        walletOnly: true,
-        broadcastAtMs: Date.now(),
-      });
     return afterRun(AWAITING_INCLUSION);
   });
   const runner = WORKFLOW_RUNNER_FACTORIES.doubleSpend(async () => {
     throw new Error("the objective tests never build through the runner");
   });
-  let inFlight = createWorkflowInFlight();
   const sweepProofMaterials = vi.fn<WatcherProofMaterialsSweep>(async () => 0);
   let execution:
     | ReturnType<typeof createWatcherFaultProofExecution>
@@ -235,7 +217,6 @@ export const setup = async (
     proofRetention = storelessProofRetention,
     more: Partial<Parameters<typeof createWatcherFaultProofSupervisor>[0]> = {},
   ) => {
-    inFlight = createWorkflowInFlight();
     execution = createWatcherFaultProofExecution({
       application: {
         runners: { doubleSpend: runner },
@@ -249,12 +230,11 @@ export const setup = async (
               authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
               capture: async () => {
                 await beforeCapture();
-                return capturedSnapshot;
+                return { snapshot: capturedSnapshot, pending: [] };
               },
             },
           }),
       },
-      inFlight,
       runtimeConfigPath: "/unused-objective-test.json",
       deploymentFingerprint: deploymentIdentity.manifestId,
       operationsSink,
@@ -262,12 +242,10 @@ export const setup = async (
     const supervisor = createWatcherFaultProofSupervisor({
       proofRetention,
       journalRoot: fixture.journalRoot,
-      inFlight,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: new Uint8Array(32).fill(0xa5),
-      l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
       execution,
       sweepProofMaterials,
       ...more,
@@ -309,10 +287,6 @@ export const setup = async (
       }),
     };
   };
-  const objective = {
-    category: "doubleSpend",
-    headerHash: fixture.fresh.headerHash,
-  } as const;
   return {
     fixture,
     terminal,
@@ -322,8 +296,6 @@ export const setup = async (
     request,
     idle: waitForFaultProofSupervisorIdle,
     readiness: () => execution?.readiness() ?? [],
-    /** Whether the current process holds a send of the objective. */
-    sending: () => inFlight.sending(objective),
     /** Our removal lands: the chain now shows the completed correction. */
     landRemoval: () => {
       capturedSnapshot = raw.snapshot;
@@ -353,10 +325,6 @@ export const setup = async (
     sweepProofMaterials,
     completionVerified: completionVerified.promise,
     secondRunStarted: secondRunStarted.promise,
-    /** Each later run submits a transaction the process holds in flight. */
-    sendOnRun: (value = true) => {
-      sends = value;
-    },
     setBeforeRun: (callback: typeof beforeRun) => {
       beforeRun = callback;
     },
@@ -390,8 +358,8 @@ const journalStates = (
     .rows(journal)
     .map(({ state }) => state);
 
-describe("proof objective progress with journals and an in-memory in-flight set", () => {
-  it("holds an objective past its maturity with nothing in flight and no removal on chain by name, again after a restart, until its header leaves the queue", async () => {
+describe("proof objective progress with journals", () => {
+  it("holds an objective past its maturity with no removal on chain by name, again after a restart, until its header leaves the queue", async () => {
     const test = await setup(20n);
     const supervisor = test.createSupervisor();
     // Whether the running supervisor's liveness ended.
@@ -465,21 +433,18 @@ describe("proof objective progress with journals and an in-memory in-flight set"
     try {
       const startedAt = Date.now();
       const test = await setup(BigInt(startedAt));
-      test.sendOnRun();
       const first = test.createSupervisor();
       await test.request(first, 2).accepted;
       await test.idle(first);
       expect(test.runOrResume).toHaveBeenCalledOnce();
-      expect(test.sending()).toBe(true);
       // Its removal lands, the process stops, and it restarts a minute past
-      // maturity with nothing in flight.
+      // maturity.
       test.landRemoval();
       await first.close();
       vi.setSystemTime(
         startedAt + MIDGARD_RETENTION_WINDOW.maturityMs + 60_000,
       );
       const restarted = test.createSupervisor();
-      expect(test.sending()).toBe(false);
       await test.request(restarted, 3).accepted;
       await test.idle(restarted);
       // The chain shows the removal: completed, not held.
@@ -526,7 +491,6 @@ describe("proof objective progress with journals and an in-memory in-flight set"
         const { stage, status } = step as { stage: string; status: string };
         return `${stage}:${status}`;
       });
-    test.sendOnRun();
     const first = test.createSupervisor(retention);
     await test.request(first, 2).accepted;
     await test.idle(first);
@@ -537,7 +501,6 @@ describe("proof objective progress with journals and an in-memory in-flight set"
     await first.close();
     const ran = steps().length;
     const restarted = test.createSupervisor(retention);
-    expect(test.sending()).toBe(false);
     // Its header has left the queue: the chain shows our removal landed, so
     // it is kept and its proof step is confirmed.
     await test.request(restarted, 3, test.fixture.fresh, false).accepted;
@@ -699,44 +662,7 @@ describe("proof objective progress with journals and an in-memory in-flight set"
     ).toEqual([1, 1]);
   });
 
-  it("continues what this process has in flight past maturity under reconciliation authority", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    try {
-      const startedAt = Date.now();
-      const test = await setup(BigInt(startedAt));
-      test.sendOnRun();
-      const supervisor = test.createSupervisor();
-      await test.request(supervisor, 1).accepted;
-      await test.idle(supervisor);
-      expect(test.sending()).toBe(true);
-      vi.setSystemTime(
-        startedAt + MIDGARD_RETENTION_WINDOW.maturityMs + 60_000,
-      );
-      test.setBeforeRun(async (invocation) => {
-        expect(
-          assertWorkflowActuationPermitIdentity({
-            permit: invocation.actuationPermit,
-            category: "doubleSpend",
-            rollbackGeneration: "2",
-          }).authority,
-        ).toBe("reconciliation");
-      });
-      await test.request(supervisor, 2).accepted;
-      await test.idle(supervisor);
-      expect(test.runOrResume).toHaveBeenCalledTimes(2);
-      expect(test.verifyCompleted).not.toHaveBeenCalled();
-      expect(supervisor.status()).toMatchObject({
-        phase: "accepting",
-        blockedJob: null,
-        unfinishedObjectiveCount: 1,
-        journalDecisionMissing: [],
-      });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("runs an objective with nothing in flight inside its safe-start window", async () => {
+  it("runs an objective inside its safe-start window", async () => {
     const test = await setup();
     const supervisor = test.createSupervisor();
     await test.request(supervisor, 2).accepted;
@@ -1302,9 +1228,7 @@ describe("proof objective progress with journals and an in-memory in-flight set"
     expect(test.runOrResume).toHaveBeenCalledOnce();
   });
 
-  registerFaultProofResubmissionVisibilityTest(setup);
   registerLateStartTests(setup);
-  registerReleasedInFlightTests(setup);
   it("does not spin or run again for identical pending observations", async () => {
     const test = await setup();
     const supervisor = test.createSupervisor();

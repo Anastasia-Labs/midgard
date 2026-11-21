@@ -27,7 +27,6 @@ import {
   fieldGrammarCertificateValidatorFixture,
   realFaultProofBlueprint,
 } from "./field-grammar-certificate-deployment-fixture.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./wallet-only-send-always-open.js";
 import { createTestWorkflowProcess } from "./workflow-process.js";
 
 type RecoveryFixture = Awaited<
@@ -228,7 +227,10 @@ export const prepareRegisteredFamilyReconciliation = (
   const { deploymentFingerprint } = binding;
   // The invocation is ready now: a permit revoked after this point is
   // refused by the runner itself.
-  const sends = createTestWorkflowProcess().sends({ category, headerHash });
+  const objectiveWallet = createTestWorkflowProcess().objectiveWallet({
+    category,
+    headerHash,
+  });
   return async () => {
     const stepCount = familyStepContractNames(
       FAMILY_APPLICATION_REGISTRY[category].definition!,
@@ -286,13 +288,12 @@ export const prepareRegisteredFamilyReconciliation = (
         close: async () => undefined,
       }));
       return (await runner.runOrResume({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         category,
         deploymentFingerprint,
         headerHash,
         decisionDigest,
         actuationPermit: input.controller.permit,
-        sends,
+        objectiveWallet,
         runtimeConfigPath: "/fixture/reconciliation-runtime.json",
       })) as FraudProofWorkflowRunResult;
     } finally {

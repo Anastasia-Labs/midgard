@@ -114,8 +114,8 @@ export const verifyJourneyProverReward = async ({
 
 /**
  * Shared acceptance assertions for every installed automatic workflow. The
- * correction is read from the chain: the watcher keeps its in-flight state
- * in memory and no record of it on disk. Progress is the transactions of
+ * correction is read from the chain: the watcher keeps no record of what it
+ * sent. Progress is the transactions of
  * ours that land; the watcher's `/v1/status` holds say when it stopped.
  */
 export const verifyJourneyCorrection = async ({

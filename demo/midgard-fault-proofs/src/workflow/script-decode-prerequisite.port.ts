@@ -65,19 +65,6 @@ export type ScriptDecodeInspection =
   | {
       readonly kind: "required";
       readonly action: FraudProofWorkflowAction;
-      /** Where the record and its runs were read absent, for a bind. */
-      readonly absentAt?: readonly string[];
-    }
-  | {
-      /**
-       * `action` did not land on any of the bounded attempts this process
-       * made: the record holds there, pausing until a fresh observation, and
-       * submits it no more.
-       */
-      readonly kind: "held";
-      readonly action: FraudProofWorkflowAction;
-      readonly reason: string;
-      readonly absentAt?: readonly string[];
     };
 
 export interface ScriptDecodePrerequisitePort<
@@ -100,16 +87,12 @@ export interface ScriptDecodePrerequisitePort<
     readonly holder: ProofMaterialsHolder;
     readonly baseAction: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
-    /** Submissions this process made of an action that is required again. */
-    readonly attempts: (actionId: string) => number;
   }): Promise<ScriptDecodeInspection>;
   capture(input: {
     readonly headerHash: string;
     readonly holder: ProofMaterialsHolder;
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
-    /** Submissions this process made of `action` so far. */
-    readonly attempts: number;
   }): Promise<{
     readonly transaction: LocallyEvaluatedTransaction;
   }>;

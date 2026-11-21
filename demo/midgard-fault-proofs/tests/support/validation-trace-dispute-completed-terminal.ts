@@ -30,7 +30,7 @@ export const completedTerminal = async (
   });
   return await deriveFraudProofRawL1CompletedTerminal({
     snapshot: admitFraudProofRawL1Snapshot({
-      value: await authority.capture(request),
+      value: (await authority.capture(request)).snapshot,
       request,
       releaseFinality,
       observationDepth: "inclusion",

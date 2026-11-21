@@ -81,7 +81,7 @@ describe("provisional fault-proof completion", () => {
     expect(verify).toHaveBeenCalledOnce();
   });
 
-  it("holds a shallow terminal after a rollback on the transactions it has in flight, building nothing again", async () => {
+  it("holds a shallow terminal a rollback returns to the mempool, building nothing again", async () => {
     const evidence = await canonicalEvidence();
     const adapter = makeAdapter();
     const chain = chainOf(adapter);
@@ -109,11 +109,16 @@ describe("provisional fault-proof completion", () => {
     expect((await run({ evidence, adapter, process, verifier })).kind).toBe(
       "terminal_included",
     );
-    // A rollback drops both: they are absent but may land again.
-    chain.status.set(PROOF_TX_HASH, "rebroadcast");
-    chain.status.set(REMOVAL_TX_HASH, "rebroadcast");
+    // A rollback returns both to the node's mempool: they may land again.
+    for (const txHash of [PROOF_TX_HASH, REMOVAL_TX_HASH]) {
+      chain.drop(txHash);
+      chain.accept(txHash);
+    }
     const held = await run({ evidence, adapter, process, verifier });
-    expect(held).toMatchObject({ kind: "pending", awaitingActionId: "prove" });
+    expect(held).toMatchObject({
+      kind: "pending",
+      reason: expect.stringContaining(`${REMOVAL_TX_HASH} awaits inclusion`),
+    });
     chain.land(PROOF_TX_HASH);
     chain.land(REMOVAL_TX_HASH);
     const relanded = await run({ evidence, adapter, process, verifier });

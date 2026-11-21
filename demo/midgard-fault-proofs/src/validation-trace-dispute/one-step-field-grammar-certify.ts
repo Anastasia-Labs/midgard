@@ -351,16 +351,8 @@ export const validationTraceFieldGrammarCertification = ({
       action.input.schemaVersion === VALIDATION_TRACE_GRAMMAR_CERTIFY,
     next: async (context, observed) => {
       const action = await due(context, observed);
-      if (action === undefined) return undefined;
-      // An open is read from finding no certificate of ours at their
-      // address: our batch in flight there may leave it empty until it
-      // lands.
-      return action.input.progress === "open"
-        ? {
-            kind: "action_required",
-            action,
-            absentAt: [certificateAddressOf(deployment)],
-          }
+      return action === undefined
+        ? undefined
         : { kind: "action_required", action };
     },
     build: async (context, action) => {

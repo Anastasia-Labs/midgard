@@ -1,13 +1,10 @@
 /**
  * The watcher's fault-proof execution adapter over one classified doubleSpend
  * decision: its objective resumed under that decision, with the workflow
- * runner, completion check and operations sink as mocks and the process's
- * in-flight set real.
+ * runner, completion check and operations sink as mocks.
  */
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
 import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import type { WorkflowAdapterRunnerInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
-import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import { WORKFLOW_RUNNER_FACTORIES } from "@al-ft/midgard-fault-proofs/workflow/runtime";
 import { type Mock, vi } from "vitest";
 
@@ -30,7 +27,6 @@ export const setupFaultProofExecution = async ({
   const runner = WORKFLOW_RUNNER_FACTORIES.doubleSpend(async () => {
     throw new Error("the execution adapter never builds through the runner");
   });
-  const inFlight = createWorkflowInFlight();
   const runOrResume: Mock<
     (invocation: WorkflowAdapterRunnerInput) => Promise<unknown>
   > = vi.fn(async () => ({
@@ -49,7 +45,6 @@ export const setupFaultProofExecution = async ({
       runOrResume,
       verifyCompleted,
     },
-    inFlight,
     runtimeConfigPath: "/unused-test-runtime.json",
     deploymentFingerprint: deploymentIdentity.manifestId,
     operationsSink: { recordProofStep, setAlert },
@@ -64,22 +59,15 @@ export const setupFaultProofExecution = async ({
       deadline: null,
     },
     actuationPermit: controller.permit,
-    admission: {
-      mode: "resume",
-      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
-    },
+    admission: { mode: "resume" },
   } as const;
   return {
     fresh,
     controller,
     execution,
-    inFlight,
     input,
-    /** The admission of a fresh run, with the restart wait over. */
-    runAdmission: {
-      mode: "run",
-      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
-    } as const,
+    /** The admission of a fresh run. */
+    runAdmission: { mode: "run" } as const,
     runOrResume,
     verifyCompleted,
     recordProofStep,

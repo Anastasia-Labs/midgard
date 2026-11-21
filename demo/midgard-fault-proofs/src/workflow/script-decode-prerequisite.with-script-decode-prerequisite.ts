@@ -9,7 +9,6 @@ import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAdapterContext,
   type FraudProofWorkflowPreflight,
 } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import { workflowProofMaterialsHolder } from "./proof-materials-view.holder.js";
@@ -59,12 +58,6 @@ export const withScriptDecodePrerequisite = <
     string,
     Readonly<{ transaction: LocallyEvaluatedTransaction }>
   >();
-  // How many times this process sent a record action: the process's
-  // in-flight set counts them, and a restart starts the count again.
-  const attemptsOf =
-    (context: FraudProofWorkflowAdapterContext) =>
-    (actionId: string): number =>
-      context.attempts?.(actionId) ?? 0;
   const headerOf = (
     target: Parameters<
       FraudProofFamilyWorkflowAdapter["preflight"]
@@ -121,19 +114,9 @@ export const withScriptDecodePrerequisite = <
         holder,
         baseAction: observed.action,
         artifact: context.artifact,
-        attempts: attemptsOf(context),
       });
-      // A held action is still the one required: its preflight pauses the
-      // workflow until a fresh observation instead of polling the hold.
-      if (inspection.kind === "required" || inspection.kind === "held") {
-        return {
-          kind: "action_required",
-          action: inspection.action,
-          ...(inspection.absentAt === undefined
-            ? {}
-            : { absentAt: inspection.absentAt }),
-        };
-      }
+      if (inspection.kind === "required")
+        return { kind: "action_required", action: inspection.action };
       return inspection.kind === "pending"
         ? { kind: "pending", reason: inspection.reason }
         : observed;
@@ -146,13 +129,8 @@ export const withScriptDecodePrerequisite = <
           holder: workflowProofMaterialsHolder(context),
           baseAction: context.action,
           artifact: context.artifact,
-          attempts: attemptsOf(context),
         });
-        if (
-          inspection.kind === "required" ||
-          inspection.kind === "held" ||
-          inspection.kind === "pending"
-        ) {
+        if (inspection.kind === "required" || inspection.kind === "pending") {
           throw new WorkflowActionChangedError(
             `${category} proof step cannot bypass its script decode record`,
           );
@@ -170,14 +148,7 @@ export const withScriptDecodePrerequisite = <
         holder: workflowProofMaterialsHolder(context),
         baseAction: observed.action,
         artifact: context.artifact,
-        attempts: attemptsOf(context),
       });
-      if (
-        inspection.kind === "held" &&
-        sameJson(inspection.action, context.action)
-      ) {
-        throw new WorkflowActionChangedError(inspection.reason);
-      }
       if (
         inspection.kind !== "required" ||
         !sameJson(inspection.action, context.action)
@@ -195,7 +166,6 @@ export const withScriptDecodePrerequisite = <
         holder: workflowProofMaterialsHolder(context),
         action: context.action,
         artifact: context.artifact,
-        attempts: attemptsOf(context)(context.action.actionId),
       });
       if (
         !TX_HASH.test(captured.transaction.txHash) ||

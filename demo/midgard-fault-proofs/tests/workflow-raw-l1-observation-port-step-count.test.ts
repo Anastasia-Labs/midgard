@@ -33,7 +33,7 @@ const portFor = async (stepCount: number) => {
     createFraudProofFamilyRawL1ObservationPort({
       authority: {
         authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-        capture: async () => value.snapshot,
+        capture: async () => ({ snapshot: value.snapshot, pending: [] }),
       },
       releaseFinality: value.binding.releaseFinality,
       releaseEconomics: value.binding.releaseEconomics,

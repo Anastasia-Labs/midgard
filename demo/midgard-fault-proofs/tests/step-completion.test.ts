@@ -31,10 +31,7 @@ import {
   submitOutsideWorkflow,
   workflowTransactionInputOutRefs,
 } from "../src/workflow/transaction-boundary.js";
-import {
-  fundProverCoin,
-  restrictedProverWallet,
-} from "./support/restricted-prover-wallet.js";
+import { restrictedProverWallet } from "./support/restricted-prover-wallet.js";
 
 const network = "Custom" as const;
 const ada = (amount: bigint) => amount * 1_000_000n;
@@ -210,21 +207,12 @@ describe("fundStep and completeStep", () => {
     );
   });
 
-  it("fund a script step and post its collateral from the coins the restricted wallet offers, never one another action holds", async () => {
-    const { emulator, lucid, funderLucid, signer, scriptUtxo } = await prover([
+  it("fund a script step and post its collateral from the coins the restricted wallet offers", async () => {
+    const { emulator, lucid, signer, scriptUtxo } = await prover([
       { lovelace: ada(40n) },
       { lovelace: ada(30n) },
     ]);
-    const held = await fundProverCoin({
-      emulator,
-      funderLucid,
-      signer,
-    });
-    const restricted = restrictedProverWallet({
-      emulator,
-      signer,
-      held: [held],
-    });
+    const restricted = restrictedProverWallet({ emulator, signer });
 
     const funding = await fundStep(lucid, { signer: restricted.signer });
     const signed = await completeStep(

@@ -46,7 +46,6 @@ import {
   createFraudProofWorkflowRegistry,
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
-import { type WalletOnlySend } from "./wallet-only-send-gate.js";
 import type { WorkflowRun } from "./workflow-run.js";
 
 export const createManifestBoundMissingSignatureWorkflow = async (
@@ -260,12 +259,10 @@ export const runOrResumeManifestBoundMissingSignatureWorkflow = async ({
   workflow,
   sources,
   run,
-  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundMissingSignatureWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly run: WorkflowRun;
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
@@ -282,7 +279,6 @@ export const runOrResumeManifestBoundMissingSignatureWorkflow = async ({
     run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-    walletOnlySend,
   });
 };
 

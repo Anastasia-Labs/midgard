@@ -1,5 +1,4 @@
 import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
-import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
@@ -18,15 +17,13 @@ import {
   setupClassifiedFaultFixture,
 } from "../support/classified-fault-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
-import { inFlightOf } from "../support/in-flight-fixture.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
 // A durable fault decision that a fresh classification of the same
-// observation no longer reproduces is superseded once nothing of it is in
-// flight: its rows and its decision row are forgotten, and the fresh fault
-// is recorded. A job of it, or a transaction this process sent for it that
-// can still land, holds it unchanged.
+// observation no longer reproduces is superseded once no job of it is
+// queued or active: its rows and its decision row are forgotten, and the
+// fresh fault is recorded. A job of it holds it unchanged.
 afterEach(async () => {
   vi.restoreAllMocks();
   await cleanupClassifiedFaultFixtures();
@@ -35,7 +32,6 @@ afterEach(async () => {
 const setup = async () => {
   const fixture = await setupClassifiedFaultFixture();
   const deploymentFingerprint = deploymentIdentity.manifestId;
-  const inFlight = createWorkflowInFlight();
   const start = () =>
     createWatcherFaultProofProgressAuthority({
       journalRoot: fixture.journalRoot,
@@ -43,7 +39,6 @@ const setup = async () => {
       categories: installedLaunchScope(fixture.old.launchScope),
       authenticationKey: TEST_JOURNAL_KEY,
       retention: storelessProofRetention,
-      ...inFlightOf(inFlight),
     });
   const authority = start();
   const observation = progressObservation({
@@ -87,7 +82,6 @@ const setup = async () => {
   return {
     fixture,
     deploymentFingerprint,
-    inFlight,
     authority,
     start,
     observation,
@@ -152,37 +146,6 @@ describe("proof progress authority supersede", () => {
         fresh: fixture.fresh,
       }),
     ).resolves.toEqual({ kind: "superseded" });
-    expect(await harness.decisions()).toEqual([fixture.fresh.decisionDigest]);
-  });
-
-  it("holds a decision a transaction this process sent can still settle, and changes nothing", async () => {
-    const harness = await setup();
-    const { fixture } = harness;
-    const sends = harness.inFlight.forObjective(harness.objective);
-    sends.record({
-      actionId: "init",
-      txHash: "ab".repeat(32),
-      signedTransactionCborHex: "84a0",
-      inputs: [`${"cd".repeat(32)}#0`],
-      walletInputs: [`${"cd".repeat(32)}#0`],
-      walletOnly: true,
-      broadcastAtMs: 0,
-    });
-    const before = await harness.decisions();
-    const supersede = () =>
-      harness.authority.supersede({
-        observation: harness.observation,
-        prior: fixture.old,
-        fresh: fixture.fresh,
-      });
-    await expect(supersede()).resolves.toMatchObject({
-      kind: "held",
-      reason: "submission_unresolved",
-    });
-    expect(await harness.decisions()).toEqual(before);
-    // Once the transaction settles, nothing of the decision is in flight.
-    sends.settle("ab".repeat(32));
-    await expect(supersede()).resolves.toEqual({ kind: "superseded" });
     expect(await harness.decisions()).toEqual([fixture.fresh.decisionDigest]);
   });
 

@@ -34,10 +34,6 @@ it("starts no correction removal from an application that only observes", async 
           targetHeaderHash: HEADER,
           fraudProofAssetName: `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.doubleSpend}${HEADER}`,
         },
-        walletLeases: {
-          heldOutRefs: () => [],
-          holdWalletInputs: () => () => undefined,
-        },
       }),
     ).resolves.toEqual({ kind: "observing" });
     expect(deps.readText).not.toHaveBeenCalled();

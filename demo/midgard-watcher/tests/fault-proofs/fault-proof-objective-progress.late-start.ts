@@ -117,7 +117,7 @@ export const registerLateStartTests = (setupScenario: typeof setup): void => {
     });
   });
 
-  it("settles a late objective's deadline and clears its alerts once its header leaves the queue, leaving its send in flight to the chain", async () => {
+  it("settles a late objective's deadline and clears its alerts once its header leaves the queue, leaving its send to the chain", async () => {
     const forward: { sink?: WatcherOperationsSink } = {};
     const test = await setupScenario(
       BigInt(Date.now() - LATEST_SAFE_START_OFFSET_MS - 60_000),
@@ -126,8 +126,6 @@ export const registerLateStartTests = (setupScenario: typeof setup): void => {
         setAlert: (alert) => forward.sink?.setAlert(alert),
       },
     );
-    // Its signed step stays in flight throughout.
-    test.sendOnRun();
     const supervisor = test.createSupervisor();
     const operations = createWatcherOperationsObservability({
       deploymentFingerprint: deploymentIdentity.manifestId,
@@ -154,9 +152,8 @@ export const registerLateStartTests = (setupScenario: typeof setup): void => {
     }
     expect(alerts()).toEqual(["maturity_deadline_risk"]);
     expect(supervisor.status().deadlineHealth).toBe("unsafe");
-    expect(test.sending()).toBe(true);
     // The header merges: it leaves the queue with the step unresolved.
-    // Nothing drives the objective again; what it sent stays in flight.
+    // Nothing drives the objective again; what it sent is the chain's.
     await test.request(supervisor, 3, test.fixture.fresh, false).accepted;
     await test.idle(supervisor);
     expect(test.runOrResume).toHaveBeenCalledOnce();
@@ -165,7 +162,6 @@ export const registerLateStartTests = (setupScenario: typeof setup): void => {
       deadlineHealth: "safe",
       remainingSafeStartMs: null,
     });
-    expect(test.sending()).toBe(true);
     expect(alerts()).toEqual([]);
     expect(test.readiness()).toEqual([]);
   });
@@ -184,8 +180,6 @@ export const registerLateStartTests = (setupScenario: typeof setup): void => {
         recordProofStep: (step) => forward.sink?.recordProofStep(step),
         setAlert: (alert) => forward.sink?.setAlert(alert),
       });
-      // Each run's signed step stays in flight in its process.
-      test.sendOnRun();
       /** One watcher process: a supervisor and its own operations view. */
       const start = () => {
         const supervisor = test.createSupervisor();
@@ -230,8 +224,8 @@ export const registerLateStartTests = (setupScenario: typeof setup): void => {
       expect(test.runOrResume).toHaveBeenCalledTimes(2);
       await second.supervisor.close();
 
-      // After maturity the restarted process has nothing in flight and the
-      // chain shows no removal: it is held by name, never run.
+      // After maturity the chain shows no removal: it is held by name, never
+      // run.
       vi.setSystemTime(
         headerEndTime + MIDGARD_RETENTION_WINDOW.maturityMs + 60_000,
       );

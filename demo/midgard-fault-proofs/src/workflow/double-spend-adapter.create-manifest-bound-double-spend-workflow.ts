@@ -24,10 +24,10 @@ import {
   createDoubleSpendL1ObservationPort,
 } from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
 import type {
+  DoubleSpendConstrainedWorkflowAdapterConfig,
   DoubleSpendWorkflowReferenceScripts,
   ManifestBoundDoubleSpendWorkflow,
   ManifestBoundDoubleSpendWorkflowConfig,
-  ObservedDoubleSpendWorkflowAdapterConfig,
 } from "./double-spend-adapter.preflight-of.js";
 import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
 import type { FraudProofFamilyWorkflowAdapter } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
@@ -37,7 +37,6 @@ import {
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
-import type { WalletOnlySend } from "./wallet-only-send-gate.js";
 import type { WorkflowRun } from "./workflow-run.js";
 
 /**
@@ -122,7 +121,7 @@ export const createManifestBoundDoubleSpendWorkflow = async (
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
-  const adapterConfig: ObservedDoubleSpendWorkflowAdapterConfig = {
+  const adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfig = {
     lucid: config.lucid,
     blueprint: binding.blueprint,
     deploymentInfo: binding.deploymentInfo,
@@ -162,19 +161,17 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
   adapter: bound,
   maxSubmissionAttempts,
   maxActions,
-  walletOnlySend,
 }: {
   readonly deploymentFingerprint: string;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly run: WorkflowRun;
-  readonly adapterConfig: ObservedDoubleSpendWorkflowAdapterConfig;
+  readonly adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfig;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   /** The adapter to run, in place of the bare one over `adapterConfig`. */
   readonly adapter?: FraudProofFamilyWorkflowAdapter;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const adapter =
     bound ?? createDoubleSpendConstrainedWorkflowAdapter(adapterConfig);
@@ -194,7 +191,6 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
     ),
     ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
     ...(maxActions === undefined ? {} : { maxActions }),
-    walletOnlySend,
   });
 };
 
@@ -205,14 +201,12 @@ export const runOrResumeManifestBoundDoubleSpendWorkflow = async ({
   run,
   maxSubmissionAttempts,
   maxActions,
-  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundDoubleSpendWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly run: WorkflowRun;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const observeHeader = workflow.adapterConfig.l1.observeHeader;
   if (observeHeader === undefined) {
@@ -238,6 +232,5 @@ export const runOrResumeManifestBoundDoubleSpendWorkflow = async ({
     adapter: workflow.adapter,
     ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
     ...(maxActions === undefined ? {} : { maxActions }),
-    walletOnlySend,
   });
 };

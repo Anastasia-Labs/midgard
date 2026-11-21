@@ -22,7 +22,6 @@ const hooks = vi.hoisted(() => ({
     readonly headerHash: string;
   }) => unknown,
   authority: undefined as unknown,
-  recovery: undefined as unknown,
 }));
 vi.mock("../src/workflow/deployment-manifest-binding.js", async (load) => ({
   ...(await load<
@@ -35,9 +34,6 @@ vi.mock("../src/workflow/deployment-manifest-binding.js", async (load) => ({
 vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
   const actual =
     await load<typeof import("../src/workflow/family-l1-observation.js")>();
-  const { withFraudProofL1Recovery } = await import(
-    "../src/workflow/l1-source.js"
-  );
   return {
     ...actual,
     createFraudProofFamilyL1ObservationPort: (
@@ -45,15 +41,12 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
         typeof actual.createFraudProofFamilyL1ObservationPort
       >[0],
     ) =>
-      withFraudProofL1Recovery(
-        actual.createFraudProofFamilyRawL1ObservationPort({
-          ...input,
-          authority: hooks.authority as Parameters<
-            typeof actual.createFraudProofFamilyRawL1ObservationPort
-          >[0]["authority"],
-        }),
-        hooks.recovery as Parameters<typeof withFraudProofL1Recovery>[1],
-      ),
+      actual.createFraudProofFamilyRawL1ObservationPort({
+        ...input,
+        authority: hooks.authority as Parameters<
+          typeof actual.createFraudProofFamilyRawL1ObservationPort
+        >[0]["authority"],
+      }),
   };
 });
 
@@ -64,7 +57,6 @@ import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.f
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
-import { emulatorSignedTransactionRecovery } from "./support/emulator-signed-recovery.js";
 import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
 import { scriptDecodeDeploymentOf } from "./support/script-decode-emulator.js";
 import { installApplicationClock } from "./support/script-decode-installed-host.js";
@@ -78,8 +70,10 @@ import {
   scriptHashOf,
   setUpInstalledScene,
 } from "./support/validation-trace-dispute-installed-scene.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
-import { createTestWorkflowProcess } from "./support/workflow-process.js";
+import {
+  createTestWorkflowProcess,
+  recordingRecord,
+} from "./support/workflow-process.js";
 
 /** A run polls once per emulator block; one turn of the dispute stays well
  * inside this, and a run that never returns stops here instead. */
@@ -121,7 +115,6 @@ describe("validation-trace dispute through the installed watcher application", (
     installed = await setUpInstalledScene();
     const { emulator } = installed.scene.h;
     hooks.authority = recorder.authority;
-    hooks.recovery = emulatorSignedTransactionRecovery(emulator);
     workflowClock = installedWorkflowEmulatorClock(emulator);
     workflowClock.awaitReleaseDepth();
     app = await installValidationTraceApplication({ installed, recorder });
@@ -161,8 +154,10 @@ describe("validation-trace dispute through the installed watcher application", (
     const sent = recorder.signedCbors.size;
     const { workflow } = await app.apply(scene.passing, decision);
     const process = createTestWorkflowProcess();
-    const result = (await app.record.execute({
-      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
+    const result = (await recordingRecord(
+      app.record,
+      process.recording,
+    ).execute({
       workflow,
       sources: app.sources,
       run: process.run({

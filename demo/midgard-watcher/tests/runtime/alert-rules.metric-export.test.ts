@@ -12,7 +12,6 @@ import { WATCHER_FAULT_PROOF_CONTINUATION_STALLED } from "../../src/fault-proofs
 import { WATCHER_FAULT_PROOF_L1_REFUSED } from "../../src/fault-proofs/fault-proof-execution-holds.js";
 import { WATCHER_PROVER_FUNDING_UNAVAILABLE } from "../../src/fault-proofs/fault-proof-funding-hold.js";
 import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";
-import { WATCHER_FAULT_PROOF_RESUBMISSION_REQUIRED } from "../../src/fault-proofs/fault-proof-resubmission-hold.js";
 import {
   FAULT_PROOF_OWN_THREAD_UNCANCELLABLE,
   FAULT_PROOF_OWN_THREAD_UNRECLAIMED,
@@ -37,7 +36,6 @@ import { supervisor } from "./operations-observability.supervisor.js";
 
 /** The fault-proof holds the execution names through `l1Readiness`. */
 const PROOF_HOLD_REASONS = [
-  WATCHER_FAULT_PROOF_RESUBMISSION_REQUIRED,
   WATCHER_FAULT_PROOF_CONTINUATION_STALLED,
   WATCHER_FAULT_PROOF_QUARANTINED,
   WATCHER_PROVER_FUNDING_UNAVAILABLE,

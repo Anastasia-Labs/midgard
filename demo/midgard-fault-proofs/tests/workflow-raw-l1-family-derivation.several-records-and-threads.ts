@@ -285,8 +285,11 @@ describe("raw L1 derivation with several records and threads on one header", () 
       (alone as { readonly resolution: object }).resolution,
     ).not.toHaveProperty("standingThread");
     expect(
-      deriveFraudProofRawL1OwnThreads({ snapshot: theirsOnly, definition })
-        .standing,
+      deriveFraudProofRawL1OwnThreads({
+        snapshot: theirsOnly,
+        pending: [],
+        definition,
+      }).standing,
     ).toBeUndefined();
     // Ours beside theirs: ours, and only ours, is the thread to reclaim.
     const both = withThreads(foreign, definition, [
@@ -303,7 +306,11 @@ describe("raw L1 derivation with several records and threads on one header", () 
       resolution: { ...resolution, standingThread },
     });
     expect(
-      deriveFraudProofRawL1OwnThreads({ snapshot: both, definition }).standing,
+      deriveFraudProofRawL1OwnThreads({
+        snapshot: both,
+        pending: [],
+        definition,
+      }).standing,
     ).toEqual(standingThread);
   });
 

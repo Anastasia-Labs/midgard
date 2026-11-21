@@ -30,10 +30,7 @@ import {
   type FraudProofFamilyL1ObservationPort,
   observeFraudProofWorkflowHeader,
 } from "../workflow/family-l1-observation.js";
-import type {
-  FraudProofL1Source,
-  FraudProofSignedTransactionRecovery,
-} from "../workflow/l1-source.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowTerminalVerifier,
@@ -45,7 +42,6 @@ import {
 } from "../workflow/orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { scriptDecodeDeploymentFromReferences } from "../workflow/script-decode-prerequisite.deployment.js";
-import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import type { WorkflowRun } from "../workflow/workflow-run.js";
 import { createValidationTraceDisputeWorkflowAdapter } from "./adapter.js";
 import { createValidationTraceCaseHistory } from "./case-history.js";
@@ -108,8 +104,7 @@ export type ManifestBoundValidationTraceDisputeWorkflowConfig = Readonly<{
 
 export type ManifestBoundValidationTraceDisputeWorkflow = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<typeof CATEGORY>;
-  l1: FraudProofFamilyL1ObservationPort<typeof CATEGORY> &
-    FraudProofSignedTransactionRecovery;
+  l1: FraudProofFamilyL1ObservationPort<typeof CATEGORY>;
   deployment: ValidationTraceDisputeDeployment;
   l1SlotConfig: L1SlotConfig;
   adapter: FraudProofFamilyWorkflowAdapter;
@@ -276,7 +271,7 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
         binding.releaseEconomics.policy.fraudProverRewardLovelace,
       ),
     },
-    signedRecovery: l1,
+    releaseDepth: binding.releaseFinality.policy.confirmationDepth,
     caseHistory: createValidationTraceCaseHistory({
       authority: config.l1Source.snapshotAuthority({
         releaseFinality: binding.releaseFinality,
@@ -329,12 +324,10 @@ export const runOrResumeManifestBoundValidationTraceDisputeWorkflow = async ({
   workflow,
   sources,
   run,
-  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundValidationTraceDisputeWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly run: WorkflowRun;
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<
   FraudProofWorkflowRunResult | ValidationTraceAwaitingCounterparty
 > =>
@@ -359,6 +352,5 @@ export const runOrResumeManifestBoundValidationTraceDisputeWorkflow = async ({
       run,
       terminalVerifier: workflow.terminalVerifier,
       releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-      walletOnlySend,
     }),
   );

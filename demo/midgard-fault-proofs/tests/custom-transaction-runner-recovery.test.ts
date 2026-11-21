@@ -15,7 +15,6 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
-import type { SignedWorkflowTransaction } from "../src/workflow/signed-transaction-reconciliation.js";
 import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   authenticatedHeaderObservation,
@@ -24,7 +23,6 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 
 const hash = (byte: string) => byte.repeat(32);
@@ -104,53 +102,30 @@ it.each(categories)(
       true,
     );
     const txHash = CML.hash_transaction(transactionBody).to_hex();
-    const submit = vi.fn(async () => {
-      // The process holds the signed transaction in flight before it is sent.
-      expect(
-        process
-          .sends(objective)
-          .inFlight()
-          .map((sent) => sent.txHash),
-      ).toEqual([txHash]);
-      return txHash;
-    });
-    const pendingSignedRead = async (input: SignedWorkflowTransaction) => ({
-      ...input,
-      status: "pending" as const,
-      canonicalPoint: {
-        slot: "100",
-        blockNo: "100",
-        blockHash: hash("ef"),
-        pointId: "test-tip",
-      },
-      releaseFinalPoint: {
-        slot: "70",
-        blockNo: "70",
-        blockHash: hash("ee"),
-        pointId: "test-final",
-      },
-      inputs: [],
-      reason: "local mempool confirmation pending",
-    });
+    const submit = vi.fn(async () => txHash);
     const adapter = createCursorFamilyWorkflowAdapter({
       spec: { category, stepCount: 1, successors: { 1: ["proof_token"] } },
       l1: {
         portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
         category,
         observeHeader: async () => authenticatedHeaderObservation(fixture),
+        // The ledger with the node's mempool applied: the sent init
+        // waits there for inclusion.
         observe: async () => ({
           provenance: {
             trustClass: "authenticated_cardano_l1",
             sourceId: "local-transport-test",
             grade: "security",
           },
-          stage: {
-            kind: "not_started",
-            stateQueueBlockOutRef: `${hash("34")}#0`,
-          },
+          stage:
+            submit.mock.calls.length === 0
+              ? {
+                  kind: "not_started",
+                  stateQueueBlockOutRef: `${hash("34")}#0`,
+                }
+              : { kind: "pending", reason: "the sent init awaits inclusion" },
         }),
         transactionConfirmed: async () => false,
-        observeSignedTransaction: pendingSignedRead,
         publications: {
           observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
           observeExact: async () => ({ kind: "not_found" }),
@@ -199,7 +174,6 @@ it.each(categories)(
       redeemerCanonicity: "redeemer-malformed",
     }[category];
     const result = await runFraudProofWorkflow({
-      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       deploymentFingerprint,
       evidence,
       detections: [
@@ -212,17 +186,13 @@ it.each(categories)(
         },
       ],
       registry: createFraudProofWorkflowRegistry({
-        adapters: [wrapped],
+        adapters: [process.recording(wrapped)],
         launchScope: [category],
       }),
       run: process.run(objective),
-      terminalVerifier: {
-        ...terminalVerifierOf(async () => {
-          throw new Error("unconfirmed init has no terminal");
-        }),
-        // The run follows its sent init on the chain.
-        observeSignedTransaction: pendingSignedRead,
-      },
+      terminalVerifier: terminalVerifierOf(async () => {
+        throw new Error("unconfirmed init has no terminal");
+      }),
       releaseFinalityAuthority: {
         authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
         verifyForWorkflow: async () => releaseFinality,

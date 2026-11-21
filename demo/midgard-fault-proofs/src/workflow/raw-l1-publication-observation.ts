@@ -1,15 +1,12 @@
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
+import { nextViewOf, pendingBodyCbor } from "./next-state.js";
 import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
 } from "./raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import { admitFraudProofRawL1Snapshot } from "./raw-l1-snapshot.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
-import type {
-  SignedTransactionRecoveryObservation,
-  SignedWorkflowTransaction,
-} from "./signed-transaction-reconciliation.js";
 
 export const FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER =
   "midgard-fraud-proof-authenticated-publication-observer-v1" as const;
@@ -20,16 +17,6 @@ export type FraudProofAuthenticatedPublicationObservation =
 
 export interface FraudProofAuthenticatedPublicationObserver {
   readonly observerVersion: typeof FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER;
-  observeSignedTransaction?(
-    input: SignedWorkflowTransaction,
-  ): Promise<SignedTransactionRecoveryObservation>;
-  rebroadcastSignedTransaction?(
-    input: SignedWorkflowTransaction & {
-      readonly authorizeResubmission: (
-        input: SignedWorkflowTransaction,
-      ) => Promise<void>;
-    },
-  ): Promise<string>;
   observeExact(input: {
     readonly headerHash: string;
     readonly kind: "proof_chunk" | "field_publication" | "field_certificate";
@@ -89,14 +76,17 @@ export const createFraudProofAuthenticatedPublicationObserver = ({
         ],
         historyUnits,
       } as const;
+      const captured = await authority.capture(request);
       const snapshot = admitFraudProofRawL1Snapshot({
-        value: await authority.capture(request),
+        value: captured.snapshot,
         request,
         releaseFinality,
         observationDepth: "inclusion",
       });
-      const scoped = snapshot.scopes[0];
-      const candidate = scoped?.utxos.find(
+      // The next view: an output a transaction in our node's mempool creates
+      // stands, and one it spends is gone.
+      const view = nextViewOf({ snapshot, pending: captured.pending });
+      const candidate = view.scopes[0]?.utxos.find(
         (utxo) => utxo.outRef === input.expectedOutRef,
       );
       if (candidate === undefined) return { kind: "not_found" };
@@ -125,19 +115,27 @@ export const createFraudProofAuthenticatedPublicationObserver = ({
           "authenticated publication output differs from its expected content identity",
         );
       }
+      // The transaction that created the output: on the ledger, in the
+      // unit's history, or pending in our node's mempool.
+      const txHash = input.expectedOutRef.split("#")[0]!;
+      const pendingCreation = captured.pending.find(
+        (candidate) => candidate.txHash === txHash,
+      );
+      const creationBody =
+        pendingCreation === undefined
+          ? snapshot.transactions.find((entry) => entry.txHash === txHash)
+              ?.bodyCbor
+          : pendingBodyCbor(pendingCreation);
       if (input.expectedUnit !== undefined) {
-        const txHash = input.expectedOutRef.split("#")[0]!;
         const history = snapshot.history[0];
-        const transaction = snapshot.transactions.find(
-          (candidate) => candidate.txHash === txHash,
-        );
         if (
           history === undefined ||
           history.unit !== input.expectedUnit ||
-          !history.transactionHashes.includes(txHash) ||
-          transaction === undefined ||
+          (pendingCreation === undefined &&
+            !history.transactionHashes.includes(txHash)) ||
+          creationBody === undefined ||
           mintQuantity(
-            CML.TransactionBody.from_cbor_hex(transaction.bodyCbor),
+            CML.TransactionBody.from_cbor_hex(creationBody),
             input.expectedUnit,
           ) !== 1n
         ) {
@@ -154,16 +152,12 @@ export const createFraudProofAuthenticatedPublicationObserver = ({
           throw new Error(
             "publication reference proof requires an authenticated certificate",
           );
-        const transaction = snapshot.transactions.find(
-          (entry) => entry.txHash === input.expectedOutRef.split("#")[0],
-        );
-        if (transaction === undefined)
+        if (creationBody === undefined)
           throw new Error(
             "publication reference proof omitted its certificate creation",
           );
-        const inputs = CML.TransactionBody.from_cbor_hex(
-          transaction.bodyCbor,
-        ).reference_inputs();
+        const inputs =
+          CML.TransactionBody.from_cbor_hex(creationBody).reference_inputs();
         let found = false;
         for (
           let index = 0;

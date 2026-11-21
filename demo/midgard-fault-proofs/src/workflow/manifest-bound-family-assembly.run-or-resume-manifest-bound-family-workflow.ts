@@ -9,7 +9,6 @@ import {
   createFraudProofWorkflowRegistry,
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
-import type { WalletOnlySend } from "./wallet-only-send-gate.js";
 import type { WorkflowRun } from "./workflow-run.js";
 
 /**
@@ -26,7 +25,6 @@ export const runOrResumeManifestBoundFamilyWorkflow = async <
   workflow,
   sources,
   run,
-  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundFamilyWorkflow<
     Category,
@@ -36,7 +34,6 @@ export const runOrResumeManifestBoundFamilyWorkflow = async <
   >;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly run: WorkflowRun;
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> =>
   await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
@@ -55,5 +52,4 @@ export const runOrResumeManifestBoundFamilyWorkflow = async <
     run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-    walletOnlySend,
   });

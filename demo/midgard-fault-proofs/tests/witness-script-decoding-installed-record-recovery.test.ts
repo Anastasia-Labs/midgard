@@ -8,19 +8,14 @@
  * action is taken twice. A wallet that cannot pay for the next record
  * action pauses the objective with the typed record-underfunded reason
  * naming that record action, which says it funds from plain-ADA coins only, and a
- * top-up resumes it to conviction, a coin holding a token left unspent. A Walk the ledger rejects on every
- * one of its bounded attempts holds the objective instead of refitting it
- * forever.
+ * top-up resumes it to conviction, a coin holding a token left unspent.
  */
 import type { OutRef } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { WALLET_ONLY_VALIDITY_MS } from "../src/wallet-only-validity.js";
-
 const hooks = vi.hoisted(() => ({
   binding: undefined as unknown,
   authority: undefined as unknown,
-  recovery: undefined as unknown,
 }));
 vi.mock("../src/workflow/deployment-manifest-binding.js", async (load) => ({
   ...(await load<
@@ -31,9 +26,6 @@ vi.mock("../src/workflow/deployment-manifest-binding.js", async (load) => ({
 vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
   const actual =
     await load<typeof import("../src/workflow/family-l1-observation.js")>();
-  const { withFraudProofL1Recovery } = await import(
-    "../src/workflow/l1-source.js"
-  );
   return {
     ...actual,
     createFraudProofFamilyL1ObservationPort: (
@@ -41,23 +33,16 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
         typeof actual.createFraudProofFamilyL1ObservationPort
       >[0],
     ) =>
-      withFraudProofL1Recovery(
-        actual.createFraudProofFamilyRawL1ObservationPort({
-          ...input,
-          authority: hooks.authority as Parameters<
-            typeof actual.createFraudProofFamilyRawL1ObservationPort
-          >[0]["authority"],
-        }),
-        hooks.recovery as Parameters<typeof withFraudProofL1Recovery>[1],
-      ),
+      actual.createFraudProofFamilyRawL1ObservationPort({
+        ...input,
+        authority: hooks.authority as Parameters<
+          typeof actual.createFraudProofFamilyRawL1ObservationPort
+        >[0]["authority"],
+      }),
   };
 });
 
-import { SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS } from "../src/script-decode/record.js";
-import {
-  SCRIPT_DECODE_RECORD_HELD,
-  SCRIPT_DECODE_RECORD_UNDERFUNDED,
-} from "../src/workflow/script-decode-prerequisite.port.js";
+import { SCRIPT_DECODE_RECORD_UNDERFUNDED } from "../src/workflow/script-decode-prerequisite.port.js";
 import {
   drainProverToOneCoin,
   sendTokenCoin,
@@ -92,12 +77,6 @@ const POLL_CAP = 5_000;
  */
 const RECOVERY_POLL_CAP = 100;
 const RECOVERY_TURN_CAP = 10;
-/**
- * Turns a restarted process waits out before it sends a transaction that
- * spends only wallet coins (wallet-only-send-gate.ts): one validity window
- * from its start, at one emulator block (20 s) a turn.
- */
-const RESTART_WAIT_TURNS = Math.ceil(WALLET_ONLY_VALIDITY_MS / 20_000);
 /** The stops the restart row engineers, each followed by a restart. */
 const STOPS = 2;
 
@@ -125,7 +104,7 @@ describe("script-decode record recovery in the installed watcher application", (
     let engineered = false;
     const restarted = await runInstalled(SCENARIO, hooks, {
       maxPolls: RECOVERY_POLL_CAP,
-      maxTurns: RECOVERY_TURN_CAP + STOPS * RESTART_WAIT_TURNS,
+      maxTurns: RECOVERY_TURN_CAP,
       beforeTurns: ({ harness, clock }) => {
         const address = recordAddress(harness);
         const seen = new Set<string>();
@@ -236,41 +215,5 @@ describe("script-decode record recovery in the installed watcher application", (
     expect(await harness!.emulator.getUtxosByOutRef([tokenCoin!])).toHaveLength(
       1,
     );
-  }, 1_800_000);
-
-  it("holds a Walk the ledger rejects on every bounded attempt, submitting it no more", async () => {
-    const rejected = new Set<string>();
-    const held: number[] = [];
-    const run = await runInstalled(SCENARIO, hooks, {
-      beforeTurns: ({ harness, clock }) => {
-        clock.state.crashAfterPolls = POLL_CAP;
-        const address = recordAddress(harness);
-        return interceptSubmissions(harness.emulator, (submission) => {
-          if (!submission.withdraws || !submission.paysTo(address))
-            return "accept";
-          rejected.add(submission.txHash);
-          // A Walk past the bound stops the process: the refit is unbounded.
-          if (rejected.size > SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS)
-            clock.state.crashAfterPolls = clock.state.polls;
-          return "reject";
-        }).restore;
-      },
-      afterTurn: ({ result }) => {
-        if (result.reason?.startsWith(SCRIPT_DECODE_RECORD_HELD) !== true)
-          return;
-        held.push(rejected.size);
-        return held.length < 3 ? undefined : "stop";
-      },
-    });
-
-    expect(run.convicted).toBe(false);
-    // Each attempt is a refit Walk the ledger rejected; once held, the
-    // objective pauses on each observation and submits no further one.
-    expect(rejected.size).toBe(SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS);
-    expect(held).toEqual([
-      SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS,
-      SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS,
-      SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS,
-    ]);
   }, 1_800_000);
 });

@@ -32,7 +32,6 @@ import {
   type RemovalReferenceScriptPublications,
 } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
-import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { fixtureLeaseCoordinator } from "./script-decode-installed-host.js";
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
 
@@ -80,7 +79,6 @@ export const recordedRemoval = async (
     lucid: h.proverLucid,
     contracts: h.contracts,
   });
-  const signed = emulatorSignedTransactionRecovery(h.emulator);
   // Each request's capture, kept while the view is held.
   let held: Map<string, Snapshot> | undefined;
   const authority: FraudProofRawL1SnapshotAuthority = {
@@ -173,10 +171,7 @@ export const recordedRemoval = async (
     published: published.published,
     l1For,
     terminalVerifier: (headerHash) =>
-      createFraudProofFamilyAuthenticatedL1TerminalVerifier({
-        ...l1For(headerHash),
-        observeSignedTransaction: signed.observeSignedTransaction,
-      }),
+      createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1For(headerHash)),
     holdView: () => {
       held = new Map();
     },

@@ -12,7 +12,6 @@ import {
 } from "../../src/fault-proofs/watcher-journal-database.js";
 import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-schema.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
-import { inFlightOf } from "../support/in-flight-fixture.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
   journalDirectory,
@@ -107,7 +106,6 @@ const restartOver = async (count: number, state: Seeded) => {
     categories: ["doubleSpend"],
     authenticationKey: TEST_JOURNAL_KEY,
     retention: storelessProofRetention,
-    ...inFlightOf(),
   });
   return {
     journalRoot,

@@ -1,7 +1,8 @@
 /** A mint-item header removed against another prover's record while a
- * thread of ours still stands on it. The run cancels that thread back to our wallet, waits
- * out rollback recovery, and only then resolves by another record,
- * reporting the reclaim as a reclaim and never as our conviction. */
+ * thread of ours still stands on it. The run cancels that thread back to our
+ * wallet, waits while the node's mempool holds the cancel, and resolves by
+ * another record once it has landed, reporting the reclaim as a reclaim and
+ * never as our conviction. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,60 +12,42 @@ import {
   OUR_THREAD,
 } from "./support/mint-item-own-thread-reclaim.fixture.js";
 
+/** The run waiting on our cancel in the node's mempool. */
+const awaitingCancel = (reclaimTx: string) => ({
+  kind: "pending",
+  reason: expect.stringContaining(
+    `transaction ${reclaimTx} spending our thread ${OUR_THREAD} awaits inclusion`,
+  ),
+});
+
 afterEach(() => vi.restoreAllMocks());
 
 describe("mint-item: our thread on a header another record removed", () => {
-  it("reclaims our thread before resolving on another prover's removal, sending the same cancel again after a restart", async () => {
+  it("reclaims our thread before resolving on another prover's removal, sending nothing again after a restart", async () => {
     const f = await fixture();
     f.removedBy.kind = "other";
     const port = f.port();
     const removal = f.resolution;
-    await expect(f.execute(port)).resolves.toMatchObject({
-      kind: "pending",
-      reason: expect.stringContaining(`reclaim:${OUR_THREAD}`),
-    });
+    await expect(f.execute(port)).resolves.toMatchObject(
+      awaitingCancel(f.reclaimTx),
+    );
     expect(port.preflight).toHaveBeenCalledWith(
       expect.objectContaining({ threadOutRef: OUR_THREAD, step: 2 }),
     );
     expect(port.submit).toHaveBeenCalledTimes(1);
-    // A restart before it lands: a fresh process and port, on a chain
-    // where our thread still stands, send the same cancel again.
+    // A restart before it lands: a fresh process and port find the cancel
+    // in the mempool and send nothing.
     f.restart();
     const restarted = f.port();
-    await expect(f.execute(restarted)).resolves.toMatchObject({
-      kind: "pending",
-    });
-    expect(restarted.submit).toHaveBeenCalledTimes(1);
-    expect(f.sent().map(({ txHash }) => txHash)).toEqual([f.reclaimTx]);
-    // Landed, still within rollback recovery: not yet resolved.
+    await expect(f.execute(restarted)).resolves.toMatchObject(
+      awaitingCancel(f.reclaimTx),
+    );
+    expect(restarted.submit).not.toHaveBeenCalled();
+    expect(f.sent()).toEqual([]);
+    // Landed: resolved.
     f.land(1);
-    await expect(f.execute(restarted)).resolves.toMatchObject({
-      kind: "pending",
-      reason:
-        "the header was removed against another record; a transaction this process sent for it can still land",
-    });
-    // Both spend the same thread: exactly one lands.
-    f.land(FINAL_DEPTH);
     expectReclaimedThenResolved(await f.execute(restarted), removal, f);
-    expect(restarted.submit).toHaveBeenCalledTimes(1);
-  });
-
-  it("still waits on our cancel one block short of release finality on another prover's removal", async () => {
-    const f = await fixture();
-    f.removedBy.kind = "other";
-    const port = f.port();
-    await expect(f.execute(port)).resolves.toMatchObject({
-      kind: "pending",
-      reason: expect.stringContaining(`reclaim:${OUR_THREAD}`),
-    });
-    f.land(FINAL_DEPTH - 1);
-    await expect(f.execute(port)).resolves.toMatchObject({
-      kind: "pending",
-      reason:
-        "the header was removed against another record; a transaction this process sent for it can still land",
-    });
-    f.land(FINAL_DEPTH);
-    expectReclaimedThenResolved(await f.execute(port), f.resolution, f);
+    expect(restarted.submit).not.toHaveBeenCalled();
   });
 
   it.each(["own", "other"] as const)(
@@ -85,10 +68,9 @@ describe("mint-item: our thread on a header another record removed", () => {
       expect(port.preflight).not.toHaveBeenCalled();
       expect(port.submit).not.toHaveBeenCalled();
       f.removalAt.depth = FINAL_DEPTH;
-      await expect(f.execute(port)).resolves.toMatchObject({
-        kind: "pending",
-        reason: expect.stringContaining(`reclaim:${OUR_THREAD}`),
-      });
+      await expect(f.execute(port)).resolves.toMatchObject(
+        awaitingCancel(f.reclaimTx),
+      );
       expect(port.submit).toHaveBeenCalledTimes(1);
     },
   );

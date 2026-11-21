@@ -39,7 +39,6 @@ import {
 } from "../workflow/orchestrator.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
-import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   createObserverOrderInvalidActuator,
@@ -276,8 +275,8 @@ export const OBSERVER_ORDER_INVALID_FAMILY_DEFINITION = defineFamily<
           artifact: admitObserverOrderInvalidArtifact(artifact).artifact,
           stage: observed.stage,
         });
-        if (selected === "removed")
-          throw new Error("observerOrderInvalid action became terminal");
+        if (selected === "none")
+          throw new Error("observerOrderInvalid stage requires no action");
         return Object.fromEntries(
           Object.entries(selected).filter(
             ([key]) => key === "action" || key === "walkOrdinal",
@@ -339,7 +338,7 @@ const currentAction = async ({
   readonly workflow: Pick<ManifestBoundObserverOrderInvalidWorkflow, "lucid">;
   readonly artifact: ObserverOrderInvalidArtifact;
   readonly stage: FraudProofRawL1FamilyStage;
-}): Promise<ObserverOrderInvalidActuatorAction | "removed"> => {
+}): Promise<ObserverOrderInvalidActuatorAction | "none"> => {
   const admitted = admitObserverOrderInvalidArtifact(artifact);
   if (stage.kind === "not_started")
     return {
@@ -353,7 +352,7 @@ const currentAction = async ({
       nextRemovalOutRef: stage.nextRemovalOutRef,
       fraudProofOutRef: stage.fraudProofOutRef,
     };
-  if (stage.kind === "removed") return "removed";
+  if (stage.kind === "removed" || stage.kind === "pending") return "none";
   if (stage.step === 1)
     return {
       stage: "step_01",
@@ -402,12 +401,10 @@ export const executeManifestBoundObserverOrderInvalidWorkflow = async ({
   workflow,
   sources,
   run,
-  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundObserverOrderInvalidWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly run: WorkflowRun;
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   if (
     workflowActuationAuthorizingDecisionDigest(run) !== workflow.decisionDigest
@@ -428,6 +425,5 @@ export const executeManifestBoundObserverOrderInvalidWorkflow = async ({
     run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-    walletOnlySend,
   });
 };

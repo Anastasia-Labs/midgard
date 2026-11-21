@@ -181,15 +181,23 @@ describe("the proof-materials sweep", () => {
     const evidence = await canonicalEvidence();
     const process = createTestWorkflowProcess();
     const view = viewOf(scene);
-    const sends = process.sends({
+    const objectiveWallet = process.objectiveWallet({
       category: "doubleSpend",
       headerHash: evidence.headerHash,
     });
-    sends.installProofMaterialsView(view);
-    sends.installSweepWallet({
+    objectiveWallet.installProofMaterialsView(view);
+    objectiveWallet.installSweepWallet({
       lucid: scene.lucid,
       fundingAddress: scene.fundingAddress,
       view,
+    });
+    // The sweep is the run's own action, sent through its sweep wallet.
+    const submitted: string[] = [];
+    const submitTx = scene.emulator.submitTx.bind(scene.emulator);
+    vi.spyOn(scene.emulator, "submitTx").mockImplementation(async (cbor) => {
+      const txHash = await submitTx(cbor);
+      submitted.push(txHash);
+      return txHash;
     });
     const chain = createFixtureChain();
     // The header rolled back: the family's thread ended in a conflict.
@@ -207,24 +215,20 @@ describe("the proof-materials sweep", () => {
         kind: "stalled",
         reason: "chain conflict: a rollback replaced the thread",
       };
-      expect(await run({ evidence, adapter, process, chain })).toMatchObject(
-        ended,
-      );
-      const [sweep] = process.sent();
-      expect(sweep?.actionId).toMatch(/^proof-materials-sweep:/u);
+      expect(await run({ evidence, adapter, process })).toMatchObject(ended);
+      expect(submitted).toHaveLength(1);
+      const [sweep] = submitted;
       expect(adapter.preflight).not.toHaveBeenCalled();
       scene.emulator.awaitBlock();
-      chain.land(sweep!.txHash);
+      chain.land(sweep!);
       expect(await scene.at(scene.materialsAddress)).toEqual([]);
       expect(
         (await scene.at(scene.fundingAddress)).filter(
-          ({ txHash }) => txHash === sweep!.txHash,
+          ({ txHash }) => txHash === sweep,
         ),
       ).toHaveLength(1);
-      expect(await run({ evidence, adapter, process, chain })).toMatchObject(
-        ended,
-      );
-      expect(process.sent()).toHaveLength(1);
+      expect(await run({ evidence, adapter, process })).toMatchObject(ended);
+      expect(submitted).toHaveLength(1);
     } finally {
       readonly.mockRestore();
     }

@@ -2,7 +2,9 @@
  * The sweep of our own threads over the follower's simulator chain, with a
  * canceller that records what it is asked: no workflow record exists
  * anywhere here, so whatever the sweep reclaims it found on the chain
- * alone. A cancel "lands" when the test forwards the thread's spend.
+ * alone. A cancel submitted sits in a modelled mempool, where the
+ * canceller's reads see its thread spent, and "lands" when the test
+ * forwards the thread's spend.
  */
 import type {
   OwnThreadCanceller,
@@ -27,13 +29,14 @@ type Scene = Awaited<ReturnType<typeof threadScene>>;
 type Attempt = OwnThreadCancelOutcome | "send";
 
 const UNCANCELLABLE_CATEGORY = "00000002";
-const NOW = 1_000_000;
 
-/** A canceller whose next outcomes are scripted; "send" asks `stillDue`
- * and, when still due, reports the cancel submitted. */
+/** A canceller whose next outcomes are scripted; "send" meets a thread
+ * whose cancel is in the mempool spent, and otherwise asks `stillDue` and,
+ * when still due, reports the cancel submitted and puts it in the mempool. */
 const fakeCanceller = (script: Attempt[] = []) => {
   const attempts: string[] = [];
   const outcomes: string[] = [];
+  const mempool = new Set<string>();
   let beforeSend: () => Promise<void> = async () => undefined;
   const canceller: OwnThreadCanceller = {
     proverKeyHash: OUR_KEY,
@@ -57,15 +60,19 @@ const fakeCanceller = (script: Attempt[] = []) => {
         outcomes.push(next.kind);
         return next;
       }
+      if (mempool.has(subject.threadOutRef)) {
+        outcomes.push("spent_elsewhere");
+        return { kind: "spent_elsewhere" };
+      }
       await beforeSend();
       const due = await stillDue();
       outcomes.push(due ? "submitted" : "withdrawn");
       if (!due) return { kind: "withdrawn" };
+      mempool.add(subject.threadOutRef);
       return {
         kind: "submitted",
         txHash: "ab".repeat(32),
         reclaimedLovelace: 3_000_000n,
-        validToMs: NOW + 180_000,
       };
     },
   };
@@ -73,6 +80,10 @@ const fakeCanceller = (script: Attempt[] = []) => {
     canceller,
     attempts,
     outcomes,
+    /** The node drops the thread's cancel from its mempool, unlanded. */
+    dropFromMempool: (thread: string) => {
+      mempool.delete(thread);
+    },
     onBeforeSend: (hook: () => Promise<void>) => {
       beforeSend = hook;
     },
@@ -85,7 +96,6 @@ const sweepOver = (
   options: Readonly<{ cancelsPerPass?: number; pageLimit?: number }> = {},
 ) => {
   const logs: string[] = [];
-  let now = NOW;
   const sweep = createWatcherOwnThreadSweep({
     store: s.store,
     policyId: THREAD_POLICY,
@@ -94,17 +104,10 @@ const sweepOver = (
       kind: "cancelling",
       canceller: fake.canceller,
     }),
-    nowMs: () => now,
     log: (line) => logs.push(line),
     ...options,
   });
-  return {
-    sweep,
-    logs,
-    advance: (ms: number) => {
-      now += ms;
-    },
-  };
+  return { sweep, logs };
 };
 
 /** One header removed `FINAL_DEPTH` deep under the given threads. */
@@ -132,12 +135,14 @@ describe("own-thread sweep", () => {
       await sweep.pass();
       expect(fake.attempts).toEqual([thread]);
       expect(fake.outcomes).toEqual(["submitted"]);
-      // Sent and not yet landed: not sent again within its validity.
+      // Sent and not yet landed: the cancel in the mempool spends the
+      // thread, so the next pass sends nothing.
       await sweep.pass();
-      expect(fake.attempts).toEqual([thread]);
+      expect(fake.outcomes).toEqual(["submitted", "spent_elsewhere"]);
       await s.forward([s.cancelTx(thread!)]);
       await sweep.pass();
-      expect(fake.attempts).toEqual([thread]);
+      expect(fake.attempts).toEqual([thread, thread]);
+      expect(fake.outcomes).toEqual(["submitted", "spent_elsewhere"]);
       expect(sweep.degradations()).toEqual([]);
     } finally {
       await s.store.close();
@@ -194,7 +199,11 @@ describe("own-thread sweep", () => {
       const fake = fakeCanceller();
       const { sweep } = sweepOver(s, fake, { pageLimit: 2, cancelsPerPass: 2 });
       for (let i = 0; i < 4; i += 1) await sweep.pass();
-      expect([...fake.attempts].sort()).toEqual([...threads].sort());
+      expect([...new Set(fake.attempts)].sort()).toEqual([...threads].sort());
+      // Each thread's cancel is sent once.
+      expect(fake.outcomes.filter((kind) => kind === "submitted")).toHaveLength(
+        threads.length,
+      );
     } finally {
       await s.store.close();
     }
@@ -372,18 +381,19 @@ describe("own-thread sweep", () => {
     }
   });
 
-  it("sends a cancel again once its validity has ended without it landing", async () => {
+  it("sends a cancel again once it has left the mempool without landing", async () => {
     const s = await threadScene();
     try {
       const [thread] = await removedUnder(s, async (header) => [
         await s.open(header),
       ]);
       const fake = fakeCanceller();
-      const { sweep, advance } = sweepOver(s, fake);
+      const { sweep } = sweepOver(s, fake);
       await sweep.pass();
-      advance(180_000);
+      fake.dropFromMempool(thread!);
       await sweep.pass();
       expect(fake.attempts).toEqual([thread, thread]);
+      expect(fake.outcomes).toEqual(["submitted", "submitted"]);
     } finally {
       await s.store.close();
     }

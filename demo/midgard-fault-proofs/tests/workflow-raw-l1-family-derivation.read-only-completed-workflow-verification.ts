@@ -59,7 +59,7 @@ describe("read-only completed workflow verification", () => {
           decisionDigest: hash32("92"),
           authority: {
             authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-            capture: async () => snapshot,
+            capture: async () => ({ snapshot: snapshot, pending: [] }),
           },
         }),
     };

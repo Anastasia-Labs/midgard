@@ -194,12 +194,11 @@ proof workflows, so nothing else needs repair. Follower pins of objectives
 that are never admitted again are left to retention. The moved-aside file is
 never read again.
 
-The watcher keeps each proof's in-flight transactions in memory only and
-reads its progress from the chain on every pass. After a restart, a proof
-whose next transaction spends only wallet coins waits one wallet-only
-validity window (`fault_proof_restart_wait`), so a copy the previous process
-sent cannot land beside a new one; a transaction that spends the proof
-thread cannot land twice. The `watcher.sqlite` file at the configured
+The watcher keeps no record of the transactions it sends: on every pass it
+reads each proof's progress from the chain with the L1 node's mempool
+applied, so a transaction still in the mempool counts as sent and the next
+step is built on its outputs, after a restart as before it. The
+`watcher.sqlite` file at the configured
 storage path, which held the workflow record and the funding reservations of
 earlier releases, is no longer opened: it is unused and may be deleted.
 
@@ -432,10 +431,10 @@ state-queue observation, classification dispatch and proof-step submission use
 fixed authenticated inclusion depth 1. This is not a runtime configuration field
 and does not change the release finality policy or manifest digest. On rollback, invalidate cached authority, re-observe canonical
 state from the chain, then resume under fresh authority. A transaction this
-process sent stays in its in-memory in-flight set, its wallet coins held,
-until it lands or its validity bound passes; wallet selection excludes those
-coins, and does not assume all old-fork inputs are available or hold all
-capital until finality.
+process sent is in a block or in the node's mempool: every read overlays the
+node's mempool on the ledger, so its inputs read as spent and its outputs as
+present. If it is in neither, the next pass builds it again. Nothing is
+remembered about what was sent.
 
 Local authority binds the Cardano node socket, node/genesis configuration, and
 genesis identity; the node transport sidecar (`demo/l1-node-transport`) provides

@@ -21,7 +21,7 @@ export const WATCHER_OPERATIONS_READINESS_REASONS = Object.freeze([
    * the failure. Held while the open is retried; clears once it succeeds. */
   "journal_unavailable",
   /** A fault-proof objective's header matured with no removal of ours landed
-   * and nothing of ours in flight (past its latest safe start it still runs, late); it is listed in
+   * (past its latest safe start it still runs, late); it is listed in
    * `supervisor.journalDecisionMissing` with this `readiness` and the detail
    * `<category>/<headerHash>`. Held, never run again, the process up; clears
    * once its header leaves the finalized queue. */

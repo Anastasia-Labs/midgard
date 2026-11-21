@@ -2,7 +2,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import type { WorkflowActuationRevokedError } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
-import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import { h28 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -13,7 +12,6 @@ import {
 import type { WatcherFaultProofJob } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
-import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
   recordObjectives,
@@ -71,14 +69,12 @@ describe("production fault-proof supervisor", () => {
   it("does not expose caller-selected category dispatch in production", async () => {
     const root = await directory();
     const supervisor = createWatcherFaultProofSupervisor({
-      inFlight: createWorkflowInFlight(),
       proofRetention: storelessProofRetention,
       journalRoot: root,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: Uint8Array.from({ length: 32 }, () => 0xa5),
-      l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
       execution: {
         verifyCompleted: async () => {
           throw new Error("unexpected completed execution");

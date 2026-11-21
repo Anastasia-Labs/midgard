@@ -114,10 +114,9 @@ export const replayContextsPinnedAtLoadStart = (
 /**
  * The watcher's one loader body for an acting invocation. On top of the
  * deployment binding it reads the prover wallet, selects the signer (for an
- * acting invocation, restricted to the coins no action of this process
- * holds and to the deployment's transaction shape), with the process's one
- * view of its proof-materials address, and
- * hands over the optional
+ * acting invocation, restricted to the deployment's transaction shape),
+ * with the process's one view of its proof-materials address, and hands
+ * over the optional
  * parts a family may require; the family's record then binds its own
  * manifest-bound config from these inside the shared runtime, so nothing here
  * is per family. Which optional parts a family needs is the record's
@@ -135,7 +134,9 @@ export const buildCommonInfrastructure = async ({
   proofMaterials,
 }: {
   readonly watcherConfig: WatcherConfig;
-  readonly invocation: WorkflowAdapterReadinessInput;
+  /** An acting invocation carries its objective's wallet wiring. */
+  readonly invocation: WorkflowAdapterReadinessInput &
+    Partial<Pick<WorkflowAdapterRunnerInput, "objectiveWallet">>;
   readonly l1: WatcherFaultProofL1;
   readonly infrastructure: WatcherFaultProofInfrastructureAuthority;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
@@ -172,11 +173,11 @@ export const buildCommonInfrastructure = async ({
   const executionInvocation = invocation as Partial<WorkflowAdapterRunnerInput>;
   const decisionDigest = executionInvocation.decisionDigest;
   const signer =
-    executionInvocation.sends === undefined
+    executionInvocation.objectiveWallet === undefined
       ? resolvedSigner
       : restrictWorkflowWallet({
           signer: resolvedSigner,
-          sends: executionInvocation.sends,
+          objectiveWallet: executionInvocation.objectiveWallet,
           roster: watcherWorkflowTransactionRoster(deploymentIdentity),
         });
   signer.selectWallet(binding.lucid);

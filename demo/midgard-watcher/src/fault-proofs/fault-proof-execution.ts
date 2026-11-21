@@ -4,11 +4,10 @@ import {
   type FraudProofWorkflowTerminal,
   isSqliteBusyError,
   isWorkflowActuationRevokedError,
-  type WalletOnlySend,
   type WorkflowActuationPermit,
   type WorkflowActuationRevokedError,
 } from "@al-ft/midgard-fault-proofs";
-import type { WorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
+import { createWorkflowObjectiveWallet } from "@al-ft/midgard-fault-proofs/workflow/workflow-run";
 
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
@@ -45,9 +44,8 @@ import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
 export type WatcherFaultProofExecutionAdmission = Readonly<{
   mode: "run" | "resume";
   /** The deadline whose latest safe start the run is past, before or after
-   * maturity (a reconciling run's job carries none). */
+   * maturity (a resumed job carries none). */
   startedLate?: WatcherFaultProofDeadline;
-  walletOnlySend: WalletOnlySend; // the restart wait and slot clock
 }>;
 
 export type WatcherFaultProofExecutionOutcome =
@@ -86,10 +84,9 @@ export type WatcherFaultProofExecution = Readonly<{
     readonly admission: WatcherFaultProofExecutionAdmission;
   }): Promise<WatcherFaultProofExecutionOutcome>;
   /**
-   * Objectives held on a refused L1 read, a resubmission due after the latest
-   * safe start, a stalled session, unfunded prover wallet, quarantined run or
-   * held script re-execution (`fault_proof_l1_refused:<reason>`,
-   * `fault_proof_resubmission_required`, `fault_proof_continuation_stalled`,
+   * Objectives held on a refused L1 read, a stalled session, unfunded prover
+   * wallet, quarantined run or held script re-execution
+   * (`fault_proof_l1_refused:<reason>`, `fault_proof_continuation_stalled`,
    * `prover_funding_unavailable`, `fault_proof_objective_quarantined`,
    * `validation_trace_replay_held`), until a run or completion check
    * meets something else, a stalled one's later run makes progress, or it
@@ -129,9 +126,6 @@ export const createWatcherFaultProofExecution = (dependencies: {
     runOrResume: WatcherFaultProofApplication["runOrResume"];
     verifyCompleted: WatcherFaultProofApplication["verifyCompleted"];
   }>;
-  /** The process's one in-flight set: what each objective sent, and the
-   * wallet coins its builds and the process's other actions hold. */
-  readonly inFlight: WorkflowInFlight;
   /** Forwarded to the shared workflow runner, whose contract carries it; the
    * watcher's loader runs on the configuration startup admitted. */
   readonly runtimeConfigPath: string;
@@ -143,8 +137,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
 }): WatcherFaultProofExecution => {
   // A refused L1 read says nothing about the fault and is not a process
   // failure: the objective is held by name and runs again on the next
-  // observation, which clears or renews the hold. An objective that needs a
-  // resubmission after its header matured is held by name the same way.
+  // observation, which clears or renews the hold.
   const holds: WatcherFaultProofHolds = new Map();
   const alerts = createWatcherFaultProofObjectiveAlerts(dependencies);
   const objectiveOf = ({ category, headerHash }: WatcherProofObjective) =>
@@ -236,7 +229,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           updatedAtMs: Date.now().toString(),
         });
       record("preflight", "prepare");
-      // Any outcome but a refusal, resubmission or quarantine ends the hold.
+      // Any outcome but a refusal or quarantine ends the hold.
       let held: ReturnType<typeof holdOnRefusal>;
       const settleQuarantine = quarantineSettlement(holds, job, dependencies);
       // Set while the objective's own run is in hand: a failure there
@@ -284,9 +277,11 @@ export const createWatcherFaultProofExecution = (dependencies: {
           headerHash,
           decisionDigest,
           actuationPermit,
-          sends: dependencies.inFlight.forObjective({ category, headerHash }),
+          objectiveWallet: createWorkflowObjectiveWallet({
+            category,
+            headerHash,
+          }),
           runtimeConfigPath: dependencies.runtimeConfigPath,
-          walletOnlySend: admission.walletOnlySend,
           onProgress: stall.releaseWatcherFaultProofStallOnProgress(holds, job),
         });
         if (typeof result === "object" && result !== null && "kind" in result) {

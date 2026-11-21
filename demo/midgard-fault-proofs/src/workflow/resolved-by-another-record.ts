@@ -1,10 +1,9 @@
 /**
  * A header removed against a fraud-proof record that this run did not
  * create: another prover's, a sibling run's on our key, or another family's.
- * The block is corrected and nothing of this run's remains to prove. Once
- * none of this run's transactions is in flight, the run ends resolved by
- * another record. That is never our conviction: no terminal, and
- * no reward is claimed.
+ * The block is corrected and nothing of this run's remains to prove: the
+ * run ends resolved by another record. That is never our conviction: no
+ * terminal, and no reward is claimed.
  */
 import { CML } from "@lucid-evolution/lucid";
 

@@ -26,10 +26,6 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   type FraudProofReleaseFinalityAuthority,
 } from "../src/workflow/release-finality-policy.js";
-import type {
-  SignedTransactionRecoveryObservation,
-  SignedWorkflowTransaction,
-} from "../src/workflow/signed-transaction-reconciliation.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   authenticatedHeaderObservation,
@@ -37,12 +33,8 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
-import {
-  signedRecoveryObservation,
-  signedWorkflowTransactionFixture,
-} from "./support/signed-workflow-transaction.js";
+import { signedWorkflowTransactionFixture } from "./support/signed-workflow-transaction.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import type { TestWorkflowProcess } from "./support/workflow-process.js";
 
 export const DEPLOYMENT_FINGERPRINT = "d1".repeat(32);
@@ -160,43 +152,40 @@ export const canonicalEvidenceWithEvents = async (
 };
 
 /**
- * The L1 a fixture workflow runs against: where each of its signed
- * transactions stands. A transaction the chain does not name is pending;
- * a landed one is included past the release-final point unless marked
- * reversible.
+ * The L1 a fixture workflow runs against, as the node shows it: the ledger
+ * and the node's mempool. One the mempool holds is seen by the next state
+ * but completes nothing.
  */
 export type FixtureChain = {
-  readonly status: Map<string, SignedTransactionRecoveryObservation["status"]>;
-  /** Landed transactions still reversible: included after the release-final
-   * point. */
-  readonly reversible: Set<string>;
+  /** The node accepts `txHash` into its mempool. */
+  readonly accept: (txHash: string) => void;
   readonly land: (txHash: string) => void;
+  /** `txHash` is in neither the ledger nor the mempool: it was dropped or
+   * rolled back. */
+  readonly drop: (txHash: string) => void;
   readonly landed: (txHash: string) => boolean;
-  observeSignedTransaction: FraudProofWorkflowTerminalVerifier["observeSignedTransaction"];
+  /** Whether the next state shows `txHash`: landed, or in the mempool. */
+  readonly seen: (txHash: string) => boolean;
 };
 
 export const createFixtureChain = (): FixtureChain => {
-  const status = new Map<
-    string,
-    SignedTransactionRecoveryObservation["status"]
-  >();
-  const reversible = new Set<string>();
+  const ledger = new Set<string>();
+  const mempool = new Set<string>();
+  const landed = (txHash: string) => ledger.has(txHash);
   return {
-    status,
-    reversible,
+    accept: (txHash) => {
+      if (!landed(txHash)) mempool.add(txHash);
+    },
     land: (txHash) => {
-      status.set(txHash, "included");
+      mempool.delete(txHash);
+      ledger.add(txHash);
     },
-    landed: (txHash) => status.get(txHash) === "included",
-    observeSignedTransaction: async (input: SignedWorkflowTransaction) => {
-      const observed = signedRecoveryObservation(
-        input,
-        status.get(input.transactionHash) ?? "pending",
-      );
-      return reversible.has(input.transactionHash)
-        ? { ...observed, inclusionPoint: observed.canonicalPoint }
-        : observed;
+    drop: (txHash) => {
+      mempool.delete(txHash);
+      ledger.delete(txHash);
     },
+    landed,
+    seen: (txHash) => landed(txHash) || mempool.has(txHash),
   };
 };
 
@@ -205,7 +194,8 @@ type AdapterControls = {
   readonly referenceScripts?: boolean;
   /** The L1 the adapter reads; a fresh one by default. */
   readonly chain?: FixtureChain;
-  /** Whether a submission lands at once; by default it does. */
+  /** Whether a submission lands at once; by default it does, and otherwise
+   * it waits in the mempool. */
   readonly lands?: boolean;
 };
 
@@ -274,8 +264,9 @@ export const makeAdapter = (
         txIds: [],
       }),
     ),
-    // The family reads the chain: the removal landed completes the
-    // workflow, the proof landed requires the removal.
+    // The family reads the chain with the mempool applied: the removal
+    // landed completes the workflow, and in the mempool awaits inclusion;
+    // the proof landed or in the mempool requires the removal.
     observe: vi.fn(
       async ({
         artifact,
@@ -285,15 +276,20 @@ export const makeAdapter = (
               kind: "completed" as const,
               terminal: terminal(String(artifact.headerHash)),
             }
-          : chain.landed(PROOF_TX_HASH)
+          : chain.seen(REMOVAL_TX_HASH)
             ? {
-                kind: "action_required" as const,
-                action: { actionId: "remove", input: { step: 1 } },
+                kind: "pending" as const,
+                reason: `${REMOVAL_TX_HASH} awaits inclusion`,
               }
-            : {
-                kind: "action_required" as const,
-                action: { actionId: "prove", input: { step: 0 } },
-              },
+            : chain.seen(PROOF_TX_HASH)
+              ? {
+                  kind: "action_required" as const,
+                  action: { actionId: "remove", input: { step: 1 } },
+                }
+              : {
+                  kind: "action_required" as const,
+                  action: { actionId: "prove", input: { step: 0 } },
+                },
     ),
     preflight: vi.fn(
       async ({
@@ -331,7 +327,8 @@ export const makeAdapter = (
     submit: vi.fn(
       controls.submit ??
         (async ({ preflight }) => {
-          if (controls.lands !== false) chain.land(preflight.txHash);
+          if (controls.lands === false) chain.accept(preflight.txHash);
+          else chain.land(preflight.txHash);
           return { kind: "submitted" as const, txHash: preflight.txHash };
         }),
     ),
@@ -340,63 +337,34 @@ export const makeAdapter = (
   return adapter;
 };
 
-/** `verifier` reading where each transaction stands from `adapter`'s chain,
- * looked up at each read so a test may stub the chain's answer. */
-export const chainVerifier = (
-  adapter: FraudProofFamilyWorkflowAdapter,
-  verifier: FraudProofWorkflowTerminalVerifier = terminalVerifier,
-  chain: FixtureChain = chainOf(adapter),
-): FraudProofWorkflowTerminalVerifier =>
-  // A verifier that cannot read a sent transaction stays one, for the run to
-  // refuse.
-  verifier.observeSignedTransaction === undefined
-    ? verifier
-    : {
-        ...verifier,
-        observeSignedTransaction: async (input) =>
-          await chain.observeSignedTransaction(input),
-      };
-
-/** One objective's run of `adapter` in `process`, against the adapter's
- * chain: `verifier` authenticates the terminal, the chain says where each
- * in-flight transaction stands. */
+/** One objective's run of `adapter` in `process`: `verifier` authenticates
+ * the terminal, and the process records what the adapter is asked to
+ * submit. */
 export const run = async ({
   evidence,
   adapter,
   process,
   verifier = terminalVerifier,
   finalityAuthority = releaseFinalityAuthority(),
-  nowMs,
-  chain,
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly adapter: FraudProofFamilyWorkflowAdapter;
-  /** The chain `adapter` reads, when it wraps a fixture adapter. */
-  readonly chain?: FixtureChain;
   readonly process: TestWorkflowProcess;
   readonly verifier?: FraudProofWorkflowTerminalVerifier;
   readonly finalityAuthority?: FraudProofReleaseFinalityAuthority;
-  /** The clock rebroadcasts are spaced on. */
-  readonly nowMs?: () => number;
 }) =>
   await runFraudProofWorkflow({
-    walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
     deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
     evidence,
     detections: [detection(evidence)],
     registry: createFraudProofWorkflowRegistry({
-      adapters: [adapter],
+      adapters: [process.recording(adapter)],
       launchScope: ["doubleSpend"],
     }),
     run: process.run({
       category: "doubleSpend",
       headerHash: evidence.headerHash,
     }),
-    terminalVerifier: chainVerifier(
-      adapter,
-      verifier,
-      chain ?? chainOf(adapter),
-    ),
+    terminalVerifier: verifier,
     releaseFinalityAuthority: finalityAuthority,
-    ...(nowMs === undefined ? {} : { nowMs }),
   });

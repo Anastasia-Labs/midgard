@@ -57,11 +57,8 @@ import {
   runFraudProofWorkflowCli,
   workflowReadinessReport,
 } from "./workflow/cli.js";
-import { clockOnlyWalletOnlySend } from "./workflow/wallet-only-send-gate.js";
 
 export const main = async (): Promise<void> => {
-  // Clock only, no bound clock: the CLI refuses before the runner.
-  const walletOnlySend = clockOnlyWalletOnlySend(Date.now());
   const args = parseArgs(process.argv);
 
   if (args.command === "workflow-readiness") {
@@ -87,7 +84,6 @@ export const main = async (): Promise<void> => {
       deploymentFingerprint: args.deploymentFingerprint,
       headerHash: args.headerHash,
       runtimeConfigPath: args.workflowRuntimeConfigPath,
-      walletOnlySend,
     });
     return;
   }

@@ -1,7 +1,9 @@
+import type { PendingTransaction } from "@al-ft/midgard-l1-follower/mempool";
 import { CML } from "@lucid-evolution/lucid";
 
 import { selectOwnFraudProofRecord } from "../fraud-proof-record-selection.js";
 import { type FraudProofWorkflowTerminal } from "./journal.js";
+import { type FraudProofRawL1Scopes, nextViewOf } from "./next-state.js";
 import { historicalTransactions } from "./raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
 import {
   authenticateFamilySnapshot,
@@ -35,23 +37,25 @@ import {
   recordBackedRemoval,
 } from "./resolved-by-another-record.js";
 
-/** Our permanent proof token on the header, by the one rule of
- * `selectOwnFraudProofRecord`: once the header is gone, the record its
- * removal referenced comes first. */
+/** Our permanent proof token on the header in `view` (the ledger snapshot
+ * unless given), by the one rule of `selectOwnFraudProofRecord`: once the
+ * header is gone, the record its removal referenced comes first. */
 const ownProof = ({
   snapshot,
+  view = snapshot,
   definition,
   stateUnit,
   proofUnit,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
+  readonly view?: FraudProofRawL1Scopes;
   readonly definition: FraudProofRawL1TerminalDefinition;
   readonly stateUnit: string;
   readonly proofUnit: string;
 }): FraudProofRawL1Utxo | undefined =>
   selectOwnFraudProofRecord({
     records: unitHolders({
-      snapshot,
+      snapshot: view,
       role: "permanent_proof_token",
       unit: proofUnit,
     }),
@@ -140,11 +144,13 @@ export const deriveFraudProofRawL1CompletedTerminal = async ({
 
 const deriveStage = async ({
   snapshot,
+  pending,
   definition,
   releaseEconomics,
   history,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
+  readonly pending: readonly PendingTransaction[];
   readonly definition: FraudProofRawL1FamilyDefinition;
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
   readonly history?: FraudProofRawL1HistoryReader | undefined;
@@ -154,11 +160,9 @@ const deriveStage = async ({
     definition,
   });
   assertStepAddresses(snapshot, definition);
-  // Our proof decides the stage once it exists: another case's thread on the
-  // same header, still open, does not hold back our removal.
-  const proof = ownProof({ snapshot, definition, stateUnit, proofUnit });
   const topology = await stateQueueTopology({ snapshot, definition });
   if (topology.target === undefined) {
+    const proof = ownProof({ snapshot, definition, stateUnit, proofUnit });
     const derived =
       proof === undefined
         ? undefined
@@ -180,11 +184,15 @@ const deriveStage = async ({
     // the objective may resolve.
     const resolution = recordBackedRemoval({ snapshot, definition, stateUnit });
     if (resolution !== undefined) {
-      const standing = ownThread({ snapshot, definition, threadUnit });
+      const standing = ownThread({
+        view: nextViewOf({ snapshot, pending: [] }),
+        definition,
+        threadUnit,
+      });
       throw new FraudProofResolvedByAnotherRecordError(
         standing === undefined
           ? resolution
-          : { ...resolution, standingThread: standingThreadOf(standing) },
+          : { ...resolution, standingThread: standingThreadOf(standing, []) },
       );
     }
     throw new Error(
@@ -193,19 +201,34 @@ const deriveStage = async ({
         : `no terminal of ours stands: ${derived.reason}`,
     );
   }
-  const stateQueueBlockOutRef = outRef(topology.target.utxo);
+  // The header is live on the ledger: the next action is derived from the
+  // ledger with our node's mempool applied.
+  const view = nextViewOf({ snapshot, pending });
+  const next =
+    pending.length === 0
+      ? topology
+      : await stateQueueTopology({ snapshot: view, definition });
+  if (next.target === undefined)
+    return {
+      kind: "pending",
+      reason: `${definition.category} header removal awaits inclusion`,
+    };
+  const stateQueueBlockOutRef = outRef(next.target.utxo);
+  // Our proof decides the stage once it exists: another case's thread on the
+  // same header, still open, does not hold back our removal.
+  const proof = ownProof({ snapshot, view, definition, stateUnit, proofUnit });
   if (proof !== undefined) {
     return {
       kind: "proof_token",
       fraudProofOutRef: proof.outRef,
       stateQueueBlockOutRef,
       nextRemovalOutRef:
-        topology.successor === undefined
+        next.successor === undefined
           ? stateQueueBlockOutRef
-          : outRef(topology.successor.utxo),
+          : outRef(next.successor.utxo),
     };
   }
-  const thread = ownThread({ snapshot, definition, threadUnit });
+  const thread = ownThread({ view, definition, threadUnit });
   if (thread !== undefined) {
     return {
       kind: "step",
@@ -227,6 +250,9 @@ const deriveStage = async ({
  */
 export const deriveFraudProofRawL1FamilyStage = async (input: {
   readonly snapshot: FraudProofRawL1Snapshot;
+  /** Our node's mempool at the snapshot's tip, in mempool order; none when
+   * omitted. */
+  readonly pending?: readonly PendingTransaction[];
   readonly definition: FraudProofRawL1FamilyDefinition;
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
   /** Further token histories, for a bond a lost-defense receipt slashed. */
@@ -247,7 +273,11 @@ export const deriveFraudProofRawL1FamilyStage = async (input: {
           }
         };
   try {
-    return await deriveStage({ ...input, history });
+    return await deriveStage({
+      ...input,
+      pending: input.pending ?? [],
+      history,
+    });
   } catch (cause) {
     // `has` is false for a primitive; it never throws.
     if (

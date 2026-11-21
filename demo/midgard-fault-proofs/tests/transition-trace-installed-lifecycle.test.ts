@@ -26,7 +26,8 @@ import {
   createHeaderClassifier,
   headerDecisionReplayContext,
 } from "../src/workflow/header-classifier.create-header-classifier.js";
-import type { InFlightTransaction } from "../src/workflow/in-flight.js";
+import * as orchestrator from "../src/workflow/orchestrator.js";
+import type { SentTransaction } from "./support/workflow-process.js";
 
 const hooks = vi.hoisted(() => ({
   binding: undefined as unknown,
@@ -106,7 +107,6 @@ import {
   transitionTraceTimingRetainedFixture,
 } from "./support/transition-trace-retained.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 // Explicit experimental payload bound; Cardano production limits are unchanged.
 const HISTORY_BOUNDS = {
@@ -209,7 +209,10 @@ describe("transition trace installed retained-history workflow", () => {
     async ({ name, datumBytes, honest, kind, timing }) => {
       pinStepTranscript();
       const recorder = recordCrossBlockRawEmulator();
+      // Runs before each capture the workflow's observations make.
+      let beforeCapture: (() => Promise<void>) | undefined;
       let clock: ReturnType<typeof vi.spyOn> | undefined;
+      let registrySpy: ReturnType<typeof vi.spyOn> | undefined;
       let submissionIndex = 0;
       // Stacked over the recorder's layer: both see each real submission.
       const measure = observeEmulatorSubmissions((result, transaction) => {
@@ -225,7 +228,13 @@ describe("transition trace installed retained-history workflow", () => {
         submissionIndex += 1;
       });
       try {
-        hooks.authority = recorder.authority;
+        hooks.authority = {
+          ...recorder.authority,
+          capture: async (request) => {
+            await beforeCapture?.();
+            return await recorder.authority.capture(request);
+          },
+        } satisfies typeof recorder.authority;
         const h = await makeFaultProofEmulatorHarness({
           contractOptions: {
             realTransitionTrace: true,
@@ -683,35 +692,25 @@ describe("transition trace installed retained-history workflow", () => {
           headerHash: fixture.current.headerHash,
         } as const;
         // Every transaction any of the restarted processes sent.
-        const sent: InFlightTransaction[] = [];
+        const sent: SentTransaction[] = [];
         const restartedProcess = () => {
           const process = createTestWorkflowProcess();
           return {
             run: process.run(objective),
+            recording: process.recording,
             settle: () => sent.push(...process.sent()),
           };
         };
         let restarts = 0;
         let pointerChurned = false;
-        let current = restartedProcess();
-        let result = await runOrResumeManifestBoundTransitionTraceWorkflow({
-          walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
-          workflow,
-          sources,
-          run: current.run,
-        });
-        for (
-          let hop = 0;
-          hop < 100 &&
-          result.kind !== "completed" &&
-          result.kind !== "no_fault_detected";
-          hop++
-        ) {
-          // Recreate the installed constructor and the process at every
-          // boundary; no in-memory proof, replay handle or in-flight
-          // transaction survives restart.
-          restarts++;
-          if (!honest && !pointerChurned) {
+        // The event-history pointer churns while the proof stands at its
+        // pointer step: just before an observation the run makes, the
+        // step's thread in the mempool or landed.
+        let churning = false;
+        beforeCapture = async () => {
+          if (honest || pointerChurned || churning) return;
+          churning = true;
+          try {
             const observed = await workflow.l1.observe({
               headerHash: fixture.current.headerHash,
             });
@@ -832,13 +831,44 @@ describe("transition trace installed retained-history workflow", () => {
                 pointerChurned = true;
               }
             }
+          } finally {
+            churning = false;
           }
+        };
+        let current = restartedProcess();
+        // The registry, its adapters recorded by the run's process.
+        const registry = orchestrator.createFraudProofWorkflowRegistry;
+        registrySpy = vi
+          .spyOn(orchestrator, "createFraudProofWorkflowRegistry")
+          .mockImplementation((input) =>
+            registry({
+              ...input,
+              adapters: input.adapters.map((adapter) =>
+                current.recording(adapter),
+              ),
+            }),
+          );
+        let result = await runOrResumeManifestBoundTransitionTraceWorkflow({
+          workflow,
+          sources,
+          run: current.run,
+        });
+        for (
+          let hop = 0;
+          hop < 100 &&
+          result.kind !== "completed" &&
+          result.kind !== "no_fault_detected";
+          hop++
+        ) {
+          // Recreate the installed constructor and the process at every
+          // boundary; no in-memory proof, replay handle or sent transaction
+          // survives restart.
+          restarts++;
           await workflowClock.advance(result);
           workflow = await createManifestBoundTransitionTraceWorkflow(config);
           current.settle();
           current = restartedProcess();
           result = await runOrResumeManifestBoundTransitionTraceWorkflow({
-            walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
             workflow,
             sources,
             run: current.run,
@@ -913,6 +943,7 @@ describe("transition trace installed retained-history workflow", () => {
           ).toHaveLength(1);
       } finally {
         clock?.mockRestore();
+        registrySpy?.mockRestore();
         measure.restore();
         recorder.restore();
         vi.unstubAllGlobals();

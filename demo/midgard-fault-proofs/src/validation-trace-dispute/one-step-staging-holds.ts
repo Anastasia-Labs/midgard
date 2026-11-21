@@ -3,12 +3,10 @@
  * runs its plan, recomputed from our trace, stages, so they are known from
  * the chain and our trace alone. Each observation registers them, and the
  * live outputs that hold them, as our proof-materials needs and pins before
- * it observes, with the staging outputs our resolve moves read and those a
- * staging of ours in flight creates; so the first observation after a
- * restart, which is what opens sweeping, already holds them. The spend back
+ * it observes, with the staging outputs our resolve moves read; so the first
+ * observation after a restart, which is what opens sweeping, already holds
+ * them. The spend back
  * of our staging outputs (one-step-staging-sweep.ts) holds the same. */
-import { createHash } from "node:crypto";
-
 import { planMidgardCekStaging } from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
@@ -25,37 +23,6 @@ import type {
 } from "./one-step-staging-journal.js";
 import type { ValidationTraceOwnViewOf } from "./own-view.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
-
-const digestOf = (datumCbor: string): string =>
-  createHash("sha256").update(Buffer.from(datumCbor, "hex")).digest("hex");
-
-/** Our staging as our own view shows it, with the staging outputs at our
- * staging address `address` that a staging of ours in flight creates. */
-export const validationTraceStagingsSent =
-  (ownView: ValidationTraceOwnViewOf, address: string) =>
-  async (
-    context: FraudProofWorkflowAdapterContext,
-  ): Promise<ValidationTraceStagingJournal> => {
-    const view = ownView(context);
-    const known = await view.stagings();
-    const unseen = (await view.inFlight()).flatMap(({ txHash, creates }) =>
-      creates.flatMap(({ outRef, address: at, datumCbor }) =>
-        at === address && datumCbor !== undefined
-          ? [
-              Object.freeze({
-                run: digestOf(datumCbor),
-                txHash,
-                outRef,
-                datumCbor,
-                thread: undefined,
-                threadUnit: undefined,
-              }),
-            ]
-          : [],
-      ),
-    );
-    return { ...known, unseen };
-  };
 
 /** A thread of ours at the PrepareSelected move's holder whose plan is a
  * staged step: the run datums its move reads. */
@@ -161,10 +128,9 @@ export const validationTraceStagingHolds = ({
       const known = await stagings(context);
       const datums = new Set<string>();
       const outRefs = new Set<string>();
-      for (const { outRef, datumCbor } of [
-        ...(await ownView(context).signedStagings()),
-        ...(known.unseen ?? []),
-      ]) {
+      for (const { outRef, datumCbor } of await ownView(
+        context,
+      ).signedStagings()) {
         outRefs.add(outRef);
         if (datumCbor !== undefined) datums.add(datumCbor);
       }

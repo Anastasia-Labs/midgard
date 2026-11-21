@@ -80,12 +80,7 @@ const transaction = ({
     for (const outRef of reads) references.add(outRefInput(outRef));
     body.set_reference_inputs(references);
   }
-  const cbor = CML.Transaction.new(
-    body,
-    CML.TransactionWitnessSet.new(),
-    true,
-  ).to_cbor_hex();
-  return { cbor, hash: CML.hash_transaction(body).to_hex() };
+  return { hash: CML.hash_transaction(body).to_hex() };
 };
 
 /** One staging of every run, from made-up inputs `seed` on: its staging
@@ -119,7 +114,7 @@ const readerOf = (
   const tx = transaction({ seed, reads });
   return {
     txHash: tx.hash,
-    signed: tx.cbor,
+    confirmationDepth: 1,
     reads: new Set(reads),
     outputs: [],
   };
@@ -199,7 +194,7 @@ const lookupOver = ({
     signer: { paymentKeyHash: KEY, address: ours.address } as never,
     deployment: {} as never,
     caseHistory: {} as never,
-    signedRecovery: {} as never,
+    releaseDepth: 1,
     materialOf: () => undefined,
     ownView,
   });

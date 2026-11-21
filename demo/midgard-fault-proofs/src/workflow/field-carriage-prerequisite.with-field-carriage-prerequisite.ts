@@ -210,11 +210,6 @@ export const withFieldCarriagePrerequisite = <
             evaluator: LOCAL_UPLC_EVALUATOR,
           },
           referenceScripts: captured.transaction.referenceScripts,
-          // The one wallet-only transaction built without an upper validity
-          // bound (`wallet-only-validity.ts`).
-          ...(captured.kind === "publication"
-            ? { unboundedCarriagePublication: true as const }
-            : {}),
         } satisfies FraudProofWorkflowPreflight,
         captured.transaction.signed,
       );

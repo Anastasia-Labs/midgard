@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 
 import { proofMaterialsAddressOfFundingAddress } from "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
-import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk/core";
 
 import { createWatcherAvailabilityRuntime } from "../availability/runtime.create-watcher-availability-runtime.js";
@@ -253,16 +252,8 @@ export const startWatcherRuntime = async (
         operationsSink,
       });
 
-    // What this process sent and has not seen settle, and the wallet coins
-    // its builds and its other actions hold: in memory only, one per process.
-    const inFlight = createWorkflowInFlight();
-    const walletLeases = Object.freeze({
-      heldOutRefs: inFlight.heldOutRefs,
-      holdWalletInputs: inFlight.holdWalletInputs,
-    });
     const execution = createWatcherFaultProofExecution({
       application: faultProofApplication,
-      inFlight,
       runtimeConfigPath: input.config.watcherRuntimeConfigPath,
       deploymentFingerprint: deploymentIdentity.manifestId,
       operationsSink,
@@ -271,24 +262,16 @@ export const startWatcherRuntime = async (
       store,
       policyId: watcherComputationThreadPolicyId(followedDeployment),
       finalDepth: releaseFinality.automaticRecoveryMaxDepth + 2,
-      openCanceller: watcherOwnThreadCancellerSource(
-        faultProofApplication,
-        walletLeases,
-      ),
+      openCanceller: watcherOwnThreadCancellerSource(faultProofApplication),
       log: (line) => process.stderr.write(`watcher own threads: ${line}\n`),
     });
     const activeSupervisor = createWatcherFaultProofSupervisor({
       journalRoot: input.config.workflowJournalDirectory,
-      inFlight,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs: watcherDeadlineAlertHeadroomMs(
         watcherConfig.deadlines,
       ),
       queueAuthenticationKey: rollbackAuthenticationKey,
-      l1Clock: {
-        slotConfig: deploymentAuthority.ruleBundle.ruleBundle.l1SlotConfig,
-        appliedSlot: activeFollower.appliedSlot,
-      },
       execution,
       proofRetention: activeFollower.proofRetention,
       journalBusyRequeue: { wake: () => decisionDriver?.wake() },
@@ -308,12 +291,6 @@ export const startWatcherRuntime = async (
             proofMaterialsSweepable:
               faultProofApplication.proofMaterials.sweepable,
           }),
-      observeSignedTransaction: activeFollower.faultProofL1
-        .source("released-in-flight")
-        .signedTransactions({
-          releaseFinality:
-            watcherDeploymentReleaseFinalityPolicy(deploymentIdentity),
-        }).observeSignedTransaction,
     });
     faultProofSupervisor = activeSupervisor;
     // The proof-materials first pass completes once the roster's floor is
@@ -385,7 +362,6 @@ export const startWatcherRuntime = async (
       journalDirectory: input.config.workflowJournalDirectory,
       authenticationKey: rollbackAuthenticationKey,
       maximumClassificationConcurrency: 16,
-      walletLeases,
       operationsSink,
       perHeaderAlerts: [...perHeaderAlerts, retainedDaOperationsBinding],
       daFetchAlert: retainedDaOperationsBinding,

@@ -76,6 +76,15 @@ let hidden: (() => void) | undefined;
 const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
+/** The out-refs the signed transaction `cbor` spends. */
+const inputsOf = (cbor: string): readonly string[] => {
+  const inputs = CML.Transaction.from_cbor_hex(cbor).body().inputs();
+  return Array.from({ length: inputs.len() }, (_, index) => {
+    const input = inputs.get(index);
+    return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+  });
+};
+
 /** Runs the runner until `until` holds over the run; the run, and the tip
  * it observed. */
 const runUntil = async (
@@ -194,17 +203,19 @@ describe("validation-trace dispute runner: spending back a staged step's staging
     // The ended workflow's proof-materials sweep, which finds our
     // materials by our address rather than by out-ref, took the output the
     // provider does not show back to our wallet, once; the dispute sent no
-    // spend back of it.
+    // spend back of it. The sweep goes out in front of the ending, not
+    // through the dispute's adapter, so the dispute's sends never hold it.
     hidden?.();
     hidden = undefined;
     expect(onLedger(scene, last)).toBe(false);
     const sweep = await drive.spenderOf(outRefOf(last));
+    expect(sweep).toBeDefined();
+    expect(drive.sent().map(({ txHash }) => txHash)).not.toContain(sweep);
     expect(
-      drive
-        .sent()
-        .filter(({ txHash }) => txHash === sweep)
-        .map(({ actionId }) => actionId.split(":")[0]),
-    ).toStrictEqual(["proof-materials-sweep"]);
+      [...scene.l1.signedCbors.values()].filter((cbor) =>
+        inputsOf(cbor).includes(outRefOf(last)),
+      ),
+    ).toHaveLength(1);
     expect(
       coreToTxOutput(
         CML.Transaction.from_cbor_hex(scene.l1.signedCbors.get(sweep!)!)

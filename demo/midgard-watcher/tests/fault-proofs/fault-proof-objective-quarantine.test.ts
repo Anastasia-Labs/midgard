@@ -14,7 +14,6 @@ import {
   classifyHeader,
   createHeaderClassifier,
 } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import { WORKFLOW_RUNNER_FACTORIES } from "@al-ft/midgard-fault-proofs/workflow/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -33,7 +32,6 @@ import {
 } from "../support/classified-fault-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { landedRemoval } from "../support/landed-removal.js";
-import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
@@ -130,7 +128,6 @@ const setup = async (cause: () => unknown) => {
   /** A watcher process over the fixture's journals: a later call is a
    * restart of the one before, which it closes. */
   const start = async () => {
-    const inFlight = createWorkflowInFlight();
     const execution = createWatcherFaultProofExecution({
       application: {
         runners: { doubleSpend: runner },
@@ -140,7 +137,6 @@ const setup = async (cause: () => unknown) => {
           verifyCompleted,
         ),
       },
-      inFlight,
       runtimeConfigPath: "/unused-quarantine-test.json",
       deploymentFingerprint: deploymentIdentity.manifestId,
       operationsSink: { recordProofStep, setAlert },
@@ -148,12 +144,10 @@ const setup = async (cause: () => unknown) => {
     const supervisor = createWatcherFaultProofSupervisor({
       proofRetention: storelessProofRetention,
       journalRoot: fixture.journalRoot,
-      inFlight,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: TEST_JOURNAL_KEY,
-      l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
       execution,
     });
     closers.push(() => supervisor.close());

@@ -17,12 +17,11 @@ import {
   emptyRosterReferenceScriptResolver,
   familyCommonInfrastructureForTest,
 } from "./family-common-infrastructure.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./wallet-only-send-always-open.js";
 import { createTestWorkflowProcess } from "./workflow-process.js";
 
 /**
  * Runs a workflow under its reconciliation permit through the manifest-bound
- * runner, as a restarted process with nothing in flight does. The record
+ * runner, as a restarted process does. The record
  * supplies the family's recovery surface; fresh execution and retained DA
  * are refused.
  */
@@ -47,7 +46,10 @@ export const prepareReconcileThroughRunner = ({
 }>): (() => Promise<FraudProofWorkflowRunResult>) => {
   // The invocation is ready now: a permit revoked after this point is
   // refused by the runner itself.
-  const sends = createTestWorkflowProcess().sends({ category, headerHash });
+  const objectiveWallet = createTestWorkflowProcess().objectiveWallet({
+    category,
+    headerHash,
+  });
   const runner = createManifestBoundWorkflowRunner({
     record: defineFamilyApplication({
       category,
@@ -91,13 +93,12 @@ export const prepareReconcileThroughRunner = ({
   });
   return async () =>
     (await runner.runOrResume({
-      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       category,
       deploymentFingerprint,
       headerHash,
       decisionDigest,
       actuationPermit: permit,
-      sends,
+      objectiveWallet,
       runtimeConfigPath: "/fixture/reconciliation-runtime.json",
     })) as FraudProofWorkflowRunResult;
 };

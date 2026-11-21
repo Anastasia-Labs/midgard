@@ -33,7 +33,6 @@ import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
 } from "./helpers/canonical-block-evidence-fixture.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
   DEPLOYMENT_FINGERPRINT,
@@ -347,7 +346,6 @@ describe("compiled production workflow boundary", () => {
     };
     await expect(
       runFraudProofWorkflowFromRetainedDa({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         observation: authenticatedHeaderObservation(fixture),
         sources: [source],
@@ -474,7 +472,6 @@ describe("compiled production workflow boundary", () => {
     const headerHash = "f8".repeat(28);
     await expect(
       runFraudProofWorkflowCli({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         category: "invalidRange",
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         headerHash,
@@ -482,10 +479,11 @@ describe("compiled production workflow boundary", () => {
         actuationPermit: {
           permitVersion: WORKFLOW_ACTUATION_PERMIT,
         },
-        // The CLI demands the permit and the in-flight set before it looks
-        // at adapters, so both are present: this test is about the
-        // missing-adapter refusal, not the refusal that precedes it.
-        sends: createTestWorkflowProcess().sends({
+        // The CLI demands the permit and the objective's wallet wiring
+        // before it looks at adapters, so both are present: this test is
+        // about the missing-adapter refusal, not the refusal that precedes
+        // it.
+        objectiveWallet: createTestWorkflowProcess().objectiveWallet({
           category: "invalidRange",
           headerHash,
         }),

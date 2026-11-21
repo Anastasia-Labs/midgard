@@ -138,24 +138,27 @@ const classify = async ({
   const raw: FraudProofRawL1SnapshotAuthority = {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
     capture: async (request) => ({
-      ...seed,
-      deploymentIdentityDigest: request.deploymentIdentityDigest,
-      blueprintHash: request.blueprintHash,
-      finalityPolicyDigest: request.finalityPolicyDigest,
-      headerHash: request.headerHash,
-      scopes: request.scopes.map((scope) => ({
-        ...scope,
-        utxos:
-          seed.scopes.find(({ address }) => address === scope.address)?.utxos ??
-          [],
-      })),
-      historyUnits: request.historyUnits,
-      history: request.historyUnits.map((unit) => {
-        const history = seed.history.find((item) => item.unit === unit);
-        if (history === undefined)
-          throw new Error("Fixture cannot supply unknown raw unit history");
-        return history;
-      }),
+      snapshot: {
+        ...seed,
+        deploymentIdentityDigest: request.deploymentIdentityDigest,
+        blueprintHash: request.blueprintHash,
+        finalityPolicyDigest: request.finalityPolicyDigest,
+        headerHash: request.headerHash,
+        scopes: request.scopes.map((scope) => ({
+          ...scope,
+          utxos:
+            seed.scopes.find(({ address }) => address === scope.address)
+              ?.utxos ?? [],
+        })),
+        historyUnits: request.historyUnits,
+        history: request.historyUnits.map((unit) => {
+          const history = seed.history.find((item) => item.unit === unit);
+          if (history === undefined)
+            throw new Error("Fixture cannot supply unknown raw unit history");
+          return history;
+        }),
+      },
+      pending: [],
     }),
   };
   const bindingFields = {

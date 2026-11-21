@@ -123,7 +123,7 @@ export const captureTransitionTraceL1Events = async ({
   ) => {
     const request = { ...base, scopes, historyUnits };
     return admitFraudProofRawL1Snapshot({
-      value: await authority.capture(request),
+      value: (await authority.capture(request)).snapshot,
       request,
       releaseFinality: finality,
       observationDepth: "inclusion",

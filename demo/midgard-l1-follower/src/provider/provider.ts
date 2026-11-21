@@ -5,6 +5,7 @@ import type {
   Datum,
   DatumHash,
   OutRef as LucidOutRef,
+  PolicyId,
   TransactionStatus,
   TransactionStatusOptions,
   TxHash,
@@ -12,18 +13,12 @@ import type {
   UTxO,
 } from "@lucid-evolution/lucid";
 
-import { addressCredentials } from "../decode/output.js";
 import type { SqlTx, TransactionOptions } from "../sql/backend.js";
 import { datumByHashIn } from "../store/datum.js";
 import type { FactStore } from "../store/fact-store.js";
-import {
-  livePlainOutputsByDatumIn,
-  livePlainOutputsExceptDatumsIn,
-  type PlainOutputsRead,
-} from "../store/plain-outputs.js";
 import { isTrackedOutput } from "../store/qualify.js";
 import * as reads from "../store/reads.js";
-import type { Cursor, OutputSummary, OutRef, StoredOutput } from "../types.js";
+import type { OutputSummary, OutRef, StoredOutput } from "../types.js";
 import {
   L1AwaitTxTimeoutError,
   L1CarriagePendingError,
@@ -39,20 +34,26 @@ import {
   outRefKey,
   toOutRef,
 } from "./ledger-provider.js";
+import {
+  applyPending,
+  atSubject,
+  isTrackedAddress,
+  lucidHoldsPolicy,
+  lucidHoldsUnit,
+  overLedger,
+  type PendingApplied,
+  type PendingSource,
+  utxoKey,
+} from "./pending.js";
+import {
+  answerPoint,
+  plainByDatum,
+  plainExceptDatums,
+  type PlainOutputsAnswer,
+  type PlainQuery,
+  readPlainOutputs,
+} from "./plain-read.js";
 import { addressBytes, holdsUnit, splitUnit, utxoSubject } from "./utxo.js";
-
-/**
- * Plain outputs read in one snapshot of the facts, with that snapshot's
- * point: `generation:slot:hash` of the follower's cursor. Any applied block
- * or rewind gives another point.
- */
-export type PlainOutputsAnswer = Readonly<{
-  point: string;
-  utxos: readonly UTxO[];
-}>;
-
-const cursorPoint = ({ point, generation }: Cursor): string =>
-  `${generation.toString()}:${point.slot.toString()}:${point.hash.toString("hex")}`;
 
 export type L1FollowerProviderOptions = Readonly<{
   /** The role's fact store: tracked outputs, qualifying txs, blocks. */
@@ -61,6 +62,14 @@ export type L1FollowerProviderOptions = Readonly<{
   transport: L1NodeTransport;
   /** How long `awaitTx` waits for the tx to reach the facts (default 160 s). */
   awaitTxTimeoutMs?: number;
+  /**
+   * The node's mempool transactions, in mempool order. Given, every UTxO
+   * answer is the facts with them applied: an output a pending
+   * transaction spends is never listed, and an output one creates is
+   * listed where its address or out-ref is asked for. Absent, answers are
+   * the facts alone.
+   */
+  pending?: PendingSource;
 }>;
 
 /**
@@ -74,12 +83,14 @@ export type L1FollowerProviderOptions = Readonly<{
  * is a typed error; none ends the process.
  *
  * Scope: an address the role tracks (by address or payment credential) is
- * answered from the facts alone, at the follower's tip, seed rows included.
- * An address or payment credential the role does not track is refused,
- * never scanned for on the ledger.
+ * answered from the facts alone, at the follower's tip, seed rows included,
+ * with the `pending` source's transactions applied when one is given. An
+ * address or payment credential the role does not track is refused, never
+ * scanned for on the ledger.
  */
 export class L1FollowerProvider extends LedgerProvider {
   readonly #store: FactStore;
+  readonly #pending: PendingSource | undefined;
 
   constructor(options: L1FollowerProviderOptions) {
     super({
@@ -91,23 +102,69 @@ export class L1FollowerProvider extends LedgerProvider {
       pinPointMs: 0,
     });
     this.#store = options.store;
+    this.#pending = options.pending;
+  }
+
+  override async getUtxos(
+    addressOrCredential: Address | Credential,
+  ): Promise<UTxO[]> {
+    return await this.#atSubject(
+      addressOrCredential,
+      async () => await super.getUtxos(addressOrCredential),
+    );
+  }
+
+  override async getUtxosWithUnit(
+    addressOrCredential: Address | Credential,
+    unit: Unit,
+  ): Promise<UTxO[]> {
+    return await this.#atSubject(
+      addressOrCredential,
+      async () => await super.getUtxosWithUnit(addressOrCredential, unit),
+      (utxo) => lucidHoldsUnit(utxo, unit),
+    );
+  }
+
+  override async getUtxosWithPolicy(
+    addressOrCredential: Address | Credential,
+    policyId: PolicyId,
+  ): Promise<UTxO[]> {
+    return await this.#atSubject(
+      addressOrCredential,
+      async () => await super.getUtxosWithPolicy(addressOrCredential, policyId),
+      (utxo) => lucidHoldsPolicy(utxo, policyId),
+    );
   }
 
   /** The one live tracked output holding `unit`; only tracked outputs are searched. */
   override async getUtxoByUnit(unit: Unit): Promise<UTxO> {
     const { policyId, assetName } = splitUnit(unit);
-    const rows = (
-      await this.#factsUtxos({ by: "unit", policyId, assetName })
-    ).filter((row) => holdsUnit(row.output, unit));
-    if (rows.length !== 1) throw new L1UnitLookupError(unit, rows.length);
-    return lucidUtxo(rows[0]!);
+    const applied = await this.#applied();
+    const ledger = (await this.#factsUtxos({ by: "unit", policyId, assetName }))
+      .filter((row) => holdsUnit(row.output, unit))
+      .map(lucidUtxo);
+    const tracked = this.#store.trackedSet();
+    const holders =
+      applied === undefined
+        ? ledger
+        : overLedger(
+            applied,
+            ledger,
+            (utxo) =>
+              lucidHoldsUnit(utxo, unit) &&
+              isTrackedAddress(tracked, addressBytes(utxo.address)),
+          );
+    if (holders.length !== 1) throw new L1UnitLookupError(unit, holders.length);
+    return holders[0]!;
   }
 
   /**
    * The live outputs among `outRefs`, in request order. An outref the facts
    * hold is answered from the facts (a spent row is omitted); any other one
    * from the ledger at the node's tip, unless the ledger's output is in the
-   * tracked scope, whose state is the follower's. `options.signal` ends
+   * tracked scope, whose state is the follower's; one neither holds, from
+   * the outputs pending transactions create. An outref a pending
+   * transaction spends is omitted. `options.signal` ends
    * the read of the facts (`TransactionOptions`); a ledger read takes no
    * signal, and the transport bounds each of its requests, not the read.
    */
@@ -123,6 +180,7 @@ export class L1FollowerProvider extends LedgerProvider {
         }),
       ).values(),
     ];
+    const applied = await this.#applied();
     // One read transaction: every stored row at one snapshot.
     const stored = await this.#read(
       (tx) => reads.outputsIn(tx, this.#store.dialect, wanted),
@@ -139,7 +197,16 @@ export class L1FollowerProvider extends LedgerProvider {
     for (const entry of await this.ledgerUtxosByTxIn(missing, "tip"))
       if (!isTrackedOutput(entry.output, tracked))
         found.set(outRefKey(entry.outRef), lucidUtxo(entry));
-    return wanted.flatMap((outRef) => found.get(outRefKey(outRef)) ?? []);
+    if (applied === undefined)
+      return wanted.flatMap((outRef) => found.get(outRefKey(outRef)) ?? []);
+    const created = new Map(
+      applied.created.map((utxo) => [utxoKey(utxo), utxo] as const),
+    );
+    return wanted.flatMap((outRef) => {
+      const key = outRefKey(outRef);
+      if (applied.spent.has(key)) return [];
+      return found.get(key) ?? created.get(key) ?? [];
+    });
   }
 
   /** A datum preimage from the stored witness sets; never an empty answer. */
@@ -267,6 +334,8 @@ export class L1FollowerProvider extends LedgerProvider {
    * (ada only, no datum hash, no reference script) live at the follower's
    * tip at the tracked `address` with exactly that datum, by out-ref,
    * skipping `excluded`; with the point of the snapshot they were read at.
+   * With a pending source, outputs pending transactions spend are skipped
+   * and the plain outputs they create there are candidates too.
    */
   async plainOutputsByDatum({
     address,
@@ -277,19 +346,9 @@ export class L1FollowerProvider extends LedgerProvider {
     requests: readonly Readonly<{ datum: string; limit: number }>[];
     excluded?: readonly LucidOutRef[];
   }>): Promise<PlainOutputsAnswer> {
-    const { address: bytes } = this.#trackedAddress(
-      addressBytes(address),
-      "plainOutputsByDatum",
-    );
-    return await this.#plainRead((tx) =>
-      livePlainOutputsByDatumIn(tx, this.#store.dialect, {
-        address: bytes,
-        requests: requests.map(({ datum, limit }) => ({
-          datum: Buffer.from(datum, "hex"),
-          limit,
-        })),
-        excluded: excluded.map(toOutRef),
-      }),
+    return await this.#plainRead(
+      { address, query: "plainOutputsByDatum", excluded },
+      plainByDatum(requests),
     );
   }
 
@@ -297,6 +356,8 @@ export class L1FollowerProvider extends LedgerProvider {
    * The first `limit` plain outputs live at the follower's tip at the
    * tracked `address`, by out-ref, whose inline datum (if any) is none of
    * `datums` (hex), skipping `excluded`; with the point of the snapshot.
+   * With a pending source, outputs pending transactions spend are skipped
+   * and the plain outputs they create there are candidates too.
    */
   async plainOutputsExceptDatums({
     address,
@@ -309,31 +370,25 @@ export class L1FollowerProvider extends LedgerProvider {
     excluded?: readonly LucidOutRef[];
     limit: number;
   }>): Promise<PlainOutputsAnswer> {
-    const { address: bytes } = this.#trackedAddress(
-      addressBytes(address),
-      "plainOutputsExceptDatums",
-    );
-    return await this.#plainRead((tx) =>
-      livePlainOutputsExceptDatumsIn(tx, this.#store.dialect, {
-        address: bytes,
-        datums: datums.map((datum) => Buffer.from(datum, "hex")),
-        excluded: excluded.map(toOutRef),
-        limit,
-      }),
+    return await this.#plainRead(
+      { address, query: "plainOutputsExceptDatums", excluded },
+      plainExceptDatums(datums, limit),
     );
   }
 
   /**
    * The point a plain-output read made now would report (`PlainOutputsAnswer`),
-   * from the cursor alone; refuses before initialization.
+   * from the cursor and the pending source alone; refuses before
+   * initialization.
    */
   async factsPoint(): Promise<string> {
+    const applied = await this.#applied();
     const cursor = await this.#read((tx) =>
       reads.tipIn(tx, this.#store.dialect),
     );
     if (cursor === null)
       throw new L1ProviderTransientError("follower", "not_initialized");
-    return cursorPoint(cursor);
+    return answerPoint(cursor, applied);
   }
 
   /** The tracked address `address`; refuses one the role does not track. */
@@ -341,13 +396,7 @@ export class L1FollowerProvider extends LedgerProvider {
     address: Buffer,
     query: string,
   ): Readonly<{ by: "address"; address: Buffer }> {
-    const tracked = this.#store.trackedSet();
-    const payment = addressCredentials(address).payment;
-    if (
-      tracked.addresses.has(address.toString("hex")) ||
-      (payment !== null &&
-        tracked.paymentCredentials.has(payment.hash.toString("hex")))
-    )
+    if (isTrackedAddress(this.#store.trackedSet(), address))
       return { by: "address", address };
     throw new L1ProviderScopeError(
       query,
@@ -355,15 +404,48 @@ export class L1FollowerProvider extends LedgerProvider {
     );
   }
 
+  /**
+   * `read`'s answer at `addressOrCredential` with the pending source
+   * applied: the outputs pending transactions create there that `holds`
+   * keeps are listed too. The mempool is listed before the facts are read.
+   */
+  async #atSubject(
+    addressOrCredential: Address | Credential,
+    read: () => Promise<UTxO[]>,
+    holds: (utxo: UTxO) => boolean = () => true,
+  ): Promise<UTxO[]> {
+    const applied = await this.#applied();
+    const ledger = await read();
+    if (applied === undefined) return ledger;
+    const at = atSubject(utxoSubject(addressOrCredential));
+    return overLedger(applied, ledger, (utxo) => at(utxo) && holds(utxo));
+  }
+
+  /** The pending source's transactions applied, or none without a source. */
+  async #applied(): Promise<PendingApplied | undefined> {
+    return this.#pending && applyPending(await this.#pending());
+  }
+
+  /**
+   * One plain-output read at the tracked `address` with the pending source
+   * applied (`plain-read.ts`); refuses an address the role does not track.
+   */
   async #plainRead(
-    run: (tx: SqlTx) => Promise<PlainOutputsRead>,
+    target: Readonly<{
+      address: Address;
+      query: string;
+      excluded: readonly LucidOutRef[];
+    }>,
+    query: PlainQuery,
   ): Promise<PlainOutputsAnswer> {
-    const result = await this.#read(run);
-    if (result.kind !== "ok")
-      throw new L1ProviderTransientError("follower", result.kind);
-    return Object.freeze({
-      point: cursorPoint(result.cursor),
-      utxos: result.utxos.map(lucidUtxo),
+    return await readPlainOutputs({
+      store: this.#store,
+      read: async (use) => await this.#read(use),
+      applied: await this.#applied(),
+      address: this.#trackedAddress(addressBytes(target.address), target.query)
+        .address,
+      excluded: target.excluded.map(toOutRef),
+      query,
     });
   }
 

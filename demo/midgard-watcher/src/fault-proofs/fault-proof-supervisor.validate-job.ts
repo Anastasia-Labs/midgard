@@ -6,7 +6,6 @@ import {
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/journal";
-import type { FraudProofSignedTransactionRecovery } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import { Header, StateQueueNode } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -218,10 +217,6 @@ export type SupervisorDependencies = Readonly<{
   /** Whether the views hold sweepable materials: a failed or lost sweep is
    * run again at a pass at tip only while they do. */
   proofMaterialsSweepable?: WatcherProofMaterialsSweepable;
-  /** Where one signed transaction of ours stands: the in-flight parts of
-   * objectives no run drives are followed through it at each pass at tip
-   * (`in-flight-released.ts`). Absent, they are kept until a restart. */
-  observeSignedTransaction?: FraudProofSignedTransactionRecovery["observeSignedTransaction"];
 }>;
 
 /** The supervisor clock: a safe non-negative integer of milliseconds. */

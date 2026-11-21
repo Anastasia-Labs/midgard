@@ -11,10 +11,7 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import { type FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import { type DoubleSpendL1ObservationPort } from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
 import type { JournalJsonObject, JournalJsonValue } from "./journal.js";
-import type {
-  FraudProofL1Source,
-  FraudProofSignedTransactionRecovery,
-} from "./l1-source.js";
+import type { FraudProofL1Source } from "./l1-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
@@ -57,13 +54,6 @@ export type DoubleSpendConstrainedWorkflowAdapterConfig = {
   readonly fraudProverRewardLovelace?: bigint;
 };
 
-/** Adapter configuration whose L1 port can read a signed transaction. */
-export type ObservedDoubleSpendWorkflowAdapterConfig =
-  DoubleSpendConstrainedWorkflowAdapterConfig & {
-    readonly l1: DoubleSpendL1ObservationPort &
-      Pick<FraudProofSignedTransactionRecovery, "observeSignedTransaction">;
-  };
-
 export type ManifestBoundDoubleSpendWorkflowConfig = Omit<
   DoubleSpendConstrainedWorkflowAdapterConfig,
   | "blueprint"
@@ -83,7 +73,7 @@ export type ManifestBoundDoubleSpendWorkflowConfig = Omit<
 
 export type ManifestBoundDoubleSpendWorkflow = {
   readonly binding: FraudProofWorkflowDeploymentBinding<"doubleSpend">;
-  readonly adapterConfig: ObservedDoubleSpendWorkflowAdapterConfig;
+  readonly adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfig;
   readonly adapter: FraudProofFamilyWorkflowAdapter;
   readonly terminalVerifier: FraudProofWorkflowTerminalVerifier;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
@@ -154,8 +144,7 @@ export const preflightOf = (
     transaction,
     label: "double-spend production transaction",
   });
-  // The runner reads the signed body back from the preflight to hold the
-  // inputs it spends while it is in flight.
+  // The runner refuses a preflight that carries no signed body.
   return bindWorkflowPreflightTransaction(
     {
       actionId,

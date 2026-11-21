@@ -231,10 +231,8 @@ export const stagedOtherRecord = ({
 
   /** After our run's ending, each staging output back in our wallet: once
    * each spend back rolls back, our next runs spend each output back again,
-   * the same signed bytes for a spend back the process still follows and
-   * nothing new signed for it, or, for one that stood past release depth
-   * when it rolled back, which the process had seen land final, at most one
-   * new spend back; and they end resolved by their record again
+   * by its spend back's own bytes or by at most one new spend back; and they
+   * end resolved by their record again
    * (validation-trace-dispute-staging-left-for-sweep.ts). */
   const spentBackAgainAfterRollback = async () =>
     await expectSpentBackAgainAfterRollback({
@@ -244,7 +242,6 @@ export const stagedOtherRecord = ({
         await drive.dispute().runner.runOnce(scene().failing),
       describe: describeRun,
       ended: (result) => result.kind === "resolved_by_another_record",
-      releaseDepth: RELEASE_DEPTH,
     });
   /** Past both cases' deadlines, the other prover convicts its case and
    * removes the block against its record, and the removal goes past

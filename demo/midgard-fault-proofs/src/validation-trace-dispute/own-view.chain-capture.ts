@@ -10,16 +10,30 @@
  * life: naming a unit in a capture is what holds its history. Each capture
  * admits and decodes only the transactions the header's previous capture
  * did not hold in the same bytes: the histories grow by a transaction or
- * two per move, and a long resolution makes hundreds of moves. */
+ * two per move, and a long resolution makes hundreds of moves.
+ *
+ * Every read is of the next view (workflow/next-state.ts): the scopes with
+ * our node's mempool applied, and each unit's history with the mempool
+ * transactions touching the unit after the ledger's, in mempool order. A
+ * mempool transaction has no inclusion point; it is never evidence. */
+import type { PendingTransaction } from "@al-ft/midgard-l1-follower/mempool";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import { CML, coreToTxOutput, type TxOutput } from "@lucid-evolution/lucid";
 
 import { datumProver } from "../fraud-proof-record-selection.js";
+import {
+  bodyRawOutputs,
+  type FraudProofNextView,
+  nextViewOf,
+  pendingParts,
+} from "../workflow/next-state.js";
 import { parseOwnOutRef } from "../workflow/own-outputs.js";
 import { historicalTransactions } from "../workflow/raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
+import { rawToUtxo } from "../workflow/raw-l1-family-derivation.state-queue-topology.js";
 import type {
   FraudProofRawL1Snapshot,
   FraudProofRawL1Transaction,
+  FraudProofRawL1Utxo,
 } from "../workflow/raw-l1-snapshot.js";
 import type { ValidationTraceDisputeArtifact } from "./artifact.js";
 import {
@@ -33,11 +47,33 @@ import {
   validationTraceThreadUnit,
 } from "./transactions.js";
 
+/** One transaction of a unit's history in the next view: a ledger
+ * transaction of the snapshot, or a transaction of our node's mempool. */
+export type ValidationTraceHistoryTransaction = Readonly<{
+  txHash: string;
+  bodyCbor: string;
+  witnessSetCbor: string;
+  /** The inputs it spends that the capture resolves, as their outputs. */
+  resolvedInputs: readonly FraudProofRawL1Utxo[];
+  /** The reference inputs it reads, as out-refs. */
+  referenceInputs: readonly string[];
+  /** Those of its reference inputs the capture resolves, as their outputs. */
+  resolvedReferenceInputs: readonly FraudProofRawL1Utxo[];
+  /** How new it is: its inclusion slot on the ledger, and after every
+   * ledger transaction, in mempool order, while it is pending. */
+  rank: bigint;
+  /** Whether our node's mempool holds it, not the ledger. */
+  pending: boolean;
+  /** Its depth on the ledger, the tip one, as the snapshot's admission
+   * checks it; none while pending. */
+  confirmationDepth: number | undefined;
+}>;
+
 /** An output a transaction of the capture paid. */
 export type ValidationTraceCapturedOutput = Readonly<{
   outRef: string;
   output: TxOutput;
-  transaction: FraudProofRawL1Transaction;
+  transaction: ValidationTraceHistoryTransaction;
 }>;
 
 /** The outputs a transaction paid, by its body. */
@@ -48,12 +84,21 @@ type Paid = Readonly<{
 
 /** Each output a transaction of a capture paid. */
 export type ValidationTraceCapturedOutputs = (
-  transaction: FraudProofRawL1Transaction,
+  transaction: ValidationTraceHistoryTransaction,
 ) => readonly ValidationTraceCapturedOutput[];
+
+/** The transactions of a unit's history in the next view, oldest first:
+ * none while the capture does not name the unit. */
+export type ValidationTraceUnitHistory = (
+  unit: string,
+) => readonly ValidationTraceHistoryTransaction[];
 
 /** One capture of the dispute, with the units it names. */
 export type ValidationTraceDisputeCapture = Readonly<{
   snapshot: FraudProofRawL1Snapshot;
+  /** The snapshot's scopes with our node's mempool applied. */
+  view: FraudProofNextView;
+  history: ValidationTraceUnitHistory;
   outputsOf: ValidationTraceCapturedOutputs;
   threadUnit: string;
   /** Our case units, by the out-ref of the pending claim each started at. */
@@ -67,11 +112,8 @@ export type ValidationTraceDisputeCapture = Readonly<{
  * only follows a defense that landed between two captures. */
 const ROUNDS = 4;
 
-const slotOf = (transaction: FraudProofRawL1Transaction): bigint =>
-  BigInt(transaction.inclusionPoint.slot);
-
 /** The outputs `transaction` paid, decoded from its body. */
-const paidBy = (transaction: FraudProofRawL1Transaction): Paid => {
+const paidBy = (transaction: ValidationTraceHistoryTransaction): Paid => {
   const body = CML.TransactionBody.from_cbor_hex(transaction.bodyCbor);
   const outputs = body.outputs();
   const found = Array.from({ length: outputs.len() }, (_, index) => {
@@ -88,33 +130,148 @@ const paidBy = (transaction: FraudProofRawL1Transaction): Paid => {
   return { bodyCbor: transaction.bodyCbor, outputs: found };
 };
 
-/** The transactions of `unit`'s history in the capture, oldest first, or
- * none while the capture does not name it. */
-export const unitTransactions = (
+/** `transaction` as a history transaction of rank `rank`. */
+const ledgerTransaction = (
+  transaction: FraudProofRawL1Transaction,
+  rank: bigint,
+): ValidationTraceHistoryTransaction =>
+  Object.freeze({
+    txHash: transaction.txHash,
+    bodyCbor: transaction.bodyCbor,
+    witnessSetCbor: transaction.witnessSetCbor,
+    resolvedInputs: transaction.resolvedInputs,
+    referenceInputs: transaction.resolvedReferenceInputs.map(
+      ({ outRef }) => outRef,
+    ),
+    resolvedReferenceInputs: transaction.resolvedReferenceInputs,
+    rank,
+    pending: false,
+    confirmationDepth: transaction.confirmationDepth,
+  });
+
+/** Whether `raw` holds the unit `unit`. */
+const holds = (raw: FraudProofRawL1Utxo, unit: string): boolean =>
+  (rawToUtxo(raw).assets[unit] ?? 0n) > 0n;
+
+/**
+ * The unit histories of the next view over `snapshot` and `pending`. A
+ * pending transaction is in a unit's history when an output it spends or
+ * creates holds the unit. What it spends and reads is resolved from the
+ * outputs the snapshot holds (its scopes, the inputs its transactions
+ * resolve, the outputs its transactions pay) and those earlier pending
+ * transactions create; a reference input none of them holds is kept by
+ * out-ref alone.
+ */
+const nextHistories = (
   snapshot: FraudProofRawL1Snapshot,
-  unit: string,
-): readonly FraudProofRawL1Transaction[] =>
-  snapshot.historyUnits.includes(unit)
-    ? [...historicalTransactions({ snapshot, unit })].sort((left, right) =>
-        slotOf(left) < slotOf(right)
-          ? -1
-          : slotOf(left) > slotOf(right)
-            ? 1
-            : 0,
-      )
-    : [];
+  view: FraudProofNextView,
+): ValidationTraceUnitHistory => {
+  const ledger = new Map<
+    string,
+    readonly ValidationTraceHistoryTransaction[]
+  >();
+  const ledgerOf = (unit: string) => {
+    let found = ledger.get(unit);
+    if (found === undefined) {
+      found = [...historicalTransactions({ snapshot, unit })]
+        .map((transaction) =>
+          ledgerTransaction(
+            transaction,
+            BigInt(transaction.inclusionPoint.slot),
+          ),
+        )
+        .sort((left, right) =>
+          left.rank < right.rank ? -1 : left.rank > right.rank ? 1 : 0,
+        );
+      ledger.set(unit, found);
+    }
+    return found;
+  };
+  let pendingRead: ReturnType<typeof resolvePending> | undefined;
+  const pendingOf = () => (pendingRead ??= resolvePending(snapshot, view));
+  return (unit) =>
+    snapshot.historyUnits.includes(unit)
+      ? [
+          ...ledgerOf(unit),
+          ...pendingOf().flatMap(({ transaction, outputs }) =>
+            [...transaction.resolvedInputs, ...outputs].some((raw) =>
+              holds(raw, unit),
+            )
+              ? [transaction]
+              : [],
+          ),
+        ]
+      : [];
+};
+
+/** `view`'s pending transactions as history transactions, in mempool
+ * order, each input resolved where the snapshot or an earlier pending
+ * transaction holds it, with the outputs each creates. */
+const resolvePending = (
+  snapshot: FraudProofRawL1Snapshot,
+  view: FraudProofNextView,
+): readonly Readonly<{
+  transaction: ValidationTraceHistoryTransaction;
+  outputs: readonly FraudProofRawL1Utxo[];
+}>[] => {
+  const known = new Map<string, FraudProofRawL1Utxo>();
+  for (const { utxos } of snapshot.scopes)
+    for (const raw of utxos) known.set(raw.outRef, raw);
+  const byHash = new Map(
+    snapshot.transactions.map((transaction) => [
+      transaction.txHash,
+      transaction,
+    ]),
+  );
+  for (const transaction of snapshot.transactions)
+    for (const raw of [
+      ...transaction.resolvedInputs,
+      ...transaction.resolvedReferenceInputs,
+    ])
+      known.set(raw.outRef, raw);
+  const resolve = (outRef: string): FraudProofRawL1Utxo | undefined => {
+    const found = known.get(outRef);
+    if (found !== undefined) return found;
+    const creator = byHash.get(outRef.split("#")[0]!);
+    if (creator === undefined) return undefined;
+    for (const raw of bodyRawOutputs(creator.txHash, creator.bodyCbor))
+      known.set(raw.outRef, raw);
+    return known.get(outRef);
+  };
+  const resolved = (outRefs: readonly string[]) =>
+    outRefs.flatMap((outRef) => {
+      const raw = resolve(outRef);
+      return raw === undefined ? [] : [raw];
+    });
+  return view.pending.map((pending) => {
+    const parts = pendingParts(pending);
+    const transaction = Object.freeze({
+      txHash: pending.txHash,
+      bodyCbor: parts.bodyCbor,
+      witnessSetCbor: parts.witnessSetCbor,
+      resolvedInputs: resolved(pending.spends),
+      referenceInputs: pending.reads,
+      resolvedReferenceInputs: resolved(pending.reads),
+      rank: view.createdRank(pending.txHash),
+      pending: true,
+      confirmationDepth: undefined,
+    });
+    for (const raw of parts.outputs) known.set(raw.outRef, raw);
+    return { transaction, outputs: parts.outputs };
+  });
+};
 
 /** The outputs of ours at the opener (`opener`) or at the source holding
  * the thread token `threadUnit` that its history shows paid, oldest first:
  * each datum's fraud prover is us. */
 export const ownStepOutputs = ({
-  snapshot,
+  history,
   outputsOf,
   deployment,
   threadUnit,
   prover,
 }: {
-  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly history: ValidationTraceUnitHistory;
   readonly outputsOf: ValidationTraceCapturedOutputs;
   readonly deployment: ValidationTraceDisputeDeployment;
   readonly threadUnit: string;
@@ -122,7 +279,7 @@ export const ownStepOutputs = ({
 }) => {
   const [opener, source] = validationTraceComputationSteps(deployment.chain);
   const ours = (step: typeof opener) =>
-    unitTransactions(snapshot, threadUnit)
+    history(threadUnit)
       .flatMap(outputsOf)
       .filter(
         ({ output }) =>
@@ -168,10 +325,13 @@ export const validationTraceDisputeCapture = ({
   /** The units `snapshot`'s histories show beyond the thread token. */
   const derive = (
     snapshot: FraudProofRawL1Snapshot,
+    pending: readonly PendingTransaction[],
     outputsOf: ValidationTraceCapturedOutputs,
     artifact: ValidationTraceDisputeArtifact,
     prover: string,
   ): ValidationTraceDisputeCapture => {
+    const view = nextViewOf({ snapshot, pending });
+    const history = nextHistories(snapshot, view);
     const threadUnit = validationTraceThreadUnit(
       deployment,
       artifact.headerHash,
@@ -179,7 +339,7 @@ export const validationTraceDisputeCapture = ({
     const eventKey = artifact.claim.claimWitness.event_to_step_membership.key;
     const cases = new Map(
       ownStepOutputs({
-        snapshot,
+        history,
         outputsOf,
         deployment,
         threadUnit,
@@ -199,7 +359,7 @@ export const validationTraceDisputeCapture = ({
     );
     const threads = [...cases.values()].flatMap((caseUnit) =>
       recordedValidationTraceDefenders({
-        transactions: unitTransactions(snapshot, caseUnit),
+        transactions: history(caseUnit),
         caseUnit,
       }).map((defenderVkh) => {
         const name = validationTraceThreadTokenName(
@@ -212,7 +372,7 @@ export const validationTraceDisputeCapture = ({
         };
       }),
     );
-    return { snapshot, outputsOf, threadUnit, cases, threads };
+    return { snapshot, view, history, outputsOf, threadUnit, cases, threads };
   };
   return async (
     artifact: ValidationTraceDisputeArtifact,
@@ -239,7 +399,7 @@ export const validationTraceDisputeCapture = ({
     let admitted = prior?.admitted;
     let found: ValidationTraceDisputeCapture | undefined;
     for (let round = 0; round < ROUNDS; round += 1) {
-      const snapshot = await capture({
+      const { snapshot, pending } = await capture({
         headerHash,
         scopes,
         historyUnits: [...units],
@@ -251,7 +411,7 @@ export const validationTraceDisputeCapture = ({
         ),
       );
       latest.set(headerHash, { admitted, paid });
-      found = derive(snapshot, outputsOf, artifact, prover);
+      found = derive(snapshot, pending, outputsOf, artifact, prover);
       const wanted = [
         ...found.cases.values(),
         ...found.threads.flatMap(({ unit, receiptUnit }) => [

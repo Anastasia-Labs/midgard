@@ -230,11 +230,11 @@ describe("fault decision bridge durable evidence", () => {
     ]);
   });
 
-  it("holds a header whose journaled fault still has work in flight, dispatches the rest, and supersedes once it clears", async () => {
+  it("holds a header whose journaled fault still has a job pending, dispatches the rest, and supersedes once it clears", async () => {
     const current = observation([headerFixture("01"), headerFixture("02")]);
     const [first, second] = current.finalizedHeaders;
     const journaled = decision(first!.headerHash, "withdrawalMistag");
-    let inFlight = true;
+    let pending = true;
     const warnings: unknown[] = [];
     const h = harness({
       current,
@@ -245,10 +245,10 @@ describe("fault decision bridge durable evidence", () => {
       records: [record(journaled, 0)],
       warn: (warning) => void warnings.push(warning),
       supersede: async () =>
-        inFlight
+        pending
           ? {
               kind: "held",
-              reason: "submission_unresolved",
+              reason: "job_pending",
               detail: `withdrawalMistag/${first!.headerHash}`,
             }
           : { kind: "superseded" },
@@ -264,18 +264,18 @@ describe("fault decision bridge durable evidence", () => {
     expect(h.bridge.readiness()).toEqual([
       {
         reason: "fault_decision_supersede_held",
-        detail: `${first!.headerHash}: submission_unresolved: withdrawalMistag/${first!.headerHash}`,
+        detail: `${first!.headerHash}: job_pending: withdrawalMistag/${first!.headerHash}`,
       },
     ]);
     expect(warnings).toEqual([
       {
         event: "fault_decision_supersede_held",
         headerHash: first!.headerHash,
-        cause: "submission_unresolved",
+        cause: "job_pending",
       },
     ]);
 
-    inFlight = false;
+    pending = false;
     const superseded = await h.bridge.reconcileAndDispatch(current);
     expect(superseded.target).toMatchObject({
       category: "doubleWithdraw",

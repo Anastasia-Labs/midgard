@@ -1,11 +1,9 @@
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import { handleWatcherOperationsHttpRequest } from "../../src/runtime/operations-observability.handle-http-request.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
-import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
   journalDirectory,
@@ -46,13 +44,11 @@ describe("readiness over a capacity read that meets corruption (R7)", () => {
   it("answers /readyz 503 journal_integrity, never 400", async () => {
     const journalRoot = await journalDirectory("midgard-journal-capacity");
     const supervisor = createWatcherFaultProofSupervisor({
-      inFlight: createWorkflowInFlight(),
       journalRoot,
       deploymentFingerprint: DEPLOYMENT,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: TEST_JOURNAL_KEY,
-      l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
       proofRetention: storelessProofRetention,
       execution: {
         verifyCompleted: async () => {

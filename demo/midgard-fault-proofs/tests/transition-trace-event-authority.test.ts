@@ -64,25 +64,30 @@ describe("transition event authority raw test transport", () => {
         capture: async (request) => {
           captures++;
           return {
-            ...seed,
-            headerHash: request.headerHash,
-            historyUnits: request.historyUnits,
-            history: request.historyUnits.map((unit) => {
-              const row = seed.history.find((history) => history.unit === unit);
-              if (row === undefined)
-                throw new Error("Requested history is unavailable");
-              return row;
-            }),
-            scopes: request.scopes.map((scope) => ({
-              ...scope,
-              utxos: (
-                seed.scopes.find(
-                  (existing) => existing.address === scope.address,
-                )?.utxos ?? []
-              ).map((utxo) =>
-                malformed ? { ...utxo, outputCbor: "00" } : utxo,
-              ),
-            })),
+            snapshot: {
+              ...seed,
+              headerHash: request.headerHash,
+              historyUnits: request.historyUnits,
+              history: request.historyUnits.map((unit) => {
+                const row = seed.history.find(
+                  (history) => history.unit === unit,
+                );
+                if (row === undefined)
+                  throw new Error("Requested history is unavailable");
+                return row;
+              }),
+              scopes: request.scopes.map((scope) => ({
+                ...scope,
+                utxos: (
+                  seed.scopes.find(
+                    (existing) => existing.address === scope.address,
+                  )?.utxos ?? []
+                ).map((utxo) =>
+                  malformed ? { ...utxo, outputCbor: "00" } : utxo,
+                ),
+              })),
+            },
+            pending: [],
           };
         },
       },

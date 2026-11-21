@@ -14,7 +14,6 @@ import {
   createFraudProofWorkflowRegistry,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
-import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   createNetworkIdAuthenticatedL1TerminalVerifier,
@@ -162,14 +161,12 @@ export const runOrResumeManifestBoundNetworkIdWorkflow = async ({
   run,
   maxSubmissionAttempts,
   maxActions,
-  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundNetworkIdWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly run: WorkflowRun;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const rawL1 = workflow.adapterConfig.rawL1;
   const observeHeader = rawL1?.observeHeader;
@@ -196,6 +193,5 @@ export const runOrResumeManifestBoundNetworkIdWorkflow = async ({
     terminalVerifier: workflow.terminalVerifier,
     ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
     ...(maxActions === undefined ? {} : { maxActions }),
-    walletOnlySend,
   });
 };

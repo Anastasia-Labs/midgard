@@ -5,12 +5,7 @@ import {
 } from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { FraudProofWorkflowTerminal } from "./journal.js";
-import {
-  type FraudProofL1Source,
-  type FraudProofSignedTransactionRecovery,
-  fraudProofSignedTransactionRecovery,
-  withFraudProofL1Recovery,
-} from "./l1-source.js";
+import type { FraudProofL1Source } from "./l1-source.js";
 import { FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { FraudProofWorkflowTerminalVerifier } from "./orchestrator.js";
 import { deriveFraudProofRawL1FamilyStage } from "./raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
@@ -58,6 +53,7 @@ export type DoubleSpendWorkflowStage =
       /** Changes after every descendant removal, giving each tx a stable id. */
       readonly nextRemovalOutRef: string;
     }
+  | { readonly kind: "pending"; readonly reason: string }
   | {
       readonly kind: "removed";
       readonly terminal: FraudProofWorkflowTerminal;
@@ -68,11 +64,7 @@ export type DoubleSpendWorkflowStage =
  * authentication boundary: production registration remains blocked until a
  * concrete raw local-node/provider implementation derives these facts.
  */
-export interface DoubleSpendL1ObservationPort
-  extends Pick<
-    FraudProofAuthenticatedPublicationObserver,
-    "observeSignedTransaction" | "rebroadcastSignedTransaction"
-  > {
+export interface DoubleSpendL1ObservationPort {
   readonly publications?: FraudProofAuthenticatedPublicationObserver;
   observeHeader?(input: {
     readonly headerHash: string;
@@ -126,41 +118,49 @@ export const createDoubleSpendRawL1ObservationPort = ({
     if (headerHash !== definition.headerHash) {
       throw new Error("double-spend raw L1 observation changed the header");
     }
-    return admitFraudProofRawL1Snapshot({
-      value: await authority.capture(request),
-      request,
-      releaseFinality,
-      observationDepth: "inclusion",
-    });
+    const { snapshot, pending } = await authority.capture(request);
+    return {
+      snapshot: admitFraudProofRawL1Snapshot({
+        value: snapshot,
+        request,
+        releaseFinality,
+        observationDepth: "inclusion",
+      }),
+      pending,
+    };
   };
+  /** The ledger snapshot of one capture: evidence only. */
+  const ledger = async (headerHash: string) =>
+    (await capture(headerHash)).snapshot;
   return {
     publications: createFraudProofAuthenticatedPublicationObserver({
       authority,
       releaseFinality,
     }),
     transactionConfirmed: async ({ headerHash, txHash }) =>
-      (await capture(headerHash)).transactions.some(
+      (await ledger(headerHash)).transactions.some(
         (transaction) => transaction.txHash === txHash,
       ),
     observeHeader: async ({ headerHash }) =>
       await deriveAuthenticatedStateQueueHeaderObservationFromRawL1({
-        snapshot: await capture(headerHash),
+        snapshot: await ledger(headerHash),
         definition,
       }),
     observeRetainedHeader: async ({ headerHash }) =>
       await deriveRetainedStateQueueHeaderObservationFromRawL1({
-        snapshot: await capture(headerHash),
+        snapshot: await ledger(headerHash),
         definition,
       }),
     observeOwnThreads: async ({ headerHash }) =>
       deriveFraudProofRawL1OwnThreads({
-        snapshot: await capture(headerHash),
+        ...(await capture(headerHash)),
         definition,
       }),
     observe: async ({ headerHash }) => {
-      const snapshot = await capture(headerHash);
+      const { snapshot, pending } = await capture(headerHash);
       const derived = await deriveFraudProofRawL1FamilyStage({
         snapshot,
+        pending,
         definition,
         releaseEconomics,
       });
@@ -194,19 +194,16 @@ export const createDoubleSpendL1ObservationPort = ({
   readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: "doubleSpend";
   };
-}): DoubleSpendL1ObservationPort & FraudProofSignedTransactionRecovery =>
-  withFraudProofL1Recovery(
-    createDoubleSpendRawL1ObservationPort({
-      authority: l1.snapshotAuthority({
-        releaseFinality,
-        observationDepth: "inclusion",
-      }),
+}): DoubleSpendL1ObservationPort =>
+  createDoubleSpendRawL1ObservationPort({
+    authority: l1.snapshotAuthority({
       releaseFinality,
-      releaseEconomics,
-      definition,
+      observationDepth: "inclusion",
     }),
-    fraudProofSignedTransactionRecovery(l1, releaseFinality),
-  );
+    releaseFinality,
+    releaseEconomics,
+    definition,
+  });
 
 const sameTerminal = (
   left: FraudProofWorkflowTerminal,
@@ -221,8 +218,7 @@ const sameTerminal = (
 
 /** Second observation through the constrained integration port. */
 export const createDoubleSpendAuthenticatedL1TerminalVerifier = (
-  l1: DoubleSpendL1ObservationPort &
-    Pick<FraudProofSignedTransactionRecovery, "observeSignedTransaction">,
+  l1: DoubleSpendL1ObservationPort,
 ): FraudProofWorkflowTerminalVerifier => {
   const verify = async (
     {
@@ -271,8 +267,6 @@ export const createDoubleSpendAuthenticatedL1TerminalVerifier = (
   };
   return {
     verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-    observeSignedTransaction: async (input) =>
-      await l1.observeSignedTransaction(input),
     verify: (input) => verify(input, false),
     verifyIncluded: (input) => verify(input, true),
   };
@@ -306,6 +300,7 @@ export const admitSnapshot = ({
     }
     return stage;
   }
+  if (stage.kind === "pending") return stage;
   canonicalOutRef(stage.stateQueueBlockOutRef, "state-queue block outRef");
   if (
     stage.kind === "step_01" ||

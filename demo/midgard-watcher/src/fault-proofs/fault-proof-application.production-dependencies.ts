@@ -24,7 +24,6 @@ import {
   type ValidationTraceReplayHold,
 } from "@al-ft/midgard-fault-proofs";
 import type { OwnThreadCanceller } from "@al-ft/midgard-fault-proofs/own-thread-cancel";
-import type { WorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
@@ -53,14 +52,6 @@ import type {
 import type { WatcherFaultDetectorAlert } from "./fault-detector-isolation.js";
 import type { WatcherProofMaterialsViews } from "./proof-materials-views.js";
 import type { WatcherReplayedLedger } from "./replayed-ledger.js";
-
-/** The wallet coins this process's workflows and other actions hold, from
- * the in-flight set: an action outside any workflow offers none of them and
- * holds the coins it spends until it may no longer land. */
-export type WatcherWalletLeases = Pick<
-  WorkflowInFlight,
-  "heldOutRefs" | "holdWalletInputs"
->;
 
 export const WATCHER_FAULT_PROOF_APPLICATION =
   "midgard-watcher-fault-proof-production-application-v1" as const;
@@ -253,33 +244,24 @@ export type WatcherFaultProofApplication = Readonly<{
   runOrResume(invocation: WorkflowAdapterRunnerInput): Promise<unknown>;
   /**
    * Starts the removal of a proven correction's header from an Idle lock, or
-   * finishes the one a Locked lock waits for, from the proven record on L1,
-   * paid from coins `walletLeases` neither leases nor holds, and holding the
-   * coins it spends there until it confirms. `observing`: this application
-   * only observes and started nothing.
+   * finishes the one a Locked lock waits for, from the proven record on L1.
+   * `observing`: this application only observes and started nothing.
    */
   driveProvenCorrection(
-    input: Readonly<{
-      correction: ProvenFraudProofCorrection;
-      walletLeases: WatcherWalletLeases;
-    }>,
+    input: Readonly<{ correction: ProvenFraudProofCorrection }>,
   ): Promise<ProvenCorrectionRemoval | Readonly<{ kind: "observing" }>>;
   /**
    * The canceller of our own computation threads, signing with the prover
-   * wallet, paid from coins `walletLeases` neither leases nor holds, and
-   * holding the coins each cancel spends there until its validity ends.
-   * `observing`: this application only observes and cancels nothing.
+   * wallet. `observing`: this application only observes and cancels nothing.
    */
-  openOwnThreadCanceller(
-    input: Readonly<{ walletLeases: WatcherWalletLeases }>,
-  ): Promise<
+  openOwnThreadCanceller(): Promise<
     | Readonly<{ kind: "cancelling"; canceller: OwnThreadCanceller }>
     | Readonly<{ kind: "observing" }>
   >;
   /**
    * One sweep-only run (`runProofMaterialsSweep`) of an objective the chain
    * alone completed with `terminal`, under its reconciliation permit,
-   * through the restricted wallet the generic loader installs on `sends`.
+   * through the restricted wallet the generic loader installs for it.
    */
   sweepProofMaterials(
     input: Pick<
@@ -289,8 +271,6 @@ export type WatcherFaultProofApplication = Readonly<{
       | "runtimeConfigPath"
       | "decisionDigest"
       | "actuationPermit"
-      | "sends"
-      | "walletOnlySend"
     > &
       Readonly<{ terminal: FraudProofWorkflowTerminal }>,
   ): Promise<unknown>;

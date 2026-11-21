@@ -13,8 +13,7 @@ import type { ProofMaterialsAccess } from "./proof-materials-view.js";
 
 /**
  * Ready with the chunks in order; else the first chunk to publish. A chunk
- * of ours that landed and is not yet visible stays in the process's
- * in-flight set, which holds the workflow until the read catches up.
+ * of ours in our node's mempool is read as published.
  */
 export const scriptDecodeStagedChunks = async ({
   lucid,

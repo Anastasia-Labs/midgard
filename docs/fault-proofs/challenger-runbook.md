@@ -42,9 +42,9 @@ anchors, incident records and evidence stamps. Proof actions proceed on
 authenticated inclusion at fixed depth 1. There is no runtime action-depth
 configuration field. A rollback invalidates cached authority and re-observes
 canonical state from the chain before the next build under fresh authority.
-A transaction the watcher sent stays in its in-memory in-flight set, its
-wallet coins excluded from every other build, until it lands or its validity
-bound passes. Generic nested
+A transaction the watcher sent is in a block or in its node's mempool, which
+every read overlays on the ledger; if it is in neither, the next pass builds
+it again. Generic nested
 configuration types do not enable additional launcher modes. Follow the watcher
 process configuration for these exact values.
 
@@ -125,8 +125,8 @@ from what the chain holds. That restart is the
 manual fallback; it follows
 [`manual-recovery-runbook.md`](manual-recovery-runbook.md). There is no
 standalone submission command that bypasses the watcher's decision and
-actuation permits. An objective held as `fault_proof_resubmission_required` or
-`fault_proof_start_deadline_passed` cannot be resumed by this watcher;
+actuation permits. An objective held as `fault_proof_start_deadline_passed`
+cannot be resumed by this watcher;
 escalate it while the challenge window is open, since another independent
 challenger can still prove the same fault.
 

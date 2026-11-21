@@ -74,7 +74,7 @@ export const verifyCompletedFraudProofWorkflow = async ({
     releaseFinality: binding.releaseFinality,
   });
   const snapshot = admitFraudProofRawL1Snapshot({
-    value: await authority.capture(request),
+    value: (await authority.capture(request)).snapshot,
     request,
     releaseFinality: binding.releaseFinality,
     observationDepth: "inclusion",

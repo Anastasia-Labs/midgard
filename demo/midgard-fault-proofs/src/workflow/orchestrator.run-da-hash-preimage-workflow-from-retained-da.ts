@@ -23,7 +23,6 @@ import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-wor
 import { verifiedReleaseFinality } from "./orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runAdmittedFraudProofWorkflow } from "./orchestrator.run-admitted-fraud-proof-workflow.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
-import type { WalletOnlySend } from "./wallet-only-send-gate.js";
 import type { WorkflowRun } from "./workflow-run.js";
 
 /** Canonical-block classified workflow entry retained for all ordinary families. */
@@ -37,8 +36,6 @@ export const runFraudProofWorkflow = async ({
   terminalVerifier,
   releaseFinalityAuthority,
   maxActions,
-  nowMs,
-  walletOnlySend,
 }: {
   readonly deploymentFingerprint: string;
   readonly evidence: CanonicalBlockEvidence;
@@ -49,8 +46,6 @@ export const runFraudProofWorkflow = async ({
   readonly terminalVerifier: FraudProofWorkflowTerminalVerifier;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly maxActions?: number;
-  readonly nowMs?: () => number;
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const verified = await verifiedReleaseFinality({
     deploymentFingerprint,
@@ -79,8 +74,6 @@ export const runFraudProofWorkflow = async ({
     terminalVerifier,
     releaseFinality: verified.releaseFinality,
     ...(maxActions === undefined ? {} : { maxActions }),
-    ...(nowMs === undefined ? {} : { nowMs }),
-    walletOnlySend,
   });
 };
 
@@ -99,8 +92,6 @@ export const runDaHashPreimageWorkflowFromRetainedDa = async ({
   releaseFinalityAuthority,
   retries,
   maxActions,
-  nowMs,
-  walletOnlySend,
 }: {
   readonly deploymentFingerprint: string;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
@@ -111,8 +102,6 @@ export const runDaHashPreimageWorkflowFromRetainedDa = async ({
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly retries?: number;
   readonly maxActions?: number;
-  readonly nowMs?: () => number;
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const scope = [...registry.keys()];
   if (scope.length !== 1 || scope[0] !== "daHashPreimage") {
@@ -156,7 +145,5 @@ export const runDaHashPreimageWorkflowFromRetainedDa = async ({
     terminalVerifier,
     releaseFinality: verified.releaseFinality,
     ...(maxActions === undefined ? {} : { maxActions }),
-    ...(nowMs === undefined ? {} : { nowMs }),
-    walletOnlySend,
   });
 };

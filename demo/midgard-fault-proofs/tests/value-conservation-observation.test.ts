@@ -89,6 +89,7 @@ it("derives the conservation cursor and datum from one snapshot while the pendin
   );
   const datum = conservationDatum(owner, null);
   const snapshot = (byte: string, outputAddress: string) => ({
+    transactions: [],
     scopes: [
       {
         utxos: [
@@ -108,8 +109,8 @@ it("derives the conservation cursor and datum from one snapshot while the pendin
   const after = snapshot("77", nextAddress);
   const capture = vi
     .fn()
-    .mockResolvedValueOnce(before)
-    .mockResolvedValue(after);
+    .mockResolvedValueOnce({ snapshot: before, pending: [] })
+    .mockResolvedValue({ snapshot: after, pending: [] });
   const stage = (value: typeof before) => ({
     kind: "step" as const,
     step: 1 as const,
@@ -121,7 +122,9 @@ it("derives the conservation cursor and datum from one snapshot while the pendin
     .mockImplementation(async ({ snapshot: value }) =>
       stage(value as unknown as typeof before),
     );
-  const observe = vi.fn(async () => ({ stage: stage(await capture()) }));
+  const observe = vi.fn(async () => ({
+    stage: stage((await capture()).snapshot),
+  }));
   vi.spyOn(
     observations,
     "createFraudProofFamilyL1ObservationPort",

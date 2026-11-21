@@ -18,6 +18,7 @@ export {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
   type FraudProofL1ObservationDepth,
+  type FraudProofRawL1Capture,
   type FraudProofRawL1ComputationStepRole,
   type FraudProofRawL1Point,
   type FraudProofRawL1ScopeRole,

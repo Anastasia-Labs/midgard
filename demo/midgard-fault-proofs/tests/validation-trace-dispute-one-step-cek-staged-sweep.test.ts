@@ -390,8 +390,8 @@ describe("validation-trace dispute runner: spending back a staged step's staging
         );
       }
       expect(ledgerHas(kept!), after.join("\n")).toBe(false);
-      // The process may have seen each spend back land final, so it may
-      // follow none of them: each output may be spent back anew.
+      // Each output is spent back again from the ledger: by its spend back's
+      // own bytes, or by one new spend back.
       await expectSpentBackAgainAfterRollback({
         scene,
         outputs,
@@ -400,7 +400,6 @@ describe("validation-trace dispute runner: spending back a staged step's staging
           "reason" in result ? `${result.kind}: ${result.reason}` : result.kind,
         ended: (result) =>
           result.kind === "terminal_included" || result.kind === "completed",
-        renewed: read,
       });
     } finally {
       clock.mockRestore();

@@ -23,6 +23,7 @@ import {
 import { validationTraceComputationSteps } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceAwaitingCounterparty } from "../../src/validation-trace-dispute/waiting.js";
 import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import type { WorkflowAdapterRunnerInput } from "../../src/workflow/adapters.js";
 import { createValidationTraceDisputeCompleteCanonicalReplay } from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { applyFamilyApplicationRecord } from "../../src/workflow/family-application.apply-family-application-record.js";
 import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-application-registry.family-application-registry.js";
@@ -34,10 +35,9 @@ import {
   createHeaderClassifier,
   headerDecisionReplayContext,
 } from "../../src/workflow/header-classifier.create-header-classifier.js";
-import type { InFlightTransaction } from "../../src/workflow/in-flight.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
-  WORKFLOW_RUNNER_FACTORIES,
+  createFamilyApplicationWorkflowRunner,
   WORKFLOW_RUNTIME_CONFIG,
 } from "../../src/workflow/runtime.js";
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
@@ -56,8 +56,11 @@ import {
   scriptHashOf,
 } from "./validation-trace-dispute-installed-scene.js";
 import type { Block } from "./validation-trace-dispute-open-scene.js";
-import { walletOnlySendAlwaysOpenOn } from "./wallet-only-send-always-open.js";
-import { createTestWorkflowProcess } from "./workflow-process.js";
+import {
+  createTestWorkflowProcess,
+  recordingRecord,
+  type SentTransaction,
+} from "./workflow-process.js";
 
 const CATEGORY = "validationTraceDispute" as const;
 const RUNTIME_CONFIG_PATH = "/installed/validation-trace-runtime.json";
@@ -266,23 +269,30 @@ export const installValidationTraceApplication = async ({
     };
   };
 
-  const runner = WORKFLOW_RUNNER_FACTORIES[CATEGORY](async ({ invocation }) => {
-    const execution = invocation as Partial<
-      Parameters<typeof runner.runOrResume>[0]
-    >;
-    return (await load({
-      headerHash: invocation.headerHash,
-      ...(execution.decisionDigest === undefined
-        ? {}
-        : { decisionDigest: execution.decisionDigest }),
-      replayContext: headerDecisionReplayContext(decision),
-    })) as never;
-  });
-  const objective = { category: CATEGORY, headerHash } as const;
+  /** The registry's installed record for the dispute. */
+  const record = FAMILY_APPLICATION_REGISTRY[
+    CATEGORY
+  ] as typeof VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD;
   /** The watcher process the turns run in; `restart` replaces it. */
   let process = createTestWorkflowProcess();
+  // The installed runner over the record, with what the dispute submits
+  // recorded by the process the turn runs in.
+  const runner = createFamilyApplicationWorkflowRunner(
+    recordingRecord(record, (adapter) => process.recording(adapter)),
+    async ({ invocation }) => {
+      const execution = invocation as Partial<WorkflowAdapterRunnerInput>;
+      return (await load({
+        headerHash: invocation.headerHash,
+        ...(execution.decisionDigest === undefined
+          ? {}
+          : { decisionDigest: execution.decisionDigest }),
+        replayContext: headerDecisionReplayContext(decision),
+      })) as never;
+    },
+  );
+  const objective = { category: CATEGORY, headerHash } as const;
   /** What earlier processes sent, oldest first. */
-  const before: InFlightTransaction[] = [];
+  const before: SentTransaction[] = [];
   /** One watcher application turn for the objective. */
   const turn = async () =>
     (await runner.runOrResume({
@@ -291,14 +301,9 @@ export const installValidationTraceApplication = async ({
       headerHash,
       decisionDigest: decision.decisionDigest,
       actuationPermit: permit,
-      sends: process.sends(objective),
+      objectiveWallet: process.objectiveWallet(objective),
       runtimeConfigPath: RUNTIME_CONFIG_PATH,
-      walletOnlySend: walletOnlySendAlwaysOpenOn(h.proverLucid),
     })) as FraudProofWorkflowRunResult | ValidationTraceAwaitingCounterparty;
-  /** The registry's installed record for the dispute. */
-  const record = FAMILY_APPLICATION_REGISTRY[
-    CATEGORY
-  ] as typeof VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD;
   /** The installed record applied to `block` under its classifier
    * `decided` decision, as the runner applies it, without the permits. */
   const apply = async (

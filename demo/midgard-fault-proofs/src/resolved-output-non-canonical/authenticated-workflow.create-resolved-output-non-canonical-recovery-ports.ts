@@ -89,6 +89,10 @@ export const resolvedOutputStageFromL1 = (
       throw new Error(
         "resolvedOutputNonCanonical L1 stage exceeds six-step topology",
       );
+    case "pending":
+      throw new Error(
+        `resolvedOutputNonCanonical L1 stage requires no action: ${stage.reason}`,
+      );
     case "proof_token":
       return "proven";
     case "removed":

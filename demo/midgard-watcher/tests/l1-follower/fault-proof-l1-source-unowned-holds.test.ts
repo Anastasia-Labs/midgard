@@ -16,7 +16,7 @@ import { createWatcherProofRosterRetention } from "../../src/l1-follower/proof-r
 import { WATCHER_UNIT_HISTORY_TABLE } from "../../src/l1-follower/tables.js";
 import { K, X } from "../support/l1-follower-raw-reads-fixture.js";
 import {
-  nodeDouble,
+  pendingOver,
   RELEASE,
   requestFor,
   SOURCE_ID,
@@ -63,7 +63,7 @@ const slashDueCapture = (r: Removed) =>
   createWatcherFaultProofL1Source({
     store: r.h.store,
     rawReads: r.h.reads(true),
-    node: nodeDouble().node,
+    pending: pendingOver(r.h.store),
     sourceId: SOURCE_ID,
     proofRetention: r.retention,
   })
@@ -73,7 +73,8 @@ const slashDueCapture = (r: Removed) =>
     })
     .capture(
       requestFor(r.header, { scopes: [], historyUnits: [CASE, RECEIPT] }),
-    ) as Promise<FraudProofRawL1Snapshot>;
+    )
+    .then(({ snapshot }) => snapshot as FraudProofRawL1Snapshot);
 
 const caseHistoryOf = (snapshot: FraudProofRawL1Snapshot) =>
   snapshot.history.find(({ unit }) => unit === CASE)?.transactionHashes;

@@ -1,4 +1,3 @@
-import type { L1NodeTransport } from "@al-ft/l1-node-transport";
 import type { FraudProofRawL1SnapshotRequest } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
@@ -6,13 +5,7 @@ import {
   type ReleaseL1FinalityPolicy,
   type VerifiedFraudProofReleaseFinalityPolicy,
 } from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
-import {
-  cbor,
-  encodeTxBody,
-  encodeWitnessSet,
-  type SimTx,
-  simTxHash,
-} from "@al-ft/midgard-l1-follower/testing";
+import type { FactStore } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { scriptHashToCredential } from "@lucid-evolution/lucid";
 import { credentialToAddress } from "@lucid-evolution/lucid";
@@ -21,8 +14,12 @@ import {
   createWatcherFaultProofL1Source,
   WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX,
 } from "../../src/l1-follower/fault-proof-l1-source.js";
+import {
+  createWatcherPendingRead,
+  type WatcherPendingRead,
+} from "../../src/l1-follower/pending-read.js";
 import type { FollowerRawReads } from "../../src/l1-follower/raw-reads.types.js";
-import { D, hex, K } from "./l1-follower-raw-reads-fixture.js";
+import { D, K } from "./l1-follower-raw-reads-fixture.js";
 
 /**
  * The release policy, snapshot request, signed bytes and node double the
@@ -71,65 +68,49 @@ export const requestFor = (
   ...overrides,
 });
 
-/** A key witness the simulator never writes: other witness bytes, same body. */
-export const FOREIGN_WITNESS = cbor.map([
-  cbor.uint(0),
-  cbor.array(
-    cbor.array(
-      cbor.bytes(Buffer.alloc(32, 7)),
-      cbor.bytes(Buffer.alloc(64, 8)),
-    ),
-  ),
-]);
-
-/** The exact signed bytes of a simulator transaction (its own witness set unless given). */
-export const signedOf = (
-  tx: SimTx,
-  witnessSet: Buffer = encodeWitnessSet(tx),
-): Readonly<{ transactionHash: string; signedTransactionCborHex: string }> => ({
-  transactionHash: hex(simTxHash(tx)),
-  signedTransactionCborHex: hex(
-    cbor.array(encodeTxBody(tx), witnessSet, cbor.bool(true), cbor.nul),
-  ),
-});
-
-type SubmitResult = Awaited<ReturnType<L1NodeTransport["submit"]>>;
-
-/** A node double recording calls; `mempool` and `submit` answers are settable. */
-export const nodeDouble = () => {
-  const calls: string[] = [];
+/**
+ * The node's mempool and tip over `store`: `state.txs` is the listing
+ * (empty unless set), `state.tip` the node's tip (the store's own view
+ * unless set), and `state.calls` the order the read asks them in.
+ */
+export const mempoolDouble = (store: FactStore) => {
   const state: {
-    mempool: Set<string>;
-    hasTx: (txId: string) => Promise<boolean>;
-    submit: (tx: Uint8Array) => Promise<SubmitResult>;
-  } = {
-    mempool: new Set(),
-    hasTx: async (txId) => state.mempool.has(txId),
-    submit: async () => ({ accepted: true }),
-  };
-  const node: Pick<L1NodeTransport, "submit" | "hasTx"> = {
-    submit: async (tx) => {
-      calls.push(`submit:${hex(Buffer.from(tx))}`);
-      return await state.submit(tx);
+    txs: Uint8Array[];
+    tip: Readonly<{ slot: number; hash: string }> | undefined;
+    calls: string[];
+  } = { txs: [], tip: undefined, calls: [] };
+  const read: WatcherPendingRead = createWatcherPendingRead({
+    store,
+    node: {
+      mempoolTxs: async () => {
+        state.calls.push("mempoolTxs");
+        return { acquiredSlot: 0n, txs: [...state.txs] };
+      },
     },
-    hasTx: async (txId) => {
-      calls.push(`hasTx:${txId}`);
-      return await state.hasTx(txId);
+    nodeTip: async () => {
+      state.calls.push("nodeTip");
+      if (state.tip !== undefined) return state.tip;
+      const view = await store.currentView();
+      // A node has a tip before the follower has a cursor.
+      if (view === null) return { slot: 0, hash: "" };
+      return { slot: view.point.slot, hash: view.point.hash.toString("hex") };
     },
-  };
-  return { node, calls, state };
+  });
+  return { read, state };
 };
 
+/** An empty mempool at the store's own view. */
+export const pendingOver = (store: FactStore): WatcherPendingRead =>
+  mempoolDouble(store).read;
+
 export const sourceOver = (
-  fx: Readonly<{
-    store: Parameters<typeof createWatcherFaultProofL1Source>[0]["store"];
-  }>,
+  fx: Readonly<{ store: FactStore }>,
   rawReads: FollowerRawReads,
-  node: Pick<L1NodeTransport, "submit" | "hasTx"> = nodeDouble().node,
+  pending: WatcherPendingRead = pendingOver(fx.store),
 ) =>
   createWatcherFaultProofL1Source({
     store: fx.store,
     rawReads,
-    node,
+    pending,
     sourceId: SOURCE_ID,
   });

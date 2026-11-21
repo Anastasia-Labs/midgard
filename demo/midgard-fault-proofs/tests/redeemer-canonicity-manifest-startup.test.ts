@@ -84,7 +84,6 @@ describe.skipIf(runDirectory === undefined)(
         l1Source: {
           sourceVersion: FRAUD_PROOF_L1_SOURCE,
           snapshotAuthority: forbiddenIo,
-          signedTransactions: forbiddenIo,
         },
         stateQueueMutationLeaseCoordinator: { acquire: forbiddenIo },
         referenceScripts: {

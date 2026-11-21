@@ -19,7 +19,6 @@ import type {
   FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
-import type { WalletOnlySend } from "./wallet-only-send-gate.js";
 import type { WorkflowRun } from "./workflow-run.js";
 
 export const FAMILY_APPLICATION_RECORD =
@@ -107,7 +106,6 @@ export type FamilyApplicationRecord<
     readonly workflow: Workflow;
     readonly sources: readonly RetainedDaPayloadSource[];
     readonly run: WorkflowRun;
-    readonly walletOnlySend: WalletOnlySend;
   }) => Promise<unknown>;
   /** Whether the constructed workflow must carry the invocation's digest. */
   bindsDecisionDigest: boolean;

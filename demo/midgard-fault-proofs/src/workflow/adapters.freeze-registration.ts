@@ -1,9 +1,8 @@
 import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import type { WorkflowActuationPermit } from "./actuation-permit.js";
-import type { WorkflowSends } from "./in-flight.js";
 import { WORKFLOW_ADAPTER_RUNNER } from "./runner-admission.js";
-import type { WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WorkflowObjectiveWallet } from "./workflow-run.js";
 
 export const WORKFLOW_ADAPTER_REGISTRY_SCHEMA_VERSION =
   "midgard-production-fraud-proof-workflow-adapters-v1" as const;
@@ -25,19 +24,15 @@ export type WorkflowAdapterRunnerInput = WorkflowAdapterReadinessInput & {
   readonly decisionDigest: string;
   /** Live, revocable authority for this decision and rollback generation. */
   readonly actuationPermit: WorkflowActuationPermit;
-  /** The objective's part of the caller's in-flight set (`in-flight.ts`):
-   * what this process sent for it, and the wallet coins its builds hold. */
-  readonly sends: WorkflowSends;
+  /** The objective's wallet wiring (`workflow-run.ts`), shared with the
+   * restricted wallet the caller installs for it. */
+  readonly objectiveWallet: WorkflowObjectiveWallet;
   /**
    * Called when a continuing session makes progress past its first poll,
    * so a caller can clear an alarm before the session ends. Never authority.
    * A throw is ignored and does not end the session.
    */
   readonly onProgress?: () => void;
-  /** The caller's restart wait, before which no transaction that spends only
-   * wallet coins is sent, and the latest upper bound such a transaction may
-   * carry, on the caller's clock (`wallet-only-send-gate.ts`). */
-  readonly walletOnlySend: WalletOnlySend;
 };
 
 export type WorkflowAdapterRunner = {

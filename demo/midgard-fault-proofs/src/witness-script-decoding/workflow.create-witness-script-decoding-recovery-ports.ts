@@ -101,6 +101,10 @@ export const witnessScriptDecodingObservationFromL1 = (
         outputReference: stage.threadOutRef,
         checkpointHash: null,
       };
+    case "pending":
+      throw new Error(
+        `witnessScriptDecoding L1 stage requires no action: ${stage.reason}`,
+      );
     case "proof_token":
       return {
         stage: "proven",

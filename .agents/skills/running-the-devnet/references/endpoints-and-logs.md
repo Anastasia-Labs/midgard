@@ -915,19 +915,11 @@ follower's reasons `[review]`.
   Read the journal paragraphs of `demo/midgard-watcher/README.md` (Runtime
   and commands) before moving journals aside or restarting.
 - `fault_proof_start_deadline_passed`: an objective's header matured with
-  no removal of ours landed and nothing of ours in flight, so no removal can
-  land; the detail is
+  no removal of ours landed, so no removal can land; the detail is
   `<category>/<headerHash>`. Held, never run again, the process up; clears
   once its header leaves the finalized queue. Report it. An objective past
   its latest safe start but before maturity still runs, late
   (`fault_proof_started_late`).
-- `fault_proof_resubmission_required`: an objective running under
-  reconciliation-only authority (a signed objective at or past its header's
-  maturity, or one that is not the watcher's current proof target) reached
-  an action that needs a fresh submission; the detail is
-  `<category>/<headerHash>: <reason>`. It is held by name and runs again on
-  the next observation, which clears or renews the hold. The next action
-  needs manual submission; report it with the detail.
 - `validation_trace_replay_held`, `validation_trace_replay_stuck`: a script
   re-execution of a header's L2 transaction ended without a result (the
   evaluator's own failure, such as running out of memory, or a failed read of
@@ -968,15 +960,6 @@ follower's reasons `[review]`.
   (`block_time + M/2`) or less is left, or the block cannot be read, it is
   an alarm logged at error level, naming the window's end: the case must
   open by then. Report it with the detail.
-- `fault_proof_restart_wait`: an objective's next transaction spends only
-  wallet coins, and the watcher started less than one wallet-only validity
-  window (3 min) ago, on its clock or on the last block its follower
-  applied. A copy built before the restart may still land within that
-  window, so nothing is sent yet; the detail is
-  `<category>/<headerHash>: <reason>`. Not an alarm: the objective runs
-  again on each follower change and the hold clears once the window has
-  passed on both. If it lasts much longer, the follower is behind; check
-  `l1_follower_catching_up` and the node.
 - `fault_proof_counterparty_deadline_passed`: an objective still awaits its
   counterparty (a validation-trace case nobody has defended, or a thread
   whose defender has not moved) more than 10 min past the response deadline

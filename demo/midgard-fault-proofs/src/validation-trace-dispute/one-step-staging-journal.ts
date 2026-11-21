@@ -4,6 +4,7 @@
  * ours with the out-refs it read and the outputs it paid. The chain view
  * (own-view.chain.ts) reads them from the dispute's capture; whether an
  * output is live is read from the chain each time. */
+import { isSafe } from "@al-ft/midgard-l1-follower/heads";
 
 /** The action that stages one run of a staged step's operands. */
 export const VALIDATION_TRACE_STAGING =
@@ -13,17 +14,27 @@ export const VALIDATION_TRACE_STAGING =
 export const VALIDATION_TRACE_STAGING_RECLAIM =
   "midgard-validation-trace-staging-reclaim-v1" as const;
 
-/** A resolve move of ours that landed: its signed bytes, the out-refs it
+/** A resolve move of ours: how deep the ledger holds it, the out-refs it
  * read, and the outputs it paid. */
 export type ValidationTraceResolveReader = Readonly<{
   txHash: string;
-  signed: string;
+  /** Its depth on the ledger, the tip one; none while our node's mempool
+   * holds it. */
+  confirmationDepth: number | undefined;
   reads: ReadonlySet<string>;
   outputs: readonly Readonly<{
     address: string;
     assets: Readonly<Record<string, bigint>>;
   }>[];
 }>;
+
+/** Whether the ledger holds `reader` at least `releaseDepth` deep: final. */
+export const finalAtReleaseDepth = (
+  reader: ValidationTraceResolveReader,
+  releaseDepth: number,
+): boolean =>
+  reader.confirmationDepth !== undefined &&
+  isSafe(reader.confirmationDepth, { confirmationDepth: releaseDepth });
 
 /** A staging output of ours, as our own view shows it: the run it stages,
  * where it is, and the thread whose PrepareSelected move it was staged for
@@ -57,7 +68,4 @@ export type ValidationTraceStagingJournal = Readonly<{
   byContent?: (
     datumCbor: string,
   ) => Promise<readonly ValidationTraceStagingOutput[]>;
-  /** The staging outputs a staging of ours in flight creates, which the
-   * chain does not show yet (one-step-staging-holds.ts). */
-  unseen?: readonly ValidationTraceStagingOutput[];
 }>;

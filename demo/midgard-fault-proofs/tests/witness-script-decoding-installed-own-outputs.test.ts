@@ -22,7 +22,6 @@ import { describe, expect, it, vi } from "vitest";
 const hooks = vi.hoisted(() => ({
   binding: undefined as unknown,
   authority: undefined as unknown,
-  recovery: undefined as unknown,
 }));
 vi.mock("../src/workflow/deployment-manifest-binding.js", async (load) => ({
   ...(await load<
@@ -33,9 +32,6 @@ vi.mock("../src/workflow/deployment-manifest-binding.js", async (load) => ({
 vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
   const actual =
     await load<typeof import("../src/workflow/family-l1-observation.js")>();
-  const { withFraudProofL1Recovery } = await import(
-    "../src/workflow/l1-source.js"
-  );
   return {
     ...actual,
     createFraudProofFamilyL1ObservationPort: (
@@ -43,15 +39,12 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
         typeof actual.createFraudProofFamilyL1ObservationPort
       >[0],
     ) =>
-      withFraudProofL1Recovery(
-        actual.createFraudProofFamilyRawL1ObservationPort({
-          ...input,
-          authority: hooks.authority as Parameters<
-            typeof actual.createFraudProofFamilyRawL1ObservationPort
-          >[0]["authority"],
-        }),
-        hooks.recovery as Parameters<typeof withFraudProofL1Recovery>[1],
-      ),
+      actual.createFraudProofFamilyRawL1ObservationPort({
+        ...input,
+        authority: hooks.authority as Parameters<
+          typeof actual.createFraudProofFamilyRawL1ObservationPort
+        >[0]["authority"],
+      }),
   };
 });
 
@@ -103,6 +96,12 @@ const TURN_CAP = 20;
 const SETUP_BLOCKS = 24;
 /** How long reads lag the chain in the lagging row: three blocks. */
 const LAG_MS = 60_000;
+
+/** Whether the transaction that creates `outRef` is in our node's mempool. */
+const inMempool = (harness: Harness, outRef: string): boolean =>
+  Object.keys(harness.emulator.mempool).some((key) =>
+    key.startsWith(outRef.slice(0, 64)),
+  );
 /** Blocks past the provider grace (10 minutes of 20-second blocks). */
 const PAST_GRACE_BLOCKS = 31;
 /** Datum-bearing outputs of the mass plant. */
@@ -351,8 +350,9 @@ describe("script-decode staging found by content, in the installed watcher appli
           rolesOf(context.harness!).staging,
         );
         if (chunk !== undefined && hidden === undefined) {
-          // Reads show the chunk only a minute after it was sent: well
-          // inside the provider grace.
+          // Once confirmed, reads show the chunk only a minute after it was
+          // sent: well inside the provider grace. In the mempool, our node
+          // shows it.
           hidden = chunk;
           shownFrom = context.harness!.emulator.now() + LAG_MS;
         }
@@ -361,7 +361,11 @@ describe("script-decode staging found by content, in the installed watcher appli
       during: ({ harness }) => {
         context.harness = harness;
         const lag = lagReadsOf(harness.emulator, () =>
-          harness.emulator.now() < shownFrom ? hidden : undefined,
+          hidden !== undefined &&
+          harness.emulator.now() < shownFrom &&
+          !inMempool(harness, hidden)
+            ? hidden
+            : undefined,
         );
         context.reads = lag.hiddenReads;
         return lag.restore;
@@ -423,6 +427,9 @@ describe("script-decode staging found by content, in the installed watcher appli
           const [first] = stagesOf(watch, harness);
           const bind = readersOf(watch, harness)[0];
           if (first === undefined || bind === undefined) return;
+          // A block takes the Bind if it is still in the mempool.
+          if (inMempool(harness, `${bind.txHash}#0`))
+            harness.emulator.awaitBlock();
           const status = await harness.emulator.getTransactionStatus(
             bind.txHash,
           );

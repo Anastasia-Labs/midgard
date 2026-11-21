@@ -32,11 +32,7 @@ import {
   type FraudProofWorkflowIdentity,
   type FraudProofWorkflowTerminal,
 } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
-import { FraudProofL1CheckpointChangedError } from "../src/workflow/l1-source.js";
-import {
-  FRAUD_PROOF_WORKFLOW_SAFETY,
-  type FraudProofFamilyWorkflowAdapter,
-} from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import { FRAUD_PROOF_WORKFLOW_SAFETY } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runFraudProofWorkflowFromRetainedDa } from "../src/workflow/orchestrator.run-fraud-proof-workflow-from-retained-da.js";
 import { StateQueueHeaderNotLiveError } from "../src/workflow/raw-l1-family-derivation.state-queue-topology.js";
@@ -48,12 +44,10 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
   canonicalEvidence,
   chainOf,
-  chainVerifier,
   createFixtureChain,
   DEPLOYMENT_FINGERPRINT,
   makeAdapter,
@@ -64,15 +58,13 @@ import {
   retainedDaSource,
   run,
   terminal,
+  terminalVerifier,
 } from "./workflow.make-adapter.js";
 
-/** A retained-DA run of `fixture`'s block by `adapter` in a fresh process,
- * with the restart wait over. */
+/** A retained-DA run of `fixture`'s block in a fresh process. */
 const retainedDaRun = (
   fixture: Awaited<ReturnType<typeof buildCanonicalBlockFixture>>,
-  adapter: FraudProofFamilyWorkflowAdapter,
 ) => ({
-  walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
   deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
   observation: authenticatedHeaderObservation(fixture),
   sources: [retainedDaSource(fixture.payloadEnvelopeCbor)],
@@ -80,7 +72,7 @@ const retainedDaRun = (
     category: "doubleSpend",
     headerHash: fixture.headerHash,
   }),
-  terminalVerifier: chainVerifier(adapter),
+  terminalVerifier,
   releaseFinalityAuthority: releaseFinalityAuthority(),
 });
 
@@ -151,24 +143,24 @@ describe("Q51/W-O4 resumable workflow", () => {
         releaseFinalityAuthority: releaseFinalityAuthority(),
       } as unknown as ManifestBoundDoubleSpendWorkflow;
       // One process across every run: the first sends both transactions,
-      // the later ones resume over what it has in flight.
+      // the later ones read their effect on the chain.
       const process = createTestWorkflowProcess();
       const objective = { category, headerHash: observation.headerHash };
       const invocation = {
         workflow,
         sources: [retainedDaSource(fixture.payloadEnvelopeCbor)],
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       };
       const removalAction = {
         actionId: `remove:${terminal(observation.headerHash).correction.removedStateQueueOutRef}`,
         input: { stage: "remove", requiresMutationLease: false },
       };
-      // The proof lands; the removal stays pending.
+      // The proof lands; the removal waits in the mempool.
       const chain = createFixtureChain();
       const base = makeAdapter({
         chain,
         submit: async ({ preflight }) => {
           if (preflight.txHash === PROOF_TX_HASH) chain.land(preflight.txHash);
+          else chain.accept(preflight.txHash);
           return { kind: "submitted", txHash: preflight.txHash };
         },
       });
@@ -181,18 +173,23 @@ describe("Q51/W-O4 resumable workflow", () => {
                 workflow.adapterConfig,
               ).prepare
             : makeAdapter().prepare,
-        observe: async () => ({
-          kind: "action_required" as const,
-          action: chain.landed(PROOF_TX_HASH)
-            ? removalAction
-            : { actionId: "prove", input: { stage: "step_04" } },
-        }),
+        observe: async () =>
+          chain.seen(REMOVAL_TX_HASH)
+            ? {
+                kind: "pending" as const,
+                reason: "the removal awaits inclusion",
+              }
+            : {
+                kind: "action_required" as const,
+                action: chain.landed(PROOF_TX_HASH)
+                  ? removalAction
+                  : { actionId: "prove", input: { stage: "step_04" } },
+              },
       };
       const rawL1 = {
         observeHeader,
         observeRetainedHeader,
         observe: async () => (await observe()).stage,
-        observeSignedTransaction: chain.observeSignedTransaction,
       };
       const networkWorkflow = {
         binding: workflow.binding,
@@ -219,7 +216,6 @@ describe("Q51/W-O4 resumable workflow", () => {
               workflow: networkWorkflow,
             });
       const pending = await runFraudProofWorkflowFromRetainedDa({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         observation,
         sources: invocation.sources,
@@ -228,11 +224,11 @@ describe("Q51/W-O4 resumable workflow", () => {
             ? DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY
             : NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
         registry: createFraudProofWorkflowRegistry({
-          adapters: [pendingAdapter],
+          adapters: [process.recording(pendingAdapter)],
           launchScope: [category],
         }),
         run: process.run(objective),
-        terminalVerifier: chainVerifier(base),
+        terminalVerifier,
         releaseFinalityAuthority: workflow.releaseFinalityAuthority,
       });
       expect(pending.kind).toBe("pending");
@@ -268,7 +264,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       async (_evidence: CanonicalBlockEvidence) => replayContext,
     );
     const result = await runFraudProofWorkflowFromRetainedDa({
-      ...retainedDaRun(fixture, adapter),
+      ...retainedDaRun(fixture),
       replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       resolveReplayContext,
       registry: createFraudProofWorkflowRegistry({
@@ -304,7 +300,7 @@ describe("Q51/W-O4 resumable workflow", () => {
     const adapter = makeAdapter();
     await expect(
       runFraudProofWorkflowFromRetainedDa({
-        ...retainedDaRun(fixture, adapter),
+        ...retainedDaRun(fixture),
         replayer: forgedReplayer,
         registry: createFraudProofWorkflowRegistry({
           adapters: [adapter],
@@ -397,7 +393,7 @@ describe("Q51/W-O4 resumable workflow", () => {
     const fixture = await buildCanonicalBlockFixture({ transactions: [] });
     const adapter = makeAdapter();
     const result = await runFraudProofWorkflowFromRetainedDa({
-      ...retainedDaRun(fixture, adapter),
+      ...retainedDaRun(fixture),
       replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       registry: createFraudProofWorkflowRegistry({
         adapters: [adapter],
@@ -419,7 +415,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       registry: ReturnType<typeof createFraudProofWorkflowRegistry>,
     ) =>
       runFraudProofWorkflowFromRetainedDa({
-        ...retainedDaRun(fixture, doubleSpend),
+        ...retainedDaRun(fixture),
         sources: [],
         replayer,
         registry,
@@ -466,12 +462,6 @@ describe("Q51/W-O4 resumable workflow", () => {
       ["prove", PROOF_TX_HASH],
       ["remove", REMOVAL_TX_HASH],
     ]);
-    // A final completion leaves nothing of the objective in flight.
-    expect(
-      process
-        .sends({ category: "doubleSpend", headerHash: evidence.headerHash })
-        .inFlight(),
-    ).toEqual([]);
     expect(result.identity).toMatchObject({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       category: "doubleSpend",
@@ -576,63 +566,7 @@ describe("Q51/W-O4 resumable workflow", () => {
     ).rejects.toThrow("returned a different deployment identity");
   });
 
-  it("keeps a thrown submission in flight through a moving L1 read, and sends only the removal after it", async () => {
-    const evidence = await canonicalEvidence();
-    const process = createTestWorkflowProcess();
-    const chain = createFixtureChain();
-    const adapter = makeAdapter({
-      chain,
-      submit: async ({ preflight }) => {
-        chain.land(preflight.txHash);
-        if (preflight.txHash === PROOF_TX_HASH)
-          throw new Error(
-            "All inputs are spent. Transaction has probably already been included",
-          );
-        return { kind: "submitted", txHash: preflight.txHash };
-      },
-    });
-    // The proof lands but the family's L1 view has not caught up, and the
-    // first read of the proof's standing meets a moving L1.
-    let caughtUp = false;
-    const observe = vi.mocked(adapter.observe);
-    const familyObserve = observe.getMockImplementation()!;
-    observe.mockImplementation(async (input) =>
-      caughtUp
-        ? await familyObserve(input)
-        : {
-            kind: "action_required",
-            action: { actionId: "prove", input: { step: 0 } },
-          },
-    );
-    vi.spyOn(chain, "observeSignedTransaction").mockRejectedValueOnce(
-      new FraudProofL1CheckpointChangedError(
-        "L1 advanced during canonical capture",
-      ),
-    );
-
-    const pending = await run({ evidence, adapter, process });
-    expect(pending).toMatchObject({
-      kind: "pending",
-      resumeOnObservation: true,
-      reason: expect.stringContaining("L1 advanced"),
-    });
-    expect(adapter.preflight).toHaveBeenCalledTimes(1);
-    expect(adapter.submit).toHaveBeenCalledTimes(1);
-
-    // A fresh admitted observation reuses this objective and process; the
-    // proof in flight is read on the chain before only its removal is built.
-    caughtUp = true;
-    const completed = await run({ evidence, adapter, process });
-    expect(completed.kind).toBe("completed");
-    expect(adapter.preflight).toHaveBeenCalledTimes(2);
-    expect(adapter.submit).toHaveBeenCalledTimes(2);
-    expect(process.sent().map(({ txHash }) => txHash)).toEqual([
-      PROOF_TX_HASH,
-      REMOVAL_TX_HASH,
-    ]);
-  });
-
-  it("follows an ambiguous submission on the chain before building it again", async () => {
+  it("builds an ambiguous submission the chain does not show again", async () => {
     const evidence = await canonicalEvidence();
     const chain = createFixtureChain();
     let submitCalls = 0;
@@ -641,8 +575,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       submit: async ({ preflight }) => {
         submitCalls += 1;
         if (submitCalls === 1) {
-          // The chain later says the first attempt never landed.
-          chain.status.set(preflight.txHash, "expired");
+          // The first attempt never reaches the chain.
           return { kind: "ambiguous", detail: "connection reset" };
         }
         chain.land(preflight.txHash);
@@ -652,7 +585,7 @@ describe("Q51/W-O4 resumable workflow", () => {
     const process = createTestWorkflowProcess();
     const result = await run({ evidence, adapter, process });
     expect(result.kind).toBe("completed");
-    // The expired attempt was read before the proof was built again.
+    // The next state shows no first attempt, so the proof is built again.
     expect(process.sent().map(({ actionId }) => actionId)).toEqual([
       "prove",
       "prove",
@@ -683,22 +616,23 @@ describe("Q51/W-O4 resumable workflow", () => {
     expect(adapter.submit).toHaveBeenCalledOnce();
   });
 
-  it("resumes a pending submission without submitting it twice", async () => {
+  it("resumes a submission waiting in the mempool without submitting it twice", async () => {
     const evidence = await canonicalEvidence();
     const adapter = makeAdapter({ lands: false });
     const chain = chainOf(adapter);
     const process = createTestWorkflowProcess();
+    // The proof waits in the mempool; the removal is built over it.
     const first = await run({ evidence, adapter, process });
     expect(first).toMatchObject({
       kind: "pending",
-      awaitingActionId: "prove",
+      reason: expect.stringContaining(`${REMOVAL_TX_HASH} awaits inclusion`),
     });
-    // The proof lands while the process waits; the removal lands on submit.
+    expect(adapter.submit).toHaveBeenCalledTimes(2);
+    const again = await run({ evidence, adapter, process });
+    expect(again.kind).toBe("pending");
+    expect(adapter.submit).toHaveBeenCalledTimes(2);
     chain.land(PROOF_TX_HASH);
-    vi.mocked(adapter.submit).mockImplementation(async ({ preflight }) => {
-      chain.land(preflight.txHash);
-      return { kind: "submitted", txHash: preflight.txHash };
-    });
+    chain.land(REMOVAL_TX_HASH);
     const second = await run({ evidence, adapter, process });
     expect(second.kind).toBe("completed");
     expect(adapter.submit).toHaveBeenCalledTimes(2);

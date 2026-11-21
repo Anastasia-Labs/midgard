@@ -11,10 +11,7 @@
 import type { TxSigned } from "@lucid-evolution/lucid";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import {
-  type FraudProofSignedTransactionRecovery,
-  isFraudProofL1WaitError,
-} from "../workflow/l1-source.js";
+import { isFraudProofL1WaitError } from "../workflow/l1-source.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -26,7 +23,6 @@ import {
   type FraudProofResolvedByAnotherRecord,
   isFraudProofResolvedByAnotherRecordError,
 } from "../workflow/resolved-by-another-record.js";
-import { isFinalAtReleaseDepth } from "../workflow/signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
@@ -82,20 +78,6 @@ export type OwnKeyActions = Readonly<{
     }>
   >;
 }>;
-
-/** Whether the transaction `txHash`, signed as `signed`, is final at
- * release depth. */
-export const finalAtReleaseDepth = async (
-  signedRecovery: FraudProofSignedTransactionRecovery,
-  txHash: string,
-  signed: string,
-): Promise<boolean> =>
-  isFinalAtReleaseDepth(
-    await signedRecovery.observeSignedTransaction({
-      transactionHash: txHash,
-      signedTransactionCborHex: signed,
-    }),
-  );
 
 /** `base` with the actions of `own` in front of it. */
 export const withOwnKeyActions = ({

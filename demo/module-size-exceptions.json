@@ -230,11 +230,6 @@
     "reason": "createDoubleSpendConstrainedWorkflowAdapter is the dominant indivisible declaration (957 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-fault-proofs/src/workflow/orchestrator.run-admitted-fraud-proof-workflow.ts",
-    "max": 981,
-    "reason": "runAdmittedFraudProofWorkflow remains the dominant declaration after historical-parent reobservation was extracted. Its remaining staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
     "file": "midgard-fault-proofs/tests/bin.test.ts",
     "max": 703,
     "reason": "Retained test registration “fault-proof CLI argument parsing” (625 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."

@@ -13,12 +13,7 @@ import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
 } from "./journal.fraud-proof-workflow-terminal.js";
-import {
-  type FraudProofL1Source,
-  type FraudProofSignedTransactionRecovery,
-  fraudProofSignedTransactionRecovery,
-  withFraudProofL1Recovery,
-} from "./l1-source.js";
+import type { FraudProofL1Source } from "./l1-source.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofWorkflowTerminalVerifier,
@@ -53,10 +48,6 @@ import {
 import { admitFraudProofRawL1Snapshot } from "./raw-l1-snapshot.js";
 import type { VerifiedFraudProofReleaseEconomicsPolicy } from "./release-economics-policy.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
-import type {
-  SignedTransactionRecoveryObservation,
-  SignedWorkflowTransaction,
-} from "./signed-transaction-reconciliation.js";
 
 export const FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT =
   "midgard-fraud-proof-family-l1-observation-port-v1" as const;
@@ -69,16 +60,6 @@ export interface FraudProofFamilyL1ObservationPort<
   /** Raw authenticated authority retained for live global prerequisites. */
   readonly rawL1?: FraudProofRawL1SnapshotAuthority;
   readonly publications: FraudProofAuthenticatedPublicationObserver;
-  observeSignedTransaction?(
-    input: SignedWorkflowTransaction,
-  ): Promise<SignedTransactionRecoveryObservation>;
-  rebroadcastSignedTransaction?(
-    input: SignedWorkflowTransaction & {
-      readonly authorizeResubmission: (
-        input: SignedWorkflowTransaction,
-      ) => Promise<void>;
-    },
-  ): Promise<string>;
   observeHeader(input: {
     readonly headerHash: string;
   }): Promise<AuthenticatedStateQueueHeaderObservation>;
@@ -189,20 +170,28 @@ export const createFraudProofFamilyRawL1ObservationPort = <
         `${definition.category} raw L1 observation changed the header`,
       );
     }
-    return admitFraudProofRawL1Snapshot({
-      value: await authority.capture(request),
-      request,
-      releaseFinality,
-      observationDepth: "inclusion",
-    });
+    const { snapshot, pending } = await authority.capture(request);
+    return {
+      snapshot: admitFraudProofRawL1Snapshot({
+        value: snapshot,
+        request,
+        releaseFinality,
+        observationDepth: "inclusion",
+      }),
+      pending,
+    };
   };
+  /** The ledger snapshot of one capture: evidence only. */
+  const ledger = async (headerHash: string) =>
+    (await capture(headerHash)).snapshot;
   const stageOf = async (
     headerHash: string,
-    snapshot: Awaited<ReturnType<typeof capture>>,
+    { snapshot, pending }: Awaited<ReturnType<typeof capture>>,
   ) => ({
     provenance: snapshot.provenance,
     stage: await deriveFraudProofRawL1FamilyStage({
       snapshot,
+      pending,
       definition,
       releaseEconomics,
       history: fraudProofRawL1HistoryReader({
@@ -221,7 +210,7 @@ export const createFraudProofFamilyRawL1ObservationPort = <
       releaseFinality,
     }),
     transactionConfirmed: async ({ headerHash, txHash, removal }) => {
-      const snapshot = await capture(headerHash);
+      const snapshot = await ledger(headerHash);
       const transaction = snapshot.transactions.find(
         (entry) => entry.txHash === txHash,
       );
@@ -238,29 +227,29 @@ export const createFraudProofFamilyRawL1ObservationPort = <
     },
     observeHeader: async ({ headerHash }) =>
       await deriveAuthenticatedStateQueueHeaderObservationFromRawL1({
-        snapshot: await capture(headerHash),
+        snapshot: await ledger(headerHash),
         definition,
       }),
     observeRetainedHeader: async ({ headerHash }) =>
       await deriveRetainedStateQueueHeaderObservationFromRawL1({
-        snapshot: await capture(headerHash),
+        snapshot: await ledger(headerHash),
         definition,
       }),
     observeBoundary: async ({ headerHash }) =>
-      (await capture(headerHash)).cursor.point,
+      (await ledger(headerHash)).cursor.point,
     observeOwnThreads: async ({ headerHash }) =>
       deriveFraudProofRawL1OwnThreads({
-        snapshot: await capture(headerHash),
+        ...(await capture(headerHash)),
         definition,
       }),
     observe: async ({ headerHash }) =>
       await stageOf(headerHash, await capture(headerHash)),
     observeView: async ({ headerHash }) => {
-      const snapshot = await capture(headerHash);
+      const captured = await capture(headerHash);
       return Object.freeze({
-        observe: async () => await stageOf(headerHash, snapshot),
+        observe: async () => await stageOf(headerHash, captured),
         ownThreads: () =>
-          deriveFraudProofRawL1OwnThreads({ snapshot, definition }),
+          deriveFraudProofRawL1OwnThreads({ ...captured, definition }),
       });
     },
   };
@@ -282,20 +271,16 @@ export const createFraudProofFamilyL1ObservationPort = <
   readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: Category;
   };
-}): FraudProofFamilyL1ObservationPort<Category> &
-  FraudProofSignedTransactionRecovery =>
-  withFraudProofL1Recovery(
-    createFraudProofFamilyRawL1ObservationPort({
-      authority: l1.snapshotAuthority({
-        releaseFinality,
-        observationDepth: "inclusion",
-      }),
+}): FraudProofFamilyL1ObservationPort<Category> =>
+  createFraudProofFamilyRawL1ObservationPort({
+    authority: l1.snapshotAuthority({
       releaseFinality,
-      releaseEconomics,
-      definition,
+      observationDepth: "inclusion",
     }),
-    fraudProofSignedTransactionRecovery(l1, releaseFinality),
-  );
+    releaseFinality,
+    releaseEconomics,
+    definition,
+  });
 
 const sameTerminal = (
   left: FraudProofWorkflowTerminal,
@@ -314,8 +299,7 @@ const sameTerminal = (
 export const createFraudProofFamilyAuthenticatedL1TerminalVerifier = <
   Category extends FraudProofCatalogueCategoryName,
 >(
-  l1: FraudProofFamilyL1ObservationPort<Category> &
-    Pick<FraudProofSignedTransactionRecovery, "observeSignedTransaction">,
+  l1: FraudProofFamilyL1ObservationPort<Category>,
 ): FraudProofWorkflowTerminalVerifier => {
   const verify = async (
     {
@@ -369,8 +353,6 @@ export const createFraudProofFamilyAuthenticatedL1TerminalVerifier = <
   };
   return {
     verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-    observeSignedTransaction: async (input) =>
-      await l1.observeSignedTransaction(input),
     verify: (input) => verify(input, false),
     verifyIncluded: (input) => verify(input, true),
   };

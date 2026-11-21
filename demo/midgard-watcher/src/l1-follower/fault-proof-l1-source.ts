@@ -1,4 +1,3 @@
-import type { L1NodeTransport } from "@al-ft/l1-node-transport";
 import {
   FRAUD_PROOF_L1_SOURCE,
   type FraudProofL1Source,
@@ -9,6 +8,7 @@ import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
   type FraudProofL1ObservationDepth,
+  type FraudProofRawL1Capture,
   type FraudProofRawL1Point,
   type FraudProofRawL1SnapshotAuthority,
   type FraudProofRawL1SnapshotRequest,
@@ -21,13 +21,11 @@ import { CML } from "@lucid-evolution/lucid";
 import {
   blockAtDepth,
   chainMoved,
-  currentView,
   required,
   tipPointOf,
   WatcherFaultProofL1RefusedError,
-  withCheckpointRetries,
 } from "./fault-proof-l1-source.chain.js";
-import { createSignedTransactionRecovery } from "./fault-proof-l1-source.signed.js";
+import { type WatcherPendingRead, withNodeTipRetries } from "./pending-read.js";
 import type { WatcherProofRetention } from "./proof-retention.js";
 import { isTrackedAddress } from "./raw-reads.facts.js";
 import {
@@ -41,7 +39,7 @@ export { WatcherFaultProofL1RefusedError } from "./fault-proof-l1-source.chain.j
 /**
  * The fault-proof families' L1 source over the watcher's chain follower
  * (ticket W1): raw snapshots pinned at a depth under the release policy,
- * and signed-intent recovery against the follower's canonical chain.
+ * each with the node's mempool read at the same tip (`pending-read.ts`).
  *
  * Depth is counted from the follower's cursor; a lagging cursor only
  * understates it. Every refusal of the raw reads becomes a named error,
@@ -78,6 +76,7 @@ const samePoint = (
 type SnapshotSource = Readonly<{
   store: FactStore;
   rawReads: FollowerRawReads;
+  pending: WatcherPendingRead;
   sourceId: string;
   proofRetention?: WatcherProofRetention;
 }>;
@@ -149,14 +148,24 @@ const scopeUtxos = async (
   );
 };
 
-/** One capture at one view; throws `FraudProofL1CheckpointChangedError` when the chain moved under it. */
+/**
+ * One capture at one view, the node's tip, with the mempool read at it;
+ * throws `FraudProofL1CheckpointChangedError` when the chain moved under it
+ * or the view is off the node's tip.
+ */
 const captureOnce = async (
-  { store, rawReads, sourceId, proofRetention }: SnapshotSource,
+  {
+    store,
+    rawReads,
+    pending: pendingRead,
+    sourceId,
+    proofRetention,
+  }: SnapshotSource,
   request: FraudProofRawL1SnapshotRequest,
   releaseFinality: VerifiedFraudProofReleaseFinalityPolicy,
   observationDepth: FraudProofL1ObservationDepth,
-): Promise<unknown> => {
-  const view = await currentView(store);
+): Promise<FraudProofRawL1Capture> => {
+  const { view, pending } = await pendingRead.atTip();
   const boundary = await blockAtDepth(
     store,
     view,
@@ -262,12 +271,15 @@ const captureOnce = async (
     })),
     transactions,
   };
-  return admitFraudProofRawL1Snapshot({
-    value,
-    request,
-    releaseFinality,
-    observationDepth,
-  });
+  return {
+    snapshot: admitFraudProofRawL1Snapshot({
+      value,
+      request,
+      releaseFinality,
+      observationDepth,
+    }),
+    pending,
+  };
 };
 
 const assertSourceId = (sourceId: string): void => {
@@ -288,7 +300,8 @@ export const createWatcherFaultProofL1Source = (
     store: FactStore;
     /** `createFollowerRawReads` over the same store. */
     rawReads: FollowerRawReads;
-    node: Pick<L1NodeTransport, "submit" | "hasTx">;
+    /** The node's mempool at the follower's view, over the same store. */
+    pending: WatcherPendingRead;
     /** The complete provenance sourceId, byte-identical to the earlier one. */
     sourceId: string;
     /** Holds the units a pinned objective's captures read. */
@@ -299,6 +312,7 @@ export const createWatcherFaultProofL1Source = (
   const snapshotSource: SnapshotSource = {
     store: input.store,
     rawReads: input.rawReads,
+    pending: input.pending,
     sourceId: input.sourceId,
     ...(input.proofRetention === undefined
       ? {}
@@ -313,7 +327,7 @@ export const createWatcherFaultProofL1Source = (
       Object.freeze({
         authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
         capture: (request: FraudProofRawL1SnapshotRequest) =>
-          withCheckpointRetries(() =>
+          withNodeTipRetries(() =>
             captureOnce(
               snapshotSource,
               request,
@@ -321,20 +335,6 @@ export const createWatcherFaultProofL1Source = (
               observationDepth,
             ),
           ),
-      }),
-    signedTransactions: ({ releaseFinality }) =>
-      createSignedTransactionRecovery({
-        store: input.store,
-        rawReads: input.rawReads,
-        node: input.node,
-        recoveryDepth: observationMinimumDepth(
-          releaseFinality,
-          "recovery_finality",
-        ),
-        releaseDepth: observationMinimumDepth(
-          releaseFinality,
-          "release_finality",
-        ),
       }),
   };
   return Object.freeze(source);

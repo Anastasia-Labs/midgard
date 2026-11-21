@@ -21,10 +21,7 @@ import type { WatcherFaultDecisionJournal } from "./fault-decision-journal.exact
 import { openWatcherFaultDecisionJournal } from "./fault-decision-journal.js";
 import { assertWatcherFaultProofApplication } from "./fault-proof-application.build-common-infrastructure.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application.js";
-import type {
-  WatcherFaultProofApplication,
-  WatcherWalletLeases,
-} from "./fault-proof-application.production-dependencies.js";
+import type { WatcherFaultProofApplication } from "./fault-proof-application.production-dependencies.js";
 import {
   watcherFaultProofDeadline,
   type WatcherFaultProofSupervisor,
@@ -45,8 +42,6 @@ export const createWatcherFaultDecisionBridge = async (input: {
   /** The 32-byte key the fault-proof journals' rows are authenticated with. */
   readonly authenticationKey: Uint8Array;
   readonly maximumClassificationConcurrency: number;
-  /** The prover wallet's coins the process's transactions in flight hold. */
-  readonly walletLeases: WatcherWalletLeases;
   readonly operationsSink?: WatcherOperationsSink;
   /** The per-header alerts raised outside the bridge, every one of them. */
   readonly perHeaderAlerts: NonNullable<BridgeDependencies["perHeaderAlerts"]>;
@@ -119,7 +114,6 @@ export const createWatcherFaultDecisionBridge = async (input: {
       driveProvenRemoval: async ({ headerHash, fraudProofAssetName }) =>
         await input.application.driveProvenCorrection({
           correction: { targetHeaderHash: headerHash, fraudProofAssetName },
-          walletLeases: input.walletLeases,
         }),
       requestProgress: input.supervisor.requestProgress,
       revokeAuthority: input.supervisor.revokeAuthority,

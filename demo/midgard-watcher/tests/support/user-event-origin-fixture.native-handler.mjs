@@ -10,7 +10,9 @@
 // - Once a canonical branch is selected, points off it are not found.
 // - `utxo_by_address` and `utxo_by_txin` answer from the fixture's ledger
 //   file: the outputs the initialization frames left unspent, folded
-//   through the blocks from the anchor to the acquired point.
+//   through the blocks from the anchor to the acquired point; `chain_point`
+//   and `chain_block_no` name the acquired block.
+// - The mempool listing is empty.
 import { createHash } from "node:crypto";
 import {
   appendFileSync,
@@ -120,14 +122,42 @@ export default (options) => {
       b.writeUInt16BE(Number(n), 1);
       return b;
     }
-    const b = Buffer.alloc(5);
-    b[0] = m | 26;
-    b.writeUInt32BE(Number(n), 1);
+    if (n < 0x100000000n) {
+      const b = Buffer.alloc(5);
+      b[0] = m | 26;
+      b.writeUInt32BE(Number(n), 1);
+      return b;
+    }
+    const b = Buffer.alloc(9);
+    b[0] = m | 27;
+    b.writeBigUInt64BE(n, 1);
     return b;
   };
-  const utxosAt = (acquired, keep) => {
+  // `chain_point` and `chain_block_no` at the acquired block.
+  const chainAt = (acquired, query) => {
+    const { at } = blockAt(acquired);
+    if (at === undefined) return notOnChain;
+    return Uint8Array.from(
+      query === "chain_point"
+        ? Buffer.concat([
+            head(4, 2),
+            head(0, at.point.slot),
+            head(2, 32),
+            Buffer.from(at.point.blockHash, "hex"),
+          ])
+        : Buffer.concat([head(4, 2), head(0, 1), head(0, at.point.blockNo)]),
+    );
+  };
+  const notOnChain = {
+    error: {
+      code: "acquire_point_not_on_chain",
+      message: "the point is not on the node's chain",
+    },
+  };
+  // The acquired block: the control file's tip (else the newest block) for
+  // the node's tip, else the block at the acquired point.
+  const blockAt = (acquired) => {
     const blocks = readBlocks();
-    const ledger = readLedger();
     const byHash = new Map(
       blocks.map((block) => [block.point.blockHash, block]),
     );
@@ -135,13 +165,12 @@ export default (options) => {
       acquired === "tip"
         ? (byHash.get(readControl().tip.blockHash) ?? blocks.at(-1))
         : byHash.get(acquired.hash);
-    if (at === undefined)
-      return {
-        error: {
-          code: "acquire_point_not_on_chain",
-          message: "the point is not on the node's chain",
-        },
-      };
+    return { at, byHash };
+  };
+  const utxosAt = (acquired, keep) => {
+    const ledger = readLedger();
+    const { at, byHash } = blockAt(acquired);
+    if (at === undefined) return notOnChain;
     const path = [];
     for (let cursor = at; cursor !== undefined; ) {
       path.unshift(cursor.point.blockHash);
@@ -176,28 +205,35 @@ export default (options) => {
 
   return {
     // The node's `protocol_params` answer, when the fixture configures one,
-    // and its `utxo_by_address` and `utxo_by_txin` answers at the acquired
-    // point.
+    // and its `chain_point`, `chain_block_no`, `utxo_by_address` and
+    // `utxo_by_txin` answers at the acquired point.
     ledgerQuery: (query, acquired) =>
-      query.query === "utxo_by_address"
-        ? utxosAt(acquired, (output) =>
-            query.addresses.some(
-              (address) =>
-                Buffer.from(address).toString("hex") === output.address,
-            ),
-          )
-        : query.query === "utxo_by_txin"
+      query.query === "chain_point" || query.query === "chain_block_no"
+        ? chainAt(acquired, query.query)
+        : query.query === "utxo_by_address"
           ? utxosAt(acquired, (output) =>
-              query.txIns.some(
-                ([txId, index]) =>
-                  `${Buffer.from(txId).toString("hex")}#${index.toString()}` ===
-                  output.outRef,
+              query.addresses.some(
+                (address) =>
+                  Buffer.from(address).toString("hex") === output.address,
               ),
             )
-          : query.query === "protocol_params" &&
-              options.protocolParametersHex !== undefined
-            ? Uint8Array.from(Buffer.from(options.protocolParametersHex, "hex"))
-            : undefined,
+          : query.query === "utxo_by_txin"
+            ? utxosAt(acquired, (output) =>
+                query.txIns.some(
+                  ([txId, index]) =>
+                    `${Buffer.from(txId).toString("hex")}#${index.toString()}` ===
+                    output.outRef,
+                ),
+              )
+            : query.query === "protocol_params" &&
+                options.protocolParametersHex !== undefined
+              ? Uint8Array.from(
+                  Buffer.from(options.protocolParametersHex, "hex"),
+                )
+              : undefined,
+    // The node's mempool: empty, since a submission lands in a block
+    // before it resolves.
+    txs: () => ({ acquiredSlot: 0, txs: [] }),
     openStream: async ({ points, window }, stream) => {
       const exact = window === 1;
       let closed = false;

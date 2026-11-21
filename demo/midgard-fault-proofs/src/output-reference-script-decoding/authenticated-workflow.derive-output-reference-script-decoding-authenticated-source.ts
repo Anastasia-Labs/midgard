@@ -174,6 +174,10 @@ export const outputReferenceScriptDecodingStageFromL1 = (
       throw new Error(
         "outputReferenceScriptDecoding L1 stage exceeds six-step topology",
       );
+    case "pending":
+      throw new Error(
+        `outputReferenceScriptDecoding L1 stage requires no action: ${stage.reason}`,
+      );
     case "proof_token":
       return "proven";
     case "removed":

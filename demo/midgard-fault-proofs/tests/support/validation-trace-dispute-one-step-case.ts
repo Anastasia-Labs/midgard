@@ -29,7 +29,6 @@ import {
   type ValidationTraceOneStepReferences,
 } from "../../src/validation-trace-dispute/transactions.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
-import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { enrollSuccessor } from "./rotated-successor-operator.js";
 import {
   type Defender,
@@ -227,14 +226,7 @@ export const defendTwoThreads = async ({
       capturePrepared(prepared)(
         wrap === undefined ? adapter : wrap(scene)(adapter),
       ),
-    ...(releaseDepth === undefined
-      ? {}
-      : {
-          signedRecovery: emulatorSignedTransactionRecovery(
-            scene.h.emulator,
-            releaseDepth,
-          ),
-        }),
+    ...(releaseDepth === undefined ? {} : { releaseDepth }),
     ...(removal === undefined
       ? {}
       : {

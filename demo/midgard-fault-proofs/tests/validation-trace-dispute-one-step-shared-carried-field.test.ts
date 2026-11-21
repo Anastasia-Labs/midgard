@@ -92,19 +92,23 @@ const lagging = (lag: "thread" | "publication") => {
       snapshot: async (input) => {
         const captured = await authentic.snapshot!(input);
         if (lag !== "thread") return captured;
-        const transactions = captured.transactions.filter(
+        const { snapshot } = captured;
+        const transactions = snapshot.transactions.filter(
           (transaction) => !carries(open, transaction),
         );
         const seen = new Set(transactions.map(({ txHash }) => txHash));
         return {
           ...captured,
-          transactions,
-          history: captured.history.map((entry) => ({
-            ...entry,
-            transactionHashes: entry.transactionHashes.filter((txHash) =>
-              seen.has(txHash),
-            ),
-          })),
+          snapshot: {
+            ...snapshot,
+            transactions,
+            history: snapshot.history.map((entry) => ({
+              ...entry,
+              transactionHashes: entry.transactionHashes.filter((txHash) =>
+                seen.has(txHash),
+              ),
+            })),
+          },
         };
       },
     },

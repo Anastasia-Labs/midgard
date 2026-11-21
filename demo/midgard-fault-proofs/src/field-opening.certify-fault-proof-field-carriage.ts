@@ -19,7 +19,6 @@ import type { FaultProofFieldOpeningPlan } from "./field-opening.plan-fault-proo
 import { fieldCarriagePlanTransactions } from "./field-opening.publish-fault-proof-field-carriage.js";
 import type { ResolvedProverSigner } from "./runtime.js";
 import { finishStep } from "./step-completion.js";
-import { walletOnlyValidTo } from "./wallet-only-validity.js";
 import {
   claimOwnOutputs,
   type OwnOutputJournal,
@@ -97,8 +96,7 @@ export const resolveFaultProofFieldPreimageCertificate = async ({
 /**
  * Strict tier-3 certification transaction, built and signed but not
  * submitted; its certificate output is claimed in `ownOutputs` before it is
- * returned. It spends only wallet coins and carries the wallet-only validity
- * window (`walletOnlyValidTo`). The certificate policy is carried only by its hash-checked
+ * returned. The certificate policy is carried only by its hash-checked
  * published reference script; inline attachment is unavailable on this
  * production path.
  */
@@ -149,7 +147,6 @@ export const certifyFaultProofFieldCarriage = async ({
       chunkUtxos,
       compactCbor,
       witnessSetCompactCbor,
-      validTo: walletOnlyValidTo(lucid),
     }),
   );
   const signed = await unsigned.sign.withWallet().complete();

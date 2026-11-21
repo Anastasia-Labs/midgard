@@ -48,14 +48,16 @@ import {
 /** The undecodable witness the record convicts: one staged chunk, a short walk. */
 const ITEM = plutusItem(delayChainScript(600));
 /**
- * A decodable witness beside it, wide enough that the field (both items)
- * needs publications and a field certificate.
+ * The padding of a decodable witness beside it, wide enough that the field
+ * (both items) needs publications and a field certificate.
  */
-const WIDE_ITEM = plutusItem(honestScript(15_000));
-const SCENARIO = {
+const WIDE_PAD_BYTES = 15_000;
+/** The scenario whose decodable witness pads `widePadBytes`. */
+const scenarioOf = (widePadBytes: number) => ({
   ...INSTALLED_WITNESS,
-  nativeTx: () => witnessSubject([ITEM, WIDE_ITEM]).nativeTx,
-};
+  nativeTx: () =>
+    witnessSubject([ITEM, plutusItem(honestScript(widePadBytes))]).nativeTx,
+});
 /** Each run convicts well inside these, so one that spins fails fast. */
 export const POLL_CAP = 200;
 const TURN_CAP = 20;
@@ -182,13 +184,21 @@ export const runWith = async (
       context: Omit<InstalledTurnContext, "result" | "turn">,
       place: PlaceContext,
     ) => (() => void) | void;
+    /** How wide the decodable witness beside the record's item pads; by
+     * default wide enough for publications and a field certificate. */
+    readonly widePadBytes?: number;
   } = {},
 ) => {
   let watch: LedgerWatch | undefined;
   let harness: Harness | undefined;
   let other: LucidEvolution | undefined;
-  const { decide, during, ...runOptions } = options;
-  const run = await runInstalled(SCENARIO, hooks, {
+  const {
+    decide,
+    during,
+    widePadBytes = WIDE_PAD_BYTES,
+    ...runOptions
+  } = options;
+  const run = await runInstalled(scenarioOf(widePadBytes), hooks, {
     maxPolls: POLL_CAP,
     maxTurns: TURN_CAP,
     ...runOptions,

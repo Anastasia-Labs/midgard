@@ -1,3 +1,4 @@
+import type { PendingTransaction } from "@al-ft/midgard-l1-follower/mempool";
 import { CML, type Data } from "@lucid-evolution/lucid";
 
 import {
@@ -35,14 +36,17 @@ export type FraudProofThreadPosition = Readonly<{
  * unit under a datum naming our key, stands while no transaction of the
  * history spends it. Its step is its position's place in the chain. Among
  * standing threads the newest comes first, then the furthest step, then the
- * lowest out-ref, as `ownThread` orders them.
+ * lowest out-ref, as `ownThread` orders them. A standing thread a
+ * transaction of `pending` spends is marked with it.
  */
 export const deriveFraudProofRawL1OwnThreadsAtPositions = ({
   snapshot,
+  pending,
   definition,
   positions,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
+  readonly pending: readonly PendingTransaction[];
   readonly definition: FraudProofRawL1FamilyDefinition;
   readonly positions: readonly FraudProofThreadPosition[];
 }): FraudProofOwnThreads => {
@@ -115,7 +119,9 @@ export const deriveFraudProofRawL1OwnThreadsAtPositions = ({
       })),
   );
   return {
-    ...(newest === undefined ? {} : { standing: standingThreadOf(newest) }),
+    ...(newest === undefined
+      ? {}
+      : { standing: standingThreadOf(newest, pending) }),
     spends,
   };
 };

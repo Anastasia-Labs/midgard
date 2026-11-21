@@ -11,7 +11,6 @@ import {
   PROOF_MATERIALS_SWEEP_FIRST_PASS_PENDING,
   type ProofMaterialsHolder,
   type ProofMaterialsReader,
-  type ProofMaterialsSweepState,
   proofMaterialsViewFor,
 } from "../src/workflow/proof-materials-view.js";
 
@@ -229,57 +228,6 @@ describe("proof-materials view", () => {
     });
   });
 
-  it("keeps a claimed page out of every read until its sweep lands or is gone", async () => {
-    let point = 1;
-    let state: ProofMaterialsSweepState = "pending";
-    const chain = [output("05", 0, CHUNK), output("06", 0, FIELD)];
-    const { view } = viewOver(
-      () => chain,
-      (base) => ({
-        ...base,
-        point: async () => point.toString(),
-        sweepState: async () => state,
-      }),
-    );
-    const peek = async (datums: readonly string[]) => {
-      const found = await view.find(datums, READER);
-      view.release(READER.workflowId);
-      return found.map(label);
-    };
-    view.need(holder("late"), [FIELD]);
-    const claim = view.claimForSweep(chain);
-    // FIELD became needed after the page was read: it stays out of the sweep.
-    expect(claim.page.map(label)).toEqual(["05#0"]);
-    claim.submitted("ab".repeat(32));
-    expect(await peek([CHUNK])).toEqual([undefined]);
-    expect(await view.sweepable(100)).toEqual([]);
-    // Absent at one point is not yet gone; absent at the next one is.
-    state = "absent";
-    expect(await view.sweepable(100)).toEqual([]);
-    point = 2;
-    expect((await view.sweepable(100)).map(label)).toEqual(["05#0"]);
-    expect(await peek([CHUNK])).toEqual(["05#0"]);
-
-    const landed = view.claimForSweep(chain);
-    landed.submitted("cd".repeat(32));
-    expect(await view.sweepable(100)).toEqual([]);
-    state = "landed";
-    expect((await view.sweepable(100)).map(label)).toEqual(["05#0"]);
-
-    const abandoned = view.claimForSweep(chain);
-    expect(await peek([CHUNK])).toEqual([undefined]);
-    abandoned.abandoned();
-    expect(await peek([CHUNK])).toEqual(["05#0"]);
-  });
-
-  it("without a sweep state keeps a submitted sweep's page excluded", async () => {
-    const chain = [output("05", 0, CHUNK)];
-    const { view } = viewOver(() => chain);
-    view.claimForSweep(chain).submitted("ab".repeat(32));
-    expect(await view.sweepable(100)).toEqual([]);
-    expect((await view.find([CHUNK], READER)).map(label)).toEqual([undefined]);
-  });
-
   it("reads once per follower point and request", async () => {
     let point = 1;
     const chain = [output("05", 0, CHUNK)];
@@ -288,8 +236,8 @@ describe("proof-materials view", () => {
       (base) => ({
         ...base,
         point: async () => point.toString(),
-        byDatum: async (requests, excluded) => ({
-          ...(await base.byDatum(requests, excluded)),
+        byDatum: async (requests) => ({
+          ...(await base.byDatum(requests)),
           point: point.toString(),
         }),
       }),

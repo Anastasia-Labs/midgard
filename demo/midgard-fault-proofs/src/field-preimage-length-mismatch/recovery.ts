@@ -178,6 +178,7 @@ export const createFieldPreimageLengthRecoveryPorts = (
           ).stage;
           if (
             observed.kind === "removed" ||
+            observed.kind === "pending" ||
             observed.kind === "proof_token" ||
             (selected === "init"
               ? observed.kind !== "not_started"

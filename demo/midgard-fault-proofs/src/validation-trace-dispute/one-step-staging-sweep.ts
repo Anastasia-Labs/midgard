@@ -18,14 +18,10 @@
  *   settle needs them until it moves on.
  *
  * A staging output two threads read is held while either needs it. Where
- * each thread stands is read from the chain every time, save while a move
- * of ours in flight spends the output it was last seen at: it stands where
- * that move takes it, as the chain may show neither output meanwhile; and a
- * move of ours in flight that takes any thread on short of the award holds
- * the staging outputs it reads until it lands.
- * Whether an output is live is read from the chain; a spend back of ours
- * that is in flight is not sent again while it is unseen. A thread move of
- * ours goes first, save once the header has rolled back: the workflow, then
+ * each thread stands, and whether an output is live, is read every time from
+ * the ledger with our node's mempool applied: a move of ours in the mempool
+ * has taken its thread on, and a spend back of ours in the mempool has spent
+ * its output. A thread move of ours goes first, save once the header has rolled back: the workflow, then
  * reconciliation-only, takes no move, and its spend backs go on, save for
  * the outputs a thread of ours at the PrepareSelected move's holder or past
  * it holds, as above. That hold lasts until the dispute ends for the
@@ -41,7 +37,6 @@ import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { MidgardCekStagingPins } from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { FraudProofWorkflowObservation } from "../workflow/orchestrator.js";
 import {
@@ -51,13 +46,12 @@ import {
 } from "./one-step-holders.js";
 import type { ValidationTraceStagingPlan } from "./one-step-staging-holds.js";
 import {
+  finalAtReleaseDepth,
   VALIDATION_TRACE_STAGING_RECLAIM,
   type ValidationTraceResolveReader,
   type ValidationTraceStagingJournal,
   type ValidationTraceStagingOutput,
 } from "./one-step-staging-journal.js";
-import { finalAtReleaseDepth } from "./own-key-actions.js";
-import type { ValidationTraceInFlight } from "./own-view.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
 /** Why our workflow's ending waits on its staging outputs. */
@@ -114,18 +108,18 @@ const unitOf = (assets: Readonly<Record<string, bigint>>) =>
 export const validationTraceStagingSweep = ({
   lucid,
   deployment,
-  signedRecovery,
+  releaseDepth,
   live,
   usable,
   stagings,
   plans,
   traced,
-  inFlight,
   select,
 }: {
   readonly lucid: LucidEvolution;
   readonly deployment: ValidationTraceDisputeDeployment;
-  readonly signedRecovery: FraudProofSignedTransactionRecovery;
+  /** How deep the ledger holds a transaction of ours once it is final. */
+  readonly releaseDepth: number;
   /** The output `staging` left, while it is live as staged. */
   readonly live: (
     staging: ValidationTraceStagingOutput,
@@ -148,10 +142,6 @@ export const validationTraceStagingSweep = ({
   /** Whether our trace of the workflow `context`'s claim is rebuilt, so
    * the plans of our threads can be recomputed. */
   readonly traced: (context: FraudProofWorkflowAdapterContext) => boolean;
-  /** Our transactions the chain does not show applied yet. */
-  readonly inFlight: (
-    context: FraudProofWorkflowAdapterContext,
-  ) => Promise<readonly ValidationTraceInFlight[]>;
   /** Keeps the output the spend back `actionId` spends, for its build. */
   readonly select: (
     actionId: string,
@@ -198,20 +188,12 @@ export const validationTraceStagingSweep = ({
     return threads;
   };
 
-  /** Where the thread `unit` stands: the holder a move of ours in
-   * `moving` takes it to from where it was last seen, with that move, else
-   * its holder; none once it has left every holder. */
+  /** Where the thread `unit` stands: its holder; none once it has left
+   * every holder. */
   const placeOf = async (
     unit: string,
     thread: Thread,
-    moving: readonly ValidationTraceInFlight[],
-  ): Promise<
-    | Readonly<{
-        holder: ValidationTraceOneStepHolder | undefined;
-        move?: ValidationTraceInFlight;
-      }>
-    | undefined
-  > => {
+  ): Promise<ValidationTraceOneStepHolder | undefined> => {
     const known =
       thread.latest === undefined
         ? [
@@ -222,23 +204,16 @@ export const validationTraceStagingSweep = ({
             ),
           ]
         : [thread.latest.outRef];
-    for (const move of moving)
-      if (known.some((outRef) => move.spends.includes(outRef))) {
-        const to = move.creates.find(
-          ({ address }) => holderAt(address) !== undefined,
-        );
-        if (to !== undefined) return { holder: holderAt(to.address), move };
-      }
     for (const outRef of known) {
       const [utxo] = await lucid.utxosByOutRef([parseOutRefLabel(outRef)]);
-      if (utxo?.assets[unit] === 1n) return { holder: holderAt(utxo.address) };
+      if (utxo?.assets[unit] === 1n) return holderAt(utxo.address);
     }
     for (const { holder, address } of validationTraceOneStepContracts(
       deployment,
     )) {
       if (holder === "boundary") continue;
       const utxos = await lucid.utxosAtWithUnit(address, unit);
-      if (utxos.some(({ assets }) => assets[unit] === 1n)) return { holder };
+      if (utxos.some(({ assets }) => assets[unit] === 1n)) return holder;
     }
     return undefined;
   };
@@ -272,7 +247,6 @@ export const validationTraceStagingSweep = ({
   const heldBy = async (
     known: ValidationTraceStagingJournal,
     planned: readonly ValidationTraceStagingPlan[],
-    moving: readonly ValidationTraceInFlight[],
   ) => {
     const held = new Set<string>();
     const pins = new MidgardCekStagingPins();
@@ -289,24 +263,18 @@ export const validationTraceStagingSweep = ({
         const found = await usable(known, datumCbor);
         if (found !== undefined) hold(unit, [found.staging.outRef]);
       }
-    const staged = new Set(known.stagings.map(({ outRef }) => outRef));
-    /** The thread each move of ours in flight takes on, where known. */
-    const movedBy = new Map<string, string>();
     for (const [unit, thread] of threadsOf(known)) {
       if (thread.reads.size === 0 && thread.stagedFor.length === 0) continue;
       if (thread.settles.length > 0) {
-        let final = false;
-        for (const { txHash, signed } of thread.settles)
-          if (await finalAtReleaseDepth(signedRecovery, txHash, signed)) {
-            final = true;
-            break;
-          }
-        if (!final) hold(unit, thread.reads);
+        if (
+          !thread.settles.some((reader) =>
+            finalAtReleaseDepth(reader, releaseDepth),
+          )
+        )
+          hold(unit, thread.reads);
         continue;
       }
-      const place = await placeOf(unit, thread, moving);
-      if (place?.move !== undefined) movedBy.set(place.move.txHash, unit);
-      const at = place?.holder;
+      const at = await placeOf(unit, thread);
       if (at === undefined || at === "award") continue;
       const { reads } = thread;
       if (at === "prepare") {
@@ -321,22 +289,6 @@ export const validationTraceStagingSweep = ({
         hold(
           unit,
           reads.size > 0 ? reads : thread.stagedFor.map(({ outRef }) => outRef),
-        );
-    }
-    // A move of ours in flight that takes a thread on to a holder short of
-    // the award holds the staging outputs it reads until it lands, whichever
-    // thread it moves: our own view shows no move of that thread yet when it
-    // is the thread's first to read them, and the chain may show the thread
-    // neither where it was nor where the move takes it.
-    for (const move of moving) {
-      const to = move.creates.find(({ address }) => {
-        const holder = holderAt(address);
-        return holder !== undefined && holder !== "award";
-      });
-      if (to !== undefined)
-        hold(
-          movedBy.get(move.txHash) ?? to.outRef,
-          move.reads.filter((outRef) => staged.has(outRef)),
         );
     }
     return { held, pins };
@@ -377,15 +329,12 @@ export const validationTraceStagingSweep = ({
     // go on without a fresh staging. The hold ends once the thread leaves its
     // holders (a cancel, a timeout or an award) or the case closes, whoever
     // sends it, and the spend back follows.
-    const ours = await inFlight(context);
     const { held, pins } = done
       ? { held: new Set<string>(), pins: new MidgardCekStagingPins() }
-      : await heldBy(known, planned, ours);
-    // A spend back of ours the chain does not show yet is not sent again.
-    const spending = new Set(ours.flatMap(({ spends }) => spends));
+      : await heldBy(known, planned);
     const outstanding: string[] = [];
     for (const staging of known.stagings) {
-      if (spending.has(staging.outRef) || held.has(staging.outRef)) continue;
+      if (held.has(staging.outRef)) continue;
       const utxo = await live(staging);
       if (utxo === undefined) continue;
       const action = validationTraceReclaimAction(staging.outRef);

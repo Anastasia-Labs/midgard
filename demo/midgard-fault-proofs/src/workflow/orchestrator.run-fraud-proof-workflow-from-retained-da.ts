@@ -29,7 +29,6 @@ import {
   type FraudProofReleaseFinalityAuthority,
   validateVerifiedFraudProofReleaseFinalityPolicy,
 } from "./release-finality-policy.js";
-import type { WalletOnlySend } from "./wallet-only-send-gate.js";
 import type { WorkflowRun } from "./workflow-run.js";
 
 /**
@@ -51,8 +50,6 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
   releaseFinalityAuthority,
   retries,
   maxActions,
-  nowMs,
-  walletOnlySend,
 }: {
   readonly deploymentFingerprint: string;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
@@ -70,8 +67,6 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly retries?: number;
   readonly maxActions?: number;
-  readonly nowMs?: () => number;
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const registryScope = [...registry.keys()];
   if (
@@ -140,8 +135,6 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
       terminalVerifier,
       releaseFinality,
       ...(maxActions === undefined ? {} : { maxActions }),
-      ...(nowMs === undefined ? {} : { nowMs }),
-      walletOnlySend,
     });
   }
   if (routed.kind === "da_hash_preimage") {
@@ -185,8 +178,6 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
       terminalVerifier,
       releaseFinality,
       ...(maxActions === undefined ? {} : { maxActions }),
-      ...(nowMs === undefined ? {} : { nowMs }),
-      walletOnlySend,
     });
   }
   const evidence = routed.evidence;
@@ -222,7 +213,5 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
       verifyForWorkflow: async () => releaseFinality,
     },
     ...(maxActions === undefined ? {} : { maxActions }),
-    ...(nowMs === undefined ? {} : { nowMs }),
-    walletOnlySend,
   });
 };

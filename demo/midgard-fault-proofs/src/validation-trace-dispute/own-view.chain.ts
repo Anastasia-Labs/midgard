@@ -5,8 +5,8 @@
  * names our key is ours; the case an Open of ours started is ours whoever
  * verified it. Our resolve moves are the moves of our cases' threads out of
  * a one-step holder that our key signed, and what they read at our staging
- * address is our staging. What this process has in flight comes from the
- * process's in-flight set (own-view.in-flight.ts). */
+ * address is our staging. Every answer is of the next view: the ledger
+ * with our node's mempool applied (own-view.chain-capture.ts). */
 import { createHash } from "node:crypto";
 
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
@@ -15,14 +15,11 @@ import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { selectOwnFraudProofRecord } from "../fraud-proof-record-selection.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import type { FraudProofNextView } from "../workflow/next-state.js";
 import { workflowProofMaterialsHolder } from "../workflow/proof-materials-view.holder.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { rawToUtxo } from "../workflow/raw-l1-family-derivation.state-queue-topology.js";
-import type {
-  FraudProofRawL1Snapshot,
-  FraudProofRawL1Transaction,
-  FraudProofRawL1Utxo,
-} from "../workflow/raw-l1-snapshot.js";
+import type { FraudProofRawL1Utxo } from "../workflow/raw-l1-snapshot.js";
 import {
   validationTraceDatumDigest,
   type ValidationTraceOutputClaim,
@@ -41,9 +38,9 @@ import type {
 } from "./one-step-staging-journal.js";
 import {
   ownStepOutputs,
-  unitTransactions,
   type ValidationTraceDisputeCapture,
   validationTraceDisputeCapture,
+  type ValidationTraceHistoryTransaction,
 } from "./own-view.chain-capture.js";
 import {
   sameDatum,
@@ -51,7 +48,6 @@ import {
   type ValidationTraceReferenced,
   validationTraceReferenced,
 } from "./own-view.chain-reads.js";
-import { validationTraceInFlight } from "./own-view.in-flight.js";
 import type {
   ValidationTraceOwnReceipt,
   ValidationTraceOwnView,
@@ -147,6 +143,7 @@ export const validationTraceChainOwnView = ({
   /** Our resolve moves in `capture`, oldest first. */
   const readersOf = ({
     snapshot,
+    history,
     threads,
     outputsOf,
   }: ValidationTraceDisputeCapture): readonly Reader[] => {
@@ -164,13 +161,27 @@ export const validationTraceChainOwnView = ({
       return found;
     };
     const readers: Reader[] = [];
+    const seen = new Set<string>();
     for (const { unit } of threads)
-      for (const transaction of unitTransactions(snapshot, unit)) {
-        if (current.has(transaction.txHash)) continue;
-        const reader = known.has(transaction.txHash)
-          ? known.get(transaction.txHash)!
-          : readerOf(transaction, unit, outputsOf, referenced);
-        current.set(transaction.txHash, reader);
+      for (const transaction of history(unit)) {
+        if (seen.has(transaction.txHash)) continue;
+        seen.add(transaction.txHash);
+        // A pending transaction is read again each capture and kept for
+        // none: what it spends and reads resolves fully only once the
+        // ledger holds it. A kept one stands deeper at each capture.
+        const kept = transaction.pending
+          ? undefined
+          : known.get(transaction.txHash);
+        const reader =
+          kept === undefined
+            ? readerOf(transaction, unit, outputsOf, referenced)
+            : kept === null
+              ? null
+              : Object.freeze({
+                  ...kept,
+                  confirmationDepth: transaction.confirmationDepth,
+                });
+        if (!transaction.pending) current.set(transaction.txHash, reader);
         if (reader === null) continue;
         readers.push(reader);
         for (const entry of reader.referenced)
@@ -184,7 +195,7 @@ export const validationTraceChainOwnView = ({
   /** `transaction` as a resolve move of ours of the thread `unit`, or null
    * for any other move. */
   const readerOf = (
-    transaction: FraudProofRawL1Transaction,
+    transaction: ValidationTraceHistoryTransaction,
     unit: string,
     outputsOf: ValidationTraceDisputeCapture["outputsOf"],
     referenced: (raw: FraudProofRawL1Utxo) => ValidationTraceReferenced,
@@ -218,12 +229,8 @@ export const validationTraceChainOwnView = ({
       return null;
     return Object.freeze({
       txHash: transaction.txHash,
-      // The body and witnesses as the chain holds them: the bytes the
-      // transaction's hash and its observation are checked against.
-      signed: `84${transaction.bodyCbor}${transaction.witnessSetCbor}f5f6`,
-      reads: new Set(
-        transaction.resolvedReferenceInputs.map(({ outRef }) => outRef),
-      ),
+      confirmationDepth: transaction.confirmationDepth,
+      reads: new Set(transaction.referenceInputs),
       outputs,
       referenced: transaction.resolvedReferenceInputs.map(referenced),
       spent: spent.outRef,
@@ -237,16 +244,16 @@ export const validationTraceChainOwnView = ({
     const artifact = () => validationTraceArtifactOf(context);
     let captured: Promise<ValidationTraceDisputeCapture> | undefined;
     const capture = () => (captured ??= captureOf(artifact(), prover));
-    const scope = (snapshot: FraudProofRawL1Snapshot, address: string) =>
-      snapshot.scopes.find((candidate) => candidate.address === address)
-        ?.utxos ?? [];
+    const scope = (view: FraudProofNextView, address: string) =>
+      view.scopes.find((candidate) => candidate.address === address)?.utxos ??
+      [];
     /** The newest of `outputs` still live at `address`. */
     const newestLive = async (
       outputs: readonly { readonly outRef: string }[],
       address: string,
     ) => {
       const found = await capture();
-      const live = scope(found.snapshot, address);
+      const live = scope(found.view, address);
       for (const { outRef } of [...outputs].reverse()) {
         const raw = live.find((candidate) => candidate.outRef === outRef);
         if (raw !== undefined) return { raw, threadUnit: found.threadUnit };
@@ -255,9 +262,9 @@ export const validationTraceChainOwnView = ({
     };
     let stepsRead: ReturnType<typeof ownStepOutputs> | undefined;
     const own = async () => {
-      const { snapshot, outputsOf, threadUnit } = await capture();
+      const { history, outputsOf, threadUnit } = await capture();
       return (stepsRead ??= ownStepOutputs({
-        snapshot,
+        history,
         outputsOf,
         deployment,
         threadUnit,
@@ -315,9 +322,9 @@ export const validationTraceChainOwnView = ({
       cases: async () =>
         [...(await own()).source].reverse().map(({ outRef }) => outRef),
       caseAt: async (caseUnit) => {
-        const { snapshot } = await capture();
+        const { view } = await capture();
         const raw = scope(
-          snapshot,
+          view,
           deployment.chain.case.spendingScriptAddress,
         ).find(
           (candidate) => (rawToUtxo(candidate).assets[caseUnit] ?? 0n) === 1n,
@@ -329,14 +336,14 @@ export const validationTraceChainOwnView = ({
         return utxo;
       },
       record: async () => {
-        const { snapshot } = await capture();
+        const { view } = await capture();
         const unit = validationTraceFraudProofUnit(
           deployment,
           artifact().headerHash,
         );
         const found = selectOwnFraudProofRecord({
           records: scope(
-            snapshot,
+            view,
             deployment.fraudProof.spendingScriptAddress,
           ).filter((raw) => (rawToUtxo(raw).assets[unit] ?? 0n) === 1n),
           outRefOf: ({ outRef }) => outRef,
@@ -345,14 +352,15 @@ export const validationTraceChainOwnView = ({
         });
         return found === undefined ? undefined : claimOf("proof", found, unit);
       },
-      // Every read is of the capture that shows what the follower applied,
-      // so no transaction of ours is waited on past it.
+      // Every read is of the capture that shows what the follower applied
+      // and our node's mempool holds, so no transaction of ours is waited on
+      // past it.
       unseen: async () => undefined,
       receipts: async () => {
-        const { snapshot, threads, outputsOf } = await capture();
-        const receipts: (ValidationTraceOwnReceipt & { slot: bigint })[] = [];
+        const { history, threads, outputsOf } = await capture();
+        const receipts: (ValidationTraceOwnReceipt & { rank: bigint })[] = [];
         for (const { receiptUnit } of threads) {
-          const transactions = unitTransactions(snapshot, receiptUnit);
+          const transactions = history(receiptUnit);
           const consumed = new Set(
             transactions.flatMap(({ resolvedInputs }) =>
               resolvedInputs.map(({ outRef }) => outRef),
@@ -365,11 +373,11 @@ export const validationTraceChainOwnView = ({
               receipts.push({
                 outRef,
                 utxo: { ...parseOutRefLabel(outRef), ...output },
-                slot: BigInt(transaction.inclusionPoint.slot),
+                rank: transaction.rank,
               });
         }
         return receipts
-          .sort((a, b) => (a.slot < b.slot ? -1 : a.slot > b.slot ? 1 : 0))
+          .sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0))
           .map(({ outRef, utxo }) => ({ outRef, utxo }));
       },
       caseThreads: async () =>
@@ -437,7 +445,6 @@ export const validationTraceChainOwnView = ({
         }
         return live;
       },
-      inFlight: async () => validationTraceInFlight(context.inFlight?.() ?? []),
     };
   };
   // One view per context: every read of one observation or one build

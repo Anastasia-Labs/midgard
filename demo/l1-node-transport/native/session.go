@@ -269,6 +269,13 @@ func (s *session) dispatch(f frame) error {
 		}
 		s.enqueue(queueMonitor, h.ID, func() { s.runSizes(h) })
 		return nil
+	case "monitor_txs":
+		var h monitorTxsHeader
+		if err := decodeHeader(f.header, &h); err != nil {
+			return err
+		}
+		s.enqueue(queueMonitor, h.ID, func() { s.runTxs(h) })
+		return nil
 	case "hello":
 		return errors.New("hello was already answered")
 	default:
@@ -348,12 +355,14 @@ func (s *session) runSubmit(h submitHeader, tx []byte, deadline time.Time) {
 }
 
 // monitorCall runs one LocalTxMonitor exchange on a fresh mempool snapshot
-// (HasTx and GetSizes acquire one) and releases the snapshot afterwards, so
-// each answer reflects the mempool at the time of the request.
-func (s *session) monitorCall(id uint64, call func() error) {
+// (HasTx, GetSizes and the NextTx listing acquire one) and releases the
+// snapshot afterwards, so each answer reflects the mempool at the time of the
+// request. It reports whether the exchange completed; otherwise the request
+// is already answered or the session ended.
+func (s *session) monitorCall(id uint64, call func() error) bool {
 	if s.monitor == nil {
 		s.answerError(id, refuse("monitor_unavailable", "the node did not negotiate LocalTxMonitor"))
-		return
+		return false
 	}
 	result := make(chan error, 1)
 	go func() {
@@ -363,12 +372,15 @@ func (s *session) monitorCall(id uint64, call func() error) {
 	case err := <-result:
 		if err != nil {
 			s.fatal("node_connection_lost", err)
+			return false
 		}
+		return true
 	case <-s.primary.dead:
 		s.fatal("node_connection_lost", s.primary.deathCause())
 	case <-time.After(monitorBound):
 		s.fatal("node_unresponsive", errors.New("LocalTxMonitor did not answer within its bound"))
 	}
+	return false
 }
 
 func (s *session) runHasTx(h monitorHasTxHeader) {
@@ -377,32 +389,49 @@ func (s *session) runHasTx(h monitorHasTxHeader) {
 		return
 	}
 	var has bool
-	s.monitorCall(h.ID, func() error {
+	if !s.monitorCall(h.ID, func() error {
 		var err error
 		has, err = s.monitor.hasTx(h.TxID)
 		return err
-	})
-	select {
-	case <-s.done:
-	default:
-		_ = s.out.write(monitorHasTxResultHeader{Type: "monitor_has_tx_result", ID: h.ID, Has: has}, nil)
+	}) {
+		return
 	}
+	_ = s.out.write(monitorHasTxResultHeader{Type: "monitor_has_tx_result", ID: h.ID, Has: has}, nil)
 }
 
 func (s *session) runSizes(h monitorSizesHeader) {
 	var capacity, size, count uint32
-	s.monitorCall(h.ID, func() error {
+	if !s.monitorCall(h.ID, func() error {
 		var err error
 		capacity, size, count, err = s.monitor.sizes()
 		return err
-	})
-	select {
-	case <-s.done:
-	default:
-		_ = s.out.write(monitorSizesResultHeader{
-			Type: "monitor_sizes_result", ID: h.ID,
-			Capacity: uint64(capacity), Size: uint64(size), TxCount: uint64(count),
-		}, nil)
+	}) {
+		return
+	}
+	_ = s.out.write(monitorSizesResultHeader{
+		Type: "monitor_sizes_result", ID: h.ID,
+		Capacity: uint64(capacity), Size: uint64(size), TxCount: uint64(count),
+	}, nil)
+}
+
+// runTxs lists the mempool. The transactions travel in the payload, a CBOR
+// array of their bytes, since the header is bounded far below a mempool.
+func (s *session) runTxs(h monitorTxsHeader) {
+	var slot uint64
+	var txs [][]byte
+	if !s.monitorCall(h.ID, func() error {
+		var err error
+		slot, txs, err = s.monitor.txs()
+		return err
+	}) {
+		return
+	}
+	payload, err := headerEncMode.Marshal(txs)
+	if err == nil {
+		err = s.out.write(monitorTxsResultHeader{Type: "monitor_txs_result", ID: h.ID, Slot: slot}, payload)
+	}
+	if errors.Is(err, errFrameBounds) {
+		s.answerError(h.ID, refuse("result_too_large", "the mempool listing exceeds the frame bound"))
 	}
 }
 

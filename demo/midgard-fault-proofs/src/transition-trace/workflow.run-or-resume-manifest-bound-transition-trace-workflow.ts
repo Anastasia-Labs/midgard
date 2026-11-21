@@ -18,7 +18,6 @@ import {
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import { createFraudProofWorkflowRegistry } from "../workflow/orchestrator.js";
 import { runFraudProofWorkflow } from "../workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
-import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import type { WorkflowRun } from "../workflow/workflow-run.js";
 import type { RetainedDaPayloadSource } from "./fetch.js";
 import {
@@ -151,12 +150,10 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
   workflow,
   sources,
   run,
-  walletOnlySend,
 }: {
   workflow: ManifestBoundTransitionTraceWorkflow;
   sources: readonly RetainedDaPayloadSource[];
   run: WorkflowRun;
-  readonly walletOnlySend: WalletOnlySend;
 }) => {
   const cell = cells.get(workflow);
   if (cell === undefined)
@@ -256,6 +253,5 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
     run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-    walletOnlySend,
   });
 };

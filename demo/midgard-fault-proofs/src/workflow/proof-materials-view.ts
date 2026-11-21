@@ -14,8 +14,8 @@
  *
  * The view also keeps, in memory only, what each live workflow needs (its
  * datums and the out-refs it has pinned), rebuilt by each workflow's
- * observation, and the out-refs this process has put in a submitted sweep.
- * A sweep takes only plain outputs no live workflow needs, and only once
+ * observation. A sweep takes only plain outputs no live workflow needs, and
+ * only once
  * every live objective of the process has completed an observation since
  * start; before that the needs are not all known. Nothing here is persisted:
  * after a restart the needs come back from each workflow's next observation.
@@ -25,13 +25,13 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 /** Plain outputs read in one snapshot, with that snapshot's point if any. */
 export type ProofMaterialsRead = Readonly<{
-  /** The follower point of the snapshot; none for a read without one. */
+  /**
+   * The point of the snapshot: the ledger point and the mempool
+   * transactions applied over it; none for a read without one.
+   */
   point?: string;
   utxos: readonly UTxO[];
 }>;
-
-/** Where a submitted sweep stands on the chain the reader follows. */
-export type ProofMaterialsSweepState = "landed" | "pending" | "absent";
 
 /**
  * How the view reads the address. Out-refs are `txHash#index` labels and
@@ -40,11 +40,10 @@ export type ProofMaterialsSweepState = "landed" | "pending" | "absent";
 export type ProofMaterialsReader = Readonly<{
   /**
    * For each request, the first `limit` plain outputs whose inline datum is
-   * exactly `datum`, in out-ref order, skipping `excluded`.
+   * exactly `datum`, in out-ref order.
    */
   byDatum: (
     requests: readonly Readonly<{ datum: string; limit: number }>[],
-    excluded: readonly string[],
   ) => Promise<ProofMaterialsRead>;
   /**
    * The first `limit` plain outputs in out-ref order whose inline datum, if
@@ -57,8 +56,6 @@ export type ProofMaterialsReader = Readonly<{
   ) => Promise<ProofMaterialsRead>;
   /** The point a read now would be at; without one nothing is memoised. */
   point?: () => Promise<string>;
-  /** Where a sweep stands; without one a sweep's out-refs stay excluded. */
-  sweepState?: (txHash: string) => Promise<ProofMaterialsSweepState>;
 }>;
 
 /** An objective of the process: one category on one header. */
@@ -94,9 +91,9 @@ export type ProofMaterialsView = Readonly<{
   /**
    * For each requested datum, in request order, a live plain output with
    * exactly those bytes, or undefined: the first copy for its first
-   * occurrence in `datums`, the second for its second, and so on. Out-refs
-   * in a submitted sweep are skipped. The datums are registered as needs of
-   * `holder` before the read, so no sweep takes what a step found.
+   * occurrence in `datums`, the second for its second, and so on. The
+   * datums are registered as needs of `holder` before the read, so no sweep
+   * takes what a step found.
    */
   find: (
     datums: readonly string[],
@@ -121,19 +118,8 @@ export type ProofMaterialsView = Readonly<{
    * out-ref order; none while `readiness` is closed.
    */
   sweepable: (limit: number) => Promise<readonly UTxO[]>;
-  /**
-   * The outputs of `page` no need or pin names now, excluded from every
-   * read from here on: `submitted` names the sweep that spends them, which
-   * keeps them excluded until it lands or is gone; `abandoned` returns
-   * them at once.
-   */
-  claimForSweep: (page: readonly UTxO[]) => ProofMaterialsSweepClaim;
-}>;
-
-export type ProofMaterialsSweepClaim = Readonly<{
-  page: readonly UTxO[];
-  submitted: (txHash: string) => void;
-  abandoned: () => void;
+  /** The outputs of `page` no need or pin names now. */
+  unneeded: (page: readonly UTxO[]) => readonly UTxO[];
 }>;
 
 const OBJECTIVE_SEPARATOR = "\u0000";
@@ -167,8 +153,7 @@ const datumKey = (datum: string): string => {
 /**
  * The reader over `lucid.utxosAt(address)` (a Lucid, or anything that reads
  * an address the same way) with the strict shape checked in memory, for a
- * caller without a follower. It has no point and no sweep state: nothing is
- * memoised and a sweep's out-refs stay excluded.
+ * caller without a follower. It has no point: nothing is memoised.
  */
 export const lucidProofMaterialsReader = (
   lucid: Pick<LucidEvolution, "utxosAt">,
@@ -186,12 +171,12 @@ export const lucidProofMaterialsReader = (
       .sort(byOutRef);
   };
   return Object.freeze({
-    byDatum: async (requests, excluded) => {
+    byDatum: async (requests) => {
       const limits = new Map<string, number>();
       for (const { datum, limit } of requests)
         limits.set(datum, Math.max(limits.get(datum) ?? 0, limit));
       const taken = new Map<string, number>();
-      const utxos = (await plain(excluded)).filter((utxo) => {
+      const utxos = (await plain([])).filter((utxo) => {
         if (typeof utxo.datum !== "string") return false;
         const datum = utxo.datum.toLowerCase();
         const count = taken.get(datum) ?? 0;
@@ -217,11 +202,6 @@ export const lucidProofMaterialsReader = (
 };
 
 type Need = { objective: string; datums: Set<string>; pins: Set<string> };
-type SweepClaim = {
-  outRefs: readonly string[];
-  txHash?: string;
-  absentAt?: string;
-};
 
 /**
  * The view of `address` over `reader`. `liveObjectives` lists the live
@@ -244,15 +224,12 @@ export const createProofMaterialsView = ({
 }): ProofMaterialsView => {
   const needs = new Map<string, Need>();
   const observedObjectives = new Set<string>();
-  const sweeps = new Set<SweepClaim>();
-  // Reads at one follower point: dropped as soon as the point moves.
+  // Reads at one point: dropped as soon as the ledger or the mempool moves.
   let memo: { point: string; reads: Map<string, ProofMaterialsRead> } = {
     point: "",
     reads: new Map(),
   };
 
-  const excluded = (): string[] =>
-    [...new Set([...sweeps].flatMap(({ outRefs }) => outRefs))].sort();
   const neededDatums = (): string[] =>
     [
       ...new Set([...needs.values()].flatMap(({ datums }) => [...datums])),
@@ -312,24 +289,6 @@ export const createProofMaterialsView = ({
     needs.set(workflowId, entry);
   };
 
-  // A sweep's out-refs come back once it has landed (spent, so no read
-  // shows them, and a rewind returns them live) or once it is absent from
-  // both the chain and the mempool at two follower points in a row.
-  const refreshSweeps = async (): Promise<void> => {
-    const sweepState = reader.sweepState;
-    if (sweepState === undefined) return;
-    const point = await reader.point?.();
-    for (const claim of [...sweeps]) {
-      if (claim.txHash === undefined) continue;
-      const state = await sweepState(claim.txHash);
-      if (state === "landed") sweeps.delete(claim);
-      else if (state === "pending") delete claim.absentAt;
-      else if (claim.absentAt === undefined) claim.absentAt = point ?? "";
-      else if (point !== undefined && claim.absentAt !== point)
-        sweeps.delete(claim);
-    }
-  };
-
   return Object.freeze({
     address,
     find: async (datums, holder) => {
@@ -341,10 +300,9 @@ export const createProofMaterialsView = ({
       const requests = [...counts]
         .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
         .map(([datum, limit]) => ({ datum, limit }));
-      const skip = excluded();
       const read = await memoised(
-        JSON.stringify(["find", requests, skip]),
-        async () => await reader.byDatum(requests, skip),
+        JSON.stringify(["find", requests]),
+        async () => await reader.byDatum(requests),
       );
       const copies = new Map<string, UTxO[]>();
       for (const utxo of [...read.utxos].sort(byOutRef)) {
@@ -378,10 +336,9 @@ export const createProofMaterialsView = ({
       if (!Number.isSafeInteger(limit) || limit < 1)
         throw new RangeError("a sweep page limit must be a positive integer");
       if (!readiness().open) return [];
-      await refreshSweeps();
       const datums = neededDatums();
       const pins = pinned();
-      const skip = [...new Set([...excluded(), ...pins])].sort();
+      const skip = [...pins].sort();
       const read = await memoised(
         JSON.stringify(["sweepable", datums, skip, limit]),
         async () => await reader.exceptDatums(datums, skip, limit),
@@ -401,32 +358,19 @@ export const createProofMaterialsView = ({
           .slice(0, limit),
       );
     },
-    claimForSweep: (page) => {
+    unneeded: (page) => {
       const needed = new Set(neededDatums());
       const pins = pinned();
-      const skip = new Set(excluded());
-      const claimed = Object.freeze(
+      return Object.freeze(
         page.filter(
           (utxo) =>
             utxo.address === address &&
             isPlainProofMaterialsOutput(utxo) &&
             !pins.has(utxoLabel(utxo)) &&
-            !skip.has(utxoLabel(utxo)) &&
             (typeof utxo.datum !== "string" ||
               !needed.has(utxo.datum.toLowerCase())),
         ),
       );
-      const claim: SweepClaim = { outRefs: claimed.map(utxoLabel) };
-      if (claimed.length > 0) sweeps.add(claim);
-      return Object.freeze({
-        page: claimed,
-        submitted: (txHash: string) => {
-          claim.txHash = txHash;
-        },
-        abandoned: () => {
-          sweeps.delete(claim);
-        },
-      });
     },
   });
 };

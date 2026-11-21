@@ -37,9 +37,7 @@ import {
 import type { ValidationTraceOneStepPlan } from "../../src/validation-trace-dispute/one-step-plan.js";
 import { scriptSourcesRedeemerReads } from "../../src/validation-trace-dispute/one-step-script-sources-redeemer.js";
 import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../../src/validation-trace-dispute/threads.js";
-import type { FraudProofSignedTransactionRecovery } from "../../src/workflow/l1-source.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.js";
-import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { confirmedValidationTraceStages } from "./validation-trace-confirmed-stages.js";
 import { expectWithinWalletMoveShape } from "./validation-trace-dispute-move-fees.js";
 import {
@@ -240,27 +238,19 @@ export const resolutionDrive = <
   };
 
   /** A fresh process of our runner, as the case was set up, its adapter
-   * rewritten by `wrap`, reading where each signed transaction stands from
-   * `signedRecovery` when given. */
+   * rewritten by `wrap`. */
   const processOver = (
     wrap: (
       adapter: FraudProofFamilyWorkflowAdapter,
     ) => FraudProofFamilyWorkflowAdapter,
-    signedRecovery?: FraudProofSignedTransactionRecovery,
   ) => {
     const { scene, deployment, removal } = dispute;
-    const recovery =
-      signedRecovery ??
-      (installs.releaseDepth === undefined
-        ? undefined
-        : emulatorSignedTransactionRecovery(
-            scene.h.emulator,
-            installs.releaseDepth,
-          ));
     return makeRunner(scene, {
       deployment,
       wrap,
-      ...(recovery === undefined ? {} : { signedRecovery: recovery }),
+      ...(installs.releaseDepth === undefined
+        ? {}
+        : { releaseDepth: installs.releaseDepth }),
       ...(removal === undefined
         ? {}
         : {
@@ -312,22 +302,17 @@ export const resolutionDrive = <
       }),
 
     /** Stops the runner's process and starts another, holding nothing the
-     * first held in memory, reading where each signed transaction stands
-     * from `signedRecovery` and its adapter rewritten by `wrap` when
-     * given. */
+     * first held in memory, its adapter rewritten by `wrap` when given. */
     restart: ({
-      signedRecovery,
       wrap,
     }: {
-      readonly signedRecovery?: FraudProofSignedTransactionRecovery;
       readonly wrap?: (
         adapter: FraudProofFamilyWorkflowAdapter,
       ) => FraudProofFamilyWorkflowAdapter;
     } = {}) => {
       const { prepared } = dispute;
-      const runner = processOver(
-        (adapter) => capturePrepared(prepared)(wrap?.(adapter) ?? adapter),
-        signedRecovery,
+      const runner = processOver((adapter) =>
+        capturePrepared(prepared)(wrap?.(adapter) ?? adapter),
       );
       runners.push(runner);
       dispute = Object.freeze({ ...dispute, runner });

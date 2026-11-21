@@ -164,15 +164,12 @@ export const buildOwnThreadCancel = async ({
   deployment,
   plan,
   subject,
-  validTo,
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
   readonly deployment: OwnThreadCancelDeployment;
   readonly plan: Extract<OwnThreadCancelPlan, { kind: "cancellable" }>;
   readonly subject: OwnThreadCancelSubject;
-  /** The cancel's upper validity bound (POSIX ms). */
-  readonly validTo: number;
 }): Promise<Awaited<ReturnType<typeof buildLinearFaultCancel>>> => {
   const { category, role, contractName } = plan;
   const roster: Readonly<Record<string, string>> =
@@ -217,7 +214,6 @@ export const buildOwnThreadCancel = async ({
     threadOutRef: subject.threadOutRef,
     referenceScriptUtxo: stepReference,
     witnessReferenceScripts: { computationThreadMint: mintReference },
-    validTo,
   });
 };
 

@@ -62,11 +62,14 @@ describe("raw L1 snapshot V1 admission", () => {
         authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
         // The source answers each scope as requested.
         capture: async (asked) => ({
-          ...snapshot,
-          scopes: asked.scopes.map((entry) => ({
-            ...entry,
-            utxos: scope.utxos,
-          })),
+          snapshot: {
+            ...snapshot,
+            scopes: asked.scopes.map((entry) => ({
+              ...entry,
+              utxos: scope.utxos,
+            })),
+          },
+          pending: [],
         }),
       },
       releaseFinality,
@@ -127,17 +130,21 @@ describe("raw L1 snapshot V1 admission", () => {
         capture: async (request) => {
           asked.push(request.scopes);
           return {
-            ...value.snapshot,
-            scopes: request.scopes.map((scope) => ({
-              ...scope,
-              utxos: held.filter(
-                ({ outRef }) =>
-                  scope.outRefs === undefined || scope.outRefs.includes(outRef),
-              ),
-            })),
-            historyUnits: [],
-            history: [],
-            transactions: [],
+            snapshot: {
+              ...value.snapshot,
+              scopes: request.scopes.map((scope) => ({
+                ...scope,
+                utxos: held.filter(
+                  ({ outRef }) =>
+                    scope.outRefs === undefined ||
+                    scope.outRefs.includes(outRef),
+                ),
+              })),
+              historyUnits: [],
+              history: [],
+              transactions: [],
+            },
+            pending: [],
           };
         },
       },

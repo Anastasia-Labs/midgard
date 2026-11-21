@@ -1,9 +1,9 @@
 /** A header removed against a record this run did not create may leave a
  * computation thread of ours standing on it, still holding our lovelace.
  * The run never forgets the objective while it does: it cancels that thread
- * back to our wallet first, and resolves only once the cancel is past
- * rollback recovery. The reclaim is reported as a reclaim,
- * never as a conviction. A family with no cancel holds under a named alarm,
+ * back to our wallet first, and resolves only once the cancel has landed;
+ * while the node's mempool holds it, nothing is built again. The reclaim is
+ * reported as a reclaim, never as a conviction. A family with no cancel holds under a named alarm,
  * and so does a reclaim our wallet cannot fund, until a top-up. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -32,7 +32,7 @@ afterEach(() => {
 });
 
 describe("workflow: our thread on a header another record removed", () => {
-  it("cancels our thread back to our wallet, waits out rollback recovery, then resolves", async () => {
+  it("cancels our thread back to our wallet, waits for the cancel to land, then resolves", async () => {
     const evidence = await canonicalEvidence();
     const process = createTestWorkflowProcess();
     const ledger = await chain();
@@ -43,34 +43,31 @@ describe("workflow: our thread on a header another record removed", () => {
       evidence,
       adapter,
       process,
-      chain: ledger.l1,
     });
-    expect(submitted.kind).toBe("pending");
+    const awaiting = {
+      kind: "pending",
+      reason: expect.stringContaining(
+        `transaction ${ledger.reclaimTx} spending our thread ${OUR_THREAD} awaits inclusion`,
+      ),
+    };
+    expect(submitted).toMatchObject(awaiting);
     expect(port.submit).toHaveBeenCalledTimes(1);
     expect(port.preflight).toHaveBeenCalledWith(
       expect.objectContaining({ threadOutRef: OUR_THREAD, step: 2 }),
     );
-    // Not landed: the run waits on its own cancel and builds nothing new.
-    expect(
-      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
-    ).toBe("pending");
-    // Landed, still within rollback recovery: not yet resolved.
+    // In the mempool: the run waits on the cancel and builds nothing new.
+    expect(await run({ evidence, adapter, process })).toMatchObject(awaiting);
+    expect(port.preflight).toHaveBeenCalledTimes(1);
     ledger.land(1);
-    const shallow = await run({ evidence, adapter, process, chain: ledger.l1 });
-    expect(shallow).toMatchObject({
-      kind: "pending",
-      reason: expect.stringMatching(/awaits release finality/u),
-    });
-    ledger.land(FINAL_DEPTH);
     expectReclaimedThenResolved(
-      await run({ evidence, adapter, process, chain: ledger.l1 }),
+      await run({ evidence, adapter, process }),
       resolution,
       ledger,
     );
     expect(port.submit).toHaveBeenCalledTimes(1);
   });
 
-  it("after a restart between the cancel's submission and its landing, sends the same cancel again and only one lands", async () => {
+  it("after a restart while the cancel waits in the mempool, sends nothing again and resolves once it lands", async () => {
     const evidence = await canonicalEvidence();
     const ledger = await chain();
     const before = reclaimPort(ledger);
@@ -80,31 +77,26 @@ describe("workflow: our thread on a header another record removed", () => {
           evidence,
           adapter: decorate(removedByAnotherProver(ledger), before),
           process: createTestWorkflowProcess(),
-          chain: ledger.l1,
         })
       ).kind,
     ).toBe("pending");
     expect(before.submit).toHaveBeenCalledTimes(1);
-    // A fresh process: new adapter, port and in-flight set over the same
-    // chain, on which our thread still stands.
+    // A fresh process: new adapter and port over the same chain, on which
+    // our thread still stands and the mempool spends it.
     const process = createTestWorkflowProcess();
     const after = reclaimPort(ledger);
     const adapter = decorate(removedByAnotherProver(ledger), after);
-    expect(
-      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
-    ).toBe("pending");
-    expect(after.submit).toHaveBeenCalledTimes(1);
-    expect(process.sent().map(({ txHash }) => txHash)).toEqual([
-      ledger.reclaimTx,
-    ]);
-    // Both spend the same thread: exactly one lands.
+    expect((await run({ evidence, adapter, process })).kind).toBe("pending");
+    expect(after.preflight).not.toHaveBeenCalled();
+    expect(after.submit).not.toHaveBeenCalled();
+    expect(process.sent()).toEqual([]);
     ledger.land(FINAL_DEPTH);
     expectReclaimedThenResolved(
-      await run({ evidence, adapter, process, chain: ledger.l1 }),
+      await run({ evidence, adapter, process }),
       resolution,
       ledger,
     );
-    expect(after.submit).toHaveBeenCalledTimes(1);
+    expect(after.submit).not.toHaveBeenCalled();
   });
 
   it("reads our threads once in an observation pass, for its own check and the orchestrator's guard alike", async () => {
@@ -116,9 +108,7 @@ describe("workflow: our thread on a header another record removed", () => {
     ledger.land(FINAL_DEPTH);
     const port = reclaimPort(ledger);
     const adapter = decorate(removedByAnotherProver(ledger), port);
-    expect(
-      await run({ evidence, adapter, process, chain: ledger.l1 }),
-    ).toMatchObject({
+    expect(await run({ evidence, adapter, process })).toMatchObject({
       kind: "resolved_by_another_record",
       resolution,
     });
@@ -142,7 +132,6 @@ describe("workflow: our thread on a header another record removed", () => {
           evidence,
           adapter,
           process,
-          chain: ledger.l1,
         });
         expect(held).toMatchObject({
           kind: "pending",
@@ -176,7 +165,6 @@ describe("workflow: our thread on a header another record removed", () => {
         evidence,
         adapter,
         process,
-        chain: ledger.l1,
       });
       expect(held).toMatchObject({
         kind: "pending",
@@ -191,19 +179,17 @@ describe("workflow: our thread on a header another record removed", () => {
     expect(port.preflight).toHaveBeenCalledTimes(2);
     expect(port.submit).not.toHaveBeenCalled();
     funded = true;
-    expect(
-      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
-    ).toBe("pending");
+    expect((await run({ evidence, adapter, process })).kind).toBe("pending");
     expect(port.submit).toHaveBeenCalledTimes(1);
     ledger.land(FINAL_DEPTH);
     expectReclaimedThenResolved(
-      await run({ evidence, adapter, process, chain: ledger.l1 }),
+      await run({ evidence, adapter, process }),
       resolution,
       ledger,
     );
   });
 
-  it("reclaims our thread before completing on our own record, across a restart between the cancel and its landing", async () => {
+  it("reclaims our thread before completing on our own record, across a restart while the cancel waits in the mempool", async () => {
     const evidence = await canonicalEvidence();
     const ledger = await chain();
     const ours = makeAdapter({ chain: ledger.l1 });
@@ -226,7 +212,6 @@ describe("workflow: our thread on a header another record removed", () => {
           evidence,
           adapter: decorate(base, first),
           process: createTestWorkflowProcess(),
-          chain: ledger.l1,
         })
       ).kind,
     ).toBe("pending");
@@ -234,11 +219,10 @@ describe("workflow: our thread on a header another record removed", () => {
     const process = createTestWorkflowProcess();
     const port = reclaimPort(ledger);
     const adapter = decorate(base, port);
-    expect(
-      (await run({ evidence, adapter, process, chain: ledger.l1 })).kind,
-    ).toBe("pending");
+    expect((await run({ evidence, adapter, process })).kind).toBe("pending");
+    expect(port.submit).not.toHaveBeenCalled();
     ledger.land(FINAL_DEPTH);
-    const outcome = await run({ evidence, adapter, process, chain: ledger.l1 });
+    const outcome = await run({ evidence, adapter, process });
     expect(outcome.kind).toBe("completed");
     expect(ledger.threads()).toEqual({
       spends: [
@@ -248,6 +232,6 @@ describe("workflow: our thread on a header another record removed", () => {
         }),
       ],
     });
-    expect(port.submit).toHaveBeenCalledTimes(1);
+    expect(port.submit).not.toHaveBeenCalled();
   });
 });

@@ -96,10 +96,6 @@ const stagerHolding = async (
   return { funder, stager, lucid };
 };
 
-/** A staging's upper validity bound: three minutes after the current slot. */
-const stagingValidTo = (lucid: LucidEvolution): number =>
-  lucid.slotToUnixTime(lucid.currentSlot()) + 180_000;
-
 const lovelaceOf = (utxos: readonly UTxO[]): bigint =>
   utxos.reduce((sum, utxo) => sum + (utxo.assets["lovelace"] ?? 0n), 0n);
 
@@ -112,10 +108,7 @@ const stage = async (lucid: LucidEvolution, operands: readonly Buffer[]) => {
   const refs: MidgardCekStagedOutRef[] = [];
   for (const run of plan) {
     const unsigned = await Effect.runPromise(
-      buildUnsignedMidgardCekStagingProgram(lucid, {
-        run,
-        validTo: stagingValidTo(lucid),
-      }),
+      buildUnsignedMidgardCekStagingProgram(lucid, { run }),
     );
     refs.push(midgardCekStagingOutRef(unsigned, run));
     await submit(lucid, unsigned);
@@ -318,13 +311,9 @@ describe("CEK operand staging", () => {
       { lovelace: 25_000_000n, datum: tag },
     ]);
     const [run] = planMidgardCekStaging([operand(5_000, 6)]);
-    const validTo = stagingValidTo(lucid);
     const unsigned = await Effect.runPromise(
-      buildUnsignedMidgardCekStagingProgram(lucid, { run: run!, validTo }),
+      buildUnsignedMidgardCekStagingProgram(lucid, { run: run! }),
     );
-    const body = unsigned.toTransaction().body();
-    expect(body.ttl()).toBe(BigInt(lucid.unixTimeToSlot(validTo)));
-    expect(body.validity_interval_start()).toBeUndefined();
     await submit(lucid, unsigned);
     const wallet = await lucid.wallet().getUtxos();
     expect(wallet.filter((utxo) => utxo.scriptRef != null)).toHaveLength(1);
@@ -345,10 +334,7 @@ describe("CEK operand staging", () => {
     const [run] = planMidgardCekStaging([operand(5_000, 7)]);
     const refused = await Effect.runPromise(
       Effect.either(
-        buildUnsignedMidgardCekStagingProgram(lucid, {
-          run: run!,
-          validTo: stagingValidTo(lucid),
-        }),
+        buildUnsignedMidgardCekStagingProgram(lucid, { run: run! }),
       ),
     );
     expect(Either.isLeft(refused)).toBe(true);

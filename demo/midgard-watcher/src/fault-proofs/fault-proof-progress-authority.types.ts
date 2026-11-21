@@ -48,15 +48,12 @@ export type WatcherDecisionSupersedeRequest = Readonly<{
  *   category and header (the bridge checks this before asking);
  * - `objective_held`: its objective is held (decision missing, unreadable);
  * - `job_pending`: a job of its objective is queued or active;
- * - `submission_unresolved`: a transaction this process sent for it can
- *   still land;
  * - `cleanup_failed`: its rows could not be deleted; retried next pass.
  */
 export type WatcherDecisionSupersedeHoldReason =
   | "correction_locked"
   | "objective_held"
   | "job_pending"
-  | "submission_unresolved"
   | "cleanup_failed";
 
 export type WatcherDecisionSupersession =
@@ -92,32 +89,20 @@ export type WatcherFaultProofProgressAuthority = Readonly<{
    * conviction. The objective is released as a departed one is, and
    * forgotten once its job is done. */
   markResolved(objective: WatcherProofObjective): Promise<void>;
-  /** Whether the objective is admitted and not yet settled, so a run of it
-   * may come again. */
-  drives(
-    objective: Readonly<{ category: string; headerHash: string }>,
-  ): boolean;
   /** The objective's marker: verified beyond rollback recovery, so final and
    * never verified or held again. */
   completionMarker(
     objective: WatcherProofObjective,
   ): WatcherProofCompletionMarker | null;
   /**
-   * Replaces the prior decision when nothing of it is in flight: releases
-   * its unused prover funding, forgets its rows and its decision row, then
-   * records a fresh fault as a live decision. Anything in flight holds it
-   * unchanged; a later call supersedes it once that clears.
+   * Replaces the prior decision when nothing still drives it: releases its
+   * unused prover funding, forgets its rows and its decision row, then
+   * records a fresh fault as a live decision. A hold keeps it unchanged; a
+   * later call supersedes it once that clears.
    */
   supersede(
     request: WatcherDecisionSupersedeRequest,
   ): Promise<WatcherDecisionSupersession>;
-  /** The reconciliation permit of an admitted objective whose transactions
-   * this process sent can still land: it lets a run continue those, and
-   * nothing more. */
-  reconcileExecution(input: {
-    readonly objective: WatcherProofObjective;
-    readonly rollbackGeneration: string;
-  }): Promise<WorkflowActuationPermit>;
 }>;
 
 /** The proof step of an objective whose header left the queue, from the

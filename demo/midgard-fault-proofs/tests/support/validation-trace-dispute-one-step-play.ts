@@ -17,7 +17,6 @@ import {
   type ValidationTraceOneStepHolder,
 } from "../../src/validation-trace-dispute/one-step-holders.js";
 import type { ValidationTraceDisputeDeployment } from "../../src/validation-trace-dispute/transactions.js";
-import type { InFlightTransaction } from "../../src/workflow/in-flight.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.js";
 import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
@@ -32,6 +31,7 @@ import {
   type ScriptedTrace,
   threadOf,
 } from "./validation-trace-dispute-scripted-defender.js";
+import type { SentTransaction } from "./workflow-process.js";
 
 /** A defended thread: its defender, the trace it reveals from, its token. */
 export type Side = Readonly<{
@@ -199,7 +199,7 @@ export const confirmedOneStepMoves = (
 /** The transactions among `sent` for the move of `stage` spending
  * `consumes`, oldest first. */
 export const sendsFor = (
-  sent: readonly InFlightTransaction[],
+  sent: readonly SentTransaction[],
   stage: ValidationTraceStage,
   consumes: string,
 ) => {

@@ -1,5 +1,5 @@
 // A scripted stand-in for the `midgard-l1-node-transport` sidecar, for tests
-// of the transport's callers. It speaks frame protocol version 1 (README.md)
+// of the transport's callers. It speaks the frame protocol (README.md)
 // on stdin/stdout. A handler module decides what the "node" answers; the
 // fake applies the protocol itself: the hello exchange, request ids, stream
 // sequence numbers, the credit window, acks and close.
@@ -20,7 +20,7 @@ export const LEDGER_HANDLER = fileURLToPath(
   new URL("./ledger-handler.mjs", import.meta.url),
 );
 
-const FRAME_PROTOCOL_VERSION = 2;
+const FRAME_PROTOCOL_VERSION = 3;
 
 // ------------------------------------------------------------- points
 
@@ -61,7 +61,8 @@ export const samePoint = (a, b) =>
  * - acquire(point | undefined), ledgerQuery({query, ...params}):
  *   Uint8Array (the raw answer) or {error: {code, message}}.
  * - submit(tx, era): {accepted: true} | {rejection: Uint8Array} | {error}.
- * - hasTx(txIdHex): boolean; sizes(): {capacity, size, txCount}.
+ * - hasTx(txIdHex): boolean; sizes(): {capacity, size, txCount};
+ *   txs(): {acquiredSlot, txs: Uint8Array[]}, the mempool in order.
  * - ignoreInputEnd: true keeps the process running after stdin closes.
  */
 export const serveFakeSidecar = (handler) => {
@@ -352,6 +353,15 @@ export const serveFakeSidecar = (handler) => {
           size: sizes.size,
           txCount: sizes.txCount,
         });
+      }
+      case "monitor_txs": {
+        if (handler.txs === undefined) return refuse(id, "monitor_unavailable");
+        const listing = await handler.txs();
+        return answer(
+          id,
+          { type: "monitor_txs_result", slot: BigInt(listing.acquiredSlot) },
+          encodeCbor([...listing.txs]),
+        );
       }
       default:
         return fatal(

@@ -3,7 +3,6 @@
  * The run is the shared runner over mint's assembled family adapter, which
  * reclaims through the deployment's cancel port. */
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { isFinal } from "@al-ft/midgard-l1-follower/heads";
 import { expect, vi } from "vitest";
 
 import { createMintItemNonCanonicalRecoveryAdapter } from "../../src/mint-item-non-canonical/workflow.execute-manifest-bound-mint-item-non-canonical-workflow.js";
@@ -26,7 +25,6 @@ import { bindWorkflowPreflightTransaction } from "../../src/workflow/transaction
 import { createFixtureChain } from "../workflow.make-adapter.js";
 import { bindFamilyRecoveryFixture } from "./bound-family-recovery-fixture.js";
 import { signedWorkflowTransactionFixture } from "./signed-workflow-transaction.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./wallet-only-send-always-open.js";
 import { createTestWorkflowProcess } from "./workflow-process.js";
 
 const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
@@ -87,20 +85,19 @@ export const fixture = async ({
   const reclaim = await signedWorkflowTransactionFixture();
   const reclaimTx = reclaim.input.transactionHash;
   /** The chain: our thread standing (when we took steps) until its cancel
-   * lands, then that cancel at its depth. `l1` is the same chain as the run
-   * follows its sent transactions on. */
+   * lands, spent by the cancel while the node's mempool holds it, then that
+   * cancel at its depth. */
   const chain = {
     standing: stepsTaken !== 0,
+    pending: false,
     reclaimDepth: undefined as number | undefined,
   };
   const l1Chain = createFixtureChain();
   const land = (depth: number) => {
     chain.standing = false;
+    chain.pending = false;
     chain.reclaimDepth = depth;
     l1Chain.land(reclaimTx);
-    if (!isFinal(depth, { securityParameter: FINAL_DEPTH - 1 }))
-      l1Chain.reversible.add(reclaimTx);
-    else l1Chain.reversible.delete(reclaimTx);
   };
   const threads = () => ({
     ...(chain.standing
@@ -109,6 +106,7 @@ export const fixture = async ({
             threadOutRef: OUR_THREAD,
             step: 2 as const,
             lovelace: THREAD_LOVELACE,
+            ...(chain.pending ? { pendingSpend: reclaimTx } : {}),
           },
         }
       : {}),
@@ -192,10 +190,12 @@ export const fixture = async ({
         reclaim.signed,
       ),
     ),
-    submit: vi.fn(
-      async ({ preflight }: { preflight: { txHash: string } }) =>
-        preflight.txHash,
-    ),
+    // A submitted cancel waits in the node's mempool until `land`.
+    submit: vi.fn(async ({ preflight }: { preflight: { txHash: string } }) => {
+      if (chain.standing) chain.pending = true;
+      l1Chain.accept(reclaimTx);
+      return preflight.txHash;
+    }),
   });
   const forbidden = async (): Promise<never> => {
     throw new Error("must not refetch the removed header or its DA");
@@ -218,7 +218,6 @@ export const fixture = async ({
         observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
         observeExact: forbidden,
       },
-      observeSignedTransaction: l1Chain.observeSignedTransaction,
       ...(reclaim === undefined
         ? {}
         : {
@@ -245,7 +244,7 @@ export const fixture = async ({
     }
   };
   let process = createTestWorkflowProcess();
-  /** A restart: a fresh process, with nothing in flight. */
+  /** A restart: a fresh process; the node's mempool keeps what it holds. */
   const restart = () => {
     process = createTestWorkflowProcess();
   };
@@ -253,13 +252,12 @@ export const fixture = async ({
   const execute = async (reclaim: OwnThreadReclaimPort | undefined) => {
     const assembled = await assemble(reclaim);
     return await runAdmittedFraudProofWorkflow({
-      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       deploymentFingerprint: fingerprint,
       category,
       headerHash,
       prepareFamilyArtifact: async () => ({ retained: "evidence" }),
       registry: createFraudProofWorkflowRegistry({
-        adapters: [assembled.adapter],
+        adapters: [process.recording(assembled.adapter)],
         launchScope: [category],
       }),
       run: process.run({ category, headerHash }),

@@ -8,13 +8,13 @@
  *
  * The sweep keeps no durable state and reads no stored workflow record:
  * what is left to cancel is what the follower still holds. Its process
- * memory is a page cursor, the cancels sent and still within their
- * validity (not sent again until it ends), and the threads it could not
- * reclaim; all of it is rebuilt from the chain within one cycle of pages,
- * and losing it at a restart changes nothing but that a cancel still
- * pending may be built once more, which cannot land twice (it spends the
- * thread). A cancel that meets the thread already spent, by a workflow's
- * own reclaim or an earlier cancel of ours, settles quietly.
+ * memory is a page cursor and the threads it could not reclaim; both are
+ * rebuilt from the chain within one cycle of pages. The canceller reads
+ * the ledger with the node's mempool applied, so a cancel of ours still in
+ * the mempool shows its thread spent: a later attempt, before or after a
+ * restart, meets the thread spent and sends nothing. A cancel that meets
+ * the thread already spent, by a workflow's own reclaim or an earlier
+ * cancel of ours, settles quietly.
  *
  * Operators see two degradations, status and metrics only:
  * `fault_proof_own_thread_unreclaimed` (a thread due for reclaim whose
@@ -36,7 +36,6 @@ import {
 } from "../l1-follower/own-thread-reads.js";
 import type { WatcherL1Degradation } from "../l1-follower/tx-inputs.js";
 import type { WatcherFaultProofApplication } from "./fault-proof-application.js";
-import type { WatcherWalletLeases } from "./fault-proof-application.production-dependencies.js";
 
 /** A thread of ours due for reclaim whose latest cancel did not go out. */
 export const FAULT_PROOF_OWN_THREAD_UNRECLAIMED =
@@ -115,7 +114,6 @@ export const createWatcherOwnThreadSweep = ({
   policyId,
   finalDepth,
   openCanceller,
-  nowMs = Date.now,
   log = () => undefined,
   pageLimit = OWN_THREAD_PAGE_LIMIT,
   cancelsPerPass = OWN_THREAD_CANCELS_PER_PASS,
@@ -128,15 +126,12 @@ export const createWatcherOwnThreadSweep = ({
   /** Opens the canceller, kept once open; a refusal or an observing
    * application is asked again at the next pass. */
   readonly openCanceller: WatcherOwnThreadCancellerSource;
-  readonly nowMs?: () => number;
   readonly log?: (line: string) => void;
   readonly pageLimit?: number;
   readonly cancelsPerPass?: number;
 }): WatcherOwnThreadSweep => {
   let opened: ReturnType<WatcherOwnThreadCancellerSource> | null = null;
   let after: string | null = null;
-  /** Cancels sent, by thread, until their validity ends (wall clock, ms). */
-  const sent = new Map<string, number>();
   const unreclaimed = new Map<string, Held>();
   const uncancellable = new Map<string, Held>();
 
@@ -153,7 +148,6 @@ export const createWatcherOwnThreadSweep = ({
     switch (outcome.kind) {
       case "submitted":
         forget(outRef);
-        sent.set(outRef, outcome.validToMs);
         log(
           `own thread ${outRef}: cancel ${outcome.txHash} sent, reclaiming ${outcome.reclaimedLovelace.toString()} lovelace`,
         );
@@ -223,14 +217,11 @@ export const createWatcherOwnThreadSweep = ({
       return;
     }
     if (page.kind === "unready") return;
-    const now = nowMs();
     const ours = new Set(page.threads.map(({ outRef }) => outRef));
-    for (const held of [sent, unreclaimed, uncancellable])
+    for (const held of [unreclaimed, uncancellable])
       for (const outRef of [...held.keys()])
         if (inRange(outRef, page.after, page.through) && !ours.has(outRef))
           held.delete(outRef);
-    for (const [outRef, validToMs] of [...sent])
-      if (validToMs <= now) sent.delete(outRef);
     let attempts = 0;
     let stoppedAt: string | null = null;
     for (const thread of page.threads) {
@@ -238,7 +229,6 @@ export const createWatcherOwnThreadSweep = ({
         forget(thread.outRef);
         continue;
       }
-      if (sent.has(thread.outRef)) continue;
       const subject = {
         threadOutRef: thread.outRef,
         categoryId: thread.categoryId,
@@ -276,7 +266,6 @@ export const createWatcherOwnThreadSweep = ({
       page.threads.some(
         ({ outRef, disposition }) =>
           disposition === "reclaim" &&
-          !sent.has(outRef) &&
           stoppedAt !== null &&
           compareOwnThreadOutRefs(outRef, stoppedAt) > 0,
       );
@@ -292,11 +281,10 @@ export const createWatcherOwnThreadSweep = ({
   });
 };
 
-/** The sweep over the application's canceller and the runtime's wallet leases. */
+/** The sweep over the application's canceller. */
 export const watcherOwnThreadCancellerSource =
   (
     application: Pick<WatcherFaultProofApplication, "openOwnThreadCanceller">,
-    walletLeases: WatcherWalletLeases,
   ): WatcherOwnThreadCancellerSource =>
   async () =>
-    await application.openOwnThreadCanceller({ walletLeases });
+    await application.openOwnThreadCanceller();

@@ -73,6 +73,7 @@ export const admitLinearFamilyStage = ({
     }
     return stage;
   }
+  if (stage.kind === "pending") return stage;
   canonicalOutRef(stage.stateQueueBlockOutRef, "state-queue block outRef");
   if (stage.kind === "step") {
     stageStep(spec, stage.step);
@@ -119,6 +120,9 @@ export const linearFamilyObservation = <Category extends LinearFamilyCategory>({
   });
   if (admitted.kind === "removed") {
     return { kind: "completed", terminal: admitted.terminal };
+  }
+  if (admitted.kind === "pending") {
+    return { kind: "pending", reason: admitted.reason };
   }
   if (admitted.kind === "not_started") {
     return {

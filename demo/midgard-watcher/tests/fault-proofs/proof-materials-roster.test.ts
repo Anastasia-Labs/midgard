@@ -21,7 +21,6 @@ import {
   setupClassifiedFaultFixture,
 } from "../support/classified-fault-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
-import { inFlightOf } from "../support/in-flight-fixture.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
@@ -119,7 +118,6 @@ describe("proof-materials needs of an objective whose header leaves the queue", 
       authenticationKey: TEST_JOURNAL_KEY,
       retention: storelessProofRetention,
       proofMaterials: views,
-      ...inFlightOf(),
     });
     const objective = {
       category: "doubleSpend",

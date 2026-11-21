@@ -258,6 +258,10 @@ describe("fake sidecar", () => {
       size: 10n,
       txCount: 1n,
     });
+    expect(await transport.mempoolTxs()).toEqual({
+      acquiredSlot: 30n,
+      txs: [Uint8Array.from([0x84, 1]), Uint8Array.from([0x84, 2])],
+    });
   });
 
   it("kills a sidecar that keeps running after its input closes", async () => {

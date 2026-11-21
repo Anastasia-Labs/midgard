@@ -27,7 +27,6 @@ import {
   raw,
   releaseFinality,
 } from "./support/raw-l1-terminal-fixture.output.js";
-import { signedRecoveryObservation } from "./support/signed-workflow-transaction.js";
 import {
   createTestWorkflowProcess,
   type TestWorkflowProcess,
@@ -89,7 +88,7 @@ it("completes on another caller's correction over our in-flight descendant, and 
   const l1 = createFraudProofFamilyRawL1ObservationPort({
     authority: {
       authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-      capture: async () => snapshot,
+      capture: async () => ({ snapshot: snapshot, pending: [] }),
     },
     ...value.binding,
     definition: { ...value.definition, category: "doubleSpend" },
@@ -161,22 +160,17 @@ it("completes on another caller's correction over our in-flight descendant, and 
     workflowProcess: TestWorkflowProcess = process,
   ) =>
     runAdmittedFraudProofWorkflow({
-      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       deploymentFingerprint: value.binding.deploymentFingerprint,
       category: "doubleSpend",
       headerHash: value.definition.headerHash,
       prepareFamilyArtifact: async () => ({}),
       registry: createFraudProofWorkflowRegistry({
-        adapters: [adapter()],
+        adapters: [workflowProcess.recording(adapter())],
         launchScope: ["doubleSpend"],
       }),
       run: workflowProcess.run(objective),
-      terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier({
-        ...l1,
-        // Our peel landed: the run follows it to its final landing.
-        observeSignedTransaction: async (input) =>
-          signedRecoveryObservation(input, "included"),
-      }),
+      terminalVerifier:
+        createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
       releaseFinality,
       maxActions,
     });
@@ -238,4 +232,3 @@ it("completes on another caller's correction over our in-flight descendant, and 
   expect(lease.release).toHaveBeenCalledOnce();
   expect(lease.fail).not.toHaveBeenCalled();
 });
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";

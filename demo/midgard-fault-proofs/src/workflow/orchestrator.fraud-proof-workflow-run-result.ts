@@ -71,8 +71,8 @@ export type FraudProofWorkflowRunResult =
       readonly identity: FraudProofWorkflowIdentity;
       readonly reason: string;
       /**
-       * The action whose transaction, sent by this process, the run awaits:
-       * a session counts a new one as progress (`pending-continuation.ts`).
+       * The last action the run submitted before it waits: a session counts
+       * a new one as progress (`pending-continuation.ts`).
        */
       readonly awaitingActionId?: string;
       /**

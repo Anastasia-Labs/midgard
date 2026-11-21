@@ -118,7 +118,7 @@ const inputs = async ({
     headerHash,
   });
   const admitted = admitFraudProofRawL1Snapshot({
-    value: await authority.capture(request),
+    value: (await authority.capture(request)).snapshot,
     request,
     releaseFinality,
     observationDepth: "inclusion",

@@ -97,7 +97,6 @@ import {
   requiredReference,
 } from "./family-application-registry.resolve-roster-parts.js";
 import { type FamilyCategory } from "./family-definition.js";
-import { type WalletOnlySend } from "./wallet-only-send-gate.js";
 import type { WorkflowRun } from "./workflow-run.js";
 
 /**
@@ -124,7 +123,6 @@ export const bundleCursorFamilyApplicationRecord = <
         readonly workflow: Workflow;
         readonly sources: readonly RetainedDaPayloadSource[];
         readonly run: WorkflowRun;
-        readonly walletOnlySend: WalletOnlySend;
       }) => Promise<unknown>;
     }>,
 ): FamilyApplicationRecord<Category, Config, Workflow> => {

@@ -56,7 +56,7 @@ export const fraudProofRawL1HistoryReader =
     };
     // The request names no scope, so the snapshot holds the history alone.
     return admitFraudProofRawL1Snapshot({
-      value: await authority.capture(request),
+      value: (await authority.capture(request)).snapshot,
       request,
       releaseFinality,
       observationDepth: "inclusion",

@@ -215,9 +215,9 @@ func extend(t *testing.T, node *mocknode.Node, count int, branch uint64) []mockn
 func TestHelloRefusesUnsupportedVersionAndMalformedFirstFrame(t *testing.T) {
 	node, socket := startNode(t)
 	h := startSidecar(t, node, socket)
-	// Version 1 is the frame protocol before no-deadline queries: an old
+	// Version 2 is the frame protocol before the mempool listing: an old
 	// client is refused at hello.
-	h.sendRaw(map[string]any{"type": "hello", "version": 1, "socketPath": socket, "networkMagic": testMagic}, nil)
+	h.sendRaw(map[string]any{"type": "hello", "version": protocolVersion - 1, "socketPath": socket, "networkMagic": testMagic}, nil)
 	if f := h.expect("fatal"); f.header["code"] != "version_unsupported" {
 		t.Fatalf("got %v", f.header)
 	}
@@ -798,6 +798,51 @@ func TestSubmitAndMonitor(t *testing.T) {
 	// the bare hash as the node does.
 	if eras := node.HasTxEras(); len(eras) != 3 || eras[0] != conwayEra || eras[2] != conwayEra {
 		t.Fatalf("MsgHasTx era indices %v", eras)
+	}
+}
+
+func TestMempoolListing(t *testing.T) {
+	node, socket := startNode(t)
+	blocks := extend(t, node, 2, 0)
+	h := startSidecar(t, node, socket)
+	h.hello()
+	var payload []byte
+	list := func() (uint64, [][]byte) {
+		t.Helper()
+		h.sendRaw(map[string]any{"type": "monitor_txs", "id": h.id()}, nil)
+		f := h.expect("monitor_txs_result")
+		payload = f.payload
+		var txs [][]byte
+		if err := cbor.Unmarshal(f.payload, &txs); err != nil {
+			t.Fatalf("listing payload %x: %v", f.payload, err)
+		}
+		return asUint(t, f.header["slot"]), txs
+	}
+	// An empty mempool is the empty array, acquired at the tip.
+	if slot, txs := list(); slot != blocks[1].Slot || len(txs) != 0 || !bytes.Equal(payload, []byte{0x80}) {
+		t.Fatalf("empty mempool listed slot %d, payload %x", slot, payload)
+	}
+	first, _, err := mocknode.SampleTx()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The same transaction flagged phase-2 invalid ([body, witnesses, false,
+	// null]): other bytes, so the listing's order is visible.
+	if first[len(first)-2] != 0xf5 {
+		t.Fatalf("sample transaction does not end in [.., true, null]: %x", first)
+	}
+	second := append([]byte(nil), first...)
+	second[len(second)-2] = 0xf4
+	for _, tx := range [][]byte{first, second} {
+		h.sendRaw(map[string]any{"type": "submit", "id": h.id(), "era": conwayEra}, tx)
+		h.expect("submit_accepted")
+	}
+	if _, txs := list(); len(txs) != 2 || !bytes.Equal(txs[0], first) || !bytes.Equal(txs[1], second) {
+		t.Fatalf("listed %x", txs)
+	}
+	node.ClearMempool()
+	if _, txs := list(); len(txs) != 0 {
+		t.Fatalf("listing answered from a stale snapshot: %x", txs)
 	}
 }
 

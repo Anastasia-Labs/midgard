@@ -32,7 +32,6 @@ export * from "./forced-rejection-reason.js";
 export { isWorkflowFundingPauseReason } from "./funding-pause-reason.js";
 export * from "./funding-requirements.js";
 export * from "./header-classifier.js";
-export * from "./in-flight.js";
 export * from "./input-no-idx.js";
 export * from "./input-set-uniqueness.js";
 export * from "./installed-categories.js";
@@ -80,18 +79,10 @@ export * from "./release-economics-policy.js";
 export * from "./release-finality-policy.js";
 export * from "./replay-requirements.js";
 export * from "./runtime.js";
-export {
-  isFinalAtReleaseDepth,
-  type SignedTransactionRecoveryObservation,
-  type SignedWorkflowTransaction,
-} from "./signed-transaction-reconciliation.js";
+export { type SignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
 export * from "./sqlite-busy.js";
 export * from "./superseded-attempt-read-schedule.js";
 export * from "./transaction-boundary.js";
-export {
-  FAULT_PROOF_RESTART_WAIT,
-  type WalletOnlySend,
-} from "./wallet-only-send-gate.js";
 export * from "./withdrawn-input.js";
 export * from "./withdrawn-reference-input.js";
 export * from "./workflow-funding-shortfall.js";

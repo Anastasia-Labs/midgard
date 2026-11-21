@@ -8,6 +8,7 @@
  * still in it), and it survives any restart. Each thread a Defend opened is
  * re-read by its token until the history shows a close of the case burned
  * it. */
+import type { PendingTransaction } from "@al-ft/midgard-l1-follower/mempool";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
@@ -64,7 +65,8 @@ export type ValidationTraceCaseHistory = Readonly<{
    * which the observer then holds under the header. Absent where the
    * history is served without the raw L1 view. `admitted` holds
    * transactions an earlier capture admitted, by hash: one served again in
-   * exactly the same bytes is not decoded again.
+   * exactly the same bytes is not decoded again. The snapshot comes with
+   * our node's mempool at its tip, which never enters the snapshot.
    */
   snapshot?(
     input: Pick<
@@ -73,7 +75,14 @@ export type ValidationTraceCaseHistory = Readonly<{
     > & {
       readonly admitted?: ReadonlyMap<string, FraudProofRawL1Transaction>;
     },
-  ): Promise<FraudProofRawL1Snapshot>;
+  ): Promise<ValidationTraceDisputeSnapshot>;
+}>;
+
+/** One admitted snapshot of the dispute and our node's mempool at its tip,
+ * in mempool order. */
+export type ValidationTraceDisputeSnapshot = Readonly<{
+  snapshot: FraudProofRawL1Snapshot;
+  pending: readonly PendingTransaction[];
 }>;
 
 /** The case history over the authenticated raw L1 view, strictly admitted. */
@@ -94,18 +103,22 @@ export const createValidationTraceCaseHistory = ({
       finalityPolicyDigest: releaseFinality.policyDigest,
       ...input,
     };
-    return admitFraudProofRawL1Snapshot({
-      value: await authority.capture(request),
-      request,
-      releaseFinality,
-      observationDepth: "inclusion",
-      admitted,
-    });
+    const { snapshot: value, pending } = await authority.capture(request);
+    return {
+      snapshot: admitFraudProofRawL1Snapshot({
+        value,
+        request,
+        releaseFinality,
+        observationDepth: "inclusion",
+        admitted,
+      }),
+      pending,
+    };
   };
   return Object.freeze({
     snapshot,
     transactions: async ({ headerHash, caseUnit, alongside = [] }) => {
-      const captured = await snapshot({
+      const { snapshot: captured } = await snapshot({
         headerHash,
         scopes: [],
         historyUnits: [

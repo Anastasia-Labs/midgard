@@ -1,45 +1,9 @@
 import { CML } from "@lucid-evolution/lucid";
 
-import type { FraudProofRawL1Point } from "./raw-l1-snapshot.js";
-
 export type SignedWorkflowTransaction = Readonly<{
   transactionHash: string;
   signedTransactionCborHex: string;
 }>;
-
-export type SignedTransactionRecoveryObservation = SignedWorkflowTransaction &
-  Readonly<{
-    status:
-      | "included"
-      | "pending"
-      | "rebroadcast"
-      | "expired"
-      | "invalidated"
-      /** Absent and impossible at the tip, but not yet beyond the horizon. */
-      | "expired_at_tip"
-      | "invalidated_at_tip"
-      /** The exact body landed failing phase 2 at `inclusionPoint`: the
-       * chain took its collateral, so it can never land valid. */
-      | "landed_invalid"
-      | "conflict"
-      | "unknown";
-    inclusionPoint?: FraudProofRawL1Point;
-    canonicalPoint: FraudProofRawL1Point;
-    releaseFinalPoint: FraudProofRawL1Point;
-    inputs: readonly Readonly<{ outRef: string; outputCbor: string }>[];
-    reason: string;
-  }>;
-
-/** Whether a transaction, where `observed` says it stands, is final: landed
- * at or below the release-final point, never on first sight of landing. The
- * one finality rule for a transaction of ours. */
-export const isFinalAtReleaseDepth = (
-  observed: SignedTransactionRecoveryObservation,
-): boolean =>
-  observed.status === "included" &&
-  observed.inclusionPoint !== undefined &&
-  BigInt(observed.inclusionPoint.blockNo) <=
-    BigInt(observed.releaseFinalPoint.blockNo);
 
 export const inspectSignedWorkflowTransaction = (
   input: SignedWorkflowTransaction,

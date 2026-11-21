@@ -1545,8 +1545,8 @@ proof chain with margin; a family that needs more must publish an audited plan
 instead of widening the bound. Because that bound is loose, the correction wait
 also ends at the watcher's own verdicts on the objective, which it reads from the
 `l1Readiness` holds of `/v1/status`. A hold by which the watcher gives up
-(`fault_proof_continuation_stalled`, `fault_proof_counterparty_deadline_passed`,
-`fault_proof_resubmission_required`) fails the wait at once. A pausing hold
+(`fault_proof_continuation_stalled`, `fault_proof_counterparty_deadline_passed`)
+fails the wait at once. A pausing hold
 (funding, replay, quarantine or an L1 refusal) fails it once it persists for the
 watcher's continuation quiet bound with no transaction of ours landing; a
 landing or a cleared hold restarts that clock. A silence the watcher does not
@@ -1557,7 +1557,8 @@ change to it. The whole family cap remains in force.
 
 Fault staging, the proof chain, the honest successor commitment, and healthy
 processing advance on authenticated inclusion. The watcher reads its progress
-from the chain on every pass and holds its in-flight transactions in memory.
+from the chain and its node's mempool on every pass and remembers nothing it
+sent.
 Rollback invalidates cached authority; the worker re-observes current state
 before retrying or rebuilding. The chain index supplies recovery state; no
 per-family inverse workflow is required.

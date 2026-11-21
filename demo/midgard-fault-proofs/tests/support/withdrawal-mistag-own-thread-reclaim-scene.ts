@@ -52,12 +52,10 @@ import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
 import { submitSecondHeaderTx, submitSetupTx } from "./emulator/setup-tx.js";
-import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import {
   network,
   publishRemovalReferenceScripts,
 } from "./submit-init-emulator-shared.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./wallet-only-send-always-open.js";
 import { publishWithdrawalMistagScripts } from "./withdrawal-mistag-emulator.drive-withdrawal-mistag-to-fraud.js";
 import { makeWithdrawalMistagEmulatorHarness } from "./withdrawal-mistag-emulator.js";
 import { withdrawalMistagRetainedFixture } from "./withdrawal-mistag-retained.js";
@@ -295,7 +293,6 @@ export const scene = async () => {
     })();
     const run = async (): Promise<FraudProofWorkflowRunResult> =>
       await runFraudProofWorkflow({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         evidence: fixture.evidence,
         detections: decision.detections,
@@ -305,15 +302,7 @@ export const scene = async () => {
           launchScope: ["withdrawalMistag"],
         }),
         run: process.run({ category: "withdrawalMistag", headerHash }),
-        // The workflow follows each send of ours by where it stands at the
-        // emulator's tip, final once it is past the release horizon.
-        terminalVerifier: {
-          ...terminalVerifier,
-          observeSignedTransaction: emulatorSignedTransactionRecovery(
-            h.emulator,
-            FINAL_DEPTH,
-          ).observeSignedTransaction,
-        },
+        terminalVerifier,
         releaseFinalityAuthority: releaseFinalityAuthority(),
         maxActions: 1,
       });

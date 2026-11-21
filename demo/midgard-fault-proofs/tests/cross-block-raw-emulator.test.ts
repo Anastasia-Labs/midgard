@@ -50,7 +50,7 @@ describe("cross-block raw emulator clock", () => {
     };
     const capture = async () =>
       admitFraudProofRawL1Snapshot({
-        value: await recorder.authority.capture(request),
+        value: (await recorder.authority.capture(request)).snapshot,
         request,
         releaseFinality,
         observationDepth: "inclusion",

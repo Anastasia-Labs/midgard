@@ -63,6 +63,7 @@ import {
   type UserEventId,
   userEventId,
 } from "../support/follower-user-events-fixture.js";
+import { pendingOver } from "../support/l1-follower-raw-source-fixture.js";
 import {
   buildWatcherOriginFixtureHistoryDeployments,
   originInitialization,
@@ -286,7 +287,7 @@ const listedChain = async () => {
   const source = createWatcherFaultProofL1Source({
     store: follower.store,
     rawReads: follower.rawReads,
-    node: node.transport,
+    pending: pendingOver(follower.store),
     sourceId: `${WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX}follower-family-reads`,
     proofRetention: follower.proofRetention,
   });
@@ -416,7 +417,7 @@ describe("transitionTrace event capture through the follower source", () => {
         authority: createWatcherFaultProofL1Source({
           store: empty.store,
           rawReads: empty.rawReads,
-          node: nodeDouble().transport,
+          pending: pendingOver(empty.store),
           sourceId: `${WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX}follower-family-reads`,
         }).snapshotAuthority({
           releaseFinality: RELEASE,

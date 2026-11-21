@@ -43,7 +43,6 @@ import {
   resolveProtocolParameters,
 } from "./spend-input-witness.js";
 import { completeStep, finishStep, fundStep } from "./step-completion.js";
-import { walletOnlyValidTo } from "./wallet-only-validity.js";
 import type { LocallyEvaluatedTransaction } from "./workflow/transaction-boundary.js";
 export * from "./proof-chunk-carriage.js";
 import {
@@ -151,8 +150,7 @@ export const resolvePublicationProofChunks = async ({
  *
  * The UTxOs hold Ada only, carry no reference script, and are never spent by
  * the step that references them — a step builder must keep them out of both its
- * inputs and its collateral. The transaction spends only wallet coins and
- * carries the wallet-only validity window (`walletOnlyValidTo`).
+ * inputs and its collateral.
  */
 export const buildProofChunkPublication = async ({
   lucid,
@@ -187,10 +185,7 @@ export const buildProofChunkPublication = async ({
       },
     );
   }
-  const signed = await completeStep(
-    tx.validTo(walletOnlyValidTo(lucid)),
-    funding,
-  );
+  const signed = await completeStep(tx, funding);
   return { transaction: finishStep(signed, { referenceScripts: [] }) };
 };
 

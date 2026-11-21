@@ -13,10 +13,6 @@ import type { FraudProofWorkflowTerminal } from "../workflow/journal.js";
 import { type FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
 import type { FraudProofOwnThreads } from "../workflow/raw-l1-family-derivation.own-thread.js";
 import { type FraudProofAuthenticatedPublicationObserver } from "../workflow/raw-l1-publication-observation.js";
-import {
-  type SignedTransactionRecoveryObservation,
-  type SignedWorkflowTransaction,
-} from "../workflow/signed-transaction-reconciliation.js";
 import type { PreparedNetworkIdAcceptedForced } from "./accepted-forced.js";
 import { type PreparedNetworkIdProof } from "./prepare.js";
 import {
@@ -223,20 +219,6 @@ export type NetworkIdWorkflowTerminalFacts = {
 
 export interface NetworkIdRawL1ObservationPort {
   readonly publications?: FraudProofAuthenticatedPublicationObserver;
-  /**
-   * Where an exact signed transaction stands on the canonical chain
-   * (mempool, inclusion, expiry).
-   */
-  observeSignedTransaction?(
-    input: SignedWorkflowTransaction,
-  ): Promise<SignedTransactionRecoveryObservation>;
-  rebroadcastSignedTransaction?(
-    input: SignedWorkflowTransaction & {
-      readonly authorizeResubmission: (
-        input: SignedWorkflowTransaction,
-      ) => Promise<void>;
-    },
-  ): Promise<string>;
   observeHeader?(input: {
     readonly headerHash: string;
   }): Promise<AuthenticatedStateQueueHeaderObservation>;

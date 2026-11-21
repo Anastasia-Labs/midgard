@@ -14,8 +14,7 @@ import {
   workflowAdapterRunner,
   type WorkflowApplicationRegistry,
 } from "./adapters.js";
-import type { WorkflowSends } from "./in-flight.js";
-import type { WalletOnlySend } from "./wallet-only-send-gate.js";
+import type { WorkflowObjectiveWallet } from "./workflow-run.js";
 
 export const workflowReadinessReport = (
   launchScope: readonly FraudProofCatalogueCategoryName[] = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -58,10 +57,9 @@ export const runFraudProofWorkflowCli = async ({
   runtimeConfigPath,
   decisionDigest,
   actuationPermit,
-  sends,
+  objectiveWallet,
   onProgress,
   applicationRegistry,
-  walletOnlySend,
 }: {
   readonly category: FraudProofCatalogueCategoryName;
   readonly deploymentFingerprint: string;
@@ -70,13 +68,11 @@ export const runFraudProofWorkflowCli = async ({
   /** Opaque authority minted from the admitted classifier decision. */
   readonly decisionDigest?: string;
   readonly actuationPermit?: WorkflowActuationPermit;
-  /** The objective's part of the application's in-flight set. */
-  readonly sends?: WorkflowSends;
+  /** The objective's wallet wiring, shared with its restricted wallet. */
+  readonly objectiveWallet?: WorkflowObjectiveWallet;
   readonly onProgress?: () => void;
   /** Application-installed only after signed deployment identity admission. */
   readonly applicationRegistry?: WorkflowApplicationRegistry;
-  /** The caller's restart wait and latest wallet-only bound (`wallet-only-send-gate.ts`). */
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<unknown> => {
   normalizeDaDeploymentFingerprintHex(deploymentFingerprint);
   if (
@@ -96,10 +92,10 @@ export const runFraudProofWorkflowCli = async ({
   if (
     decisionDigest === undefined ||
     actuationPermit === undefined ||
-    sends === undefined
+    objectiveWallet === undefined
   ) {
     throw new Error(
-      "production workflow actuation requires an admitted decision, its actuation permit and the in-flight set from the application supervisor",
+      "production workflow actuation requires an admitted decision, its actuation permit and the objective wallet from the application supervisor",
     );
   }
   assertWorkflowAdaptersReady([category], applicationRegistry);
@@ -110,10 +106,9 @@ export const runFraudProofWorkflowCli = async ({
       headerHash,
       decisionDigest,
       actuationPermit,
-      sends,
+      objectiveWallet,
       runtimeConfigPath,
       ...(onProgress === undefined ? {} : { onProgress }),
-      walletOnlySend,
     },
   );
 };

@@ -15,12 +15,10 @@ import {
   FRAUD_PROOF_WORKFLOW_SAFETY,
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import { runAdmittedFraudProofWorkflow } from "./orchestrator.run-admitted-fraud-proof-workflow.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
-import type { WalletOnlySend } from "./wallet-only-send-gate.js";
 import type { WorkflowRun } from "./workflow-run.js";
 
 const noFamilyAction = async (): Promise<never> => {
@@ -29,7 +27,6 @@ const noFamilyAction = async (): Promise<never> => {
 
 export const runProofMaterialsSweep = async ({
   terminal,
-  observeSignedTransaction,
   ...admitted
 }: {
   readonly deploymentFingerprint: string;
@@ -39,9 +36,7 @@ export const runProofMaterialsSweep = async ({
   readonly run: WorkflowRun;
   /** The completion the chain verified, final at release depth. */
   readonly terminal: FraudProofWorkflowTerminal;
-  readonly observeSignedTransaction: FraudProofWorkflowTerminalVerifier["observeSignedTransaction"];
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const completed: FraudProofFamilyWorkflowAdapter = {
     adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
@@ -58,7 +53,6 @@ export const runProofMaterialsSweep = async ({
     registry: new Map([[admitted.category, completed]]),
     terminalVerifier: {
       verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-      observeSignedTransaction,
       verify: async () => terminal,
       verifyIncluded: async () => terminal,
     },

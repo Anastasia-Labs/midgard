@@ -58,7 +58,7 @@ groups:
 
       - alert: MidgardWatcherProofHeld
         expr: >-
-          midgard_watcher_readiness_reason{reason=~"fault_proof_resubmission_required|fault_proof_continuation_stalled|fault_proof_objective_quarantined|fault_proof_start_deadline_passed|fault_proof_l1_refused:.*"} > 0
+          midgard_watcher_readiness_reason{reason=~"fault_proof_continuation_stalled|fault_proof_objective_quarantined|fault_proof_start_deadline_passed|fault_proof_l1_refused:.*"} > 0
         labels:
           severity: critical
         annotations:

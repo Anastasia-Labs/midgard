@@ -60,12 +60,11 @@ export const VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD =
         }),
       }),
     constructWorkflow: createManifestBoundValidationTraceDisputeWorkflow,
-    execute: async ({ workflow, sources, run, walletOnlySend }) =>
+    execute: async ({ workflow, sources, run }) =>
       await runOrResumeManifestBoundValidationTraceDisputeWorkflow({
         workflow,
         sources,
         run,
-        walletOnlySend,
       }),
     bindsDecisionDigest: false,
   });

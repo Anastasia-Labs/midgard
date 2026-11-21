@@ -189,7 +189,7 @@ describe("the funding and proof-materials reads", () => {
     const process = createTestWorkflowProcess();
     restrictWorkflowWallet({
       signer,
-      sends: process.sends({
+      objectiveWallet: process.objectiveWallet({
         category: "doubleSpend",
         headerHash: "c1".repeat(32),
       }),

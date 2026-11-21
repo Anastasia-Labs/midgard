@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 
 import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
@@ -14,15 +14,6 @@ import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
-import { noSignedRead } from "./support/terminal-verifier.js";
-import { createTestWorkflowProcess } from "./support/workflow-process.js";
-import {
-  canonicalEvidence,
-  chainOf,
-  makeAdapter,
-  run,
-  terminalVerifier,
-} from "./workflow.make-adapter.js";
 
 const hash = (byte: string) => byte.repeat(32);
 const candidate: FraudProofWorkflowTerminal = {
@@ -84,7 +75,6 @@ const verify = async (
       throw new Error("unused");
     },
     transactionConfirmed: async () => true,
-    observeSignedTransaction: noSignedRead,
     observe: async () => ({
       provenance: {
         trustClass: "authenticated_cardano_l1",
@@ -170,27 +160,4 @@ it("accepts independently authenticated terminal inclusion while anchoring still
       true,
     ),
   ).rejects.toThrow("differs from independent L1 observation");
-});
-
-it("refuses to start a workflow whose terminal verifier cannot read a signed attempt", async () => {
-  const evidence = await canonicalEvidence();
-  const adapter = makeAdapter();
-  const observe = vi.fn(adapter.observe);
-  const start = async (verifier: typeof terminalVerifier) =>
-    await run({
-      evidence,
-      adapter: { ...adapter, observe },
-      chain: chainOf(adapter),
-      process: createTestWorkflowProcess(),
-      verifier,
-    });
-  await expect(
-    start({
-      ...terminalVerifier,
-      observeSignedTransaction: undefined,
-    } as unknown as typeof terminalVerifier),
-  ).rejects.toThrow("workflow requires the authenticated L1 terminal verifier");
-  expect(observe).not.toHaveBeenCalled();
-  await start(terminalVerifier);
-  expect(observe).toHaveBeenCalled();
 });

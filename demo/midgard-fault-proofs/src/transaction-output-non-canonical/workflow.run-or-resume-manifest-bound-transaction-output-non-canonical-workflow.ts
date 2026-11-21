@@ -16,7 +16,6 @@ import {
   type ManifestBoundFamilyWorkflowWithRecovery,
   withManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
-import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   TransactionOutputStep02DatumSchema,
@@ -154,16 +153,13 @@ export const executeManifestBoundTransactionOutputNonCanonicalWorkflow =
     workflow,
     sources,
     run,
-    walletOnlySend,
   }: {
     readonly workflow: ManifestBoundTransactionOutputNonCanonicalWorkflow;
     readonly sources: readonly RetainedDaPayloadSource[];
     readonly run: WorkflowRun;
-    readonly walletOnlySend: WalletOnlySend;
   }) =>
     await executeManifestBoundFamilyRecovery({
       ...workflow,
       sources,
       run,
-      walletOnlySend,
     });

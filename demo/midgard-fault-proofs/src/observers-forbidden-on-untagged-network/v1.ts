@@ -32,7 +32,6 @@ import {
 } from "../workflow/orchestrator.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
-import type { WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   createObserversForbiddenActuator,
@@ -244,8 +243,8 @@ export const OBSERVERS_FORBIDDEN_FAMILY_DEFINITION = defineFamily<
           artifact: admitObserversForbiddenArtifact(artifact).artifact,
           stage: observed.stage,
         });
-        if (selected === "removed")
-          throw new Error("observersForbidden action became terminal");
+        if (selected === "none")
+          throw new Error("observersForbidden stage requires no action");
         return Object.fromEntries(
           Object.entries(selected).filter(
             ([key]) => key === "action" || key === "walkOrdinal",
@@ -308,7 +307,7 @@ const currentAction = async ({
   readonly workflow: Pick<ManifestBoundObserversForbiddenWorkflow, "lucid">;
   readonly artifact: ObserversForbiddenArtifact;
   readonly stage: FraudProofRawL1FamilyStage;
-}): Promise<ObserversForbiddenActuatorAction | "removed"> => {
+}): Promise<ObserversForbiddenActuatorAction | "none"> => {
   if (stage.kind === "not_started")
     return {
       stage: "init",
@@ -321,7 +320,7 @@ const currentAction = async ({
       nextRemovalOutRef: stage.nextRemovalOutRef,
       fraudProofOutRef: stage.fraudProofOutRef,
     };
-  if (stage.kind === "removed") return "removed";
+  if (stage.kind === "removed" || stage.kind === "pending") return "none";
   if (stage.step === 1)
     return {
       stage: "step_01",
@@ -353,12 +352,10 @@ export const executeManifestBoundObserversForbiddenWorkflow = async ({
   workflow,
   sources,
   run,
-  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundObserversForbiddenWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly run: WorkflowRun;
-  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   if (
     workflowActuationAuthorizingDecisionDigest(run) !== workflow.decisionDigest
@@ -379,6 +376,5 @@ export const executeManifestBoundObserversForbiddenWorkflow = async ({
     run,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-    walletOnlySend,
   });
 };

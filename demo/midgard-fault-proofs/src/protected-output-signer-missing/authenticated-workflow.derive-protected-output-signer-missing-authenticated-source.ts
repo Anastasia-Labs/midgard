@@ -154,6 +154,10 @@ export const protectedOutputSignerStageFromL1 = (
       throw new Error(
         "protectedOutputSignerMissing L1 stage exceeds four-step topology",
       );
+    case "pending":
+      throw new Error(
+        `protectedOutputSignerMissing L1 stage requires no action: ${stage.reason}`,
+      );
     case "proof_token":
       return "proven";
     case "removed":

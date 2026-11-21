@@ -1,19 +1,19 @@
 /**
  * The witness field's publication through the watcher's installed
- * application when its own wallet spends a confirmed publication while the
- * next one is still waiting to be included.
+ * application with no block between its own submissions: each publication
+ * spends what the mempool leaves, and none is offered a coin a mempool
+ * transaction spends.
  *
- * The first publication is published again; the publication that was
- * waiting lands just before that replacement and is the result for its
- * chunk, though a later publication was recorded since: it is never
- * published again.
+ * When its own wallet spends a confirmed publication while the next one
+ * waits in our node's mempool, the first is published again; the one in the
+ * mempool is the result for its chunk once it lands, and is never published
+ * again.
  */
 import { describe, expect, it, vi } from "vitest";
 
 const hooks = vi.hoisted(() => ({
   binding: undefined as unknown,
   authority: undefined as unknown,
-  recovery: undefined as unknown,
 }));
 vi.mock("../src/workflow/deployment-manifest-binding.js", async (load) => ({
   ...(await load<
@@ -24,9 +24,6 @@ vi.mock("../src/workflow/deployment-manifest-binding.js", async (load) => ({
 vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
   const actual =
     await load<typeof import("../src/workflow/family-l1-observation.js")>();
-  const { withFraudProofL1Recovery } = await import(
-    "../src/workflow/l1-source.js"
-  );
   return {
     ...actual,
     createFraudProofFamilyL1ObservationPort: (
@@ -34,111 +31,178 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
         typeof actual.createFraudProofFamilyL1ObservationPort
       >[0],
     ) =>
-      withFraudProofL1Recovery(
-        actual.createFraudProofFamilyRawL1ObservationPort({
-          ...input,
-          authority: hooks.authority as Parameters<
-            typeof actual.createFraudProofFamilyRawL1ObservationPort
-          >[0]["authority"],
-        }),
-        hooks.recovery as Parameters<typeof withFraudProofL1Recovery>[1],
-      ),
+      actual.createFraudProofFamilyRawL1ObservationPort({
+        ...input,
+        authority: hooks.authority as Parameters<
+          typeof actual.createFraudProofFamilyRawL1ObservationPort
+        >[0]["authority"],
+      }),
   };
 });
 
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { layerMethod } from "@al-ft/midgard-test-support/method-layer";
+import type { Emulator, UTxO } from "@lucid-evolution/lucid";
 
-import {
-  fieldCarriageOf,
-  publicationsOf,
-} from "./support/own-field-carriage-installed.js";
+import { publicationsOf } from "./support/own-field-carriage-installed.js";
 import {
   type LedgerTransaction,
+  type LedgerWatch,
   removeOutput,
 } from "./support/own-outputs-installed.js";
 import {
   expectOwnFieldCarriage,
-  type PlaceContext,
+  type Harness,
   runWith,
   sitesOf,
 } from "./support/witness-field-carriage-installed-run.js";
 
-describe("witness field publication in flight when its own wallet spends an earlier one, in the installed watcher application", () => {
+/** The hashes of the transactions in `harness`'s mempool. */
+const mempoolHashes = (harness: Harness): ReadonlySet<string> =>
+  new Set(Object.keys(harness.emulator.mempool).map((key) => key.slice(0, 64)));
+
+const outRefOf = ({ txHash, outputIndex }: UTxO) =>
+  `${txHash}#${outputIndex.toString()}`;
+
+/** A decodable witness wide enough that the field takes three
+ * publications. */
+const WIDE_PAD_BYTES = 30_000;
+
+describe("witness field publication through the mempool, in the installed watcher application", () => {
   let baseline: Awaited<ReturnType<typeof runWith>>["cost"];
 
-  it("publishes and certifies the field: the cost the other row matches", async () => {
-    const { run, cost } = await runWith(hooks, () => []);
+  it("publishes the field's chunks one after another with no block between, each read offering no coin a mempool transaction spends, and certifies it: the cost the other row matches", async () => {
+    /** Each publication, and the block height it was sent at. */
+    const published: { transaction: LedgerTransaction; height: number }[] = [];
+    /** Every coin a read offered that a mempool transaction spends. */
+    const offeredSpent: string[] = [];
+    let sites!: ReturnType<typeof sitesOf>;
+    const { run, cost } = await runWith(hooks, () => [], {
+      widePadBytes: WIDE_PAD_BYTES,
+      decide: (transaction, { harness }) => {
+        sites = sitesOf(harness);
+        if (publicationsOf(transaction, sites).length > 0)
+          published.push({
+            transaction,
+            height: harness.emulator.blockHeight,
+          });
+        return "accept";
+      },
+      during: (_, { harness, watch }) => {
+        const spentInMempool = (watched: LedgerWatch) => {
+          const pending = mempoolHashes(harness);
+          return new Set(
+            watched.accepted
+              .filter(({ txHash }) => pending.has(txHash))
+              .flatMap(({ inputs }) => inputs),
+          );
+        };
+        const reads = layerMethod(
+          harness.emulator,
+          "getUtxos",
+          (next) =>
+            async function (this: Emulator, addressOrCredential) {
+              const utxos = await next.call(this, addressOrCredential);
+              const spent = spentInMempool(watch);
+              for (const utxo of utxos)
+                if (spent.has(outRefOf(utxo)))
+                  offeredSpent.push(outRefOf(utxo));
+              return utxos;
+            },
+        );
+        return () => {
+          reads.restore();
+        };
+      },
+    });
     expect(run.convicted).toBe(true);
+    expect(offeredSpent).toStrictEqual([]);
+    // Three chunks or more, in a chain of publications sent in one block's
+    // time, each after the one before it is in the mempool.
+    const chunks = published.map(
+      ({ transaction }) => publicationsOf(transaction, sites).length,
+    );
+    expect(published.length, chunks.join(",")).toBeGreaterThanOrEqual(2);
+    expect(
+      chunks.reduce((sum, count) => sum + count, 0),
+      chunks.join(","),
+    ).toBeGreaterThanOrEqual(3);
+    expect(new Set(published.map(({ height }) => height)).size).toBe(1);
+    const consumed = published.flatMap(({ transaction }) => transaction.inputs);
+    expect(new Set(consumed).size).toBe(consumed.length);
     baseline = cost;
   }, 900_000);
 
-  it("takes the publication in flight when its own wallet spent an earlier one as the result for its chunk once it lands, after the earlier one is published again", async () => {
-    let held: LedgerTransaction | undefined;
+  it("takes the publication waiting in the mempool as the result for its chunk when its own wallet spent an earlier one, publishing only the earlier one again", async () => {
+    let first: LedgerTransaction | undefined;
+    let waiting: LedgerTransaction | undefined;
     let spent: string | undefined;
-    let replacement: string | undefined;
-    const context: { place?: PlaceContext } = {};
+    let replacement:
+      | { readonly txHash: string; readonly waiting: boolean }
+      | undefined;
     const moved = new Set<string>();
     const { run, watch, harness, cost } = await runWith(hooks, () => [], {
-      decide: async (transaction, { harness, watch }) => {
-        const outputs = publicationsOf(transaction, sitesOf(harness));
-        if (outputs.length === 0) return "accept";
-        if (held === undefined) {
-          // The first publication lands; the second is sent and held, as
-          // a transaction still waiting to be included.
-          if (
-            fieldCarriageOf(watch, sitesOf(harness)).publications.length === 0
-          )
-            return "accept";
-          held = transaction;
-          return "withhold";
+      widePadBytes: WIDE_PAD_BYTES,
+      decide: (transaction, { harness }) => {
+        if (publicationsOf(transaction, sitesOf(harness)).length === 0)
+          return "accept";
+        if (first === undefined) {
+          first = transaction;
+          return "accept";
         }
-        if (transaction.txHash === held.txHash)
-          return replacement === undefined ? "withhold" : "accept";
-        if (spent === undefined || replacement !== undefined) return "accept";
-        // The first publication's replacement is sent. The held
-        // publication is included just before it, and the replacement waits.
-        replacement = transaction.txHash;
-        await harness.emulator.submitTx(held.cbor);
-        harness.emulator.awaitBlock();
-        return "withhold";
+        if (waiting === undefined) {
+          // A block takes the first publication just before the next is
+          // sent; the next waits in the mempool.
+          harness.emulator.awaitBlock();
+          waiting = transaction;
+          return "accept";
+        }
+        if (spent !== undefined && replacement === undefined)
+          replacement = {
+            txHash: transaction.txHash,
+            waiting: mempoolHashes(harness).has(waiting.txHash),
+          };
+        return "accept";
       },
-      during: (_, place) => {
-        context.place = place;
-      },
-      // Between turns, once the second publication is held: the prover's
-      // wallet spends the first publication's output back to itself, and
-      // time passes until the first publication's transaction is past the
-      // recovery depth.
-      afterTurn: async () => {
-        if (held === undefined || spent !== undefined) return;
-        const { harness, watch } = context.place!;
-        const [first] = fieldCarriageOf(watch, sitesOf(harness))
-          .publications[0]!.outputs;
-        const [txHash, index] = first!.outRef.split("#");
-        const utxo = harness.emulator.ledger[`${txHash!}${index!}`]?.utxo;
-        if (utxo === undefined) return;
-        spent = first!.outRef;
-        await removeOutput(
-          watch,
-          harness.proverLucid,
-          utxo,
-          harness.proverSigner.address,
-        );
-        moved.add(`${watch.accepted.at(-1)!.txHash}#0`);
-        harness.emulator.awaitBlock(
-          DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth,
-        );
+      // At the application's next observation, the next publication still
+      // in the mempool: the prover's wallet spends the first publication's
+      // output back to itself.
+      during: ({ clock }, { harness, watch }) => {
+        clock.state.onPoll = async () => {
+          if (
+            waiting === undefined ||
+            spent !== undefined ||
+            !mempoolHashes(harness).has(waiting.txHash)
+          )
+            return;
+          const [output] = publicationsOf(first!, sitesOf(harness));
+          const [txHash, index] = output!.outRef.split("#");
+          const utxo = harness.emulator.ledger[`${txHash!}${index!}`]?.utxo;
+          if (utxo === undefined) return;
+          spent = output!.outRef;
+          await removeOutput(
+            watch,
+            harness.proverLucid,
+            utxo,
+            harness.proverSigner.address,
+          );
+          moved.add(`${watch.accepted.at(-1)!.txHash}#0`);
+        };
+        return () => {
+          clock.state.onPoll = undefined;
+        };
       },
     });
-    expect(replacement).toBeDefined();
+    // The first publication's replacement was sent while the next one
+    // waited in the mempool.
+    expect(replacement).toMatchObject({ waiting: true });
     expect(run.convicted).toBe(true);
     const carriage = expectOwnFieldCarriage(watch, harness, moved);
-    // The held publication landed and is the one its chunk has.
-    const heldOutputs = publicationsOf(held!, sitesOf(harness));
+    // The publication that waited landed and is the one its chunk has.
+    const waitedOutputs = publicationsOf(waiting!, sitesOf(harness));
     const live = carriage.publications
       .flatMap(({ outputs }) => outputs)
       .filter(({ outRef }) => outRef !== spent);
-    for (const { outRef, datum } of heldOutputs)
+    for (const { outRef, datum } of waitedOutputs)
       expect(
         live.filter((output) => output.datum === datum).map((o) => o.outRef),
       ).toEqual([outRef]);

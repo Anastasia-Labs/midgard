@@ -3,9 +3,8 @@
  * removes the block against its record. Open reads the block, so our run
  * cannot carry the thread on. Past rollback recovery of the removal, our
  * run cancels the thread back to our wallet through the opener's Cancel
- * (the thread's lovelace less the cancel's fee), waits out the cancel's
- * rollback recovery (one block short of it, the run still waits), and only
- * then ends resolved by their record: never as our conviction, with no
+ * (the thread's lovelace less the cancel's fee), and once the cancel has
+ * landed ends resolved by their record: never as our conviction, with no
  * removal of ours. */
 import * as SDK from "@al-ft/midgard-sdk/da";
 import {
@@ -180,24 +179,7 @@ describe("validation-trace dispute runner: another prover removes the block whil
       const reclaim = CML.Transaction.from_cbor_hex(sent[0]!);
       const reclaimTxHash = CML.hash_transaction(reclaim.body()).to_hex();
 
-      // The cancel one block short of release finality: no resolve yet.
-      const depth = async () => {
-        const status = await h.emulator.getTransactionStatus(reclaimTxHash);
-        return status.status === "confirmed"
-          ? (status.confirmation.confirmations ?? 0)
-          : 0;
-      };
-      h.emulator.awaitBlock(FINAL_DEPTH - 1 - (await depth()));
-      expect(await depth()).toBe(FINAL_DEPTH - 1);
-      expect(await ours.runOnce(scene.failing)).toMatchObject({
-        kind: "pending",
-        reason: expect.stringContaining(
-          `reclaim ${reclaimTxHash} of our thread ${ourThread} awaits release finality`,
-        ),
-      });
-
-      // The block each run ends with puts the cancel past rollback recovery.
-      expect(await depth()).toBe(FINAL_DEPTH);
+      // Landed in the block that run ended with: the run resolves.
       const result = await ours.runOnce(scene.failing);
 
       // One transaction of ours: the opener's Cancel of our thread, which

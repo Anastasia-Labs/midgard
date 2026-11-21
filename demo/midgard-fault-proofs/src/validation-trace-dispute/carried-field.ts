@@ -27,7 +27,6 @@ import {
 } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import { withFieldCarriagePrerequisite } from "../workflow/field-carriage-prerequisite.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
-import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -53,11 +52,8 @@ import {
 import { validationTraceFieldGrammarCertification } from "./one-step-field-grammar-certify.js";
 import { validationTraceOneStepHolder } from "./one-step-holders.js";
 import { validationTraceCarriedField } from "./one-step-moves.js";
-import {
-  finalAtReleaseDepth,
-  type OwnKeyActions,
-  withOwnKeyActions,
-} from "./own-key-actions.js";
+import { finalAtReleaseDepth } from "./one-step-staging-journal.js";
+import { type OwnKeyActions, withOwnKeyActions } from "./own-key-actions.js";
 import type {
   ValidationTraceOwnPublication,
   ValidationTraceOwnViewOf,
@@ -103,7 +99,7 @@ export const validationTraceCarriedFields = ({
   deployment,
   caseHistory,
   publications,
-  signedRecovery,
+  releaseDepth,
   materialOf,
   ownView,
 }: {
@@ -113,7 +109,8 @@ export const validationTraceCarriedFields = ({
   readonly caseHistory: ValidationTraceCaseHistory;
   /** Where a publication of ours stands; without one, none is made. */
   readonly publications: FraudProofAuthenticatedPublicationObserver | undefined;
-  readonly signedRecovery: FraudProofSignedTransactionRecovery;
+  /** How deep the ledger holds a transaction of ours once it is final. */
+  readonly releaseDepth: number;
   readonly materialOf: (
     headerHash: string,
   ) => ValidationTraceClaimMaterial | undefined;
@@ -325,11 +322,7 @@ export const validationTraceCarriedFields = ({
       for (const reader of readers)
         if (
           reader.reads.has(publication.outRef) &&
-          (await finalAtReleaseDepth(
-            signedRecovery,
-            reader.txHash,
-            reader.signed,
-          ))
+          finalAtReleaseDepth(reader, releaseDepth)
         ) {
           if (!(await held(publication.outRef))) return utxo;
           break;

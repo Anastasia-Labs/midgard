@@ -276,10 +276,6 @@
       "midgard-source": "./src/value-not-preserved/index.ts",
       "import": "./dist/value-not-preserved/index.js"
     },
-    "./wallet-only-validity": {
-      "midgard-source": "./src/wallet-only-validity.ts",
-      "import": "./dist/wallet-only-validity.js"
-    },
     "./witness-script-decoding": {
       "midgard-source": "./src/witness-script-decoding/index.ts",
       "import": "./dist/witness-script-decoding/index.js"
@@ -359,14 +355,6 @@
     "./workflow/header-classifier": {
       "midgard-source": "./src/workflow/header-classifier.ts",
       "import": "./dist/workflow/header-classifier.js"
-    },
-    "./workflow/in-flight": {
-      "midgard-source": "./src/workflow/in-flight.ts",
-      "import": "./dist/workflow/in-flight.js"
-    },
-    "./workflow/in-flight-released": {
-      "midgard-source": "./src/workflow/in-flight-released.ts",
-      "import": "./dist/workflow/in-flight-released.js"
     },
     "./workflow/input-set-uniqueness": {
       "midgard-source": "./src/workflow/input-set-uniqueness.ts",
@@ -472,10 +460,6 @@
       "midgard-source": "./src/workflow/transaction-boundary.ts",
       "import": "./dist/workflow/transaction-boundary.js"
     },
-    "./workflow/wallet-only-send-gate": {
-      "midgard-source": "./src/workflow/wallet-only-send-gate.ts",
-      "import": "./dist/workflow/wallet-only-send-gate.js"
-    },
     "./workflow/workflow-funding-shortfall": {
       "midgard-source": "./src/workflow/workflow-funding-shortfall.ts",
       "import": "./dist/workflow/workflow-funding-shortfall.js"
@@ -542,10 +526,6 @@
     "./test-support/validation-dispute-wallet-move-reserve": {
       "midgard-source": "./tests/support/validation-dispute-wallet-move-reserve.ts",
       "types": "./tests/support/validation-dispute-wallet-move-reserve.ts"
-    },
-    "./test-support/wallet-only-send-always-open": {
-      "midgard-source": "./tests/support/wallet-only-send-always-open.ts",
-      "types": "./tests/support/wallet-only-send-always-open.ts"
     },
     "./test-support/transition-trace-retained": {
       "midgard-source": "./tests/support/transition-trace-retained.ts",
@@ -721,7 +701,6 @@
             "src/validation-trace-dispute/replay-hold.ts",
             "src/validation-trace-dispute/stage-unbuilt.ts",
             "src/value-not-preserved/index.ts",
-            "src/wallet-only-validity.ts",
             "src/witness-script-decoding/index.ts",
             "src/workflow/actuation-permit.ts",
             "src/workflow/adapters.ts",
@@ -742,8 +721,6 @@
             "src/workflow/funding-pause-reason.ts",
             "src/workflow/funding-requirements.ts",
             "src/workflow/header-classifier.ts",
-            "src/workflow/in-flight.ts",
-            "src/workflow/in-flight-released.ts",
             "src/workflow/input-set-uniqueness.ts",
             "src/workflow/installed-categories.ts",
             "src/workflow/journal.ts",
@@ -770,7 +747,6 @@
             "src/workflow/sqlite-busy.ts",
             "src/workflow/superseded-attempt-read-schedule.ts",
             "src/workflow/transaction-boundary.ts",
-            "src/workflow/wallet-only-send-gate.ts",
             "src/workflow/workflow-funding-shortfall.ts",
             "src/workflow/workflow-run.ts",
             "src/workflow/workflow-wallet.ts",

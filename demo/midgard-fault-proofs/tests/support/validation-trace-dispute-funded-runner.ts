@@ -3,8 +3,10 @@
  * objective, over the Open scene's emulator deployment: the header is
  * classified through the production classifier, the actuation permit is
  * minted from that decision, and every turn runs the shared orchestrator in
- * the watcher process's in-flight set, bound to that permit, with the prover
- * signer restricted to the coins no transaction of the process holds.
+ * a fresh run of the watcher process, bound to that permit, with the prover
+ * signer restricted to the workflow wallet. Every read is the ledger with
+ * the emulator's mempool applied. A turn makes one move unless told to
+ * chain (`one-move-per-run.ts`), and ends with a block unless told not to.
  *
  * The calling test stands in for the family's install (the category is not
  * installed until its defender exists); the deployment is the fixture
@@ -37,7 +39,6 @@ import { createValidationTraceDisputeCompleteCanonicalReplay } from "../../src/w
 import { authenticatedStateQueueObservationDigest } from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import { classifyHeader } from "../../src/workflow/header-classifier.classify-header.js";
 import { createHeaderClassifier } from "../../src/workflow/header-classifier.create-header-classifier.js";
-import type { FraudProofSignedTransactionRecovery } from "../../src/workflow/l1-source.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { createFraudProofWorkflowRegistry } from "../../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
@@ -46,8 +47,8 @@ import { restrictWorkflowWallet } from "../../src/workflow/workflow-wallet.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
 import { terminalVerifier } from "../workflow.make-adapter.js";
 import { emulatorManifestProtocolParameters } from "./emulator-protocol-parameters.js";
-import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { emulatorPublicationObserver } from "./install-field-carriage.js";
+import { oneMovePerRun } from "./one-move-per-run.js";
 import { FixtureRetainedDaSource } from "./script-decode-installed-host.js";
 import { validationDisputeWalletMoveReserve } from "./validation-dispute-wallet-move-reserve.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
@@ -63,7 +64,6 @@ import {
   runnerDeployment,
   unobservedRemoval,
 } from "./validation-trace-dispute-runner.js";
-import { walletOnlySendAlwaysOpenOn } from "./wallet-only-send-always-open.js";
 import { createTestWorkflowProcess } from "./workflow-process.js";
 
 const CATEGORY = "validationTraceDispute" as const;
@@ -184,7 +184,7 @@ export const openFundedDispute = async (
       ? runnerDeployment(scene)
       : oneStepDeployment(scene, options.oneStep);
   /** The watcher process; a restart is a new one. */
-  let process = createTestWorkflowProcess({ nowMs: () => h.emulator.now() });
+  let process = createTestWorkflowProcess();
   /** Every process the dispute ran in, oldest first. */
   const processes = [process];
   /** Every signed transaction the emulator took again, by any path: the
@@ -199,21 +199,17 @@ export const openFundedDispute = async (
     return await submit(cbor);
   };
   const { releaseDepth } = options;
-  const signedRecovery: FraudProofSignedTransactionRecovery =
-    releaseDepth === undefined
-      ? emulatorSignedTransactionRecovery(h.emulator)
-      : {
-          ...emulatorSignedTransactionRecovery(h.emulator),
-          observeSignedTransaction: async (input) =>
-            await emulatorSignedTransactionRecovery(
-              h.emulator,
-              releaseDepth(),
-            ).observeSignedTransaction(input),
-        };
 
-  /** One watcher turn: bind the permit to a fresh run, then run it. */
+  /** One watcher turn: bind the permit to a fresh run, then run it. The run
+   * makes one move unless `chain`, carrying on over its own moves in the
+   * mempool as the watcher's does; a block follows unless `block` is false,
+   * our transactions left in the mempool. */
   const turn = async (
     wrap?: AdapterWrap,
+    {
+      chain = false,
+      block: addBlock = true,
+    }: { readonly chain?: boolean; readonly block?: boolean } = {},
   ): Promise<FraudProofWorkflowRunResult> => {
     const run = bindWorkflowRunActuation({
       run: process.run(objective),
@@ -228,7 +224,7 @@ export const openFundedDispute = async (
     });
     const signer = restrictWorkflowWallet({
       signer: h.proverSigner,
-      sends: process.sends(objective),
+      objectiveWallet: process.objectiveWallet(objective),
     });
     signer.selectWallet(lucid);
     const adapter = createValidationTraceDisputeWorkflowAdapter({
@@ -237,37 +233,29 @@ export const openFundedDispute = async (
       deployment,
       l1SlotConfig,
       removal: options.removal ?? unobservedRemoval,
-      signedRecovery,
+      releaseDepth: (releaseDepth?.() ?? 0) + 1,
       caseHistory,
       // Our publications stand as the emulator shows them.
-      publications: {
-        ...emulatorPublicationObserver(h.proverLucid),
-        observeSignedTransaction: signedRecovery.observeSignedTransaction,
-        rebroadcastSignedTransaction:
-          signedRecovery.rebroadcastSignedTransaction,
-      },
+      publications: emulatorPublicationObserver(h.proverLucid),
       now: () => h.emulator.now(),
     });
+    const recorded = process.recording(
+      wrap === undefined ? adapter : wrap(adapter),
+    );
     const result = await runFraudProofWorkflow({
-      walletOnlySend: walletOnlySendAlwaysOpenOn(lucid),
       deploymentFingerprint: fingerprint,
       evidence: block.evidence,
       detections: await detectOn(block),
       ...(block.context === undefined ? {} : { replayContext: block.context }),
       registry: createFraudProofWorkflowRegistry({
-        adapters: [wrap === undefined ? adapter : wrap(adapter)],
+        adapters: [chain ? recorded : oneMovePerRun(recorded).adapter],
         launchScope: [CATEGORY],
       }),
       run,
-      // The runner follows what it sent through the emulator's own view.
-      terminalVerifier: {
-        ...terminalVerifier,
-        observeSignedTransaction: signedRecovery.observeSignedTransaction,
-      },
+      terminalVerifier,
       releaseFinalityAuthority,
-      nowMs: () => h.emulator.now(),
     });
-    h.emulator.awaitBlock(1);
+    if (addBlock) h.emulator.awaitBlock(1);
     return result;
   };
 
@@ -280,8 +268,8 @@ export const openFundedDispute = async (
     turn,
     /** The process the dispute runs in now. */
     process: () => process,
-    /** Every transaction the dispute's processes recorded as sent, oldest
-     * process first. */
+    /** Every transaction the dispute's processes were asked to submit,
+     * oldest process first. */
     sent: () => processes.flatMap((each) => each.sent()),
     /** The stage transactions the dispute's processes sent that the
      * emulator confirmed. */
@@ -291,10 +279,10 @@ export const openFundedDispute = async (
         deployment,
         sent: processes.flatMap((each) => each.sent()),
       }),
-    /** Stops the watcher process and starts another, which holds nothing
-     * in flight. */
+    /** Stops the watcher process and starts another, which has sent
+     * nothing. */
     restart: () => {
-      process = createTestWorkflowProcess({ nowMs: () => h.emulator.now() });
+      process = createTestWorkflowProcess();
       processes.push(process);
     },
     /** The header rolls back: every later turn runs under the

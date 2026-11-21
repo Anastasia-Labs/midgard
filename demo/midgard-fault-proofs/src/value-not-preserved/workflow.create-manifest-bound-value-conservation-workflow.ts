@@ -21,6 +21,7 @@ import {
   journalJsonDigest,
   type JournalJsonObject,
 } from "../workflow/journal.fraud-proof-workflow-terminal.js";
+import { nextViewOf } from "../workflow/next-state.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
@@ -193,12 +194,16 @@ export const createManifestBoundValueConservationWorkflow = async (
   const snapshot = async () => {
     if (l1.rawL1 === undefined)
       throw new Error("value conservation: raw L1 authority absent");
-    return admitFraudProofRawL1Snapshot({
-      value: await l1.rawL1.capture(request),
-      request,
-      releaseFinality: binding.releaseFinality,
-      observationDepth: "inclusion",
-    });
+    const { snapshot: value, pending } = await l1.rawL1.capture(request);
+    return {
+      snapshot: admitFraudProofRawL1Snapshot({
+        value,
+        request,
+        releaseFinality: binding.releaseFinality,
+        observationDepth: "inclusion",
+      }),
+      pending,
+    };
   };
   const cache = new Map<
     string,
@@ -267,12 +272,14 @@ export const createManifestBoundValueConservationWorkflow = async (
     // must therefore come from the same authenticated chain boundary.
     const observed = await snapshot();
     const stage = await deriveFraudProofRawL1FamilyStage({
-      snapshot: observed,
+      ...observed,
       definition,
       releaseEconomics: binding.releaseEconomics,
     });
     if (stage.kind === "removed")
       return { kind: "completed", terminal: stage.terminal };
+    if (stage.kind === "pending")
+      return { kind: "pending", reason: stage.reason };
     if (stage.kind === "not_started")
       return {
         kind: "action_required",
@@ -297,8 +304,8 @@ export const createManifestBoundValueConservationWorkflow = async (
           },
         },
       };
-    const raw = observed.scopes
-      .flatMap((scope) => scope.utxos)
+    const raw = nextViewOf(observed)
+      .scopes.flatMap((scope) => scope.utxos)
       .find((utxo) => utxo.outRef === stage.threadOutRef);
     if (raw === undefined)
       throw new Error(
@@ -419,8 +426,8 @@ export const createManifestBoundValueConservationWorkflow = async (
               if (selected.position === "unionAcceptedSource") {
                 if (admitted.accepted === undefined)
                   throw new Error("value conservation: accepted source absent");
-                const raw = (await snapshot()).scopes
-                  .flatMap((scope) => scope.utxos)
+                const raw = nextViewOf(await snapshot())
+                  .scopes.flatMap((scope) => scope.utxos)
                   .find((utxo) => utxo.outRef === threadOutRef);
                 if (raw === undefined)
                   throw new Error(

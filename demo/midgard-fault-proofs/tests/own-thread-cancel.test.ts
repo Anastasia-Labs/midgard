@@ -127,7 +127,7 @@ describe("own-thread cancel with no header in hand", () => {
   it("cancels our step-01 thread to our wallet; a second cancel finds it spent", async () => {
     const s = await scene();
     const accepted = recordAccepted(s.h);
-    const { canceller, holds } = ownThreadCancellerOf(s.h);
+    const { canceller } = ownThreadCancellerOf(s.h);
     expect(canceller.proverKeyHash).toBe(s.h.proverSigner.paymentKeyHash);
     expect(canceller.plan(s.subject)).toMatchObject({
       kind: "cancellable",
@@ -145,12 +145,6 @@ describe("own-thread cancel with no header in hand", () => {
       reclaimedLovelace: s.thread.assets.lovelace,
     });
     expect(accepted).toHaveLength(1);
-    // The coins the cancel spends besides the thread are held until its
-    // validity ends, and never the thread itself.
-    expect(holds).toHaveLength(1);
-    expect(holds[0]!.outRefs).not.toContain(s.subject.threadOutRef);
-    if (outcome.kind === "submitted")
-      expect(holds[0]!.untilMs).toBe(outcome.validToMs);
 
     s.h.emulator.awaitBlock();
     const cancel = CML.Transaction.from_cbor_hex(accepted[0]!);
@@ -168,7 +162,7 @@ describe("own-thread cancel with no header in hand", () => {
   it("sends nothing when the thread stops being due before submission", async () => {
     const s = await scene();
     const accepted = recordAccepted(s.h);
-    const { canceller, holds } = ownThreadCancellerOf(s.h);
+    const { canceller } = ownThreadCancellerOf(s.h);
     expect(
       await canceller.cancel({
         subject: s.subject,
@@ -176,7 +170,6 @@ describe("own-thread cancel with no header in hand", () => {
       }),
     ).toEqual({ kind: "withdrawn" });
     expect(accepted).toEqual([]);
-    expect(holds).toEqual([]);
     expect(await s.h.proverLucid.utxosByOutRef([s.thread])).toHaveLength(1);
   }, 900_000);
 

@@ -10,7 +10,6 @@ import {
   fixture,
   HEADER,
 } from "./support/manifest-bound-family-assembly-fixture.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -214,7 +213,6 @@ describe("manifest-bound family assembly", () => {
       const workflowRun = { fake: "run" } as never;
       await expect(
         runOrResumeManifestBoundFamilyWorkflow({
-          walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
           workflow,
           sources,
           run: workflowRun,
@@ -260,7 +258,6 @@ describe("manifest-bound family assembly", () => {
         .spyOn(orchestrator, "runFraudProofWorkflowFromRetainedDa")
         .mockResolvedValue({} as never);
       await runOrResumeManifestBoundFamilyWorkflow({
-        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         workflow,
         sources: [],
         run: {} as never,

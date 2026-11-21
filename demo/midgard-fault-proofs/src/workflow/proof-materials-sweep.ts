@@ -223,27 +223,17 @@ export const withProofMaterialsSweep = ({
           proofMaterialsSweepInputs(action).join(",")
         )
           throw new Error(`${action.actionId} changed its page`);
-        // Claimed before it is built: no other sweep of the process takes
-        // these outputs, and a need registered since takes them back.
-        const claim = sweeping.view.claimForSweep(page);
-        if (claim.page.length !== page.length) {
-          claim.abandoned();
+        // A need registered since the page was read takes it back.
+        if (sweeping.view.unneeded(page).length !== page.length)
           throw new WorkflowActionChangedError(
             `${action.actionId} no longer sweeps its whole page`,
           );
-        }
-        let signed: TxSigned;
-        try {
-          signed = await sweeping.build(
+        return {
+          signed: await sweeping.build(
             page,
             context.reconciliationOnly === true,
-          );
-        } catch (cause) {
-          claim.abandoned();
-          throw cause;
-        }
-        claim.submitted(signed.toHash().toLowerCase());
-        return { signed };
+          ),
+        };
       },
     },
   });

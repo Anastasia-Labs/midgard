@@ -13,9 +13,8 @@
  * expiry as before it. Once its defender closes the case, each comes back
  * to our wallet before the case's ending, a reclaim that authority admits
  * by its kind; the ending waits on no spend back's finality: a spend back
- * that rolls back leaves its outputs live, the process signs nothing new
- * for them, and a proof-materials sweep selects them
- * (support/validation-trace-dispute-funded-one-step-staging-held.ts). */
+ * that rolls back leaves its outputs live, and the next runs spend them back
+ * again (support/validation-trace-dispute-funded-one-step-staging-held.ts). */
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { topUpProver } from "./support/installed-prover-wallet.js";
@@ -83,7 +82,7 @@ describe("validation-trace dispute staging outputs under reconciliation-only fun
   );
 
   it(
-    "spends each back to our wallet under the reconciliation-only permit once its defender closed the case, before the ending, and leaves them for a sweep once those spend backs roll back",
+    "spends each back to our wallet under the reconciliation-only permit once its defender closed the case, before the ending, and spends them back again once those spend backs roll back",
     async () => {
       await expectSpentBackOnClose(held, staged);
     },

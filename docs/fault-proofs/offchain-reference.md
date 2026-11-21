@@ -33,7 +33,7 @@ five reward accounts.
 - family preparation and proof artifact construction;
 - field publication/certification and reference-script resolution;
 - Init, step, cancel, timeout/award, and removal transaction builders;
-- in-memory in-flight tracking, retry, and resume from chain state;
+- retry and resume from the chain and the node's mempool;
 - manifest-bound production runner admission.
 
 Family modules live under `src/` in `demo/midgard-fault-proofs`; use the

@@ -80,7 +80,7 @@ export const signingScene = async () => {
   const lucid = await Lucid(emulator, "Custom");
   restrictWorkflowWallet({
     signer,
-    sends: createTestWorkflowProcess().sends({
+    objectiveWallet: createTestWorkflowProcess().objectiveWallet({
       category: "doubleSpend",
       headerHash: "c1".repeat(32),
     }),

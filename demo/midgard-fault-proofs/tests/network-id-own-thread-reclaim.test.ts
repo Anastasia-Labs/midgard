@@ -3,9 +3,9 @@
  * the linear chain: at the forced door, or in the forced outputs scan. Our
  * run, over the real emulator chain, waits for the removal to pass rollback
  * recovery, cancels that thread back to our wallet through the family's own
- * cancel (the thread's lovelace less the cancel's fee), waits out the
- * cancel's own rollback recovery, and only then ends resolved by the other
- * record: no conviction of ours, no terminal. */
+ * cancel (the thread's lovelace less the cancel's fee), and once the cancel
+ * has landed ends resolved by the other record: no conviction of ours, no
+ * terminal. */
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, generateEmulatorAccount, Lucid } from "@lucid-evolution/lucid";
@@ -48,12 +48,10 @@ import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
-import { emulatorSignedTransactionRecovery } from "./support/emulator-signed-recovery.js";
 import {
   expectResolvedWithReclaim,
   walletLovelace,
 } from "./support/own-thread-reclaim-expectations.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
   DEPLOYMENT_FINGERPRINT,
@@ -239,14 +237,7 @@ const scene = async (ours: "forcedStep" | "forcedScan") => {
       validFrom: now - 120_000n,
       validTo: now + 300_000n,
     },
-    rawL1: {
-      ...rawL1,
-      observeSignedTransaction: async () => {
-        throw new Error(
-          "the workflow follows its sends through the terminal verifier",
-        );
-      },
-    },
+    rawL1,
   };
   // One watcher process across every run of the scene.
   const process = createTestWorkflowProcess();
@@ -268,22 +259,13 @@ const scene = async (ours: "forcedStep" | "forcedScan") => {
   );
   const run = async (): Promise<FraudProofWorkflowRunResult> =>
     await runAdmittedFraudProofWorkflow({
-      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       category: "networkId",
       headerHash,
       prepareFamilyArtifact: async () => artifact,
       registry,
       run: process.run({ category: "networkId", headerHash }),
-      // The workflow follows each send of ours by where it stands at the
-      // emulator's tip, final once it is past the release horizon.
-      terminalVerifier: {
-        ...terminalVerifier,
-        observeSignedTransaction: emulatorSignedTransactionRecovery(
-          harness.emulator,
-          FINAL_DEPTH,
-        ).observeSignedTransaction,
-      },
+      terminalVerifier,
       releaseFinality,
     });
   return {
@@ -343,16 +325,6 @@ describe("network-id: our thread off the linear chain on a header another prover
           (await s.rawL1.observeOwnThreads!({ headerHash: s.headerHash }))
             .standing,
         ).toBeUndefined();
-        let result = await s.run();
-        const awaitingOurCancel = `reclaim ${reclaimTxHash} of our thread ${thread.threadOutRef} awaits release finality`;
-        if (!JSON.stringify(result).includes(awaitingOurCancel))
-          result = await s.run();
-        expect(result).toMatchObject({
-          kind: "pending",
-          reason: expect.stringContaining(awaitingOurCancel),
-        });
-
-        s.harness.emulator.awaitBlock(FINAL_DEPTH);
         expectResolvedWithReclaim(
           await s.run(),
           thread.threadOutRef,

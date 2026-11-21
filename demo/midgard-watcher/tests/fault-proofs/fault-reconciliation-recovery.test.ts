@@ -5,12 +5,14 @@ import {
   workflowRunIsReconciliationOnly,
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import type { HeaderFaultDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import { createWorkflowInFlight } from "@al-ft/midgard-fault-proofs/workflow/in-flight";
 import {
   journalJsonDigest,
   normalizeJournalJson,
 } from "@al-ft/midgard-fault-proofs/workflow/journal";
-import { createWorkflowRun } from "@al-ft/midgard-fault-proofs/workflow/workflow-run";
+import {
+  createWorkflowObjectiveWallet,
+  createWorkflowRun,
+} from "@al-ft/midgard-fault-proofs/workflow/workflow-run";
 import { describe, expect, it } from "vitest";
 
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
@@ -55,7 +57,7 @@ describe("reconciliation-only workflow authority", () => {
       rollbackGeneration: "0",
     });
     const run = createWorkflowRun(
-      createWorkflowInFlight().forObjective({
+      createWorkflowObjectiveWallet({
         category: "transitionTrace",
         headerHash: HEADER,
       }),

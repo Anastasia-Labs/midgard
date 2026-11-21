@@ -18,8 +18,8 @@ import {
   pruneFixture,
 } from "../support/l1-follower-raw-reads-fixture.js";
 import {
-  nodeDouble,
   nodeUnit,
+  pendingOver,
   RELEASE,
   requestFor,
   SOURCE_ID,
@@ -39,7 +39,7 @@ const captureWith = async (proofRetention: WatcherProofRetention) => {
   const source = createWatcherFaultProofL1Source({
     store: fx.store,
     rawReads: fx.reads(),
-    node: nodeDouble().node,
+    pending: pendingOver(fx.store),
     sourceId: SOURCE_ID,
     proofRetention,
   });
@@ -51,7 +51,8 @@ const captureWith = async (proofRetention: WatcherProofRetention) => {
           releaseFinality: RELEASE,
           observationDepth: "release_finality",
         })
-        .capture(request) as Promise<FraudProofRawL1Snapshot>,
+        .capture(request)
+        .then(({ snapshot }) => snapshot as FraudProofRawL1Snapshot),
   };
 };
 
@@ -107,7 +108,7 @@ describe("fault-proof L1 source: unit hold results", () => {
     const source = createWatcherFaultProofL1Source({
       store: fx.store,
       rawReads: fx.reads(),
-      node: nodeDouble().node,
+      pending: pendingOver(fx.store),
       sourceId: SOURCE_ID,
       proofRetention: retention,
     });
@@ -162,16 +163,18 @@ describe("fault-proof L1 source: unit hold results", () => {
     const source = createWatcherFaultProofL1Source({
       store: fx.store,
       rawReads: fx.reads(),
-      node: nodeDouble().node,
+      pending: pendingOver(fx.store),
       sourceId: SOURCE_ID,
       proofRetention: retention,
     });
-    const snapshot = (await source
-      .snapshotAuthority({
-        releaseFinality: RELEASE,
-        observationDepth: "release_finality",
-      })
-      .capture(requestFor(fx.header))) as FraudProofRawL1Snapshot;
+    const snapshot = (
+      await source
+        .snapshotAuthority({
+          releaseFinality: RELEASE,
+          observationDepth: "release_finality",
+        })
+        .capture(requestFor(fx.header))
+    ).snapshot as FraudProofRawL1Snapshot;
     expect(snapshot.history.map(({ unit }) => unit)).toEqual([
       nodeUnit(fx.header),
     ]);
@@ -190,7 +193,7 @@ describe("fault-proof L1 source: unit hold results", () => {
     const source = createWatcherFaultProofL1Source({
       store: fx.store,
       rawReads: fx.reads(),
-      node: nodeDouble().node,
+      pending: pendingOver(fx.store),
       sourceId: SOURCE_ID,
       proofRetention: retention,
     });
@@ -207,7 +210,8 @@ describe("fault-proof L1 source: unit hold results", () => {
           requestFor(fx.header, {
             historyUnits: [nodeUnit(fx.header), token],
           }),
-        ) as Promise<FraudProofRawL1Snapshot>;
+        )
+        .then(({ snapshot }) => snapshot as FraudProofRawL1Snapshot);
     // No pin: a read for no open objective, past pruning, is refused.
     await expect(capture()).rejects.toMatchObject({
       reason: "beyond_retention",

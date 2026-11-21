@@ -14,7 +14,6 @@ import {
   setupClassifiedFaultFixture,
 } from "../support/classified-fault-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
-import { inFlightOf } from "../support/in-flight-fixture.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
   recordObjectives,
@@ -32,7 +31,6 @@ const setup = async () => {
     deploymentFingerprint: deploymentIdentity.manifestId,
     categories: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
-    ...inFlightOf(),
   });
   const observation = progressObservation({
     deploymentFingerprint: deploymentIdentity.manifestId,
@@ -171,33 +169,6 @@ describe("supervisor progress authority", () => {
       }),
     ).toThrow("native rollback");
   });
-
-  it("mints deadline recovery separately from the active submission permit", async () => {
-    const test = await setup();
-    const fault = faultOf(test.request.observation, test.fixture.old);
-    await test.authority.admit({ ...test.request, fault });
-    const permit = await test.authority.reconcileExecution({
-      objective: test.fixture.old,
-      rollbackGeneration: "2",
-    });
-    expect(
-      assertWorkflowActuationPermitIdentity({
-        permit,
-        category: "doubleSpend",
-        rollbackGeneration: "2",
-      }),
-    ).toMatchObject({
-      authority: "reconciliation",
-      decisionDigest: test.fixture.old.decisionDigest,
-    });
-    expect(
-      assertWorkflowActuationPermitIdentity({
-        permit: fault.actuationPermit,
-        category: "doubleSpend",
-        rollbackGeneration: "2",
-      }).authority,
-    ).toBe("submission");
-  });
 });
 
 describe("supervisor progress authority: proof retention", () => {
@@ -209,7 +180,6 @@ describe("supervisor progress authority: proof retention", () => {
       deploymentFingerprint: deploymentIdentity.manifestId,
       categories: installedLaunchScope(fixture.old.launchScope),
       authenticationKey: TEST_JOURNAL_KEY,
-      ...inFlightOf(),
       retention: {
         ...storelessProofRetention,
         pin: async ({ category, headerHash }) => {

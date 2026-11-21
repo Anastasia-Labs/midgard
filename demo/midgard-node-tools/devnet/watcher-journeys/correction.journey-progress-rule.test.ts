@@ -69,7 +69,6 @@ describe("the correction wait's progress rule", () => {
   it.each([
     "fault_proof_continuation_stalled",
     "fault_proof_counterparty_deadline_passed",
-    "fault_proof_resubmission_required",
   ])("fails at once, naming it, when the watcher holds %s", async (reason) => {
     await expect(
       pollChainCorrection([

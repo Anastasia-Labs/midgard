@@ -13,9 +13,8 @@
  * reference reads our publications of it (carried-field.ts), and
  * a staged builtin step's operands are staged before it (one-step-staging.ts).
  * The staging sits in front of our thread's reclaim (own-thread-reclaim.ts).
- * Our own outputs are read from the chain (own-view.chain.ts), with the
- * runner's in-flight transactions in front of it; chain state decides the
- * next action. A thread move needs the claim
+ * Our own outputs are read from the ledger with our node's mempool applied
+ * (own-view.chain.ts); that state decides the next action. A thread move needs the claim
  * material, which each run reads back as it prepares or validates its
  * artifact. */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
@@ -23,7 +22,6 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -107,7 +105,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   deployment,
   l1SlotConfig,
   removal,
-  signedRecovery,
+  releaseDepth,
   caseHistory,
   publications,
   ownThreadReclaim,
@@ -120,8 +118,9 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   readonly l1SlotConfig: L1SlotConfig;
   /** The convicted block's removal through the shared remove stage. */
   readonly removal: ValidationTraceRemovalConfig;
-  /** Where one exact signed transaction stands, and its rebroadcast. */
-  readonly signedRecovery: FraudProofSignedTransactionRecovery;
+  /** How deep the ledger holds a transaction of ours once it is final: at
+   * least this many blocks, the tip one. */
+  readonly releaseDepth: number;
   /** Our case token's complete L1 history, where its threads are found. */
   readonly caseHistory: ValidationTraceCaseHistory;
   /** Where a script-decode record stands; selection deployments need it. */
@@ -160,14 +159,14 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   const copy = validationTraceCarriedFields({
     ...withHistory,
     publications,
-    signedRecovery,
+    releaseDepth,
     materialOf,
     ownView,
   });
   const { recordAt, ourCases, ourCase } = validationTraceCaseReads(withHistory);
   const staging = validationTraceStaging({
     ...withHistory,
-    signedRecovery,
+    releaseDepth,
     materialOf,
     ownView,
   });

@@ -67,15 +67,15 @@ const headerOf = (
  * record (the stage derivation's typed error), or against a completed record,
  * whoever on our key made it. While a thread of ours stands on it, the run
  * waits for the removal to pass rollback recovery, and its next action is
- * then that thread's cancel; while a cancel this process sent is still within
- * rollback recovery, the run waits. Only then does the resolution or the
- * completion reach the run. Every other action is the family's own. The
- * adapter also reports our threads, so the orchestrator can refuse any
- * resolution while one still stands.
+ * then that thread's cancel; while a transaction in the node's mempool spends
+ * the thread, the run waits for it to land. Only once no thread of ours
+ * stands on the ledger does the resolution or the completion reach the run.
+ * Every other action is the family's own. The adapter also reports our
+ * threads, so the orchestrator can refuse any resolution while one still
+ * stands.
  *
- * A cancel sent before a restart and then rolled back leaves its thread
- * standing after the run has ended; the watcher's own-thread sweep reclaims
- * it from the chain.
+ * A cancel rolled back after the run has ended leaves its thread standing;
+ * the watcher's own-thread sweep reclaims it from the chain.
  */
 export const withOwnThreadReclaim = <
   Category extends FraudProofCatalogueCategoryName,
@@ -103,8 +103,6 @@ export const withOwnThreadReclaim = <
     throw new Error(`${category} thread reclaim changed adapter identity`);
   }
   const finalDepth = releaseFinality.policy.automaticRecoveryMaxDepth + 2;
-  // The cancels this process sent, by transaction hash.
-  const sentReclaims = new Set<string>();
   // One read of our threads per observation pass: the check before a
   // resolution and the orchestrator's guard after it read the same view. A
   // pass ends when the adapter is next asked to observe or act, or once the
@@ -138,6 +136,11 @@ export const withOwnThreadReclaim = <
     resolved: () => FraudProofWorkflowObservation,
   ): Promise<FraudProofWorkflowObservation> => {
     const threads = await passThreads(headerOf(category, context));
+    if (threads.standing?.pendingSpend !== undefined)
+      return {
+        kind: "pending",
+        reason: `${category} transaction ${threads.standing.pendingSpend} spending our thread ${threads.standing.threadOutRef} awaits inclusion`,
+      };
     if (threads.standing !== undefined) {
       const unreclaimable = reclaim.unreclaimable?.(threads.standing);
       if (unreclaimable !== undefined)
@@ -169,15 +172,6 @@ export const withOwnThreadReclaim = <
         action: threadReclaimAction(threads.standing),
       };
     }
-    const shallow = threads.spends.find(
-      ({ txHash, confirmationDepth }) =>
-        sentReclaims.has(txHash) && confirmationDepth < finalDepth,
-    );
-    if (shallow !== undefined)
-      return {
-        kind: "pending",
-        reason: `${category} reclaim ${shallow.txHash} of our thread ${shallow.threadOutRef} awaits release finality`,
-      };
     return resolved();
   };
   const isReclaim = (action: {
@@ -235,7 +229,10 @@ export const withOwnThreadReclaim = <
       const { threadOutRef } = action.input;
       const headerHash = headerOf(category, context);
       const { standing } = await reclaim.observe({ headerHash });
-      if (standing?.threadOutRef !== threadOutRef)
+      if (
+        standing?.threadOutRef !== threadOutRef ||
+        standing.pendingSpend !== undefined
+      )
         throw new WorkflowActionChangedError(
           `${category} thread ${threadOutRef} no longer stands to reclaim`,
         );
@@ -272,7 +269,6 @@ export const withOwnThreadReclaim = <
     submit: async (context) => {
       endPass(context);
       if (!isReclaim(context.action)) return await base.submit(context);
-      sentReclaims.add(context.preflight.txHash);
       return {
         kind: "submitted",
         txHash: await reclaim.submit({ preflight: context.preflight }),

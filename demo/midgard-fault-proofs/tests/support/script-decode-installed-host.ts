@@ -52,11 +52,16 @@ export class FixtureRetainedDaSource extends DaLibp2pRetainedDaSource {
 
 /**
  * The emulator's clock as the application sees it: `Date.now` reads the
- * emulator, and every 1 s pending poll of the runner adds one block. Setting
- * `crashAfterPolls` makes the poll after that many throw once, standing in
- * for a process that dies between two journaled actions. `onPoll`, when
- * set, runs before the poll returns: the world acting while the runner
- * waits for a confirmation.
+ * emulator, and every 1 s pending poll of the runner adds one block and
+ * counts in `polls`. Each observation the application makes (`observation`,
+ * which its runner calls before each capture) is the moment between two of
+ * its actions, its last transaction perhaps still in the mempool: no block,
+ * and no count. Setting `crashAfterPolls` stops the process once, at the
+ * first observation or poll once that many polls are counted, standing in
+ * for a process that dies between two actions: a poll throws, and an
+ * observation never returns while `stopped()` rejects with the stop.
+ * `onPoll`, when set, runs before a poll or an observation returns: the
+ * world acting while the runner waits.
  */
 export const installApplicationClock = (emulator: Emulator) => {
   const realSetTimeout = globalThis.setTimeout;
@@ -66,6 +71,14 @@ export const installApplicationClock = (emulator: Emulator) => {
     onPoll: undefined as (() => Promise<void>) | undefined,
     pollError: undefined as unknown,
   };
+  /** The stop, once `counted` passes `crashAfterPolls`. */
+  const stopPast = (counted: number): Error | undefined => {
+    if (state.crashAfterPolls === undefined || counted <= state.crashAfterPolls)
+      return undefined;
+    state.crashAfterPolls = undefined;
+    return new Error("installed application process stopped");
+  };
+  let halt: ((stop: Error) => void) | undefined;
   const now = vi.spyOn(Date, "now").mockImplementation(() => emulator.now());
   const timers = vi.spyOn(globalThis, "setTimeout").mockImplementation(((
     callback: (...args: unknown[]) => void,
@@ -74,13 +87,8 @@ export const installApplicationClock = (emulator: Emulator) => {
   ) => {
     if (ms !== 1_000) return realSetTimeout(callback, ms, ...args);
     state.polls += 1;
-    if (
-      state.crashAfterPolls !== undefined &&
-      state.polls > state.crashAfterPolls
-    ) {
-      state.crashAfterPolls = undefined;
-      throw new Error("installed application process stopped");
-    }
+    const stop = stopPast(state.polls);
+    if (stop !== undefined) throw stop;
     emulator.awaitBlock();
     const onPoll = state.onPoll;
     if (onPoll === undefined) return realSetTimeout(callback, 0, ...args);
@@ -98,6 +106,19 @@ export const installApplicationClock = (emulator: Emulator) => {
   }) as typeof setTimeout);
   return {
     state,
+    /** Rejects with the stop an observation makes from now on. */
+    stopped: () =>
+      new Promise<never>((_, reject) => {
+        halt = reject;
+      }),
+    observation: async () => {
+      const stop = stopPast(state.polls + 1);
+      if (stop !== undefined) {
+        halt?.(stop);
+        return await new Promise<never>(() => undefined);
+      }
+      await state.onPoll?.();
+    },
     restore: () => {
       timers.mockRestore();
       now.mockRestore();

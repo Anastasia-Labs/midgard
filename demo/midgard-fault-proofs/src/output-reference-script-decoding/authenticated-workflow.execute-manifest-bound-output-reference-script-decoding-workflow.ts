@@ -10,7 +10,6 @@ import {
   withManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
 import { scriptDecodeDeploymentFromReferences } from "../workflow/script-decode-prerequisite.deployment.js";
-import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import type { WorkflowRun } from "../workflow/workflow-run.js";
 import {
   createOutputReferenceScriptDecodingBoundConfig,
@@ -103,16 +102,13 @@ export const executeManifestBoundOutputReferenceScriptDecodingWorkflow =
     workflow,
     sources,
     run,
-    walletOnlySend,
   }: {
     readonly workflow: ManifestBoundOutputReferenceScriptDecodingWorkflow;
     readonly sources: readonly RetainedDaPayloadSource[];
     readonly run: WorkflowRun;
-    readonly walletOnlySend: WalletOnlySend;
   }) =>
     await executeManifestBoundFamilyRecovery({
       ...workflow,
       sources,
       run,
-      walletOnlySend,
     });

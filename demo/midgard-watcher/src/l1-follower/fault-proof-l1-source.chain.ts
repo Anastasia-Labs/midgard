@@ -14,7 +14,8 @@ import {
 
 /**
  * Chain positions and refusals shared by the watcher's fault-proof L1
- * source (`fault-proof-l1-source.ts`) and its signed-intent recovery.
+ * source (`fault-proof-l1-source.ts`), its pending read and the
+ * availability reads.
  */
 
 /**

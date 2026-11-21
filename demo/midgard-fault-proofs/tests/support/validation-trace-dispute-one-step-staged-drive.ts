@@ -31,7 +31,6 @@ import {
   planValidationTraceOneStep,
   type ValidationTraceCoreStepPlan,
 } from "../../src/validation-trace-dispute/one-step-plan.js";
-import type { InFlightTransaction } from "../../src/workflow/in-flight.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   playThreads,
@@ -43,6 +42,7 @@ import {
   stagedScript,
   type StagedWitness,
 } from "./validation-trace-dispute-staged-scripts.js";
+import type { SentTransaction } from "./workflow-process.js";
 
 /** The arm chain of a staged bytes step. */
 export const STAGED_BYTES_ARMS = [
@@ -191,7 +191,7 @@ export const isStagingAction = (actionId: string) =>
 /** The action ids of the staging actions among `sent`, each once, in the
  * order they were first sent. */
 export const stagingSends = (
-  sent: readonly InFlightTransaction[],
+  sent: readonly SentTransaction[],
 ): readonly string[] => [
   ...new Set(
     sent.flatMap(({ actionId }) =>

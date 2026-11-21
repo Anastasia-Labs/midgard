@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { createOwnThreadCanceller } from "@al-ft/midgard-fault-proofs/own-thread-cancel";
-import { excludeHeldWalletCoins } from "@al-ft/midgard-fault-proofs/proven-correction-removal";
 
 import type { WatcherConfig } from "../runtime/config.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
@@ -22,10 +21,9 @@ import type {
  * authority is the verified deployment and what L1 holds: the manifest's
  * script hashes say which family role a thread stands at, and the
  * deployment's published references carry the step and minting scripts. It
- * signs with the prover wallet and is paid from that wallet's coins no
- * transaction in flight holds, and it holds the coins each cancel spends
- * until that cancel's validity ends, so no other action takes them. An
- * application that only observes opens no canceller and says so.
+ * signs with the prover wallet and is paid from that wallet's coins as the
+ * node's ledger and mempool show them. An application that only observes
+ * opens no canceller and says so.
  */
 export const openOwnThreadCancellerFrom =
   ({
@@ -45,7 +43,7 @@ export const openOwnThreadCancellerFrom =
     readonly dependencies: WatcherFaultProofApplicationDependencies;
     readonly environment: NodeJS.ProcessEnv;
   }): WatcherFaultProofApplication["openOwnThreadCanceller"] =>
-  async ({ walletLeases }) => {
+  async () => {
     if (!isExecutable()) return Object.freeze({ kind: "observing" });
     const [binding, secret] = await Promise.all([
       bindWatcherDeploymentAuthority({
@@ -70,19 +68,15 @@ export const openOwnThreadCancellerFrom =
       kind: "cancelling",
       canceller: createOwnThreadCanceller({
         lucid: binding.lucid,
-        signer: excludeHeldWalletCoins({
-          signer: dependencies.resolveSigner({
-            network: watcherConfig.targetNetwork,
-            secret,
-          }),
-          heldOutRefs: walletLeases.heldOutRefs,
+        signer: dependencies.resolveSigner({
+          network: watcherConfig.targetNetwork,
+          secret,
         }),
         deployment: {
           contractScriptHashes:
             watcherDeploymentAppliedScriptHashes(deploymentIdentity),
           resolveReferenceScript: binding.resolveReferenceScript,
         },
-        holdWalletInputs: walletLeases.holdWalletInputs,
       }),
     });
   };

@@ -17,7 +17,6 @@ import {
   createProofMaterialsView,
   lucidProofMaterialsReader,
 } from "../src/workflow/proof-materials-view.js";
-import { emulatorSignedTransactionRecovery } from "./support/emulator-signed-recovery.js";
 import {
   STAGED_BYTES_ARMS,
   stagedDrive,
@@ -73,10 +72,7 @@ const expectHeldFromTheFirstObservation = async (held: readonly string[]) => {
         deployment,
         wrap,
         prover: { lucid: h.proverLucid, signer },
-        signedRecovery: emulatorSignedTransactionRecovery(
-          h.emulator,
-          RELEASE_DEPTH,
-        ),
+        releaseDepth: RELEASE_DEPTH,
       }),
     scene.failing,
   );

@@ -29,7 +29,6 @@ import {
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
-import type { WalletOnlySend } from "./wallet-only-send-gate.js";
 import type { WorkflowRun } from "./workflow-run.js";
 
 /** Cache only fresh canonical material; a saved JSON artifact is never cast back into evidence. */
@@ -121,7 +120,6 @@ export const executeManifestBoundFamilyRecovery = async <
   releaseFinalityAuthority,
   sources,
   run,
-  walletOnlySend,
 }: {
   binding: FraudProofWorkflowDeploymentBinding<Category>;
   l1: FraudProofFamilyL1ObservationPort<Category>;
@@ -136,7 +134,6 @@ export const executeManifestBoundFamilyRecovery = async <
   releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   sources: readonly RetainedDaPayloadSource[];
   run: WorkflowRun;
-  walletOnlySend: WalletOnlySend;
 }) => {
   const { category, headerHash } = binding.definition;
   if (workflowActuationAuthorizingDecisionDigest(run) !== decisionDigest)
@@ -157,6 +154,5 @@ export const executeManifestBoundFamilyRecovery = async <
     run,
     terminalVerifier,
     releaseFinalityAuthority,
-    walletOnlySend,
   });
 };

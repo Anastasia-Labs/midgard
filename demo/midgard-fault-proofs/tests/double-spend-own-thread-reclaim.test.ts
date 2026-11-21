@@ -2,9 +2,8 @@
  * as the deployment builds it, over the real emulator chain: our thread
  * stands at step 01 of a header the family reports removed against another
  * record. The run cancels that thread back to our wallet through the
- * family's linear cancel (the thread's lovelace less the cancel's fee),
- * waits out the cancel's rollback recovery, and only then ends resolved by
- * the other record. */
+ * family's linear cancel (the thread's lovelace less the cancel's fee), and
+ * once the cancel has landed ends resolved by the other record. */
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, getAddressDetails } from "@lucid-evolution/lucid";
@@ -38,14 +37,12 @@ import {
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
-import { emulatorSignedTransactionRecovery } from "./support/emulator-signed-recovery.js";
 import { ownThreadCancellerOf } from "./support/own-thread-canceller.js";
 import {
   expectResolvedWithReclaim,
   walletLovelace,
 } from "./support/own-thread-reclaim-expectations.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
   DEPLOYMENT_FINGERPRINT,
@@ -205,14 +202,7 @@ const scene = async () => {
     adapterConfig: {
       lucid: h.proverLucid,
       signer: h.proverSigner,
-      l1: {
-        ...port,
-        observeSignedTransaction: async () => {
-          throw new Error(
-            "the workflow follows its sends through the terminal verifier",
-          );
-        },
-      },
+      l1: port,
       referenceScripts: {
         steps: stepReferences,
         witnesses: h.witnessReferenceScripts,
@@ -224,7 +214,6 @@ const scene = async () => {
   const process = createTestWorkflowProcess();
   const run = async (): Promise<FraudProofWorkflowRunResult> =>
     await runAdmittedFraudProofWorkflow({
-      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       category: "doubleSpend",
       headerHash,
@@ -234,15 +223,7 @@ const scene = async () => {
         launchScope: ["doubleSpend"],
       }),
       run: process.run({ category: "doubleSpend", headerHash }),
-      // The workflow follows each send of ours by where it stands at the
-      // emulator's tip, final once it is past the release horizon.
-      terminalVerifier: {
-        ...terminalVerifier,
-        observeSignedTransaction: emulatorSignedTransactionRecovery(
-          h.emulator,
-          FINAL_DEPTH,
-        ).observeSignedTransaction,
-      },
+      terminalVerifier,
       releaseFinality,
     });
   return {
@@ -295,16 +276,6 @@ describe("double-spend: our thread on a header another record removed", () => {
       expect(
         (await s.port.observeOwnThreads({ headerHash: s.headerHash })).standing,
       ).toBeUndefined();
-      let result = await s.run();
-      const awaitingOurCancel = `reclaim ${reclaimTxHash} of our thread ${thread.threadOutRef} awaits release finality`;
-      if (!JSON.stringify(result).includes(awaitingOurCancel))
-        result = await s.run();
-      expect(result).toMatchObject({
-        kind: "pending",
-        reason: expect.stringContaining(awaitingOurCancel),
-      });
-
-      s.h.emulator.awaitBlock(FINAL_DEPTH);
       expectResolvedWithReclaim(
         await s.run(),
         thread.threadOutRef,
@@ -335,9 +306,8 @@ describe("double-spend: our thread on a header another record removed", () => {
       expect((await s.run()).kind).toBe("pending");
       expect(sent).toHaveLength(1);
 
-      // The sweep reaches the same thread while the reclaim is pending. The
-      // chain still shows the thread and the reclaim holds the wallet's one
-      // fee coin, so this attempt is left for a later one; nothing is sent.
+      // The sweep reaches the same thread while the reclaim waits in our
+      // node's mempool, which shows the thread spent: nothing is sent.
       const { canceller } = ownThreadCancellerOf(s.h);
       const subject = {
         threadOutRef: thread.threadOutRef,
@@ -348,7 +318,7 @@ describe("double-spend: our thread on a header another record removed", () => {
       };
       expect(
         await canceller.cancel({ subject, stillDue: async () => true }),
-      ).toMatchObject({ kind: "unfunded" });
+      ).toEqual({ kind: "spent_elsewhere" });
       expect(sent).toHaveLength(1);
 
       s.h.emulator.awaitBlock();

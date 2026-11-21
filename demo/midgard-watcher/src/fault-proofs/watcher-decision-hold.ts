@@ -19,8 +19,7 @@ export type WatcherDecisionHold = Readonly<{
 
 /**
  * - `fault_proof_start_deadline_passed`: the objective's header matured
- *   with no removal of ours landed and nothing of ours in flight, so no
- *   removal can land. (Past its latest
+ *   with no removal of ours landed, so no removal can land. (Past its latest
  *   safe start but before maturity it still runs, late.) Its detail is
  *   `<category>/<headerHash>`.
  */

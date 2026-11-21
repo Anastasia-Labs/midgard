@@ -20,15 +20,12 @@ import { runInputExistenceRoute } from "./support/emulator/input-existence-route
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
-import {
-  fundProverCoin,
-  restrictedProverWallet,
-} from "./support/restricted-prover-wallet.js";
+import { restrictedProverWallet } from "./support/restricted-prover-wallet.js";
 import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("non-existent-input steps under the watcher's restricted wallet", () => {
-  it("funds every step and posts its collateral from the coins no other action holds and convicts", async () => {
+  it("funds every step and posts its collateral from the coins the restricted wallet offers and convicts", async () => {
     const h = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realNonExistentInput: true,
@@ -84,11 +81,6 @@ describe("non-existent-input steps under the watcher's restricted wallet", () =>
       }),
       owner: h.proverSigner.paymentKeyHash,
     });
-    const held = await fundProverCoin({
-      emulator: h.emulator,
-      funderLucid: h.funderLucid,
-      signer: h.proverSigner,
-    });
     let checked = 0;
     await runInputExistenceRoute({
       h,
@@ -96,12 +88,11 @@ describe("non-existent-input steps under the watcher's restricted wallet", () =>
       prepared,
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
       // A fresh restricted wallet per step, as the watcher builds each
-      // action, with another action of the process holding one coin.
+      // action.
       submitStep: async (args) => {
         const funding = restrictedProverWallet({
           emulator: h.emulator,
           signer: args.signer,
-          held: [held],
         });
         const result = await buildAndSubmitUnjournaled(
           buildInputExistenceStep,

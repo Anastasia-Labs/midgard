@@ -32,10 +32,9 @@ import {
   pruneFixture,
   X,
 } from "../support/l1-follower-raw-reads-fixture.js";
-import { describeSignedRecovery } from "../support/l1-follower-raw-signed-recovery-cases.js";
 import {
-  nodeDouble,
   nodeUnit,
+  pendingOver,
   RECOVERY_DEPTH,
   RELEASE,
   requestFor,
@@ -59,9 +58,11 @@ const capture = async (
   observationDepth: FraudProofL1ObservationDepth,
   request = requestFor("ab".repeat(28)),
 ): Promise<Captured> =>
-  (await sourceOver(fx, reads)
-    .snapshotAuthority({ releaseFinality: RELEASE, observationDepth })
-    .capture(request)) as Captured;
+  (
+    await sourceOver(fx, reads)
+      .snapshotAuthority({ releaseFinality: RELEASE, observationDepth })
+      .capture(request)
+  ).snapshot as Captured;
 
 /** The fixture with `extra` empty blocks above b5, and the point served at each height. */
 const extended = async (extra: number) => {
@@ -422,12 +423,10 @@ describe("snapshot authority: admitted, provenance exact", () => {
         createWatcherFaultProofL1Source({
           store: fx.store,
           rawReads: fx.reads(),
-          node: nodeDouble().node,
+          pending: pendingOver(fx.store),
           sourceId,
         }),
       ).toThrow(/sourceId/u);
     expect(() => sourceOver(fx, fx.reads())).not.toThrow();
   });
 });
-
-describeSignedRecovery();

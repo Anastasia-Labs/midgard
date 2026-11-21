@@ -7,11 +7,9 @@
  * Coin selection spends only plain coins from the funding address
  * (`isPlainFundingOutput`); a staged chunk sits at the proof-materials address
  * (read by Bind and Walk) and so stays put. Each `build*Tx` signs without
- * submitting, so a workflow can hold the exact transaction in its in-flight
- * set before it is sent. Stage and Bind spend only wallet coins and always carry the
- * wallet-only validity window (`walletOnlyValidTo`); for Walk and Finish,
- * which spend the run, an optional `validTo` (POSIX ms) makes a transaction
- * the ledger never takes expire instead of staying pending.
+ * submitting, so the caller holds the exact transaction before it is sent;
+ * an optional `validTo` (POSIX ms) makes a transaction the ledger never takes
+ * expire instead of staying pending.
  */
 import {
   requireReferenceInputIndex,
@@ -41,7 +39,6 @@ import {
 
 import { plainWalletInputs } from "../funding/plain-funding-output.js";
 import { DEFAULT_CONFIRMATION_POLL_MS } from "../runtime.js";
-import { walletOnlyValidTo } from "../wallet-only-validity.js";
 import {
   claimOwnOutputs,
   inlineDatumCarriageSlot,
@@ -244,16 +241,19 @@ export const buildScriptDecodeStageTx = async ({
   lucid,
   datum,
   address,
+  validTo,
 }: {
   readonly lucid: LucidEvolution;
   readonly datum: string;
   readonly address: string;
+  readonly validTo?: number;
 }): Promise<ScriptDecodeSignedTx> => {
-  const unsigned = await lucid
-    .newTx()
-    .pay.ToAddressWithData(address, { kind: "inline", value: datum }, {})
-    .validTo(walletOnlyValidTo(lucid))
-    .complete(await freshWallet(lucid));
+  const unsigned = await until(
+    lucid
+      .newTx()
+      .pay.ToAddressWithData(address, { kind: "inline", value: datum }, {}),
+    validTo,
+  ).complete(await freshWallet(lucid));
   return {
     signed: await unsigned.sign.withWallet().complete(),
     address,
@@ -279,7 +279,10 @@ export const buildScriptDecodeBindTx = async ({
   scriptHashHex,
   initialRun,
   staging,
-}: BindInput): Promise<ScriptDecodeSignedTx> => {
+  validTo,
+}: BindInput & {
+  readonly validTo?: number;
+}): Promise<ScriptDecodeSignedTx> => {
   const { policyId, spendingScriptAddress } = deployment.validator;
   const runUnit = `${policyId}${scriptDecodeRunTokenName(scriptHashHex)}`;
   const matches = ownTokenOutput(spendingScriptAddress, runUnit);
@@ -289,20 +292,21 @@ export const buildScriptDecodeBindTx = async ({
       staging: stagingIndices(ctx, staging),
       runOutput: requireOutputIndex(ctx.outputs, matches, "run"),
     })) satisfies BuildTxWithRedeemer;
-  const unsigned = await lucid
-    .newTx()
-    .mintAssets({ [runUnit]: 1n }, redeemer)
-    .readFrom([...staging, requireScriptReference(deployment)])
-    .pay.ToContract(
-      spendingScriptAddress,
-      { kind: "inline", value: scriptDecodeRunDatum(initialRun) },
-      { [runUnit]: 1n },
-    )
-    .validTo(walletOnlyValidTo(lucid))
-    .complete({
-      localUPLCEval: true,
-      ...(await freshWallet(lucid)),
-    });
+  const unsigned = await until(
+    lucid
+      .newTx()
+      .mintAssets({ [runUnit]: 1n }, redeemer)
+      .readFrom([...staging, requireScriptReference(deployment)])
+      .pay.ToContract(
+        spendingScriptAddress,
+        { kind: "inline", value: scriptDecodeRunDatum(initialRun) },
+        { [runUnit]: 1n },
+      ),
+    validTo,
+  ).complete({
+    localUPLCEval: true,
+    ...(await freshWallet(lucid)),
+  });
   return {
     signed: await unsigned.sign.withWallet().complete(),
     address: spendingScriptAddress,

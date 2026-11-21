@@ -222,6 +222,10 @@ export const fieldItemWidthStageFromL1 = (
       throw new Error(
         "fieldItemWidthIllegal L1 stage exceeds three-step topology",
       );
+    case "pending":
+      throw new Error(
+        `fieldItemWidthIllegal L1 stage requires no action: ${stage.reason}`,
+      );
     case "proof_token":
       return "proven";
     case "removed":

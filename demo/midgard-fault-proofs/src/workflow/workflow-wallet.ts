@@ -10,13 +10,13 @@ import {
 import { isPlainFundingOutput } from "../funding/plain-funding-output.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { validationTraceMoveFeeCeiling } from "../validation-trace-dispute/move-fee.js";
-import type { WorkflowSends } from "./in-flight.js";
 import { proofMaterialsViewFor } from "./proof-materials-view.js";
 import {
   assertWorkflowTransactionShape,
   workflowTransactionParts,
   type WorkflowTransactionRoster,
 } from "./transaction-shape.js";
+import type { WorkflowObjectiveWallet } from "./workflow-run.js";
 
 export type { WorkflowTransactionRoster } from "./transaction-shape.js";
 
@@ -34,43 +34,42 @@ export const balanceCbor = (utxos: readonly UTxO[]): string => {
 
 /**
  * Returns a signer whose wallet offers the plain-ada coins of the prover's
- * funding address that no transaction or action of this process holds
- * (`in-flight.ts`), one pool offered both to coin selection and as
- * collateral. Each read lists the wallet afresh and notes every coin it
- * lists as a wallet coin of the objective's sends, so the runner can tell a
- * transaction spending only wallet coins. Signing and submission delegate to
- * the original wallet.
+ * funding address, one pool offered both to coin selection and as
+ * collateral. Each read lists the wallet afresh. Signing and submission
+ * delegate to the original wallet.
  *
- * While the next build of an action must spend the wallet coins of its
- * expired predecessor (`WorkflowSends.requiredWalletInputs`), every
- * transaction the wallet's Lucid builds collects those coins explicitly, and
- * coin selection tops up from the rest of the pool.
+ * The Lucid a workflow is handed reads the ledger at the node's tip with the
+ * node's mempool applied, in every read a build makes (the wallet listing,
+ * `utxosByOutRef`, the proof-materials finds): a coin a mempool transaction
+ * spends is never offered, and the change a mempool transaction makes is.
+ * Nothing here holds a coin or remembers a transaction.
  *
  * Given the deployment's `roster`, the wallet signs no transaction outside
- * the workflow transaction shape (`transaction-shape.ts`): an input it
- * listed as a wallet coin is placed at our wallet, and any other input is
- * read from the chain only where the shape turns on it.
+ * the workflow transaction shape (`transaction-shape.ts`): an input the
+ * wallet listed last is placed at our wallet, and any other input is read
+ * from the chain only where the shape turns on it.
  */
 export const restrictWorkflowWallet = ({
   signer,
-  sends,
+  objectiveWallet,
   roster,
 }: {
   readonly signer: ResolvedProverSigner;
-  readonly sends: WorkflowSends;
+  readonly objectiveWallet: WorkflowObjectiveWallet;
   readonly roster?: WorkflowTransactionRoster;
 }): ResolvedProverSigner => {
   if (signer.proofMaterials !== undefined)
-    sends.installProofMaterialsView(signer.proofMaterials);
+    objectiveWallet.installProofMaterialsView(signer.proofMaterials);
   const assertShape = async (
     lucid: LucidEvolution,
     tx: string,
     governed: WorkflowTransactionRoster,
+    walletCoins: ReadonlySet<string>,
   ): Promise<void> => {
     const parts = workflowTransactionParts(tx);
     const placed = new Map<string, string>();
     for (const outRef of [...parts.inputs, ...parts.collateralInputs])
-      if (sends.isWalletCoin(outRef)) placed.set(outRef, signer.address);
+      if (walletCoins.has(outRef)) placed.set(outRef, signer.address);
     const maximumFeeLovelace = validationTraceMoveFeeCeiling(lucid);
     // Every other input the shape turns on is read: those of a transaction
     // that embeds a script (our lock spends a proof material) or whose fee
@@ -107,24 +106,13 @@ export const restrictWorkflowWallet = ({
     selectWallet: (lucid: LucidEvolution): void => {
       signer.selectWallet(lucid);
       const original = lucid.wallet();
-      const listed = async (): Promise<readonly UTxO[]> => {
+      let walletCoins: ReadonlySet<string> = new Set<string>();
+      const selectable = async (): Promise<readonly UTxO[]> => {
         const utxos = (await original.getUtxos()).filter(
           (utxo) => utxo.address === signer.address,
         );
-        sends.noteWalletCoins(utxos.map(outRefLabel));
-        return utxos;
-      };
-      // A required coin is held for its action and offered only to the build
-      // that must spend it.
-      const selectable = async (): Promise<readonly UTxO[]> => {
-        const forced = new Set(
-          (requiredInputs.get(lucid) ?? []).map(outRefLabel),
-        );
-        return (await listed()).filter(
-          (utxo) =>
-            isPlainFundingOutput(utxo) &&
-            (forced.has(outRefLabel(utxo)) || !sends.isHeld(outRefLabel(utxo))),
-        );
+        walletCoins = new Set(utxos.map(outRefLabel));
+        return utxos.filter(isPlainFundingOutput);
       };
       const addressHex = CML.Address.from_bech32(signer.address).to_hex();
       const api: WalletApi = Object.freeze({
@@ -138,7 +126,8 @@ export const restrictWorkflowWallet = ({
         getChangeAddress: async () => addressHex,
         getRewardAddresses: async () => [],
         signTx: async (tx) => {
-          if (roster !== undefined) await assertShape(lucid, tx, roster);
+          if (roster !== undefined)
+            await assertShape(lucid, tx, roster, walletCoins);
           return (
             await original.signTx(CML.Transaction.from_cbor_hex(tx))
           ).to_cbor_hex();
@@ -164,95 +153,10 @@ export const restrictWorkflowWallet = ({
         lucid,
         address: signer.proofMaterialsAddress,
       });
-      sends.installProofMaterialsView(view);
-      sends.installSweepWallet(
+      objectiveWallet.installProofMaterialsView(view);
+      objectiveWallet.installSweepWallet(
         Object.freeze({ lucid, fundingAddress: signer.address, view }),
       );
-      walletListings.set(lucid, listed);
-      collectRequiredWalletInputs(lucid);
     },
   });
-};
-
-/** Lists the wallet coins of the Lucid a restricted wallet is installed
- * on, noting them as the objective's wallet coins. */
-const walletListings = new WeakMap<
-  LucidEvolution,
-  () => Promise<readonly UTxO[]>
->();
-
-/** The coins every transaction a Lucid builds must spend now. */
-const requiredInputs = new WeakMap<LucidEvolution, readonly UTxO[]>();
-
-/**
- * Runs `build` while every transaction built on the Lucid the objective's
- * restricted wallet is installed on spends those of `outRefs` still at the
- * wallet. A coin already gone is skipped: the runner has checked that the
- * transaction that spent it before cannot land.
- */
-export const withRequiredWalletInputs = async <Result>(
-  sends: WorkflowSends,
-  outRefs: readonly string[],
-  build: () => Promise<Result>,
-): Promise<Result> => {
-  const lucid = sends.sweepWallet()?.lucid;
-  const list = lucid === undefined ? undefined : walletListings.get(lucid);
-  if (outRefs.length === 0 || lucid === undefined || list === undefined)
-    return await build();
-  const wanted = new Set(outRefs);
-  const present = (await list()).filter((utxo) =>
-    wanted.has(outRefLabel(utxo)),
-  );
-  if (present.length === 0) return await build();
-  requiredInputs.set(lucid, present);
-  try {
-    return await build();
-  } finally {
-    requiredInputs.delete(lucid);
-  }
-};
-
-const collecting = new WeakSet<LucidEvolution>();
-
-/**
- * Coin selection spends wallet inputs largest first and stops once it is
- * covered, so offering a predecessor's coin does not make a replacement
- * spend it. Every transaction built while required coins are set collects
- * them explicitly.
- */
-const collectRequiredWalletInputs = (lucid: LucidEvolution): void => {
-  if (collecting.has(lucid)) return;
-  collecting.add(lucid);
-  const newTx = lucid.newTx;
-  lucid.newTx = () => {
-    const builder = newTx();
-    const required = requiredInputs.get(lucid) ?? [];
-    if (required.length === 0) return builder;
-    const forced = new Set(required.map(outRefLabel));
-    const collectFrom = builder.collectFrom;
-    // A builder that collects one of these itself must not spend it twice.
-    builder.collectFrom = (utxos, redeemer) => {
-      if (redeemer !== undefined) return collectFrom(utxos, redeemer);
-      const rest = utxos.filter((utxo) => !forced.has(outRefLabel(utxo)));
-      return rest.length === 0 && utxos.length !== 0
-        ? builder
-        : collectFrom(rest);
-    };
-    return collectFrom([...required]);
-  };
-};
-
-/**
- * Broadcasts the exact signed bytes again through the objective's wallet.
- * False when no restricted wallet is installed, so there is nowhere to send
- * them.
- */
-export const resubmitWorkflowTransaction = async (
-  sends: WorkflowSends,
-  signedTransactionCborHex: string,
-): Promise<boolean> => {
-  const wallet = sends.sweepWallet();
-  if (wallet === undefined) return false;
-  await wallet.lucid.wallet().submitTx(signedTransactionCborHex);
-  return true;
 };

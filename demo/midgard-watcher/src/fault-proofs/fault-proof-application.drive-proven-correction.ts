@@ -1,9 +1,6 @@
 import { createHash } from "node:crypto";
 
-import {
-  driveProvenCorrectionRemoval,
-  excludeHeldWalletCoins,
-} from "@al-ft/midgard-fault-proofs/proven-correction-removal";
+import { driveProvenCorrectionRemoval } from "@al-ft/midgard-fault-proofs/proven-correction-removal";
 
 import type { WatcherConfig } from "../runtime/config.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
@@ -22,10 +19,8 @@ import type {
  * The application's removal of a proven correction's header, started from
  * an Idle lock or finished from a Locked one. Its only authority is the
  * verified deployment and what L1 holds: the lock, the queue and the
- * record. It is paid from the prover wallet's coins no transaction in
- * flight holds, so it never takes another action's inputs, and it holds the
- * coins it spends until it confirms, so no other action takes them; a
- * shortfall fails the attempt and the next pass
+ * record. It is paid from the prover wallet's coins as the node's ledger
+ * and mempool show them; a shortfall fails the attempt and the next pass
  * tries again. An application that only observes starts nothing and says so.
  */
 export const driveProvenCorrectionFrom =
@@ -46,7 +41,7 @@ export const driveProvenCorrectionFrom =
     readonly dependencies: WatcherFaultProofApplicationDependencies;
     readonly environment: NodeJS.ProcessEnv;
   }): WatcherFaultProofApplication["driveProvenCorrection"] =>
-  async ({ correction, walletLeases }) => {
+  async ({ correction }) => {
     if (!isExecutable()) return Object.freeze({ kind: "observing" });
     const [binding, secret] = await Promise.all([
       bindWatcherDeploymentAuthority({
@@ -73,15 +68,11 @@ export const driveProvenCorrectionFrom =
       // Builders take the verified release, as every family workflow does.
       deploymentInfo: binding.manifest,
       network: watcherConfig.targetNetwork,
-      signer: excludeHeldWalletCoins({
-        signer: dependencies.resolveSigner({
-          network: watcherConfig.targetNetwork,
-          secret,
-        }),
-        heldOutRefs: walletLeases.heldOutRefs,
+      signer: dependencies.resolveSigner({
+        network: watcherConfig.targetNetwork,
+        secret,
       }),
       stateQueueMutationLeaseCoordinator: dependencies.createLeaseCoordinator(),
       correction,
-      holdWalletInputs: walletLeases.holdWalletInputs,
     });
   };

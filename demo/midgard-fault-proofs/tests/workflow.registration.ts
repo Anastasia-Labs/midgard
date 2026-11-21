@@ -8,9 +8,9 @@ import {
   buildCanonicalBlockFixture,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
-import { makeAdapter, run } from "./workflow.make-adapter.js";
+import { makeAdapter, REMOVAL_TX_HASH, run } from "./workflow.make-adapter.js";
 
-it("continues the same in-flight proof after the same authenticated commitment is re-included at a new L1 point", async () => {
+it("continues the same proof waiting in the mempool after the same authenticated commitment is re-included at a new L1 point", async () => {
   const fixture = await buildCanonicalBlockFixture({ transactions: [] });
   const evidenceAt = (slot: bigint, blockHash: string) =>
     canonicalBlockEvidenceFromVerifiedPayload({
@@ -29,14 +29,22 @@ it("continues the same in-flight proof after the same authenticated commitment i
   expect(relocated.headerHash).toBe(original.headerHash);
   const process = createTestWorkflowProcess();
   const adapter = makeAdapter({ lands: false });
+  // The proof and its removal wait in the mempool.
+  const awaiting = {
+    kind: "pending",
+    reason: expect.stringContaining(`${REMOVAL_TX_HASH} awaits inclusion`),
+  };
   const first = await run({ evidence: original, adapter, process });
-  expect(first).toMatchObject({ kind: "pending", awaitingActionId: "prove" });
+  expect(first).toMatchObject(awaiting);
   const resumed = await run({ evidence: relocated, adapter, process });
-  expect(resumed).toMatchObject({ kind: "pending", awaitingActionId: "prove" });
-  // The relocated evidence is prepared afresh; the proof is not sent again.
+  expect(resumed).toMatchObject(awaiting);
+  // The relocated evidence is prepared afresh; nothing is sent again.
   expect(adapter.prepare).toHaveBeenLastCalledWith(
     expect.objectContaining({ evidence: relocated }),
   );
-  expect(adapter.submit).toHaveBeenCalledOnce();
-  expect(process.sent()).toHaveLength(1);
+  expect(adapter.submit).toHaveBeenCalledTimes(2);
+  expect(process.sent().map(({ actionId }) => actionId)).toEqual([
+    "prove",
+    "remove",
+  ]);
 });

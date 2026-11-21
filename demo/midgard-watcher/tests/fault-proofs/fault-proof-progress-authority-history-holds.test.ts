@@ -24,10 +24,9 @@ import {
   WATCHER_PROOF_ROSTER_FLOOR,
 } from "../../src/l1-follower/proof-roster-retention.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
-import { inFlightOf } from "../support/in-flight-fixture.js";
 import { D, K } from "../support/l1-follower-raw-reads-fixture.js";
 import {
-  nodeDouble,
+  pendingOver,
   RELEASE,
   requestFor,
   SOURCE_ID,
@@ -101,7 +100,6 @@ const authorityOver = (journalRoot: string, retention: WatcherProofRetention) =>
     categories: ["doubleSpend"],
     authenticationKey: TEST_JOURNAL_KEY,
     retention,
-    ...inFlightOf(),
   });
 
 /** An admission over an observation of a block the follower does not hold. */
@@ -172,18 +170,20 @@ const objectiveRows = (journalRoot: string) =>
 
 /** The node unit's history, read through a capture of the header. */
 const captured = async (r: Removed, retention = r.retention) => {
-  const snapshot = (await createWatcherFaultProofL1Source({
-    store: r.h.store,
-    rawReads: r.h.reads(true),
-    node: nodeDouble().node,
-    sourceId: SOURCE_ID,
-    proofRetention: retention,
-  })
-    .snapshotAuthority({
-      releaseFinality: RELEASE,
-      observationDepth: "inclusion",
+  const snapshot = (
+    await createWatcherFaultProofL1Source({
+      store: r.h.store,
+      rawReads: r.h.reads(true),
+      pending: pendingOver(r.h.store),
+      sourceId: SOURCE_ID,
+      proofRetention: retention,
     })
-    .capture(requestFor(r.header, { scopes: [] }))) as {
+      .snapshotAuthority({
+        releaseFinality: RELEASE,
+        observationDepth: "inclusion",
+      })
+      .capture(requestFor(r.header, { scopes: [] }))
+  ).snapshot as {
     history: readonly { unit: string; transactionHashes: readonly string[] }[];
   };
   return snapshot.history.find(({ unit }) => unit === nodeUnit(r.header))

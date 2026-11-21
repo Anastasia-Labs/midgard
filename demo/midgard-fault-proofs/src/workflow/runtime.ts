@@ -126,14 +126,14 @@ const createManifestBoundWorkflowRunOrResume =
       );
     }
     if (
-      invocation.sends.category !== category ||
-      invocation.sends.headerHash !== invocation.headerHash
+      invocation.objectiveWallet.category !== category ||
+      invocation.objectiveWallet.headerHash !== invocation.headerHash
     )
       throw new Error(
-        "production workflow in-flight set belongs to another objective",
+        "production workflow objective wallet belongs to another objective",
       );
     const run = bindWorkflowRunActuation({
-      run: createWorkflowRun(invocation.sends),
+      run: createWorkflowRun(invocation.objectiveWallet),
       permit: invocation.actuationPermit,
       decisionDigest: invocation.decisionDigest,
       deploymentFingerprint: invocation.deploymentFingerprint,
@@ -190,7 +190,6 @@ const createManifestBoundWorkflowRunOrResume =
             workflow,
             sources,
             run,
-            walletOnlySend: invocation.walletOnlySend,
           }),
       });
     } finally {

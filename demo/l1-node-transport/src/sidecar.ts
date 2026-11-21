@@ -65,6 +65,7 @@ const ANSWER_TYPES = new Set([
   "submit_rejected",
   "monitor_has_tx_result",
   "monitor_sizes_result",
+  "monitor_txs_result",
   "cs_opened",
   "cs_intersect_not_found",
 ]);

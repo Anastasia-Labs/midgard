@@ -16,6 +16,7 @@ const MEMBERS = {
   submit: "method",
   hasTx: "method",
   mempoolSizes: "method",
+  mempoolTxs: "method",
   openChainSync: "method",
   close: "method",
 } as const satisfies Record<Member, "getter" | "method">;

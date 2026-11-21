@@ -97,11 +97,6 @@ const createProgressAuthority = (
     readonly categories: readonly WatcherInstalledWorkflowCategory[];
     readonly authenticationKey: Uint8Array;
     readonly retention?: WatcherProofRetention; // holds open objectives' L1 history
-    /** Whether a transaction this process sent for the objective can still
-     * land (`WorkflowInFlight.sending`). */
-    readonly sending: (objective: WatcherProofObjective) => boolean;
-    /** Drops the objective's part of the in-flight set. */
-    readonly forgetInFlight: (objective: WatcherProofObjective) => void;
     /** What the chain shows of the objective's removal once its header left
      * the queue, asked under `actuationPermit` (its reconciliation permit).
      * Absent, every departure releases its objective. */
@@ -205,11 +200,9 @@ const createProgressAuthority = (
   // An objective whose header left the finalized queue has resolved: its
   // proof or another landed and is final, or the header merged. Its pin goes,
   // and its rows once no job of it is queued or active: such a job's run
-  // adopts the objective again, and a later observation releases it. Its
-  // in-flight part goes once nothing in it may land (`in-flight-released.ts`).
+  // adopts the objective again, and a later observation releases it.
   const release = async (target: WatcherProofObjective): Promise<void> => {
     await input.retention?.release(target);
-    if (!input.sending(target)) input.forgetInFlight(target);
     await cleanup.forget(target, { final: false, departed: true });
   };
   const clearResolvedHolds = async (
@@ -306,7 +299,6 @@ const createProgressAuthority = (
     // Released once the marker holds, and forgotten once its job is done
     // and an observation no longer queues its header (a fault then names
     // the marker, not a fresh objective); unmarked, it is verified again.
-    if (!input.sending(objective)) input.forgetInFlight(objective);
     if (marked) {
       unmarked.delete(keyOf(objective));
       await input.retention?.release(objective);
@@ -446,9 +438,7 @@ const createProgressAuthority = (
           // final, when it is marked completed against that removal and
           // released (its proof-materials needs go with it). Anything else
           // releases it as a resolved hold is: nothing drives it again until
-          // its header is queued again, which admits it afresh. A
-          // transaction this process sent for it keeps its coins held until
-          // it lands final or dies (`in-flight-released.ts`). A marked
+          // its header is queued again, which admits it afresh. A marked
           // completion is final already: it is released.
           const departure: WatcherProofDeparture =
             input.departure === undefined ||
@@ -529,24 +519,6 @@ const createProgressAuthority = (
       lastObservation = undefined;
       epoch += 1;
     },
-    reconcileExecution: async ({ objective: key, rollbackGeneration }) => {
-      await initializeOnce();
-      const objective = objectives.get(keyOf(key));
-      if (objective === undefined)
-        throw new Error(
-          "proof progress reconciles an objective it never admitted",
-        );
-      const controller = createWorkflowReconciliationPermitController({
-        decision: objective.decision,
-        deploymentFingerprint: input.deploymentFingerprint,
-        rollbackGeneration,
-      });
-      objective.historical = {
-        generation: rollbackGeneration,
-        permit: controller.permit,
-      };
-      return controller.permit;
-    },
     markCompleted: complete,
     markResolved: async (objective) => {
       objectives.delete(keyOf(objective));
@@ -555,11 +527,9 @@ const createProgressAuthority = (
       unmarked.delete(keyOf(objective));
       input.onObjectiveSettled?.(objective);
       pruneDecisions();
-      input.forgetInFlight(objective);
       await input.retention?.release(objective);
       await cleanup.forget(objective, { final: true, departed: true });
     },
-    drives: (objective) => objectives.has(keyOf(objective)),
     completionMarker: (objective) =>
       matchingWatcherProofMarker(database(), objective, k, input.categories),
   });

@@ -35,7 +35,6 @@ import {
   type OutsideWorkflowSubmission,
   submitOutsideWorkflow,
 } from "../../src/workflow/transaction-boundary.js";
-import { expectWalletOnlyValidity } from "./wallet-only-validity.js";
 
 /**
  * What submitting `Build`'s step reports: its fields with the submitted hash
@@ -305,7 +304,6 @@ export const certifyCarriageUnjournaled = async ({
   readonly beforeSubmit?: BeforeSubmit;
 }): Promise<{ readonly txHash: string; readonly certificateUtxo: UTxO }> => {
   const turn = await certifyFaultProofFieldCarriage(args);
-  expectWalletOnlyValidity(args.lucid, turn.transaction.signed.toCBOR());
   await beforeSubmit?.(turn.transaction);
   const certificateUtxo = await submitPrerequisiteTurn(args.lucid, turn);
   return { txHash: turn.transaction.txHash, certificateUtxo };

@@ -20,7 +20,7 @@ import {
   type ValidationTraceStage,
 } from "../../src/validation-trace-dispute/actions.js";
 import type { ValidationTraceDisputeDeployment } from "../../src/validation-trace-dispute/transactions.js";
-import type { InFlightTransaction } from "../../src/workflow/in-flight.js";
+import type { SentTransaction } from "./workflow-process.js";
 
 export type ConfirmedValidationTraceStage = Readonly<{
   action: ParsedValidationTraceAction;
@@ -101,7 +101,7 @@ const roleToken = (
 const stageOutputs = (
   deployment: ValidationTraceDisputeDeployment,
   stage: ValidationTraceStage,
-  sent: InFlightTransaction,
+  sent: SentTransaction,
 ): readonly ValidationTraceOutputClaim[] => {
   const transaction = CML.Transaction.from_cbor_hex(
     sent.signedTransactionCborHex,
@@ -155,7 +155,7 @@ export const confirmedValidationTraceStages = async ({
 }: {
   readonly emulator: Emulator;
   readonly deployment: ValidationTraceDisputeDeployment;
-  readonly sent: readonly InFlightTransaction[];
+  readonly sent: readonly SentTransaction[];
 }): Promise<readonly ConfirmedValidationTraceStage[]> => {
   const seen = new Set<string>();
   const confirmed: (ConfirmedValidationTraceStage & {

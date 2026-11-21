@@ -1,6 +1,5 @@
 import {
   FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
-  FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   FraudProofL1CheckpointChangedError,
   FraudProofL1RefusedError,
   FraudProofL1UnavailableError,
@@ -27,7 +26,7 @@ const DEADLINE = 1_767_225_600_000;
 const AWAITING = `validationTraceDispute awaiting counterparty until ${DEADLINE.toString()}`;
 
 describe("supervisor execution adapter", () => {
-  it("resumes the objective through its runner with the objective's own in-flight sends", async () => {
+  it("resumes the objective through its runner with the objective's own wallet", async () => {
     const test = await setup();
     expect(await test.execution.execute(test.input)).toMatchObject({
       kind: "pending",
@@ -40,15 +39,11 @@ describe("supervisor execution adapter", () => {
       headerHash: test.input.job.headerHash,
       decisionDigest: test.input.job.decisionDigest,
       actuationPermit: test.controller.permit,
-      walletOnlySend: test.input.admission.walletOnlySend,
-    });
-    // The same part of the process's one in-flight set, run after run.
-    expect(invocation.sends).toBe(
-      test.inFlight.forObjective({
+      objectiveWallet: {
         category: "doubleSpend",
         headerHash: test.input.job.headerHash,
-      }),
-    );
+      },
+    });
     expect(test.setAlert).not.toHaveBeenCalled();
   });
 
@@ -250,15 +245,16 @@ describe("supervisor execution adapter", () => {
     // A hold under another name is left to the run's outcome.
     test.runOrResume.mockResolvedValueOnce({
       kind: "pending",
-      reason: FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
+      reason: "script re-execution is held",
+      namedState: { name: "validation_trace_replay_held", alarm: false },
     });
     await test.execution.execute(test.input);
     test.runOrResume.mockImplementationOnce(progressThenPend);
     await test.execution.execute(test.input);
-    const resubmission = expect.objectContaining({
-      reason: "fault_proof_resubmission_required",
+    const named = expect.objectContaining({
+      reason: "validation_trace_replay_held",
     });
-    expect(during).toEqual([[stalled], [], [resubmission], [resubmission]]);
+    expect(during).toEqual([[stalled], [], [named], [named]]);
     expect(test.execution.readiness()).toEqual([]);
   });
 
@@ -344,13 +340,6 @@ describe("supervisor execution adapter", () => {
         expect(await test.execution.execute(input)).toMatchObject(waiting);
         expect(test.runOrResume).toHaveBeenCalledTimes(run);
       }
-      // Nothing was sent, so the objective holds no in-flight transaction.
-      expect(
-        test.inFlight.sending({
-          category: "doubleSpend",
-          headerHash: test.input.job.headerHash,
-        }),
-      ).toBe(false);
       expect(test.setAlert).not.toHaveBeenCalled();
     },
   );

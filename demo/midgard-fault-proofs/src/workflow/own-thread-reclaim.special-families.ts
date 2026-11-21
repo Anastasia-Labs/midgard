@@ -46,9 +46,7 @@ const withExtendedChainOwnThreadReclaim = ({
   readonly base: FraudProofFamilyWorkflowAdapter;
   readonly l1: Pick<
     FraudProofFamilyL1ObservationPort<never>,
-    | "observeOwnThreads"
-    | "observeSignedTransaction"
-    | "rebroadcastSignedTransaction"
+    "observeOwnThreads"
   >;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly lucid: LucidEvolution;
@@ -58,9 +56,8 @@ const withExtendedChainOwnThreadReclaim = ({
   readonly stepReferences: readonly UTxO[];
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): FraudProofFamilyWorkflowAdapter => {
-  const { observeOwnThreads, observeSignedTransaction } = l1;
-  if (observeOwnThreads === undefined || observeSignedTransaction === undefined)
-    return base;
+  const { observeOwnThreads } = l1;
+  if (observeOwnThreads === undefined) return base;
   return withOwnThreadReclaim({
     category,
     base,

@@ -9,9 +9,8 @@ import type { FraudProofResolvedByAnotherRecord } from "./resolved-by-another-re
 
 /**
  * Removed against a record the chain does not show as ours: done once the
- * removal is past rollback recovery and no transaction this process sent for
- * the objective can still land, and never our conviction. A thread of ours that still stands on
- * the header, as the stage derivation or the adapter's own view of our
+ * removal is past rollback recovery, and never our conviction. A thread of
+ * ours that still stands on the header, as the stage derivation or the adapter's own view of our
  * threads reports it, holds the objective under the operator's alarm: a
  * family with a cancel wired in front of it reclaims the thread before its
  * resolution gets here, so none is wired for this one. A run that cannot
@@ -23,7 +22,6 @@ export const resolvedByAnotherRecordResult = ({
   threads,
   workflowId,
   identity,
-  inFlight,
   releaseFinality,
   resumeOnObservation,
 }: {
@@ -37,8 +35,6 @@ export const resolvedByAnotherRecordResult = ({
     | undefined;
   readonly workflowId: string;
   readonly identity: FraudProofWorkflowIdentity;
-  /** The objective's transactions this process sent that may still land. */
-  readonly inFlight: number;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly resumeOnObservation: (reason: string) => FraudProofWorkflowRunResult;
 }): FraudProofWorkflowRunResult => {
@@ -63,10 +59,6 @@ export const resolvedByAnotherRecordResult = ({
   )
     return resumeOnObservation(
       `the header was removed against another record; the removal awaits release finality`,
-    );
-  if (inFlight > 0)
-    return resumeOnObservation(
-      `the header was removed against another record; a transaction this process sent for it can still land`,
     );
   return {
     kind: "resolved_by_another_record",
