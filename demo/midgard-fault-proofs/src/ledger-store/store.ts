@@ -51,8 +51,8 @@ export interface LedgerStore {
   /**
    * Makes `roots` the retained set and deletes every node and output not
    * reachable from it, including a root persisted earlier that `roots`
-   * leaves out. Roots persisted after `retain` has begun are kept. A ledger
-   * value whose root is dropped stops being readable.
+   * leaves out. Every root persisted after the call is kept by its sweep. A
+   * ledger value whose root is dropped stops being readable.
    *
    * The sweep marks root by root. A root whose walk meets a node that is not
    * held is dropped from the retained set, atomically with the end of the
@@ -64,11 +64,15 @@ export interface LedgerStore {
    * by this sweep for a missing node. The empty ledger's root is never
    * listed. A non-empty set calls for an alert.
    *
-   * Calls run one at a time, in order. A sweep that does not finish (its
-   * process dies, or a storage call fails) is finished, from the retained set
-   * it began with plus the roots persisted since, before the next `persist`
-   * or `retain` of this store, or before the first of the next store over
-   * the same records.
+   * One sweep runs at a time. A call made while an earlier one is still
+   * waiting to start replaces it: the newer set is swept, the roots persisted
+   * since the earlier call are kept, and both calls resolve with the newer
+   * one's result. A call whose sweep has started is never replaced.
+   *
+   * A sweep that does not finish (its process dies, or a storage call fails)
+   * is finished, from the retained set it began with plus the roots persisted
+   * since, before the next `persist` or `retain` of this store, or before the
+   * first of the next store over the same records.
    */
   retain(
     roots: ReadonlySet<string>,
@@ -81,6 +85,17 @@ type SweepMarks = {
   readonly nodes: Set<NodeHash>;
   readonly outputs: Set<OutRefHex>;
   readonly persisted: Set<NodeHash>;
+};
+
+type RetainResult = { readonly notRetained: ReadonlySet<string> };
+
+/** A `retain` call whose sweep has not started yet. */
+type WaitingRetain = {
+  /** The newest set asked for. */
+  roots: ReadonlySet<string>;
+  /** Roots persisted since the first of the calls it stands for. */
+  readonly persisted: Set<NodeHash>;
+  readonly result: Promise<RetainResult>;
 };
 
 const READ_BATCH = 1024;
@@ -143,6 +158,10 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
   const writeLock = exclusive();
   /** Serialises retains. */
   const retainQueue = exclusive();
+  /** The retain call that has not started; a newer call replaces its set. */
+  let waiting: WaitingRetain | undefined;
+  /** Every live retain call's collector of roots persisted since the call. */
+  const collectors = new Set<Set<NodeHash>>();
   let sweep: SweepMarks | undefined;
   /** Settles once no sweep the storage records as unfinished remains. */
   let recovery: Promise<void> | undefined;
@@ -194,6 +213,7 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
       keptOutputs,
     });
     marks?.persisted.add(ledger.root);
+    for (const collector of collectors) collector.add(ledger.root);
   };
 
   /**
@@ -245,7 +265,11 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
     }
   };
 
-  const sweepTo = async (roots: ReadonlySet<NodeHash>) => {
+  /** Sweeps to `roots` plus the roots in `persisted` when the sweep begins. */
+  const sweepTo = async (
+    roots: ReadonlySet<NodeHash>,
+    persisted: ReadonlySet<NodeHash> = new Set(),
+  ) => {
     const marks: SweepMarks = {
       nodes: new Set(),
       outputs: new Set(),
@@ -253,11 +277,15 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
     };
     const incomplete: NodeHash[] = [];
     try {
-      await writeLock(async () => {
-        await storage.beginSweep(roots);
+      const retainedSet = await writeLock(async () => {
+        // Under the lock, so no persist lands between this read and the
+        // replacement of the retained set.
+        const set = new Set([...roots, ...persisted]);
+        await storage.beginSweep(set);
         sweep = marks;
+        return set;
       });
-      for (const root of roots)
+      for (const root of retainedSet)
         if (!(await markRoot(root, marks))) incomplete.push(root);
       await deleteUnmarked(
         (after, limit) => storage.sweepNodes(after, limit),
@@ -342,18 +370,39 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
       await writeLock(() => persistLocked(ledger));
     },
 
-    retain: (roots) =>
-      retainQueue(async () => {
-        await finishUnfinishedSweep();
-        const kept = new Set<NodeHash>();
-        for (const root of roots)
-          if (root !== EMPTY_LEDGER_ROOT && (await storage.isRetained(root)))
-            kept.add(root);
-        await sweepTo(kept);
-        const notRetained = new Set<string>();
-        for (const root of roots)
-          if (!(await retained(root))) notRetained.add(root);
-        return { notRetained };
-      }),
+    retain: (roots) => {
+      if (waiting !== undefined) {
+        waiting.roots = roots;
+        return waiting.result;
+      }
+      const persisted = new Set<NodeHash>();
+      collectors.add(persisted);
+      const call: WaitingRetain = {
+        roots,
+        persisted,
+        result: retainQueue(async () => {
+          waiting = undefined;
+          try {
+            await finishUnfinishedSweep();
+            const kept = new Set<NodeHash>();
+            for (const root of call.roots)
+              if (
+                root !== EMPTY_LEDGER_ROOT &&
+                (await storage.isRetained(root))
+              )
+                kept.add(root);
+            await sweepTo(kept, persisted);
+            const notRetained = new Set<string>();
+            for (const root of call.roots)
+              if (!(await retained(root))) notRetained.add(root);
+            return { notRetained };
+          } finally {
+            collectors.delete(persisted);
+          }
+        }),
+      };
+      waiting = call;
+      return call.result;
+    },
   };
 };
