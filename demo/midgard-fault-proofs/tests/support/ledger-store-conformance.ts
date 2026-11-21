@@ -28,6 +28,7 @@ import {
   keyValuePhasResolutionProofs,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
+import { describeLedgerStoreRetainConformance } from "./ledger-store-conformance-retain.js";
 import { describeLedgerStoreSweepConformance } from "./ledger-store-conformance-sweeps.js";
 import {
   gatedStorage,
@@ -463,4 +464,5 @@ export const describeLedgerStoreConformance = (
     });
   });
   describeLedgerStoreSweepConformance(adapter, open);
+  describeLedgerStoreRetainConformance(adapter, open);
 };
