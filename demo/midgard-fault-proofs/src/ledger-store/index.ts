@@ -12,6 +12,7 @@ export {
   LedgerNodeMissing,
   LedgerNotRetained,
   LedgerOutputMissing,
+  LedgerWitnessRefused,
 } from "./errors.js";
 export type { Ledger, LedgerMutation, LedgerRead } from "./ledger.js";
 export { createMemoryLedgerStorage } from "./memory.js";
@@ -26,3 +27,10 @@ export type {
   StoredNode,
 } from "./storage.js";
 export { createLedgerStore, type LedgerStore } from "./store.js";
+export {
+  ledgerFromWitness,
+  type LedgerWitness,
+  recordWitness,
+  type WitnessBranch,
+  type WitnessNode,
+} from "./witness.js";
