@@ -55,17 +55,28 @@ export const testOutRef = (n: number): Buffer => {
   return encodeMidgardSpendInputItem({ txId, outputIndex: n % 3 });
 };
 
-/** Entry `n` with a one-coin output; `undecodable` gives it the fallback
- * descriptor instead. */
-export const testLedgerEntry = (
-  n: number,
-  undecodable = false,
-): LedgerEntry => ({
+/** The entry whose output has the bytes-only fallback descriptor. */
+export const UNDECODABLE_ENTRY = 1_000;
+
+/** Entry `n`: a one-coin output, except `UNDECODABLE_ENTRY`. */
+export const testLedgerEntry = (n: number): LedgerEntry => ({
   outRef: testOutRef(n),
-  output: undecodable
-    ? undecodableScriptRefOutput
-    : makeOutput(BigInt(2_000_000 + n)),
+  output:
+    n === UNDECODABLE_ENTRY
+      ? undecodableScriptRefOutput
+      : makeOutput(BigInt(2_000_000 + n)),
 });
+
+/**
+ * The output of a `testOutRef` out-ref, for an adapter that reads outputs
+ * from elsewhere than the store (the node's LevelDB adapter).
+ */
+export const testOutputOf = (outRef: string): Buffer | undefined => {
+  const bytes = Buffer.from(outRef, "hex");
+  if (bytes.length < 7) return undefined;
+  const n = bytes.readUInt32BE(3);
+  return testOutRef(n).equals(bytes) ? testLedgerEntry(n).output : undefined;
+};
 
 export const testLedgerEntries = (from: number, count: number): LedgerEntry[] =>
   Array.from({ length: count }, (_, index) => testLedgerEntry(from + index));
@@ -175,7 +186,7 @@ const gatedStorage = (storage: LedgerStorage) => {
   };
 };
 
-const BASE = [...testLedgerEntries(0, 40), testLedgerEntry(1_000, true)];
+const BASE = [...testLedgerEntries(0, 40), testLedgerEntry(UNDECODABLE_ENTRY)];
 
 /** Registers the conformance cases for one adapter. */
 export const describeLedgerStoreConformance = (

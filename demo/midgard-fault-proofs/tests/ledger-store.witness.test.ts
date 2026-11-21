@@ -24,6 +24,7 @@ import {
   testLedgerEntries,
   testLedgerEntry,
   testOutRef,
+  UNDECODABLE_ENTRY,
 } from "./support/ledger-store-conformance.js";
 
 /** One replay: mutations, then reads and proofs of `keys` on the result. */
@@ -179,12 +180,15 @@ describe("ledger witnesses replay exactly as the full store", () => {
   });
 
   it("replays a block of events with inserts, deletes and proofs", async () => {
-    const entries = [...testLedgerEntries(0, 60), testLedgerEntry(1_000, true)];
+    const entries = [
+      ...testLedgerEntries(0, 60),
+      testLedgerEntry(UNDECODABLE_ENTRY),
+    ];
     await expectWitnessReplays(entries, {
       mutations: [
         event([0, 1, 2], [100, 101]),
         event([100, 3], [102, 103, 104]),
-        event([1_000, 4], [1]),
+        event([UNDECODABLE_ENTRY, 4], [1]),
       ],
       keys: [testOutRef(1), testOutRef(2), testOutRef(103), testOutRef(5)],
     });

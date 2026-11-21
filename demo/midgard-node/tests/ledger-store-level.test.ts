@@ -1,0 +1,163 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  ledgerEntriesRoot,
+  ledgerEntryLeaf,
+} from "@al-ft/midgard-fault-proofs/ledger-at";
+import {
+  createLedgerStore,
+  type Ledger,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
+import {
+  describeLedgerStoreConformance,
+  event,
+  testLedgerEntries,
+  testOutputOf,
+  testOutRef,
+} from "@al-ft/midgard-fault-proofs/test-support/ledger-store-conformance";
+import { Effect, Option } from "effect";
+import { Level } from "level";
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  createLevelLedgerStorage,
+  RETAINED_ROOT_PREFIX,
+} from "../src/mpf/ledger-store-level.js";
+import { MidgardMpf } from "../src/mpf/store.midgard-mpf.js";
+import {
+  JSON_LEVEL_ENCODING_OPTS,
+  ROOT_KEY,
+} from "../src/mpf/store-primitives.js";
+import type { MpfStoredValue } from "../src/mpf/types.js";
+import { walkReachableRecords } from "../src/services/mpf-native-owner/service.encode-stored-node.js";
+import type { StoredValue } from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
+
+const directories: string[] = [];
+const freshPath = async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ledger-store-level-"));
+  directories.push(directory);
+  return join(directory, "mpf");
+};
+
+afterEach(async () => {
+  await Promise.all(
+    directories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
+
+const openLevel = async (path: string) => {
+  const level = new Level<string, MpfStoredValue>(
+    path,
+    JSON_LEVEL_ENCODING_OPTS,
+  );
+  await level.open();
+  return level;
+};
+
+/** The same database handle, typed as the native owner types its values. */
+const asOwnerLevel = (level: Level<string, MpfStoredValue>) =>
+  level as unknown as Level<string, StoredValue>;
+
+const levelStorage = (level: Level<string, MpfStoredValue>) =>
+  createLevelLedgerStorage({
+    level,
+    readOutputs: async (outRefs) => outRefs.map(testOutputOf),
+  });
+
+describeLedgerStoreConformance("leveldb", async () => {
+  const level = await openLevel(await freshPath());
+  return { storage: levelStorage(level), close: () => level.close() };
+});
+
+describe("leveldb ledger storage beside the node's MPF readers", () => {
+  const base = testLedgerEntries(0, 50);
+
+  /** A store over a fresh database holding `base` and two descendants. */
+  const written = async () => {
+    const path = await freshPath();
+    const level = await openLevel(path);
+    const store = createLedgerStore(levelStorage(level));
+    const a = await store.admit(base, await ledgerEntriesRoot(base));
+    await store.persist(a);
+    const b = await a.apply(event([0, 1], [100]));
+    await store.persist(b);
+    const c = await a.apply(event([2, 3], [101]));
+    await store.persist(c);
+    return { path, level, store, a, b, c };
+  };
+
+  const proofOf = async (ledger: Ledger, key: Buffer) =>
+    (
+      await (await ledger.read([key])).get(key.toString("hex"))!.proof()
+    ).toString("hex");
+
+  it("leaves MidgardMpf.load and walkReachableRecords reading the same trie", async () => {
+    const { path, level, store, b } = await written();
+    const keys = [testOutRef(4), testOutRef(100), testOutRef(0)];
+    const proofs = await Promise.all(
+      keys.map(async (key) => await proofOf(await store.at(b.root), key)),
+    );
+    const visited: string[] = [];
+    const count = await walkReachableRecords(
+      asOwnerLevel(level),
+      b.root,
+      (hash) => {
+        visited.push(hash);
+      },
+    );
+    expect(count).toBeGreaterThan(0);
+    expect(visited.every((hash) => /^[0-9a-f]{64}$/.test(hash))).toBe(true);
+    let retainedKeys = 0;
+    for await (const key of level.keys())
+      if (key.startsWith(RETAINED_ROOT_PREFIX)) retainedKeys += 1;
+    expect(retainedKeys).toBe(3);
+    await level.close();
+
+    const mpf = await Effect.runPromise(
+      MidgardMpf.load("ledger-store-level", path, Buffer.from(b.root, "hex")),
+    );
+    try {
+      expect(await Effect.runPromise(mpf.rootHex())).toBe(b.root);
+      const held = await Effect.runPromise(mpf.get(testOutRef(4)));
+      expect(Option.getOrThrow(held).toString("hex")).toBe(
+        ledgerEntryLeaf(base[4]!, "test").leaf.toString("hex"),
+      );
+      for (const [index, key] of keys.slice(0, 2).entries())
+        expect(
+          (await Effect.runPromise(mpf.prove(key))).cbor.toString("hex"),
+        ).toBe(proofs[index]);
+    } finally {
+      await Effect.runPromise(mpf.close());
+    }
+  });
+
+  it("never touches the __root__ marker, and a sweep keeps it readable", async () => {
+    const { path, level, store, a, b, c } = await written();
+    // The marker the node's own writer keeps for its current trie.
+    await level.put(ROOT_KEY, a.root);
+    await store.retain(new Set([a.root, b.root]));
+    await expect(store.at(c.root)).rejects.toThrow(/is not retained/);
+    expect(await level.get(ROOT_KEY)).toBe(a.root);
+    const reachable = new Set<string>();
+    for (const root of [a.root, b.root])
+      await walkReachableRecords(asOwnerLevel(level), root, (hash) => {
+        reachable.add(hash);
+      });
+    expect((await levelStorage(level).counts()).nodes).toBe(reachable.size);
+    await level.close();
+
+    const mpf = await Effect.runPromise(
+      MidgardMpf.create("ledger-store-level", path),
+    );
+    try {
+      expect(await Effect.runPromise(mpf.rootHex())).toBe(a.root);
+      expect(await Effect.runPromise(mpf.persistedRootHex())).toBe(a.root);
+    } finally {
+      await Effect.runPromise(mpf.close());
+    }
+  });
+});
