@@ -20,6 +20,13 @@
  * blocks; see `ReplayedLedger.retain`. How overlapping lookups, replays and
  * retention stay out of each other's way is `replayed-ledger.holds.ts`.
  *
+ * A lookup is answered by root, whichever block's replay produced the
+ * ledger. Whether a block was verified is a fact about the block: its events
+ * replayed over its parent's ledger open the root its header commits. The
+ * confirmed head is therefore not taken on its root (`ReplayedLedger.ensure`):
+ * every block from the durable verified head (`ReplayedLedgerVerifiedHead`)
+ * up to it is replayed unless this process already replayed that block.
+ *
  * A block whose replay is refused, whose replayed ledger does not open its
  * `utxos_root`, or that does not start from its parent's ledger is reported
  * through `onRefusal` and never persisted. Its own lookup still gets the
@@ -44,6 +51,13 @@ import {
   type LedgerStore,
 } from "./ledger-store/index.js";
 import {
+  type ChainBlock,
+  confirmedChainVerifier,
+  memoryVerifiedHead,
+  type ReplayedLedgerUnverified,
+  type ReplayedLedgerVerifiedHead,
+} from "./replayed-ledger.confirmed.js";
+import {
   createLedgerHolds,
   type HeldLedger,
   storeCall,
@@ -54,6 +68,12 @@ import {
   replayBlock,
   unboundWait,
 } from "./replayed-ledger.replay-block.js";
+
+export {
+  memoryVerifiedHead,
+  type ReplayedLedgerUnverified,
+  type ReplayedLedgerVerifiedHead,
+} from "./replayed-ledger.confirmed.js";
 
 /** The L1 facts a block's user events and forced orders replay against. */
 export type BlockReplayMaterial = Pick<
@@ -120,10 +140,21 @@ export type ReplayedLedger = {
   /** The `LedgerAt` over one operation's sources. */
   readonly ledgerAt: (source: ReplayedLedgerSource) => LedgerAt;
   /**
-   * Makes the store hold the ledger after the confirmed head, replaying up
-   * to it when needed. True once that ledger is persisted; false when it
-   * cannot be derived yet, or when the head's own header commits another
-   * root (refused as a root mismatch).
+   * Verifies the confirmed chain up to the confirmed head and makes the
+   * store hold the head's ledger. Every block above the verified head is
+   * replayed over its parent's ledger, whether or not the store already
+   * holds the root it commits, unless this process replayed that block
+   * itself; the verified head moves up block by block. True once the head
+   * is verified and its ledger persisted. False when a block's payload or
+   * ledger is not available yet, when a block is refused (its replay, its
+   * root or its parent's root, reported through `onRefusal`), or when the
+   * head's own header commits another root than the confirmed one.
+   *
+   * A block below the head that cannot be replayed any more (no source
+   * retains its payload, or the ledger it starts from cannot be derived) is
+   * passed and reported through `onUnverified`. The head's payload is always
+   * waited for. `confirmed` must be a stable head
+   * (`replayed-ledger.confirmed.ts`).
    */
   readonly ensure: (
     confirmed: { readonly headerHash: string; readonly utxosRoot: string },
@@ -144,23 +175,36 @@ export type ReplayedLedger = {
 type Step =
   | { readonly kind: "held"; readonly held: HeldLedger }
   | { readonly kind: "mismatch"; readonly entries: readonly LedgerEntry[] }
+  /** The block is refused, as `onRefusal` was told. */
+  | { readonly kind: "refused" }
+  /** A header, payload or parent ledger is not available. */
   | { readonly kind: "absent" };
 
 const label = (headerHash: string) => `replayed ledger after ${headerHash}`;
 
 export const createReplayedLedger = ({
   store,
+  verifiedHead = memoryVerifiedHead(),
   onRefusal,
+  onUnverified,
   onHeld,
 }: {
   readonly store: LedgerStore;
+  /** Where the verified head is kept; in this process only by default. */
+  readonly verifiedHead?: ReplayedLedgerVerifiedHead;
   readonly onRefusal?: (refusal: ReplayedLedgerRefusal) => void;
+  /** Told each confirmed block `ensure` passes without replaying it. */
+  readonly onUnverified?: (block: ReplayedLedgerUnverified) => void;
   /** Told each header whose ledger the store is found to hold, with the
    * ledger's root. */
   readonly onHeld?: (headerHash: string, root: string) => void;
 }): ReplayedLedger => {
   const holds = createLedgerHolds(store);
   const refuse = (refusal: ReplayedLedgerRefusal) => onRefusal?.(refusal);
+  /** The blocks this process replayed whose ledgers opened their roots,
+   * each with that root. One leaves once the verified head passed it or
+   * `retain` no longer names its root. */
+  const replayed = new Map<string, string>();
 
   /** The ledger's entries: the one place a `LedgerAt` answer is listed. */
   const listed = (ledger: Ledger): Promise<readonly LedgerEntry[]> =>
@@ -170,20 +214,26 @@ export const createReplayedLedger = ({
       return entries;
     });
 
-  /** Replays `block` over `parent`, persisting the ledger when it opens the
-   * block's root. Called by one caller at a time per block. */
+  /**
+   * Replays `block` over `parent`, persisting the ledger when it opens the
+   * block's root. Called by one caller at a time per block. A lookup
+   * (`verify` false) takes a root the store already holds, which a caller
+   * this one waited on may have persisted; a verification always replays.
+   */
   const replayStep = async (
-    block: { readonly headerHash: string; readonly header: SDK.Header },
+    block: ChainBlock,
     parent: HeldLedger,
     source: ReplayedLedgerSource,
-    target: boolean,
+    mode: { readonly target: boolean; readonly verify: boolean },
   ): Promise<Step> => {
     const { headerHash, header } = block;
-    // A caller this one waited on may have persisted it.
-    const done = await holds.open(header.utxosRoot);
-    if (done !== undefined) {
-      onHeld?.(headerHash, header.utxosRoot);
-      return { kind: "held", held: done };
+    const { target } = mode;
+    if (!mode.verify) {
+      const done = await holds.open(header.utxosRoot);
+      if (done !== undefined) {
+        onHeld?.(headerHash, header.utxosRoot);
+        return { kind: "held", held: done };
+      }
     }
     const release = holds.reserve(header.utxosRoot);
     try {
@@ -192,32 +242,33 @@ export const createReplayedLedger = ({
         release();
         return { kind: "absent" };
       }
-      const replayed = await replayBlock({
+      const ledger = await replayBlock({
         headerHash,
         payload,
         parent: parent.ledger,
         source,
         refuse,
       });
-      if (replayed === undefined) {
+      if (ledger === undefined) {
         release();
-        return { kind: "absent" };
+        return { kind: "refused" };
       }
-      if (replayed.root !== header.utxosRoot) {
+      if (ledger.root !== header.utxosRoot) {
         const { message } = new LedgerRootMismatchError(
           label(headerHash),
           header.utxosRoot,
-          replayed.root,
+          ledger.root,
         );
         unboundWait(source, headerHash, message);
         refuse({ headerHash, kind: "root-mismatch", detail: message });
-        const entries = target ? await listed(replayed) : [];
+        const entries = target ? await listed(ledger) : [];
         release();
-        return target ? { kind: "mismatch", entries } : { kind: "absent" };
+        return target ? { kind: "mismatch", entries } : { kind: "refused" };
       }
-      await holds.persist(replayed);
+      await holds.persist(ledger);
+      replayed.set(headerHash, header.utxosRoot);
       onHeld?.(headerHash, header.utxosRoot);
-      return { kind: "held", held: { ledger: replayed, release } };
+      return { kind: "held", held: { ledger, release } };
     } catch (error) {
       release();
       throw error;
@@ -267,11 +318,14 @@ export const createReplayedLedger = ({
             kind: "parent-mismatch",
             detail: `the block starts from ${block.header.prevUtxosRoot}, its parent's ledger opens ${parent.ledger.root}`,
           });
-          return { kind: "absent" };
+          return { kind: "refused" };
         }
         const from: HeldLedger = parent;
         const step = await holds.exclusive(block.headerHash, () =>
-          replayStep(block, from, source, block.headerHash === headerHash),
+          replayStep(block, from, source, {
+            target: block.headerHash === headerHash,
+            verify: false,
+          }),
         );
         if (step.kind !== "held") return step;
         parent.release();
@@ -285,42 +339,51 @@ export const createReplayedLedger = ({
     }
   };
 
+  const ensure = confirmedChainVerifier({
+    holds,
+    verifiedHead,
+    ledgerAfter: async (headerHash, source) => {
+      const step = await derive(headerHash, source);
+      return step.kind === "held" ? step.held : undefined;
+    },
+    replay: async (block, parent, source) => {
+      const step = await replayStep(block, parent, source, {
+        target: false,
+        verify: true,
+      });
+      return step.kind === "held"
+        ? step.held
+        : step.kind === "absent"
+          ? "absent"
+          : "refused";
+    },
+    replayedHere: (headerHash) => replayed.has(headerHash),
+    passedBy: (headerHash) => replayed.delete(headerHash),
+    refuse,
+    ...(onUnverified === undefined ? {} : { onUnverified }),
+    ...(onHeld === undefined ? {} : { onHeld }),
+  });
+
   return {
     ledgerAt: (source) => async (headerHash) => {
       const step = await derive(headerHash, source);
-      if (step.kind === "absent") return undefined;
       if (step.kind === "mismatch") return step.entries;
+      if (step.kind !== "held") return undefined;
       try {
         return await listed(step.held.ledger);
       } finally {
         step.held.release();
       }
     },
-    ensure: async ({ headerHash, utxosRoot }, source) => {
-      const header =
-        headerHash === SDK.GENESIS_HEADER_HASH
-          ? { utxosRoot: EMPTY_LEDGER_ROOT }
-          : await authenticHeader(source, headerHash);
-      if (header === undefined) return false;
-      if (header.utxosRoot !== utxosRoot) {
-        refuse({
-          headerHash,
-          kind: "root-mismatch",
-          detail: `the confirmed root ${utxosRoot} differs from the root ${header.utxosRoot} its header commits`,
-        });
-        return false;
-      }
-      const step = await derive(headerHash, source);
-      if (step.kind !== "held") return false;
-      step.held.release();
-      return true;
-    },
+    ensure,
     retain: ({ blocks, newestRoot, confirmedRoot }) => {
       const roots = new Set([newestRoot, confirmedRoot]);
       for (const block of blocks) {
         roots.add(block.utxosRoot);
         roots.add(block.prevUtxosRoot);
       }
+      for (const [headerHash, root] of replayed)
+        if (!roots.has(root)) replayed.delete(headerHash);
       return holds.retain(roots);
     },
   };
