@@ -506,7 +506,9 @@
     },
     "midgard-fault-proofs/src/block-replay.ts": {
       "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-bounds.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-union.test.ts, midgard-node/tests/foreign-block-import.replay-clock.test.ts stub replayValidationVerdictEvent on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
-      "sites": ["} from \"@al-ft/midgard-validation\";"]
+      "sites": [
+        "import { replayValidationVerdictEvent } from \"@al-ft/midgard-validation\";"
+      ]
     },
     "midgard-fault-proofs/src/remove-unattested-block.submit-unattested-timeout-correction.ts": {
       "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
@@ -818,10 +820,6 @@
     },
     "midgard-node/src/mpf/process.process-mpfs.ts": {
       "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts stub runPhaseAValidation on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
-      "sites": ["} from \"@al-ft/midgard-validation\";"]
-    },
-    "midgard-node/src/mpf/verified-block-import.ts": {
-      "reason": "Kept on the root because midgard-node/tests/foreign-block-import.local-fault-sites.test.ts stubs decodeMidgardLedgerTxFromCanonicalCbor on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test). decodeMidgardLedgerTxFromCanonicalCbor also has no subpath yet.",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
     },
     "midgard-node/src/transactions/register-active-operator.operator-lifecycle-program.ts": {

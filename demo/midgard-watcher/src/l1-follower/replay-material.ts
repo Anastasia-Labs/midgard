@@ -11,7 +11,10 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import { attributeWithdrawalClassificationFault } from "@al-ft/midgard-fault-proofs/block-replay";
+import {
+  attributeWithdrawalClassificationFault,
+  readLedgerOutput,
+} from "@al-ft/midgard-fault-proofs/block-replay";
 import type { BlockReplayMaterial } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs/workflow/forced-rejection-reason";
 import * as SDK from "@al-ft/midgard-sdk/core";
@@ -97,7 +100,7 @@ export const watcherReplayMaterial = (
           l2ValueCbor: plutusConstrFieldCbor(infoCbor, [0, 2]),
           eventInfoCbor: infoCbor,
           ledgerOutRef: outRef,
-          ledgerOutput: ledger.get(outRef.toString("hex")) ?? null,
+          ledgerOutput: (yield* readLedgerOutput(ledger, outRef)) ?? null,
         };
         // A runtime fault of the classifier is this watcher's own: the
         // replay is retried, and no claim is made on it.

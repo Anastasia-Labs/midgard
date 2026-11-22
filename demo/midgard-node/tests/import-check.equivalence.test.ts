@@ -9,6 +9,11 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { replayBlockEvents } from "@al-ft/midgard-fault-proofs/block-replay";
 import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  type Ledger,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
+import {
   evaluateMidgardCekVerdict,
   type MidgardCekVerdictRequest,
 } from "@al-ft/midgard-validation/phase-b";
@@ -36,25 +41,32 @@ useCheckerDatabase();
 
 type Block = Awaited<ReturnType<typeof committedBlock>>;
 
+/** Every entry of `ledger`, by out-ref. */
+const listed = async (ledger: Ledger) => {
+  const all: [string, string][] = [];
+  for await (const { outRef, output } of ledger.entries())
+    all.push([outRef.toString("hex"), output.toString("hex")]);
+  return all;
+};
+
 /** `block`'s replay on `parent`: running every script, or by the committed
- * verdicts. Returns each transition, the ledger after it, and each run the
- * committed replay built. */
-const replay = (
+ * verdicts. Returns each transition, the ledger after it (its root and
+ * entries), and each run the committed replay built. */
+const replay = async (
   block: Block,
   parent: readonly LedgerEntry[],
   committed: boolean,
 ) => {
   const transitions: unknown[] = [];
   const runs: MidgardCommittedScriptRun[] = [];
-  return Effect.runPromise(
+  const parentLedger = await createLedgerStore(
+    createMemoryLedgerStorage(),
+  ).admit(parent, (await validationMachineLedgerRoot(parent)).toString("hex"));
+  const after = await Effect.runPromise(
     replayBlockEvents({
       header: block.payload.block_body.header,
       payload: block.payload,
-      parentEntries: parent,
-      ledgerRoot: (ledger) =>
-        Effect.promise(async () =>
-          (await validationMachineLedgerRoot(ledger)).toString("hex"),
-        ),
+      parent: parentLedger,
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,
@@ -73,7 +85,12 @@ const replay = (
           }
         : {}),
     }),
-  ).then((ledger) => ({ ledger, transitions, runs }));
+  );
+  return {
+    ledger: { root: after.root, entries: await listed(after) },
+    transitions,
+    runs,
+  };
 };
 
 const identityOf = (run: MidgardCommittedScriptRun) => ({

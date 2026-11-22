@@ -9,6 +9,10 @@ import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import type { ProjectedEvent } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { replaceCborItemOnce } from "@al-ft/midgard-test-support/deep-plutus-data";
@@ -132,7 +136,10 @@ const watcherReplays = async (eventCbor: string, infoCbor: string) => {
     material.replayUserEvent({
       step: { phase: "Deposit" } as SDK.TransitionStep,
       source: [idCbor, infoCbor],
-      ledger: new Map(),
+      ledger: await createLedgerStore(createMemoryLedgerStorage()).admit(
+        [],
+        SDK.EMPTY_MERKLE_TREE_ROOT,
+      ),
     }),
   );
   expect(replayed).toHaveLength(1);

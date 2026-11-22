@@ -236,7 +236,8 @@ describe("foreign block import failure attribution", () => {
   });
 
   it("calls a failure it cannot pin on the block incomplete, never invalid", async () => {
-    // A parent ledger the local MPF cannot hash: a local computation fails.
+    // A parent ledger with an entry that is no ledger entry: building the
+    // parent ledger, a local computation, fails.
     const result = await verdict(await fixture(), {
       parentEntries: [{ outref: Buffer.alloc(0), output: Buffer.alloc(0) }],
     });
@@ -244,7 +245,7 @@ describe("foreign block import failure attribution", () => {
     if (result._tag === "Left")
       expect(result.left).toMatchObject({
         reason: "incomplete",
-        detail: expect.stringContaining("MpfError"),
+        detail: expect.stringContaining("not a canonical ledger entry"),
       });
   });
 });

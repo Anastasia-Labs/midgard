@@ -266,6 +266,9 @@ const newRow = <R>(
         ...node,
         parentHeaderHash: parent.headerHash,
         parentUtxosRoot: parent.utxosRoot,
+        // Interim: the replay takes this whole working ledger and returns
+        // the whole ledger after the block, which `netDelta` diffs below;
+        // the node's own ledger store replaces both.
         parentEntries: ledgerEntries(ledger),
         view,
       }),

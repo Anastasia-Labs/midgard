@@ -33,10 +33,13 @@ import {
   type CheckedLedger,
   checkLedgerAgainstRoot,
   type LedgerAt,
-  ledgerEntriesRoot,
   type LedgerEntry,
   LedgerRootMismatchError,
 } from "./ledger-at.js";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "./ledger-store/index.js";
 import { RetainedDaPayloadUnavailableError } from "./transition-trace/fetch.retained-da-payload-unavailable.js";
 
 /** The L1 facts a block's user events and forced orders replay against. */
@@ -220,12 +223,13 @@ export const createReplayedLedger = ({
       return { kind: "refused" };
     }
     const material = await source.materialFor(payload);
+    const parentLedger = await createLedgerStore(
+      createMemoryLedgerStorage(),
+    ).admit(parent.entries, parent.utxosRoot);
     const exit = await Effect.runPromiseExit(
       replayBlockEvents({
         header,
-        parentEntries: parent.entries,
-        ledgerRoot: (entries) =>
-          Effect.tryPromise(() => ledgerEntriesRoot(entries)),
+        parent: parentLedger,
         expectedNetworkId: header.expectedNetworkId,
         minFeeA: header.minFeeA,
         minFeeB: header.minFeeB,
@@ -257,11 +261,13 @@ export const createReplayedLedger = ({
       refuse({ headerHash, kind: "replay-refused", detail });
       return { kind: "refused" };
     }
+    const entries: LedgerEntry[] = [];
+    for await (const entry of exit.value.entries()) entries.push(entry);
     try {
       return {
         kind: "checked",
         ledger: await checkLedgerAgainstRoot({
-          entries: exit.value,
+          entries,
           utxosRoot: header.utxosRoot,
           label: label(headerHash),
         }),
@@ -270,7 +276,7 @@ export const createReplayedLedger = ({
       if (!(error instanceof LedgerRootMismatchError)) throw error;
       unboundWait(source, headerHash, error.message);
       refuse({ headerHash, kind: "root-mismatch", detail: error.message });
-      return { kind: "mismatch", entries: exit.value };
+      return { kind: "mismatch", entries };
     }
   };
 

@@ -3,9 +3,8 @@
  * verdict on the block, and the same block imports once the computation
  * works again. Where the block's input cannot make it fail the import is
  * `local_fault`, held on a retried hold whose subject is the block (bounded
- * by the coalesced runner's local-fault exit):
- * - the import check decoding a transaction the replay already accepted;
- * - encoding the event-to-step value of a phase the replay already read.
+ * by the coalesced runner's local-fault exit), as when encoding the
+ * event-to-step value of a phase the replay already read.
  * The event replay dying (a throw past Phase A, which fails typed), which
  * the block's input can reach, is `replay_held`: a plain retried hold the
  * node never exits on. The block is held and replayed again on a 1 s to
@@ -22,7 +21,6 @@ import { describe, expect, it, vi } from "vitest";
 
 /** What each site throws when the test arms it, and how often it did. */
 const inject = vi.hoisted(() => ({
-  decode: undefined as (() => unknown) | undefined,
   replay: undefined as (() => unknown) | undefined,
   encode: undefined as (() => unknown) | undefined,
   thrown: 0,
@@ -32,19 +30,6 @@ const armed = (site: (() => unknown) | undefined) => {
   inject.thrown += 1;
   throw site();
 };
-vi.mock("@al-ft/midgard-validation", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@al-ft/midgard-validation")>();
-  return {
-    ...actual,
-    decodeMidgardLedgerTxFromCanonicalCbor: (
-      ...args: Parameters<typeof actual.decodeMidgardLedgerTxFromCanonicalCbor>
-    ) => {
-      armed(inject.decode);
-      return actual.decodeMidgardLedgerTxFromCanonicalCbor(...args);
-    },
-  };
-});
 vi.mock("@al-ft/midgard-validation/phase-b", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@al-ft/midgard-validation/phase-b")>();
@@ -106,7 +91,7 @@ import {
 } from "./import-check.fixture.js";
 
 type Block = Awaited<ReturnType<typeof committedBlock>>;
-type Site = "decode" | "replay" | "encode";
+type Site = "replay" | "encode";
 
 const oneSpend = async (byte: number): Promise<Block> => {
   const parent = [fundedBy(byte, "accept")];
@@ -133,15 +118,6 @@ const importArmed = async (block: Block, site: Site) => {
 
 describe("a foreign block import failing locally at a replay site", () => {
   it.each([
-    [
-      "the import check decoding a replayed transaction again",
-      "decode",
-      0x71,
-      "import check bookkeeping failed locally",
-      "local_fault",
-      LANDED_BLOCK_LOCAL_FAULT,
-      true,
-    ],
     [
       "the event replay dying",
       "replay",
