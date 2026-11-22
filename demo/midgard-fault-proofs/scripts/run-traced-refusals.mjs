@@ -22,9 +22,11 @@
  * from the file that declares it: a pin whose case is skipped, never planned
  * or whose refusal arrives untraced cannot pass silently.
  *
- *   node scripts/run-traced-refusals.mjs [file that declares a pin ...]
+ *   node scripts/run-traced-refusals.mjs [--project <name>] [file that declares a pin ...]
  *
- * With no arguments it checks every pin. Each case runs in its test file's
+ * With no arguments it checks every pin. `--project testing-profile` or
+ * `--project interactive-emulator` runs only that project's cases and checks
+ * the pins they reach, so two CI jobs can share the work. Each case runs in its test file's
  * Vitest project against that project's blueprint: the testing-profile files
  * need onchain/aiken/plutus.json fresh (`pnpm --dir demo deployment:build
  * <profile>`), and the interactive-emulator files use the blueprint that
@@ -131,19 +133,21 @@ try {
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
-const requested = process.argv
-  .slice(2)
+const argv = process.argv.slice(2);
+const onlyProject = argv[0] === "--project" ? argv[1] : undefined;
+const requested = argv
+  .slice(onlyProject === undefined ? 0 : 2)
   .map((file) => relative(packageRoot, resolve(file)));
 for (const file of requested) {
   if (!allPins.some((pin) => pin.file === file)) {
     fail(`${file} declares no refusedBy pin`);
   }
 }
-const pins =
+const requestedPins =
   requested.length > 0
     ? allPins.filter((pin) => requested.includes(pin.file))
     : allPins;
-if (pins.length === 0) fail("no file declares a refusedBy pin");
+if (requestedPins.length === 0) fail("no file declares a refusedBy pin");
 
 // Each Vitest project runs its files against its own blueprint, with the
 // modules its pins name swapped for their traced builds.
@@ -154,7 +158,7 @@ const interactiveFiles = new Set(
   ),
 );
 const sitesIn = (interactive) =>
-  pins.flatMap(({ module, sites }) =>
+  requestedPins.flatMap(({ module, sites }) =>
     sites
       .filter((site) => interactiveFiles.has(site.file) === interactive)
       .map((site) => ({ ...site, module })),
@@ -180,7 +184,21 @@ const projects = [
     },
     overlayVariable: "MIDGARD_TRACED_INTERACTIVE_BLUEPRINT",
   },
-].filter((project) => project.sites.length > 0);
+].filter(
+  (project) =>
+    project.sites.length > 0 &&
+    (onlyProject === undefined || project.name === onlyProject),
+);
+if (projects.length === 0) fail(`no pinned case runs in ${onlyProject}`);
+// The pins this run answers for: those a case of a selected project reaches,
+// and those no case reaches at all, which must fail wherever they are asked.
+const selected = new Set(
+  projects.flatMap((project) => project.sites.map(({ file }) => file)),
+);
+const pins = requestedPins.filter(
+  ({ sites }) =>
+    sites.length === 0 || sites.some(({ file }) => selected.has(file)),
+);
 
 /** At most this many Vitest runs at once; MIDGARD_TRACED_REFUSALS_JOBS overrides. */
 const jobs = Math.max(

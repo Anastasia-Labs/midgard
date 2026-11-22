@@ -203,7 +203,7 @@ test("Node CI covers every package build, typecheck and full suite", () => {
   for (const [jobId, shards] of [
     ["midgard-node", 3],
     ["midgard-watcher", 3],
-    ["midgard-fault-proofs", 6],
+    ["midgard-fault-proofs", 9],
   ]) {
     const job = jobs[jobId];
     assert.equal(job.strategy["fail-fast"], false);

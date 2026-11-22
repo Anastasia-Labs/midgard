@@ -817,17 +817,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-fault-proofs run typecheck
 
-  # Seven shards keep each job near 23 minutes. The suite is ~15,600
+  # Nine shards keep each job near 20 minutes. The suite is ~15,600
   # fork-seconds on two forks (per file in the package's
-  # tests/support/ci-file-durations.json), each job adds a few minutes of setup
-  # and Vitest overhead, and shard 1 also runs the ~1,200 s traced-refusal
-  # step, which that table reserves. Each shard projects ~1,285 s; the longest
-  # single file (the writeBits loop dispute) is ~880 s. More shards would not
-  # shorten shard 1, which that step alone holds near 1,200 s. The matrix is
-  # the one count this workflow reads (the jobs and test-durations take it from
-  # the matrix); change it together with tests/duration-shards.test.ts and
-  # rekey the table's reserve. On a pull request that skips the traced-refusal
-  # step, shard 1 finishes that much earlier.
+  # tests/support/ci-file-durations.json), a shard's test step runs about an
+  # eighth over the sum of its files, and each job adds a minute of setup.
+  # Shards 1 and 2 also run the traced-refusal step, one Vitest project each
+  # (~800 s and ~500 s), which that table reserves. Each shard projects
+  # ~1,010 s; the longest single file (the writeBits loop dispute) is ~880 s.
+  # The matrix is the one count this workflow reads (the jobs and
+  # test-durations take it from the matrix); change it together with
+  # tests/duration-shards.test.ts and scripts/preflight/runtime-owner.test.mjs,
+  # and rekey the table's reserve. On a pull request that skips the
+  # traced-refusal step, shards 1 and 2 finish that much earlier.
   midgard-fault-proofs:
     name: midgard-fault-proofs (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [aiken-fork, blueprint, test-blueprints]
@@ -836,7 +837,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9]
     # Bound evaluator parallelism on the standard hosted runner.
     env:
       MIDGARD_FAULT_PROOF_FORKS: "2"
@@ -845,13 +846,13 @@ jobs:
         with:
           # The pull request merge commit and its base parent, for the diff.
           fetch-depth: 2
-      # Only shard 1 runs the traced-refusal step, and only when this change
-      # touches one of its inputs (any event but a pull request always runs
-      # it). The test-blueprints job makes the same decision from the same
+      # Only shards 1 and 2 run the traced-refusal step, and only when this
+      # change touches one of its inputs (any event but a pull request always
+      # runs it). The test-blueprints job makes the same decision from the same
       # merge commit to build the traced blueprints this step restores.
       - name: Decide whether this change can alter a traced refusal
         id: traced
-        if: matrix.shard == 1
+        if: matrix.shard <= 2
         run: node scripts/ci/traced-refusal-inputs.mjs
       - uses: ./.github/actions/demo-setup
         with:
@@ -879,7 +880,7 @@ jobs:
       # checked against the trace of the check it names.
       - name: Check pinned emulator refusals against traced validators
         if: ${{ !cancelled() && steps.traced.outputs.run == 'true' }}
-        run: pnpm --dir demo/midgard-fault-proofs run test:traced-refusals
+        run: pnpm --dir demo/midgard-fault-proofs run test:traced-refusals --project ${{ matrix.shard == 1 && 'interactive-emulator' || 'testing-profile' }}
 
   # The watcher's typecheck and format check, once per run rather than on
   # every shard below. The typecheck resolves workspace packages from source
