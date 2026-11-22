@@ -10,7 +10,6 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
@@ -272,7 +271,7 @@ export const buildDaDeploymentFixture = async (
   const historyInitializationNonce = parseDeploymentManifestEventHistoryRecipe(
     contracts.depositMint!.eventHistoryRecipe,
   ).initializationNonce;
-  const identityInput = {
+  return {
     schemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
@@ -380,9 +379,5 @@ export const buildDaDeploymentFixture = async (
       maxCloseFeeLovelace: 2_000_000,
       maxTimeoutFeeLovelace: 3_000_000,
     },
-  };
-  return {
-    ...identityInput,
-    manifestId: computeDeploymentManifestId(identityInput),
   };
 };

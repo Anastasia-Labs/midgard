@@ -12,7 +12,7 @@ import type { PostgresCommitteeStore } from "../src/store/postgres.js";
 import { fixtureHeaderBase } from "./helpers.js";
 import { openTestCommitteeStore } from "./helpers/committee-store.js";
 
-export const FINGERPRINT = "cd".repeat(32);
+export const FINGERPRINT = "cd".repeat(28);
 
 export const NOW = Date.UTC(2026, 7, 3);
 

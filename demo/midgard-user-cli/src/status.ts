@@ -62,7 +62,7 @@ export const runStatus = async (
   const directory = recordDirectoryOf(
     options,
     deps,
-    deployment.manifestId,
+    deployment.hubOraclePolicyId,
     kind,
     submissionId,
   );

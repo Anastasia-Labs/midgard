@@ -66,7 +66,6 @@ const progressFixture = async () => {
     },
     {
       deploymentFingerprint: f.config.deploymentFingerprint,
-      contractManifestId: String(f.config.contractDeploymentInfo.manifestId),
     },
   ).authority;
   const record = (await f.store.getStateQueueHeader(candidate.headerHash))!;
@@ -177,7 +176,6 @@ describe("canonical active promise progress", () => {
       },
       {
         deploymentFingerprint: f.config.deploymentFingerprint,
-        contractManifestId: String(f.config.contractDeploymentInfo.manifestId),
       },
     ).authority;
     const admitted = await check();

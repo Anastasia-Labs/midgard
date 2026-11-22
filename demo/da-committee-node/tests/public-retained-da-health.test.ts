@@ -18,7 +18,7 @@ import {
   publicRetainedDaReadiness,
 } from "../src/public-retained-da-health.js";
 
-const DEPLOYMENT_FINGERPRINT = "a1".repeat(32);
+const DEPLOYMENT_FINGERPRINT = "a1".repeat(28);
 
 type Handler = (stream: unknown, connection: unknown) => Promise<void> | void;
 

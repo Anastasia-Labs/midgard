@@ -95,7 +95,6 @@ export const promiseAdmissionFixture = async (
   });
   const config = {
     ...rawConfig,
-    contractDeploymentInfo: { manifestId: "ab".repeat(32) },
     daParams: {
       ...rawConfig.daParams,
       committeeSignersHash: Buffer.from(
@@ -155,7 +154,6 @@ export const promiseAdmissionFixture = async (
   const source = {
     policyAuthority: testPromiseRuntimePolicy(policy, {
       deploymentFingerprint: config.deploymentFingerprint,
-      contractManifestId: String(config.contractDeploymentInfo.manifestId),
     }).authority,
     readSnapshot: async () => snapshot,
     assertCurrent,

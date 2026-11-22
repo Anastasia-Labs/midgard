@@ -1,5 +1,3 @@
-import { type DeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
-
 import type { PromiseCapacityEvidence } from "./availability/promise-capacity-evidence.js";
 import type {
   DaAttestationCandidateRecord,
@@ -197,7 +195,7 @@ export type L1SourceState = {
 };
 
 export type CommitteeDeploymentRecord = {
-  readonly marker: DeploymentMarker;
+  readonly hubOraclePolicyId: string;
   readonly manifestSha256: string;
   readonly contractDeploymentInfoSha256: string;
   readonly manifestRaw: string;
@@ -264,7 +262,7 @@ export interface CommitteeStore {
   ): Promise<PromiseCapacityEvidence>;
   close?(): Promise<void>;
   initDeployment(args: {
-    readonly marker: DeploymentMarker;
+    readonly hubOraclePolicyId: string;
     readonly manifestSha256: string;
     readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;

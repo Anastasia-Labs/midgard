@@ -41,7 +41,7 @@ const depositArgs = (submissionId: string, lovelace = "5000000") => [
 const recordDirectoryOf = (root: string, submissionId: string) =>
   join(
     root,
-    harness.manifest.manifestId,
+    harness.hubOraclePolicyId,
     createHash("sha256").update(`Deposit:${submissionId}`).digest("hex"),
   );
 
@@ -79,7 +79,7 @@ describe("midgard-user deposit", () => {
         "attempt-0001.json",
         "intent.json",
       ]);
-      expect(mode(join(root, harness.manifest.manifestId))).toBe(0o700);
+      expect(mode(join(root, harness.hubOraclePolicyId))).toBe(0o700);
       expect(mode(directory)).toBe(0o700);
       expect(mode(join(directory, "intent.json"))).toBe(0o600);
       expect(mode(join(directory, "attempt-0001.json"))).toBe(0o600);
@@ -88,7 +88,7 @@ describe("midgard-user deposit", () => {
         version: 1,
         kind: "Deposit",
         submissionId: "first",
-        manifestId: harness.manifest.manifestId,
+        hubOraclePolicyId: harness.hubOraclePolicyId,
         walletAddress: harness.scene.user.address,
         intent: { lovelace: "5000000", l2Address: harness.scene.user.address },
       });
@@ -279,7 +279,7 @@ describe("midgard-user deposit through Kupmios", () => {
         harness.scene.contracts.deposit.spendingScriptAddress,
       );
       expect(result.stderr).toContain('--match "*"');
-      expect(existsSync(join(root, harness.manifest.manifestId))).toBe(false);
+      expect(existsSync(join(root, harness.hubOraclePolicyId))).toBe(false);
     },
     TEST_TIMEOUT_MS,
   );

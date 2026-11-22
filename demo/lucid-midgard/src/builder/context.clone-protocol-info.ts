@@ -2,7 +2,6 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
-import type { DeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { Network } from "@lucid-evolution/lucid";
 
 import {
@@ -68,7 +67,7 @@ export type LucidMidgardConfigSnapshot = {
   readonly midgardNativeTxVersion: number;
   readonly currentSlot: bigint;
   readonly consensusProfile: MidgardConsensusProfile;
-  readonly deploymentMarker?: DeploymentMarker;
+  readonly hubOraclePolicyId?: string;
   readonly supportedScriptLanguages: readonly ProtocolScriptLanguage[];
   readonly codecSupportedScriptLanguages: readonly ProtocolScriptLanguage[];
   readonly protocolFeeParameters: {
@@ -190,9 +189,9 @@ export const cloneProtocolInfo = (
     ...common,
     apiVersion: 1,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-    ...(info.deploymentMarker === undefined
+    ...(info.hubOraclePolicyId === undefined
       ? {}
-      : { deploymentMarker: { ...info.deploymentMarker } }),
+      : { hubOraclePolicyId: info.hubOraclePolicyId }),
   };
 };
 

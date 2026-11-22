@@ -218,7 +218,7 @@ describe("retained availability responses", () => {
       retained({ ...record, conflictStatus: "conflicting_bytes" }),
     ).rejects.toThrow(/verified retained payload/);
     await expect(
-      retained({ ...record, deploymentFingerprint: "55".repeat(32) }),
+      retained({ ...record, deploymentFingerprint: "55".repeat(28) }),
     ).rejects.toThrow(/this deployment/);
   });
 

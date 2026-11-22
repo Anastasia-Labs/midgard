@@ -98,7 +98,7 @@ const fixture = async (commitClockOffsetMs = 0) => {
     Data.to("Idle", SDK.CorrectionLockDatum),
   );
   const header: StateQueueHeaderRecord = {
-    deploymentFingerprint: "78".repeat(32),
+    deploymentFingerprint: "78".repeat(28),
     headerHash: payload.headerHash,
     stateQueueOutRef: `${node.txHash}#1`,
     blockAssetName: SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + payload.headerHash,

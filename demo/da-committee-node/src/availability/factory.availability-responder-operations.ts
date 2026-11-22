@@ -81,10 +81,10 @@ export const availabilityResponderOperations = (input: {
   // Every own transaction is pinned on the follower before it is submitted,
   // and the pins then follow what the journal retains (plan §11): its
   // status stays readable after a downtime longer than k.
-  const { journal, actor, deploymentIdentity } = input.context;
+  const { journal, actor, hubOraclePolicyId } = input.context;
   reads.intentPins.bind(() =>
     journal
-      .actorSnapshot(actor, deploymentIdentity)
+      .actorSnapshot(actor, hubOraclePolicyId)
       .retainedAttempts.map(({ txHash }) => txHash),
   );
   const observeInputs = SDK.createDaAvailabilityOperationObserver({

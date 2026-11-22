@@ -17,8 +17,7 @@ afterEach(async () => {
 });
 afterAll(async () => databases.dropAll());
 const identity = {
-  deploymentFingerprint: "ab".repeat(32),
-  contractManifestId: "cd".repeat(32),
+  deploymentFingerprint: "ab".repeat(28),
   actorId: "ef".repeat(28),
 };
 const record: PromiseCapacityEvidence = {

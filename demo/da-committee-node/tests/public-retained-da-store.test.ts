@@ -13,7 +13,7 @@ import {
 const HEADER_HASH = "ab".repeat(28);
 
 const payloadRecord = (headerHash = HEADER_HASH): Record<string, unknown> => ({
-  deploymentFingerprint: "cd".repeat(32),
+  deploymentFingerprint: "cd".repeat(28),
   headerHash,
   payloadSchemaVersion: 1,
   payloadCborHex: "80",

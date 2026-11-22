@@ -2,7 +2,7 @@
  * Arguments, the seed source and the manifest are refused by name before
  * anything reads the chain or writes a record. No L1 is reachable here.
  */
-import { chmodSync, existsSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { generateSeedPhrase } from "@lucid-evolution/lucid";
@@ -13,7 +13,6 @@ import { runUserCli } from "../src/run.js";
 import {
   manifestIdentityInput,
   tempDirectory,
-  withManifestId,
   writeSeedFile,
 } from "./support/user-cli.js";
 
@@ -223,30 +222,10 @@ describe("midgard-user wallet seed", () => {
 });
 
 describe("midgard-user deployment manifest", () => {
-  it("refuses a manifest whose id does not match its content, writing nothing", async () => {
-    const directory = tempDirectory("manifest-id");
-    const path = join(directory, "manifest.json");
-    writeFileSync(
-      path,
-      JSON.stringify({
-        ...withManifestId(manifestIdentityInput()),
-        manifestId: "00".repeat(32),
-      }),
-    );
-    const result = await refused(
-      deposit("--manifest", path),
-      "Deployment manifest id mismatch",
-    );
-    expect(existsSync(join(result.home, ".midgard"))).toBe(false);
-  });
-
   it("refuses an identity-valid manifest without user-history contracts", async () => {
     const directory = tempDirectory("manifest-empty");
     const path = join(directory, "manifest.json");
-    writeFileSync(
-      path,
-      JSON.stringify(withManifestId(manifestIdentityInput())),
-    );
+    writeFileSync(path, JSON.stringify(manifestIdentityInput()));
     await refused(deposit("--manifest", path), "is not usable");
   });
 });

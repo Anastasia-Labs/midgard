@@ -242,7 +242,7 @@ describe("DA attestation exchange over real libp2p", () => {
         name: "wrong deployment fingerprint",
         headerHash: committee.headerHash,
         message: gossipOf(localSignature(committee, 1), {
-          deploymentFingerprint: Buffer.alloc(32, 0xee),
+          deploymentFingerprint: Buffer.alloc(28, 0xee),
         }),
         reason: /deployment fingerprint mismatch/,
       },
@@ -348,7 +348,7 @@ type Committee = {
 };
 
 // Matches `minimalConfig`, so committee services and nodes share a deployment.
-const DEPLOYMENT_FINGERPRINT = "f".repeat(64);
+const DEPLOYMENT_FINGERPRINT = "99".repeat(28);
 
 // Matches the availability authority `minimalConfig` gives a service.
 const availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthority = {

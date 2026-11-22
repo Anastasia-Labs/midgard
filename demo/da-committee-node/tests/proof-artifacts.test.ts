@@ -24,7 +24,7 @@ import type {
 } from "../src/domain.js";
 import { makePayloadFixture } from "./helpers.js";
 
-const deploymentFingerprint = "01".repeat(32);
+const deploymentFingerprint = "01".repeat(28);
 const deploymentFingerprintBytes = Buffer.from(deploymentFingerprint, "hex");
 
 describe("DA proof artifact derivation", () => {

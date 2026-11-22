@@ -5,7 +5,7 @@
  * or deleted; the latest attempt is the highest-numbered file. The seed is
  * never written.
  *
- *   <root>/<manifestId>/<sha256(kind ":" submissionId)>/   (0700)
+ *   <root>/<hubOraclePolicyId>/<sha256(kind ":" submissionId)>/   (0700)
  *     intent.json        0600
  *     attempt-0001.json  0600
  */
@@ -32,13 +32,13 @@ const ATTEMPT_FILE = /^attempt-(\d{4,})\.json$/u;
 
 export const recordDirectory = (
   root: string,
-  manifestId: string,
+  hubOraclePolicyId: string,
   kind: SubmissionKind,
   submissionId: string,
 ): string =>
   join(
     root,
-    manifestId,
+    hubOraclePolicyId,
     createHash("sha256").update(`${kind}:${submissionId}`).digest("hex"),
   );
 
@@ -88,8 +88,7 @@ export type IntentRecord = {
   readonly version: 1;
   readonly kind: SubmissionKind;
   readonly submissionId: string;
-  readonly manifestId: string;
-  readonly hubPolicyId: string;
+  readonly hubOraclePolicyId: string;
   readonly walletAddress: string;
   readonly intentHash: string;
   readonly intent: Readonly<Record<string, unknown>>;
@@ -105,8 +104,7 @@ const parseIntent = (path: string, value: unknown): IntentRecord => {
     record.version !== 1 ||
     (record.kind !== "Deposit" && record.kind !== "Withdrawal") ||
     typeof record.submissionId !== "string" ||
-    typeof record.manifestId !== "string" ||
-    typeof record.hubPolicyId !== "string" ||
+    typeof record.hubOraclePolicyId !== "string" ||
     typeof record.walletAddress !== "string" ||
     typeof record.intentHash !== "string" ||
     typeof record.intent !== "object" ||
@@ -148,13 +146,17 @@ export const requireSameIntent = (
   existing: IntentRecord,
   wanted: Pick<
     IntentRecord,
-    "kind" | "submissionId" | "manifestId" | "walletAddress" | "intentHash"
+    | "kind"
+    | "submissionId"
+    | "hubOraclePolicyId"
+    | "walletAddress"
+    | "intentHash"
   >,
 ): void => {
   if (
     existing.kind !== wanted.kind ||
     existing.submissionId !== wanted.submissionId ||
-    existing.manifestId !== wanted.manifestId ||
+    existing.hubOraclePolicyId !== wanted.hubOraclePolicyId ||
     existing.walletAddress !== wanted.walletAddress ||
     existing.intentHash !== wanted.intentHash
   )

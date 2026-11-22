@@ -103,7 +103,7 @@ describe("PeerSignatureCoordinator", () => {
 
   it("rejects missing, legacy, unknown, and malformed signature record fields", () => {
     const record = signatureRecord({
-      deploymentFingerprint: "11".repeat(32),
+      deploymentFingerprint: "11".repeat(28),
       headerHash: "22".repeat(28),
       signerIndex: 0,
       committeeSignersHash: "33".repeat(32),
@@ -419,7 +419,7 @@ describe("PeerSignatureCoordinator", () => {
   });
 
   it("retrieves attestations over the typed libp2p request/response protocol", async () => {
-    const deploymentFingerprint = "11".repeat(32);
+    const deploymentFingerprint = "11".repeat(28);
     const receiverSigner = await loadDaSigner(`hex:${"00".repeat(31)}30`);
     const senderSigner = await loadDaSigner(`hex:${"00".repeat(31)}31`);
     const committeeHex =
@@ -550,7 +550,7 @@ describe("PeerSignatureCoordinator", () => {
   });
 
   it("builds canonical attestation gossip messages without changing the on-chain witness", async () => {
-    const deploymentFingerprint = "11".repeat(32);
+    const deploymentFingerprint = "11".repeat(28);
     const headerHash = "04".repeat(28);
     const signer = await loadDaSigner(`hex:${"00".repeat(31)}20`);
     const committeeSignersHash = bytesToHex(

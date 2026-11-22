@@ -12,8 +12,8 @@ const readinessSnapshot = (
 ): CommitteeReadinessSnapshot => ({
   ready,
   deployment: {
-    configuredFingerprint: "dep",
-    storeFingerprint: "dep",
+    hubOraclePolicyId: "dep",
+    storeHubOraclePolicyId: "dep",
     storeMatchesConfigured: true,
     manifestSha256: "aa".repeat(32),
     storeManifestSha256: "aa".repeat(32),
@@ -86,8 +86,8 @@ describe("committee node API", () => {
       await expect(ready.json()).resolves.toMatchObject({
         ready: true,
         deployment: {
-          configuredFingerprint: "dep",
-          storeFingerprint: "dep",
+          hubOraclePolicyId: "dep",
+          storeHubOraclePolicyId: "dep",
         },
         scanner: { status: "ok", scannedHeaders: 1 },
         counts: { discoveredHeaders: 1, verifiedPayloads: 1 },

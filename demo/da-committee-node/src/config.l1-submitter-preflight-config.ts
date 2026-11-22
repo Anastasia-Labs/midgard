@@ -295,7 +295,6 @@ export const parseNativeLedgerConfig = (
 export const contractDeploymentManifestConfig = (
   contractDeploymentInfo: Record<string, unknown>,
 ): {
-  readonly manifestId: string;
   readonly consensusProfile: MidgardConsensusProfile;
   readonly network: string;
   readonly daRetentionDays: number;
@@ -306,7 +305,6 @@ export const contractDeploymentManifestConfig = (
 } => {
   const verified = verifyFinalizedDeploymentManifest(contractDeploymentInfo);
   return {
-    manifestId: verified.manifestId,
     consensusProfile: verified.consensusProfile,
     network: verified.network,
     // The retention window is part of the verified deployment identity.

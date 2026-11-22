@@ -8,7 +8,7 @@ import { PostgresCommitteeStore } from "../src/store/postgres.postgres-committee
 import { makePayloadFixture } from "./helpers.make-payload-fixture.js";
 import { postgresTestDatabases } from "./helpers/postgres-database.js";
 
-const deploymentFingerprint = "a".repeat(64);
+const deploymentFingerprint = "a".repeat(56);
 const nonce = (index: number) => ({
   deploymentFingerprint,
   signerIndex: 0,

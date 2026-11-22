@@ -40,9 +40,9 @@ export const protocolInfoToParameters = (
   networkId: knownNetworkId(info.network),
   maxSubmitTxCborBytes: info.submissionLimits.maxSubmitTxCborBytes,
   strictnessProfile: info.validation.strictnessProfile,
-  ...(info.deploymentMarker === undefined
+  ...(info.hubOraclePolicyId === undefined
     ? {}
-    : { deploymentManifestId: info.deploymentMarker.manifestId }),
+    : { hubOraclePolicyId: info.hubOraclePolicyId }),
 });
 
 export const requireAddressQueryUtxos = (

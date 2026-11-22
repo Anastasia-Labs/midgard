@@ -118,14 +118,14 @@ const fixture = async () => {
   const responderAddress = await lucid.wallet().address();
   const startupCoins = await lucid.utxosAt(responderAddress);
 
-  const deploymentIdentity = String(config.contractDeploymentInfo.manifestId);
+  const hubOraclePolicyId = config.hubOraclePolicyId;
   const submitted: string[] = [];
   const operations = availabilityResponderOperations({
     lucid,
     reads: follower.reads,
     assertSourceHealthy: async () => {},
     context: {
-      deploymentIdentity,
+      hubOraclePolicyId,
       actor,
       journal,
       stateQueuePolicyId: config.stateQueuePolicyId,
@@ -188,7 +188,7 @@ const fixture = async () => {
     lucid,
     attestation,
     actor,
-    deploymentIdentity,
+    hubOraclePolicyId,
     journal,
     protocolInput,
     startupCoins,
@@ -229,6 +229,6 @@ describe("the availability responder signs collateral its wallet received after 
     );
 
     expect(f.submitted).toEqual([]);
-    expect(f.journal.pending(f.deploymentIdentity, f.actor)).toEqual([]);
+    expect(f.journal.pending(f.hubOraclePolicyId, f.actor)).toEqual([]);
   });
 });

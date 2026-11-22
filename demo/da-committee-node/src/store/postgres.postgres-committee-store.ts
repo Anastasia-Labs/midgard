@@ -1,8 +1,3 @@
-import {
-  assertDeploymentMarkerMatches,
-  type DeploymentMarker,
-  parseDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Pool, type PoolClient } from "pg";
 
 import {
@@ -224,57 +219,42 @@ export class PostgresCommitteeStore implements CommitteeStore {
   }
 
   async initDeployment(args: {
-    readonly marker: DeploymentMarker;
+    readonly hubOraclePolicyId: string;
     readonly manifestSha256: string;
     readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;
   }): Promise<void> {
     return this.withClient(async (client) => {
-      const marker = parseDeploymentMarker(args.marker);
       const result = await client.query<{
-        readonly marker_schema_version: string;
-        readonly manifest_id: string;
-      }>(
-        "SELECT marker_schema_version, manifest_id FROM committee_deployment WHERE id = 1",
-      );
+        readonly hub_oracle_policy_id: string;
+      }>("SELECT hub_oracle_policy_id FROM committee_deployment WHERE id = 1");
       const existing = result.rows[0];
-      if (existing !== undefined) {
-        try {
-          assertDeploymentMarkerMatches(
-            marker,
-            {
-              schemaVersion: existing.marker_schema_version,
-              manifestId: existing.manifest_id,
-            },
-            "DA Postgres store",
-          );
-        } catch {
-          throw new Error(
-            `stale_deployment_state_requires_fresh_redeploy: stored_manifest_id=${existing.manifest_id}, canonical_manifest_id=${marker.manifestId}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale committee node state; perform an explicit fresh redeploy/reset before deleting local committee node state.`,
-          );
-        }
+      if (
+        existing !== undefined &&
+        existing.hub_oracle_policy_id !== args.hubOraclePolicyId
+      ) {
+        throw new Error(
+          `stale_deployment_state_requires_fresh_redeploy: stored hubOraclePolicyId=${existing.hub_oracle_policy_id}, configured hubOraclePolicyId=${args.hubOraclePolicyId}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale committee node state; perform an explicit fresh redeploy/reset before deleting local committee node state.`,
+        );
       }
       await client.query(
         `INSERT INTO committee_deployment (
          id,
-         marker_schema_version,
-         manifest_id,
+         hub_oracle_policy_id,
          manifest_sha256,
          contract_deployment_info_sha256,
          manifest_raw,
          updated_at
        )
-       VALUES (1, $1, $2, $3, $4, $5, NOW())
+       VALUES (1, $1, $2, $3, $4, NOW())
        ON CONFLICT (id) DO UPDATE SET
-         marker_schema_version = EXCLUDED.marker_schema_version,
-         manifest_id = EXCLUDED.manifest_id,
+         hub_oracle_policy_id = EXCLUDED.hub_oracle_policy_id,
          manifest_sha256 = EXCLUDED.manifest_sha256,
          contract_deployment_info_sha256 = EXCLUDED.contract_deployment_info_sha256,
          manifest_raw = EXCLUDED.manifest_raw,
          updated_at = NOW()`,
         [
-          marker.schemaVersion,
-          marker.manifestId,
+          args.hubOraclePolicyId,
           args.manifestSha256,
           args.contractDeploymentInfoSha256,
           args.manifestRaw,
@@ -285,14 +265,12 @@ export class PostgresCommitteeStore implements CommitteeStore {
 
   async getDeployment(): Promise<CommitteeDeploymentRecord | undefined> {
     const result = await this.pool.query<{
-      readonly marker_schema_version: string;
-      readonly manifest_id: string;
+      readonly hub_oracle_policy_id: string;
       readonly manifest_sha256: string;
       readonly contract_deployment_info_sha256: string;
       readonly manifest_raw: string;
     }>(
-      `SELECT marker_schema_version,
-              manifest_id,
+      `SELECT hub_oracle_policy_id,
               manifest_sha256,
               contract_deployment_info_sha256,
               manifest_raw
@@ -304,10 +282,7 @@ export class PostgresCommitteeStore implements CommitteeStore {
       return undefined;
     }
     return {
-      marker: parseDeploymentMarker({
-        schemaVersion: row.marker_schema_version,
-        manifestId: row.manifest_id,
-      }),
+      hubOraclePolicyId: row.hub_oracle_policy_id,
       manifestSha256: row.manifest_sha256,
       contractDeploymentInfoSha256: row.contract_deployment_info_sha256,
       manifestRaw: row.manifest_raw,

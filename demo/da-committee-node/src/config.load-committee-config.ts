@@ -51,7 +51,6 @@ export const loadCommitteeConfig = async (
     .update(contractDeploymentInfoRaw)
     .digest("hex");
   const {
-    manifestId: contractDeploymentManifestId,
     consensusProfile,
     network: contractDeploymentNetwork,
     daRetentionDays: manifestDaRetentionDays,
@@ -71,9 +70,14 @@ export const loadCommitteeConfig = async (
       `MIDGARD_NETWORK must exactly match runtime manifest network ${network}`,
     );
   }
+  const midgardNodeDeployment = parseMidgardNodeDeploymentInfo(
+    contractDeploymentInfo,
+    network,
+  );
+  const hubOraclePolicyId = midgardNodeDeployment.hubOraclePolicyId;
   const deploymentFingerprint = deploymentFingerprintConfig(
     runtimeManifest,
-    contractDeploymentManifestId,
+    hubOraclePolicyId,
   );
   const libp2pDaTransport = libp2pDaTransportConfig({
     env,
@@ -84,10 +88,6 @@ export const loadCommitteeConfig = async (
     runtimeRetentionDays: libp2pDaTransport.retentionDays,
     manifestRetentionDays: manifestDaRetentionDays,
   });
-  const midgardNodeDeployment = parseMidgardNodeDeploymentInfo(
-    contractDeploymentInfo,
-    network,
-  );
 
   const daAttestationPolicyId = midgardNodeDeployment.daAttestation.policyId;
   const daAttestationAddress =
@@ -99,7 +99,6 @@ export const loadCommitteeConfig = async (
   const stateQueuePolicyId = midgardNodeDeployment.stateQueue.policyId;
   const stateQueueAddress =
     midgardNodeDeployment.stateQueue.spendingScriptAddress;
-  const hubOraclePolicyId = midgardNodeDeployment.hubOraclePolicyId;
   const correctionLockAddress = midgardNodeDeployment.correctionLockAddress;
   const fraudProofPolicyId = midgardNodeDeployment.fraudProof.policyId;
   const fraudProofAddress =

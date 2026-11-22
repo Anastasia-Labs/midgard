@@ -149,7 +149,7 @@ describe("the committee startup with a verifier that never initialises", () => {
           announcerPeerId: "peer",
           attestation: {
             headerHash: Buffer.from(HEADER, "hex"),
-            deploymentFingerprint: Buffer.from("22".repeat(32), "hex"),
+            deploymentFingerprint: Buffer.from("22".repeat(28), "hex"),
             announcedByPeerId: "peer",
           } as never,
         }),

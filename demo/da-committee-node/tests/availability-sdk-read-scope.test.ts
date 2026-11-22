@@ -60,9 +60,9 @@ describe("shared SDK availability read scopes", () => {
     expect(cancelled).toBe(true);
     expect(s.build).not.toHaveBeenCalled();
     expect(s.sign).not.toHaveBeenCalled();
-    expect(
-      s.journal.pending(context.deploymentIdentity, context.actor),
-    ).toEqual([]);
+    expect(s.journal.pending(context.hubOraclePolicyId, context.actor)).toEqual(
+      [],
+    );
   });
 
   it("does not restart a preparation budget after earlier discovery consumed it", async () => {
@@ -241,7 +241,7 @@ describe("shared SDK availability read scopes", () => {
       (await runDaAvailabilityOperation(s.context, s.operation)).status,
     ).toBe("submitted");
     const before = s.journal.pending(
-      s.context.deploymentIdentity,
+      s.context.hubOraclePolicyId,
       s.context.actor,
     );
     const refs = s.journal.reservedOutRefs(s.context.actor);
@@ -277,7 +277,7 @@ describe("shared SDK availability read scopes", () => {
     });
     await vi.advanceTimersByTimeAsync(0);
     expect(
-      s.journal.pending(s.context.deploymentIdentity, s.context.actor),
+      s.journal.pending(s.context.hubOraclePolicyId, s.context.actor),
     ).toEqual(before);
     expect(s.journal.reservedOutRefs(s.context.actor)).toEqual(refs);
     expect(s.sign).toHaveBeenCalledTimes(1);
@@ -287,7 +287,7 @@ describe("shared SDK availability read scopes", () => {
     const reopened = openAvailabilityOperationJournal(s.path);
     journals.push(reopened);
     expect(
-      reopened.pending(s.context.deploymentIdentity, s.context.actor)[0]!.intent
+      reopened.pending(s.context.hubOraclePolicyId, s.context.actor)[0]!.intent
         .signedCbor,
     ).toBe(before[0]!.intent.signedCbor);
     expect(reopened.reservedOutRefs(s.context.actor)).toEqual(refs);
@@ -312,7 +312,7 @@ describe("shared SDK availability read scopes", () => {
     const s = scene();
     await runDaAvailabilityOperation(s.context, s.operation);
     const before = s.journal.pending(
-      s.context.deploymentIdentity,
+      s.context.hubOraclePolicyId,
       s.context.actor,
     );
     vi.setSystemTime(1200);
@@ -324,9 +324,9 @@ describe("shared SDK availability read scopes", () => {
     const run = runDaAvailabilityOperation(context, s.operation);
     await vi.advanceTimersByTimeAsync(30);
     expect((await run).status).toBe("waiting");
-    expect(
-      s.journal.pending(context.deploymentIdentity, context.actor),
-    ).toEqual(before);
+    expect(s.journal.pending(context.hubOraclePolicyId, context.actor)).toEqual(
+      before,
+    );
     expect(s.build).toHaveBeenCalledTimes(1);
   });
 
@@ -345,7 +345,7 @@ describe("shared SDK availability read scopes", () => {
       ),
     ).rejects.toThrow("canonical mismatch");
     expect(
-      s.journal.pending(s.context.deploymentIdentity, s.context.actor),
+      s.journal.pending(s.context.hubOraclePolicyId, s.context.actor),
     ).toHaveLength(1);
   });
 
@@ -353,7 +353,7 @@ describe("shared SDK availability read scopes", () => {
     const s = scene();
     await runDaAvailabilityOperation(s.context, s.operation);
     const intent = s.journal.pending(
-      s.context.deploymentIdentity,
+      s.context.hubOraclePolicyId,
       s.context.actor,
     )[0]!.intent;
     const readTransactionStatus = vi.fn();

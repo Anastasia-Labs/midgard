@@ -7,7 +7,7 @@ import type {
 
 type DecisionIdentity = Pick<
   CommitteePromiseAdmissionResult["decision"],
-  "deploymentId" | "candidateHeaderHash" | "candidateCommitmentDigest"
+  "hubOraclePolicyId" | "candidateHeaderHash" | "candidateCommitmentDigest"
 >;
 
 /** Refusals abort first, then join the source's store and physical owners. */

@@ -2,7 +2,6 @@ import {
   computeDaSha256Hash,
   encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import { describe, expect, it } from "vitest";
 
@@ -44,19 +43,19 @@ describe("openCommitteeStore", () => {
     ).rejects.toThrow(/postgres/);
   });
 
-  it("persists only the exact final DeploymentMarkerV1", async () => {
+  it("refuses a store stamped with another deployment's hubOraclePolicyId", async () => {
     const store = await openTestCommitteeStore();
-    const marker = makeDeploymentMarker("11".repeat(32));
-    await store.initDeployment({
-      marker,
+    const deployment = {
+      hubOraclePolicyId: "11".repeat(28),
       manifestSha256: "22".repeat(32),
       contractDeploymentInfoSha256: "33".repeat(32),
       manifestRaw: "{}",
-    });
-    await expect(store.getDeployment()).resolves.toMatchObject({ marker });
+    };
+    await store.initDeployment(deployment);
+    await expect(store.getDeployment()).resolves.toEqual(deployment);
     await expect(
       store.initDeployment({
-        marker: makeDeploymentMarker("44".repeat(32)),
+        hubOraclePolicyId: "44".repeat(28),
         manifestSha256: "55".repeat(32),
         contractDeploymentInfoSha256: "66".repeat(32),
         manifestRaw: "{}",
@@ -445,7 +444,7 @@ describe("openCommitteeStore", () => {
 });
 
 const daPayloadRecord = (): DaPayloadRecord => ({
-  deploymentFingerprint: "11".repeat(32),
+  deploymentFingerprint: "11".repeat(28),
   headerHash: "22".repeat(28),
   payloadSchemaVersion: 1,
   payloadCborHex: "aabb",
@@ -477,7 +476,7 @@ const availabilityCommitment = (headerHash: string, identity = "99") => {
 const signatureCommitment = availabilityCommitment("22".repeat(28));
 
 const daSignatureRecord = (): DaSignatureRecordV1 => ({
-  deploymentFingerprint: "11".repeat(32),
+  deploymentFingerprint: "11".repeat(28),
   headerHash: "22".repeat(28),
   signerIndex: 0,
   signatureWitness: "00" + "44".repeat(64),
@@ -551,7 +550,7 @@ const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecord => {
   });
   return {
     conflictSchemaVersion: 1,
-    deploymentFingerprint: "11".repeat(32),
+    deploymentFingerprint: "11".repeat(28),
     headerHash: "11".repeat(28),
     commitmentDigest: lower.digest,
     conflictingHeaderHash: "11".repeat(28),

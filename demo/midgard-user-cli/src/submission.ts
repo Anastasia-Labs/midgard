@@ -85,16 +85,21 @@ export type PreparedRequest<Config> = {
 export const recordDirectoryOf = (
   options: CommonOptions,
   deps: UserCliDeps,
-  manifestId: string,
+  hubOraclePolicyId: string,
   kind: SubmissionKind,
   submissionId: string,
 ): string =>
-  recordDirectory(recordRootOf(options, deps), manifestId, kind, submissionId);
+  recordDirectory(
+    recordRootOf(options, deps),
+    hubOraclePolicyId,
+    kind,
+    submissionId,
+  );
 
 /** The intent already on disk for this id, refused unless it is this one. */
 export const existingIntent = async (
   directory: string,
-  wanted: Omit<IntentRecord, "version" | "hubPolicyId" | "intent">,
+  wanted: Omit<IntentRecord, "version" | "intent">,
 ): Promise<IntentRecord | undefined> => {
   const existing = await readIntent(directory);
   if (existing !== undefined) requireSameIntent(existing, wanted);
@@ -170,8 +175,7 @@ export const runSubmission = async <Config>(
     version: 1 as const,
     kind,
     submissionId: request.submissionId,
-    manifestId: deployment.manifestId,
-    hubPolicyId: deployment.contracts.hubOracle.policyId,
+    hubOraclePolicyId: deployment.hubOraclePolicyId,
     walletAddress: request.walletAddress,
     intentHash: request.intentHash,
     intent: request.intent,

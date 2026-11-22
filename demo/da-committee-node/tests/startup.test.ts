@@ -111,7 +111,7 @@ describe("committee node startup retry", () => {
 
   it("fails at once, with no retry, on a stale deployment, a point before L1_ORIGIN or any failure it does not recognise", async () => {
     for (const message of [
-      "stale_deployment_state_requires_fresh_redeploy: stored_manifest_id=aa",
+      "stale_deployment_state_requires_fresh_redeploy: stored hubOraclePolicyId=aa",
       "committee_store_point_before_l1_origin: the header record names slot 5, before L1_ORIGIN slot 9",
       "something nobody classified",
     ]) {

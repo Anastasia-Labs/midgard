@@ -113,7 +113,7 @@ describe("plain responder deadline with the wall clock ahead of L1", () => {
     const journal = openAvailabilityOperationJournal(join(dir, "ops.sqlite"));
     const context: SDK.DaAvailabilityOperationContext = {
       actor: "44".repeat(28),
-      deploymentIdentity: "55".repeat(32),
+      hubOraclePolicyId: "55".repeat(28),
       stateQueuePolicyId: "66".repeat(28),
       journal,
       minimumConfirmationDepth: 10,

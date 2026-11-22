@@ -90,19 +90,21 @@ export const assertLibp2pDaRetentionDays = (args: {
   return runtimeRetentionDays;
 };
 
+/**
+ * The runtime manifest's DA deployment fingerprint, which must be the
+ * contract deployment's hub-oracle policy id.
+ */
 export const deploymentFingerprintConfig = (
   runtimeManifest: DaLibp2pRuntimeManifest,
-  contractDeploymentManifestId: string,
+  hubOraclePolicyId: string,
 ): string => {
-  const { deployment } = runtimeManifest;
-  if (
-    deployment.contract_deployment_manifest_id !== contractDeploymentManifestId
-  ) {
+  const { fingerprint } = runtimeManifest.deployment;
+  if (fingerprint !== hubOraclePolicyId) {
     throw new Error(
-      `deployment.contract_deployment_manifest_id does not match contract deployment manifestId: runtime=${deployment.contract_deployment_manifest_id}, contract=${contractDeploymentManifestId}`,
+      `deployment.fingerprint does not match the contract deployment's hubOraclePolicyId: runtime=${fingerprint}, hubOraclePolicyId=${hubOraclePolicyId}`,
     );
   }
-  return deployment.fingerprint;
+  return fingerprint;
 };
 
 export const rejectLibp2pDaUrlEnvOverrides = (env: Env): void => {

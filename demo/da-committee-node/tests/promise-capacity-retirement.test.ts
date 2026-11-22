@@ -17,8 +17,7 @@ import {
 } from "./helpers/committee-store.js";
 
 const identity = {
-  deploymentFingerprint: "ab".repeat(32),
-  contractManifestId: "cd".repeat(32),
+  deploymentFingerprint: "ab".repeat(28),
   actorId: "ef".repeat(28),
 };
 const liability: PromiseCapacityLiability = {

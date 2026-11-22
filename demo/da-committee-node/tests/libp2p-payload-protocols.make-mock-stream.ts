@@ -14,7 +14,7 @@ import type { DaStoredPayloadRootSet, Header } from "../src/domain.js";
 import { type PostgresCommitteeStore } from "../src/store/postgres.js";
 import { openTestCommitteeStore } from "./helpers/committee-store.js";
 
-export const deploymentFingerprint = "01".repeat(32);
+export const deploymentFingerprint = "01".repeat(28);
 
 export const deploymentFingerprintBytes = Buffer.from(
   deploymentFingerprint,

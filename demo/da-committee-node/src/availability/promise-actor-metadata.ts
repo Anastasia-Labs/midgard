@@ -9,7 +9,7 @@ export const promiseAdmissionActorMetadata = (
   input: Readonly<{
     journal: AvailabilityOperationJournal;
     actorId: string;
-    deploymentIdentity: string;
+    hubOraclePolicyId: string;
     maximumRetainedRecords?: number;
     hasCanonicalCompatibilityAuthority: boolean;
   }>,
@@ -34,7 +34,7 @@ export const promiseAdmissionActorMetadata = (
       throw new Error("Journal exceeds the adopted retained-row domain");
     const metadata = input.journal.actorSnapshot(
       input.actorId,
-      input.deploymentIdentity,
+      input.hubOraclePolicyId,
     );
     if (maximum !== undefined && metadata.retainedRecordCount > maximum)
       throw new Error("Journal exceeds the adopted retained-row domain");

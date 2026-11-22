@@ -4,7 +4,6 @@ import {
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CML } from "@lucid-evolution/lucid";
 
 import {
@@ -24,7 +23,7 @@ export const outRef: OutRef = {
   outputIndex: 0,
 };
 
-export const deploymentMarker = makeDeploymentMarker("ab".repeat(32));
+export const hubOraclePolicyId = "ab".repeat(28);
 
 export const protocolInfo: MidgardProtocolInfo = {
   apiVersion: 1,
@@ -32,7 +31,7 @@ export const protocolInfo: MidgardProtocolInfo = {
   midgardNativeTxVersion: 1,
   currentSlot: 123456n,
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-  deploymentMarker,
+  hubOraclePolicyId,
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   protocolFeeParameters: {
@@ -55,7 +54,7 @@ export const protocolInfoJson = {
   midgardNativeTxVersion: 1,
   currentSlot: "123456",
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-  deploymentMarker,
+  hubOraclePolicyId,
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   protocolFeeParameters: {

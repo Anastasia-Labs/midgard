@@ -17,7 +17,7 @@ import {
 import { createDaConnectionGater } from "../src/da/libp2p/index.js";
 import { DaLibp2pPayloadSource } from "../src/da/libp2p/payload-source.js";
 
-export const DEPLOYMENT_FINGERPRINT = "ab".repeat(32);
+export const DEPLOYMENT_FINGERPRINT = "ab".repeat(28);
 
 export const PEER_ID_A = "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
 

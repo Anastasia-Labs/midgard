@@ -242,7 +242,7 @@ export const committeePromiseAdmission = (args: {
   check: async (candidate) => {
     await ledgerEd25519SignatureReady();
     const base = {
-      deploymentId: args.config.deploymentFingerprint,
+      hubOraclePolicyId: args.config.deploymentFingerprint,
       candidateHeaderHash: candidate.record.headerHash,
       candidateCommitmentDigest: candidate.commitmentDigest,
     };
@@ -254,9 +254,7 @@ export const committeePromiseAdmission = (args: {
       return incomplete("finite_runtime_policy_unavailable");
     if (
       authority.binding?.deploymentFingerprint !==
-        args.config.deploymentFingerprint ||
-      authority.binding?.contractManifestId !==
-        args.config.contractDeploymentInfo.manifestId
+      args.config.deploymentFingerprint
     )
       return incomplete("runtime_policy_deployment_binding_mismatch");
     const read = <T>(callback: () => Promise<T>) =>
@@ -419,7 +417,7 @@ export const committeePromiseAdmission = (args: {
           authority,
           workload: currentWorkload,
           snapshot,
-          deploymentId: base.deploymentId,
+          hubOraclePolicyId: base.hubOraclePolicyId,
           nowMs: (args.now ?? Date.now)(),
           obligations,
           candidate: candidateObligation,

@@ -27,7 +27,7 @@ beforeAll(async () => {
 const fixture = async (compatibleClaims = false, prepareClaims = false) => {
   const f = await promiseAdmissionFixture({ sharedStore: store });
   const actor = "12".repeat(28);
-  const identity = String(f.config.contractDeploymentInfo.manifestId);
+  const identity = f.config.hubOraclePolicyId;
   const journal = openAvailabilityOperationJournal(join(f.dir, "actor.sqlite"));
   journals.add(journal);
   const boundary = followerBoundary({
@@ -99,7 +99,7 @@ const retainClaim = (
   const intent = {
     id: "prior",
     actor: f.actor,
-    deploymentIdentity: deployment,
+    hubOraclePolicyId: deployment,
     headerHash: "header",
     action: "publish",
     signedCbor: "immutable prior bytes",
@@ -309,7 +309,7 @@ describe("actual promise source actor interference", () => {
     const open = {
       id: "open",
       actor: f.actor,
-      deploymentIdentity: "old-deployment",
+      hubOraclePolicyId: "old-deployment",
       headerHash: "old-header",
       action: "open",
       signedCbor: "exact-open",
@@ -393,7 +393,7 @@ describe("actual promise source actor interference", () => {
     const intent = {
       id: "never-landed-open",
       actor: f.actor,
-      deploymentIdentity: "old-deployment",
+      hubOraclePolicyId: "old-deployment",
       headerHash: "old-header",
       action: "open",
       signedCbor: "exact never landed open",
@@ -440,7 +440,7 @@ describe("actual promise source actor interference", () => {
     expect(
       await SDK.reconcileDaAvailabilityOperations({
         actor: f.actor,
-        deploymentIdentity: f.identity,
+        hubOraclePolicyId: f.identity,
         stateQueuePolicyId: "78".repeat(28),
         journal: f.journal,
         minimumConfirmationDepth: 10,

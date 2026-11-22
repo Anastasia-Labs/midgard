@@ -28,7 +28,7 @@ export type AvailabilityResponseObligation = Readonly<{
 }>;
 
 export type AvailabilityResponseAdmissionInput = Readonly<{
-  deploymentId: string;
+  hubOraclePolicyId: string;
   boundary: AvailabilityResponseAdmissionBoundary;
   nowMs: number;
   policy?: AvailabilityResponseAdmissionPolicy;
@@ -46,7 +46,7 @@ export type AvailabilityResponseAdmissionDecision = Readonly<{
     | "insufficient_capacity"
     | "incomplete_evidence"
     | "unbounded_blocking";
-  deploymentId: string;
+  hubOraclePolicyId: string;
   candidateHeaderHash?: string;
   candidateCommitmentDigest?: string;
   boundary?: AvailabilityResponseAdmissionBoundary;
@@ -133,7 +133,7 @@ export const availabilityResponseAdmission = (
   input: AvailabilityResponseAdmissionInput,
 ): AvailabilityResponseAdmissionDecision => {
   const base = {
-    deploymentId: input.deploymentId,
+    hubOraclePolicyId: input.hubOraclePolicyId,
     candidateHeaderHash: input.candidate.headerHash,
     candidateCommitmentDigest: input.candidate.commitmentDigest,
     boundary: input.boundary,
@@ -150,7 +150,7 @@ export const availabilityResponseAdmission = (
   if (!input.evidenceComplete)
     return incomplete("canonical_admission_evidence_incomplete");
   if (
-    !/^[0-9a-f]{64}$/u.test(input.deploymentId) ||
+    !/^[0-9a-f]{56}$/u.test(input.hubOraclePolicyId) ||
     !identity(input.boundary.pointId) ||
     !natural(input.boundary.rollbackGeneration) ||
     !natural(input.boundary.observedAtMs) ||

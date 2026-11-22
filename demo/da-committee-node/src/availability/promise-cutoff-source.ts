@@ -33,7 +33,6 @@ export const retiredPromiseCutoffs = async (
       "getPromiseCapacityEvidence" | "savePromiseCapacityEvidence"
     >;
     deploymentFingerprint: string;
-    contractManifestId: string;
     actorId: string;
     recoveryDepth: number;
     boundary: PromiseCapacityPoint;
@@ -75,7 +74,6 @@ export const retiredPromiseCutoffs = async (
   for (const liability of args.liabilities) {
     const identity = {
       deploymentFingerprint: args.deploymentFingerprint,
-      contractManifestId: args.contractManifestId,
       actorId: args.actorId,
       headerHash: liability.headerHash,
       commitmentDigest: liability.commitmentDigest,

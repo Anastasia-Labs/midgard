@@ -146,10 +146,7 @@ export const readPostgresRetirementData = async (
   if (d.rows[0]) {
     const r = d.rows[0];
     data.deployment = {
-      marker: {
-        schemaVersion: r.marker_schema_version,
-        manifestId: r.manifest_id,
-      },
+      hubOraclePolicyId: r.hub_oracle_policy_id,
       manifestSha256: r.manifest_sha256,
       contractDeploymentInfoSha256: r.contract_deployment_info_sha256,
       manifestRaw: r.manifest_raw,

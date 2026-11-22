@@ -52,7 +52,7 @@ export const scene = () => {
   } as unknown as TxSignBuilder;
   const context: DaAvailabilityOperationContext = {
     actor,
-    deploymentIdentity: "11".repeat(32),
+    hubOraclePolicyId: "11".repeat(28),
     stateQueuePolicyId: "22".repeat(28),
     journal,
     minimumConfirmationDepth: 10,

@@ -60,7 +60,6 @@ const fixture = async () => {
     inputs: [split.coins[0]!],
     lovelace: 10_000_000n,
   });
-  const contractManifestId = String(config.contractDeploymentInfo.manifestId);
   const liability: PromiseCapacityLiability = {
     headerHash: "12".repeat(28),
     commitmentDigest: "34".repeat(32),
@@ -69,7 +68,6 @@ const fixture = async () => {
   };
   const key = promiseCapacityEvidenceKey({
     deploymentFingerprint: config.deploymentFingerprint,
-    contractManifestId,
     actorId: ACTOR,
     commitmentDigest: liability.commitmentDigest,
   });
@@ -83,7 +81,6 @@ const fixture = async () => {
     return retiredPromiseCutoffs({
       store,
       deploymentFingerprint: config.deploymentFingerprint,
-      contractManifestId,
       actorId: ACTOR,
       recoveryDepth: config.automaticRecoveryMaxDepth,
       boundary: {

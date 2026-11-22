@@ -1,4 +1,3 @@
-import { MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { MigrationSet } from "@al-ft/midgard-l1-follower";
 import type { Pool } from "pg";
 
@@ -36,8 +35,7 @@ export const COMMITTEE_STORE_TABLES_SQL = `
 -- class: B; retention: one row for the deployment's life, written once
 CREATE TABLE IF NOT EXISTS committee_deployment (
   id integer PRIMARY KEY CHECK (id = 1),
-  marker_schema_version text NOT NULL CHECK (marker_schema_version = '${MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION}'),
-  manifest_id text NOT NULL CHECK (manifest_id ~ '^[0-9a-f]{64}$'),
+  hub_oracle_policy_id text NOT NULL CHECK (hub_oracle_policy_id ~ '^[0-9a-f]{56}$'),
   manifest_sha256 text NOT NULL CHECK (manifest_sha256 ~ '^[0-9a-f]{64}$'),
   contract_deployment_info_sha256 text NOT NULL CHECK (contract_deployment_info_sha256 ~ '^[0-9a-f]{64}$'),
   manifest_raw text NOT NULL,
@@ -105,7 +103,7 @@ CREATE TABLE IF NOT EXISTS committee_da_signatures (
 
 -- class: B; retention: one row per equivocation report, kept until retirement
 CREATE TABLE IF NOT EXISTS committee_da_conflict_evidence (
-  deployment_fingerprint text NOT NULL CHECK (deployment_fingerprint ~ '^[0-9a-f]{64}$'),
+  deployment_fingerprint text NOT NULL CHECK (deployment_fingerprint ~ '^[0-9a-f]{56}$'),
   evidence_hash text NOT NULL CHECK (evidence_hash ~ '^[0-9a-f]{64}$'),
   header_hash text NOT NULL CHECK (header_hash ~ '^[0-9a-f]{56}$'),
   commitment_digest text NOT NULL CHECK (commitment_digest ~ '^[0-9a-f]{64}$'),

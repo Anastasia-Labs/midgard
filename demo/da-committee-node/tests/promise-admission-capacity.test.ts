@@ -36,7 +36,6 @@ const signedPromiseOnControlledChain = async () => {
   };
   const identity = {
     deploymentFingerprint: f.config.deploymentFingerprint,
-    contractManifestId: String(f.config.contractDeploymentInfo.manifestId),
     actorId: f.source.policyAuthority.binding!.actorId,
   };
   f.source.readSnapshot = async () => ({

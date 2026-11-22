@@ -91,9 +91,6 @@ export const createCommitteePromiseAdmissionSource = (args: {
     readBoundary,
     assertActuationCurrent,
   } = args;
-  const contractManifestId = config.contractDeploymentInfo.manifestId;
-  if (typeof contractManifestId !== "string")
-    throw new Error("Promise source manifest identity is unavailable");
   const schedulingSource = args.currentSchedulingEnabled
     ? promiseSchedulingSource({
         lucid,
@@ -118,7 +115,7 @@ export const createCommitteePromiseAdmissionSource = (args: {
     promiseAdmissionActorMetadata({
       journal,
       actorId,
-      deploymentIdentity: contractManifestId,
+      hubOraclePolicyId: config.hubOraclePolicyId,
       maximumRetainedRecords: args.sourceResourceLimits?.journalEntries,
       hasCanonicalCompatibilityAuthority:
         args.assertCompatibleClaimsCurrent !== undefined,
@@ -297,7 +294,6 @@ export const createCommitteePromiseAdmissionSource = (args: {
           ? await retiredPromiseCutoffs({
               store,
               deploymentFingerprint: config.deploymentFingerprint,
-              contractManifestId,
               actorId: actorId,
               recoveryDepth: config.automaticRecoveryMaxDepth,
               boundary: {

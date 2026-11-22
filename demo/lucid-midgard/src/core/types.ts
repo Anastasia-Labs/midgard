@@ -66,7 +66,7 @@ export type MidgardProtocolParameters = {
   readonly networkId: bigint;
   readonly maxSubmitTxCborBytes?: number;
   readonly strictnessProfile?: string;
-  readonly deploymentManifestId?: string;
+  readonly hubOraclePolicyId?: string;
 };
 
 export type WalletInputSource =

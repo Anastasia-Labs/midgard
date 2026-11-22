@@ -63,7 +63,7 @@ describe("midgard-user withdraw", () => {
     async () => {
       const root = tempDirectory("withdraw");
       const l2OutRef = nextOutRef();
-      const node = stubNode(harness.manifest.manifestId, ownOutput());
+      const node = stubNode(harness.hubOraclePolicyId, ownOutput());
       const result = await harness.run(withdrawArgs("w1", l2OutRef), {
         recordDir: root,
         overrides: { connectNode: async () => node },
@@ -78,7 +78,7 @@ describe("midgard-user withdraw", () => {
       ).toBe("confirmed");
 
       const unreachable: UserNode = {
-        deploymentManifestId: async () => {
+        hubOraclePolicyId: async () => {
           throw new Error("the node was contacted");
         },
         utxoByOutRef: async () => {
@@ -114,7 +114,7 @@ describe("midgard-user withdraw", () => {
         overrides: {
           connectNode: async () =>
             stubNode(
-              harness.manifest.manifestId,
+              harness.hubOraclePolicyId,
               ownOutput(protectedAddress),
               "not_found",
             ),
@@ -134,14 +134,14 @@ describe("midgard-user withdraw", () => {
     });
     expect(result.code).toBe(1);
     expect(result.stderr).toContain(expected);
-    expect(existsSync(join(root, harness.manifest.manifestId))).toBe(false);
+    expect(existsSync(join(root, harness.hubOraclePolicyId))).toBe(false);
   };
 
   it.each(["accepted", "pending_commit", "validating", "queued", "rejected"])(
     "refuses an output whose producing L2 tx is %s until it commits",
     async (status) => {
       await refusedBeforeAnyRecord(
-        stubNode(harness.manifest.manifestId, ownOutput(), status),
+        stubNode(harness.hubOraclePolicyId, ownOutput(), status),
         `is ${status}, not committed; wait for the producing tx to commit`,
       );
     },
@@ -150,7 +150,7 @@ describe("midgard-user withdraw", () => {
   it("refuses an output owned by another key", async () => {
     await refusedBeforeAnyRecord(
       stubNode(
-        harness.manifest.manifestId,
+        harness.hubOraclePolicyId,
         ownOutput(harness.scene.deployer.address),
       ),
       "Selected L2 UTxO is owned by",
@@ -165,21 +165,21 @@ describe("midgard-user withdraw", () => {
       .to_address()
       .to_bech32();
     await refusedBeforeAnyRecord(
-      stubNode(harness.manifest.manifestId, ownOutput(scriptAddress)),
+      stubNode(harness.hubOraclePolicyId, ownOutput(scriptAddress)),
       "Selected L2 UTxO must be owned by a key credential.",
     );
   });
 
-  it("refuses a node serving another deployment", async () => {
+  it("refuses a node serving another hubOraclePolicyId", async () => {
     await refusedBeforeAnyRecord(
-      stubNode("ab".repeat(32), ownOutput()),
-      `not this manifest's ${harness.manifest.manifestId}`,
+      stubNode("ab".repeat(28), ownOutput()),
+      `not this manifest's ${harness.hubOraclePolicyId}`,
     );
   });
 
   it("refuses an output the node does not have", async () => {
     await refusedBeforeAnyRecord(
-      stubNode(harness.manifest.manifestId, undefined),
+      stubNode(harness.hubOraclePolicyId, undefined),
       "The node has no unspent L2 output",
     );
   });

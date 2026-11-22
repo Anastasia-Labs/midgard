@@ -308,7 +308,7 @@ describe("DA libp2p proof protocol handlers", () => {
     const wrongDeployment = decodeDaProofBundleByHeaderResponseCbor(
       await handlers.handleProofBundleByHeader(
         encodeDaProofBundleByHeaderRequestCbor({
-          deploymentFingerprint: Buffer.alloc(32, 0x02),
+          deploymentFingerprint: Buffer.alloc(28, 0x02),
           headerHash: Buffer.from(headerHash, "hex"),
           maxInlineBytes: 4096,
         }),

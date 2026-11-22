@@ -34,7 +34,7 @@ export const signVerifiedCommitteePayload = async (
   });
   const missing: AvailabilityResponseAdmissionDecision = {
     status: "incomplete_evidence",
-    deploymentId: deps.config.deploymentFingerprint,
+    hubOraclePolicyId: deps.config.hubOraclePolicyId,
     candidateHeaderHash: record.headerHash,
     candidateCommitmentDigest: expected.commitmentDigest,
     reason: "finite_runtime_policy_unavailable",

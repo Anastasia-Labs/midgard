@@ -197,8 +197,8 @@ export type CommitteeReadinessSnapshot = {
     readonly observedAt?: string;
   };
   readonly deployment: {
-    readonly configuredFingerprint: string;
-    readonly storeFingerprint?: string;
+    readonly hubOraclePolicyId: string;
+    readonly storeHubOraclePolicyId?: string;
     readonly storeMatchesConfigured: boolean;
     readonly manifestSha256: string;
     readonly storeManifestSha256?: string;

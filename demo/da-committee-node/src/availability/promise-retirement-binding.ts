@@ -10,7 +10,6 @@ export const committeeRetirementBinding = (
     CommitteeConfig,
     | "deploymentFingerprint"
     | "deploymentManifestSha256"
-    | "contractDeploymentInfo"
     | "daParams"
     | "daTransport"
     | "automaticRecoveryMaxDepth"
@@ -21,7 +20,6 @@ export const committeeRetirementBinding = (
 ): CommitteeRetirementBinding => ({
   deploymentFingerprint: config.deploymentFingerprint,
   manifestSha256: config.deploymentManifestSha256,
-  contractManifestId: String(config.contractDeploymentInfo.manifestId),
   committeeSignersHash: config.daParams.committeeSignersHash,
   actorId,
   sourceAuthoritySha256: l1SourceAuthorityDigest(config),

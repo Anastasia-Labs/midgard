@@ -328,7 +328,7 @@ const runnerScene = () => {
   const journal = openAvailabilityOperationJournal(join(dir, "ops.sqlite"));
   const context: SDK.DaAvailabilityOperationContext = {
     actor: "44".repeat(28),
-    deploymentIdentity: "55".repeat(32),
+    hubOraclePolicyId: "55".repeat(28),
     stateQueuePolicyId: "66".repeat(28),
     journal,
     minimumConfirmationDepth: 10,
@@ -345,7 +345,7 @@ const runnerScene = () => {
   };
   return {
     context,
-    pending: () => journal.pending(context.deploymentIdentity, context.actor),
+    pending: () => journal.pending(context.hubOraclePolicyId, context.actor),
     close: () => journal.close(),
   };
 };

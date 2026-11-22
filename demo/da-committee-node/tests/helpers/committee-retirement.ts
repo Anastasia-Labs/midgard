@@ -65,8 +65,7 @@ export const retentionFixture = async (
   const key = CML.PrivateKey.from_normal_bytes(new Uint8Array(32).fill(7));
   const signer = await loadDaSigner(`hex:${"00".repeat(31)}01`);
   const actorId = key.to_public().hash().to_hex(),
-    contractManifestId = "89".repeat(32),
-    deploymentFingerprint = "ab".repeat(32),
+    deploymentFingerprint = "ab".repeat(28),
     committeeSignersHash = Buffer.from(
       blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
     ).toString("hex"),
@@ -77,7 +76,6 @@ export const retentionFixture = async (
   const binding = {
     deploymentFingerprint,
     manifestSha256: createHash("sha256").update(manifestRaw).digest("hex"),
-    contractManifestId,
     committeeSignersHash,
     actorId,
     sourceAuthoritySha256: authority,
@@ -88,10 +86,7 @@ export const retentionFixture = async (
     maximumEncodedBytes: 8 * 1024 * 1024,
   };
   await store.initDeployment({
-    marker: {
-      schemaVersion: "midgard-deployment-marker-v1",
-      manifestId: deploymentFingerprint,
-    },
+    hubOraclePolicyId: deploymentFingerprint,
     manifestRaw,
     manifestSha256: binding.manifestSha256,
     contractDeploymentInfoSha256: "00".repeat(32),
@@ -359,7 +354,6 @@ export const retentionFixture = async (
     });
     await store.savePromiseCapacityEvidence({
       deploymentFingerprint,
-      contractManifestId,
       actorId,
       headerHash: h.headerHash,
       commitmentDigest: expected.commitmentDigest,
@@ -428,7 +422,7 @@ export const retentionFixture = async (
     witnesses.set_vkeywitnesses(vkeys);
     const tx = CML.Transaction.new(body, witnesses, true);
     const intent = SDKDa.inspectDaAvailabilitySignedIntent({
-      deploymentIdentity: contractManifestId,
+      hubOraclePolicyId: deploymentFingerprint,
       actor: actorId,
       headerHash,
       action: "prepare",

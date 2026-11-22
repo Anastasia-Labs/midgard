@@ -51,7 +51,7 @@ export const assertRetirementBinding = (
     !d ||
     !s ||
     s.status !== "healthy" ||
-    d.marker.manifestId !== b.deploymentFingerprint ||
+    d.hubOraclePolicyId !== b.deploymentFingerprint ||
     d.manifestSha256 !== b.manifestSha256 ||
     s.authoritySha256 !== b.sourceAuthoritySha256 ||
     createHash("sha256").update(d.manifestRaw).digest("hex") !==
@@ -354,7 +354,6 @@ export const planRetirement = (
         if (
           !capacity.certifiedAt ||
           capacity.recoveryDepth !== facts.binding.recoveryDepth ||
-          capacity.contractManifestId !== facts.binding.contractManifestId ||
           facts.canonicalTimeMs < capacity.cutoffTimeMs
         ) {
           waiting = true;

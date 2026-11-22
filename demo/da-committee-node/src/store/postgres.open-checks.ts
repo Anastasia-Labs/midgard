@@ -71,7 +71,6 @@ export const fencedOpenTransaction = async <T>(
 const BINDING_FIELDS = [
   "actorId",
   "committeeSignersHash",
-  "contractManifestId",
   "deploymentFingerprint",
   "manifestSha256",
   "maximumEncodedBytes",

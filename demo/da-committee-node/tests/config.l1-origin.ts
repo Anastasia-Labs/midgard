@@ -1,7 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { computeDeploymentManifestId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it } from "vitest";
 
 import { loadCommitteeConfig } from "../src/config.js";
@@ -20,24 +19,14 @@ const T = { slot: 4_200, blockHash: "ab".repeat(32) };
 /** A committee env over a deployment whose manifest records `l1Origin` T. */
 const recordedEnv = async () => {
   const dir = await tempDir();
-  const {
-    manifestId: _manifestId,
-    l1Origin: _l1Origin,
-    ...identity
-  } = await readDaDeploymentFixture();
+  const { l1Origin: _l1Origin, ...identity } = await readDaDeploymentFixture();
   const withOrigin = { ...identity, l1Origin: T };
-  const manifestId = computeDeploymentManifestId(withOrigin);
   const deploymentInfoPath = join(dir, "deployment.json");
   const manifestPath = join(dir, "manifest.json");
-  await writeFile(
-    deploymentInfoPath,
-    JSON.stringify({ ...withOrigin, manifestId }),
-  );
+  await writeFile(deploymentInfoPath, JSON.stringify(withOrigin));
   await writeFile(
     manifestPath,
-    JSON.stringify(
-      libp2pManifest("01".repeat(32), ["committee", "retrieval"], manifestId),
-    ),
+    JSON.stringify(libp2pManifest("01".repeat(32), ["committee", "retrieval"])),
   );
   return {
     ...libp2pConfigEnv(manifestPath, deploymentInfoPath),

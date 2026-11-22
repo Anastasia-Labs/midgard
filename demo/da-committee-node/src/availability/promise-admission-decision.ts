@@ -25,7 +25,7 @@ export const committeePromiseAdmissionDecision = (
     authority: CommitteePromiseRuntimePolicyAuthority;
     workload: CommitteePromiseWorkload;
     snapshot: CommitteePromiseAdmissionSnapshot;
-    deploymentId: string;
+    hubOraclePolicyId: string;
     nowMs: number;
     obligations: readonly AvailabilityResponseObligation[];
     currentProgress: readonly AvailabilityResponseObligation[];
@@ -35,7 +35,7 @@ export const committeePromiseAdmissionDecision = (
   const { authority, snapshot } = input;
   if (!authority.causal)
     return availabilityResponseAdmission({
-      deploymentId: input.deploymentId,
+      hubOraclePolicyId: input.hubOraclePolicyId,
       boundary: snapshot.boundary,
       nowMs: input.nowMs,
       policy: authority.policy(input.workload),
@@ -46,7 +46,7 @@ export const committeePromiseAdmissionDecision = (
     });
   const envelope = authority.envelope?.(input.workload);
   const base = {
-    deploymentId: input.deploymentId,
+    hubOraclePolicyId: input.hubOraclePolicyId,
     boundary: snapshot.boundary,
     candidateHeaderHash: input.candidate.headerHash,
     candidateCommitmentDigest: input.candidate.commitmentDigest,

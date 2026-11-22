@@ -328,7 +328,7 @@ export const committeeRetirementSource = (
         await proveFloor(data.retirementFloor, c, scope);
       const actor = args.journal.actorSnapshot(
         binding.actorId,
-        binding.contractManifestId,
+        binding.deploymentFingerprint,
       );
       await args.assertClaimsCurrent(c, scope, actor);
       const assertCurrent = async () => {
@@ -336,7 +336,7 @@ export const committeeRetirementSource = (
         if (
           args.journal.actorSnapshot(
             binding.actorId,
-            binding.contractManifestId,
+            binding.deploymentFingerprint,
           ).stateDigest !== actor.stateDigest
         )
           throw new Error("Retirement financial journal changed");
