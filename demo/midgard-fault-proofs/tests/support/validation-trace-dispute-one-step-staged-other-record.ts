@@ -40,7 +40,6 @@ import {
 import { validationTraceDefenseDeadlineMs } from "../../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.js";
-import { RELEASE_FINALITY_POLICY } from "../workflow.make-adapter.js";
 import { network } from "./emulator/blueprints.js";
 import type { ConfirmedValidationTraceStage } from "./validation-trace-confirmed-stages.js";
 import {
@@ -57,6 +56,7 @@ import {
   runUntil,
 } from "./validation-trace-dispute-runner.js";
 import { expectSpentBackAgainAfterRollback } from "./validation-trace-dispute-staging-left-for-sweep.js";
+import { RELEASE_FINALITY_POLICY } from "./workflow-authorities.js";
 
 /** How many blocks under the tip a transaction of ours is final. */
 export const RELEASE_DEPTH = 4;

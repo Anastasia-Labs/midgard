@@ -22,8 +22,8 @@ import {
 } from "../../src/workflow/release-finality-policy.js";
 import { FraudProofResolvedByAnotherRecordError } from "../../src/workflow/resolved-by-another-record.js";
 import { bindWorkflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
-import { createFixtureChain } from "../workflow.make-adapter.js";
 import { bindFamilyRecoveryFixture } from "./bound-family-recovery-fixture.js";
+import { createFixtureChain } from "./fixture-chain.js";
 import { signedWorkflowTransactionFixture } from "./signed-workflow-transaction.js";
 import { createTestWorkflowProcess } from "./workflow-process.js";
 

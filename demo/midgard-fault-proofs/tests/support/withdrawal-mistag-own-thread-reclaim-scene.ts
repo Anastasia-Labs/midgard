@@ -43,11 +43,6 @@ import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../../src/workflow/release-finality-policy.js";
-import {
-  DEPLOYMENT_FINGERPRINT,
-  releaseFinalityAuthority,
-  terminalVerifier,
-} from "../workflow.make-adapter.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
@@ -59,6 +54,11 @@ import {
 import { publishWithdrawalMistagScripts } from "./withdrawal-mistag-emulator.drive-withdrawal-mistag-to-fraud.js";
 import { makeWithdrawalMistagEmulatorHarness } from "./withdrawal-mistag-emulator.js";
 import { withdrawalMistagRetainedFixture } from "./withdrawal-mistag-retained.js";
+import {
+  DEPLOYMENT_FINGERPRINT,
+  releaseFinalityAuthority,
+  terminalVerifier,
+} from "./workflow-authorities.js";
 import { createTestWorkflowProcess } from "./workflow-process.js";
 
 const finalityPolicy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };

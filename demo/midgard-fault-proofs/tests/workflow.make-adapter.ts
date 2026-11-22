@@ -1,4 +1,3 @@
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { expect, vi } from "vitest";
 
 import {
@@ -20,12 +19,7 @@ import {
 } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runFraudProofWorkflow } from "../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
-import {
-  computeFraudProofReleaseFinalityPolicyDigest,
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  type FraudProofReleaseFinalityAuthority,
-} from "../src/workflow/release-finality-policy.js";
+import type { FraudProofReleaseFinalityAuthority } from "../src/workflow/release-finality-policy.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   authenticatedHeaderObservation,
@@ -33,11 +27,26 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  createFixtureChain,
+  type FixtureChain,
+} from "./support/fixture-chain.js";
 import { signedWorkflowTransactionFixture } from "./support/signed-workflow-transaction.js";
-import { terminalVerifierOf } from "./support/terminal-verifier.js";
+import {
+  DEPLOYMENT_FINGERPRINT,
+  RELEASE_FINALITY_POLICY,
+  releaseFinalityAuthority,
+  terminalVerifier,
+} from "./support/workflow-authorities.js";
 import type { TestWorkflowProcess } from "./support/workflow-process.js";
 
-export const DEPLOYMENT_FINGERPRINT = "d1".repeat(32);
+export { createFixtureChain, type FixtureChain };
+export {
+  DEPLOYMENT_FINGERPRINT,
+  RELEASE_FINALITY_POLICY,
+  releaseFinalityAuthority,
+  terminalVerifier,
+};
 
 /** The proof's and the removal's exact signed bytes: two wallet spends of
  * different coins, so neither spends a coin the other does. */
@@ -57,27 +66,6 @@ export const signedFor = (actionId: string) =>
 export const REFERENCE_OUT_REF = `${"b2".repeat(32)}#0`;
 
 export const REFERENCE_SCRIPT_HASH = "c3".repeat(28);
-
-export const RELEASE_FINALITY_POLICY = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
-
-export const releaseFinalityAuthority = (
-  overrides: Partial<{
-    readonly deploymentIdentityDigest: string;
-    readonly blueprintHash: string;
-  }> = {},
-): FraudProofReleaseFinalityAuthority => ({
-  authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
-  verifyForWorkflow: async () => ({
-    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest:
-      overrides.deploymentIdentityDigest ?? DEPLOYMENT_FINGERPRINT,
-    blueprintHash: overrides.blueprintHash ?? "e1".repeat(32),
-    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
-      RELEASE_FINALITY_POLICY,
-    ),
-    policy: RELEASE_FINALITY_POLICY,
-  }),
-});
 
 export const canonicalEvidence = async (): Promise<CanonicalBlockEvidence> => {
   const fixture = await buildCanonicalBlockFixture({ transactions: [] });
@@ -156,39 +144,6 @@ export const canonicalEvidenceWithEvents = async (
  * and the node's mempool. One the mempool holds is seen by the next state
  * but completes nothing.
  */
-export type FixtureChain = {
-  /** The node accepts `txHash` into its mempool. */
-  readonly accept: (txHash: string) => void;
-  readonly land: (txHash: string) => void;
-  /** `txHash` is in neither the ledger nor the mempool: it was dropped or
-   * rolled back. */
-  readonly drop: (txHash: string) => void;
-  readonly landed: (txHash: string) => boolean;
-  /** Whether the next state shows `txHash`: landed, or in the mempool. */
-  readonly seen: (txHash: string) => boolean;
-};
-
-export const createFixtureChain = (): FixtureChain => {
-  const ledger = new Set<string>();
-  const mempool = new Set<string>();
-  const landed = (txHash: string) => ledger.has(txHash);
-  return {
-    accept: (txHash) => {
-      if (!landed(txHash)) mempool.add(txHash);
-    },
-    land: (txHash) => {
-      mempool.delete(txHash);
-      ledger.add(txHash);
-    },
-    drop: (txHash) => {
-      mempool.delete(txHash);
-      ledger.delete(txHash);
-    },
-    landed,
-    seen: (txHash) => landed(txHash) || mempool.has(txHash),
-  };
-};
-
 type AdapterControls = {
   readonly submit?: FraudProofFamilyWorkflowAdapter["submit"];
   readonly referenceScripts?: boolean;
@@ -241,10 +196,6 @@ export const terminal = (headerHash: string): FraudProofWorkflowTerminal => ({
     confirmationDepth: RELEASE_FINALITY_POLICY.automaticRecoveryMaxDepth + 2,
   },
 });
-
-export const terminalVerifier = terminalVerifierOf(
-  async ({ candidate }) => candidate,
-);
 
 export const makeAdapter = (
   controls: AdapterControls = {},

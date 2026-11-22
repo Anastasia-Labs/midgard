@@ -46,7 +46,6 @@ import { emulatorManifestProtocolParameters } from "./emulator-protocol-paramete
 import { emulatorPublicationObserver } from "./install-field-carriage.js";
 import { oneMovePerRun } from "./one-move-per-run.js";
 import { FixtureRetainedDaSource } from "./script-decode-installed-host.js";
-import { terminalVerifierOf } from "./terminal-verifier.js";
 import { validationDisputeWalletMoveReserve } from "./validation-dispute-wallet-move-reserve.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
 import { confirmedValidationTraceStages } from "./validation-trace-confirmed-stages.js";
@@ -61,9 +60,8 @@ import {
   runnerDeployment,
   unobservedRemoval,
 } from "./validation-trace-dispute-runner.js";
+import { terminalVerifier } from "./workflow-authorities.js";
 import { createTestWorkflowProcess } from "./workflow-process.js";
-
-const terminalVerifier = terminalVerifierOf(async ({ candidate }) => candidate);
 
 const CATEGORY = "validationTraceDispute" as const;
 

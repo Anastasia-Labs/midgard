@@ -15,12 +15,6 @@ import { createFraudProofWorkflowRegistry } from "../../src/workflow/orchestrato
 import { runFraudProofWorkflow } from "../../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "../../src/workflow/raw-l1-publication-observation.js";
 import { restrictWorkflowWallet } from "../../src/workflow/workflow-wallet.js";
-import {
-  DEPLOYMENT_FINGERPRINT,
-  RELEASE_FINALITY_POLICY,
-  releaseFinalityAuthority,
-  terminalVerifier,
-} from "../workflow.make-adapter.js";
 import { network } from "./emulator/blueprints.js";
 import { emulatorPublicationObserver } from "./install-field-carriage.js";
 import { oneMovePerRun } from "./one-move-per-run.js";
@@ -36,6 +30,12 @@ import {
   detectOn,
   type Scene,
 } from "./validation-trace-dispute-open-scene.js";
+import {
+  DEPLOYMENT_FINGERPRINT,
+  RELEASE_FINALITY_POLICY,
+  releaseFinalityAuthority,
+  terminalVerifier,
+} from "./workflow-authorities.js";
 import {
   createTestWorkflowProcess,
   type TestWorkflowProcess,
