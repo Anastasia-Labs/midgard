@@ -18,7 +18,7 @@ export const stage = (record: DaBondPoolJourneyRecord, step: number) => {
 export const META = {
   adapter: "emulator",
   runDir: "/tmp/run",
-  deploymentManifestId: "manifest-1",
+  hubOraclePolicyId: "a1".repeat(28),
   networkMagic: 42,
   gitHead: "abc123",
 } as const;

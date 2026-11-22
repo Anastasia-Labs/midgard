@@ -21,6 +21,7 @@ import {
   computeDeploymentManifestDaCommitteeSignersHash,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  deploymentManifestHubOraclePolicyId,
   normalizeDeploymentManifestJsonValue,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -289,7 +290,9 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
         path: paths.authority,
         ruleBundlePath: paths.rules,
       });
-      expect(authority.deploymentIdentity.manifestId).toBe(manifest.manifestId);
+      expect(authority.deploymentIdentity.hubOraclePolicyId).toBe(
+        deploymentManifestHubOraclePolicyId(manifest),
+      );
       expect(statSync(layout.watcherTrustRootKey).mode & 0o777).toBe(0o600);
 
       const processConfig = watcher.parseWatcherProcessConfig(
@@ -365,7 +368,7 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
       writeJson(layout.contractManifest, otherManifest);
       try {
         await expect(ensureWatcherRelease(context, oneShot)).rejects.toThrow(
-          `was signed for deployment ${manifest.manifestId}, not ${otherManifest.manifestId}`,
+          `was signed for deployment ${deploymentManifestHubOraclePolicyId(manifest)}, not ${deploymentManifestHubOraclePolicyId(otherManifest)}`,
         );
       } finally {
         writeFileSync(layout.contractManifest, original);

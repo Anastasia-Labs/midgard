@@ -138,7 +138,7 @@ const pendingStampFixture = async () => {
   await mkdir(familyDirectory);
   const request = {
     ...target,
-    deploymentFingerprint: "12".repeat(32),
+    hubOraclePolicyId: "12".repeat(28),
     releaseFinalityPolicyDigest: "78".repeat(32),
     finalityDepth: 30,
     completedAtConfirmationDepth: 1,

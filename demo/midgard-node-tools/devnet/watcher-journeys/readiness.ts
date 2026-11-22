@@ -1,7 +1,10 @@
 import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  deploymentManifestHubOraclePolicyId,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import { readJourneyArtifact } from "./artifacts.js";
 import {
@@ -102,7 +105,10 @@ export const readJourneyReadiness = async (runDirectory: string) => {
   return {
     schemaVersion: "midgard-watcher-journey-readiness-v1",
     runDirectory,
-    deploymentFingerprint: deployment?.manifest.manifestId ?? null,
+    hubOraclePolicyId:
+      deployment === undefined
+        ? null
+        : deploymentManifestHubOraclePolicyId(deployment.manifest),
     ...(deploymentIssue === undefined ? {} : { deploymentIssue }),
     counts: {
       families: families.length,

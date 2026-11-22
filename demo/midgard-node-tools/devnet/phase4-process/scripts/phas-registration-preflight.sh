@@ -21,7 +21,7 @@ jq -e \
   "$transaction_body" >/dev/null \
   || die "PHAS registration transaction body is not exact canonical V1"
 
-manifest_id=$(jq -er '.manifestId | select(test("^[a-f0-9]{64}$"))' "$manifest")
+hub_oracle_policy_id=$(jq -er '.contracts.hubOracleMint.scriptHash | select(test("^[a-f0-9]{56}$"))' "$manifest")
 registration_tx_hash=$(jq -er '.steps.phasRegistration.txHash | select(test("^[a-f0-9]{64}$"))' "$manifest")
 reward_address=$(jq -er '.steps.phasRegistration.rewardAddress | select(test("^stake(_test)?1[0-9a-z]+$"))' "$manifest")
 script_hash=$(jq -er '.steps.phasRegistration.scriptHash | select(test("^[a-f0-9]{56}$"))' "$manifest")
@@ -119,7 +119,7 @@ jq -cnS \
   --arg cardanoImage "$PHASE4_CARDANO_NODE_IMAGE" \
   --arg cardanoImageId "$cardano_image_id" \
   --argjson networkMagic "$MIDGARD_PHASE4_NETWORK_MAGIC" \
-  --arg manifestId "$manifest_id" \
+  --arg hubOraclePolicyId "$hub_oracle_policy_id" \
   --arg registrationTxHash "$registration_tx_hash" \
   --arg rewardAddress "$reward_address" \
   --arg scriptHash "$script_hash" \
@@ -133,7 +133,7 @@ jq -cnS \
   --argjson tip "$tip" \
   '{schemaVersion:$schemaVersion,source:$source,readOnly:true,registered:true,
     cardanoImage:{ref:$cardanoImage,id:$cardanoImageId},networkMagic:$networkMagic,
-    manifestId:$manifestId,registrationTxHash:$registrationTxHash,
+    hubOraclePolicyId:$hubOraclePolicyId,registrationTxHash:$registrationTxHash,
     rewardAddress:$rewardAddress,rewardAddressBase16:$rewardAddressBase16,scriptHash:$scriptHash,
     transactionBody:{schemaVersion:"midgard-phas-registration-transaction-body-v1",
       artifactSha256:$transactionBodyArtifactSha256,cborSha256:$transactionBodyCborSha256,

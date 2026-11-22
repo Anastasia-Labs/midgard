@@ -89,7 +89,6 @@ export const classifyLocalHistoryEventFixture = async (input: {
       throw new Error(`Missing actual retained ancestor ${headerHash}`);
     return block;
   };
-  const deploymentFingerprint = deployment.manifest.manifestId;
   const { transition, history } = await bindJourneyEventAuthorities({
     manifest: deployment.manifest,
     blueprintJson: deployment.blueprintJson,
@@ -118,7 +117,7 @@ export const classifyLocalHistoryEventFixture = async (input: {
       history,
     });
   const classifier = await createHeaderClassifier({
-    deploymentFingerprint,
+    hubOraclePolicyId,
     replayer,
     releaseFinalityAuthority: {
       authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,

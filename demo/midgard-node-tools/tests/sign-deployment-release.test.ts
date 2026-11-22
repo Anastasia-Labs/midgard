@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  deploymentManifestHubOraclePolicyId,
   parseDeploymentManifestEconomics,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -251,7 +252,7 @@ describe("sign-deployment-release", () => {
       generateKeyPairSync("ed25519").privateKey,
     );
     expect(result).toMatchObject({
-      manifestId: fixture.manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(fixture.manifest),
       deploymentProfile: fixture.manifest.deploymentProfile.name,
     });
     // No provenance: the test build compiles a testing profile, which has none.
@@ -270,15 +271,17 @@ describe("sign-deployment-release", () => {
       trustRoots,
     });
     expect(release.trustRootId).toBe(result.trustRootId);
-    expect(release.manifest.manifestId).toBe(fixture.manifest.manifestId);
+    expect(deploymentManifestHubOraclePolicyId(release.manifest)).toBe(
+      deploymentManifestHubOraclePolicyId(fixture.manifest),
+    );
     for (const manifest of ["manifest", "deploymentInfo"] as const)
       expect(
         verifyFinalizedDeploymentManifest(
           await readJson(file(output, manifest)),
-        ).manifestId,
-      ).toBe(fixture.manifest.manifestId);
-    expect((await loadInWatcher(output)).manifestId).toBe(
-      fixture.manifest.manifestId,
+        ),
+      ).toEqual(fixture.manifest);
+    expect((await loadInWatcher(output)).hubOraclePolicyId).toBe(
+      deploymentManifestHubOraclePolicyId(fixture.manifest),
     );
   });
 
@@ -414,9 +417,11 @@ describe("sign-deployment-release", () => {
       ...inputs,
       output,
     });
-    expect(retried.manifestId).toBe(fixture.manifest.manifestId);
-    expect((await loadInWatcher(output)).manifestId).toBe(
-      fixture.manifest.manifestId,
+    expect(retried.hubOraclePolicyId).toBe(
+      deploymentManifestHubOraclePolicyId(fixture.manifest),
+    );
+    expect((await loadInWatcher(output)).hubOraclePolicyId).toBe(
+      deploymentManifestHubOraclePolicyId(fixture.manifest),
     );
   });
 

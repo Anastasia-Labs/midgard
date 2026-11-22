@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, coreToTxOutput, Lucid } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
@@ -34,7 +35,9 @@ it.skipIf(runDirectory === undefined || !selected)(
           await writeJourneyArtifact(
             join(runDirectory!, "work/activation-preflight-evaluation.json"),
             {
-              deploymentFingerprint: context.deployment.manifest.manifestId,
+              hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+                context.deployment.manifest,
+              ),
               transactionCborHex: input.tx,
               transactionHash: txHash,
               additionalUTxOs: input.additionalUTxOs,

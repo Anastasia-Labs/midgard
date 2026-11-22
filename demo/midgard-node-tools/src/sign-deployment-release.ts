@@ -2,7 +2,10 @@ import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
 import { writeTextFileAtomicNoReplace } from "@al-ft/midgard-core/atomic-write";
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  deploymentManifestHubOraclePolicyId,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type DeploymentReleaseProvenance,
   verifySignedDeploymentRelease,
@@ -56,12 +59,12 @@ export const classificationOf = (registry: unknown) => {
 
 /**
  * Opens the written release the way public listen does, with the identities
- * an operator configures for it: the manifest id and the provenance's source
- * revision and node, Postgres and ingress images.
+ * an operator configures for it: the hub-oracle policy id and the
+ * provenance's source revision and node, Postgres and ingress images.
  */
 const authenticateAsPublicListen = (
   path: (name: keyof typeof SIGNED_RELEASE_FILES) => string,
-  manifestId: string,
+  hubOraclePolicyId: string,
   provenance: DeploymentReleaseProvenance,
 ) => {
   try {
@@ -72,7 +75,7 @@ const authenticateAsPublicListen = (
       MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE: path("manifest"),
       MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE: path("parameterRegistry"),
       MIDGARD_BLUEPRINT_CLASSIFICATION_FILE: path("classification"),
-      MIDGARD_PUBLIC_MANIFEST_ID: manifestId,
+      MIDGARD_PUBLIC_HUB_ORACLE_POLICY_ID: hubOraclePolicyId,
       MIDGARD_PUBLIC_RELEASE_REVISION: provenance.sourceRevision,
       MIDGARD_PUBLIC_NODE_IMAGE: provenance.roleImages.node,
       MIDGARD_PUBLIC_POSTGRES_IMAGE: provenance.roleImages.postgres,
@@ -176,14 +179,13 @@ export const signDeploymentRelease = async (options: {
         await readFile(path("trustRoots"), "utf8"),
       ) as Parameters<typeof verifySignedDeploymentRelease>[0]["trustRoots"],
     });
+    const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(
+      release.manifest,
+    );
     if (releaseProvenance !== undefined)
-      authenticateAsPublicListen(
-        path,
-        release.manifest.manifestId,
-        releaseProvenance,
-      );
+      authenticateAsPublicListen(path, hubOraclePolicyId, releaseProvenance);
     return {
-      manifestId: release.manifest.manifestId,
+      hubOraclePolicyId,
       trustRootId: release.trustRootId,
       deploymentProfile: release.manifest.deploymentProfile.name,
       output,

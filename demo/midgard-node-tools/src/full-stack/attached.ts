@@ -8,7 +8,11 @@ import {
   type DaLibp2pRuntimeManifest,
   parseDaLibp2pRuntimeManifest,
 } from "@al-ft/midgard-core/da-transport";
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  type DeploymentManifest,
+  deploymentManifestHubOraclePolicyId,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import { assertStackReleaseSigned } from "./attached-public.js";
 import { composeYaml, override } from "./compose-yaml.js";
@@ -155,10 +159,10 @@ function attachStep(processes: StackProcesses): StackStep {
         throw new Error(
           "The stack's deployment does not verify against this instance's environment; preserve its data",
         );
-      const { manifestId } = JSON.parse(bytes.toString("utf8")) as {
-        manifestId: string;
-      };
-      return { status: "complete", data: { manifestId } };
+      const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(
+        JSON.parse(bytes.toString("utf8")) as DeploymentManifest,
+      );
+      return { status: "complete", data: { hubOraclePolicyId } };
     },
     execute: async () => {
       const theirs = primaryPaths(processes);

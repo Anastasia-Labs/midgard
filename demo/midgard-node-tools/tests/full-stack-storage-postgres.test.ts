@@ -21,7 +21,7 @@ import {
 const dbEnabled = process.env.MIDGARD_SKIP_DB_TESTS !== "1";
 const marker = {
   runId: "de615069-9923-4006-9f83-8945969206d3",
-  manifestId: "a".repeat(64),
+  hubOraclePolicyId: "a".repeat(56),
 };
 
 /** Runs `body` on a freshly migrated, never-deployed database, as the stack finds it. */
@@ -82,7 +82,7 @@ describe.skipIf(!dbEnabled)(
         Effect.gen(function* () {
           yield* sql.unsafe(FRESH_STORAGE_QUERY);
           yield* sql.unsafe(
-            `INSERT INTO node_deployment (deployment_id) VALUES ('${marker.manifestId}')`,
+            `INSERT INTO node_deployment (hub_oracle_policy_id) VALUES ('${marker.hubOraclePolicyId}')`,
           );
           expect(yield* failure(sql, FRESH_STORAGE_QUERY)).toContain(
             "Fresh deployment requires empty local storage: node_deployment",
@@ -148,7 +148,7 @@ describe.skipIf(!dbEnabled)(
           const row = {
             singleton: true,
             run_id: marker.runId,
-            manifest_id: marker.manifestId,
+            hub_oracle_policy_id: marker.hubOraclePolicyId,
           };
           expect(yield* json(sql, createIdentityQuery(marker))).toEqual(row);
           expect(

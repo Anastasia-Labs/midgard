@@ -13,7 +13,7 @@ import {
 
 // A stack deployment, followed from twin4's L1 origin slot.
 const twin4: JourneyReplayStoreIdentity = {
-  deploymentManifestId: "ffd9e6c8".repeat(8),
+  hubOraclePolicyId: "ffd9e6c8".repeat(7),
   blueprintHash: "b1".repeat(32),
   origin: { slot: 138_606_953, blockHash: "0f".repeat(32) },
 };
@@ -93,7 +93,7 @@ it("refuses a second process while one holds the run's store, and lets it in onc
 it.each([
   [
     "another deployment",
-    { ...twin4, deploymentManifestId: "aa".repeat(32) },
+    { ...twin4, hubOraclePolicyId: "aa".repeat(28) },
     /deployment/u,
   ],
   [
@@ -122,7 +122,7 @@ it("refuses at drill start a store filled for another deployment or blueprint", 
   await expect(
     requireJourneyReplayStore(run, {
       ...twin4,
-      deploymentManifestId: "aa".repeat(32),
+      hubOraclePolicyId: "aa".repeat(28),
     }),
   ).rejects.toThrow(/deployment/u);
   await expect(

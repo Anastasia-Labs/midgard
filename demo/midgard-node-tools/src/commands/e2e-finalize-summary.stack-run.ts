@@ -30,8 +30,8 @@ import {
 export type StackRunExpectation = {
   readonly runDirectory: string;
   readonly intentDigest: string;
-  /** The finalized deployment manifest's identity. */
-  readonly manifestId: string;
+  /** The finalized deployment's hub-oracle policy id. */
+  readonly hubOraclePolicyId: string;
   /** Every step id the controller runs for this configuration. */
   readonly stepIds: readonly string[];
   readonly cycles: number;
@@ -231,7 +231,7 @@ async function checkTransfer(
   if (
     saved.sha256 !== digest ||
     saved.headerHash !== headerHash ||
-    saved.deploymentId !== expectation.manifestId ||
+    saved.hubOraclePolicyId !== expectation.hubOraclePolicyId ||
     !isDeepStrictEqual(saved, da)
   )
     throw new Error("Saved public DA bytes changed");
@@ -410,7 +410,7 @@ export async function readStackRun(
         details: {
           runDirectory: expectation.runDirectory,
           runId: journal?.runId ?? "",
-          manifestId: expectation.manifestId,
+          hubOraclePolicyId: expectation.hubOraclePolicyId,
           cycles: String(expectation.cycles),
           ...(identityFailure === undefined ? {} : { reason: identityFailure }),
         },

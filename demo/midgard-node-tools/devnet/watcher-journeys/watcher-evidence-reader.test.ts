@@ -55,7 +55,7 @@ const rawFaultDecision = (headerHash: string, fingerprint = FINGERPRINT) => {
   const decision = {
     schemaVersion: HEADER_DECISION,
     classifierVersion: HEADER_CLASSIFIER,
-    deploymentFingerprint: fingerprint,
+    hubOraclePolicyId: fingerprint,
     headerHash,
     authenticatedObservationDigest: "01".repeat(32),
     payloadEnvelopeSha256: "02".repeat(32),
@@ -137,7 +137,7 @@ describe("watcher evidence reader", () => {
       exec: localExec(),
       hostProcessConfigPath: watcher.processConfigPath,
       containerProcessConfigPath: other,
-      deploymentFingerprint: FINGERPRINT,
+      hubOraclePolicyId: FINGERPRINT,
       launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     });
     await expect(reader.readDecisions()).rejects.toThrow(

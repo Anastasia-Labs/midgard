@@ -129,7 +129,7 @@ export const verifyJourneyPublicDa = async (input: {
       startedAt,
       finishedAt: new Date().toISOString(),
       durationMs: performance.now() - started,
-      deploymentFingerprint: input.deploymentIdentity.manifestId,
+      hubOraclePolicyId: input.deploymentIdentity.hubOraclePolicyId,
       peers: input.watcherConfig.da.peers,
       outcome,
       receipts,
@@ -150,10 +150,6 @@ export const verifyJourneyPublicDa = async (input: {
       deploymentIdentity: input.deploymentIdentity,
     });
     try {
-      assert.equal(
-        runtime.deploymentFingerprint,
-        input.deploymentIdentity.manifestId,
-      );
       assert.equal(runtime.sources.length, input.watcherConfig.da.peers.length);
       assert(
         runtime.sources.length > 0,
@@ -233,7 +229,7 @@ export const verifyStackJourneyPublicDa = async (input: {
     const evidence = {
       startedAt,
       finishedAt: new Date().toISOString(),
-      deploymentFingerprint: input.deploymentIdentity.manifestId,
+      hubOraclePolicyId: input.deploymentIdentity.hubOraclePolicyId,
       peers: input.watcherConfig.da.peers,
       outcome,
       receipts,

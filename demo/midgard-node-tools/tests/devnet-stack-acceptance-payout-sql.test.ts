@@ -13,7 +13,7 @@ const database = `${prefix}_sql_${process.pid}`;
 // CI runs Postgres on POSTGRES_PORT (5432); the local test server is 5433.
 const host = process.env.POSTGRES_HOST ?? "127.0.0.1";
 const port = Number(process.env.POSTGRES_PORT ?? "5433");
-const deployment = "33".repeat(32);
+const deployment = "33".repeat(28);
 const maintenance = postgres({
   host,
   port,
@@ -63,22 +63,22 @@ beforeAll(async () => {
        OR current_setting('statement_timeout') <> '5s' THEN RAISE EXCEPTION 'read flags refused'; END IF;
     RETURN true; END $$`);
   await sql`CREATE VIEW node_follower_write_gate AS SELECT * FROM gate_fixture WHERE assert_read_only()`;
-  await sql`CREATE TABLE settlement_jobs (deployment_id text, kind text, event_id text, phase text)`;
-  await sql`CREATE TABLE settlement_attempts (deployment_id text, kind text, event_id text,
+  await sql`CREATE TABLE settlement_jobs (hub_oracle_policy_id text, kind text, event_id text, phase text)`;
+  await sql`CREATE TABLE settlement_attempts (hub_oracle_policy_id text, kind text, event_id text,
     tx_hash text, phase text, signed_cbor text, required_outputs integer[], status text)`;
   const { attempts } = collectorFixture().snapshot;
   for (const event of new Set(attempts.map((row) => row.event_id)))
-    await sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
+    await sql`INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase)
     VALUES (${deployment}, 'withdrawal', ${event}, 'complete')`;
   // A complete job's attempts are its receipts, final or not yet (their
   // L1 outcome is the intent journal's); an expired one never is.
   for (const [index, row] of attempts.entries())
     await sql`INSERT INTO settlement_attempts
-    (deployment_id,kind,event_id,tx_hash,phase,signed_cbor,required_outputs,status)
+    (hub_oracle_policy_id,kind,event_id,tx_hash,phase,signed_cbor,required_outputs,status)
     VALUES (${deployment}, 'withdrawal', ${row.event_id}, ${row.tx_hash}, ${row.phase}, ${row.signed_cbor}, ${row.required_outputs}, ${index % 2 === 0 ? "final" : "pending"})`;
   const first = attempts[0]!;
   await sql`INSERT INTO settlement_attempts
-    (deployment_id,kind,event_id,tx_hash,phase,signed_cbor,required_outputs,status)
+    (hub_oracle_policy_id,kind,event_id,tx_hash,phase,signed_cbor,required_outputs,status)
     VALUES (${deployment}, 'withdrawal', ${first.event_id}, ${"ee".repeat(32)}, ${first.phase}, ${first.signed_cbor}, ${first.required_outputs}, 'expired')`;
 });
 afterAll(async () => {
@@ -137,7 +137,7 @@ it.skipIf(process.env.MIDGARD_SKIP_DB_TESTS === "1")(
       readAcceptanceSettlements(
         run,
         fixture.scope,
-        "44".repeat(32),
+        "44".repeat(28),
         fixture.records.map((row) => row.withdrawalEventId),
         16,
         16384,

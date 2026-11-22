@@ -347,7 +347,7 @@ export const createLiveDaBondPoolJourneyPort = async (
   const bondContext: DaBondContext = {
     lucid: bondLucid,
     network,
-    manifestId: manifest.manifestId,
+    hubOraclePolicyId: manifest.contracts.hubOracleMint.scriptHash,
     poolValidator,
     poolSpendingReference: poolSpending,
     parameters,
@@ -852,7 +852,7 @@ export const createLiveDaBondPoolJourneyPort = async (
     join(artifactDirectory, "availability-journal.sqlite"),
   );
   const operationContext: SDK.DaAvailabilityOperationContext = {
-    deploymentIdentity: manifest.manifestId,
+    hubOraclePolicyId: manifest.contracts.hubOracleMint.scriptHash,
     actor: challengerKey,
     journal,
     stateQueuePolicyId: availabilityDeployment.contracts.stateQueue.policyId,
@@ -1129,7 +1129,7 @@ export const createLiveDaBondPoolJourneyPort = async (
   const port: LiveDaBondPoolJourneyPort = {
     artifactDirectory: evidenceDirectory,
     ...(resume === undefined ? {} : { resume }),
-    manifestId: manifest.manifestId,
+    hubOraclePolicyId: manifest.contracts.hubOracleMint.scriptHash,
     networkMagic: customNetwork.networkMagic,
     challengerAddress,
     committeeRunning: () => committeeNode.running(),

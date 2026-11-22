@@ -22,7 +22,7 @@ export type Phase4PhasRegistrationProof = {
   readonly registered: true;
   readonly cardanoImage: { readonly ref: string; readonly id: string };
   readonly networkMagic: number;
-  readonly manifestId: string;
+  readonly hubOraclePolicyId: string;
   readonly registrationTxHash: string;
   readonly rewardAddress: string;
   readonly rewardAddressBase16: string;

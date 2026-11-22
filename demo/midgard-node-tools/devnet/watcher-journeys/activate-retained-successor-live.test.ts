@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as pause } from "node:timers/promises";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { SignedWorkflowTransaction } from "@al-ft/midgard-fault-proofs/workflow/signed-transaction-reconciliation";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import {
@@ -38,7 +39,7 @@ const outputFacts = (utxo: UTxO) => ({
 
 type ActivationJournal = {
   schema: "retained-successor-activation-v1";
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   blueprintHash: string;
   genesisIdentitySha256: string;
   operatorKeyHash: string;
@@ -132,7 +133,7 @@ it.skipIf(runDirectory === undefined || !selected)(
       });
     const binding = {
       schema: "retained-successor-activation-v1" as const,
-      deploymentFingerprint: manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
       blueprintHash: manifest.artifacts.blueprintHash,
       genesisIdentitySha256: context.genesisIdentitySha256,
       operatorKeyHash,

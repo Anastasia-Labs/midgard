@@ -45,7 +45,7 @@ it("admits a root-verified identity through the compiled replayed-ledger binding
       const blueprintBytes = await readFile(blueprintPath);
       const binding = verifyWatcherUserEventScriptBinding({deploymentIdentity, blueprintBytes});
       const description = readWatcherUserEventScriptBinding({binding, deploymentIdentity});
-      assert.equal(description.deploymentFingerprint, deploymentIdentity.manifestId);
+      assert.equal(description.hubOraclePolicyId, deploymentIdentity.hubOraclePolicyId);
       assert.equal(description.blueprintHash, deploymentIdentity.blueprintHash);
       assert.throws(() => verifyWatcherUserEventScriptBinding({deploymentIdentity: {...deploymentIdentity}, blueprintBytes}), /verifiedDeploymentIdentity/);
       assert.throws(() => readWatcherUserEventScriptBinding({binding: {...binding}, deploymentIdentity}), /userEventScriptBinding/);

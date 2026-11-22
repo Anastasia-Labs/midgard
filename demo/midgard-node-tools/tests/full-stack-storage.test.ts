@@ -34,7 +34,7 @@ async function fixture() {
   directories.push(directory);
   const marker = {
     runId: "de615069-9923-4006-9f83-8945969206d3",
-    manifestId: "a".repeat(64),
+    hubOraclePolicyId: "a".repeat(56),
   };
   // Only paths and the SQL transport are used by storage reconciliation.
   const config = {
@@ -53,7 +53,7 @@ async function fixture() {
   });
   await writeDurableJson(
     join(directory, "deploymentInfo/contract-deployment-info.json"),
-    { manifestId: marker.manifestId },
+    { contracts: { hubOracleMint: { scriptHash: marker.hubOraclePolicyId } } },
   );
   const markerPath = join(directory, "db/full-stack-identity.json");
   const queries: string[] = [];
@@ -70,9 +70,9 @@ async function fixture() {
   };
   return { answer, directory, marker, markerPath, processes, queries };
 }
-const identityRow = (marker: { runId: string; manifestId: string }) => ({
+const identityRow = (marker: { runId: string; hubOraclePolicyId: string }) => ({
   run_id: marker.runId,
-  manifest_id: marker.manifestId,
+  hub_oracle_policy_id: marker.hubOraclePolicyId,
 });
 it("recovers a storage marker committed before the file checkpoint without changing the deployment", async () => {
   const value = await fixture();
@@ -93,13 +93,40 @@ it("refuses an existing Postgres identity without writing a misleading local mar
   value.answer({
     [createIdentityQuery(value.marker)]: {
       run_id: "another-run",
-      manifest_id: "c".repeat(64),
+      hub_oracle_policy_id: "c".repeat(56),
     },
   });
   await expect(establishStorageIdentity(value.processes)).rejects.toThrow(
     "Storage identity differs",
   );
   expect(await readJsonIfPresent(value.markerPath)).toBeUndefined();
+});
+it("refuses an existing Postgres identity of this run recorded for another deployment", async () => {
+  const value = await fixture();
+  value.answer({
+    [createIdentityQuery(value.marker)]: identityRow({
+      ...value.marker,
+      hubOraclePolicyId: "c".repeat(56),
+    }),
+  });
+  await expect(establishStorageIdentity(value.processes)).rejects.toThrow(
+    "Storage identity differs",
+  );
+  expect(await readJsonIfPresent(value.markerPath)).toBeUndefined();
+});
+it("refuses a preserved store of this run recorded for another deployment", async () => {
+  const value = await fixture();
+  await writeDurableJson(value.markerPath, value.marker);
+  value.answer({
+    [IDENTITY_TABLE_QUERY]: { exists: true },
+    [IDENTITY_ROW_QUERY]: identityRow({
+      ...value.marker,
+      hubOraclePolicyId: "c".repeat(56),
+    }),
+  });
+  await expect(assertPreservedStorage(value.processes)).rejects.toThrow(
+    "Postgres deployment marker is missing or changed",
+  );
 });
 it("refuses lost durable storage on attachment instead of creating a new store", async () => {
   const value = await fixture();
@@ -175,7 +202,9 @@ describe("fresh storage", () => {
     await writeDurableJson(
       join(value.directory, "deploymentInfo/contract-deployment-info.json"),
       {
-        manifestId: value.marker.manifestId,
+        contracts: {
+          hubOracleMint: { scriptHash: value.marker.hubOraclePolicyId },
+        },
         steps: { initProtocol: { status: "complete", txHash: INIT_TX } },
       },
     );

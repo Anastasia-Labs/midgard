@@ -1,6 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   loadWatcherVerifiedDeploymentAuthority,
   parseWatcherConfig,
@@ -41,7 +42,9 @@ it.skipIf(runDirectory === undefined)(
     const server = await startJourneyRetainedDa({
       runDirectory: runDirectory!,
       runEnv: context.runEnv,
-      deploymentFingerprint: context.deployment.manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+        context.deployment.manifest,
+      ),
     });
     try {
       const probeDirectory = join(runDirectory!, "work/public-da-probe");

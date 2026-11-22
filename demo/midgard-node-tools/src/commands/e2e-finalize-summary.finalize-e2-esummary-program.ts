@@ -58,7 +58,7 @@ export const finalizeE2ESummaryProgram = (
       readStackRun(expectation, (eventId) =>
         runPromise(
           withdrawalOnL1(
-            expectation.manifestId,
+            expectation.hubOraclePolicyId,
             options.stackRun.payoutPolicyId,
             eventId,
           ),
@@ -72,7 +72,7 @@ export const finalizeE2ESummaryProgram = (
           )
         : undefined;
     const stackDatabase = yield* collectStackDatabase(
-      expectation.manifestId,
+      expectation.hubOraclePolicyId,
       options.stackRun.payoutPolicyId,
       stackSettlementTargets(stackRun.journal, expectation.cycles),
     );
@@ -265,7 +265,7 @@ export const finalizeE2ESummaryProgram = (
           ...stackDatabaseGates({
             journal: stackRun.journal,
             cycles: expectation.cycles,
-            manifestId: expectation.manifestId,
+            hubOraclePolicyId: expectation.hubOraclePolicyId,
             observation: stackDatabase,
           }),
           {

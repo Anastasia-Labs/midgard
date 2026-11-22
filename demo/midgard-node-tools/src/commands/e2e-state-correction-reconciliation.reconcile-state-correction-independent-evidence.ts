@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core";
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  deploymentManifestHubOraclePolicyId,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import type { DbEvidence, RawEvidenceRef } from "../e2e/summary.js";
 import {
@@ -69,6 +72,7 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
   ]);
 
   const manifest = verifyFinalizedDeploymentManifest(manifestValue);
+  const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(manifest);
   if (manifest.network !== "Preprod") {
     throw new Error(
       `deployment manifest network must be Preprod, found ${manifest.network}`,
@@ -81,9 +85,9 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
   const blueprintSha256 = sha256(blueprintBytes);
   const parametersSha256 = computeDeploymentManifestJsonDigest(parametersValue);
   assertEqual(
-    manifest.manifestId,
-    claim.deployment.manifestId,
-    "manifest identity",
+    hubOraclePolicyId,
+    claim.deployment.hubOraclePolicyId,
+    "deployment hub-oracle policy id",
   );
   assertEqual(
     manifest.artifacts.blueprintHash,
@@ -170,8 +174,8 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
       `${requiredTx.label} observation run`,
     );
     assertEqual(
-      observed.manifestId,
-      manifest.manifestId,
+      observed.hubOraclePolicyId,
+      hubOraclePolicyId,
       `${requiredTx.label} observation deployment`,
     );
   }
@@ -229,8 +233,8 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     );
     assertEqual(observed.runId, claim.runId, `${observed.id} run`);
     assertEqual(
-      observed.manifestId,
-      manifest.manifestId,
+      observed.hubOraclePolicyId,
+      hubOraclePolicyId,
       `${observed.id} deployment`,
     );
     for (const [field, count] of Object.entries({
@@ -254,8 +258,8 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
   const finalSnapshot = parseFinalSnapshot(finalSnapshotValue);
   assertEqual(finalSnapshot.runId, claim.runId, "final snapshot run");
   assertEqual(
-    finalSnapshot.manifestId,
-    manifest.manifestId,
+    finalSnapshot.hubOraclePolicyId,
+    hubOraclePolicyId,
     "final snapshot deployment",
   );
   const finalAuthentication = finalSnapshot.authentication;
@@ -411,8 +415,8 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     "node database export run",
   );
   assertEqual(
-    nodeDatabaseExport.manifestId,
-    manifest.manifestId,
+    nodeDatabaseExport.hubOraclePolicyId,
+    hubOraclePolicyId,
     "node database export deployment",
   );
   assertEqual(
@@ -453,7 +457,7 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
     };
   };
   await authority.authenticateFinalState({
-    manifestId: manifest.manifestId,
+    hubOraclePolicyId,
     observedAt: derivedFinalObservedAt,
     stateQueueDepth: nodeDatabaseExport.stateQueue.depth,
     pendingFinalizations: nodeDatabaseExport.jobs.pendingFinalizations,
@@ -566,7 +570,7 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
 
   const identityDetails = {
     runId: claim.runId,
-    manifestId: manifest.manifestId,
+    hubOraclePolicyId,
     blueprintSha256,
     catalogueRoot: catalogue.root,
     parametersSha256,

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { credentialToAddress } from "@lucid-evolution/lucid";
 
 import {
@@ -53,6 +54,7 @@ export const sampleAcceptancePayouts = async (
     );
   const run = readRunEnv(layout);
   const manifest = readFinalizedManifest(layout);
+  const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(manifest);
   const digest = (path: string) =>
     createHash("sha256").update(readFileSync(path)).digest("hex");
   const journeyJournal = join(layout.journeyDir, "journey.json");
@@ -154,7 +156,7 @@ export const sampleAcceptancePayouts = async (
           readAcceptanceSettlements(
             run,
             scope,
-            manifest.manifestId,
+            hubOraclePolicyId,
             records.map((record) => record.withdrawalEventId),
             limits.maxSettlementRows,
             limits.maxTransactionBytes,
@@ -205,7 +207,7 @@ export const sampleAcceptancePayouts = async (
           "run configuration or journey journal changed during capture",
         );
         return {
-          deploymentManifestId: manifest.manifestId,
+          hubOraclePolicyId,
           historyGeneration: refreshed.generation,
           current,
           lineages: proofs.map((proof) => ({
@@ -224,7 +226,7 @@ export const sampleAcceptancePayouts = async (
     },
   );
   requireAcceptance(
-    result.boundary.deploymentManifestId === manifest.manifestId,
+    result.boundary.hubOraclePolicyId === hubOraclePolicyId,
     "native boundary belongs to a different deployment",
   );
   return { ...result.value, boundary: result.boundary };

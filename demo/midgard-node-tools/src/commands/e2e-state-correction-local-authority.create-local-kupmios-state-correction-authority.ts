@@ -76,7 +76,7 @@ export const createLocalKupmiosStateCorrectionAuthority = (
       }
     },
     authenticateFinalState: async (input) => {
-      if (input.manifestId !== config.manifestId) {
+      if (input.hubOraclePolicyId !== config.hubOraclePolicyId) {
         throw new Error("Q57 authority manifest identity mismatch");
       }
       if (

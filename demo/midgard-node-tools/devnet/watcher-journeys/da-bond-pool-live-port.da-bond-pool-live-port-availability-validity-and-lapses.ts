@@ -527,11 +527,11 @@ describe("DA bond pool live port: availability validity and lapses", () => {
       join(directory, "journal.sqlite"),
     );
     try {
-      const deploymentIdentity = "aa".repeat(32);
+      const hubOraclePolicyId = "aa".repeat(28);
       const actor = paymentCredentialOf(account.address).hash;
       const headerHash = "bb".repeat(28);
       const context: SDK.DaAvailabilityOperationContext = {
-        deploymentIdentity,
+        hubOraclePolicyId,
         actor,
         journal,
         stateQueuePolicyId: "cc".repeat(28),
@@ -547,7 +547,7 @@ describe("DA bond pool live port: availability validity and lapses", () => {
         observe: async () => ({ status: "unspent", currentSlot: 0 }),
         submit: async (signedCbor) =>
           SDK.inspectDaAvailabilitySignedIntent({
-            deploymentIdentity,
+            hubOraclePolicyId,
             actor,
             headerHash,
             action: "prepare",

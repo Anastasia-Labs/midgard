@@ -23,7 +23,7 @@ const options = { stallMs: STALL_MS, pollMs: 10 };
 
 // A stack deployment, followed from twin4's L1 origin slot.
 const twin4: JourneyReplayStoreIdentity = {
-  deploymentManifestId: "ffd9e6c8".repeat(8),
+  hubOraclePolicyId: "ffd9e6c8".repeat(8),
   blueprintHash: "b1".repeat(32),
   origin: { slot: 138_606_953, blockHash: "0f".repeat(32) },
 };

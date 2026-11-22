@@ -25,7 +25,7 @@ export const runDaBondPoolJourney = async (
 export type DaBondPoolJourneyReportMeta = Readonly<{
   adapter: "emulator" | "live-devnet";
   runDir?: string;
-  deploymentManifestId?: string;
+  hubOraclePolicyId?: string;
   networkMagic?: number;
   gitHead?: string;
 }>;
@@ -86,7 +86,7 @@ export const renderDaBondPoolJourneyReport = (
     `| Adapter | ${meta.adapter} |`,
     `| Result | ${cell(result)} |`,
     `| Run dir | ${cell(meta.runDir ?? "not recorded")} |`,
-    `| Deployment manifest | ${cell(meta.deploymentManifestId ?? "not recorded")} |`,
+    `| Hub-oracle policy id | ${cell(meta.hubOraclePolicyId ?? "not recorded")} |`,
     `| Network magic | ${meta.networkMagic ?? "not recorded"} |`,
     `| Git HEAD | ${cell(meta.gitHead ?? "not recorded")} |`,
     `| Started | ${record.startedAt} |`,

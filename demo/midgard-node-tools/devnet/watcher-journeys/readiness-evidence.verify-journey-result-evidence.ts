@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  deploymentManifestHubOraclePolicyId,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { computeFraudProofReleaseFinalityPolicyDigest } from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
@@ -79,11 +82,11 @@ export const verifyJourneyResultEvidence = async (
   const result = await readJourneyArtifact<JourneyResult>(
     join(directory, "result.json"),
   );
-  const fingerprint = deployment.manifest.manifestId;
+  const fingerprint = deploymentManifestHubOraclePolicyId(deployment.manifest);
   assert.equal(result.status, "passed", "Journey result is not passing");
   assert.equal(result.category, category, "Result names another family");
   assert.equal(
-    result.deploymentFingerprint,
+    result.hubOraclePolicyId,
     fingerprint,
     "Result belongs to another deployment",
   );
@@ -121,7 +124,7 @@ export const verifyJourneyResultEvidence = async (
     );
     assert.equal(stamp.category, category);
     assert.equal(stamp.headerHash, staged.current.headerHash);
-    assert.equal(stamp.deploymentFingerprint, fingerprint);
+    assert.equal(stamp.hubOraclePolicyId, fingerprint);
     assert.equal(
       stamp.finalityDepth,
       deployment.manifest.l1Finality.confirmationDepth,

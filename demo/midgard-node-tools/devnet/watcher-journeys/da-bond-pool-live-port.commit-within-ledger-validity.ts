@@ -253,7 +253,7 @@ export type LiveDaBondPoolJourneyPort = DaBondPoolJourneyPort &
   Readonly<{
     /** Where this run's evidence goes; a resumed run's own directory. */
     artifactDirectory: string;
-    manifestId: string;
+    hubOraclePolicyId: string;
     networkMagic: number;
     challengerAddress: string;
     /**

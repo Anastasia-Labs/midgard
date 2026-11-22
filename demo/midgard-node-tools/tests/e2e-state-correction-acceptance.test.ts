@@ -20,7 +20,7 @@ const acceptanceFixture = (): E2EStateCorrectionAcceptance => {
     runId: "fresh-final-release",
     network: "Preprod",
     deployment: {
-      manifestId: takeHash(),
+      hubOraclePolicyId: takeHash().slice(-56),
       blueprintSha256: takeHash(),
       catalogueRoot: takeHash(),
       parametersSha256: takeHash(),

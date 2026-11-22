@@ -39,14 +39,21 @@ export const ATTACHMENT_QUERY =
 /** Records the identity once; a second writer's row is kept and returned, never replaced. */
 export const createIdentityQuery = (marker: {
   runId: string;
-  manifestId: string;
+  hubOraclePolicyId: string;
 }) =>
-  `CREATE TABLE IF NOT EXISTS full_stack_controller_identity (singleton boolean PRIMARY KEY CHECK(singleton), run_id text NOT NULL, manifest_id text NOT NULL); INSERT INTO full_stack_controller_identity VALUES (true,'${marker.runId}','${marker.manifestId}') ON CONFLICT DO NOTHING; ${IDENTITY_ROW_QUERY}`;
+  `CREATE TABLE IF NOT EXISTS full_stack_controller_identity (singleton boolean PRIMARY KEY CHECK(singleton), run_id text NOT NULL, hub_oracle_policy_id text NOT NULL); INSERT INTO full_stack_controller_identity VALUES (true,'${marker.runId}','${marker.hubOraclePolicyId}') ON CONFLICT DO NOTHING; ${IDENTITY_ROW_QUERY}`;
 
 const markerFile = (processes: StackProcesses) =>
   join(processes.config.nodeRoot, "db/full-stack-identity.json");
 const journalFile = (processes: StackProcesses) =>
   join(processes.config.runDirectory, "stack-journal.json");
+/** The deployment's hub-oracle policy id, from the stack's manifest file. */
+const manifestHubOraclePolicyId = async (processes: StackProcesses) =>
+  (
+    (await readJsonIfPresent(stackPaths(processes).manifest)) as
+      | { contracts?: { hubOracleMint?: { scriptHash?: string } } }
+      | undefined
+  )?.contracts?.hubOracleMint?.scriptHash;
 async function sql(processes: StackProcesses, query: string) {
   return processes.compose("storage-identity", [
     "exec",
@@ -69,16 +76,14 @@ export async function assertPreservedStorage(processes: StackProcesses) {
     journalFile(processes),
   )) as StackJournal;
   const marker = (await readJsonIfPresent(markerFile(processes))) as
-    | { runId: string; manifestId: string }
+    | { runId: string; hubOraclePolicyId: string }
     | undefined;
   if (
     marker ||
     journal.steps.services ||
     journal.steps["storage-identity"]?.status === "complete"
   ) {
-    const manifest = (await readJsonIfPresent(
-      stackPaths(processes).manifest,
-    )) as { manifestId: string };
+    const hubOraclePolicyId = await manifestHubOraclePolicyId(processes);
     // A lost store has no identity table at all, which psql reports only as a failed query.
     const table = (await sql(processes, IDENTITY_TABLE_QUERY)) as {
       exists: boolean;
@@ -86,12 +91,12 @@ export async function assertPreservedStorage(processes: StackProcesses) {
     const observed = table.exists
       ? ((await sql(processes, IDENTITY_ROW_QUERY)) as {
           run_id: string;
-          manifest_id: string;
+          hub_oracle_policy_id: string;
         } | null)
       : null;
     if (
       observed?.run_id !== journal.runId ||
-      observed.manifest_id !== manifest?.manifestId
+      observed.hub_oracle_policy_id !== hubOraclePolicyId
     )
       throw new Error(
         "Postgres deployment marker is missing or changed; preserve the deployment",
@@ -99,20 +104,19 @@ export async function assertPreservedStorage(processes: StackProcesses) {
     if (
       marker &&
       (marker.runId !== journal.runId ||
-        marker.manifestId !== manifest.manifestId)
+        marker.hubOraclePolicyId !== hubOraclePolicyId)
     )
       throw new Error("Durable node storage identity changed");
     if (!marker)
       await writeDurableJson(markerFile(processes), {
         runId: observed.run_id,
-        manifestId: observed.manifest_id,
+        hubOraclePolicyId: observed.hub_oracle_policy_id,
       });
     return;
   }
   const paths = stackPaths(processes);
   const manifest = (await readJsonIfPresent(paths.manifest)) as
     | {
-        manifestId?: string;
         steps?: { initProtocol?: { status?: string; txHash?: string } };
       }
     | undefined;
@@ -158,15 +162,14 @@ export async function establishStorageIdentity(processes: StackProcesses) {
   const journal = (await readJsonIfPresent(
     journalFile(processes),
   )) as StackJournal;
-  const manifest = (await readJsonIfPresent(
-    stackPaths(processes).manifest,
-  )) as { manifestId: string };
+  const hubOraclePolicyId = await manifestHubOraclePolicyId(processes);
   if (
-    !/^[0-9a-f]{64}$/.test(manifest.manifestId) ||
+    hubOraclePolicyId === undefined ||
+    !/^[0-9a-f]{56}$/.test(hubOraclePolicyId) ||
     !/^[0-9a-f-]{36}$/.test(journal.runId)
   )
     throw new Error("Invalid storage identity");
-  const marker = { runId: journal.runId, manifestId: manifest.manifestId };
+  const marker = { runId: journal.runId, hubOraclePolicyId };
   const prior = await readJsonIfPresent(markerFile(processes));
   if (prior !== undefined) {
     await assertPreservedStorage(processes);
@@ -174,11 +177,11 @@ export async function establishStorageIdentity(processes: StackProcesses) {
   }
   const observed = (await sql(processes, createIdentityQuery(marker))) as {
     run_id: string;
-    manifest_id: string;
+    hub_oracle_policy_id: string;
   } | null;
   if (
     observed?.run_id !== marker.runId ||
-    observed.manifest_id !== marker.manifestId
+    observed.hub_oracle_policy_id !== marker.hubOraclePolicyId
   )
     throw new Error("Storage identity differs from this deployment");
   await writeDurableJson(markerFile(processes), marker);
@@ -219,21 +222,19 @@ export function storageIdentityStep(processes: StackProcesses): StackStep {
           const journal = (await readJsonIfPresent(
             journalFile(processes),
           )) as StackJournal;
-          const manifest = (await readJsonIfPresent(
-            stackPaths(processes).manifest,
-          )) as { manifestId: string };
+          const hubOraclePolicyId = await manifestHubOraclePolicyId(processes);
           const marker = (await sql(processes, IDENTITY_ROW_QUERY)) as {
             run_id: string;
-            manifest_id: string;
+            hub_oracle_policy_id: string;
           } | null;
           if (
             marker?.run_id !== journal.runId ||
-            marker.manifest_id !== manifest.manifestId
+            marker.hub_oracle_policy_id !== hubOraclePolicyId
           )
             throw new Error("Storage identity differs from this deployment");
           await writeDurableJson(markerFile(processes), {
             runId: marker.run_id,
-            manifestId: marker.manifest_id,
+            hubOraclePolicyId: marker.hub_oracle_policy_id,
           });
           return { status: "complete", data: { preserved: true } };
         }

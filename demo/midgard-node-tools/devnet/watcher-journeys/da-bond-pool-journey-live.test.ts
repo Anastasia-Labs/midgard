@@ -61,7 +61,7 @@ const persist = async (
       renderDaBondPoolJourneyReport(record, {
         adapter: "live-devnet",
         runDir: runDirectory!,
-        deploymentManifestId: port.manifestId,
+        hubOraclePolicyId: port.hubOraclePolicyId,
         networkMagic: port.networkMagic,
         ...(head === undefined ? {} : { gitHead: head }),
       }),

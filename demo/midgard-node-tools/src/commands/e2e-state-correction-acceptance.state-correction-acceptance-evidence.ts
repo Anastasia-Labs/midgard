@@ -60,7 +60,7 @@ export const stateCorrectionAcceptanceEvidence = ({
   const details = {
     runId: evidence.runId,
     expectedRunId,
-    manifestId: evidence.deployment.manifestId,
+    hubOraclePolicyId: evidence.deployment.hubOraclePolicyId,
     blueprintSha256: evidence.deployment.blueprintSha256,
     catalogueRoot: evidence.deployment.catalogueRoot,
     parametersSha256: evidence.deployment.parametersSha256,
@@ -147,7 +147,7 @@ export const stateCorrectionAcceptanceEvidence = ({
     transactions: [],
     rawEvidence: [{ label: "state-correction-acceptance", path: evidencePath }],
     notes: [
-      `State-correction acceptance ${bindingMatches ? "blocked pending independent provenance" : "run-id mismatch"}: families=${evidence.families.length.toString()} recoveryDrills=${evidence.recoveryDrills.length.toString()} manifestId=${evidence.deployment.manifestId}`,
+      `State-correction acceptance ${bindingMatches ? "blocked pending independent provenance" : "run-id mismatch"}: families=${evidence.families.length.toString()} recoveryDrills=${evidence.recoveryDrills.length.toString()} hubOraclePolicyId=${evidence.deployment.hubOraclePolicyId}`,
     ],
   };
 };

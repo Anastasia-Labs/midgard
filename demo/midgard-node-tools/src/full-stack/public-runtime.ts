@@ -11,7 +11,10 @@ import { join } from "node:path";
 
 import { writeTextFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  deploymentManifestHubOraclePolicyId,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   authenticatePublicHttpRelease,
   PUBLIC_NODE_SECRET_NAMES,
@@ -170,8 +173,10 @@ const deployedClassification = async (processes: StackProcesses) =>
  * classification its reference-script deployment used.
  */
 async function verifyPublicRelease(processes: StackProcesses) {
-  const { manifestId } = verifyFinalizedDeploymentManifest(
-    await readJsonIfPresent(stackPaths(processes).manifest),
+  const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(
+    verifyFinalizedDeploymentManifest(
+      await readJsonIfPresent(stackPaths(processes).manifest),
+    ),
   );
   authenticatePublicHttpRelease({
     ...processes.env,
@@ -183,7 +188,7 @@ async function verifyPublicRelease(processes: StackProcesses) {
     MIDGARD_PUBLIC_RELEASE_TRUST_ROOTS_FILE:
       processes.config.public!.trustRootsFile,
     MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE: releaseFile(processes, "manifest"),
-    MIDGARD_PUBLIC_MANIFEST_ID: manifestId,
+    MIDGARD_PUBLIC_HUB_ORACLE_POLICY_ID: hubOraclePolicyId,
     MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE: releaseFile(
       processes,
       "parameterRegistry",
@@ -204,7 +209,7 @@ async function verifyPublicRelease(processes: StackProcesses) {
     throw new Error(
       "its blueprint classification differs from public.blueprintClassificationFile",
     );
-  return { manifestId };
+  return { hubOraclePolicyId };
 }
 
 /**
@@ -323,8 +328,10 @@ export async function publicNodeEnvironment(
   processes: StackProcesses,
   nodeEnv: Record<string, string>,
 ) {
-  const { manifestId } = verifyFinalizedDeploymentManifest(
-    await readJsonIfPresent(stackPaths(processes).manifest),
+  const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(
+    verifyFinalizedDeploymentManifest(
+      await readJsonIfPresent(stackPaths(processes).manifest),
+    ),
   );
   const env: Record<string, string> = { ...nodeEnv };
   for (const name of [
@@ -343,7 +350,7 @@ export async function publicNodeEnvironment(
     MIDGARD_BLUEPRINT_CLASSIFICATION_FILE: `${CONTAINER.release}/${SIGNED_RELEASE_FILES.classification}`,
     MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE: `${CONTAINER.release}/${SIGNED_RELEASE_FILES.manifest}`,
     MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE: `${CONTAINER.release}/${SIGNED_RELEASE_FILES.parameterRegistry}`,
-    MIDGARD_PUBLIC_MANIFEST_ID: manifestId,
+    MIDGARD_PUBLIC_HUB_ORACLE_POLICY_ID: hubOraclePolicyId,
     // The release image carries its own pinned L1 transport.
     L1_NODE_TRANSPORT_BINARY_PATH: CONTAINER.transport,
     ...l2PeerEnvironment(

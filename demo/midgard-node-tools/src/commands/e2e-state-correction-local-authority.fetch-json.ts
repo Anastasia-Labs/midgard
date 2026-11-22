@@ -75,7 +75,7 @@ export type LocalKupmiosStateCorrectionAuthorityConfig = {
   readonly providerFailover: string | undefined;
   readonly kupoUrl: string;
   readonly ogmiosUrl: string;
-  readonly manifestId: string;
+  readonly hubOraclePolicyId: string;
   readonly stateQueueAddress: string;
   readonly stateQueuePolicyId: string;
   readonly reserveAddress: string;
@@ -89,7 +89,7 @@ export type LocalKupmiosStateCorrectionAuthorityConfig = {
 };
 
 export type LocalAuthorityDeployment = {
-  readonly manifestId: string;
+  readonly hubOraclePolicyId: string;
   readonly stateQueueAddress: string;
   readonly stateQueuePolicyId: string;
   readonly reserveAddress: string;

@@ -27,7 +27,7 @@ vi.mock("./live-context.js", async (original) => ({
     runDirectory: state.runDirectory,
     deployment: {
       manifest: {
-        manifestId: "ab".repeat(32),
+        contracts: { hubOracleMint: { scriptHash: "ab".repeat(28) } },
         hubOracleOneShot: {},
         l1Origin: { slot: 7, blockHash: "34" },
       },
@@ -47,7 +47,7 @@ vi.mock("./live-context.js", async (original) => ({
 vi.mock("midgard-watcher", async (original) => ({
   ...(await original<typeof import("midgard-watcher")>()),
   loadWatcherVerifiedDeploymentAuthority: async () => ({
-    deploymentIdentity: { manifestId: "ab".repeat(32) },
+    deploymentIdentity: { hubOraclePolicyId: "ab".repeat(28) },
   }),
   parseWatcherConfig: (value: unknown) => value,
   parseWatcherProcessConfig: (value: unknown) => value,
@@ -63,7 +63,7 @@ vi.mock("midgard-watcher/tests/support/published-deployment-authority", () => ({
     const path = join(state.runDirectory, "binding.json");
     return {
       deploymentAuthority: {
-        deploymentIdentity: { manifestId: "ab".repeat(32) },
+        deploymentIdentity: { hubOraclePolicyId: "ab".repeat(28) },
       },
       authorityPath: path,
       ruleBundlePath: path,
@@ -158,7 +158,7 @@ vi.mock("./workflow-binding-preflight.js", () => ({
 vi.mock("./replayed-ledger.js", () => ({
   openJourneyReplayedLedger: async (input: {
     ledgerStoreDirectory: string;
-    authority: { deploymentIdentity: { manifestId: string } };
+    authority: { deploymentIdentity: { hubOraclePolicyId: string } };
   }) => {
     state.replayLedgerStoreDirectories.push(input.ledgerStoreDirectory);
     // The real store the keeper keeps there, holding its writer lease.
@@ -168,7 +168,7 @@ vi.mock("./replayed-ledger.js", () => ({
     const storage = openSqliteLedgerStorage(
       join(
         input.ledgerStoreDirectory,
-        `replayed-ledger-${input.authority.deploymentIdentity.manifestId}.sqlite`,
+        `replayed-ledger-${input.authority.deploymentIdentity.hubOraclePolicyId}.sqlite`,
       ),
     );
     return {

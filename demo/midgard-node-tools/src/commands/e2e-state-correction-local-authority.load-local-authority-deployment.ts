@@ -1,6 +1,9 @@
 import { readFile } from "node:fs/promises";
 
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  deploymentManifestHubOraclePolicyId,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { SpendingValidator } from "@lucid-evolution/lucid";
 import { validatorToAddress } from "@lucid-evolution/lucid";
 
@@ -28,7 +31,7 @@ export const loadLocalAuthorityDeployment = async (
     script: stateQueueSpend.contract.cborHex,
   } as SpendingValidator;
   return {
-    manifestId: manifest.manifestId,
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
     stateQueueAddress: validatorToAddress("Preprod", spendingScript),
     stateQueuePolicyId: stateQueueMint.scriptHash,
     reserveAddress: validatorToAddress("Preprod", {

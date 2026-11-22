@@ -33,7 +33,7 @@ export const localExec =
 /** Temporary roots `recordedWatcher` made; each test file removes them. */
 export const directories: string[] = [];
 
-export const FINGERPRINT = "ab".repeat(32);
+export const FINGERPRINT = "ab".repeat(28);
 
 /** A watcher's state as its container sees it: its process configuration and journals. */
 export const recordedWatcher = async () => {
@@ -55,7 +55,7 @@ export const recordedWatcher = async () => {
       exec,
       hostProcessConfigPath: processConfigPath,
       containerProcessConfigPath: processConfigPath,
-      deploymentFingerprint: FINGERPRINT,
+      hubOraclePolicyId: FINGERPRINT,
       launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     });
   return { root, journalDirectory, storePath, processConfigPath, reader };

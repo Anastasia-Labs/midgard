@@ -38,7 +38,7 @@ describe("attached journey session", () => {
       expect(session.releaseFinality).toEqual(
         await watcherDeploymentReleaseFinalityAuthority(
           deploymentIdentity,
-        ).verifyForWorkflow({ deploymentFingerprint: fingerprint }),
+        ).verifyForWorkflow({ hubOraclePolicyId: fingerprint }),
       );
       expect(session.authority.deploymentAuthority.deploymentIdentity).toBe(
         deploymentIdentity,
@@ -69,7 +69,7 @@ describe("attached journey session", () => {
     };
     for (const [status, refusal] of [
       [
-        { ...liveStatus(), deploymentFingerprint: "cd".repeat(32) },
+        { ...liveStatus(), hubOraclePolicyId: "cd".repeat(28) },
         /serves another deployment/u,
       ],
       [starting, /still starting and not attached to a deployment/u],

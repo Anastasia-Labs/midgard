@@ -50,7 +50,7 @@ export interface StateCorrectionIndependentAuthority {
     };
   }): Promise<void>;
   authenticateFinalState(input: {
-    readonly manifestId: string;
+    readonly hubOraclePolicyId: string;
     readonly observedAt: ChainPoint & { readonly confirmationDepth: number };
     readonly stateQueueDepth: number;
     readonly pendingFinalizations: number;
@@ -108,7 +108,7 @@ export type AuthenticatedL1TxObservation = {
   readonly schemaVersion: typeof E2E_AUTHENTICATED_L1_TX_OBSERVATION_SCHEMA_VERSION;
   readonly runId: string;
   readonly network: "Preprod";
-  readonly manifestId: string;
+  readonly hubOraclePolicyId: string;
   readonly txHash: string;
   readonly includedAt: ChainPoint;
   readonly observedAtTip: ChainPoint & { readonly confirmationDepth: number };
@@ -126,7 +126,7 @@ export type AuthenticatedL1TxObservation = {
 export type RecoveryObservation = {
   readonly schemaVersion: typeof E2E_STATE_CORRECTION_RECOVERY_OBSERVATION_SCHEMA_VERSION;
   readonly runId: string;
-  readonly manifestId: string;
+  readonly hubOraclePolicyId: string;
   readonly id: string;
   readonly beforeJournalSha256: string;
   readonly afterJournalSha256: string;
@@ -143,7 +143,7 @@ export type FinalSnapshot = {
   readonly schemaVersion: typeof E2E_STATE_CORRECTION_FINAL_SNAPSHOT_SCHEMA_VERSION;
   readonly runId: string;
   readonly network: "Preprod";
-  readonly manifestId: string;
+  readonly hubOraclePolicyId: string;
   readonly observedAt: ChainPoint & { readonly confirmationDepth: number };
   readonly authentication: {
     readonly source: "local-kupmios-ogmios-and-node-db";
@@ -211,7 +211,7 @@ export type FinalSnapshot = {
 export type NodeDatabaseExport = Pick<
   FinalSnapshot,
   | "runId"
-  | "manifestId"
+  | "hubOraclePolicyId"
   | "stateQueue"
   | "jobs"
   | "watcher"

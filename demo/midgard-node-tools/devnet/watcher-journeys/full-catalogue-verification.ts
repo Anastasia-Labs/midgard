@@ -25,6 +25,7 @@ import {
   headerDecisionReplayContext,
 } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import {
+  computeFraudProofRawL1RollbackCursor,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
 } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
@@ -140,10 +141,19 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
       pending: [],
       snapshot: {
         ...seed,
-        deploymentIdentityDigest: request.deploymentIdentityDigest,
+        hubOraclePolicyId: request.hubOraclePolicyId,
         blueprintHash: request.blueprintHash,
         finalityPolicyDigest: request.finalityPolicyDigest,
         headerHash: request.headerHash,
+        // The cursor binds the identity, blueprint and finality policy above.
+        cursor: {
+          ...seed.cursor,
+          rollbackCursor: computeFraudProofRawL1RollbackCursor({
+            ...request,
+            sourceId: seed.provenance.sourceId,
+            pointId: seed.cursor.point.pointId,
+          }),
+        },
         scopes: request.scopes.map((scope) => ({
           ...scope,
           utxos:
@@ -162,7 +172,6 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
       },
     }),
   };
-  const deploymentFingerprint = "d1".repeat(32);
   const policy = {
     confirmationDepth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
     automaticRecoveryMaxDepth: 2160,
@@ -170,7 +179,7 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
   } as const;
   const releaseFinality = {
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: deploymentFingerprint,
+    hubOraclePolicyId,
     blueprintHash: "e1".repeat(32),
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
     policy,
@@ -195,7 +204,7 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
   // As in the established catalogue-retained classifier unit test, these are
   // only the fields consumed by raw authority admission; no deployment claim.
   const bindingFields = {
-    deploymentFingerprint,
+    hubOraclePolicyId,
     blueprintHash: releaseFinality.blueprintHash,
     network: "Preprod" as const,
     releaseFinality,
@@ -236,7 +245,7 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
     },
   });
   const classifier = await createHeaderClassifier({
-    deploymentFingerprint,
+    hubOraclePolicyId,
     replayer,
     releaseFinalityAuthority: {
       authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,

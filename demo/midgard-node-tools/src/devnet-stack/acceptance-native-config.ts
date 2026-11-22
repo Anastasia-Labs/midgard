@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import {
   type DeploymentManifest,
+  deploymentManifestHubOraclePolicyId,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
@@ -21,7 +22,7 @@ import { releasePaths } from "./watcher-release.js";
 
 export type AcceptanceNativeRunBinding = Readonly<{
   runDir: string;
-  deploymentManifestId: string;
+  hubOraclePolicyId: string;
   releaseAuthoritySha256: string;
   codeStamp: string;
   nativeBinarySha256: string;
@@ -135,8 +136,10 @@ export const loadAcceptanceNativeReadConfig = async (
   const releasedManifest = json(paths.manifest) as DeploymentManifest;
   verifyFinalizedDeploymentManifest(manifest);
   verifyFinalizedDeploymentManifest(releasedManifest);
+  const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(manifest);
   if (
-    manifest.manifestId !== releasedManifest.manifestId ||
+    deploymentManifestHubOraclePolicyId(releasedManifest) !==
+      hubOraclePolicyId ||
     manifest.network !== watcherConfig.targetNetwork
   )
     throw new Error(
@@ -148,7 +151,7 @@ export const loadAcceptanceNativeReadConfig = async (
     ruleBundlePath: paths.rules,
   });
   scope.assertCurrent();
-  if (authority.deploymentIdentity.manifestId !== manifest.manifestId)
+  if (authority.deploymentIdentity.hubOraclePolicyId !== hubOraclePolicyId)
     throw new Error(
       "acceptance native reader signed release belongs to another deployment",
     );
@@ -178,7 +181,7 @@ export const loadAcceptanceNativeReadConfig = async (
     assertUnchanged,
     binding: Object.freeze({
       runDir: resolve(layout.runDir),
-      deploymentManifestId: manifest.manifestId,
+      hubOraclePolicyId,
       releaseAuthoritySha256: hashes[paths.authority]!,
       codeStamp: stamp,
       nativeBinarySha256: hashes[binaryPath]!,

@@ -27,7 +27,7 @@ export type JourneyResult = {
   executionPolicy?: "authenticated-inclusion";
   nativeEvidencePath?: string;
   category: JourneyCategory;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   /** The address the run's watcher proved with; it is paid the reward. */
   proverAddress?: string;
   /** The correction the journey read from the chain at the action depth. */
@@ -190,7 +190,7 @@ export const readDecisions = async (
 ) => {
   const decisions = readWatcherFaultDecisionEvidence({
     directory: join(runDirectory, "work/journeys/runtime/workflows"),
-    deploymentFingerprint: fingerprint,
+    hubOraclePolicyId: fingerprint,
     launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   });
   for (const record of decisions) {
@@ -200,7 +200,7 @@ export const readDecisions = async (
       decisionDigest,
       "Decision digest differs from its bytes",
     );
-    assert.equal(decision.deploymentFingerprint, fingerprint);
+    assert.equal(decision.hubOraclePolicyId, fingerprint);
     assert.deepEqual(
       [...decision.launchScope].sort(),
       [...WATCHER_INSTALLED_WORKFLOW_CATEGORIES].sort(),

@@ -33,7 +33,7 @@ import {
 } from "./full-stack-payout.fixtures.js";
 
 const dbEnabled = process.env.MIDGARD_SKIP_DB_TESTS !== "1";
-const MANIFEST_ID = "e".repeat(64);
+const HUB_ORACLE_POLICY_ID = "e".repeat(56);
 const PAYOUT_POLICY = "5a".repeat(28);
 /** The withdrawal-order policy, whose token carries the same event key. */
 const ORDER_POLICY = "0d".repeat(28);
@@ -60,11 +60,11 @@ const seedTwinWithdrawal = (sql: SqlClient.SqlClient) =>
       (decode('${INITIALIZE_TX}', 'hex'), 1, decode('${PAYOUT_POLICY}', 'hex'), decode('${EVENT_KEY}', 'hex'), 1),
       (decode('${FUND_TX}', 'hex'), 0, decode('${PAYOUT_POLICY}', 'hex'), decode('${EVENT_KEY}', 'hex'), 1),
       (decode('${"0e".repeat(32)}', 'hex'), 0, decode('${ORDER_POLICY}', 'hex'), decode('${EVENT_KEY}', 'hex'), 1);
-    INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase) VALUES
-      ('${MANIFEST_ID}', 'withdrawal', '${EVENT_ID}', 'complete');
-    INSERT INTO settlement_attempts (deployment_id, tx_hash, kind, event_id, phase, signed_cbor, required_outputs, fee_inputs, status) VALUES
-      ('${MANIFEST_ID}', '${"47".repeat(32)}', 'withdrawal', '${EVENT_ID}', 'initialize', '', '{}', '{fee#0}', 'expired'),
-      ('${MANIFEST_ID}', '${FUND_TX}', 'withdrawal', '${EVENT_ID}', 'fund', '', '{}', '{fee#1}', 'pending');
+    INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase) VALUES
+      ('${HUB_ORACLE_POLICY_ID}', 'withdrawal', '${EVENT_ID}', 'complete');
+    INSERT INTO settlement_attempts (hub_oracle_policy_id, tx_hash, kind, event_id, phase, signed_cbor, required_outputs, fee_inputs, status) VALUES
+      ('${HUB_ORACLE_POLICY_ID}', '${"47".repeat(32)}', 'withdrawal', '${EVENT_ID}', 'initialize', '', '{}', '{fee#0}', 'expired'),
+      ('${HUB_ORACLE_POLICY_ID}', '${FUND_TX}', 'withdrawal', '${EVENT_ID}', 'fund', '', '{}', '{fee#1}', 'pending');
   `);
 
 /**
@@ -94,8 +94,10 @@ const onTwinDatabase = (
           await writeFile(
             manifest,
             JSON.stringify({
-              manifestId: MANIFEST_ID,
-              contracts: { payoutMint: { scriptHash: PAYOUT_POLICY } },
+              contracts: {
+                hubOracleMint: { scriptHash: HUB_ORACLE_POLICY_ID },
+                payoutMint: { scriptHash: PAYOUT_POLICY },
+              },
             }),
           );
         });
@@ -149,7 +151,7 @@ describe.skipIf(!dbEnabled)("withdrawal payout read from L1 facts", () => {
     ));
   it("gives the finalizer the same L1 facts the journey judged", () =>
     onTwinDatabase((sql) =>
-      withdrawalOnL1(MANIFEST_ID, PAYOUT_POLICY, EVENT_ID).pipe(
+      withdrawalOnL1(HUB_ORACLE_POLICY_ID, PAYOUT_POLICY, EVENT_ID).pipe(
         Effect.provideService(SqlClient.SqlClient, sql),
         Effect.map((facts) =>
           expect(payoutConclusion(facts!)).toEqual(exactPayout),

@@ -6,6 +6,7 @@ import {
   encodeMidgardForcedTxCanonical,
   submittedForcedTransactionFromNative,
 } from "@al-ft/midgard-core";
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { CML } from "@lucid-evolution/lucid";
@@ -22,7 +23,7 @@ import {
 } from "./staging.js";
 
 type ForcedOrderCheckpoint = {
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   submittedTxCbor: string;
   signedCbor: string;
   txHash: string;
@@ -45,12 +46,13 @@ export const publishJourneyForcedOrder = async (
     const stagedPath = join(directory, "staged.json");
     if (existsSync(stagedPath)) {
       const staged = await readJourneyArtifact<{
-        deploymentFingerprint: string;
+        hubOraclePolicyId: string;
         signedCommit?: unknown;
         commitTxHash?: unknown;
       }>(stagedPath);
       if (
-        staged.deploymentFingerprint !== deployment.manifest.manifestId ||
+        staged.hubOraclePolicyId !==
+          deploymentManifestHubOraclePolicyId(deployment.manifest) ||
         staged.signedCommit !== undefined ||
         staged.commitTxHash !== undefined
       )
@@ -87,7 +89,9 @@ export const publishJourneyForcedOrder = async (
     );
     const signed = await order.tx.sign.withWallet().complete();
     const checkpoint: ForcedOrderCheckpoint = {
-      deploymentFingerprint: deployment.manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+        deployment.manifest,
+      ),
       submittedTxCbor: submittedTxCbor.toString("hex"),
       signedCbor: signed.toCBOR(),
       txHash: signed.toHash(),
@@ -130,7 +134,8 @@ export const publishJourneyForcedOrder = async (
     ? await readJourneyArtifact<ForcedOrderCheckpoint>(checkpointPath)
     : await buildAttempt();
   if (
-    checkpoint.deploymentFingerprint !== deployment.manifest.manifestId ||
+    checkpoint.hubOraclePolicyId !==
+      deploymentManifestHubOraclePolicyId(deployment.manifest) ||
     checkpoint.submittedTxCbor !== submittedTxCbor.toString("hex")
   )
     throw new Error(

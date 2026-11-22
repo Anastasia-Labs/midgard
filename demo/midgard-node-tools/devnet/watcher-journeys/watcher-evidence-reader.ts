@@ -33,7 +33,7 @@ const read = async (config) => {
     const { readWatcherFaultDecisionEvidence } = await import("./dist/index.js");
     return readWatcherFaultDecisionEvidence({
       directory,
-      deploymentFingerprint: request.deploymentFingerprint,
+      hubOraclePolicyId: request.hubOraclePolicyId,
       launchScope: request.launchScope,
     });
   }
@@ -61,7 +61,7 @@ try {
 export type WatcherEvidenceRequest = Readonly<{
   read: "decisions";
   processConfigPath: string;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   launchScope: readonly string[];
 }>;
 
@@ -142,13 +142,13 @@ export type JourneyWatcherEvidence = Readonly<{
  * Reads a running watcher's decision journal through `exec`. Every answer
  * must come from the watcher whose mounted process configuration is
  * byte-for-byte the host's `hostProcessConfigPath`, and every decision must
- * belong to `deploymentFingerprint`.
+ * belong to `hubOraclePolicyId`.
  */
 export const createWatcherEvidenceReader = (input: {
   exec: WatcherEvidenceExec;
   hostProcessConfigPath: string;
   containerProcessConfigPath?: string;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   launchScope: readonly string[];
 }): JourneyWatcherEvidence => {
   const processConfigPath =
@@ -194,13 +194,13 @@ export const createWatcherEvidenceReader = (input: {
       const decisions = await read({
         read: "decisions",
         processConfigPath,
-        deploymentFingerprint: input.deploymentFingerprint,
+        hubOraclePolicyId: input.hubOraclePolicyId,
         launchScope: input.launchScope,
       });
       for (const decision of decisions)
         if (
           !isRecord(decision) ||
-          decision.deploymentFingerprint !== input.deploymentFingerprint ||
+          decision.hubOraclePolicyId !== input.hubOraclePolicyId ||
           typeof decision.headerHash !== "string" ||
           !DECISIONS.has(decision.decision as string)
         )

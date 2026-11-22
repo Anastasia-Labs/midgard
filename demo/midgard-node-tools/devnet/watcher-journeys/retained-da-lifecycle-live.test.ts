@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   createWatcherRetainedDaRuntimeOwner,
   loadWatcherVerifiedDeploymentAuthority,
@@ -57,7 +58,9 @@ it.skipIf(runDirectory === undefined)(
     const server = await startJourneyRetainedDa({
       runDirectory: runDirectory!,
       runEnv: context.runEnv,
-      deploymentFingerprint: context.deployment.manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+        context.deployment.manifest,
+      ),
     });
     const watcherConfig = parseWatcherConfig({
       ...configured,
@@ -149,7 +152,9 @@ it.skipIf(runDirectory === undefined)(
             : "work/retained-da-lifecycle-evidence.json",
         ),
         {
-          deploymentFingerprint: context.deployment.manifest.manifestId,
+          hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+            context.deployment.manifest,
+          ),
           continuousSeconds,
           concurrentLeases,
           durationMs: performance.now() - started,

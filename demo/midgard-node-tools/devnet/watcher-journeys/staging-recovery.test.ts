@@ -194,12 +194,8 @@ const openStage = async (funded = false) => {
   };
   actorFactory.mockResolvedValue(actor);
   const checkpointPath = join(directory, "staged.json");
-  const checkpoint = {
-    deploymentFingerprint: "ef".repeat(32),
-    predecessor,
-    current,
-    commitTxHash,
-  };
+  const hubOraclePolicyId = "ef".repeat(28);
+  const checkpoint = { hubOraclePolicyId, predecessor, current, commitTxHash };
   // Staging uses only these deployment ports; no launcher or live configuration is involved.
   const context = {
     runDirectory: directory,
@@ -217,7 +213,9 @@ const openStage = async (funded = false) => {
       ),
     },
     deployment: {
-      manifest: { manifestId: checkpoint.deploymentFingerprint },
+      manifest: {
+        contracts: { hubOracleMint: { scriptHash: hubOraclePolicyId } },
+      },
       operatorLucid: lucid,
       publisherLucid,
       chain: {
@@ -738,7 +736,7 @@ it("reconciles a history submission failure and replaces it from an unpinned wal
   await writeJourneyArtifact(
     join(fixture.directory, "work/journeys/head.json"),
     {
-      deploymentFingerprint: fixture.checkpoint.deploymentFingerprint,
+      hubOraclePolicyId: fixture.checkpoint.hubOraclePolicyId,
       block: fixture.checkpoint.predecessor,
     },
   );

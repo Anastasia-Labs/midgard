@@ -1,6 +1,9 @@
 import { isAbsolute, join } from "node:path";
 
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  deploymentManifestHubOraclePolicyId,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import type { StackRunExpectation } from "./e2e-finalize-summary.stack-run.js";
 
@@ -46,7 +49,9 @@ export async function loadStackRunInputs(
   const manifest = await readJsonIfPresent(manifestPath);
   if (manifest === undefined)
     throw new Error(`No finalized deployment manifest at ${manifestPath}`);
-  const { manifestId } = verifyFinalizedDeploymentManifest(manifest);
+  const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(
+    verifyFinalizedDeploymentManifest(manifest),
+  );
   const { contracts } = manifest as {
     contracts: { payoutMint: { scriptHash: string } };
   };
@@ -62,7 +67,7 @@ export async function loadStackRunInputs(
     expectation: {
       runDirectory: config.runDirectory,
       intentDigest,
-      manifestId: manifestId as string,
+      hubOraclePolicyId,
       stepIds,
       cycles: config.journey.cycles,
       depositLovelace: config.journey.depositLovelace,

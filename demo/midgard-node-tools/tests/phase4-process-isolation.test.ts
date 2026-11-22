@@ -90,7 +90,7 @@ const isolation: Phase4ProcessIsolationIdentity = {
       id: `sha256:${"7".repeat(64)}`,
     },
     networkMagic: 420042,
-    manifestId: "6".repeat(64),
+    hubOraclePolicyId: "6".repeat(56),
     registrationTxHash: PHAS_REGISTRATION_TX_HASH,
     rewardAddress: PHAS_REWARD_ADDRESS,
     rewardAddressBase16: `f0${PHAS_SCRIPT_HASH}`,

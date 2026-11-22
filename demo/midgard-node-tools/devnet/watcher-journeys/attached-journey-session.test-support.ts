@@ -66,7 +66,7 @@ export const watcherContainer =
 
 const authorityFixture = makeWatcherDeploymentAuthorityFixture();
 export const deploymentIdentity = authorityFixture.result;
-export const fingerprint = deploymentIdentity.manifestId;
+export const fingerprint = deploymentIdentity.hubOraclePolicyId;
 
 const directories: string[] = [];
 const servers: Server[] = [];
@@ -118,7 +118,7 @@ const warmStackReplay = (runDirectory: string) =>
   warmJourneyReplayStore({
     runDirectory,
     identity: {
-      deploymentManifestId: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       blueprintHash: deploymentIdentity.blueprintHash,
       origin: null,
     },
@@ -334,7 +334,7 @@ export const runningStackWatcher = async (
     release: { deploymentIdentity },
     deployment: {
       manifest: {
-        manifestId: fingerprint,
+        contracts: { hubOracleMint: { scriptHash: fingerprint } },
         economics: {
           requiredBondLovelace: STACK_REQUIRED_BOND_LOVELACE.toString(),
         },
@@ -447,7 +447,7 @@ export const stoppableOperatorNode = () => {
 };
 
 export const liveStatus = () => ({
-  deploymentFingerprint: fingerprint,
+  hubOraclePolicyId: fingerprint,
   liveness: "live",
   readiness: "not_ready",
   readinessReasons: ["l1_follower_catching_up"],

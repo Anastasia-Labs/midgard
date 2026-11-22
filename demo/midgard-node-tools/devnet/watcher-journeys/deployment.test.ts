@@ -8,6 +8,7 @@ import {
   closeSharedL1NodeTransports,
   sharedL1NodeTransport,
 } from "@al-ft/l1-node-transport";
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { referenceScriptAuthUnit } from "@al-ft/midgard-sdk/state-queue";
 import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
@@ -172,12 +173,14 @@ it.skipIf(runDirectory === undefined)(
           observedCanonicalSlot: canonicalSlot,
           authorityExpirySlot: prepared.authPolicy.expiresAtSlot,
           authorityPolicyId: prepared.authPolicy.policyId,
-          manifestId: reopened.deployment.manifest.manifestId,
+          hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+            reopened.deployment.manifest,
+          ),
           uniqueRetainedRoles: reopened.deployment.receipts.length,
         },
       );
       console.info(
-        `Reopened finalized deployment ${reopened.deployment.manifest.manifestId}`,
+        `Reopened finalized deployment ${deploymentManifestHubOraclePolicyId(reopened.deployment.manifest)}`,
       );
       return;
     }

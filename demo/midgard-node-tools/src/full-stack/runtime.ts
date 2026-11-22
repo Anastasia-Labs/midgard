@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import {
+  type DeploymentManifest,
+  deploymentManifestHubOraclePolicyId,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
+
 import { assertNodeFollowerEnvironment } from "../l1-origin.js";
 import { mountedFilesLabels } from "./compose-yaml.js";
 import {
@@ -89,7 +94,10 @@ export function restoreRuntimeEnvironment(processes: StackProcesses) {
     "producer.json",
   );
 }
-/** Committee peer ids by signer index, from the generated committee manifest. */
+/**
+ * The deployment fingerprint (the hub-oracle policy id) and committee peer ids
+ * by signer index, from the generated committee manifest.
+ */
 async function committeeExpectation(processes: StackProcesses) {
   const committee = (await readJsonIfPresent(
     join(servicesDirectory(processes), "committee-0.json"),
@@ -100,7 +108,7 @@ async function committeeExpectation(processes: StackProcesses) {
   const peerIds: string[] = [];
   for (const member of committee.da_committee.members)
     peerIds[member.signer_index] = member.peer_id;
-  return { manifestId: committee.deployment.fingerprint, peerIds };
+  return { hubOraclePolicyId: committee.deployment.fingerprint, peerIds };
 }
 /**
  * The node's container environment. Every stack-only secret uses the STACK_
@@ -159,9 +167,11 @@ export async function stackNodeServices(
 async function runtimeReadinessReader(processes: StackProcesses) {
   const runtime = await readRuntimeConfiguration(processes);
   const committee = await committeeExpectation(processes);
-  const { manifestId } = (await readJsonIfPresent(
-    stackPaths(processes).manifest,
-  )) as { manifestId: string };
+  const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(
+    (await readJsonIfPresent(
+      stackPaths(processes).manifest,
+    )) as DeploymentManifest,
+  );
   return async () => {
     // An unready node answers 503 and still says why (see nodeIsReady).
     const node = (await getReadiness(`${processes.config.endpoint}/readyz`)) as
@@ -192,7 +202,7 @@ async function runtimeReadinessReader(processes: StackProcesses) {
         node,
         watcher,
         committees,
-        manifestId,
+        hubOraclePolicyId,
         committeePeerIds: committee.peerIds,
       })
     )

@@ -71,7 +71,7 @@ const fixture = async (confirmed = false) => {
     inclusionTime,
   });
   const saved = {
-    deploymentFingerprint: "44".repeat(32),
+    hubOraclePolicyId: "44".repeat(28),
     submittedTxCbor: "80",
     ...old,
     metadata: metadata(old, 100),
@@ -127,7 +127,9 @@ const fixture = async (confirmed = false) => {
       customNetwork: { slotConfig: { slotLength: 1000 } },
       provider: { submitTx: submit },
       deployment: {
-        manifest: { manifestId: saved.deploymentFingerprint },
+        manifest: {
+          contracts: { hubOracleMint: { scriptHash: saved.hubOraclePolicyId } },
+        },
         operatorLucid: {
           wallet: () => ({
             address: async () => address,
@@ -236,7 +238,7 @@ it.each(["signedCommit", "commitTxHash"] as const)(
   async (field) => {
     const f = await fixture();
     await writeJourneyArtifact(join(f.directory, "staged.json"), {
-      deploymentFingerprint: f.saved.deploymentFingerprint,
+      hubOraclePolicyId: f.saved.hubOraclePolicyId,
       [field]: field === "signedCommit" ? f.old : f.old.txHash,
     });
     f.readRecovery.mockImplementationOnce(async (attempt) =>

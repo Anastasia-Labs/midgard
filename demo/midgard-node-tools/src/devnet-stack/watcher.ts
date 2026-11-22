@@ -2,7 +2,10 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  deploymentManifestHubOraclePolicyId,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 
 import {
@@ -236,7 +239,9 @@ export const ensureWatcherRelease = async (
   const identity = await ensureWatcherReleaseBundle(layout, watcher, manifest);
   await watcher
     .watcherDeploymentReleaseFinalityAuthority(identity)
-    .verifyForWorkflow({ deploymentFingerprint: manifest.manifestId });
+    .verifyForWorkflow({
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
+    });
   const { watcherInput, processInput } = watcherConfigs(context, watcher, {
     // The follower starts at the run's recorded origin.
     origin: recordedL1Origin(layout, oneShot),

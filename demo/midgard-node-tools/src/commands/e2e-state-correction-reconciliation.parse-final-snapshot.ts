@@ -26,7 +26,7 @@ export const parseFinalSnapshot = (value: unknown): FinalSnapshot => {
       "schemaVersion",
       "runId",
       "network",
-      "manifestId",
+      "hubOraclePolicyId",
       "observedAt",
       "authentication",
       "stateQueue",
@@ -281,7 +281,11 @@ export const parseFinalSnapshot = (value: unknown): FinalSnapshot => {
     ),
     runId: canonicalString(candidate.runId, `${field}.runId`),
     network: exactString(candidate.network, "Preprod", `${field}.network`),
-    manifestId: sha256Hex(candidate.manifestId, `${field}.manifestId`),
+    hubOraclePolicyId: lowerHex(
+      candidate.hubOraclePolicyId,
+      28,
+      `${field}.hubOraclePolicyId`,
+    ),
     observedAt: parseObservedChainPoint(
       candidate.observedAt,
       `${field}.observedAt`,

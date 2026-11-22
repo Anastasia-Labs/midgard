@@ -9,6 +9,7 @@ import {
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import {
   computeDeploymentManifestJsonDigest,
+  deploymentManifestHubOraclePolicyId,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { parseDeploymentReleaseProvenance } from "@al-ft/midgard-core/deployment-release";
@@ -269,7 +270,10 @@ export async function verifyStackRelease(processes: StackProcesses) {
   const manifest = verifyFinalizedDeploymentManifest(
     await readJsonIfPresent(stackPaths(processes).manifest),
   );
-  if (release.deploymentIdentity.manifestId !== manifest.manifestId)
+  if (
+    release.deploymentIdentity.hubOraclePolicyId !==
+    deploymentManifestHubOraclePolicyId(manifest)
+  )
     throw new Error("Watcher release belongs to a different deployment");
   await loadWatcherWorkflowFundingProfileOverlay({
     bundlePath: paths.funding,
