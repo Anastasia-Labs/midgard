@@ -25,7 +25,7 @@ afterEach(() => {
 const fixture = () => {
   const s = scene();
   const intent = SDK.inspectDaAvailabilitySignedIntent({
-    deploymentIdentity: s.context.deploymentIdentity,
+    hubOraclePolicyId: s.context.hubOraclePolicyId,
     actor: s.context.actor,
     headerHash: s.operation.headerHash,
     action: s.operation.action,
@@ -97,7 +97,7 @@ const fixture = () => {
   const guard = committeeClaimReconciliation({
     journal: s.journal,
     actorId: s.context.actor,
-    deploymentIdentity: s.context.deploymentIdentity,
+    hubOraclePolicyId: s.context.hubOraclePolicyId,
     openReadScope: () => {
       controls.openedScopes++;
       return SDK.createDaAvailabilityReadScope({ attemptTimeoutMs: 1000 });
@@ -153,7 +153,7 @@ describe("exact committee retained-claim reconciliation receipts", () => {
       retentionBlockNo: 100,
     });
     expect(
-      f.journal.actorSnapshot(f.context.actor, f.context.deploymentIdentity)
+      f.journal.actorSnapshot(f.context.actor, f.context.hubOraclePolicyId)
         .reservedResourceCount,
     ).toBe(1);
     await expect(
@@ -180,7 +180,7 @@ describe("exact committee retained-claim reconciliation receipts", () => {
     f.controls.onFollowerRead = async () => {
       if (
         f.journal.get(f.intent.id)?.state === "confirmed" &&
-        f.journal.actorSnapshot(f.context.actor, f.context.deploymentIdentity)
+        f.journal.actorSnapshot(f.context.actor, f.context.hubOraclePolicyId)
           .lease?.expiresAtMs === 0 &&
         ++reads === 1
       )
@@ -204,7 +204,7 @@ describe("exact committee retained-claim reconciliation receipts", () => {
       if (
         !changed &&
         f.journal.get(f.intent.id)?.state === "confirmed" &&
-        f.journal.actorSnapshot(f.context.actor, f.context.deploymentIdentity)
+        f.journal.actorSnapshot(f.context.actor, f.context.hubOraclePolicyId)
           .lease?.expiresAtMs === 0
       ) {
         changed = true;
@@ -220,7 +220,7 @@ describe("exact committee retained-claim reconciliation receipts", () => {
     await expect(f.guard.reconcile()).rejects.toThrow("changed before");
     expect(changed).toBe(true);
     expect(
-      f.journal.actorSnapshot(f.context.actor, f.context.deploymentIdentity)
+      f.journal.actorSnapshot(f.context.actor, f.context.hubOraclePolicyId)
         .lease?.expiresAtMs,
     ).toBe(0);
     expect(f.journal.reservedOutRefs(f.context.actor)).toHaveLength(1);

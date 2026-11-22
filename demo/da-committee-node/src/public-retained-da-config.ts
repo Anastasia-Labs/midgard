@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 
 import { parseDaLibp2pRuntimeManifest } from "@al-ft/midgard-core/da-transport";
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  deploymentManifestHubOraclePolicyId,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import {
   parsePublicRetainedDaEnvironment,
@@ -55,11 +58,11 @@ export const loadPublicRetainedDaRuntimeConfig = async (
     );
   }
   if (
-    runtimeManifest.deployment.contract_deployment_manifest_id !==
-    contractDeployment.manifestId
+    runtimeManifest.deployment.fingerprint !==
+    contractDeployment.hubOraclePolicyId
   ) {
     throw new Error(
-      "deployment.contract_deployment_manifest_id does not match contract deployment manifestId",
+      "deployment.fingerprint does not match the contract deployment's hubOraclePolicyId",
     );
   }
   const profile = runtimeManifest.public_retained_da;
@@ -96,10 +99,10 @@ export const loadPublicRetainedDaRuntimeConfig = async (
 
 const verifyContractDeployment = (
   value: Record<string, unknown>,
-): { readonly manifestId: string; readonly network: string } => {
+): { readonly hubOraclePolicyId: string; readonly network: string } => {
   const verified = verifyFinalizedDeploymentManifest(value);
   return {
-    manifestId: verified.manifestId,
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(verified),
     network: verified.network,
   };
 };

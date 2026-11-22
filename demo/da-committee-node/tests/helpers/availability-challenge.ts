@@ -6,7 +6,7 @@ import type { AvailabilityResponderChallenge } from "../../src/availability/resp
 import type { DaPayloadRecord } from "../../src/domain.js";
 
 export const deploymentIdentity = "11".repeat(28);
-export const deploymentFingerprint = "22".repeat(32);
+export const deploymentFingerprint = "22".repeat(28);
 export const payload = Uint8Array.from([1, 2, 3, 4]);
 export const commitment = SDK.buildDaAvailabilityCommitment({
   deploymentIdentity,

@@ -64,7 +64,7 @@ describe("A5 authority semantics under SDK scopes", () => {
     const s = scene();
     await runDaAvailabilityOperation(s.context, s.operation);
     const intent = s.journal.pending(
-      s.context.deploymentIdentity,
+      s.context.hubOraclePolicyId,
       s.context.actor,
     )[0]!.intent;
     let blockNo = 100;
@@ -89,7 +89,7 @@ describe("A5 authority semantics under SDK scopes", () => {
     const s = scene();
     await runDaAvailabilityOperation(s.context, s.operation);
     const intent = s.journal.pending(
-      s.context.deploymentIdentity,
+      s.context.hubOraclePolicyId,
       s.context.actor,
     )[0]!.intent;
     let after = false;

@@ -20,7 +20,7 @@ const job = (
   responseWindowMs: window,
 });
 const input = (candidate = job("1")): AvailabilityResponseAdmissionInput => ({
-  deploymentId: "aa".repeat(32),
+  hubOraclePolicyId: "aa".repeat(28),
   boundary: {
     pointId: "100:canonical",
     rollbackGeneration: 2,

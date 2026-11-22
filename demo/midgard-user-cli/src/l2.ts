@@ -25,7 +25,7 @@ export type L2Wallet = {
   readonly shapeWallet: ShapeWallet;
 };
 
-type L2Deployment = Pick<UserDeployment, "manifestId" | "network">;
+type L2Deployment = Pick<UserDeployment, "hubOraclePolicyId" | "network">;
 
 /** The seed, the deployment and the wallet, before any network contact. */
 export const prepareL2Command = async <Deployment extends L2Deployment>(
@@ -55,11 +55,10 @@ export const openL2Wallet = async (
   wallet: UserWallet,
 ): Promise<L2Wallet> => {
   const provider = await deps.connectL2(endpoint);
-  const served = (await provider.getProtocolInfo()).deploymentMarker
-    ?.manifestId;
-  if (served !== deployment.manifestId)
+  const served = (await provider.getProtocolInfo()).hubOraclePolicyId;
+  if (served !== deployment.hubOraclePolicyId)
     refuse(
-      `The node serves deployment ${served ?? "(none reported)"}, not this manifest's ${deployment.manifestId}.`,
+      `The node serves hubOraclePolicyId ${served ?? "(none reported)"}, not this manifest's ${deployment.hubOraclePolicyId}.`,
     );
   const midgard = await LucidMidgard.new(provider, {
     networkId: deployment.network === "Mainnet" ? 1 : 0,

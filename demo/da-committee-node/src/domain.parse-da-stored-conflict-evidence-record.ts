@@ -1,5 +1,6 @@
 import {
   computeDaSha256Hash,
+  DA_DEPLOYMENT_FINGERPRINT_LENGTH,
   decodeDaConflictingSignatureHeaderEvidenceCbor,
   encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
@@ -38,7 +39,7 @@ export const parseDaStoredConflictEvidenceRecord = (
   }
   const deploymentFingerprint = requireLowerHex(
     record.deploymentFingerprint,
-    32,
+    DA_DEPLOYMENT_FINGERPRINT_LENGTH,
     "DA stored conflict evidence record V1.deploymentFingerprint",
   );
   const headerHash = requireLowerHex(

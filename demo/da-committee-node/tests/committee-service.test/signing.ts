@@ -68,8 +68,8 @@ export const registerSigningTests = () => {
     await expect(service.readinessSnapshot()).resolves.toMatchObject({
       ready: false,
       deployment: {
-        configuredFingerprint: configWithDaHash.deploymentFingerprint,
-        storeFingerprint: configWithDaHash.deploymentFingerprint,
+        hubOraclePolicyId: configWithDaHash.hubOraclePolicyId,
+        storeHubOraclePolicyId: configWithDaHash.hubOraclePolicyId,
         storeMatchesConfigured: true,
       },
       scanner: { status: "not_started" },
@@ -93,8 +93,8 @@ export const registerSigningTests = () => {
     ).resolves.toMatchObject({
       ready: true,
       deployment: {
-        configuredFingerprint: configWithDaHash.deploymentFingerprint,
-        storeFingerprint: configWithDaHash.deploymentFingerprint,
+        hubOraclePolicyId: configWithDaHash.hubOraclePolicyId,
+        storeHubOraclePolicyId: configWithDaHash.hubOraclePolicyId,
         storeMatchesConfigured: true,
       },
       peer: {

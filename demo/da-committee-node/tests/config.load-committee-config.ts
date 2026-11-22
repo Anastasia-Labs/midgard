@@ -20,14 +20,10 @@ import {
 import { parseMidgardNodeDeploymentInfo } from "../src/l1/deployment.js";
 import { loadPublicRetainedDaRuntimeConfig } from "../src/public-retained-da-config.js";
 import { retentionCycleOptions } from "../src/store/retention.js";
-import {
-  deploymentManifestIdFromFile,
-  withRecomputedDeploymentManifestId,
-  writeDaContractDeploymentFixture,
-} from "./config.deployment-manifest-id-from-file.js";
+import { writeDaContractDeploymentFixture } from "./config.contract-deployment-fixture.js";
 import { tempDir } from "./helpers.js";
 import {
-  DEPLOYMENT_MANIFEST_ID,
+  DEPLOYMENT_HUB_ORACLE_POLICY_ID,
   LIBP2P_PEER_ID_A,
   LIBP2P_PEER_ID_B,
   LIBP2P_PEER_ID_PUBLIC,
@@ -241,10 +237,7 @@ describe("loadCommitteeConfig", () => {
       dir,
       manifest,
     );
-    const canonicalManifest: Record<string, unknown> = {
-      ...(await readDaDeploymentFixture()),
-      manifestId: DEPLOYMENT_MANIFEST_ID,
-    };
+    const canonicalManifest = await readDaDeploymentFixture();
     const canonicalContracts = canonicalManifest.contracts as Record<
       string,
       Record<string, unknown>
@@ -402,7 +395,7 @@ describe("loadCommitteeConfig", () => {
     );
 
     expect(config.network).toBe("Preprod");
-    expect(config.deploymentFingerprint).toBe(DEPLOYMENT_MANIFEST_ID);
+    expect(config.deploymentFingerprint).toBe(DEPLOYMENT_HUB_ORACLE_POLICY_ID);
     expect(config.libp2pPrivateKeySource).toBe(LIBP2P_PRIVATE_KEY_SOURCE);
     expect(config.l1SubmitterSignerIndexes).toEqual([]);
     expect(config.daCommitteeMembers).toEqual([
@@ -413,7 +406,7 @@ describe("loadCommitteeConfig", () => {
       throw new Error("expected libp2p DA transport config");
     }
     expect(config.daTransport).toMatchObject({
-      deploymentFingerprint: DEPLOYMENT_MANIFEST_ID,
+      deploymentFingerprint: DEPLOYMENT_HUB_ORACLE_POLICY_ID,
       noHttpDaTransport: true,
       threshold: 1,
       listenMultiaddrs: ["/ip4/0.0.0.0/tcp/0"],
@@ -509,7 +502,7 @@ describe("loadCommitteeConfig", () => {
       libp2pConfigEnv(manifestPath, deploymentInfoPath),
     );
 
-    expect(config.deploymentFingerprint).toBe(DEPLOYMENT_MANIFEST_ID);
+    expect(config.deploymentFingerprint).toBe(DEPLOYMENT_HUB_ORACLE_POLICY_ID);
   });
 
   it("rejects DA URL environment overrides in libp2p mode", async () => {
@@ -642,17 +635,16 @@ describe("loadCommitteeConfig", () => {
     try {
       const dir = await tempDir();
       const deployment = await readDaDeploymentFixture();
-      const customDeployment = withRecomputedDeploymentManifestId({
+      const customDeployment = {
         ...deployment,
         network: "Custom",
         deploymentProfile: localProfile,
         deploymentProfileDigest: localDigest,
-      });
-      const manifest = libp2pManifest(
-        "01".repeat(32),
-        ["committee", "retrieval"],
-        String(customDeployment.manifestId),
-      );
+      };
+      const manifest = libp2pManifest("01".repeat(32), [
+        "committee",
+        "retrieval",
+      ]);
       manifest.network = "Custom";
       const manifestPath = join(dir, "manifest.json");
       const deploymentInfoPath = join(dir, "deployment.json");
@@ -776,12 +768,11 @@ describe("loadCommitteeConfig", () => {
       },
       {
         mutate: (manifest) => {
-          (
-            manifest.deployment as Record<string, unknown>
-          ).contract_deployment_manifest_id = "cd".repeat(32);
+          (manifest.deployment as Record<string, unknown>).fingerprint =
+            "cd".repeat(28);
         },
         error:
-          /fingerprint must equal deployment\.contract_deployment_manifest_id/,
+          /deployment\.fingerprint does not match the contract deployment's hubOraclePolicyId/,
       },
       {
         mutate: (manifest) => {
@@ -867,11 +858,7 @@ describe("loadCommitteeConfig", () => {
     const member = "01".repeat(32);
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
-    const manifest = libp2pManifest(
-      member,
-      ["committee", "retrieval"],
-      await deploymentManifestIdFromFile(deploymentInfoPath),
-    );
+    const manifest = libp2pManifest(member, ["committee", "retrieval"]);
     delete manifest.contracts;
     const expectedDeployment = parseMidgardNodeDeploymentInfo(
       JSON.parse(await readFile(deploymentInfoPath, "utf8")) as Record<
@@ -930,13 +917,7 @@ describe("loadCommitteeConfig", () => {
     const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
     await writeFile(
       manifestPath,
-      JSON.stringify(
-        libp2pManifest(
-          member,
-          ["committee", "retrieval"],
-          await deploymentManifestIdFromFile(deploymentInfoPath),
-        ),
-      ),
+      JSON.stringify(libp2pManifest(member, ["committee", "retrieval"])),
     );
     await expect(
       loadCommitteeConfig({
@@ -956,15 +937,9 @@ describe("loadCommitteeConfig", () => {
     const incompleteDeployment = await readDaDeploymentFixture();
     delete (incompleteDeployment.contracts as Record<string, unknown>)
       .daAttestationMint;
-    const deploymentWithId =
-      withRecomputedDeploymentManifestId(incompleteDeployment);
-    const manifest = libp2pManifest(
-      member,
-      ["committee", "coordinator"],
-      String(deploymentWithId.manifestId),
-    );
+    const manifest = libp2pManifest(member, ["committee", "coordinator"]);
     await writeFile(manifestPath, JSON.stringify(manifest));
-    await writeFile(deploymentInfoPath, JSON.stringify(deploymentWithId));
+    await writeFile(deploymentInfoPath, JSON.stringify(incompleteDeployment));
     await expect(
       loadCommitteeConfig({
         ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
@@ -983,13 +958,7 @@ describe("loadCommitteeConfig", () => {
     const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
     await writeFile(
       manifestPath,
-      JSON.stringify(
-        libp2pManifest(
-          member,
-          ["committee", "coordinator"],
-          await deploymentManifestIdFromFile(deploymentInfoPath),
-        ),
-      ),
+      JSON.stringify(libp2pManifest(member, ["committee", "coordinator"])),
     );
     await expect(
       loadCommitteeConfig({
@@ -1026,13 +995,7 @@ describe("loadCommitteeConfig", () => {
     const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
     await writeFile(
       manifestPath,
-      JSON.stringify(
-        libp2pManifest(
-          member,
-          ["committee", "coordinator"],
-          await deploymentManifestIdFromFile(deploymentInfoPath),
-        ),
-      ),
+      JSON.stringify(libp2pManifest(member, ["committee", "coordinator"])),
     );
 
     const config = await loadCommitteeConfig({
@@ -1067,13 +1030,7 @@ describe("loadCommitteeConfig", () => {
     const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
     await writeFile(
       manifestPath,
-      JSON.stringify(
-        libp2pManifest(
-          member,
-          ["committee", "coordinator"],
-          await deploymentManifestIdFromFile(deploymentInfoPath),
-        ),
-      ),
+      JSON.stringify(libp2pManifest(member, ["committee", "coordinator"])),
     );
     const baseEnv = {
       ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
@@ -1136,13 +1093,7 @@ describe("loadCommitteeConfig", () => {
     const deploymentInfoPath = await writeDaContractDeploymentFixture(dir);
     await writeFile(
       manifestPath,
-      JSON.stringify(
-        libp2pManifest(
-          member,
-          ["committee", "retrieval"],
-          await deploymentManifestIdFromFile(deploymentInfoPath),
-        ),
-      ),
+      JSON.stringify(libp2pManifest(member, ["committee", "retrieval"])),
     );
     const baseEnv = {
       ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
@@ -1177,14 +1128,9 @@ describe("loadCommitteeConfig", () => {
     const deploymentInfo = await readDaDeploymentFixture();
     delete (deploymentInfo.contracts as Record<string, unknown>)
       .daAttestationMint;
-    const deploymentWithId = withRecomputedDeploymentManifestId(deploymentInfo);
-    const manifest = libp2pManifest(
-      "01".repeat(32),
-      ["committee"],
-      String(deploymentWithId.manifestId),
-    );
+    const manifest = libp2pManifest("01".repeat(32), ["committee"]);
     await writeFile(manifestPath, JSON.stringify(manifest));
-    await writeFile(deploymentInfoPath, JSON.stringify(deploymentWithId));
+    await writeFile(deploymentInfoPath, JSON.stringify(deploymentInfo));
     await expect(
       loadCommitteeConfig({
         ...libp2pConfigEnv(manifestPath, deploymentInfoPath),
@@ -1194,20 +1140,15 @@ describe("loadCommitteeConfig", () => {
     ).rejects.toThrow(/contracts\.daAttestationMint is required/);
   });
 
-  it("rejects a recomputed manifest that omits a non-DA V1 contract", async () => {
+  it("rejects a manifest that omits a non-DA V1 contract", async () => {
     const dir = await tempDir();
     const manifestPath = join(dir, "manifest.json");
     const deploymentInfoPath = join(dir, "deployment.json");
     const deploymentInfo = await readDaDeploymentFixture();
     delete (deploymentInfo.contracts as Record<string, unknown>).payoutMint;
-    const deploymentWithId = withRecomputedDeploymentManifestId(deploymentInfo);
-    const manifest = libp2pManifest(
-      "01".repeat(32),
-      ["committee"],
-      String(deploymentWithId.manifestId),
-    );
+    const manifest = libp2pManifest("01".repeat(32), ["committee"]);
     await writeFile(manifestPath, JSON.stringify(manifest));
-    await writeFile(deploymentInfoPath, JSON.stringify(deploymentWithId));
+    await writeFile(deploymentInfoPath, JSON.stringify(deploymentInfo));
     await expect(
       loadCommitteeConfig(libp2pConfigEnv(manifestPath, deploymentInfoPath)),
     ).rejects.toThrow(/contracts\.payoutMint is required/);

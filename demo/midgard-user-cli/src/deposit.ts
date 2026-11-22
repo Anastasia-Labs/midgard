@@ -75,14 +75,14 @@ export const runDeposit = async (
   const recordDirectory = recordDirectoryOf(
     options,
     deps,
-    deployment.manifestId,
+    deployment.hubOraclePolicyId,
     "Deposit",
     submissionId,
   );
   await existingIntent(recordDirectory, {
     kind: "Deposit",
     submissionId,
-    manifestId: deployment.manifestId,
+    hubOraclePolicyId: deployment.hubOraclePolicyId,
     walletAddress,
     intentHash,
   });

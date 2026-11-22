@@ -38,7 +38,7 @@ const WARMUP = 50;
 const OPEN_HEADERS = 10;
 const TARGET_RATIO = 1.2;
 
-const DEPLOYMENT = "b5".repeat(32);
+const DEPLOYMENT = "b5".repeat(28);
 
 const now = (): number => Number(process.hrtime.bigint()) / 1e6;
 const median = (values: readonly number[]): number => {

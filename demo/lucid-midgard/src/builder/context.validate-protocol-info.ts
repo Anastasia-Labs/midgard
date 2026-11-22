@@ -200,9 +200,9 @@ export const buildConfigSnapshot = ({
     midgardNativeTxVersion: protocolInfo.midgardNativeTxVersion,
     currentSlot: protocolInfo.currentSlot,
     consensusProfile: protocolInfo.consensusProfile,
-    ...(protocolInfo.deploymentMarker === undefined
+    ...(protocolInfo.hubOraclePolicyId === undefined
       ? {}
-      : { deploymentMarker: { ...protocolInfo.deploymentMarker } }),
+      : { hubOraclePolicyId: protocolInfo.hubOraclePolicyId }),
     supportedScriptLanguages: cloneSupportedScriptLanguages(
       protocolInfo.supportedScriptLanguages,
     ),

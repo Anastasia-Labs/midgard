@@ -93,7 +93,7 @@ const confirmedSettle = async () => {
       .complete()
   ).toCBOR();
   const ours = SDK.inspectDaAvailabilitySignedIntent({
-    deploymentIdentity: "aa".repeat(32),
+    hubOraclePolicyId: "aa".repeat(28),
     actor,
     headerHash: "bb".repeat(28),
     action: "settle",
@@ -147,7 +147,7 @@ const confirmedSettle = async () => {
     },
     assertSourceHealthy: async () => {},
     context: {
-      deploymentIdentity: "aa".repeat(32),
+      hubOraclePolicyId: "aa".repeat(28),
       actor,
       journal,
       stateQueuePolicyId: "cc".repeat(28),
@@ -180,7 +180,7 @@ describe("a held availability intent on the committee", () => {
       });
       const discover = vi.fn(async () => []);
       const responder = new AvailabilityResponder({
-        deploymentFingerprint: "ff".repeat(32),
+        deploymentFingerprint: "ff".repeat(28),
         deploymentIdentity: "ee".repeat(28),
         store: { getDaPayload: async () => undefined } as never,
         discover,
@@ -205,7 +205,7 @@ describe("a held availability intent on the committee", () => {
 
   it("reports a conflicting intent as held instead of throwing", async () => {
     const responder = new AvailabilityResponder({
-      deploymentFingerprint: "ff".repeat(32),
+      deploymentFingerprint: "ff".repeat(28),
       deploymentIdentity: "ee".repeat(28),
       store: { getDaPayload: async () => undefined } as never,
       discover: async () => [],

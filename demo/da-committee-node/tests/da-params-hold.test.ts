@@ -1,4 +1,3 @@
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
@@ -176,7 +175,7 @@ describe("the on-chain DA params, checked every tick", () => {
   it("refuses stale deployment state at startup, before any read", async () => {
     const { service, store, chain } = await committee();
     await store.initDeployment({
-      marker: makeDeploymentMarker("44".repeat(32)),
+      hubOraclePolicyId: "44".repeat(28),
       manifestSha256: "55".repeat(32),
       contractDeploymentInfoSha256: "66".repeat(32),
       manifestRaw: "{}",

@@ -106,7 +106,7 @@ export const minimalConfig = ({
   network: "Preprod",
   deploymentManifestPath: manifestPath,
   contractDeploymentInfoPath: deploymentInfoPath,
-  deploymentFingerprint: "f".repeat(64),
+  deploymentFingerprint: "99".repeat(28),
   deploymentManifestSha256: "a".repeat(64),
   contractDeploymentInfoSha256: "b".repeat(64),
   deploymentManifestRaw: "{}",
@@ -188,7 +188,7 @@ export const minimalConfig = ({
   automaticRecoveryMaxDepth: 2,
   daTransport: {
     kind: "libp2p",
-    deploymentFingerprint: "f".repeat(64),
+    deploymentFingerprint: "99".repeat(28),
     noHttpDaTransport: true,
     threshold: 1,
     listenMultiaddrs: ["/ip4/127.0.0.1/tcp/0"],

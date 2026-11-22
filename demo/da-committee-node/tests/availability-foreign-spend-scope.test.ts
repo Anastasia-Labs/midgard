@@ -26,7 +26,7 @@ afterEach(() => {
 const fixture = () => {
   const s = scene();
   const intent = SDK.inspectDaAvailabilitySignedIntent({
-    deploymentIdentity: s.context.deploymentIdentity,
+    hubOraclePolicyId: s.context.hubOraclePolicyId,
     actor: s.context.actor,
     headerHash: s.operation.headerHash,
     action: s.operation.action,

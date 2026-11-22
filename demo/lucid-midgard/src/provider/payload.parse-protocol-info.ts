@@ -4,7 +4,6 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core/consensus-profile";
-import { parseDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import { ProviderPayloadError } from "../core/errors.js";
 import {
@@ -36,7 +35,7 @@ export const parseProtocolInfo = (
       "midgardNativeTxVersion",
       "currentSlot",
       "consensusProfile",
-      "deploymentMarker",
+      "hubOraclePolicyId",
       "supportedScriptLanguages",
       "codecSupportedScriptLanguages",
       "protocolFeeParameters",
@@ -94,17 +93,17 @@ export const parseProtocolInfo = (
       "consensusProfile does not exactly match the compiled V1 profile",
     );
   }
-  const deploymentMarker = (() => {
-    try {
-      return parseDeploymentMarker(info.deploymentMarker);
-    } catch (cause) {
-      throw new ProviderPayloadError(
-        endpoint,
-        "deploymentMarker must be the exact final DeploymentMarkerV1",
-        cause instanceof Error ? cause.message : String(cause),
-      );
-    }
-  })();
+  const hubOraclePolicyId = requireString(
+    info.hubOraclePolicyId,
+    "hubOraclePolicyId",
+    endpoint,
+  );
+  if (!/^[0-9a-f]{56}$/u.test(hubOraclePolicyId)) {
+    throw new ProviderPayloadError(
+      endpoint,
+      "hubOraclePolicyId must be a 28-byte lowercase hex policy id",
+    );
+  }
   const expectedNativeTxVersion = 1;
   const midgardNativeTxVersion = requireNumber(
     info.midgardNativeTxVersion,
@@ -177,7 +176,7 @@ export const parseProtocolInfo = (
     ...common,
     apiVersion: 1,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-    deploymentMarker,
+    hubOraclePolicyId,
   };
 };
 

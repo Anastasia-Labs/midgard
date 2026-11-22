@@ -4,7 +4,11 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  type DeploymentManifest,
+  deploymentManifestHubOraclePolicyId,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import {
   LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
@@ -24,25 +28,22 @@ export const LIBP2P_PEER_ID_PUBLIC =
 
 export const LIBP2P_PRIVATE_KEY_SOURCE = `seed:${"00".repeat(31)}01`;
 
-const canonicalDeploymentManifest = await readDaDeploymentFixture();
-
-export const DEPLOYMENT_MANIFEST_ID = canonicalDeploymentManifest.manifestId;
-if (typeof DEPLOYMENT_MANIFEST_ID !== "string") {
-  throw new Error("Canonical deployment fixture is missing manifestId");
-}
+/** The fixture deployment's hub-oracle policy id: its DA fingerprint. */
+export const DEPLOYMENT_HUB_ORACLE_POLICY_ID =
+  deploymentManifestHubOraclePolicyId(
+    (await readDaDeploymentFixture()) as unknown as DeploymentManifest,
+  );
 
 export const libp2pManifest = (
   member: string,
   roles: readonly string[] = ["committee", "retrieval"],
-  deploymentManifestId = DEPLOYMENT_MANIFEST_ID,
 ): Record<string, unknown> => ({
   schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
   network: "Preprod",
   deployment: {
-    fingerprint: deploymentManifestId.toUpperCase(),
-    contract_deployment_manifest_id: deploymentManifestId,
+    fingerprint: DEPLOYMENT_HUB_ORACLE_POLICY_ID.toUpperCase(),
     contract_deployment_info_sha256: "cd".repeat(32),
-    identity_source: "contract_deployment_manifest_id",
+    identity_source: "hub_oracle_policy_id",
   },
   runtime_topology: {
     target: "committee",
@@ -131,16 +132,8 @@ export const writeConfigFiles = async (
 
 export const writeMinimalDeploymentInfo = async (
   path: string,
-  manifestId = DEPLOYMENT_MANIFEST_ID,
 ): Promise<void> => {
-  const fixture = await readDaDeploymentFixture();
-  await writeFile(
-    path,
-    JSON.stringify({
-      ...fixture,
-      manifestId,
-    }),
-  );
+  await writeFile(path, JSON.stringify(await readDaDeploymentFixture()));
 };
 
 export const libp2pConfigEnv = (

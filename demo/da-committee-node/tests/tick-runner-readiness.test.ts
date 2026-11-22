@@ -447,7 +447,7 @@ describe("committee tick with the availability responder", () => {
   const responder = (reconcile: () => Promise<"ready" | "pending">) =>
     new AvailabilityResponder({
       deploymentIdentity: "11".repeat(28),
-      deploymentFingerprint: "22".repeat(32),
+      deploymentFingerprint: "22".repeat(28),
       store: { getDaPayload: async () => undefined },
       discover: async () => [],
       execute: async () => "confirmed",

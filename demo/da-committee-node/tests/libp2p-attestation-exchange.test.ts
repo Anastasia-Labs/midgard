@@ -58,7 +58,7 @@ import {
   signatureRecord,
 } from "./peer-coordinator.signature-record.js";
 
-const deploymentFingerprint = "11".repeat(32);
+const deploymentFingerprint = "11".repeat(28);
 
 /** A two-member committee, threshold two, attesting one fixture block. */
 const twoMemberCommittee = async () => {

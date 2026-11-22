@@ -15,7 +15,6 @@ export type CommitteePromiseActionAllowance = Readonly<{
 }>;
 export type CommitteePromiseRuntimeBinding = Readonly<{
   deploymentFingerprint: string;
-  contractManifestId: string;
   actorId: string;
   protocolDigest: string;
   runtimeBuildDigest: string;
@@ -167,8 +166,7 @@ export const verifyCommitteePromiseRuntimePolicy = (
       !Object.values(artifact.binding).every(
         (value) => typeof value === "string" && value.length > 0,
       ) ||
-      !hash(artifact.binding.deploymentFingerprint) ||
-      !hash(artifact.binding.contractManifestId) ||
+      !/^[0-9a-f]{56}$/u.test(artifact.binding.deploymentFingerprint) ||
       !/^[0-9a-f]{56}$/u.test(artifact.binding.actorId) ||
       !hash(artifact.binding.protocolDigest) ||
       !hash(artifact.binding.runtimeBuildDigest) ||

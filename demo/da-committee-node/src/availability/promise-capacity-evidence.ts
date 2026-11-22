@@ -10,7 +10,6 @@ export type PromiseCapacityPoint = Readonly<{
 }>;
 export type PromiseCapacityEvidence = Readonly<{
   deploymentFingerprint: string;
-  contractManifestId: string;
   actorId: string;
   headerHash: string;
   commitmentDigest: string;
@@ -25,10 +24,7 @@ export type PromiseCapacityEvidence = Readonly<{
 export const promiseCapacityEvidenceKey = (
   record: Pick<
     PromiseCapacityEvidence,
-    | "deploymentFingerprint"
-    | "contractManifestId"
-    | "actorId"
-    | "commitmentDigest"
+    "deploymentFingerprint" | "actorId" | "commitmentDigest"
   >,
 ): string =>
   createHash("sha256")
@@ -36,7 +32,6 @@ export const promiseCapacityEvidenceKey = (
       canonicalJson(
         {
           deploymentFingerprint: record.deploymentFingerprint,
-          contractManifestId: record.contractManifestId,
           actorId: record.actorId,
           commitmentDigest: record.commitmentDigest,
         },
@@ -66,8 +61,7 @@ export const parsePromiseCapacityEvidence = (
     throw new Error("Capacity evidence is unavailable");
   const r = value as Record<string, unknown>;
   if (
-    !hash(r.deploymentFingerprint, 64) ||
-    !hash(r.contractManifestId, 64) ||
+    !hash(r.deploymentFingerprint, 56) ||
     !hash(r.actorId, 56) ||
     !hash(r.headerHash, 56) ||
     !hash(r.commitmentDigest, 64) ||
@@ -96,7 +90,6 @@ export const parsePromiseCapacityEvidence = (
     throw new Error("Capacity floor violation lacks a prior certificate");
   return {
     deploymentFingerprint: r.deploymentFingerprint,
-    contractManifestId: r.contractManifestId,
     actorId: r.actorId,
     headerHash: r.headerHash,
     commitmentDigest: r.commitmentDigest,
@@ -123,7 +116,6 @@ export const mergePromiseCapacityEvidence = (
   const current = parsePromiseCapacityEvidence(existing);
   const identity = (r: PromiseCapacityEvidence) => ({
     deploymentFingerprint: r.deploymentFingerprint,
-    contractManifestId: r.contractManifestId,
     actorId: r.actorId,
     headerHash: r.headerHash,
     commitmentDigest: r.commitmentDigest,

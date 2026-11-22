@@ -81,7 +81,7 @@ const postgresLocation = async (): Promise<StoreLocation> => {
   };
 };
 
-const deploymentFingerprint = "cd".repeat(32);
+const deploymentFingerprint = "cd".repeat(28);
 const headerHash = "12".repeat(28);
 const stateQueueOutRef = `${"34".repeat(32)}#0`;
 

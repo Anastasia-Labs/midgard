@@ -22,8 +22,8 @@ import {
 } from "../src/index.js";
 import {
   address,
-  deploymentMarker,
   encodedUtxo,
+  hubOraclePolicyId,
   jsonResponse,
   makeOtherAddress,
   makeProvider,
@@ -48,7 +48,7 @@ describe("MidgardNodeProvider", () => {
     await expect(provider.getProtocolInfo()).resolves.toMatchObject({
       apiVersion: 1,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-      deploymentMarker,
+      hubOraclePolicyId,
       supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     });
     await expect(
@@ -209,7 +209,7 @@ describe("MidgardNodeProvider", () => {
       minFeeA: 44n,
       minFeeB: 155381n,
       networkId: 0n,
-      deploymentManifestId: deploymentMarker.manifestId,
+      hubOraclePolicyId,
       maxSubmitTxCborBytes:
         MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
     });
@@ -231,13 +231,6 @@ describe("MidgardNodeProvider", () => {
 
   it("rejects unknown nested protocol-info fields", async () => {
     const unknownKeyProtocolInfos = [
-      {
-        ...protocolInfoJson,
-        deploymentMarker: {
-          ...protocolInfoJson.deploymentMarker,
-          legacyFingerprint: protocolInfoJson.deploymentMarker.manifestId,
-        },
-      },
       {
         ...protocolInfoJson,
         protocolFeeParameters: {
@@ -298,27 +291,24 @@ describe("MidgardNodeProvider", () => {
     }
   });
 
-  it("rejects a missing or malformed final deployment marker", async () => {
-    const { deploymentMarker: _missing, ...missingMarker } = protocolInfoJson;
+  it("rejects a missing or malformed hubOraclePolicyId", async () => {
+    const { hubOraclePolicyId: _missing, ...missingPolicyId } =
+      protocolInfoJson;
     await expect(
       MidgardNodeProvider.create({
         endpoint: "http://127.0.0.1:3000",
-        fetch: async () => jsonResponse(missingMarker),
+        fetch: async () => jsonResponse(missingPolicyId),
       }),
-    ).rejects.toThrow(/deploymentMarker/u);
-    await expect(
-      MidgardNodeProvider.create({
-        endpoint: "http://127.0.0.1:3000",
-        fetch: async () =>
-          jsonResponse({
-            ...protocolInfoJson,
-            deploymentMarker: {
-              ...deploymentMarker,
-              schemaVersion: "midgard-deployment-marker-v0",
-            },
-          }),
-      }),
-    ).rejects.toThrow(/deploymentMarker/u);
+    ).rejects.toThrow(/hubOraclePolicyId/u);
+    for (const malformed of ["ab".repeat(32), "AB".repeat(28)]) {
+      await expect(
+        MidgardNodeProvider.create({
+          endpoint: "http://127.0.0.1:3000",
+          fetch: async () =>
+            jsonResponse({ ...protocolInfoJson, hubOraclePolicyId: malformed }),
+        }),
+      ).rejects.toThrow(/hubOraclePolicyId/u);
+    }
   });
 
   it("redacts endpoint credentials and query strings in diagnostics", async () => {

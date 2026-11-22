@@ -16,7 +16,7 @@ type Reconciled = "ready" | "pending" | Readonly<{ held: string }>;
 export const committeeClaimReconciliation = (args: {
   journal: AvailabilityOperationJournal;
   actorId: string;
-  deploymentIdentity: string;
+  hubOraclePolicyId: string;
   openReadScope: () => DaAvailabilityReadScope;
   readBoundary: (scope: DaAvailabilityReadScope) => Promise<Boundary>;
   reconcile: (scope: DaAvailabilityReadScope) => Promise<Reconciled>;
@@ -30,7 +30,7 @@ export const committeeClaimReconciliation = (args: {
   const { snapshot, busy: unresolved } = promiseAdmissionActorMetadata({
     journal: args.journal,
     actorId: args.actorId,
-    deploymentIdentity: args.deploymentIdentity,
+    hubOraclePolicyId: args.hubOraclePolicyId,
     maximumRetainedRecords: args.maximumRetainedRecords,
     hasCanonicalCompatibilityAuthority: true,
   });

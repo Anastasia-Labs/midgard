@@ -218,7 +218,7 @@ describe("retentionCandidatesV1", () => {
         headerHash: hashOf(8),
         endTimeMs: PAST_RETENTION,
         status: "merged",
-        deploymentFingerprint: "ee".repeat(32),
+        deploymentFingerprint: "ee".repeat(28),
       },
     ]);
     const [candidate] = await retentionCandidates(store, retentionOptions());
@@ -269,7 +269,7 @@ describe("terminal recovery payload retirement", () => {
     expect(
       await store.deleteDaPayloadIfPrunable({
         ...request,
-        deploymentFingerprint: "ee".repeat(32),
+        deploymentFingerprint: "ee".repeat(28),
       }),
     ).toBe(false);
     expect(await store.deleteDaPayloadIfPrunable(request)).toBe(true);

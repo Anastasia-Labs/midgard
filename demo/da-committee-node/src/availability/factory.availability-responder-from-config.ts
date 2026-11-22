@@ -90,15 +90,6 @@ export const availabilityResponderFromConfig = async (
     ...config,
     availabilitySubmitterKeySource: config.availabilitySubmitterKeySource,
   });
-  const contractManifestId = config.contractDeploymentInfo.manifestId;
-  if (
-    typeof contractManifestId !== "string" ||
-    !/^[0-9a-f]{64}$/u.test(contractManifestId)
-  ) {
-    throw new Error(
-      "Availability responder requires the verified contract manifest identity",
-    );
-  }
   const contracts = daAttestationValidatorsFromDeployment(
     config.midgardNodeDeployment,
   );
@@ -171,7 +162,7 @@ export const availabilityResponderFromConfig = async (
       reads,
       assertSourceHealthy,
       context: {
-        deploymentIdentity: contractManifestId,
+        hubOraclePolicyId: config.hubOraclePolicyId,
         actor,
         journal,
         stateQueuePolicyId: deployment.contracts.stateQueue.policyId,

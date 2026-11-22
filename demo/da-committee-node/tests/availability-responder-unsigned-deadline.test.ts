@@ -77,7 +77,7 @@ const scene = () => {
   } as unknown as TxSignBuilder;
   const context: DaAvailabilityOperationContext = {
     actor,
-    deploymentIdentity: "11".repeat(32),
+    hubOraclePolicyId: "11".repeat(28),
     stateQueuePolicyId: "22".repeat(28),
     journal,
     minimumConfirmationDepth: 10,
@@ -174,7 +174,7 @@ describe("absolute unsigned availability deadlines", () => {
     expect(s.build).not.toHaveBeenCalled();
     expect(s.sign).not.toHaveBeenCalled();
     expect(
-      s.journal.pending(s.context.deploymentIdentity, s.context.actor),
+      s.journal.pending(s.context.hubOraclePolicyId, s.context.actor),
     ).toEqual([]);
   });
 
@@ -200,7 +200,7 @@ describe("absolute unsigned availability deadlines", () => {
     expect(s.sign).not.toHaveBeenCalled();
     expect(s.context.submit).not.toHaveBeenCalled();
     expect(
-      s.journal.pending(s.context.deploymentIdentity, s.context.actor),
+      s.journal.pending(s.context.hubOraclePolicyId, s.context.actor),
     ).toEqual([]);
   });
 
@@ -230,7 +230,7 @@ describe("absolute unsigned availability deadlines", () => {
     const first = await runDaAvailabilityOperation(s.context, s.operation);
     expect(first.status).toBe("submitted");
     const before = s.journal.pending(
-      s.context.deploymentIdentity,
+      s.context.hubOraclePolicyId,
       s.context.actor,
     );
     const observe = vi.fn(async () => ({
@@ -245,7 +245,7 @@ describe("absolute unsigned availability deadlines", () => {
     expect(result.status).toBe("waiting");
     expect(result.txHash).toBe(first.txHash);
     expect(
-      s.journal.pending(s.context.deploymentIdentity, s.context.actor),
+      s.journal.pending(s.context.hubOraclePolicyId, s.context.actor),
     ).toEqual(before);
     expect(s.build).toHaveBeenCalledTimes(1);
     expect(s.sign).toHaveBeenCalledTimes(1);

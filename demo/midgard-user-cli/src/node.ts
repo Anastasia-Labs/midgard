@@ -12,8 +12,8 @@ export type UserNodeUtxo = {
 };
 
 export type UserNode = {
-  /** The manifest id the node reports, when it reports one. */
-  readonly deploymentManifestId: () => Promise<string | undefined>;
+  /** The hub-oracle policy id the node reports, when it reports one. */
+  readonly hubOraclePolicyId: () => Promise<string | undefined>;
   readonly utxoByOutRef: (outRef: OutRef) => Promise<UserNodeUtxo | undefined>;
   /** The exact status kind (`committed`, `not_found`, `accepted`, …). */
   readonly txStatus: (txHash: string) => Promise<string>;
@@ -28,8 +28,8 @@ export const connectMidgardNode = async (
     fetch: fetchImpl,
   });
   return {
-    deploymentManifestId: async () =>
-      (await provider.getProtocolInfo()).deploymentMarker?.manifestId,
+    hubOraclePolicyId: async () =>
+      (await provider.getProtocolInfo()).hubOraclePolicyId,
     utxoByOutRef: async (outRef) => {
       const utxo = await provider.getUtxoByOutRef(outRef);
       return utxo === undefined

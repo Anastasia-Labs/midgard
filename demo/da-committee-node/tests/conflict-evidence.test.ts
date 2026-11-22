@@ -109,7 +109,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
         signedMessage(
           encodeDaConflictEvidenceCbor({
             ...conflict,
-            deploymentFingerprint: Buffer.alloc(32, 0xcd),
+            deploymentFingerprint: Buffer.alloc(28, 0xcd),
           }),
         ),
       ),

@@ -234,9 +234,6 @@ export const loadCommitteePromiseCausalAdoption = async (input: {
     trustedPolicyDigest: adoption.trustedPolicyDigest,
     liveBinding: {
       deploymentFingerprint: input.config.deploymentFingerprint,
-      contractManifestId: String(
-        input.config.contractDeploymentInfo.manifestId,
-      ),
       actorId: input.actorId,
       protocolDigest,
       runtimeBuildDigest: input.runtimeBuildDigest,

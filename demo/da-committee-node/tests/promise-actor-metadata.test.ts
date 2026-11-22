@@ -21,7 +21,7 @@ describe("bounded admission journal metadata", () => {
   it("refuses a real retained row before materializing its identity digest", () => {
     const f = scene();
     const intent = SDK.inspectDaAvailabilitySignedIntent({
-      deploymentIdentity: f.context.deploymentIdentity,
+      hubOraclePolicyId: f.context.hubOraclePolicyId,
       actor: f.context.actor,
       headerHash: f.operation.headerHash,
       action: f.operation.action,
@@ -35,7 +35,7 @@ describe("bounded admission journal metadata", () => {
       promiseAdmissionActorMetadata({
         journal: f.journal,
         actorId: f.context.actor,
-        deploymentIdentity: f.context.deploymentIdentity,
+        hubOraclePolicyId: f.context.hubOraclePolicyId,
         maximumRetainedRecords,
         hasCanonicalCompatibilityAuthority: true,
       });

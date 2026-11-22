@@ -17,8 +17,7 @@ export const testPromiseCausalPolicy = (
     schemaVersion: 3,
     policyId: "private-controlled-test",
     binding: {
-      deploymentFingerprint: hash,
-      contractManifestId: hash,
+      deploymentFingerprint: "ab".repeat(28),
       actorId: "cd".repeat(28),
       protocolDigest: hash,
       runtimeBuildDigest: hash,

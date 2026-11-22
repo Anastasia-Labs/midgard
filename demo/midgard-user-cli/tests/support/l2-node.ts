@@ -25,7 +25,6 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core/consensus-profile";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
 import {
@@ -64,12 +63,12 @@ export type InProcessL2Node = {
 };
 
 export const inProcessL2Node = ({
-  manifestId,
+  hubOraclePolicyId,
   outputs,
   l1SlotConfig,
   ledger = outputs,
 }: {
-  readonly manifestId: string;
+  readonly hubOraclePolicyId: string;
   /** What the node serves for an address and evaluates redeemers against. */
   readonly outputs: readonly MidgardUtxo[];
   readonly l1SlotConfig: L1SlotConfig;
@@ -152,7 +151,7 @@ export const inProcessL2Node = ({
       midgardNativeTxVersion: 1,
       currentSlot: CURRENT_SLOT,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-      deploymentMarker: makeDeploymentMarker(manifestId),
+      hubOraclePolicyId,
       supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
       codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
       protocolFeeParameters: { minFeeA: MIN_FEE_A, minFeeB: MIN_FEE_B },

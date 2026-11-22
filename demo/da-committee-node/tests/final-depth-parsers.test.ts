@@ -20,8 +20,7 @@ const certifiedAtDepth = (depth: number) => ({
 
 describe("capacity evidence certificate", () => {
   const evidence = (certifiedAt: unknown) => ({
-    deploymentFingerprint: "ab".repeat(32),
-    contractManifestId: "89".repeat(32),
+    deploymentFingerprint: "ab".repeat(28),
     actorId: "cd".repeat(28),
     headerHash: "ef".repeat(28),
     commitmentDigest: "01".repeat(32),
@@ -52,9 +51,8 @@ describe("retirement floor certificate", () => {
     makeRetirementFloor({
       schemaVersion: 1,
       binding: {
-        deploymentFingerprint: "ab".repeat(32),
+        deploymentFingerprint: "ab".repeat(28),
         manifestSha256: "cd".repeat(32),
-        contractManifestId: "89".repeat(32),
         committeeSignersHash: "ef".repeat(32),
         actorId: "01".repeat(28),
         sourceAuthoritySha256: "23".repeat(32),

@@ -138,7 +138,7 @@ describe("retirement atomic authority", () => {
         check: async () => ({
           decision: {
             status: "admitted" as const,
-            deploymentId: f.binding.deploymentFingerprint,
+            hubOraclePolicyId: f.binding.deploymentFingerprint,
             reason: "controlled finite gate",
           },
           assertCurrent: async () => {
@@ -167,7 +167,7 @@ describe("retirement atomic authority", () => {
         check: async () => ({
           decision: {
             status: "admitted" as const,
-            deploymentId: f.binding.deploymentFingerprint,
+            hubOraclePolicyId: f.binding.deploymentFingerprint,
             reason: "controlled finite gate",
           },
           assertCurrent: async () => {},

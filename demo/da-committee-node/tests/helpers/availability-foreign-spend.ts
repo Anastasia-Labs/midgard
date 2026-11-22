@@ -44,7 +44,7 @@ export const FINALITY = 10;
 export const TIP_BLOCK_NO = 1_000;
 const TIP_HASH = "ab".repeat(32);
 const SPEND_POINT = { slot: 500, blockHash: "cd".repeat(32) };
-const DEPLOYMENT = "aa".repeat(32);
+const DEPLOYMENT = "aa".repeat(28);
 const HEADER = "bb".repeat(28);
 
 const dirs: string[] = [];
@@ -131,7 +131,7 @@ export const fixture = async (
   // The committee signs and persists its step, as the operation executor does
   // before its first submission.
   const ours = SDK.inspectDaAvailabilitySignedIntent({
-    deploymentIdentity: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     actor,
     headerHash: HEADER,
     action,
@@ -240,7 +240,7 @@ export const fixture = async (
     },
     assertSourceHealthy: async () => {},
     context: {
-      deploymentIdentity: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       actor,
       journal,
       stateQueuePolicyId: "cc".repeat(28),
@@ -261,7 +261,7 @@ export const fixture = async (
   const discover = vi.fn(async () => []);
   const execute = vi.fn(async () => "pending" as const);
   const responder = new AvailabilityResponder({
-    deploymentFingerprint: "ff".repeat(32),
+    deploymentFingerprint: "ff".repeat(28),
     deploymentIdentity: "ee".repeat(28),
     store: { getDaPayload: async () => undefined } as never,
     discover,

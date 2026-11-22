@@ -3,7 +3,6 @@ import type {
   ScriptLanguageTag,
 } from "@al-ft/midgard-core/codec";
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
-import type { DeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import type {
   Address,
@@ -42,7 +41,8 @@ type MidgardProtocolInfoCommon = {
 export type MidgardProtocolInfo = MidgardProtocolInfoCommon & {
   readonly apiVersion: 1;
   readonly consensusProfile: MidgardConsensusProfile;
-  readonly deploymentMarker?: DeploymentMarker;
+  /** The deployment's hub-oracle policy id, 56 lowercase hex characters. */
+  readonly hubOraclePolicyId?: string;
 };
 
 export type ProviderDiagnostics = {

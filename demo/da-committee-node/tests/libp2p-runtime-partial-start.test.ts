@@ -18,7 +18,7 @@ import {
 } from "../src/startup.js";
 import { reserveLoopbackPort } from "./libp2p-attestation-exchange.state-queue-record.js";
 
-const DEPLOYMENT_FINGERPRINT = "ab".repeat(32);
+const DEPLOYMENT_FINGERPRINT = "ab".repeat(28);
 const KEY_SOURCE = `seed:${"00".repeat(31)}b1`;
 /** A bootstrap peer that never answers: libp2p needs a non-empty list. */
 const BOOTSTRAP_KEY_SOURCE = `seed:${"00".repeat(31)}b2`;

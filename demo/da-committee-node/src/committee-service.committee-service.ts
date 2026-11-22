@@ -1,6 +1,5 @@
 import type { AvailabilityResponseAdmissionDecision } from "@al-ft/midgard-core";
 import { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { WALLET_SEED_PENDING } from "@al-ft/midgard-l1-follower";
 
 import { committeePromisePolicyStatus } from "./availability/promise-profile-selection.js";
@@ -177,7 +176,7 @@ export class CommitteeService {
 
   async initialize(): Promise<void> {
     await this.deps.store.initDeployment({
-      marker: makeDeploymentMarker(this.deps.config.deploymentFingerprint),
+      hubOraclePolicyId: this.deps.config.hubOraclePolicyId,
       manifestSha256: this.deps.config.deploymentManifestSha256,
       contractDeploymentInfoSha256:
         this.deps.config.contractDeploymentInfoSha256,
@@ -278,10 +277,10 @@ export class CommitteeService {
     if (deployment === undefined) {
       reasons.push("store deployment is not initialized");
     } else if (
-      deployment.marker.manifestId !== this.deps.config.deploymentFingerprint
+      deployment.hubOraclePolicyId !== this.deps.config.hubOraclePolicyId
     ) {
       reasons.push(
-        `store deployment manifest ID ${deployment.marker.manifestId} does not match configured ${this.deps.config.deploymentFingerprint}`,
+        `store hubOraclePolicyId ${deployment.hubOraclePolicyId} does not match configured ${this.deps.config.hubOraclePolicyId}`,
       );
     }
     if (
@@ -390,13 +389,12 @@ export class CommitteeService {
           : { observedAt: l1SourceState.observedAt }),
       },
       deployment: {
-        configuredFingerprint: this.deps.config.deploymentFingerprint,
-        ...(deployment?.marker.manifestId === undefined
+        hubOraclePolicyId: this.deps.config.hubOraclePolicyId,
+        ...(deployment === undefined
           ? {}
-          : { storeFingerprint: deployment.marker.manifestId }),
+          : { storeHubOraclePolicyId: deployment.hubOraclePolicyId }),
         storeMatchesConfigured:
-          deployment?.marker.manifestId ===
-          this.deps.config.deploymentFingerprint,
+          deployment?.hubOraclePolicyId === this.deps.config.hubOraclePolicyId,
         manifestSha256: this.deps.config.deploymentManifestSha256,
         ...(deployment?.manifestSha256 === undefined
           ? {}

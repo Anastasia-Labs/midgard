@@ -78,14 +78,14 @@ const requireCommittedProducer = (txHash: string, status: string): void => {
 /** First contact: the node's view of the selected output, checked. */
 const readSelectedOutput = async (
   node: UserNode,
-  manifestId: string,
+  hubOraclePolicyId: string,
   outRef: OutRef,
   signerKeyHash: string,
 ): Promise<{ readonly owner: string; readonly valueCbor: string }> => {
-  const nodeManifestId = await node.deploymentManifestId();
-  if (nodeManifestId !== manifestId)
+  const served = await node.hubOraclePolicyId();
+  if (served !== hubOraclePolicyId)
     refuse(
-      `The node serves deployment ${nodeManifestId ?? "(none reported)"}, not this manifest's ${manifestId}.`,
+      `The node serves hubOraclePolicyId ${served ?? "(none reported)"}, not this manifest's ${hubOraclePolicyId}.`,
     );
   const selected = await node.utxoByOutRef(outRef);
   if (selected === undefined)
@@ -151,7 +151,7 @@ export const runWithdraw = async (
   const recordDirectory = recordDirectoryOf(
     options,
     deps,
-    deployment.manifestId,
+    deployment.hubOraclePolicyId,
     "Withdrawal",
     submissionId,
   );
@@ -199,7 +199,7 @@ export const runWithdraw = async (
       : (
           await readSelectedOutput(
             await deps.connectNode(options.nodeEndpoint),
-            deployment.manifestId,
+            deployment.hubOraclePolicyId,
             l2OutRef,
             wallet.paymentKeyHash,
           )
@@ -208,7 +208,7 @@ export const runWithdraw = async (
   await existingIntent(recordDirectory, {
     kind: "Withdrawal",
     submissionId,
-    manifestId: deployment.manifestId,
+    hubOraclePolicyId: deployment.hubOraclePolicyId,
     walletAddress: wallet.address,
     intentHash,
   });

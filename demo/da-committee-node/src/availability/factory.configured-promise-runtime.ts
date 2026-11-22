@@ -82,7 +82,7 @@ export const configuredCommitteePromiseRuntime = async (input: {
   const submit = (signedCbor: string): Promise<string> => {
     if (
       !journal
-        .pending(String(config.contractDeploymentInfo.manifestId), actorId)
+        .pending(config.hubOraclePolicyId, actorId)
         .some((record) => record.intent.signedCbor === signedCbor)
     )
       throw new Error(
@@ -103,7 +103,7 @@ export const configuredCommitteePromiseRuntime = async (input: {
         assertAvailabilityResponderSourceHealthy(store, config),
       ),
     context: {
-      deploymentIdentity: String(config.contractDeploymentInfo.manifestId),
+      hubOraclePolicyId: config.hubOraclePolicyId,
       actor: actorId,
       journal,
       stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
@@ -157,7 +157,7 @@ export const configuredCommitteePromiseRuntime = async (input: {
   const claims = committeeClaimReconciliation({
     journal,
     actorId,
-    deploymentIdentity: String(config.contractDeploymentInfo.manifestId),
+    hubOraclePolicyId: config.hubOraclePolicyId,
     openReadScope: scopes.open,
     readBoundary: ops.readBoundary,
     reconcile: ops.reconcile,
@@ -168,10 +168,7 @@ export const configuredCommitteePromiseRuntime = async (input: {
   const assertCollateralCurrent = async (
     scope: SDK.DaAvailabilityReadScope,
   ) => {
-    const metadata = journal.actorSnapshot(
-      actorId,
-      String(config.contractDeploymentInfo.manifestId),
-    );
+    const metadata = journal.actorSnapshot(actorId, config.hubOraclePolicyId);
     const reserved = new Set(journal.reservedOutRefs(actorId));
     const normal = new Set(
       metadata.retainedAttempts.flatMap((item) => {
@@ -307,10 +304,7 @@ export const configuredCommitteePromiseRuntime = async (input: {
     },
     execute: async (action) => {
       const failed = journal
-        .actorSnapshot(
-          actorId,
-          String(config.contractDeploymentInfo.manifestId),
-        )
+        .actorSnapshot(actorId, config.hubOraclePolicyId)
         .retainedAttempts.filter(
           (row) =>
             row.headerHash ===

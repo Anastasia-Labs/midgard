@@ -14,9 +14,10 @@ import {
   MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
-  computeDeploymentManifestId,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
   DEPLOYMENT_MANIFEST_L1_FINALITY,
+  type DeploymentManifest,
+  deploymentManifestHubOraclePolicyId,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   daBondManifestAmounts,
@@ -97,11 +98,6 @@ export const manifestIdentityInput = (
   };
 };
 
-export const withManifestId = (input: Record<string, unknown>) => ({
-  ...input,
-  manifestId: computeDeploymentManifestId(input),
-});
-
 export const tempDirectory = (prefix: string): string =>
   mkdtempSync(join(tmpdir(), `midgard-user-cli-${prefix}-`));
 
@@ -156,11 +152,11 @@ export type UserCliHarness = Awaited<ReturnType<typeof setupUserCliHarness>>;
 
 /** The stub node serves this deployment and the given output, committed. */
 export const stubNode = (
-  manifestId: string,
+  hubOraclePolicyId: string,
   output: Awaited<ReturnType<UserNode["utxoByOutRef"]>>,
   producerStatus = "committed",
 ): UserNode => ({
-  deploymentManifestId: async () => manifestId,
+  hubOraclePolicyId: async () => hubOraclePolicyId,
   utxoByOutRef: async () => output,
   txStatus: async () => producerStatus,
 });
@@ -170,8 +166,9 @@ export const setupUserCliHarness = async () => {
     blueprint: loadUserHistoryBlueprint(),
   });
   const directory = tempDirectory("scene");
-  const manifest = withManifestId(
-    manifestIdentityInput(userHistoryManifestSections(scene)),
+  const manifest = manifestIdentityInput(userHistoryManifestSections(scene));
+  const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(
+    manifest as unknown as DeploymentManifest,
   );
   const manifestPath = join(directory, "manifest.json");
   writeFileSync(manifestPath, JSON.stringify(manifest));
@@ -260,6 +257,7 @@ export const setupUserCliHarness = async () => {
   return {
     scene,
     manifest,
+    hubOraclePolicyId,
     manifestPath,
     seedFile,
     directory,

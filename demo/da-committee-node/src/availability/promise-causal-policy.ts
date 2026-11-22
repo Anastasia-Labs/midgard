@@ -111,8 +111,7 @@ export const verifyCommitteePromiseCausalPolicy = (
       artifact.schemaVersion !== 3 ||
       !artifact.policyId ||
       canonical(artifact.binding) !== canonical(input.liveBinding) ||
-      !hash(artifact.binding.deploymentFingerprint) ||
-      !hash(artifact.binding.contractManifestId) ||
+      !/^[0-9a-f]{56}$/u.test(artifact.binding.deploymentFingerprint) ||
       !/^[0-9a-f]{56}$/u.test(artifact.binding.actorId) ||
       !hash(artifact.binding.protocolDigest) ||
       !hash(artifact.binding.runtimeBuildDigest) ||

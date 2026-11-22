@@ -24,8 +24,7 @@ export const testPromiseRuntimePolicy = (
     schemaVersion: 1,
     policyId: policy.id,
     binding: {
-      deploymentFingerprint: digest,
-      contractManifestId: digest,
+      deploymentFingerprint: "ab".repeat(28),
       actorId: "cd".repeat(28),
       protocolDigest: digest,
       runtimeBuildDigest: digest,

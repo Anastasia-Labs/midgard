@@ -1,5 +1,3 @@
-import { parseDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
-
 import type { DaStoredPayloadRecord } from "./domain.js";
 import {
   type CommitteeDeploymentRecord,
@@ -41,13 +39,11 @@ export const parseCommitteeDeploymentRecord = (
   value: unknown,
 ): CommitteeDeploymentRecord => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(
-      "committee node deployment marker record must be an object",
-    );
+    throw new Error("committee node deployment record must be an object");
   }
   const record = value as Record<string, unknown>;
   const expected = [
-    "marker",
+    "hubOraclePolicyId",
     "manifestSha256",
     "contractDeploymentInfoSha256",
     "manifestRaw",
@@ -57,25 +53,33 @@ export const parseCommitteeDeploymentRecord = (
     expected.some((key) => !Object.prototype.hasOwnProperty.call(record, key))
   ) {
     throw new Error(
-      "committee node deployment marker record must contain exactly marker, manifestSha256, contractDeploymentInfoSha256, and manifestRaw",
+      "committee node deployment record must contain exactly hubOraclePolicyId, manifestSha256, contractDeploymentInfoSha256, and manifestRaw",
     );
   }
   const digest = (field: "manifestSha256" | "contractDeploymentInfoSha256") => {
     const entry = record[field];
     if (typeof entry !== "string" || !/^[0-9a-f]{64}$/u.test(entry)) {
       throw new Error(
-        `committee node deployment marker record ${field} must be lowercase SHA-256 hex`,
+        `committee node deployment record ${field} must be lowercase SHA-256 hex`,
       );
     }
     return entry;
   };
   if (typeof record.manifestRaw !== "string") {
     throw new Error(
-      "committee node deployment marker record manifestRaw must be a string",
+      "committee node deployment record manifestRaw must be a string",
+    );
+  }
+  if (
+    typeof record.hubOraclePolicyId !== "string" ||
+    !/^[0-9a-f]{56}$/u.test(record.hubOraclePolicyId)
+  ) {
+    throw new Error(
+      "committee node deployment record hubOraclePolicyId must be 28-byte lowercase hex",
     );
   }
   return {
-    marker: parseDeploymentMarker(record.marker),
+    hubOraclePolicyId: record.hubOraclePolicyId,
     manifestSha256: digest("manifestSha256"),
     contractDeploymentInfoSha256: digest("contractDeploymentInfoSha256"),
     manifestRaw: record.manifestRaw,

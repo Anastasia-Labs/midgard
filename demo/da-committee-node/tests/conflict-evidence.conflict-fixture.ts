@@ -16,7 +16,7 @@ import { createDaTopicAllowlist } from "../src/da/libp2p/DaTopics.js";
 import { loadDaSigner, signDaAttestation } from "../src/signer.js";
 import { type PostgresCommitteeStore } from "../src/store/postgres.js";
 
-export const DEPLOYMENT_FINGERPRINT = "ab".repeat(32);
+export const DEPLOYMENT_FINGERPRINT = "ab".repeat(28);
 
 export const REPORTER_PEER_ID =
   "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";

@@ -404,9 +404,10 @@ the finalized contract-deployment manifest.
 
 `da_committee` contains `threshold` and members with `signer_index`, `da_vkey`,
 `peer_id`, `multiaddrs`, and `roles`. The configured packed keys and their order
-must agree with governed committee identity. `deployment.fingerprint` equals
-`deployment.contract_deployment_manifest_id`; the contract manifest file digest
-is bound separately. `da_transport.retention_days` must match the verified
+must agree with governed committee identity. `deployment.fingerprint` is the
+contract deployment's hub-oracle policy id (28 bytes, 56 lowercase hex
+characters), and `deployment.identity_source` is `hub_oracle_policy_id`; the
+contract manifest file digest is bound separately. `da_transport.retention_days` must match the verified
 contract manifest's `da.transportProfile.retentionDays` and be at least 15.
 For an adopted bounded runtime, the verified signed retention days govern
 whole-cohort retirement. The legacy payload-only sweeper is disabled once the

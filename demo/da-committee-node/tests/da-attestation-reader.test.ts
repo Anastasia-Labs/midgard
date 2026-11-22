@@ -20,7 +20,7 @@ const scriptAddress = (hash: string): string =>
   credentialToAddress("Preprod", { type: "Script", hash });
 
 const config = {
-  deploymentFingerprint: "dd".repeat(32),
+  deploymentFingerprint: "dd".repeat(28),
   daParamsGovernorPolicyId: "55".repeat(28),
   daParamsGovernorAddress: scriptAddress("56".repeat(28)),
   daAttestationPolicyId: "33".repeat(28),

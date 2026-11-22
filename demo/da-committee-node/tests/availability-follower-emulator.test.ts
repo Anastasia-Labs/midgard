@@ -53,13 +53,13 @@ const fixture = async (action: "settle" | "prepare" = "settle") => {
   const follower = await emulatorFollower(config);
   closers.push(follower.close);
   const actor = paymentCredentialOf(wallet.address).hash;
-  const deploymentIdentity = String(config.contractDeploymentInfo.manifestId);
+  const hubOraclePolicyId = config.hubOraclePolicyId;
   const finality = config.finalityDepth;
   const split = await wallet.split(4);
   const normal = split.coins.slice(0, 3);
   const collateral = split.coins[3]!;
   const ours = SDK.inspectDaAvailabilitySignedIntent({
-    deploymentIdentity,
+    hubOraclePolicyId,
     actor,
     headerHash: "bb".repeat(28),
     action,
@@ -92,7 +92,7 @@ const fixture = async (action: "settle" | "prepare" = "settle") => {
     reads: follower.reads,
     assertSourceHealthy: async () => {},
     context: {
-      deploymentIdentity,
+      hubOraclePolicyId,
       actor,
       journal,
       stateQueuePolicyId: config.stateQueuePolicyId,

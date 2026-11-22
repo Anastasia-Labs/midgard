@@ -1,7 +1,6 @@
 import type { AddressInfo } from "node:net";
 import { connect, createServer, type Server, type Socket } from "node:net";
 
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { retryStartup } from "../src/startup.js";
@@ -77,7 +76,7 @@ const outageProxy = async (upstream: URL) => {
   return { url: url.toString(), up, down, breakClientSides };
 };
 
-const deploymentFingerprint = "ce".repeat(32);
+const deploymentFingerprint = "ce".repeat(28);
 const headerHash = "13".repeat(28);
 const stateQueueOutRef = `${"35".repeat(32)}#0`;
 const effect: DecisionOutboxRecord = {
@@ -286,20 +285,20 @@ describe("committee node startup against a Postgres store that is not ready yet"
     const database = await databases.create();
     const store = await PostgresCommitteeStore.open(database.url);
     cleanups.push(() => store.close());
-    const marker = (manifestId: string) => ({
-      marker: makeDeploymentMarker(manifestId),
+    const deployment = (hubOraclePolicyId: string) => ({
+      hubOraclePolicyId,
       manifestSha256: "aa".repeat(32),
       contractDeploymentInfoSha256: "bb".repeat(32),
       manifestRaw: "{}",
     });
-    await store.initDeployment(marker("cc".repeat(32)));
+    await store.initDeployment(deployment("cc".repeat(28)));
     let attempts = 0;
     const reasons: string[] = [];
     await expect(
       retryStartup({
         attempt: async () => {
           attempts += 1;
-          await store.initDeployment(marker("dd".repeat(32)));
+          await store.initDeployment(deployment("dd".repeat(28)));
         },
         onFailure: (reason) => reasons.push(reason),
         write: () => undefined,

@@ -16,7 +16,7 @@ import { createDaLibp2pPublicRetainedDaPayloadRequestHandlers } from "../src/da/
 import { fakePool, openWith } from "./helpers/public-retained-da-pool.js";
 import { makeMockStream } from "./libp2p-payload-protocols.make-mock-stream.js";
 
-const FINGERPRINT = "cd".repeat(32);
+const FINGERPRINT = "cd".repeat(28);
 const HEADER_HASH = "ab".repeat(28);
 const PAYLOAD = Buffer.from("80", "hex");
 

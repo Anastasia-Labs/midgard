@@ -12,7 +12,6 @@ import type { StoreData } from "../store.committee-store.js";
 export type CommitteeRetirementBinding = Readonly<{
   deploymentFingerprint: string;
   manifestSha256: string;
-  contractManifestId: string;
   committeeSignersHash: string;
   actorId: string;
   sourceAuthoritySha256: string;
@@ -115,10 +114,9 @@ export const parseRetirementBinding = (
   const r = value as Record<string, unknown>;
   if (
     Object.keys(r).sort().join() !==
-      "actorId,committeeSignersHash,contractManifestId,deploymentFingerprint,manifestSha256,maximumEncodedBytes,maximumRecords,peerIds,recoveryDepth,retentionDays,sourceAuthoritySha256" ||
-    !hash(r.deploymentFingerprint, 64) ||
+      "actorId,committeeSignersHash,deploymentFingerprint,manifestSha256,maximumEncodedBytes,maximumRecords,peerIds,recoveryDepth,retentionDays,sourceAuthoritySha256" ||
+    !hash(r.deploymentFingerprint, 56) ||
     !hash(r.manifestSha256, 64) ||
-    !hash(r.contractManifestId, 64) ||
     !hash(r.committeeSignersHash, 64) ||
     !hash(r.actorId, 56) ||
     !hash(r.sourceAuthoritySha256, 64) ||
@@ -137,7 +135,6 @@ export const parseRetirementBinding = (
   return Object.freeze({
     deploymentFingerprint: r.deploymentFingerprint,
     manifestSha256: r.manifestSha256,
-    contractManifestId: r.contractManifestId,
     committeeSignersHash: r.committeeSignersHash,
     actorId: r.actorId,
     sourceAuthoritySha256: r.sourceAuthoritySha256,

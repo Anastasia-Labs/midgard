@@ -165,7 +165,7 @@ without `--prune-utxo`.
 ## The record
 
 ```
-<record-dir>/<manifestId>/<sha256("Deposit:" | "Withdrawal:" + id)>/   mode 0700
+<record-dir>/<hubOraclePolicyId>/<sha256("Deposit:" | "Withdrawal:" + id)>/   mode 0700
   intent.json         the request and its intent hash; written once
   attempt-0001.json   one signed transaction, its hash and TTL slot; written once
   attempt-0002.json   ...

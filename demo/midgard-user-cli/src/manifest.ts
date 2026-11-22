@@ -1,6 +1,6 @@
 /**
  * The deployment a submission targets: a manifest whose identity checks
- * (canonical profile, economics, network slot mapping, manifest id), whose
+ * (canonical profile, economics, network slot mapping), whose
  * user-history contracts come from its own script CBOR, and whose network and
  * slot mapping pick the L1 the tool talks to. A forced order also reads the
  * tx-order contract.
@@ -29,7 +29,8 @@ import { type Network } from "@lucid-evolution/lucid";
 import { refuse } from "./options.js";
 
 export type UserDeployment = {
-  readonly manifestId: string;
+  /** The deployment's identity, 56 lowercase hex characters. */
+  readonly hubOraclePolicyId: string;
   readonly network: Network;
   readonly slotConfig: L1SlotConfig;
   readonly contracts: UserHistoryContracts;
@@ -94,7 +95,7 @@ const userDeploymentOf = (
         sourcePath: path,
       });
     return {
-      manifestId: manifest.manifestId,
+      hubOraclePolicyId: contracts.hubOracle.policyId,
       network,
       slotConfig: parseL1SlotConfig(
         (value as { l1SlotConfig?: unknown }).l1SlotConfig,

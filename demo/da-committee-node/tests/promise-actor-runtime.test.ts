@@ -53,7 +53,7 @@ describe("committee actor runtime drainage", () => {
     await vi.advanceTimersByTimeAsync(30);
     await refused;
     expect(
-      s.journal.actorSnapshot(s.context.actor, s.context.deploymentIdentity),
+      s.journal.actorSnapshot(s.context.actor, s.context.hubOraclePolicyId),
     ).toMatchObject({
       retainedRecordCount: 0,
       reservedResourceCount: 0,

@@ -37,9 +37,12 @@ let harness: UserCliHarness;
 let ownKeyHash: string;
 let outputs: ReturnType<typeof l2Output>[];
 
-const node = (ledger = outputs) =>
+const node = (
+  ledger = outputs,
+  hubOraclePolicyId = harness.hubOraclePolicyId,
+) =>
   inProcessL2Node({
-    manifestId: harness.manifest.manifestId,
+    hubOraclePolicyId,
     outputs,
     ledger,
     l1SlotConfig: harness.slotConfig,
@@ -192,6 +195,21 @@ describe("midgard-user plutus-tx", () => {
       );
       expect(mint).toContain(printed.policyId);
       expect(mint).toContain(ASSET_NAME_HEX);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "refuses a node serving another hubOraclePolicyId and submits nothing",
+    async () => {
+      const foreign = "ab".repeat(28);
+      const l2 = node(outputs, foreign);
+      const result = await plutusTx(l2);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(
+        `The node serves hubOraclePolicyId ${foreign}, not this manifest's ${harness.hubOraclePolicyId}.`,
+      );
+      expect(l2.submitted()).toEqual([]);
     },
     TEST_TIMEOUT_MS,
   );

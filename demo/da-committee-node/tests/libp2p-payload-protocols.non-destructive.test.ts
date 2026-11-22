@@ -390,7 +390,7 @@ describe("DA libp2p capabilities answers a foreign deployment fingerprint", () =
   it("answers with the local fingerprint so the prober sees the mismatch", async () => {
     const fixture = await makePayloadFixture();
     const handlers = singleRecordHandlers(settledRecord(fixture, "verified"));
-    const foreignFingerprint = Buffer.alloc(32, 0x02);
+    const foreignFingerprint = Buffer.alloc(28, 0x02);
 
     const capabilities = decodeDaCapabilitiesResponseCbor(
       await handlers.handleCapabilities(
