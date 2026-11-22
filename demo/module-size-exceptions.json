@@ -1011,7 +1011,7 @@
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts",
-    "max": 708,
+    "max": 566,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {

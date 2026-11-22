@@ -31,7 +31,7 @@ import {
  * The availability journal reconciled against a follower store that prunes.
  * The reads, the journal and the reconciliation pass are the real ones; only
  * the deployment identity is a stand-in, since `operation` reads nothing
- * from it but the manifest id.
+ * from it but the hub-oracle policy id.
  */
 
 export const MANIFEST = "a1".repeat(28);

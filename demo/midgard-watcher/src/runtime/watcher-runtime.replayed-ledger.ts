@@ -29,7 +29,7 @@ import type { WatcherOperationsSink } from "./operations-observability.js";
 /**
  * Allocate the origin floor before the follower, then bind its replay facts.
  * The deployment's replayed ledgers live in
- * `replayed-ledger-<manifest id>.sqlite` in the journal directory, with the
+ * `replayed-ledger-<hub-oracle policy id>.sqlite` in the journal directory, with the
  * verified confirmed head, open from `bind` until its `close`. A confirmed
  * block that does not open its root raises `root_mismatch` on
  * `operationsSink`, and a ledger the store lost `replayed_ledger_root_lost`.
