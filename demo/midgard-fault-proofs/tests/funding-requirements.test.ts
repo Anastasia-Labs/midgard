@@ -161,7 +161,7 @@ describe("production workflow funding requirements V1", () => {
     const profile = createWorkflowFundingRequirements(input());
     for (const substituted of [
       { ...profile, profileDigest: "ff".repeat(32) },
-      { ...profile, deploymentFingerprint: "ff".repeat(32) },
+      { ...profile, hubOraclePolicyId: "ff".repeat(28) },
       { ...profile, fundingPaymentKeyHash: "ff".repeat(28) },
       {
         ...profile,

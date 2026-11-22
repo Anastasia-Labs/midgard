@@ -87,7 +87,7 @@ const scene = async (stage: Stage) => {
       : terminalVerifier;
   const run = () =>
     runAdmittedFraudProofWorkflow({
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       category: "doubleSpend",
       headerHash,
       prepareFamilyArtifact: async () => ({}),
@@ -100,14 +100,14 @@ const scene = async (stage: Stage) => {
         run: process.run(objective),
         permit: actuation.actuationPermit,
         decisionDigest: actuation.decisionDigest,
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         category: "doubleSpend",
         headerHash,
       }),
       terminalVerifier: verifier,
       releaseFinality: {
         ...releaseFinality,
-        deploymentIdentityDigest: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
       },
     });
   return { sent, run };

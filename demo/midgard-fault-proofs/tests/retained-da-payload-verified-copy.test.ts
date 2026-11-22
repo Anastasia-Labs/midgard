@@ -100,7 +100,7 @@ const libp2pSource = (served: Readonly<Record<string, PeerServes>>) => {
   };
   const source = new DaLibp2pRetainedDaSource({
     sourceId: "committee-libp2p",
-    deploymentFingerprint: "11".repeat(32),
+    deploymentFingerprint: "11".repeat(28),
     peers: Object.keys(served).map((peerId) => ({ peerId })),
     transport,
   });

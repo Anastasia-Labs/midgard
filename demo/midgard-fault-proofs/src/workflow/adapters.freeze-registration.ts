@@ -13,7 +13,7 @@ export const WORKFLOW_APPLICATION_REGISTRY_SCHEMA_VERSION =
 /** Permit-free identity/configuration used only for startup readiness. */
 export type WorkflowAdapterReadinessInput = {
   readonly category: FraudProofCatalogueCategoryName;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly headerHash: string;
   /** Versioned infrastructure configuration only; never proof evidence. */
   readonly runtimeConfigPath: string;
@@ -66,13 +66,13 @@ export type WorkflowAdapterRegistration =
 
 export type WorkflowApplicationRunnerInstallation = Readonly<{
   readonly category: FraudProofCatalogueCategoryName;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly runner: WorkflowAdapterRunner;
 }>;
 
 export type WorkflowApplicationRegistry = Readonly<{
   readonly schemaVersion: typeof WORKFLOW_APPLICATION_REGISTRY_SCHEMA_VERSION;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly installedCategories: readonly FraudProofCatalogueCategoryName[];
   /** Exact full-catalogue overlay; static rows remain unchanged. */
   readonly registrations: readonly WorkflowAdapterRegistration[];

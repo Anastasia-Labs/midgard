@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 
-import { parseDeploymentManifestEconomics } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  deploymentManifestHubOraclePolicyId,
+  parseDeploymentManifestEconomics,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import {
   validatorToAddress,
@@ -170,7 +173,7 @@ const bindFraudProofDeployment = async <
   }
   return {
     bindingVersion: FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING,
-    deploymentFingerprint: manifest.manifestId,
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
     blueprintHash: manifest.artifacts.blueprintHash,
     network: manifest.network,
     // Parsed once, by the contract resolution above, and passed down so no
@@ -311,7 +314,7 @@ export const bindFraudProofDisputeDeployment = <
 
 export type FraudProofTerminalDeploymentBinding = Pick<
   FraudProofWorkflowDeploymentBinding<FraudProofCatalogueCategoryName>,
-  "deploymentFingerprint" | "releaseFinality" | "releaseEconomics"
+  "hubOraclePolicyId" | "releaseFinality" | "releaseEconomics"
 > & { readonly definition: FraudProofRawL1TerminalDefinition };
 
 /** Completion reads have no live-thread decoder or transaction capability. */
@@ -326,7 +329,7 @@ export const bindFraudProofTerminalDeployment = async (
     stepDatumSchemas: null,
   });
   return {
-    deploymentFingerprint: binding.deploymentFingerprint,
+    hubOraclePolicyId: binding.hubOraclePolicyId,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: {

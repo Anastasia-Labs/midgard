@@ -45,7 +45,7 @@ import {
 import { buildAndSubmit } from "./support/submit-steps.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
-  DEPLOYMENT_FINGERPRINT,
+  HUB_ORACLE_POLICY_ID,
   makeAdapter,
   terminalVerifier,
 } from "./workflow.make-adapter.js";
@@ -54,7 +54,7 @@ const finalityPolicy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const FINAL_DEPTH = finalityPolicy.automaticRecoveryMaxDepth + 2;
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: DEPLOYMENT_FINGERPRINT,
+  hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
   blueprintHash: "bb".repeat(32),
   policyDigest: computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
   policy: finalityPolicy,
@@ -69,7 +69,6 @@ const economicsPolicy = {
 } as const;
 const releaseEconomics = {
   schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: DEPLOYMENT_FINGERPRINT,
   blueprintHash: "bb".repeat(32),
   policyDigest: computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
   policy: economicsPolicy,
@@ -214,7 +213,7 @@ const scene = async () => {
   const process = createTestWorkflowProcess();
   const run = async (): Promise<FraudProofWorkflowRunResult> =>
     await runAdmittedFraudProofWorkflow({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       category: "doubleSpend",
       headerHash,
       prepareFamilyArtifact: async () => ({}),

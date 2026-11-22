@@ -9,6 +9,7 @@
  * coins.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
@@ -103,7 +104,9 @@ export const preparePermissionlessSlashControl = async ({
     throw new Error("Canonical builder did not mint its live slash authority");
   const { manifest } = evidence;
   expect(authority.headerHash).toBe(evidence.headerHash);
-  expect(authority.deploymentFingerprint).toBe(manifest.manifestId);
+  expect(authority.hubOraclePolicyId).toBe(
+    deploymentManifestHubOraclePolicyId(manifest),
+  );
   await assertRemovedHeader({
     authority,
     manifest,
@@ -112,13 +115,13 @@ export const preparePermissionlessSlashControl = async ({
   });
   const observation = authenticatedHeaderObservation(evidence);
   const classifier = await createHeaderClassifier({
-    deploymentFingerprint: manifest.manifestId,
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
     replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority: {
       authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
       verifyForWorkflow: async () => ({
         schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-        deploymentIdentityDigest: manifest.manifestId,
+        hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
         blueprintHash: manifest.artifacts.blueprintHash,
         policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
           manifest.l1Finality,

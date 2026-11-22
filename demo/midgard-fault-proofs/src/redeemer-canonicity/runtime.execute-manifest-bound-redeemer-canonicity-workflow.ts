@@ -61,7 +61,7 @@ export const executeManifestBoundRedeemerCanonicityWorkflow = async ({
     headerHash: workflow.binding.definition.headerHash,
   });
   return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
+    hubOraclePolicyId: workflow.binding.hubOraclePolicyId,
     observation,
     sources,
     replayer: REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,

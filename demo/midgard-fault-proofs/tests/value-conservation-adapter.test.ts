@@ -65,7 +65,7 @@ const transaction = (
 
 const identity = {
   schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  deploymentFingerprint: hash("aa"),
+  hubOraclePolicyId: "aa".repeat(28),
   category: "valueNotPreserved",
   target: { kind: "state_queue_header", headerHash: "ab".repeat(28) },
 } as const;

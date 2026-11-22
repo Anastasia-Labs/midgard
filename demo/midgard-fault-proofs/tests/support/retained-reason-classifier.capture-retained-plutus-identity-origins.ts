@@ -166,7 +166,7 @@ export const captureRetainedPlutusIdentityOrigins = async (
   const policy = { ...RELEASE_L1_FINALITY_POLICY };
   const finality = {
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: "d1".repeat(32),
+    hubOraclePolicyId: "d1".repeat(28),
     blueprintHash: "e1".repeat(32),
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
     policy,
@@ -176,7 +176,7 @@ export const captureRetainedPlutusIdentityOrigins = async (
     capture: async (request) => ({
       snapshot: {
         schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
-        deploymentIdentityDigest: request.deploymentIdentityDigest,
+        hubOraclePolicyId: request.hubOraclePolicyId,
         blueprintHash: request.blueprintHash,
         finalityPolicyDigest: request.finalityPolicyDigest,
         headerHash: request.headerHash,

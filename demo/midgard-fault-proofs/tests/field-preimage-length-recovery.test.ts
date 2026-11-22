@@ -76,9 +76,9 @@ import {
   category,
   context,
   createFieldPreimageLengthRecoveryAdapter,
-  deploymentFingerprint,
   forbidden,
   hash,
+  hubOraclePolicyId,
   material,
   outRef,
   rawFixture,
@@ -258,7 +258,7 @@ it.each(["fresh authorizing decision", "wrong authorizing decision"] as const)(
     const first = createFieldPreimageLengthRecoveryAdapter(fixture.workflow);
     const familyArtifact = await first.transactions.prepareRaw!(routed);
     const publicSource = new DaLibp2pRetainedDaSource({
-      deploymentFingerprint,
+      deploymentFingerprint: hubOraclePolicyId,
       peers: [{ peerId: "12D3KooWfieldRecoveryTest" }],
       transport: { request: async () => forbidden() },
     });
@@ -275,7 +275,7 @@ it.each(["fresh authorizing decision", "wrong authorizing decision"] as const)(
       },
     });
     const classifier = await createHeaderClassifier({
-      deploymentFingerprint,
+      hubOraclePolicyId,
       replayer: FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: {
         authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
@@ -394,7 +394,7 @@ it.each(["fresh authorizing decision", "wrong authorizing decision"] as const)(
     const resume = async () =>
       (await runner.runOrResume({
         category,
-        deploymentFingerprint,
+        hubOraclePolicyId,
         headerHash,
         decisionDigest: freshDecision.decisionDigest,
         actuationPermit: controller.permit,

@@ -6,16 +6,16 @@ import {
 } from "../../src/validation-trace-dispute/case-history.js";
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
 import {
-  DEPLOYMENT_FINGERPRINT,
+  HUB_ORACLE_POLICY_ID,
   releaseFinalityAuthority,
 } from "./workflow-authorities.js";
 
 export const sceneCaseHistory = (
   scene: Scene,
-  deploymentFingerprint: string = DEPLOYMENT_FINGERPRINT,
+  hubOraclePolicyId: string = HUB_ORACLE_POLICY_ID,
 ): ValidationTraceCaseHistory => {
   const history = releaseFinalityAuthority()
-    .verifyForWorkflow({ deploymentFingerprint })
+    .verifyForWorkflow({ hubOraclePolicyId })
     .then((releaseFinality) =>
       createValidationTraceCaseHistory({
         authority: scene.l1.authority,

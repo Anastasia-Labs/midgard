@@ -33,11 +33,11 @@ import { terminalVerifierOf } from "./support/terminal-verifier.js";
 const hash = (byte: string) => byte.repeat(32);
 const category = "fieldItemWidthIllegal";
 const headerHash = "11".repeat(28);
-const deploymentFingerprint = hash("22");
+const hubOraclePolicyId = "22".repeat(28);
 const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: deploymentFingerprint,
+  hubOraclePolicyId,
   blueprintHash: hash("44"),
   policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
   policy,
@@ -49,7 +49,7 @@ const recovery = () => {
   const unsealed: Omit<HeaderFaultDecision, "decisionDigest"> = {
     schemaVersion: HEADER_DECISION,
     classifierVersion: HEADER_CLASSIFIER,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     headerHash,
     authenticatedObservationDigest: hash("55"),
     payloadEnvelopeSha256: hash("66"),
@@ -71,7 +71,7 @@ const recovery = () => {
   };
   const controller = createWorkflowReconciliationPermitController({
     decision,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     rollbackGeneration: "0",
   });
   const forbidden = vi.fn(async (): Promise<never> => {
@@ -89,7 +89,7 @@ const recovery = () => {
   const prepare = () =>
     prepareReconcileThroughRunner({
       category,
-      deploymentFingerprint,
+      hubOraclePolicyId,
       headerHash,
       decisionDigest: decision.decisionDigest,
       permit: controller.permit,

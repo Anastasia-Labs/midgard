@@ -2,6 +2,7 @@ import {
   type DeploymentManifest,
   type DeploymentManifestCardanoProtocolParameters,
   type DeploymentManifestContractEntry,
+  deploymentManifestHubOraclePolicyId,
   parseDeploymentManifestEconomics,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -45,7 +46,7 @@ export type FraudProofWorkflowDeploymentBinding<
   Category extends FraudProofCatalogueCategoryName,
 > = {
   readonly bindingVersion: typeof FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly blueprintHash: string;
   readonly network: Network;
   readonly blueprint: ParsedFaultProofBlueprint;
@@ -85,14 +86,14 @@ export type FraudProofWorkflowDeploymentBinding<
 export const releaseFinalityAuthorityFromDeploymentBinding = (
   binding: Pick<
     FraudProofWorkflowDeploymentBinding<FraudProofCatalogueCategoryName>,
-    "deploymentFingerprint" | "releaseFinality"
+    "hubOraclePolicyId" | "releaseFinality"
   >,
 ): FraudProofReleaseFinalityAuthority => ({
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
-  verifyForWorkflow: async ({ deploymentFingerprint }) => {
-    if (deploymentFingerprint !== binding.deploymentFingerprint) {
+  verifyForWorkflow: async ({ hubOraclePolicyId }) => {
+    if (hubOraclePolicyId !== binding.hubOraclePolicyId) {
       throw new Error(
-        "workflow deployment fingerprint differs from the finalized manifest",
+        "workflow hub-oracle policy id differs from the finalized manifest",
       );
     }
     return binding.releaseFinality;
@@ -288,7 +289,7 @@ export const releasePolicies = (
   const finalityPolicy = releaseL1FinalityPolicyOf(manifest.l1Finality);
   const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: manifest.manifestId,
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
     blueprintHash: manifest.artifacts.blueprintHash,
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
     policy: finalityPolicy,
@@ -306,7 +307,6 @@ export const releasePolicies = (
   };
   const releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy = {
     schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: manifest.manifestId,
     blueprintHash: manifest.artifacts.blueprintHash,
     policyDigest:
       computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),

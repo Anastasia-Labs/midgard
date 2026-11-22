@@ -32,7 +32,7 @@ const categories = [
   "observerOrderInvalid",
   "redeemerCanonicity",
 ] as const;
-const deploymentFingerprint = hash("22");
+const hubOraclePolicyId = "22".repeat(28);
 const key = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x33));
 const inputs = CML.TransactionInputList.new();
 inputs.add(
@@ -52,7 +52,7 @@ const body = CML.TransactionBody.new(inputs, outputs, 200000n);
 const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: deploymentFingerprint,
+  hubOraclePolicyId,
   blueprintHash: hash("44"),
   policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
   policy,
@@ -174,7 +174,7 @@ it.each(categories)(
       redeemerCanonicity: "redeemer-malformed",
     }[category];
     const result = await runFraudProofWorkflow({
-      deploymentFingerprint,
+      hubOraclePolicyId,
       evidence,
       detections: [
         {

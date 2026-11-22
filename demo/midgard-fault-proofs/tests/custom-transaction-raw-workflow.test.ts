@@ -37,13 +37,13 @@ const categories = [
   "observersForbiddenOnUntaggedNetwork",
 ] as const;
 type Category = (typeof categories)[number];
-const deploymentFingerprint = "22".repeat(32);
+const hubOraclePolicyId = "22".repeat(28);
 const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const releaseFinalityAuthority = {
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => ({
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: deploymentFingerprint,
+    hubOraclePolicyId,
     blueprintHash: "44".repeat(32),
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
     policy,
@@ -132,7 +132,7 @@ const fixtureFor = async (category: Category) => {
   };
   const workflow = {
     binding: {
-      deploymentFingerprint,
+      hubOraclePolicyId,
       definition: { headerHash: fixture.headerHash },
     },
     decisionDigest: undefined,
@@ -212,7 +212,7 @@ it.each(categories)(
     };
     await expect(
       runFraudProofWorkflowFromRetainedDa({
-        deploymentFingerprint,
+        hubOraclePolicyId,
         observation: fixture.observation,
         sources: fixture.sources,
         replayer:

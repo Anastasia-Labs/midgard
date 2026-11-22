@@ -152,7 +152,7 @@ export const createManifestBoundDoubleSpendWorkflow = async (
 
 /** Run/resume surface for supported constrained shapes; not production-ready. */
 export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
-  deploymentFingerprint,
+  hubOraclePolicyId,
   observation,
   sources,
   run,
@@ -162,7 +162,7 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
   maxSubmissionAttempts,
   maxActions,
 }: {
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly run: WorkflowRun;
@@ -176,7 +176,7 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
   const adapter =
     bound ?? createDoubleSpendConstrainedWorkflowAdapter(adapterConfig);
   return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint,
+    hubOraclePolicyId,
     observation,
     sources,
     replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
@@ -222,7 +222,7 @@ export const runOrResumeManifestBoundDoubleSpendWorkflow = async ({
     { headerHash: workflow.binding.definition.headerHash },
   );
   return await runOrResumeConstrainedDoubleSpendWorkflow({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
+    hubOraclePolicyId: workflow.binding.hubOraclePolicyId,
     observation,
     sources,
     run,

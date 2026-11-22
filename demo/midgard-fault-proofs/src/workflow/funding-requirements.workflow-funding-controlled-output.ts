@@ -20,6 +20,8 @@ const UNIT = /^[0-9a-f]{56}(?:[0-9a-f]{2}){0,32}$/u;
 
 export const PAYMENT_KEY_HASH = /^[0-9a-f]{56}$/u;
 
+const POLICY_ID = /^[0-9a-f]{56}$/u;
+
 export const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
 export type WorkflowFundingScope =
@@ -130,7 +132,7 @@ export type WorkflowFundingAction = WorkflowFundingActionMeasurement &
 
 export type WorkflowFundingRequirementsInput = Readonly<{
   scope: WorkflowFundingScope;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   blueprintSha256: string;
   protocolParametersDigest: string;
   economicsPolicyDigest: string;
@@ -156,7 +158,7 @@ export const isProtocolFundedWorkflowAction = (
 export type WorkflowFundingRequirements = Readonly<{
   schemaVersion: typeof WORKFLOW_FUNDING_REQUIREMENTS;
   scope: WorkflowFundingScope;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   blueprintSha256: string;
   protocolParametersDigest: string;
   economicsPolicyDigest: string;
@@ -215,6 +217,13 @@ export const natural = (value: unknown, field: string): string => {
 export const digestField = (value: unknown, field: string): string => {
   if (typeof value !== "string" || !DIGEST.test(value)) {
     throw new Error(`${field} must be 32-byte lowercase hex`);
+  }
+  return value;
+};
+
+export const policyIdField = (value: unknown, field: string): string => {
+  if (typeof value !== "string" || !POLICY_ID.test(value)) {
+    throw new Error(`${field} must be 28-byte lowercase hex`);
   }
   return value;
 };

@@ -40,7 +40,7 @@ export const RELEASE_L1_FINALITY_POLICY: ReleaseL1FinalityPolicy =
  */
 export type VerifiedFraudProofReleaseFinalityPolicy = {
   readonly schemaVersion: typeof FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION;
-  readonly deploymentIdentityDigest: string;
+  readonly hubOraclePolicyId: string;
   readonly blueprintHash: string;
   readonly policyDigest: string;
   readonly policy: ReleaseL1FinalityPolicy;
@@ -50,11 +50,12 @@ export type VerifiedFraudProofReleaseFinalityPolicy = {
 export interface FraudProofReleaseFinalityAuthority {
   readonly authorityVersion: typeof FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY;
   verifyForWorkflow(input: {
-    readonly deploymentFingerprint: string;
+    readonly hubOraclePolicyId: string;
   }): Promise<VerifiedFraudProofReleaseFinalityPolicy>;
 }
 
 const DIGEST = /^[0-9a-f]{64}$/u;
+const POLICY_ID = /^[0-9a-f]{56}$/u;
 
 const canonicalPolicyJson = (policy: ReleaseL1FinalityPolicy): string =>
   JSON.stringify({
@@ -76,11 +77,10 @@ export const validateVerifiedFraudProofReleaseFinalityPolicy = (
   ) {
     throw new Error("release finality policy has an unsupported schema");
   }
-  if (
-    !DIGEST.test(value.deploymentIdentityDigest) ||
-    !DIGEST.test(value.blueprintHash) ||
-    !DIGEST.test(value.policyDigest)
-  ) {
+  if (!POLICY_ID.test(value.hubOraclePolicyId)) {
+    throw new Error("release finality hubOraclePolicyId must be 28-byte hex");
+  }
+  if (!DIGEST.test(value.blueprintHash) || !DIGEST.test(value.policyDigest)) {
     throw new Error("release finality identity digests must be 32-byte hex");
   }
   if (
@@ -104,7 +104,7 @@ export const validateVerifiedFraudProofReleaseFinalityPolicy = (
   // it can never reach a workflow's identity.
   return Object.freeze({
     schemaVersion: value.schemaVersion,
-    deploymentIdentityDigest: value.deploymentIdentityDigest,
+    hubOraclePolicyId: value.hubOraclePolicyId,
     blueprintHash: value.blueprintHash,
     policyDigest: value.policyDigest,
     policy: releaseL1FinalityPolicyOf(value.policy),

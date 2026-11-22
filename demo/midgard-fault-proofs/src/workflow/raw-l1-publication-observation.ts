@@ -61,7 +61,7 @@ export const createFraudProofAuthenticatedPublicationObserver = ({
       const historyUnits =
         input.expectedUnit === undefined ? [] : [input.expectedUnit];
       const request = {
-        deploymentIdentityDigest: releaseFinality.deploymentIdentityDigest,
+        hubOraclePolicyId: releaseFinality.hubOraclePolicyId,
         blueprintHash: releaseFinality.blueprintHash,
         finalityPolicyDigest: releaseFinality.policyDigest,
         headerHash: input.headerHash,

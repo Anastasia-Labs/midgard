@@ -59,7 +59,7 @@ export const sealPreUnionDecision = ({
   const common = {
     schemaVersion: HEADER_DECISION,
     classifierVersion: HEADER_CLASSIFIER,
-    deploymentFingerprint: classifier.deploymentFingerprint,
+    hubOraclePolicyId: classifier.hubOraclePolicyId,
     headerHash,
     authenticatedObservationDigest: observationDigest,
     payloadEnvelopeSha256,

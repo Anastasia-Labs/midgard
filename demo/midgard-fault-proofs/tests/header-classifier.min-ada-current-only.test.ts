@@ -25,7 +25,7 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { retainedDaSource } from "./helpers/header-classifier.retained-da-source.js";
 
-const deploymentFingerprint = "d1".repeat(32);
+const hubOraclePolicyId = "d1".repeat(28);
 const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const output = (lovelace: bigint) =>
   encodeMidgardTxOutput({
@@ -60,13 +60,13 @@ const classify = async (emptyPredecessor: boolean, lovelace: bigint) => {
   });
   const observation = authenticatedHeaderObservation(current);
   const classifier = await createHeaderClassifier({
-    deploymentFingerprint,
+    hubOraclePolicyId,
     replayer: MIN_ADA_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority: {
       authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
       verifyForWorkflow: async () => ({
         schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-        deploymentIdentityDigest: deploymentFingerprint,
+        hubOraclePolicyId,
         blueprintHash: "e1".repeat(32),
         policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
         policy,

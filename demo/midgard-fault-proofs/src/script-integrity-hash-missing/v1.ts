@@ -234,7 +234,7 @@ export const executeManifestBoundScriptIntegrityHashMissingWorkflow = async ({
     headerHash: workflow.binding.definition.headerHash,
   });
   return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
+    hubOraclePolicyId: workflow.binding.hubOraclePolicyId,
     observation,
     sources,
     replayer: SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY,

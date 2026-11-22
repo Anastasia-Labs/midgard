@@ -96,7 +96,7 @@ export const runAcceptedForcedAdapter = async ({
   };
   const identity: FraudProofWorkflowIdentity = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: "a1".repeat(32),
+    hubOraclePolicyId: "a1".repeat(28),
     category: "networkId",
     target: {
       kind: "state_queue_header" as const,

@@ -59,7 +59,7 @@ export type FamilyApplicationWorkflowIdentity<
   Category extends FraudProofCatalogueCategoryName,
 > = Readonly<{
   binding: Readonly<{
-    deploymentFingerprint: string;
+    hubOraclePolicyId: string;
     definition: Readonly<{
       category: Category;
       headerHash: string;
@@ -259,20 +259,20 @@ export const assertManifestBoundWorkflowIdentity = <
 >({
   workflow,
   category,
-  deploymentFingerprint,
+  hubOraclePolicyId,
   headerHash,
   bindsDecisionDigest,
   decisionDigest,
 }: {
   readonly workflow: FamilyApplicationWorkflowIdentity<Category>;
   readonly category: Category;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly headerHash: string;
   readonly bindsDecisionDigest: boolean;
   readonly decisionDigest: string | undefined;
 }): void => {
   if (
-    workflow.binding.deploymentFingerprint !== deploymentFingerprint ||
+    workflow.binding.hubOraclePolicyId !== hubOraclePolicyId ||
     workflow.binding.definition.category !== category ||
     workflow.binding.definition.headerHash !== headerHash
   ) {

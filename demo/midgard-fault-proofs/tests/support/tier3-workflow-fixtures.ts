@@ -120,7 +120,7 @@ export const workflowIdentity = (
   category: "doubleSpend" | "networkId",
 ): FraudProofWorkflowIdentity => ({
   schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  deploymentFingerprint: "d1".repeat(32),
+  hubOraclePolicyId: "d1".repeat(28),
   category,
   target: { kind: "state_queue_header", headerHash: HEADER_HASH },
 });

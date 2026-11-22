@@ -17,6 +17,7 @@ import {
   isProtocolFundedWorkflowAction,
   MEASUREMENT_VERSION,
   PAYMENT_KEY_HASH,
+  policyIdField,
   WORKFLOW_FUNDING_REQUIREMENTS,
   type WorkflowFundingRequirementsInput,
   type WorkflowFundingScope,
@@ -30,7 +31,7 @@ export const normalizedRequirements = (
     value,
     [
       "scope",
-      "deploymentFingerprint",
+      "hubOraclePolicyId",
       "blueprintSha256",
       "protocolParametersDigest",
       "economicsPolicyDigest",
@@ -272,9 +273,9 @@ export const normalizedRequirements = (
   }
   return Object.freeze({
     scope,
-    deploymentFingerprint: digestField(
-      record.deploymentFingerprint,
-      "funding requirements deployment fingerprint",
+    hubOraclePolicyId: policyIdField(
+      record.hubOraclePolicyId,
+      "funding requirements hubOraclePolicyId",
     ),
     blueprintSha256: digestField(
       record.blueprintSha256,
@@ -308,7 +309,7 @@ export const normalizedRequirements = (
 
 export const digestInput = (value: NormalizedRequirements): unknown => ({
   scope: value.scope,
-  deploymentFingerprint: value.deploymentFingerprint,
+  hubOraclePolicyId: value.hubOraclePolicyId,
   blueprintSha256: value.blueprintSha256,
   protocolParametersDigest: value.protocolParametersDigest,
   economicsPolicyDigest: value.economicsPolicyDigest,

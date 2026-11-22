@@ -62,7 +62,7 @@ const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
 const removalDocument = (removal: ValidationTraceRemovalConfig): unknown =>
   typeof removal.deploymentInfo === "object" &&
   removal.deploymentInfo !== null &&
-  "manifestId" in removal.deploymentInfo
+  "schemaVersion" in removal.deploymentInfo
     ? verifyFinalizedDeploymentManifest(removal.deploymentInfo)
     : removal.deploymentInfo;
 

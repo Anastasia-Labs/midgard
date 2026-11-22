@@ -243,7 +243,7 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
     decision,
   });
   return runFraudProofWorkflow({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
+    hubOraclePolicyId: workflow.binding.hubOraclePolicyId,
     evidence,
     detections,
     registry: createFraudProofWorkflowRegistry({

@@ -1,5 +1,3 @@
-import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-transport";
-
 import {
   type CanonicalBlockEvidence,
   canonicalBlockEvidenceFromVerifiedPayload,
@@ -26,6 +24,7 @@ import {
   replayContextByDecision,
   type UnsealedHeaderDecision,
 } from "./header-classifier.authenticated-state-queue-observation-digest.js";
+import { normalizeHubOraclePolicyId } from "./identity.js";
 import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   type FraudProofReleaseFinalityAuthority,
@@ -33,25 +32,24 @@ import {
 } from "./release-finality-policy.js";
 
 export const createHeaderClassifier = async ({
-  deploymentFingerprint,
+  hubOraclePolicyId,
   replayer,
   releaseFinalityAuthority,
   transitionTraceEventAuthority,
 }: {
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly replayer: CompleteCanonicalReplay;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly transitionTraceEventAuthority?: TransitionTraceEventAuthority;
 }): Promise<HeaderClassifier> => {
-  const normalizedDeploymentFingerprint = normalizeDaDeploymentFingerprintHex(
-    deploymentFingerprint,
-  );
+  const normalizedHubOraclePolicyId =
+    normalizeHubOraclePolicyId(hubOraclePolicyId);
   requireCompleteCanonicalReplayBundle(replayer);
   if (replayer.launchScope.includes("transitionTrace")) {
     if (
       transitionTraceEventAuthority === undefined ||
-      transitionTraceEventAuthority.deploymentFingerprint !==
-        normalizedDeploymentFingerprint
+      transitionTraceEventAuthority.hubOraclePolicyId !==
+        normalizedHubOraclePolicyId
     )
       throw new Error(
         "Transition classifier requires admitted raw L1 event authority",
@@ -66,21 +64,14 @@ export const createHeaderClassifier = async ({
       "production classifier requires the admitted replay and release-finality authorities",
     );
   }
-  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy(
+  validateVerifiedFraudProofReleaseFinalityPolicy(
     await releaseFinalityAuthority.verifyForWorkflow({
-      deploymentFingerprint: normalizedDeploymentFingerprint,
+      hubOraclePolicyId: normalizedHubOraclePolicyId,
     }),
   );
-  if (
-    releaseFinality.deploymentIdentityDigest !== normalizedDeploymentFingerprint
-  ) {
-    throw new Error(
-      "production classifier finality authority changed deployment identity",
-    );
-  }
   const classifier: HeaderClassifier = Object.freeze({
     classifierVersion: HEADER_CLASSIFIER,
-    deploymentFingerprint: normalizedDeploymentFingerprint,
+    hubOraclePolicyId: normalizedHubOraclePolicyId,
     launchScope: exactCanonicalScope(replayer.launchScope),
   });
   admittedClassifiers.set(

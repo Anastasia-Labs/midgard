@@ -45,14 +45,14 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { retainedDaSource } from "./helpers/header-classifier.retained-da-source.js";
 
-const DEPLOYMENT_FINGERPRINT = "d3".repeat(32);
+const HUB_ORACLE_POLICY_ID = "d3".repeat(28);
 const RELEASE_FINALITY_POLICY = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 
 const finalityAuthority = (): FraudProofReleaseFinalityAuthority => ({
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => ({
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: DEPLOYMENT_FINGERPRINT,
+    hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
     blueprintHash: "e3".repeat(32),
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
       RELEASE_FINALITY_POLICY,
@@ -169,7 +169,7 @@ const classify = async (transactions: readonly FixtureTransaction[]) => {
   const fixture = await buildCanonicalBlockFixture({ transactions });
   const observation = authenticatedHeaderObservation(fixture);
   const classifier = await createHeaderClassifier({
-    deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+    hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
     replayer: createCompleteCanonicalReplayUnion([
       CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
       L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,

@@ -46,11 +46,11 @@ export const captureInput = (snapshot: FraudProofRawL1Snapshot) => {
     }),
   };
   const binding = {
-    deploymentFingerprint: snapshot.deploymentIdentityDigest,
+    hubOraclePolicyId: snapshot.hubOraclePolicyId,
     network: "Preprod",
     releaseFinality: {
       schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-      deploymentIdentityDigest: snapshot.deploymentIdentityDigest,
+      hubOraclePolicyId: snapshot.hubOraclePolicyId,
       blueprintHash: snapshot.blueprintHash,
       policyDigest: snapshot.finalityPolicyDigest,
       policy: { ...RELEASE_L1_FINALITY_POLICY },

@@ -1740,7 +1740,7 @@ describe("transition-trace challenger tooling", () => {
 
   it("fetches retained DA payloads and proof material over libp2p protocols", async () => {
     const fixture = await buildPayloadFixture({});
-    const deploymentFingerprint = "11".repeat(32);
+    const deploymentFingerprint = "11".repeat(28);
     const headerHashBytes = Buffer.from(fixture.headerHash, "hex");
     const payloadHash = computeDaSha256Hash(fixture.payloadEnvelopeCbor);
     const proofBundleBytes = Buffer.from("retained proof bundle");

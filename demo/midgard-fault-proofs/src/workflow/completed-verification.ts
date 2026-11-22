@@ -45,17 +45,11 @@ export const verifyCompletedFraudProofWorkflow = async ({
   readonly decisionDigest: string;
   readonly terminal?: FraudProofWorkflowTerminal;
 }): Promise<FraudProofCompletedVerification> => {
-  if (
-    authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY ||
-    binding.releaseFinality.deploymentIdentityDigest !==
-      binding.deploymentFingerprint ||
-    binding.releaseEconomics.deploymentIdentityDigest !==
-      binding.deploymentFingerprint
-  )
+  if (authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY)
     throw new Error("completed workflow changed raw L1 or release authority");
   const identity = normalizeFraudProofWorkflowIdentity({
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: binding.deploymentFingerprint,
+    hubOraclePolicyId: binding.hubOraclePolicyId,
     category: binding.definition.category,
     target: {
       kind: "state_queue_header",

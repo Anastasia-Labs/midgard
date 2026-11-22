@@ -160,7 +160,7 @@ it("completes on another caller's correction over our in-flight descendant, and 
     workflowProcess: TestWorkflowProcess = process,
   ) =>
     runAdmittedFraudProofWorkflow({
-      deploymentFingerprint: value.binding.deploymentFingerprint,
+      hubOraclePolicyId: value.binding.hubOraclePolicyId,
       category: "doubleSpend",
       headerHash: value.definition.headerHash,
       prepareFamilyArtifact: async () => ({}),

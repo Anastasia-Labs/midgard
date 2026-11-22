@@ -25,7 +25,7 @@ import { unreachableRecoverySurfaceForTest } from "./support/family-common-infra
 
 const category = "minFee" as const;
 const headerHash = "aa".repeat(28);
-const deploymentFingerprint = "44".repeat(32);
+const hubOraclePolicyId = "44".repeat(28);
 const decisionDigest = "55".repeat(32);
 const script = { type: "PlutusV3", script: "49480100002221200101" } as const;
 const address = credentialToAddress("Preprod", {
@@ -49,7 +49,7 @@ const roster = Object.freeze({
 type Config = Readonly<{ roles: readonly string[] }>;
 type Workflow = Readonly<{
   binding: Readonly<{
-    deploymentFingerprint: string;
+    hubOraclePolicyId: string;
     definition: Readonly<{ category: typeof category; headerHash: string }>;
   }>;
   decisionDigest?: string;
@@ -60,7 +60,7 @@ const workflowOf = (
   overrides: Partial<Workflow["binding"]> = {},
 ): Workflow => ({
   binding: {
-    deploymentFingerprint,
+    hubOraclePolicyId,
     definition: { category, headerHash },
     ...overrides,
   },
@@ -104,7 +104,7 @@ const fixture = (
     stateQueueMutationLeaseCoordinator: {} as never,
   } satisfies FamilyCommonInfrastructure;
   const invocation: FamilyApplicationInvocation = {
-    deploymentFingerprint,
+    hubOraclePolicyId,
     category,
     headerHash,
   };
@@ -247,7 +247,7 @@ describe("shared family application loop", () => {
   });
 
   it.each([
-    ["deploymentFingerprint", { deploymentFingerprint: "99".repeat(32) }],
+    ["hubOraclePolicyId", { hubOraclePolicyId: "99".repeat(28) }],
     ["headerHash", { definition: { category, headerHash: "bb".repeat(28) } }],
   ] as const)(
     "refuses a constructed workflow whose %s differs from the invocation",

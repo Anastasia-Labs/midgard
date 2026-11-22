@@ -415,7 +415,7 @@ export const captureAndRestart = async (name: string): Promise<void> => {
   });
   const identity: FraudProofWorkflowIdentity = {
     schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
-    deploymentFingerprint: "aa".repeat(32),
+    hubOraclePolicyId: "aa".repeat(28),
     category: "mintAuthorization",
     target: { kind: "state_queue_header", headerHash: setup.headerHash },
   };

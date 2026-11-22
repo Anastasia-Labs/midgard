@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-transport";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
@@ -23,7 +22,7 @@ export type FraudProofWorkflowTarget =
 
 export type FraudProofWorkflowIdentity = {
   readonly schemaVersion: typeof FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly category: FraudProofCatalogueCategoryName;
   readonly target: FraudProofWorkflowTarget;
   /** Present on production runs; omitted only by lower-level diagnostics. */
@@ -105,6 +104,15 @@ const normalizeClaimId = (value: string): string => {
   return normalized;
 };
 
+/** The deployment's hub-oracle policy id, as 28-byte lowercase hex. */
+export const normalizeHubOraclePolicyId = (value: string): string => {
+  const normalized = value.toLowerCase();
+  if (!/^[0-9a-f]{56}$/u.test(normalized)) {
+    throw new Error("workflow hubOraclePolicyId must be 28-byte hex");
+  }
+  return normalized;
+};
+
 const normalizeDecisionDigest = (value: string): string => {
   if (!/^[0-9a-f]{64}$/u.test(value)) {
     throw new Error("workflow decisionDigest must be 32-byte lowercase hex");
@@ -143,9 +151,7 @@ export const normalizeFraudProofWorkflowIdentity = (
           })();
   return Object.freeze({
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: normalizeDaDeploymentFingerprintHex(
-      identity.deploymentFingerprint,
-    ),
+    hubOraclePolicyId: normalizeHubOraclePolicyId(identity.hubOraclePolicyId),
     category: identity.category,
     target: Object.freeze(target),
     ...(identity.decisionDigest === undefined
@@ -225,7 +231,7 @@ export const computeFraudProofWorkflowId = (
     .update(
       [
         FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-        normalized.deploymentFingerprint,
+        normalized.hubOraclePolicyId,
         normalized.category,
         target,
         ...(normalized.decisionDigest === undefined

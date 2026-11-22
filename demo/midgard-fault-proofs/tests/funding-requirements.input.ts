@@ -2,8 +2,6 @@ import { CML } from "@lucid-evolution/lucid";
 
 import { type WorkflowFundingRequirementsInput } from "../src/workflow/funding-requirements.js";
 
-const digest = "11".repeat(32);
-
 const signingKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x44));
 
 const fundingPaymentKeyHash = signingKey.to_public().hash().to_hex();
@@ -101,7 +99,7 @@ export const input = () => ({
     kind: "fraud_proof_category" as const,
     category: "doubleSpend" as const,
   },
-  deploymentFingerprint: digest,
+  hubOraclePolicyId: "11".repeat(28),
   blueprintSha256: "22".repeat(32),
   protocolParametersDigest: "33".repeat(32),
   economicsPolicyDigest: "44".repeat(32),

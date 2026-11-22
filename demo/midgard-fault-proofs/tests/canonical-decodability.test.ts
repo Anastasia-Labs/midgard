@@ -37,14 +37,14 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 
-const DEPLOYMENT_FINGERPRINT = "d7".repeat(32);
+const HUB_ORACLE_POLICY_ID = "d7".repeat(28);
 const RELEASE_FINALITY_POLICY = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 
 const finalityAuthority = (): FraudProofReleaseFinalityAuthority => ({
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => ({
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: DEPLOYMENT_FINGERPRINT,
+    hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
     blueprintHash: "e7".repeat(32),
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
       RELEASE_FINALITY_POLICY,
@@ -180,7 +180,7 @@ describe("production canonical-decodability public-evidence workflow V1", () => 
   it("routes the authenticated raw defect through one-DA-fetch header classification", async () => {
     const { evidence, fixture, observation } = await preparedArtifact();
     const classifier = await createHeaderClassifier({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       replayer: CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });

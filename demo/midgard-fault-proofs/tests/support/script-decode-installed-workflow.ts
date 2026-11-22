@@ -185,15 +185,15 @@ export const installScriptDecodeApplication = async ({
   const { headerHash } = committed;
   // The default fixture: the selected profile's finality and economics.
   const identity = makeWatcherDeploymentAuthorityFixture().result;
-  const fingerprint = identity.manifestId;
+  const { hubOraclePolicyId } = identity;
   const releaseFinalityAuthority =
     watcherDeploymentReleaseFinalityAuthority(identity);
   const releaseFinality = await releaseFinalityAuthority.verifyForWorkflow({
-    deploymentFingerprint: fingerprint,
+    hubOraclePolicyId,
   });
   const releaseEconomics = await watcherDeploymentReleaseEconomicsAuthority(
     identity,
-  ).verifyForWorkflow({ deploymentFingerprint: fingerprint });
+  ).verifyForWorkflow({ hubOraclePolicyId });
   const deploymentInfo = buildRemovalDeploymentInfo(
     contracts,
     harness.catalogue,
@@ -221,7 +221,7 @@ export const installScriptDecodeApplication = async ({
     ]),
   ]);
   const binding = {
-    deploymentFingerprint: fingerprint,
+    hubOraclePolicyId,
     blueprintHash: releaseFinality.blueprintHash,
     network: "Custom",
     blueprint: harness.realBlueprint,
@@ -301,14 +301,14 @@ export const installScriptDecodeApplication = async ({
   // Classify the committed header as the watcher's classifier does.
   const sources = [
     new FixtureRetainedDaSource(
-      fingerprint,
+      hubOraclePolicyId,
       new Map([[headerHash, committed.block.payloadEnvelopeCbor]]),
     ),
   ];
   const observation = await l1.observeHeader({ headerHash });
   const decision = await classifyHeader({
     classifier: await createHeaderClassifier({
-      deploymentFingerprint: fingerprint,
+      hubOraclePolicyId,
       replayer,
       releaseFinalityAuthority,
     }),
@@ -392,7 +392,7 @@ export const installScriptDecodeApplication = async ({
   const turn = async () =>
     (await runner.runOrResume({
       category,
-      deploymentFingerprint: fingerprint,
+      hubOraclePolicyId,
       headerHash,
       decisionDigest: decision.decisionDigest,
       actuationPermit: permit,
@@ -406,7 +406,7 @@ export const installScriptDecodeApplication = async ({
   return {
     decision,
     l1,
-    fingerprint,
+    hubOraclePolicyId,
     turn,
     /** Stops the watcher process and starts another, which has sent
      * nothing. */

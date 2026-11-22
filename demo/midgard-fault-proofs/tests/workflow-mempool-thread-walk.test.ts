@@ -145,7 +145,7 @@ const walkScene = async () => {
       },
       releaseFinality: {
         schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-        deploymentIdentityDigest: "aa".repeat(32),
+        hubOraclePolicyId: "aa".repeat(28),
         blueprintHash: "bb".repeat(32),
         policyDigest:
           computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
@@ -153,7 +153,6 @@ const walkScene = async () => {
       },
       releaseEconomics: {
         schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-        deploymentIdentityDigest: "aa".repeat(32),
         blueprintHash: "bb".repeat(32),
         policyDigest:
           computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
@@ -246,7 +245,7 @@ const walkScene = async () => {
     });
     const identity: FraudProofWorkflowIdentity = {
       schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
-      deploymentFingerprint: "aa".repeat(32),
+      hubOraclePolicyId: "aa".repeat(28),
       category: "withdrawalMistag",
       target: { kind: "state_queue_header", headerHash: committed.headerHash },
     };

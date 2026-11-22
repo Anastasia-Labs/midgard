@@ -55,7 +55,7 @@ import { publishWithdrawalMistagScripts } from "./withdrawal-mistag-emulator.dri
 import { makeWithdrawalMistagEmulatorHarness } from "./withdrawal-mistag-emulator.js";
 import { withdrawalMistagRetainedFixture } from "./withdrawal-mistag-retained.js";
 import {
-  DEPLOYMENT_FINGERPRINT,
+  HUB_ORACLE_POLICY_ID,
   releaseFinalityAuthority,
   terminalVerifier,
 } from "./workflow-authorities.js";
@@ -161,7 +161,7 @@ export const scene = async () => {
     },
     releaseFinality: {
       schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-      deploymentIdentityDigest: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       blueprintHash: "bb".repeat(32),
       policyDigest:
         computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
@@ -169,7 +169,6 @@ export const scene = async () => {
     },
     releaseEconomics: {
       schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-      deploymentIdentityDigest: DEPLOYMENT_FINGERPRINT,
       blueprintHash: "bb".repeat(32),
       policyDigest:
         computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
@@ -293,7 +292,7 @@ export const scene = async () => {
     })();
     const run = async (): Promise<FraudProofWorkflowRunResult> =>
       await runFraudProofWorkflow({
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
         evidence: fixture.evidence,
         detections: decision.detections,
         replayContext: fixture.context,

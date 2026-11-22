@@ -191,7 +191,7 @@ export const mintItemSharedRunnerIdentity = async () => {
   });
   const headerHash = setup.headerHash;
   const binding = {
-    deploymentFingerprint: "aa".repeat(32),
+    hubOraclePolicyId: "aa".repeat(28),
     network: "Custom",
     blueprint: h.realBlueprint,
     deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue, {
@@ -390,7 +390,7 @@ export const mintItemSharedRunnerIdentity = async () => {
   };
   const identity: FraudProofWorkflowIdentity = {
     schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
-    deploymentFingerprint: binding.deploymentFingerprint,
+    hubOraclePolicyId: binding.hubOraclePolicyId,
     category,
     target: { kind: "state_queue_header", headerHash },
   };

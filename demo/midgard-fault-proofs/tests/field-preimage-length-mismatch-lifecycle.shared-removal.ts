@@ -111,12 +111,12 @@ export const removeThroughSharedFieldRecovery = async (
     contracts: h.contracts,
   });
   const parameters = SDK.getProtocolParameters(network);
-  const deploymentFingerprint = "aa".repeat(32);
+  const hubOraclePolicyId = "aa".repeat(28);
   const blueprintHash = "bb".repeat(32);
   const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
   const releaseFinality = {
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: deploymentFingerprint,
+    hubOraclePolicyId,
     blueprintHash,
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
     policy,
@@ -132,7 +132,6 @@ export const removeThroughSharedFieldRecovery = async (
   };
   const releaseEconomics = {
     schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: deploymentFingerprint,
     blueprintHash,
     policyDigest:
       computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
@@ -198,7 +197,7 @@ export const removeThroughSharedFieldRecovery = async (
     { acquire: async () => lease };
   const binding = {
     ...config.binding,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     releaseFinality,
     releaseEconomics,
     deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue, {
@@ -222,7 +221,7 @@ export const removeThroughSharedFieldRecovery = async (
   };
   const identity: FraudProofWorkflowIdentity = {
     schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
-    deploymentFingerprint,
+    hubOraclePolicyId,
     category: "fieldPreimageLengthMismatch",
     target: {
       kind: "state_queue_header",

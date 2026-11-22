@@ -69,7 +69,7 @@ export type RawRemoval = {
 };
 
 const deploymentDocument = (fixture: ProvedDoubleSpendFixture): unknown =>
-  "manifestId" in fixture.deploymentInfo
+  "schemaVersion" in fixture.deploymentInfo
     ? structuredClone(verifyFinalizedDeploymentManifest(fixture.deploymentInfo))
     : fixture.deploymentInfo;
 

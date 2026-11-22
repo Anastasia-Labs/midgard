@@ -4,6 +4,7 @@ import {
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   type DeploymentManifest,
+  deploymentManifestHubOraclePolicyId,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { releaseRecord } from "@al-ft/midgard-core/deployment-release";
@@ -25,7 +26,7 @@ export const WORKFLOW_FUNDING_MEASUREMENT_TOOL =
 export type WorkflowFundingMeasurementIdentity = Readonly<{
   schemaVersion: typeof WORKFLOW_FUNDING_MEASUREMENT_TOOL;
   environment: "emulator" | "local-node";
-  manifestId: string;
+  hubOraclePolicyId: string;
   blueprintSha256: string;
   aikenSourceSha256: string;
   sourceSnapshotSha256: string;
@@ -86,7 +87,7 @@ export const createWorkflowFundingMeasurementContext = (input: {
     "funding measurement registry",
     [
       "schemaVersion",
-      "manifestId",
+      "hubOraclePolicyId",
       "blueprintHash",
       "deployment",
       "referenceScripts",
@@ -94,7 +95,8 @@ export const createWorkflowFundingMeasurementContext = (input: {
   );
   if (
     registry.schemaVersion !== "midgard-deployment-parameter-registry-v1" ||
-    registry.manifestId !== manifest.manifestId ||
+    registry.hubOraclePolicyId !==
+      deploymentManifestHubOraclePolicyId(manifest) ||
     registry.blueprintHash !== hash ||
     computeDeploymentManifestJsonDigest(registry.referenceScripts) !==
       computeDeploymentManifestJsonDigest(manifest.referenceScripts)
@@ -148,7 +150,7 @@ export const createWorkflowFundingMeasurementContext = (input: {
   const identity: WorkflowFundingMeasurementIdentity = Object.freeze({
     schemaVersion: WORKFLOW_FUNDING_MEASUREMENT_TOOL,
     environment: input.environment,
-    manifestId: manifest.manifestId,
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
     blueprintSha256: hash,
     aikenSourceSha256: digestField(
       record.sourceHash,

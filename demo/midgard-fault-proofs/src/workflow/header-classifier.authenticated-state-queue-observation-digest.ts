@@ -146,7 +146,7 @@ export const authenticatedStateQueueObservationDigest = async ({
 type CommonDecision = Readonly<{
   schemaVersion: typeof HEADER_DECISION;
   classifierVersion: typeof HEADER_CLASSIFIER;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   headerHash: string;
   authenticatedObservationDigest: string;
   payloadEnvelopeSha256: string;
@@ -195,7 +195,7 @@ export type UnsealedHeaderDecision =
 
 export interface HeaderClassifier {
   readonly classifierVersion: typeof HEADER_CLASSIFIER;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly launchScope: readonly FraudProofCatalogueCategoryName[];
 }
 

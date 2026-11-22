@@ -50,11 +50,11 @@ import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 import { buildRetainedPlutusIdentityFixture } from "./support/retained-reason-classifier.build-retained-plutus-fixture.js";
 import { captureRetainedPlutusIdentityOrigins } from "./support/retained-reason-classifier.capture-retained-plutus-identity-origins.js";
 
-const DEPLOYMENT = "d1".repeat(32);
+const DEPLOYMENT = "d1".repeat(28);
 const policy = { ...RELEASE_L1_FINALITY_POLICY };
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: DEPLOYMENT,
+  hubOraclePolicyId: DEPLOYMENT,
   blueprintHash: "e1".repeat(32),
   policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
   policy,
@@ -140,7 +140,7 @@ const classify = async ({
     capture: async (request) => ({
       snapshot: {
         ...seed,
-        deploymentIdentityDigest: request.deploymentIdentityDigest,
+        hubOraclePolicyId: request.hubOraclePolicyId,
         blueprintHash: request.blueprintHash,
         finalityPolicyDigest: request.finalityPolicyDigest,
         headerHash: request.headerHash,
@@ -162,7 +162,7 @@ const classify = async ({
     }),
   };
   const bindingFields = {
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     blueprintHash: releaseFinality.blueprintHash,
     network: "Preprod" as const,
     releaseFinality,
@@ -189,7 +189,7 @@ const classify = async ({
   const classifier = await createHeaderClassifier(
     installed
       ? {
-          deploymentFingerprint: DEPLOYMENT,
+          hubOraclePolicyId: DEPLOYMENT,
           replayer: createCatalogueCompleteCanonicalReplay({
             history: { deposit: history, withdrawal: history },
             l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -212,7 +212,7 @@ const classify = async ({
             }),
         }
       : {
-          deploymentFingerprint: DEPLOYMENT,
+          hubOraclePolicyId: DEPLOYMENT,
           replayer: scope,
           releaseFinalityAuthority,
         },

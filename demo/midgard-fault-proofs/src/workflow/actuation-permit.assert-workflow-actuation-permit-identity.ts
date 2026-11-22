@@ -32,7 +32,7 @@ export const assertWorkflowActuationPermitIdentity = ({
   decisionDigest: string;
   executionDecisionDigest: string;
   launchScope: HeaderFaultDecision["launchScope"];
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   headerHash: string;
   authority: "submission" | "reconciliation";
 }> => {
@@ -64,7 +64,7 @@ export const assertWorkflowActuationPermitIdentity = ({
     decisionDigest: state.decisionDigest,
     executionDecisionDigest: state.executionDecisionDigest,
     launchScope: state.decision.launchScope,
-    deploymentFingerprint: state.deploymentFingerprint,
+    hubOraclePolicyId: state.hubOraclePolicyId,
     headerHash: state.headerHash,
     authority: state.reconciliation ? "reconciliation" : "submission",
   });
@@ -116,21 +116,21 @@ export const bindWorkflowRunActuation = ({
   run,
   permit,
   decisionDigest,
-  deploymentFingerprint,
+  hubOraclePolicyId,
   category,
   headerHash,
 }: {
   readonly run: WorkflowRun;
   readonly permit: WorkflowActuationPermit;
   readonly decisionDigest: string;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
 }): WorkflowRun => {
   assertPermit({
     permit,
     decisionDigest,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     category,
     headerHash,
     checkpoint: "runner_start",
@@ -146,7 +146,7 @@ export const bindWorkflowRunActuation = ({
       decisionDigest,
       executionDecisionDigest:
         admittedPermits.get(permit)!.executionDecisionDigest,
-      deploymentFingerprint,
+      hubOraclePolicyId,
       category,
       headerHash,
     }),
@@ -183,13 +183,13 @@ export const workflowRunIsReconciliationOnly = (run: WorkflowRun): boolean => {
  */
 export const assertWorkflowRunActuation = ({
   run,
-  deploymentFingerprint,
+  hubOraclePolicyId,
   category,
   headerHash,
   checkpoint,
 }: {
   readonly run: WorkflowRun;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
   readonly checkpoint: WorkflowActuationCheckpoint;
@@ -201,7 +201,7 @@ export const assertWorkflowRunActuation = ({
   assertPermit({
     permit: binding.permit,
     decisionDigest: binding.decisionDigest,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     category,
     headerHash,
     checkpoint,

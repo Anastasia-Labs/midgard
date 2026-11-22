@@ -58,7 +58,7 @@ const fixture = () => {
   );
   const names = ["familyStep", "computationThreadMint", "correctionLockSpend"];
   const binding = {
-    deploymentFingerprint: "44".repeat(32),
+    hubOraclePolicyId: "44".repeat(28),
     network: "Preprod",
     definition: { category, headerHash },
     fieldPreimageCertificate: null,
@@ -224,7 +224,7 @@ it("binds once, then isolates transaction caches and invocation refiners for eac
   const observationInput: Parameters<typeof first.adapter.observe>[0] = {
     identity: {
       schemaVersion: "midgard-fraud-proof-workflow-identity-v1" as const,
-      deploymentFingerprint: "44".repeat(32),
+      hubOraclePolicyId: "44".repeat(28),
       category,
       target: { kind: "state_queue_header" as const, headerHash },
     },

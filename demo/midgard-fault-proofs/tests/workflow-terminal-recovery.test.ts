@@ -52,7 +52,7 @@ const policy = {
 } as const;
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: hash("99"),
+  hubOraclePolicyId: "99".repeat(28),
   blueprintHash: hash("aa"),
   policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
   policy,
@@ -87,7 +87,7 @@ const verify = async (
   return (inclusionOnly ? verifier.verifyIncluded! : verifier.verify)({
     identity: {
       schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-      deploymentFingerprint: hash("99"),
+      hubOraclePolicyId: "99".repeat(28),
       category: "daHashPreimage",
       target: { kind: "state_queue_header", headerHash: candidate.headerHash },
     },

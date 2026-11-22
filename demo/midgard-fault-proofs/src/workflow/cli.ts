@@ -1,4 +1,3 @@
-import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-transport";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
@@ -14,6 +13,7 @@ import {
   workflowAdapterRunner,
   type WorkflowApplicationRegistry,
 } from "./adapters.js";
+import { normalizeHubOraclePolicyId } from "./identity.js";
 import type { WorkflowObjectiveWallet } from "./workflow-run.js";
 
 export const workflowReadinessReport = (
@@ -28,7 +28,7 @@ export const workflowReadinessReport = (
   );
   return {
     schemaVersion: WORKFLOW_ADAPTER_REGISTRY_SCHEMA_VERSION,
-    deploymentFingerprint: applicationRegistry?.deploymentFingerprint ?? null,
+    hubOraclePolicyId: applicationRegistry?.hubOraclePolicyId ?? null,
     installedCategoryCount:
       applicationRegistry?.installedCategories.length ?? 0,
     registeredCategoryCount: registryRegistrations.length,
@@ -52,7 +52,7 @@ export const workflowReadinessReport = (
  */
 export const runFraudProofWorkflowCli = async ({
   category,
-  deploymentFingerprint,
+  hubOraclePolicyId,
   headerHash,
   runtimeConfigPath,
   decisionDigest,
@@ -61,7 +61,7 @@ export const runFraudProofWorkflowCli = async ({
   applicationRegistry,
 }: {
   readonly category: FraudProofCatalogueCategoryName;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly headerHash: string;
   readonly runtimeConfigPath: string;
   /** Opaque authority minted from the admitted classifier decision. */
@@ -72,13 +72,13 @@ export const runFraudProofWorkflowCli = async ({
   /** Application-installed only after signed deployment identity admission. */
   readonly applicationRegistry?: WorkflowApplicationRegistry;
 }): Promise<unknown> => {
-  normalizeDaDeploymentFingerprintHex(deploymentFingerprint);
+  normalizeHubOraclePolicyId(hubOraclePolicyId);
   if (
     applicationRegistry !== undefined &&
-    applicationRegistry.deploymentFingerprint !== deploymentFingerprint
+    applicationRegistry.hubOraclePolicyId !== hubOraclePolicyId
   ) {
     throw new Error(
-      "production workflow application registry differs from the CLI deployment fingerprint",
+      "production workflow application registry differs from the CLI hub-oracle policy id",
     );
   }
   if (!/^[0-9a-f]{56}$/u.test(headerHash)) {
@@ -100,7 +100,7 @@ export const runFraudProofWorkflowCli = async ({
   return await workflowAdapterRunner(category, applicationRegistry).runOrResume(
     {
       category,
-      deploymentFingerprint,
+      hubOraclePolicyId,
       headerHash,
       decisionDigest,
       actuationPermit,

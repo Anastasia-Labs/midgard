@@ -62,6 +62,15 @@ describe("genuine workflow funding measurement producer", () => {
     expect(() =>
       createWorkflowFundingMeasurementContext({
         ...contextInput,
+        deploymentParameterRegistry: {
+          ...contextInput.deploymentParameterRegistry,
+          hubOraclePolicyId: "00".repeat(28),
+        },
+      }),
+    ).toThrow("parameter registry belongs to another deployment");
+    expect(() =>
+      createWorkflowFundingMeasurementContext({
+        ...contextInput,
         buildRecord: { ...record, profileDigest: "00".repeat(32) },
       }),
     ).toThrow("profile differs");

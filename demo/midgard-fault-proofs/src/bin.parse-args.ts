@@ -70,7 +70,7 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let addrTxWitsPreimagePath: string | undefined;
   let badAddrTxWitIndex: string | undefined;
   let workflowRuntimeConfigPath: string | undefined;
-  let deploymentFingerprint: string | undefined;
+  let hubOraclePolicyId: string | undefined;
 
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
@@ -263,8 +263,8 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--workflow-runtime-config":
         workflowRuntimeConfigPath = rest[++index];
         break;
-      case "--deployment-fingerprint":
-        deploymentFingerprint = rest[++index];
+      case "--hub-oracle-policy-id":
+        hubOraclePolicyId = rest[++index];
         break;
       case "--help":
       case "-h":
@@ -338,6 +338,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     addrTxWitsPreimagePath,
     badAddrTxWitIndex,
     workflowRuntimeConfigPath,
-    deploymentFingerprint,
+    hubOraclePolicyId,
   };
 };

@@ -29,7 +29,7 @@ const provenance: EvidenceProvenance = {
 
 const identity: FraudProofWorkflowIdentity = {
   schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
-  deploymentFingerprint: hash("aa"),
+  hubOraclePolicyId: "aa".repeat(28),
   category: "missingSignature",
   target: { kind: "state_queue_header", headerHash },
 };

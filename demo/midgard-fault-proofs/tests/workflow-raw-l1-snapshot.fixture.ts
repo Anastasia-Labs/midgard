@@ -21,7 +21,7 @@ import {
   type VerifiedFraudProofReleaseFinalityPolicy,
 } from "../src/workflow/release-finality-policy.js";
 
-const DEPLOYMENT = "aa".repeat(32);
+const DEPLOYMENT = "aa".repeat(28);
 
 const RELEASE = "bb".repeat(32);
 
@@ -41,7 +41,7 @@ const policy = {
 
 export const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: DEPLOYMENT,
+  hubOraclePolicyId: DEPLOYMENT,
   blueprintHash: RELEASE,
   policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
   policy,
@@ -135,7 +135,7 @@ export const fixture = (): {
     blockHash: "43".repeat(32),
   });
   const request = {
-    deploymentIdentityDigest: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     blueprintHash: RELEASE,
     finalityPolicyDigest: releaseFinality.policyDigest,
     headerHash: HEADER,
@@ -144,7 +144,7 @@ export const fixture = (): {
   } as const satisfies FraudProofRawL1SnapshotRequest;
   const snapshot = {
     schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
-    deploymentIdentityDigest: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     blueprintHash: RELEASE,
     finalityPolicyDigest: releaseFinality.policyDigest,
     headerHash: HEADER,
@@ -161,7 +161,7 @@ export const fixture = (): {
       tip,
       confirmationDepth: 30,
       rollbackCursor: computeFraudProofRawL1RollbackCursor({
-        deploymentIdentityDigest: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         blueprintHash: RELEASE,
         finalityPolicyDigest: releaseFinality.policyDigest,
         sourceId: SOURCE,

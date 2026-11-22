@@ -361,7 +361,7 @@ export const executeManifestBoundObserversForbiddenWorkflow = async ({
     headerHash: workflow.binding.definition.headerHash,
   });
   return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
+    hubOraclePolicyId: workflow.binding.hubOraclePolicyId,
     observation,
     sources,
     replayer: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,

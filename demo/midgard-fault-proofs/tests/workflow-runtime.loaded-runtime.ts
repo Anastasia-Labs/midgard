@@ -43,10 +43,10 @@ export type DoubleSpendIdentity =
 /** A doubleSpend workflow whose recovery surface these runs never reach. */
 export const recoverableDoubleSpendWorkflow = (
   headerHash: string,
-  deploymentFingerprint: string = DEPLOYMENT,
+  hubOraclePolicyId: string = DEPLOYMENT,
 ) => ({
   binding: {
-    deploymentFingerprint,
+    hubOraclePolicyId,
     definition: { category: "doubleSpend" as const, headerHash },
   },
   ...unreachableRecoverySurfaceForTest,

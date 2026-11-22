@@ -260,7 +260,7 @@ export const classifyHeader = async ({
     return sealDecision({
       schemaVersion: HEADER_DECISION,
       classifierVersion: HEADER_CLASSIFIER,
-      deploymentFingerprint: classifier.deploymentFingerprint,
+      hubOraclePolicyId: classifier.hubOraclePolicyId,
       headerHash: routed.evidence.headerHash,
       authenticatedObservationDigest: observationDigest,
       payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
@@ -330,7 +330,7 @@ export const classifyHeader = async ({
   const common = {
     schemaVersion: HEADER_DECISION,
     classifierVersion: HEADER_CLASSIFIER,
-    deploymentFingerprint: classifier.deploymentFingerprint,
+    hubOraclePolicyId: classifier.hubOraclePolicyId,
     headerHash: routed.evidence.headerHash,
     authenticatedObservationDigest: observationDigest,
     payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,

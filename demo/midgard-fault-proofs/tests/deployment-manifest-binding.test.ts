@@ -77,6 +77,7 @@ const fixture = () => {
       "retiredOperatorsMint",
       "schedulerSpend",
       "fieldPreimageCertificateMint",
+      "hubOracleMint",
     ].map((name, index) => [
       name,
       {
@@ -90,7 +91,6 @@ const fixture = () => {
     ]),
   );
   const manifest = {
-    manifestId: "88".repeat(32),
     network: "Preprod",
     artifacts: {
       blueprintHash: createHash("sha256").update(blueprintJson).digest("hex"),
@@ -180,7 +180,7 @@ describe("manifest-bound builder document", () => {
         economics: current.manifest.economics,
       }),
     ).resolves.toMatchObject({
-      deploymentFingerprint: current.manifest.manifestId,
+      hubOraclePolicyId: current.manifest.contracts.hubOracleMint!.scriptHash,
     });
   });
 
@@ -372,7 +372,7 @@ it("binds completed observation metadata without admitting an executable thread 
   ]);
   expect(Object.keys(terminal).sort()).toEqual([
     "definition",
-    "deploymentFingerprint",
+    "hubOraclePolicyId",
     "releaseEconomics",
     "releaseFinality",
   ]);
@@ -408,7 +408,7 @@ describe("release finality identity", () => {
     const current = fixture();
     const releaseFinality = {
       schemaVersion: "midgard-fraud-proof-release-finality-policy-v1" as const,
-      deploymentIdentityDigest: current.manifest.manifestId,
+      hubOraclePolicyId: current.manifest.contracts.hubOracleMint!.scriptHash,
       blueprintHash: current.manifest.artifacts.blueprintHash,
       policyDigest: createHash("sha256")
         .update(

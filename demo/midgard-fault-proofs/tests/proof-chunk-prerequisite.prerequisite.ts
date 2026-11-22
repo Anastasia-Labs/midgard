@@ -43,7 +43,7 @@ export const publicationAction: FraudProofWorkflowAction = Object.freeze({
 
 export const identity: FraudProofWorkflowIdentity = {
   schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
-  deploymentFingerprint: "77".repeat(32),
+  hubOraclePolicyId: "77".repeat(28),
   category: "invalidRange",
   target: { kind: "state_queue_header", headerHash },
 };

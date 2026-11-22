@@ -38,13 +38,13 @@ import { terminalVerifierOf } from "./support/terminal-verifier.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 
 const category = "fieldPreimageLengthMismatch";
-const deploymentFingerprint = "22".repeat(32);
+const hubOraclePolicyId = "22".repeat(28);
 const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const releaseFinalityAuthority = {
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => ({
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: deploymentFingerprint,
+    hubOraclePolicyId,
     blueprintHash: "44".repeat(32),
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
     policy,
@@ -121,7 +121,7 @@ const fixtureFor = async () => {
     submit: forbidden,
   };
   const input = {
-    deploymentFingerprint,
+    hubOraclePolicyId,
     observation: authenticatedHeaderObservation(fixture),
     sources: [
       {

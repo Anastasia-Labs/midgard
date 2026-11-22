@@ -251,7 +251,7 @@ export const workflowIdentity = (
   headerHash: string,
 ): FraudProofWorkflowIdentity => ({
   schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  deploymentFingerprint: "d1".repeat(32),
+  hubOraclePolicyId: "d1".repeat(28),
   category: "networkId",
   target: { kind: "state_queue_header", headerHash },
 });
