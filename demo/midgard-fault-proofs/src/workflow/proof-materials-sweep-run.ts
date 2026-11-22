@@ -29,7 +29,7 @@ export const runProofMaterialsSweep = async ({
   terminal,
   ...admitted
 }: {
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
   /** Bound to the objective's reconciliation permit. */

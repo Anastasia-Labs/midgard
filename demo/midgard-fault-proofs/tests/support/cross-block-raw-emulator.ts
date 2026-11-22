@@ -273,7 +273,7 @@ export const recordCrossBlockRawEmulator = (
       };
       const snapshot = {
         schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
-        deploymentIdentityDigest: request.deploymentIdentityDigest,
+        hubOraclePolicyId: request.hubOraclePolicyId,
         blueprintHash: request.blueprintHash,
         finalityPolicyDigest: request.finalityPolicyDigest,
         headerHash: request.headerHash,

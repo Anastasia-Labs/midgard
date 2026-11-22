@@ -241,7 +241,7 @@ export const runOrResumeManifestBoundDaHashPreimageWorkflow = async ({
     headerHash: workflow.binding.definition.headerHash,
   });
   return await runDaHashPreimageWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
+    hubOraclePolicyId: workflow.binding.hubOraclePolicyId,
     observation,
     sources,
     registry: createFraudProofWorkflowRegistry({

@@ -38,7 +38,7 @@ describe.skipIf(runDirectory === undefined)(
         ]);
       const manifest = JSON.parse(manifestJson) as {
         network: Network;
-        manifestId: string;
+        contracts: { hubOracleMint: { scriptHash: string } };
         referenceScriptDeployAddress: string;
       };
       const deploymentInfo: unknown = JSON.parse(deploymentInfoJson);
@@ -123,7 +123,9 @@ describe.skipIf(runDirectory === undefined)(
       };
       const workflow =
         await createManifestBoundRedeemerCanonicityWorkflow(config);
-      expect(workflow.binding.deploymentFingerprint).toBe(manifest.manifestId);
+      expect(workflow.binding.hubOraclePolicyId).toBe(
+        manifest.contracts.hubOracleMint.scriptHash,
+      );
       expect(workflow.binding.definition.computationThread.steps).toHaveLength(
         4,
       );

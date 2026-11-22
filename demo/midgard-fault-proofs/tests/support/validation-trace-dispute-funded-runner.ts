@@ -78,15 +78,15 @@ export const classifyFailingHeader = async (scene: Scene) => {
   const block = scene.failing;
   const headerHash = block.evidence.headerHash;
   const identity = signedDeployment(scene);
-  const fingerprint = identity.manifestId;
+  const { hubOraclePolicyId } = identity;
   const releaseFinalityAuthority =
     watcherDeploymentReleaseFinalityAuthority(identity);
   const releaseFinality = await releaseFinalityAuthority.verifyForWorkflow({
-    deploymentFingerprint: fingerprint,
+    hubOraclePolicyId,
   });
   const sources = [
     new FixtureRetainedDaSource(
-      fingerprint,
+      hubOraclePolicyId,
       new Map([[headerHash, block.payloadEnvelopeCbor]]),
     ),
   ];
@@ -96,7 +96,7 @@ export const classifyFailingHeader = async (scene: Scene) => {
   });
   const decision = await classifyHeader({
     classifier: await createHeaderClassifier({
-      deploymentFingerprint: fingerprint,
+      hubOraclePolicyId,
       replayer:
         createValidationTraceDisputeCompleteCanonicalReplay(l1SlotConfig),
       releaseFinalityAuthority,
@@ -121,7 +121,7 @@ export const classifyFailingHeader = async (scene: Scene) => {
     throw new Error(`header classified ${decision.decision}`);
   return {
     identity,
-    fingerprint,
+    hubOraclePolicyId,
     releaseFinalityAuthority,
     releaseFinality,
     decision,
@@ -155,7 +155,7 @@ export const openFundedDispute = async (
   const objective = { category: CATEGORY, headerHash } as const;
   const {
     identity,
-    fingerprint,
+    hubOraclePolicyId,
     releaseFinalityAuthority,
     releaseFinality,
     decision,
@@ -212,7 +212,7 @@ export const openFundedDispute = async (
       run: process.run(objective),
       permit: actuationPermit,
       decisionDigest: decision.decisionDigest,
-      deploymentFingerprint: fingerprint,
+      hubOraclePolicyId,
       category: CATEGORY,
       headerHash,
     });
@@ -240,7 +240,7 @@ export const openFundedDispute = async (
       wrap === undefined ? adapter : wrap(adapter),
     );
     const result = await runFraudProofWorkflow({
-      deploymentFingerprint: fingerprint,
+      hubOraclePolicyId,
       evidence: block.evidence,
       detections: await detectOn(block),
       ...(block.context === undefined ? {} : { replayContext: block.context }),

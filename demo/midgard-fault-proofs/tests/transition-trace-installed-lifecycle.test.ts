@@ -115,7 +115,7 @@ const HISTORY_BOUNDS = {
   maxPayloadNodes: 512n,
 };
 const historyRecords: unknown[] = [];
-const DEPLOYMENT = "11".repeat(32);
+const DEPLOYMENT = "11".repeat(28);
 // The release-finality check requires the selected profile's policy exactly.
 const finalityPolicy = DEPLOYMENT_MANIFEST_L1_FINALITY;
 const economicsPolicy = {
@@ -527,7 +527,7 @@ describe("transition trace installed retained-history workflow", () => {
           schedulerAddress: contracts.scheduler.spendingScriptAddress,
         };
         const binding = {
-          deploymentFingerprint: DEPLOYMENT,
+          hubOraclePolicyId: DEPLOYMENT,
           definition,
           blueprint: h.realBlueprint,
           blueprintJson: JSON.stringify(h.realBlueprint),
@@ -548,7 +548,7 @@ describe("transition trace installed retained-history workflow", () => {
           ),
           releaseFinality: {
             schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-            deploymentIdentityDigest: DEPLOYMENT,
+            hubOraclePolicyId: DEPLOYMENT,
             blueprintHash: "bb".repeat(32),
             policyDigest:
               computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
@@ -556,7 +556,6 @@ describe("transition trace installed retained-history workflow", () => {
           },
           releaseEconomics: {
             schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-            deploymentIdentityDigest: DEPLOYMENT,
             blueprintHash: "bb".repeat(32),
             policyDigest:
               computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
@@ -646,7 +645,7 @@ describe("transition trace installed retained-history workflow", () => {
           "freshly admitted",
         );
         const classifier = await createHeaderClassifier({
-          deploymentFingerprint: DEPLOYMENT,
+          hubOraclePolicyId: DEPLOYMENT,
           replayer: TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY,
           releaseFinalityAuthority: workflow.releaseFinalityAuthority,
           // The recorder's raw authority is injected directly rather than

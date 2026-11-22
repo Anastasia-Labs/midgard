@@ -223,7 +223,7 @@ export const prepareRegisteredFamilyReconciliation = (
 ): (() => Promise<FraudProofWorkflowRunResult>) => {
   const { binding } = input.workflow;
   const { category, headerHash } = binding.definition;
-  const { deploymentFingerprint } = binding;
+  const { hubOraclePolicyId } = binding;
   // The invocation is ready now: a permit revoked after this point is
   // refused by the runner itself.
   const objectiveWallet = createTestWorkflowProcess().objectiveWallet({
@@ -275,7 +275,7 @@ export const prepareRegisteredFamilyReconciliation = (
         // Reconciliation reads no retained DA.
         retainedDaSources: [
           new DaLibp2pRetainedDaSource({
-            deploymentFingerprint,
+            deploymentFingerprint: hubOraclePolicyId,
             peers: [{ peerId: "12D3KooWreconciliationOnly" }],
             transport: {
               request: async () => {
@@ -288,7 +288,7 @@ export const prepareRegisteredFamilyReconciliation = (
       }));
       return (await runner.runOrResume({
         category,
-        deploymentFingerprint,
+        hubOraclePolicyId,
         headerHash,
         decisionDigest,
         actuationPermit: input.controller.permit,

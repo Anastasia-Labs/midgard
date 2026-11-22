@@ -24,7 +24,7 @@ export const OPERATOR = policy("11");
 
 export const PROVER = policy("12");
 
-export const DEPLOYMENT = hash32("13");
+export const DEPLOYMENT = policy("13");
 
 export const RELEASE = hash32("14");
 
@@ -35,7 +35,7 @@ export const FINALITY =
 
 export const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: DEPLOYMENT,
+  hubOraclePolicyId: DEPLOYMENT,
   blueprintHash: RELEASE,
   policyDigest: FINALITY,
   policy: finalityPolicy,
@@ -54,7 +54,6 @@ export const economicsPolicy = {
 
 export const releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy = {
   schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: DEPLOYMENT,
   blueprintHash: RELEASE,
   policyDigest: computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
   policy: economicsPolicy,

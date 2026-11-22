@@ -18,7 +18,7 @@ import { fixtureLedgerAt } from "./fixture-ledger.js";
 export const classifyRetainedReasonFixture = async ({
   observation,
   payloadEnvelopeCbor,
-  deploymentFingerprint,
+  hubOraclePolicyId,
   releaseFinalityAuthority,
   replayer,
   predecessor,
@@ -30,7 +30,7 @@ export const classifyRetainedReasonFixture = async ({
   readonly predecessorLedgerAt?: LedgerAt;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Buffer;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly replayer: CompleteCanonicalReplay;
   readonly history?: readonly {
@@ -75,13 +75,13 @@ export const classifyRetainedReasonFixture = async ({
     },
   ];
   const classifier = await createHeaderClassifier({
-    deploymentFingerprint,
+    hubOraclePolicyId,
     replayer,
     releaseFinalityAuthority,
     transitionTraceEventAuthority,
   });
   const policy = await releaseFinalityAuthority.verifyForWorkflow({
-    deploymentFingerprint,
+    hubOraclePolicyId,
   });
   const replaySource = retainedPayloadReplaySource({ sources });
   const decision = await classifyHeader({

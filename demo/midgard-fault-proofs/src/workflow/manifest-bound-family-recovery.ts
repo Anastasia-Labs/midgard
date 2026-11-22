@@ -137,7 +137,7 @@ export const executeManifestBoundFamilyRecovery = async <
   if (adapter.category !== category || l1.category !== category)
     throw new Error(`${category} recovery adapter changed deployment category`);
   return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: binding.deploymentFingerprint,
+    hubOraclePolicyId: binding.hubOraclePolicyId,
     observation: await observeFraudProofWorkflowHeader(l1, { headerHash }),
     sources,
     replayer,

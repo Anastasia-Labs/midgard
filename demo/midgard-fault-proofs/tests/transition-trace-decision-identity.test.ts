@@ -50,12 +50,12 @@ const decide = async (snapshot: FraudProofRawL1Snapshot) => {
     await classifyRetainedReasonFixture({
       observation: authenticatedHeaderObservation(retained.block),
       payloadEnvelopeCbor: retained.block.payloadEnvelopeCbor,
-      deploymentFingerprint: seed.deploymentIdentityDigest,
+      hubOraclePolicyId: seed.hubOraclePolicyId,
       releaseFinalityAuthority: {
         authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
         verifyForWorkflow: async () => ({
           schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-          deploymentIdentityDigest: seed.deploymentIdentityDigest,
+          hubOraclePolicyId: seed.hubOraclePolicyId,
           blueprintHash: seed.blueprintHash,
           policyDigest: seed.finalityPolicyDigest,
           policy: { ...RELEASE_L1_FINALITY_POLICY },

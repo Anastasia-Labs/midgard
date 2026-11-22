@@ -192,7 +192,7 @@ const l1 = (stage: {
 
 const identity: FraudProofWorkflowIdentity = {
   schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
-  deploymentFingerprint: hash("aa"),
+  hubOraclePolicyId: "aa".repeat(28),
   category: "daHashPreimage",
   target: { kind: "state_queue_header", headerHash },
 };
@@ -343,7 +343,7 @@ describe("production da-hash-preimage workflow V1", () => {
 
   it("admits only the dedicated raw-leaf route into the shared workflow loop", async () => {
     const routed = await routedQ44Fixture();
-    const deploymentFingerprint = hash("d1");
+    const hubOraclePolicyId = "d1".repeat(28);
     const actionIds = ["init", "step_01", "step_02", "remove"];
     const signedActions = await Promise.all(
       actionIds.map(async () => await signedWorkflowTransactionFixture()),
@@ -438,7 +438,7 @@ describe("production da-hash-preimage workflow V1", () => {
     const process = createTestWorkflowProcess();
     const run = () =>
       runDaHashPreimageWorkflowFromRetainedDa({
-        deploymentFingerprint,
+        hubOraclePolicyId,
         observation: routed.observation,
         sources: [routed.source],
         registry: createFraudProofWorkflowRegistry({
@@ -456,7 +456,7 @@ describe("production da-hash-preimage workflow V1", () => {
           authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
           verifyForWorkflow: async () => ({
             schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-            deploymentIdentityDigest: deploymentFingerprint,
+            hubOraclePolicyId,
             blueprintHash: hash("e1"),
             policyDigest:
               computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),

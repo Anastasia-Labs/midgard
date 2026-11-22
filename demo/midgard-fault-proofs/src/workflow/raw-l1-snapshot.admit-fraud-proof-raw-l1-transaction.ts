@@ -78,13 +78,13 @@ export const admitFraudProofRawL1Point = (
 ): FraudProofRawL1Point => point(value, label);
 
 export const computeFraudProofRawL1RollbackCursor = ({
-  deploymentIdentityDigest,
+  hubOraclePolicyId,
   blueprintHash,
   finalityPolicyDigest,
   sourceId,
   pointId,
 }: {
-  readonly deploymentIdentityDigest: string;
+  readonly hubOraclePolicyId: string;
   readonly blueprintHash: string;
   readonly finalityPolicyDigest: string;
   readonly sourceId: string;
@@ -92,7 +92,7 @@ export const computeFraudProofRawL1RollbackCursor = ({
 }): string =>
   createHash("sha256")
     .update(
-      `${deploymentIdentityDigest}:${blueprintHash}:${finalityPolicyDigest}:${sourceId}:${pointId}`,
+      `${hubOraclePolicyId}:${blueprintHash}:${finalityPolicyDigest}:${sourceId}:${pointId}`,
     )
     .digest("hex");
 

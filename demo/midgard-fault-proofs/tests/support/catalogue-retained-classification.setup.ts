@@ -38,12 +38,12 @@ import { captureRetainedPlutusIdentityOrigins } from "./retained-reason-classifi
 /** The raw L1 snapshot authority the current case installed; reset after each. */
 export const transport = { raw: undefined as unknown };
 
-const DEPLOYMENT = "d1".repeat(32);
+const DEPLOYMENT = "d1".repeat(28);
 const RELEASE = "e1".repeat(32);
 const policy = { ...RELEASE_L1_FINALITY_POLICY };
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: DEPLOYMENT,
+  hubOraclePolicyId: DEPLOYMENT,
   blueprintHash: RELEASE,
   policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
   policy,
@@ -90,7 +90,7 @@ export const setup = async (
     capture: async (request) => ({
       snapshot: {
         ...seed,
-        deploymentIdentityDigest: request.deploymentIdentityDigest,
+        hubOraclePolicyId: request.hubOraclePolicyId,
         blueprintHash: request.blueprintHash,
         finalityPolicyDigest: request.finalityPolicyDigest,
         headerHash: request.headerHash,
@@ -113,7 +113,7 @@ export const setup = async (
   };
   transport.raw = raw;
   const bindingFields = {
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     blueprintHash: RELEASE,
     network: "Preprod" as const,
     releaseFinality,
@@ -155,7 +155,7 @@ export const setup = async (
   });
   const classifierInput = {
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     replayer,
     releaseFinalityAuthority,
     transitionTraceEventAuthority,

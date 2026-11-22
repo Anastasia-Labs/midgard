@@ -18,7 +18,7 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 
-export const DEPLOYMENT = "d7".repeat(32);
+export const DEPLOYMENT = "d7".repeat(28);
 
 const RELEASE_FINALITY_POLICY = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 
@@ -32,13 +32,13 @@ export const admittedActuation = async () => {
   });
   const observation = authenticatedHeaderObservation(fixture);
   const classifier = await createHeaderClassifier({
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority: {
       authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
       verifyForWorkflow: async () => ({
         schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-        deploymentIdentityDigest: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         blueprintHash: "f7".repeat(32),
         policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
           RELEASE_FINALITY_POLICY,

@@ -34,7 +34,7 @@ export type FraudSlashEconomicsPolicy = Readonly<{
 }>;
 
 export type FraudSlashFundingAuthority = Readonly<{
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   economicsPolicyDigest: string;
   category: string;
   headerHash: string;

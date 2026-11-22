@@ -31,7 +31,7 @@ import {
   type Scene,
 } from "./validation-trace-dispute-open-scene.js";
 import {
-  DEPLOYMENT_FINGERPRINT,
+  HUB_ORACLE_POLICY_ID,
   RELEASE_FINALITY_POLICY,
   releaseFinalityAuthority,
   terminalVerifier,
@@ -260,7 +260,7 @@ export const makeRunner = (
       // A run starts on the wallet the watcher gives the objective.
       signer.selectWallet(prover.lucid);
       const result = await runFraudProofWorkflow({
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
         evidence: block.evidence,
         detections: await detectionsOf(block),
         ...(block.context === undefined

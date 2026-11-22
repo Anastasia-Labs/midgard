@@ -1,4 +1,3 @@
-import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-transport";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
@@ -14,6 +13,7 @@ import {
   type WorkflowApplicationRunnerInstallation,
 } from "./adapters.freeze-registration.js";
 import { workflowAdapterRegistrationRows } from "./adapters.workflow-adapter-registration-rows.js";
+import { normalizeHubOraclePolicyId } from "./identity.js";
 import {
   isAdmittedWorkflowRunner,
   WORKFLOW_ADAPTER_RUNNER,
@@ -107,20 +107,19 @@ const assertCanonicalLaunchScope = (
  * here so metadata alone can never become ready.
  */
 export const installWorkflowApplicationRegistry = ({
-  deploymentFingerprint,
+  hubOraclePolicyId,
   requiredInstalledCategories,
   installations,
 }: {
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly requiredInstalledCategories: readonly FraudProofCatalogueCategoryName[];
   readonly installations: readonly WorkflowApplicationRunnerInstallation[];
 }): WorkflowApplicationRegistry => {
-  const normalizedDeploymentFingerprint = normalizeDaDeploymentFingerprintHex(
-    deploymentFingerprint,
-  );
-  if (normalizedDeploymentFingerprint !== deploymentFingerprint) {
+  const normalizedHubOraclePolicyId =
+    normalizeHubOraclePolicyId(hubOraclePolicyId);
+  if (normalizedHubOraclePolicyId !== hubOraclePolicyId) {
     throw new Error(
-      "production workflow application deployment fingerprint is not canonical",
+      "production workflow application hub-oracle policy id is not canonical",
     );
   }
   assertCanonicalLaunchScope(
@@ -153,7 +152,7 @@ export const installWorkflowApplicationRegistry = ({
         `production workflow application installation order mismatch at ${index.toString()}: expected=${String(expected)} actual=${String(installation.category)}`,
       );
     }
-    if (installation.deploymentFingerprint !== deploymentFingerprint) {
+    if (installation.hubOraclePolicyId !== hubOraclePolicyId) {
       throw new Error(
         `production workflow application installation ${String(installation.category)} has an unrecognized deployment identity`,
       );
@@ -184,7 +183,7 @@ export const installWorkflowApplicationRegistry = ({
         existingSurface: registration.existingSurface,
         guarantees: [
           "runner is module-admitted for the exact catalogue category",
-          "runner is installed for this exact verified deployment fingerprint",
+          "runner is installed for this exact verified hub-oracle policy id",
           "runtime reconstructs proof evidence from authenticated L1 and public retained DA",
         ],
       });
@@ -193,7 +192,7 @@ export const installWorkflowApplicationRegistry = ({
   validateWorkflowAdapterCoverage(registrations);
   const registry = Object.freeze({
     schemaVersion: WORKFLOW_APPLICATION_REGISTRY_SCHEMA_VERSION,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     installedCategories: Object.freeze([...requiredInstalledCategories]),
     registrations,
   });

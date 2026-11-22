@@ -55,7 +55,7 @@ import { tokenCreationBody } from "./raw-l1-terminal-fixture.token-creation.js";
 
 export const fixture = async ({
   header: suppliedHeader,
-  deploymentFingerprint = DEPLOYMENT,
+  hubOraclePolicyId = DEPLOYMENT,
   blueprintHash = RELEASE,
   verifiedFinality = releaseFinality,
   proverCredential = PROVER,
@@ -73,7 +73,7 @@ export const fixture = async ({
   continueBond = false,
 }: {
   header?: ReturnType<typeof makeHeader>;
-  deploymentFingerprint?: string;
+  hubOraclePolicyId?: string;
   blueprintHash?: string;
   verifiedFinality?: VerifiedFraudProofReleaseFinalityPolicy;
   proverCredential?: string;
@@ -95,7 +95,7 @@ export const fixture = async ({
   const header = suppliedHeader ?? makeHeader(policy("11"), 1_789_500_000_000);
   const OPERATOR = header.operatorVkey;
   const PROVER = proverCredential;
-  const DEPLOYMENT = deploymentFingerprint;
+  const DEPLOYMENT = hubOraclePolicyId;
   const RELEASE = blueprintHash;
   const FINALITY = verifiedFinality.policyDigest;
   const headerHash = await Effect.runPromise(hashBlockHeader(header));
@@ -347,7 +347,7 @@ export const fixture = async ({
   };
   const snapshot: FraudProofRawL1Snapshot = {
     schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
-    deploymentIdentityDigest: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     blueprintHash: RELEASE,
     finalityPolicyDigest: FINALITY,
     headerHash,
@@ -364,7 +364,7 @@ export const fixture = async ({
       tip,
       confirmationDepth,
       rollbackCursor: computeFraudProofRawL1RollbackCursor({
-        deploymentIdentityDigest: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         blueprintHash: RELEASE,
         finalityPolicyDigest: FINALITY,
         sourceId: SOURCE,
@@ -486,7 +486,7 @@ export const fixture = async ({
     removalTxHash,
     rewardOutRef: `${descendantOperatorCredential === undefined ? slashTxHash : removalTxHash}#1`,
     binding: {
-      deploymentFingerprint,
+      hubOraclePolicyId,
       definition,
       releaseFinality: verifiedFinality,
       releaseEconomics: verifiedEconomics,

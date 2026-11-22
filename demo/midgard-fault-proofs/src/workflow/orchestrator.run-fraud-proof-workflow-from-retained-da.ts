@@ -1,4 +1,3 @@
-import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-transport";
 import {
   admitAuthenticatedStateQueueHeaderObservation,
   type AuthenticatedStateQueueHeaderObservation,
@@ -13,7 +12,11 @@ import type {
   CompleteCanonicalReplay,
   CompleteCanonicalReplayContext,
 } from "./complete-replay.replay-context-identity.js";
-import { normalizeWorkflowJson, type WorkflowJsonObject } from "./identity.js";
+import {
+  normalizeHubOraclePolicyId,
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "./identity.js";
 import type {
   FraudProofWorkflowRegistry,
   FraudProofWorkflowTerminalVerifier,
@@ -35,7 +38,7 @@ import type { WorkflowRun } from "./workflow-run.js";
  * or local-file evidence option in this API.
  */
 export const runFraudProofWorkflowFromRetainedDa = async ({
-  deploymentFingerprint,
+  hubOraclePolicyId,
   observation,
   sources,
   replayer,
@@ -48,7 +51,7 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
   retries,
   maxActions,
 }: {
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
   /** Exact closed replay bundle; arbitrary partial detectors are forbidden. */
@@ -84,21 +87,13 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
       "workflow requires the deployment-manifest release finality authority",
     );
   }
-  const normalizedDeploymentFingerprint = normalizeDaDeploymentFingerprintHex(
-    deploymentFingerprint,
-  );
+  const normalizedHubOraclePolicyId =
+    normalizeHubOraclePolicyId(hubOraclePolicyId);
   const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy(
     await releaseFinalityAuthority.verifyForWorkflow({
-      deploymentFingerprint: normalizedDeploymentFingerprint,
+      hubOraclePolicyId: normalizedHubOraclePolicyId,
     }),
   );
-  if (
-    releaseFinality.deploymentIdentityDigest !== normalizedDeploymentFingerprint
-  ) {
-    throw new Error(
-      "release finality authority returned a different deployment identity",
-    );
-  }
   const admittedObservation =
     await admitAuthenticatedStateQueueHeaderObservation({
       observation,
@@ -123,7 +118,7 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
       canonicalDecodabilityArtifactFromRawEvidence(routed.evidence),
     ) as WorkflowJsonObject;
     return await runAdmittedFraudProofWorkflow({
-      deploymentFingerprint: normalizedDeploymentFingerprint,
+      hubOraclePolicyId: normalizedHubOraclePolicyId,
       category: "canonicalDecodability",
       headerHash: routed.evidence.headerHash,
       prepareFamilyArtifact: async () => familyArtifact,
@@ -162,7 +157,7 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
         `authenticated raw-family evidence requires exact ${category} registry`,
       );
     return await runAdmittedFraudProofWorkflow({
-      deploymentFingerprint: normalizedDeploymentFingerprint,
+      hubOraclePolicyId: normalizedHubOraclePolicyId,
       category,
       headerHash,
       prepareFamilyArtifact: async (adapter) => {
@@ -196,7 +191,7 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
       : { context: admittedReplayContext }),
   });
   return await runFraudProofWorkflow({
-    deploymentFingerprint: normalizedDeploymentFingerprint,
+    hubOraclePolicyId: normalizedHubOraclePolicyId,
     evidence,
     detections,
     ...(admittedReplayContext === undefined

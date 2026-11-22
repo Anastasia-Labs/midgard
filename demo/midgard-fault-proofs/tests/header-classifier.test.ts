@@ -48,14 +48,14 @@ import {
 import { retainedDaSource } from "./helpers/header-classifier.retained-da-source.js";
 import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 
-const DEPLOYMENT_FINGERPRINT = "d1".repeat(32);
+const HUB_ORACLE_POLICY_ID = "d1".repeat(28);
 const RELEASE_FINALITY_POLICY = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 
 const finalityAuthority = (): FraudProofReleaseFinalityAuthority => ({
   authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => ({
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: DEPLOYMENT_FINGERPRINT,
+    hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
     blueprintHash: "e1".repeat(32),
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
       RELEASE_FINALITY_POLICY,
@@ -82,7 +82,7 @@ describe("production authenticated-header classifier V1", () => {
     };
     await expect(
       createHeaderClassifier({
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
         replayer: forged,
         releaseFinalityAuthority: finalityAuthority(),
       }),
@@ -99,7 +99,7 @@ describe("production authenticated-header classifier V1", () => {
     });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });
@@ -124,7 +124,7 @@ describe("production authenticated-header classifier V1", () => {
     expect(fetched.count).toBe(1);
     expect(decision).toMatchObject({
       decision: "fault_detected",
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       headerHash: fixture.headerHash,
       category: "doubleSpend",
       violationId: "double-spend",
@@ -168,7 +168,7 @@ describe("production authenticated-header classifier V1", () => {
     });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       replayer: FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });
@@ -212,7 +212,7 @@ describe("production authenticated-header classifier V1", () => {
     });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       replayer:
         OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
@@ -262,7 +262,7 @@ describe("production authenticated-header classifier V1", () => {
     });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       replayer: createCompleteCanonicalReplayUnion([
         MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
         OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
@@ -315,7 +315,7 @@ describe("production authenticated-header classifier V1", () => {
     });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       replayer: PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });
@@ -348,7 +348,7 @@ describe("production authenticated-header classifier V1", () => {
     const fixture = await buildCanonicalBlockFixture({ transactions: [] });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });
@@ -389,7 +389,7 @@ describe("production authenticated-header classifier V1", () => {
     const fixture = await buildCanonicalBlockFixture({ transactions: [] });
     const observation = authenticatedHeaderObservation(fixture);
     const classifier = await createHeaderClassifier({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });
@@ -433,7 +433,7 @@ describe("production authenticated-header classifier V1", () => {
     });
     const observation = authenticatedHeaderObservation(current);
     const classifier = await createHeaderClassifier({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       replayer: NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });

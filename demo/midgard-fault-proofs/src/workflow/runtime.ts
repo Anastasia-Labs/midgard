@@ -134,13 +134,13 @@ const createManifestBoundWorkflowRunOrResume =
       run: createWorkflowRun(invocation.objectiveWallet),
       permit: invocation.actuationPermit,
       decisionDigest: invocation.decisionDigest,
-      deploymentFingerprint: invocation.deploymentFingerprint,
+      hubOraclePolicyId: invocation.hubOraclePolicyId,
       category,
       headerHash: invocation.headerHash,
     });
     assertWorkflowRunActuation({
       run,
-      deploymentFingerprint: invocation.deploymentFingerprint,
+      hubOraclePolicyId: invocation.hubOraclePolicyId,
       category,
       headerHash: invocation.headerHash,
       checkpoint: "runner_start",
@@ -166,7 +166,7 @@ const createManifestBoundWorkflowRunOrResume =
         invocation,
       );
       const application: FamilyApplicationInvocation = {
-        deploymentFingerprint: invocation.deploymentFingerprint,
+        hubOraclePolicyId: invocation.hubOraclePolicyId,
         category,
         headerHash: invocation.headerHash,
       };

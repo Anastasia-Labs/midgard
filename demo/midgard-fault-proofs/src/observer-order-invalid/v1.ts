@@ -410,7 +410,7 @@ export const executeManifestBoundObserverOrderInvalidWorkflow = async ({
     headerHash: workflow.binding.definition.headerHash,
   });
   return await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
+    hubOraclePolicyId: workflow.binding.hubOraclePolicyId,
     observation,
     sources,
     replayer: OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY,

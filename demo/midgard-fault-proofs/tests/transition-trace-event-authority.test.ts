@@ -36,11 +36,11 @@ describe("transition event authority raw test transport", () => {
     // Must equal the retained fixture's policy, which follows the selected profile.
     const policy = { ...RELEASE_L1_FINALITY_POLICY };
     const binding = {
-      deploymentFingerprint: "d1".repeat(32),
+      hubOraclePolicyId: "d1".repeat(28),
       network: "Preprod",
       releaseFinality: {
         schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-        deploymentIdentityDigest: "d1".repeat(32),
+        hubOraclePolicyId: "d1".repeat(28),
         blueprintHash: "e1".repeat(32),
         policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
         policy,
@@ -103,7 +103,7 @@ describe("transition event authority raw test transport", () => {
     expect(captures).toBeGreaterThan(successfulCaptures);
     expect(() =>
       requireTransitionTraceEventAuthority({
-        deploymentFingerprint: binding.deploymentFingerprint,
+        hubOraclePolicyId: binding.hubOraclePolicyId,
       }),
     ).toThrow("not admitted");
   });

@@ -44,16 +44,17 @@ describe.skipIf(runDirectory === undefined)(
           return BigInt(value.bigint);
         return value;
       }) as {
-        deploymentFingerprint: string;
+        hubOraclePolicyId: string;
         captured: Capture[];
         signed: boolean;
         submitted: boolean;
       };
       const manifest = JSON.parse(manifestJson) as {
-        manifestId: string;
         contracts: Record<string, { scriptHash: string }>;
       };
-      expect(recorded.deploymentFingerprint).toBe(manifest.manifestId);
+      expect(recorded.hubOraclePolicyId).toBe(
+        manifest.contracts.hubOracleMint!.scriptHash,
+      );
       expect(recorded.signed).toBe(false);
       expect(recorded.submitted).toBe(false);
       expect(recorded.captured).toHaveLength(1);

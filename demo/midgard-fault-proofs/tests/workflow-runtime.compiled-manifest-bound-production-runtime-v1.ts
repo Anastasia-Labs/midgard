@@ -63,11 +63,9 @@ describe("compiled manifest-bound production runtime V1", () => {
         throw new Error(`${category} loader is not invoked during admission`);
       });
       const registry = installWorkflowApplicationRegistry({
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         requiredInstalledCategories: [category],
-        installations: [
-          { category, deploymentFingerprint: DEPLOYMENT, runner },
-        ],
+        installations: [{ category, hubOraclePolicyId: DEPLOYMENT, runner }],
       });
       expect(
         registry.registrations.find(
@@ -79,12 +77,12 @@ describe("compiled manifest-bound production runtime V1", () => {
       )!;
       expect(() =>
         installWorkflowApplicationRegistry({
-          deploymentFingerprint: DEPLOYMENT,
+          hubOraclePolicyId: DEPLOYMENT,
           requiredInstalledCategories: [otherCategory],
           installations: [
             {
               category: otherCategory,
-              deploymentFingerprint: DEPLOYMENT,
+              hubOraclePolicyId: DEPLOYMENT,
               runner,
             },
           ],
@@ -177,12 +175,12 @@ describe("compiled manifest-bound production runtime V1", () => {
       throw new Error("installed Q44 loader reached");
     });
     const registry = installWorkflowApplicationRegistry({
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       requiredInstalledCategories: ["daHashPreimage"],
       installations: [
         {
           category: "daHashPreimage",
-          deploymentFingerprint: DEPLOYMENT,
+          hubOraclePolicyId: DEPLOYMENT,
           runner,
         },
       ],
@@ -222,12 +220,12 @@ describe("compiled manifest-bound production runtime V1", () => {
 
     expect(() =>
       install({
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         requiredInstalledCategories: ["doubleSpend", "daHashPreimage"],
         installations: [
           {
             category: "doubleSpend",
-            deploymentFingerprint: DEPLOYMENT,
+            hubOraclePolicyId: DEPLOYMENT,
             runner: doubleSpend,
           },
         ],
@@ -235,17 +233,17 @@ describe("compiled manifest-bound production runtime V1", () => {
     ).toThrow("installation cardinality mismatch");
     expect(() =>
       install({
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         requiredInstalledCategories: ["doubleSpend", "daHashPreimage"],
         installations: [
           {
             category: "doubleSpend",
-            deploymentFingerprint: DEPLOYMENT,
+            hubOraclePolicyId: DEPLOYMENT,
             runner: doubleSpend,
           },
           {
             category: "doubleSpend",
-            deploymentFingerprint: DEPLOYMENT,
+            hubOraclePolicyId: DEPLOYMENT,
             runner: doubleSpend,
           },
         ],
@@ -253,12 +251,12 @@ describe("compiled manifest-bound production runtime V1", () => {
     ).toThrow("duplicates doubleSpend");
     expect(() =>
       install({
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         requiredInstalledCategories: ["daHashPreimage"],
         installations: [
           {
             category: "daHashPreimage",
-            deploymentFingerprint: "ff".repeat(32),
+            hubOraclePolicyId: "ff".repeat(28),
             runner: daHashPreimage,
           },
         ],
@@ -266,12 +264,12 @@ describe("compiled manifest-bound production runtime V1", () => {
     ).toThrow("unrecognized deployment identity");
     expect(() =>
       install({
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         requiredInstalledCategories: ["daHashPreimage"],
         installations: [
           {
             category: "daHashPreimage",
-            deploymentFingerprint: DEPLOYMENT,
+            hubOraclePolicyId: DEPLOYMENT,
             runner: doubleSpend,
           },
         ],
@@ -279,12 +277,12 @@ describe("compiled manifest-bound production runtime V1", () => {
     ).toThrow("module-admitted category-bound runner");
     expect(() =>
       install({
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         requiredInstalledCategories: ["daHashPreimage"],
         installations: [
           {
             category: "daHashPreimage",
-            deploymentFingerprint: DEPLOYMENT,
+            hubOraclePolicyId: DEPLOYMENT,
             runner: {
               runnerVersion: WORKFLOW_ADAPTER_RUNNER,
               runOrResume: async () => undefined,
@@ -296,7 +294,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     expect(() =>
       assertWorkflowApplicationRegistry({
         schemaVersion: "midgard-production-fraud-proof-application-registry-v1",
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         installedCategories: ["daHashPreimage"],
         registrations: WORKFLOW_ADAPTER_REGISTRATIONS,
       }),
@@ -327,7 +325,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     await expect(
       runner.runOrResume({
         category: "doubleSpend",
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         headerHash: actuation.headerHash,
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
@@ -339,7 +337,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
       invocation: expect.objectContaining({
         category: "doubleSpend",
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         headerHash: actuation.headerHash,
       }),
     });
@@ -382,7 +380,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     try {
       await runner.runOrResume({
         category: "doubleSpend",
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         headerHash: actuation.headerHash,
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
@@ -413,7 +411,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       run: createWorkflowRun(objectiveWalletOf(actuation)),
       permit: actuation.actuationPermit,
       decisionDigest: actuation.decisionDigest,
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       category: "doubleSpend",
       headerHash: actuation.headerHash,
     });
@@ -429,7 +427,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       expect(() =>
         assertWorkflowRunActuation({
           run,
-          deploymentFingerprint: DEPLOYMENT,
+          hubOraclePolicyId: DEPLOYMENT,
           category: "doubleSpend",
           headerHash: actuation.headerHash,
           checkpoint,
@@ -442,7 +440,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       try {
         assertWorkflowRunActuation({
           run,
-          deploymentFingerprint: DEPLOYMENT,
+          hubOraclePolicyId: DEPLOYMENT,
           category: "doubleSpend",
           headerHash: actuation.headerHash,
           checkpoint,
@@ -470,15 +468,12 @@ describe("compiled manifest-bound production runtime V1", () => {
     type Actuation = Awaited<ReturnType<typeof admittedActuation>>;
     const identityOf = (
       actuation: Actuation,
-      deploymentFingerprint: string = DEPLOYMENT,
+      hubOraclePolicyId: string = DEPLOYMENT,
     ) =>
-      recoverableDoubleSpendWorkflow(
-        actuation.headerHash,
-        deploymentFingerprint,
-      );
+      recoverableDoubleSpendWorkflow(actuation.headerHash, hubOraclePolicyId);
     const invocationOf = (actuation: Actuation) => ({
       category: "doubleSpend" as const,
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       headerHash: actuation.headerHash,
       decisionDigest: actuation.decisionDigest,
       actuationPermit: actuation.actuationPermit,
@@ -487,7 +482,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     });
     const driveGenericRunOrResume = async ({
       loaded,
-      deploymentFingerprint,
+      hubOraclePolicyId,
       category,
       record = {},
     }: {
@@ -495,7 +490,7 @@ describe("compiled manifest-bound production runtime V1", () => {
         actuation: Actuation,
         close: () => Promise<void>,
       ) => LoadedWorkflowRuntime;
-      readonly deploymentFingerprint?: string;
+      readonly hubOraclePolicyId?: string;
       readonly category?: FraudProofCatalogueCategoryName;
       readonly record?: Partial<
         Pick<
@@ -512,7 +507,7 @@ describe("compiled manifest-bound production runtime V1", () => {
         record: doubleSpendRecord({
           bindConfig: () => undefined,
           constructWorkflow: async () =>
-            identityOf(actuation, deploymentFingerprint),
+            identityOf(actuation, hubOraclePolicyId),
           execute,
           ...record,
         }),
@@ -600,7 +595,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     it("refuses a constructed workflow whose manifest identity differs from the invocation", async () => {
       const { outcome, close, execute } = await driveGenericRunOrResume({
         loaded: publicLoaded(),
-        deploymentFingerprint: "ff".repeat(32),
+        hubOraclePolicyId: "ff".repeat(28),
       });
       await expect(outcome).rejects.toThrow(
         "manifest-bound workflow identity differs from the compiled CLI invocation",
@@ -686,7 +681,7 @@ describe("compiled manifest-bound production runtime V1", () => {
         );
         return await runner.runOrResume({
           category: "doubleSpend",
-          deploymentFingerprint: DEPLOYMENT,
+          hubOraclePolicyId: DEPLOYMENT,
           headerHash: actuation.headerHash,
           decisionDigest: actuation.decisionDigest,
           actuationPermit: actuation.actuationPermit,

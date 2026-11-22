@@ -101,7 +101,7 @@ export const createValidationTraceCaseHistory = ({
     input,
   ) => {
     const request: FraudProofRawL1SnapshotRequest = {
-      deploymentIdentityDigest: releaseFinality.deploymentIdentityDigest,
+      hubOraclePolicyId: releaseFinality.hubOraclePolicyId,
       blueprintHash: releaseFinality.blueprintHash,
       finalityPolicyDigest: releaseFinality.policyDigest,
       ...input,

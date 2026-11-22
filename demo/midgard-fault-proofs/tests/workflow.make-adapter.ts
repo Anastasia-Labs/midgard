@@ -33,7 +33,7 @@ import {
 } from "./support/fixture-chain.js";
 import { signedWorkflowTransactionFixture } from "./support/signed-workflow-transaction.js";
 import {
-  DEPLOYMENT_FINGERPRINT,
+  HUB_ORACLE_POLICY_ID,
   RELEASE_FINALITY_POLICY,
   releaseFinalityAuthority,
   terminalVerifier,
@@ -42,7 +42,7 @@ import type { TestWorkflowProcess } from "./support/workflow-process.js";
 
 export { createFixtureChain, type FixtureChain };
 export {
-  DEPLOYMENT_FINGERPRINT,
+  HUB_ORACLE_POLICY_ID,
   RELEASE_FINALITY_POLICY,
   releaseFinalityAuthority,
   terminalVerifier,
@@ -305,7 +305,7 @@ export const run = async ({
   readonly finalityAuthority?: FraudProofReleaseFinalityAuthority;
 }) =>
   await runFraudProofWorkflow({
-    deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+    hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
     evidence,
     detections: [detection(evidence)],
     registry: createFraudProofWorkflowRegistry({

@@ -47,7 +47,7 @@ export const fraudProofRawL1HistoryReader =
   }): FraudProofRawL1HistoryReader =>
   async (unit) => {
     const request = {
-      deploymentIdentityDigest: releaseFinality.deploymentIdentityDigest,
+      hubOraclePolicyId: releaseFinality.hubOraclePolicyId,
       blueprintHash: releaseFinality.blueprintHash,
       finalityPolicyDigest: releaseFinality.policyDigest,
       headerHash,

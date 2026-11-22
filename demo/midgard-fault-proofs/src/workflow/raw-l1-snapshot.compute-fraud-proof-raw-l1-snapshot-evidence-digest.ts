@@ -41,7 +41,7 @@ export type FraudProofRawL1ScopeRole =
   | "field_certificate";
 
 export type FraudProofRawL1SnapshotRequest = {
-  readonly deploymentIdentityDigest: string;
+  readonly hubOraclePolicyId: string;
   readonly blueprintHash: string;
   readonly finalityPolicyDigest: string;
   readonly headerHash: string;
@@ -97,7 +97,7 @@ export type FraudProofRawL1UnitHistory = {
 
 export type FraudProofRawL1Snapshot = {
   readonly schemaVersion: typeof FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION;
-  readonly deploymentIdentityDigest: string;
+  readonly hubOraclePolicyId: string;
   readonly blueprintHash: string;
   readonly finalityPolicyDigest: string;
   readonly headerHash: string;
@@ -140,7 +140,7 @@ export const computeFraudProofRawL1SnapshotEvidenceDigest = (
   const transcript = {
     schemaVersion: "midgard-fraud-proof-raw-l1-evidence-v1",
     snapshotSchemaVersion: snapshot.schemaVersion,
-    deploymentIdentityDigest: snapshot.deploymentIdentityDigest,
+    hubOraclePolicyId: snapshot.hubOraclePolicyId,
     blueprintHash: snapshot.blueprintHash,
     finalityPolicyDigest: snapshot.finalityPolicyDigest,
     headerHash: snapshot.headerHash,

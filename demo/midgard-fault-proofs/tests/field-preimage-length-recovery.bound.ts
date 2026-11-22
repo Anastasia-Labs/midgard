@@ -71,7 +71,7 @@ export const hash = (value: string) => value.repeat(32);
 
 export const outRef = (value: string) => `${hash(value)}#0`;
 
-export const deploymentFingerprint = hash("aa");
+export const hubOraclePolicyId = "aa".repeat(28);
 
 const provenance = {
   trustClass: "authenticated_cardano_l1",
@@ -83,7 +83,7 @@ const policy = { ...RELEASE_L1_FINALITY_POLICY };
 
 export const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: deploymentFingerprint,
+  hubOraclePolicyId,
   blueprintHash: hash("bb"),
   policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
   policy,
@@ -178,7 +178,7 @@ export const bound = async (
     },
   };
   const binding = {
-    deploymentFingerprint,
+    hubOraclePolicyId,
     definition: { category, headerHash },
     network: "Custom",
     releaseFinality,
@@ -263,7 +263,7 @@ export const context = (
 ) => ({
   identity: {
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     category,
     target: { kind: "state_queue_header" as const, headerHash },
   } satisfies FraudProofWorkflowIdentity,

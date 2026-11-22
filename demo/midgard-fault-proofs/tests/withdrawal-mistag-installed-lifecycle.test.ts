@@ -162,7 +162,7 @@ describe("withdrawalMistag installed cursor actuator", () => {
           },
           releaseFinality: {
             schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-            deploymentIdentityDigest: "aa".repeat(32),
+            hubOraclePolicyId: "aa".repeat(28),
             blueprintHash: "bb".repeat(32),
             policyDigest:
               computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
@@ -170,7 +170,6 @@ describe("withdrawalMistag installed cursor actuator", () => {
           },
           releaseEconomics: {
             schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-            deploymentIdentityDigest: "aa".repeat(32),
             blueprintHash: "bb".repeat(32),
             policyDigest:
               computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
@@ -271,7 +270,7 @@ describe("withdrawalMistag installed cursor actuator", () => {
         });
         const identity: FraudProofWorkflowIdentity = {
           schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
-          deploymentFingerprint: "aa".repeat(32),
+          hubOraclePolicyId: "aa".repeat(28),
           category: "withdrawalMistag",
           target: { kind: "state_queue_header", headerHash: setup.headerHash },
         };

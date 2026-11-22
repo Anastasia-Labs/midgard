@@ -54,7 +54,7 @@ import {
 } from "./support/own-thread-reclaim-expectations.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
-  DEPLOYMENT_FINGERPRINT,
+  HUB_ORACLE_POLICY_ID,
   terminalVerifier,
 } from "./workflow.make-adapter.js";
 
@@ -70,14 +70,13 @@ const economicsPolicy = {
 } as const;
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: DEPLOYMENT_FINGERPRINT,
+  hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
   blueprintHash: "bb".repeat(32),
   policyDigest: computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
   policy: finalityPolicy,
 } as const;
 const releaseEconomics = {
   schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: DEPLOYMENT_FINGERPRINT,
   blueprintHash: "bb".repeat(32),
   policyDigest: computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
   policy: economicsPolicy,
@@ -259,7 +258,7 @@ const scene = async (ours: "forcedStep" | "forcedScan") => {
   );
   const run = async (): Promise<FraudProofWorkflowRunResult> =>
     await runAdmittedFraudProofWorkflow({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       category: "networkId",
       headerHash,
       prepareFamilyArtifact: async () => artifact,

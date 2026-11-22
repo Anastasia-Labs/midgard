@@ -34,7 +34,7 @@ export const provenance: EvidenceProvenance = {
 
 export const identity: FraudProofWorkflowIdentity = {
   schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
-  deploymentFingerprint: hash("aa"),
+  hubOraclePolicyId: "aa".repeat(28),
   category: "daHashPreimage",
   target: { kind: "state_queue_header", headerHash },
 };

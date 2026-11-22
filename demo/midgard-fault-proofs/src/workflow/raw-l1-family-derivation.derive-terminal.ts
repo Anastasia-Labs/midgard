@@ -84,11 +84,7 @@ export const deriveTerminal = async ({
 > => {
   const verifiedEconomics =
     validateVerifiedFraudProofReleaseEconomicsPolicy(releaseEconomics);
-  if (
-    verifiedEconomics.deploymentIdentityDigest !==
-      snapshot.deploymentIdentityDigest ||
-    verifiedEconomics.blueprintHash !== snapshot.blueprintHash
-  ) {
+  if (verifiedEconomics.blueprintHash !== snapshot.blueprintHash) {
     throw new Error(
       "release economics identity does not match the raw L1 snapshot",
     );
@@ -285,7 +281,7 @@ export const fraudProofRawL1SnapshotRequestForFamily = ({
   }
   const assetName = `${definition.categoryId}${definition.headerHash}`;
   return {
-    deploymentIdentityDigest: releaseFinality.deploymentIdentityDigest,
+    hubOraclePolicyId: releaseFinality.hubOraclePolicyId,
     blueprintHash: releaseFinality.blueprintHash,
     finalityPolicyDigest: releaseFinality.policyDigest,
     headerHash: definition.headerHash,

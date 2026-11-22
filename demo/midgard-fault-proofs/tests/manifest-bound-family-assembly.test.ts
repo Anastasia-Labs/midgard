@@ -222,7 +222,7 @@ describe("manifest-bound family assembly", () => {
       expect(run).toHaveBeenCalledTimes(1);
       const [input] = run.mock.calls[0]!;
       expect(input).toMatchObject({
-        deploymentFingerprint: f.binding.deploymentFingerprint,
+        hubOraclePolicyId: f.binding.hubOraclePolicyId,
         observation: f.observation,
         sources,
       });

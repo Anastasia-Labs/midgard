@@ -25,7 +25,6 @@ export type ReleaseFraudProofEconomicsPolicy = {
  */
 export type VerifiedFraudProofReleaseEconomicsPolicy = {
   readonly schemaVersion: typeof FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION;
-  readonly deploymentIdentityDigest: string;
   readonly blueprintHash: string;
   readonly policyDigest: string;
   readonly policy: ReleaseFraudProofEconomicsPolicy;
@@ -34,7 +33,7 @@ export type VerifiedFraudProofReleaseEconomicsPolicy = {
 export interface FraudProofReleaseEconomicsAuthority {
   readonly authorityVersion: typeof FRAUD_PROOF_RELEASE_ECONOMICS_AUTHORITY;
   verifyForWorkflow(input: {
-    readonly deploymentFingerprint: string;
+    readonly hubOraclePolicyId: string;
   }): Promise<VerifiedFraudProofReleaseEconomicsPolicy>;
 }
 
@@ -87,11 +86,7 @@ export const validateVerifiedFraudProofReleaseEconomicsPolicy = (
   ) {
     throw new Error("release economics policy has an unsupported schema");
   }
-  if (
-    !DIGEST.test(value.deploymentIdentityDigest) ||
-    !DIGEST.test(value.blueprintHash) ||
-    !DIGEST.test(value.policyDigest)
-  ) {
+  if (!DIGEST.test(value.blueprintHash) || !DIGEST.test(value.policyDigest)) {
     throw new Error("release economics identity digests must be 32-byte hex");
   }
   if (

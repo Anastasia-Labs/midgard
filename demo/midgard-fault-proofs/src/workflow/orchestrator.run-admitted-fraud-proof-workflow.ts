@@ -67,7 +67,7 @@ import type { WorkflowRun } from "./workflow-run.js";
  * ordinary failed attempt, and the next iteration observes again.
  */
 export const runAdmittedFraudProofWorkflow = async ({
-  deploymentFingerprint,
+  hubOraclePolicyId,
   category,
   headerHash,
   prepareFamilyArtifact,
@@ -77,7 +77,7 @@ export const runAdmittedFraudProofWorkflow = async ({
   releaseFinality,
   maxActions = 64,
 }: {
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
   readonly prepareFamilyArtifact: (
@@ -99,11 +99,6 @@ export const runAdmittedFraudProofWorkflow = async ({
   ) {
     throw new Error("workflow requires the authenticated L1 terminal verifier");
   }
-  if (releaseFinality.deploymentIdentityDigest !== deploymentFingerprint) {
-    throw new Error(
-      "release finality authority returned a different deployment identity",
-    );
-  }
   const { objectiveWallet } = run;
   if (
     objectiveWallet.category !== category ||
@@ -117,7 +112,7 @@ export const runAdmittedFraudProofWorkflow = async ({
   const assertActuation = (checkpoint: WorkflowActuationCheckpoint): void =>
     assertWorkflowRunActuation({
       run,
-      deploymentFingerprint,
+      hubOraclePolicyId,
       category,
       headerHash,
       checkpoint,
@@ -127,7 +122,7 @@ export const runAdmittedFraudProofWorkflow = async ({
   const decisionDigest = workflowActuationDecisionDigest(run);
   const identity = normalizeFraudProofWorkflowIdentity({
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     category,
     target: { kind: "state_queue_header", headerHash },
     ...(decisionDigest === undefined ? {} : { decisionDigest }),

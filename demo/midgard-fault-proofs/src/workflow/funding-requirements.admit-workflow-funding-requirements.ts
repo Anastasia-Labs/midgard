@@ -16,7 +16,7 @@ export const createWorkflowFundingRequirements = (
   return Object.freeze({
     schemaVersion: WORKFLOW_FUNDING_REQUIREMENTS,
     scope: normalized.scope,
-    deploymentFingerprint: normalized.deploymentFingerprint,
+    hubOraclePolicyId: normalized.hubOraclePolicyId,
     blueprintSha256: normalized.blueprintSha256,
     protocolParametersDigest: normalized.protocolParametersDigest,
     economicsPolicyDigest: normalized.economicsPolicyDigest,
@@ -41,7 +41,7 @@ export const admitWorkflowFundingRequirements = (
   return Object.freeze({
     schemaVersion: WORKFLOW_FUNDING_REQUIREMENTS,
     scope: normalized.scope,
-    deploymentFingerprint: normalized.deploymentFingerprint,
+    hubOraclePolicyId: normalized.hubOraclePolicyId,
     blueprintSha256: normalized.blueprintSha256,
     protocolParametersDigest: normalized.protocolParametersDigest,
     economicsPolicyDigest: normalized.economicsPolicyDigest,

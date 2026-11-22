@@ -37,7 +37,7 @@ import type { LocallyEvaluatedTransaction } from "../../src/workflow/transaction
 
 const hash = (byte: string) => byte.repeat(32);
 const headerHash = "11".repeat(28),
-  deploymentFingerprint = hash("22"),
+  hubOraclePolicyId = "22".repeat(28),
   queueOutRef = `${hash("33")}#0`;
 const provenance = {
   trustClass: "authenticated_cardano_l1",
@@ -47,7 +47,7 @@ const provenance = {
 const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const releaseFinality = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: deploymentFingerprint,
+  hubOraclePolicyId,
   blueprintHash: hash("55"),
   policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
   policy,
@@ -153,7 +153,7 @@ export const customWorkflowRecoveryFixture = async (
   const unsealed: Omit<HeaderFaultDecision, "decisionDigest"> = {
     schemaVersion: HEADER_DECISION,
     classifierVersion: HEADER_CLASSIFIER,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     headerHash,
     authenticatedObservationDigest: hash("12"),
     payloadEnvelopeSha256: hash("13"),
@@ -175,7 +175,7 @@ export const customWorkflowRecoveryFixture = async (
   };
   const identity = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     category,
     target: { kind: "state_queue_header", headerHash },
     decisionDigest: decision.decisionDigest,
@@ -183,12 +183,12 @@ export const customWorkflowRecoveryFixture = async (
   const workflowId = computeFraudProofWorkflowId(identity);
   const controller = createWorkflowReconciliationPermitController({
     decision,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     rollbackGeneration: "0",
   });
   const workflow = {
     binding: {
-      deploymentFingerprint,
+      hubOraclePolicyId,
       definition: { category, headerHash },
       releaseFinality,
     },

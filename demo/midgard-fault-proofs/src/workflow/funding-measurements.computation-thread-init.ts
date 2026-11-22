@@ -256,7 +256,7 @@ export const measureComputationThreadInitFunding = async (input: {
   // Reuse the release consumer's exact signature, capital and custody checks.
   createWorkflowFundingRequirements({
     scope: { kind: "fraud_proof_category", category: input.category },
-    deploymentFingerprint: identity.manifestId,
+    hubOraclePolicyId: identity.hubOraclePolicyId,
     blueprintSha256: identity.blueprintSha256,
     protocolParametersDigest: identity.protocolParametersDigest,
     economicsPolicyDigest: identity.economicsPolicyDigest,

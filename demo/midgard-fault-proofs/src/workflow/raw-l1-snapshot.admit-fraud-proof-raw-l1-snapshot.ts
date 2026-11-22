@@ -94,7 +94,7 @@ export const admitFraudProofRawL1Snapshot = ({
     value,
     [
       "schemaVersion",
-      "deploymentIdentityDigest",
+      "hubOraclePolicyId",
       "blueprintHash",
       "finalityPolicyDigest",
       "headerHash",
@@ -110,9 +110,9 @@ export const admitFraudProofRawL1Snapshot = ({
   if (root.schemaVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION) {
     throw new Error("raw L1 snapshot has an unsupported schema");
   }
-  const deploymentIdentityDigest = digest(
-    root.deploymentIdentityDigest,
-    "raw L1 snapshot deploymentIdentityDigest",
+  const hubOraclePolicyId = string(
+    root.hubOraclePolicyId,
+    "raw L1 snapshot hubOraclePolicyId",
   );
   const blueprintHash = digest(
     root.blueprintHash,
@@ -126,8 +126,7 @@ export const admitFraudProofRawL1Snapshot = ({
   if (!HEX_28.test(headerHash))
     throw new Error("raw L1 snapshot headerHash must be 28-byte hex");
   if (
-    request.deploymentIdentityDigest !==
-      releaseFinality.deploymentIdentityDigest ||
+    request.hubOraclePolicyId !== releaseFinality.hubOraclePolicyId ||
     request.blueprintHash !== releaseFinality.blueprintHash ||
     request.finalityPolicyDigest !== releaseFinality.policyDigest ||
     !HEX_28.test(request.headerHash)
@@ -137,8 +136,8 @@ export const admitFraudProofRawL1Snapshot = ({
     );
   }
   if (
-    deploymentIdentityDigest !== request.deploymentIdentityDigest ||
-    deploymentIdentityDigest !== releaseFinality.deploymentIdentityDigest ||
+    hubOraclePolicyId !== request.hubOraclePolicyId ||
+    hubOraclePolicyId !== releaseFinality.hubOraclePolicyId ||
     blueprintHash !== request.blueprintHash ||
     blueprintHash !== releaseFinality.blueprintHash ||
     finalityPolicyDigest !== request.finalityPolicyDigest ||
@@ -225,7 +224,7 @@ export const admitFraudProofRawL1Snapshot = ({
   if (
     cursor.rollbackCursor !==
     computeFraudProofRawL1RollbackCursor({
-      deploymentIdentityDigest,
+      hubOraclePolicyId,
       blueprintHash,
       finalityPolicyDigest,
       sourceId: provenance.sourceId,
@@ -435,7 +434,7 @@ export const admitFraudProofRawL1Snapshot = ({
   }
   return {
     schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
-    deploymentIdentityDigest,
+    hubOraclePolicyId,
     blueprintHash,
     finalityPolicyDigest,
     headerHash,

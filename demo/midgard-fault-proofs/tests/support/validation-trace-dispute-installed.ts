@@ -89,15 +89,15 @@ export const installValidationTraceApplication = async ({
     }),
   );
   const identity = signed.result;
-  const fingerprint = identity.manifestId;
+  const { hubOraclePolicyId } = identity;
   const releaseFinalityAuthority =
     watcherDeploymentReleaseFinalityAuthority(identity);
   const releaseFinality = await releaseFinalityAuthority.verifyForWorkflow({
-    deploymentFingerprint: fingerprint,
+    hubOraclePolicyId,
   });
   const releaseEconomics = await watcherDeploymentReleaseEconomicsAuthority(
     identity,
-  ).verifyForWorkflow({ deploymentFingerprint: fingerprint });
+  ).verifyForWorkflow({ hubOraclePolicyId });
   const category = h.catalogue.categories[CATEGORY]!;
   // The finalized manifest the identity binds.
   const deploymentInfo = signed.signedIdentity.manifest as Readonly<{
@@ -131,7 +131,7 @@ export const installValidationTraceApplication = async ({
   });
   /** What the signed manifest binds for the dispute over `headerHash`. */
   const bindingFor = ({ headerHash }: { readonly headerHash: string }) => ({
-    deploymentFingerprint: fingerprint,
+    hubOraclePolicyId,
     blueprintHash: releaseFinality.blueprintHash,
     network,
     blueprint: h.realBlueprint,
@@ -175,7 +175,7 @@ export const installValidationTraceApplication = async ({
   // Classify each committed header as the watcher's classifier does.
   const sources = [
     new FixtureRetainedDaSource(
-      fingerprint,
+      hubOraclePolicyId,
       new Map(
         [scene.failing, scene.passing].map((block) => [
           block.evidence.headerHash,
@@ -185,7 +185,7 @@ export const installValidationTraceApplication = async ({
     ),
   ];
   const classifier = await createHeaderClassifier({
-    deploymentFingerprint: fingerprint,
+    hubOraclePolicyId,
     replayer: createValidationTraceDisputeCompleteCanonicalReplay(l1SlotConfig),
     releaseFinalityAuthority,
   });
@@ -297,7 +297,7 @@ export const installValidationTraceApplication = async ({
   const turn = async () =>
     (await runner.runOrResume({
       category: CATEGORY,
-      deploymentFingerprint: fingerprint,
+      hubOraclePolicyId,
       headerHash,
       decisionDigest: decision.decisionDigest,
       actuationPermit: permit,
@@ -319,7 +319,7 @@ export const installValidationTraceApplication = async ({
       infrastructure: loaded.infrastructure as never,
       resolveReferenceScript: loaded.resolveReferenceScript,
       invocation: {
-        deploymentFingerprint: fingerprint,
+        hubOraclePolicyId,
         category: CATEGORY,
         headerHash: block.evidence.headerHash,
       },
@@ -328,7 +328,7 @@ export const installValidationTraceApplication = async ({
   return {
     decision,
     record,
-    fingerprint,
+    hubOraclePolicyId,
     bindingFor,
     classify,
     apply,

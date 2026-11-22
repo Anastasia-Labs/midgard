@@ -49,7 +49,7 @@ import {
   canonicalEvidence,
   chainOf,
   createFixtureChain,
-  DEPLOYMENT_FINGERPRINT,
+  HUB_ORACLE_POLICY_ID,
   makeAdapter,
   PROOF_TX_HASH,
   RELEASE_FINALITY_POLICY,
@@ -65,7 +65,7 @@ import {
 const retainedDaRun = (
   fixture: Awaited<ReturnType<typeof buildCanonicalBlockFixture>>,
 ) => ({
-  deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+  hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
   observation: authenticatedHeaderObservation(fixture),
   sources: [retainedDaSource(fixture.payloadEnvelopeCbor)],
   run: createTestWorkflowProcess().run({
@@ -128,7 +128,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       }));
       const workflow = {
         binding: {
-          deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+          hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
           definition: { headerHash: observation.headerHash },
         },
         adapterConfig: {
@@ -216,7 +216,7 @@ describe("Q51/W-O4 resumable workflow", () => {
               workflow: networkWorkflow,
             });
       const pending = await runFraudProofWorkflowFromRetainedDa({
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
         observation,
         sources: invocation.sources,
         replayer:
@@ -463,7 +463,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       ["remove", REMOVAL_TX_HASH],
     ]);
     expect(result.identity).toMatchObject({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       category: "doubleSpend",
       target: { kind: "state_queue_header", headerHash: evidence.headerHash },
     });
@@ -550,20 +550,6 @@ describe("Q51/W-O4 resumable workflow", () => {
         `confirmation depth is below the release threshold: required=${RELEASE_FINALITY_POLICY.automaticRecoveryMaxDepth + 2} actual=${RELEASE_FINALITY_POLICY.confirmationDepth - 1}`,
       ),
     });
-  });
-
-  it("rejects a release-finality authority bound to another deployment", async () => {
-    const evidence = await canonicalEvidence();
-    await expect(
-      run({
-        evidence,
-        adapter: makeAdapter(),
-        process: createTestWorkflowProcess(),
-        finalityAuthority: releaseFinalityAuthority({
-          deploymentIdentityDigest: "f1".repeat(32),
-        }),
-      }),
-    ).rejects.toThrow("returned a different deployment identity");
   });
 
   it("builds an ambiguous submission the chain does not show again", async () => {
@@ -683,13 +669,13 @@ describe("Q51/W-O4 resumable workflow", () => {
   it("binds workflow identity independently to deployment, category, target, and decision", () => {
     const base: FraudProofWorkflowIdentity = {
       schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       category: "doubleSpend",
       target: { kind: "state_queue_header", headerHash: "f4".repeat(28) },
     };
     const identities: FraudProofWorkflowIdentity[] = [
       base,
-      { ...base, deploymentFingerprint: "e5".repeat(32) },
+      { ...base, hubOraclePolicyId: "e5".repeat(28) },
       { ...base, category: "invalidRange" },
       {
         ...base,

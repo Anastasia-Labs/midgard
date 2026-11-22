@@ -1,9 +1,9 @@
-import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-transport";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk/core";
 
+import { normalizeHubOraclePolicyId } from "./identity.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -139,13 +139,13 @@ export const createFraudProofWorkflowRegistry = ({
 };
 
 export const verifiedReleaseFinality = async ({
-  deploymentFingerprint,
+  hubOraclePolicyId,
   authority,
 }: {
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly authority: FraudProofReleaseFinalityAuthority;
 }): Promise<{
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
 }> => {
   if (authority.authorityVersion !== FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY) {
@@ -153,16 +153,11 @@ export const verifiedReleaseFinality = async ({
       "workflow requires the deployment-manifest release finality authority",
     );
   }
-  const normalized = normalizeDaDeploymentFingerprintHex(deploymentFingerprint);
+  const normalized = normalizeHubOraclePolicyId(hubOraclePolicyId);
   const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy(
-    await authority.verifyForWorkflow({ deploymentFingerprint: normalized }),
+    await authority.verifyForWorkflow({ hubOraclePolicyId: normalized }),
   );
-  if (releaseFinality.deploymentIdentityDigest !== normalized) {
-    throw new Error(
-      "release finality authority returned a different deployment identity",
-    );
-  }
-  return { deploymentFingerprint: normalized, releaseFinality };
+  return { hubOraclePolicyId: normalized, releaseFinality };
 };
 
 export const normalizeTxHash = (value: string, field: string): string => {

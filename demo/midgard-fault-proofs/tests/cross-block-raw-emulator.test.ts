@@ -33,7 +33,7 @@ describe("cross-block raw emulator clock", () => {
     const recorder = recordCrossBlockRawEmulator();
     const releaseFinality = {
       schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-      deploymentIdentityDigest: "11".repeat(32),
+      hubOraclePolicyId: "11".repeat(28),
       blueprintHash: "22".repeat(32),
       policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
         DEPLOYMENT_MANIFEST_L1_FINALITY,
@@ -41,7 +41,7 @@ describe("cross-block raw emulator clock", () => {
       policy: DEPLOYMENT_MANIFEST_L1_FINALITY,
     };
     const request: FraudProofRawL1SnapshotRequest = {
-      deploymentIdentityDigest: "11".repeat(32),
+      hubOraclePolicyId: "11".repeat(28),
       blueprintHash: "22".repeat(32),
       finalityPolicyDigest: releaseFinality.policyDigest,
       headerHash: "44".repeat(28),

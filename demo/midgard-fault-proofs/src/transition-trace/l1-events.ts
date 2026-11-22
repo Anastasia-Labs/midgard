@@ -112,7 +112,7 @@ export const captureTransitionTraceL1Events = async ({
   );
   const hubUnit = toUnit(hubPolicy, SDK.HUB_ORACLE_ASSET_NAME);
   const base = {
-    deploymentIdentityDigest: finality.deploymentIdentityDigest,
+    hubOraclePolicyId: finality.hubOraclePolicyId,
     blueprintHash: finality.blueprintHash,
     finalityPolicyDigest: finality.policyDigest,
     headerHash: binding.definition.headerHash,
@@ -359,7 +359,7 @@ export const readFreshTransitionTraceL1Events = (
 };
 
 export type TransitionTraceEventAuthority = Readonly<{
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
 }>;
 const eventAuthorities = new WeakMap<
   object,
@@ -388,7 +388,7 @@ const createEventAuthorityFromRaw = ({
   authority: FraudProofRawL1SnapshotAuthority;
 }): TransitionTraceEventAuthority => {
   const handle = Object.freeze({
-    deploymentFingerprint: binding.deploymentFingerprint,
+    hubOraclePolicyId: binding.hubOraclePolicyId,
   });
   eventAuthorities.set(handle, (headerHash) =>
     captureTransitionTraceL1Events({

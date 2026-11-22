@@ -33,7 +33,7 @@ type PermitState = {
   readonly decisionDigest: string;
   executionDecisionDigest: string;
   executionBound: boolean;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
   readonly rollbackGeneration: string;
@@ -76,7 +76,7 @@ export const runPermits = new WeakMap<
     permit: WorkflowActuationPermit;
     decisionDigest: string;
     executionDecisionDigest: string;
-    deploymentFingerprint: string;
+    hubOraclePolicyId: string;
     category: FraudProofCatalogueCategoryName;
     headerHash: string;
   }>
@@ -126,7 +126,7 @@ const createController = ({
     executionDecisionDigest: admitted.decisionDigest,
     executionBound: false,
     decisionDigest: admitted.decisionDigest,
-    deploymentFingerprint: admitted.deploymentFingerprint,
+    hubOraclePolicyId: admitted.hubOraclePolicyId,
     category: admitted.category,
     headerHash: admitted.headerHash,
     rollbackGeneration,
@@ -155,14 +155,14 @@ export const createWorkflowActuationPermitController = (input: {
  */
 export const createWorkflowReconciliationPermitController = (input: {
   readonly decision: HeaderFaultDecision;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly rollbackGeneration: string;
 }): WorkflowActuationPermitController => {
   const { decisionDigest, ...unsealed } = input.decision;
   if (
     input.decision.decision !== "fault_detected" ||
     workflowJsonDigest(normalizeWorkflowJson(unsealed)) !== decisionDigest ||
-    input.decision.deploymentFingerprint !== input.deploymentFingerprint
+    input.decision.hubOraclePolicyId !== input.hubOraclePolicyId
   )
     throw new Error(
       "reconciliation authority requires the exact classified fault",
@@ -173,14 +173,14 @@ export const createWorkflowReconciliationPermitController = (input: {
 export const assertPermit = ({
   permit,
   decisionDigest,
-  deploymentFingerprint,
+  hubOraclePolicyId,
   category,
   headerHash,
   checkpoint,
 }: {
   readonly permit: WorkflowActuationPermit;
   readonly decisionDigest: string;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
   readonly checkpoint: WorkflowActuationCheckpoint;
@@ -194,7 +194,7 @@ export const assertPermit = ({
   }
   if (
     state.decisionDigest !== decisionDigest ||
-    state.deploymentFingerprint !== deploymentFingerprint ||
+    state.hubOraclePolicyId !== hubOraclePolicyId ||
     state.category !== category ||
     state.headerHash !== headerHash
   ) {

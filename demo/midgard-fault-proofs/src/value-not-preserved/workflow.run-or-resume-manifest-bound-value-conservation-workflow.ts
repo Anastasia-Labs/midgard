@@ -22,7 +22,7 @@ export const runOrResumeManifestBoundValueConservationWorkflow = async ({
   readonly run: WorkflowRun;
 }) =>
   runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
+    hubOraclePolicyId: workflow.binding.hubOraclePolicyId,
     observation: await observeFraudProofWorkflowHeader(workflow.l1, {
       headerHash: workflow.binding.definition.headerHash,
     }),

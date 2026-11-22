@@ -24,7 +24,7 @@ import type { WorkflowRun } from "./workflow-run.js";
 
 /** Canonical-block classified workflow entry retained for all ordinary families. */
 export const runFraudProofWorkflow = async ({
-  deploymentFingerprint,
+  hubOraclePolicyId,
   evidence,
   detections,
   replayContext,
@@ -34,7 +34,7 @@ export const runFraudProofWorkflow = async ({
   releaseFinalityAuthority,
   maxActions,
 }: {
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly evidence: CanonicalBlockEvidence;
   readonly detections: readonly CanonicalViolationDetection[];
   readonly replayContext?: CompleteCanonicalReplayContext;
@@ -45,7 +45,7 @@ export const runFraudProofWorkflow = async ({
   readonly maxActions?: number;
 }): Promise<FraudProofWorkflowRunResult> => {
   const verified = await verifiedReleaseFinality({
-    deploymentFingerprint,
+    hubOraclePolicyId,
     authority: releaseFinalityAuthority,
   });
   const classification = await classifyCanonicalBlockViolations({
@@ -57,7 +57,7 @@ export const runFraudProofWorkflow = async ({
     return { kind: classification.decision, classification };
   }
   return await runAdmittedFraudProofWorkflow({
-    deploymentFingerprint: verified.deploymentFingerprint,
+    hubOraclePolicyId: verified.hubOraclePolicyId,
     category: classification.category,
     headerHash: evidence.headerHash,
     prepareFamilyArtifact: async (adapter) =>
@@ -80,7 +80,7 @@ export const runFraudProofWorkflow = async ({
  * shared lifecycle. A canonical payload is not silently treated as Q44.
  */
 export const runDaHashPreimageWorkflowFromRetainedDa = async ({
-  deploymentFingerprint,
+  hubOraclePolicyId,
   observation,
   sources,
   registry,
@@ -90,7 +90,7 @@ export const runDaHashPreimageWorkflowFromRetainedDa = async ({
   retries,
   maxActions,
 }: {
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly registry: FraudProofWorkflowRegistry;
@@ -107,7 +107,7 @@ export const runDaHashPreimageWorkflowFromRetainedDa = async ({
     );
   }
   const verified = await verifiedReleaseFinality({
-    deploymentFingerprint,
+    hubOraclePolicyId,
     authority: releaseFinalityAuthority,
   });
   const routed = await fetchFraudProofEvidence({
@@ -133,7 +133,7 @@ export const runDaHashPreimageWorkflowFromRetainedDa = async ({
     entries: routed.evidence.entries,
   }) as WorkflowJsonObject;
   return await runAdmittedFraudProofWorkflow({
-    deploymentFingerprint: verified.deploymentFingerprint,
+    hubOraclePolicyId: verified.hubOraclePolicyId,
     category: "daHashPreimage",
     headerHash: routed.evidence.headerHash,
     prepareFamilyArtifact: async () => familyArtifact,

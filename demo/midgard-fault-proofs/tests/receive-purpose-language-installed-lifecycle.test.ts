@@ -224,7 +224,7 @@ describe("receivePurposeLanguage installed cursor actuator", () => {
       });
       const identity: FraudProofWorkflowIdentity = {
         schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
-        deploymentFingerprint: "aa".repeat(32),
+        hubOraclePolicyId: "aa".repeat(28),
         category: "receivePurposeLanguage",
         target: { kind: "state_queue_header", headerHash: setup.headerHash },
       };

@@ -12,7 +12,7 @@ import {
 } from "./family-application.assert-family-definition-roster.js";
 
 export type FamilyApplicationInvocation = Readonly<{
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   category: FraudProofCatalogueCategoryName;
   headerHash: string;
 }>;
@@ -151,7 +151,7 @@ export const applyFamilyApplicationRecord = async <
   assertManifestBoundWorkflowIdentity({
     workflow,
     category: record.category,
-    deploymentFingerprint: invocation.deploymentFingerprint,
+    hubOraclePolicyId: invocation.hubOraclePolicyId,
     headerHash: invocation.headerHash,
     bindsDecisionDigest: record.bindsDecisionDigest,
     decisionDigest: infrastructure.decisionDigest,

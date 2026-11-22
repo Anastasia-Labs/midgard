@@ -41,10 +41,10 @@ export const fixture = async ({
   stepsTaken = 2,
 }: { stepsTaken?: 0 | 2 } = {}) => {
   const headerHash = "22".repeat(28);
-  const fingerprint = "11".repeat(32);
+  const hubOraclePolicyId = "11".repeat(28);
   const releaseFinality = {
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: fingerprint,
+    hubOraclePolicyId,
     blueprintHash: "cc".repeat(32),
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
     policy,
@@ -204,7 +204,7 @@ export const fixture = async ({
    * `reclaim`, or, with none, an L1 view that cannot list our threads. */
   const assemble = async (reclaim: OwnThreadReclaimPort | undefined) => {
     const binding = {
-      deploymentFingerprint: fingerprint,
+      hubOraclePolicyId,
       definition: { category, headerHash },
       releaseFinality,
     };
@@ -252,7 +252,7 @@ export const fixture = async ({
   const execute = async (reclaim: OwnThreadReclaimPort | undefined) => {
     const assembled = await assemble(reclaim);
     return await runAdmittedFraudProofWorkflow({
-      deploymentFingerprint: fingerprint,
+      hubOraclePolicyId,
       category,
       headerHash,
       prepareFamilyArtifact: async () => ({ retained: "evidence" }),

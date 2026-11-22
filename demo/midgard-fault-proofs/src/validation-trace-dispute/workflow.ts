@@ -333,7 +333,7 @@ export const runOrResumeManifestBoundValidationTraceDisputeWorkflow = async ({
 > =>
   validationTraceRunState(
     await runFraudProofWorkflowFromRetainedDa({
-      deploymentFingerprint: workflow.binding.deploymentFingerprint,
+      hubOraclePolicyId: workflow.binding.hubOraclePolicyId,
       observation: await observeFraudProofWorkflowHeader(workflow.l1, {
         headerHash: workflow.binding.definition.headerHash,
       }),

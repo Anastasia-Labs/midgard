@@ -35,7 +35,7 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
-  DEPLOYMENT_FINGERPRINT,
+  HUB_ORACLE_POLICY_ID,
   makeAdapter,
   releaseFinalityAuthority,
   terminalVerifier,
@@ -346,7 +346,7 @@ describe("compiled production workflow boundary", () => {
     };
     await expect(
       runFraudProofWorkflowFromRetainedDa({
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
         observation: authenticatedHeaderObservation(fixture),
         sources: [source],
         replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
@@ -449,8 +449,8 @@ describe("compiled production workflow boundary", () => {
       "resume-workflow",
       "--fraud-category",
       "doubleSpend",
-      "--deployment-fingerprint",
-      DEPLOYMENT_FINGERPRINT,
+      "--hub-oracle-policy-id",
+      HUB_ORACLE_POLICY_ID,
       "--header-hash",
       "f8".repeat(28),
       "--workflow-runtime-config",
@@ -459,7 +459,7 @@ describe("compiled production workflow boundary", () => {
     expect(parseArgs(argv)).toMatchObject({
       command: "resume-workflow",
       fraudCategory: "doubleSpend",
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       headerHash: "f8".repeat(28),
       workflowRuntimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
     });
@@ -473,7 +473,7 @@ describe("compiled production workflow boundary", () => {
     await expect(
       runFraudProofWorkflowCli({
         category: "invalidRange",
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
         headerHash,
         decisionDigest: "f9".repeat(32),
         actuationPermit: {

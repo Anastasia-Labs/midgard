@@ -40,7 +40,7 @@ describe("read-only completed workflow verification", () => {
       },
     };
     const binding = {
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       definition,
       releaseFinality,
       releaseEconomics,

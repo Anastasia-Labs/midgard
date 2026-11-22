@@ -27,6 +27,7 @@ import {
 } from "./canonical-evidence-source.q03-provenance-admission.js";
 import {
   authenticatedHeaderObservation,
+  h28,
   h32,
   reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture.js";
@@ -123,7 +124,7 @@ describe("Q03 canonical block evidence", () => {
     };
     const source = new DaLibp2pRetainedDaSource({
       sourceId: "public-da",
-      deploymentFingerprint: h32(0x99),
+      deploymentFingerprint: h28(0x99),
       peers: [{ peerId: "peer-a" }],
       transport,
     });

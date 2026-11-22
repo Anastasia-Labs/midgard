@@ -174,7 +174,7 @@ it("derives the conservation cursor and datum from one snapshot while the pendin
   const context: Parameters<typeof workflow.adapter.observe>[0] = {
     identity: {
       schemaVersion: "midgard-fraud-proof-workflow-identity-v1" as const,
-      deploymentFingerprint: "99".repeat(32),
+      hubOraclePolicyId: "99".repeat(28),
       category: "valueNotPreserved",
       target: { kind: "state_queue_header" as const, headerHash },
     },

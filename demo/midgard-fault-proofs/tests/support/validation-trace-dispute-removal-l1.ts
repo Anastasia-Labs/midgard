@@ -71,10 +71,10 @@ export const recordedRemoval = async (
   const identity = fixture.result;
   const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
     identity,
-  ).verifyForWorkflow({ deploymentFingerprint: identity.manifestId });
+  ).verifyForWorkflow({ hubOraclePolicyId: identity.hubOraclePolicyId });
   const releaseEconomics = await watcherDeploymentReleaseEconomicsAuthority(
     identity,
-  ).verifyForWorkflow({ deploymentFingerprint: identity.manifestId });
+  ).verifyForWorkflow({ hubOraclePolicyId: identity.hubOraclePolicyId });
   const published = await publishRemovalReferenceScripts({
     lucid: h.proverLucid,
     contracts: h.contracts,

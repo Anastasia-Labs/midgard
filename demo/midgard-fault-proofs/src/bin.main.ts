@@ -73,15 +73,15 @@ export const main = async (): Promise<void> => {
   if (args.command === "run-workflow" || args.command === "resume-workflow") {
     if (args.fraudCategory === undefined)
       throw new Error(`Missing required --fraud-category.\n${usage}`);
-    if (args.deploymentFingerprint === undefined)
-      throw new Error(`Missing required --deployment-fingerprint.\n${usage}`);
+    if (args.hubOraclePolicyId === undefined)
+      throw new Error(`Missing required --hub-oracle-policy-id.\n${usage}`);
     if (args.headerHash === undefined)
       throw new Error(`Missing required --header-hash.\n${usage}`);
     if (args.workflowRuntimeConfigPath === undefined)
       throw new Error(`Missing required --workflow-runtime-config.\n${usage}`);
     await runFraudProofWorkflowCli({
       category: args.fraudCategory,
-      deploymentFingerprint: args.deploymentFingerprint,
+      hubOraclePolicyId: args.hubOraclePolicyId,
       headerHash: args.headerHash,
       runtimeConfigPath: args.workflowRuntimeConfigPath,
     });

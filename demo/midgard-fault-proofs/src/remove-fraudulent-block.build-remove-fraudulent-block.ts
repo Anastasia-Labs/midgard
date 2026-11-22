@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { formatUnknownError } from "@al-ft/midgard-core";
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  deploymentManifestHubOraclePolicyId,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   fetchCorrectionLockUTxOProgram,
@@ -200,7 +203,7 @@ export const buildRemoveFraudulentBlock = async ({
   const canonicalManifest =
     typeof deploymentInfo === "object" &&
     deploymentInfo !== null &&
-    "manifestId" in deploymentInfo
+    "schemaVersion" in deploymentInfo
       ? structuredClone(verifyFinalizedDeploymentManifest(deploymentInfo))
       : null;
   if (canonicalManifest !== null && canonicalManifest.network !== network) {
@@ -614,7 +617,8 @@ export const buildRemoveFraudulentBlock = async ({
       slashFundingAuthorities.set(
         signed,
         Object.freeze({
-          deploymentFingerprint: canonicalManifest.manifestId,
+          hubOraclePolicyId:
+            deploymentManifestHubOraclePolicyId(canonicalManifest),
           economicsPolicyDigest:
             computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
           category: contracts.fraudCategory,

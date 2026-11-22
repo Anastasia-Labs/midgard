@@ -54,9 +54,9 @@ describe("deposit projection under transaction-only checks", () => {
       ),
     ).toBe(false);
     const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
-    const fingerprint = "d1".repeat(32);
+    const hubOraclePolicyId = "d1".repeat(28);
     const classifier = await createHeaderClassifier({
-      deploymentFingerprint: fingerprint,
+      hubOraclePolicyId,
       replayer: createCompleteCanonicalReplayUnion([
         NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
         MIN_ADA_COMPLETE_CANONICAL_REPLAY,
@@ -65,7 +65,7 @@ describe("deposit projection under transaction-only checks", () => {
         authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
         verifyForWorkflow: async () => ({
           schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-          deploymentIdentityDigest: fingerprint,
+          hubOraclePolicyId,
           blueprintHash: "e1".repeat(32),
           policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
           policy,

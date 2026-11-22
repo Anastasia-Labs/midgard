@@ -27,14 +27,14 @@ import { createTestWorkflowProcess } from "./workflow-process.js";
  */
 export const prepareReconcileThroughRunner = ({
   category,
-  deploymentFingerprint,
+  hubOraclePolicyId,
   headerHash,
   decisionDigest,
   permit,
   surface,
 }: Readonly<{
   category: FraudProofCatalogueCategoryName;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   headerHash: string;
   decisionDigest: string;
   permit: WorkflowActuationPermit;
@@ -59,7 +59,7 @@ export const prepareReconcileThroughRunner = ({
       bindConfig: () => undefined,
       constructWorkflow: async () => ({
         binding: {
-          deploymentFingerprint,
+          hubOraclePolicyId,
           definition: { category, headerHash },
         },
         adapter: surface.adapter,
@@ -79,7 +79,7 @@ export const prepareReconcileThroughRunner = ({
       resolveReferenceScript: emptyRosterReferenceScriptResolver,
       retainedDaSources: [
         new DaLibp2pRetainedDaSource({
-          deploymentFingerprint,
+          deploymentFingerprint: hubOraclePolicyId,
           peers: [{ peerId: "12D3KooWreconciliationOnly" }],
           transport: {
             request: async () => {
@@ -94,7 +94,7 @@ export const prepareReconcileThroughRunner = ({
   return async () =>
     (await runner.runOrResume({
       category,
-      deploymentFingerprint,
+      hubOraclePolicyId,
       headerHash,
       decisionDigest,
       actuationPermit: permit,

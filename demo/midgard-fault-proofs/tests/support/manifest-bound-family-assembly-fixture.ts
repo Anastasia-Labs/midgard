@@ -86,7 +86,7 @@ export const fixture = (category: FamilyCategory) => {
     spendingScriptHash: `${index.toString().padStart(2, "0")}`.repeat(28),
   }));
   const binding = {
-    deploymentFingerprint: "44".repeat(32),
+    hubOraclePolicyId: "44".repeat(28),
     network: "Preprod",
     blueprint: grammar === undefined ? {} : realFaultProofBlueprint(),
     deploymentInfo: {},
