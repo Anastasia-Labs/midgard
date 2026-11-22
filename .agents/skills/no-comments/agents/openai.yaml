@@ -1,6 +1,0 @@
-interface:
-  display_name: "No Comments"
-  short_description: "Review comments and suppressions for stale narration while prese"
-  default_prompt: "Use $no-comments for the requested Midgard task."
-policy:
-  allow_implicit_invocation: false

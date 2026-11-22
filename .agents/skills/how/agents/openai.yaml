@@ -1,6 +1,0 @@
-interface:
-  display_name: "How"
-  short_description: "Trace a subsystem, explain its architecture and runtime flow, or"
-  default_prompt: "Use $how for the requested Midgard task."
-policy:
-  allow_implicit_invocation: false

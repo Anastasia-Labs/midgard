@@ -1,6 +1,0 @@
-interface:
-  display_name: "Create Verification Skill"
-  short_description: "Generate a project-local verification skill that drives your app"
-  default_prompt: "Use $create-verification-skill for the requested Midgard task."
-policy:
-  allow_implicit_invocation: false

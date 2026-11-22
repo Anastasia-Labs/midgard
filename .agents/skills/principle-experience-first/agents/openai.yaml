@@ -1,6 +1,0 @@
-interface:
-  display_name: "Principle Experience First"
-  short_description: "Apply when product, UX, or feature-scope tradeoffs come up. Choo"
-  default_prompt: "Use $principle-experience-first for the requested Midgard task."
-policy:
-  allow_implicit_invocation: false

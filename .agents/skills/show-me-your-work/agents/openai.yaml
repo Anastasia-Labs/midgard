@@ -1,6 +1,0 @@
-interface:
-  display_name: "Show Me Your Work"
-  short_description: "Keep an evidence-backed TSV decision trail for long tasks, hando"
-  default_prompt: "Use $show-me-your-work for the requested Midgard task."
-policy:
-  allow_implicit_invocation: false
