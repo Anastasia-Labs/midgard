@@ -100,6 +100,22 @@ describe("sqlite ledger storage across reopen", () => {
     }
   });
 
+  it("keeps the verified head across a reopen, and has none before the first write", async () => {
+    const path = await freshPath();
+    const first = openSqliteLedgerStorage(path);
+    expect(await first.verifiedHead.read()).toBeUndefined();
+    await first.verifiedHead.write("aa".repeat(28));
+    await first.verifiedHead.write("bb".repeat(28));
+    first.close();
+
+    const second = openSqliteLedgerStorage(path);
+    try {
+      expect(await second.verifiedHead.read()).toBe("bb".repeat(28));
+    } finally {
+      second.close();
+    }
+  });
+
   it("refuses a second opener while the writer lease is held, and frees it on close", async () => {
     const path = await freshPath();
     const first = openSqliteLedgerStorage(path);

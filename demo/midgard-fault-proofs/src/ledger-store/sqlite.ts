@@ -7,6 +7,10 @@
  * bytes, and outputs keyed by their out-ref bytes; each row carries its
  * reference count. The dead queue is a table of node hashes. Every change is
  * one IMMEDIATE transaction.
+ *
+ * The same database keeps the watcher's verified confirmed head
+ * (`replayed-ledger.confirmed.ts`), one header hash, beside the ledgers it
+ * speaks of.
  */
 import { DatabaseSync } from "node:sqlite";
 
@@ -24,6 +28,12 @@ import type {
 } from "./storage.js";
 
 export type SqliteLedgerStorage = LedgerStorage & {
+  /** The verified confirmed head: `undefined` until first written, and
+   * durable once `write` resolves. */
+  readonly verifiedHead: {
+    read(): Promise<string | undefined>;
+    write(headerHash: string): Promise<void>;
+  };
   /** Closes the database and releases the writer lease. */
   close(): void;
 };
@@ -45,6 +55,10 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS ledger_dead (
     hash BLOB PRIMARY KEY
   ) WITHOUT ROWID;
+  CREATE TABLE IF NOT EXISTS ledger_verified_head (
+    id INTEGER PRIMARY KEY CHECK (id = 0),
+    header_hash BLOB NOT NULL
+  );
 `;
 
 const bytes = (hex: string): Buffer => Buffer.from(hex, "hex");
@@ -115,6 +129,12 @@ export const openSqliteLedgerStorage = (path: string): SqliteLedgerStorage => {
       "INSERT OR IGNORE INTO ledger_dead (hash) VALUES (?)",
     ),
     unqueueDead: database.prepare("DELETE FROM ledger_dead WHERE hash = ?"),
+    verifiedHead: database.prepare(
+      "SELECT header_hash FROM ledger_verified_head WHERE id = 0",
+    ),
+    setVerifiedHead: database.prepare(
+      "INSERT INTO ledger_verified_head (id, header_hash) VALUES (0, ?) ON CONFLICT (id) DO UPDATE SET header_hash = excluded.header_hash",
+    ),
     countNodes: database.prepare(
       "SELECT COUNT(*) AS n, COALESCE(SUM(refs), 0) AS refs FROM ledger_nodes",
     ),
@@ -211,6 +231,17 @@ export const openSqliteLedgerStorage = (path: string): SqliteLedgerStorage => {
         outputRefs: outputs.refs,
         dead: count(statement.countDead).n,
       };
+    },
+    verifiedHead: {
+      read: async () => {
+        const row = statement.verifiedHead.get() as
+          | { header_hash: Uint8Array }
+          | undefined;
+        return row === undefined ? undefined : hex(row.header_hash);
+      },
+      write: async (headerHash) => {
+        statement.setVerifiedHead.run(bytes(headerHash));
+      },
     },
     close: () => {
       try {
