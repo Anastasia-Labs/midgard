@@ -7,8 +7,8 @@ single agent turn.
 
 - `docs/agents/contrib.md`: deterministic test/build/artifact commands,
   execution receipts, resource ownership, program resumes and diagnostics.
-- `docs/agents/production-l2.md`: repository-wide safety, correctness, and
-  tradeoff policy.
+- `docs/agents/production-l2.md`: what production-grade means here and the
+  test a mechanism has to pass.
 - `docs/agents/state-reset.md`: durable-state deletion and on-chain redeploy
   requirements.
 - `docs/agents/transaction-finalization.md`: transaction completion rules.

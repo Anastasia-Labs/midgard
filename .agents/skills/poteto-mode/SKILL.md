@@ -47,7 +47,7 @@ Read only the applicable references. Independent perspectives help when they can
 | Intermittent tests or failed CI | [fixing-flaky-tests](../fixing-flaky-tests/SKILL.md) or [debugging-ci-failures](../debugging-ci-failures/SKILL.md) |
 | Commits, PR bodies, and reports | [committing-safely](../committing-safely/SKILL.md) and [writing-reports-and-prs](../writing-reports-and-prs/SKILL.md) |
 
-Pstack principles guide judgment within Midgard's correctness, safety, liveness, performance, convenience order. Preserve protocol rationale, audit evidence, and required checks when simplifying code or comments. Planned local experiments stay isolated until they pass their integration gates. [review]
+Preserve protocol rationale, audit evidence, and required checks when simplifying code or comments. Planned local experiments stay isolated until they pass their integration gates. [review]
 
 ## Playbooks
 

@@ -21,8 +21,8 @@ Two kinds of failure get opposite treatment:
 - **Operational cost**: a wasted fee, a transaction built again, a read
   repeated after a restart. Accepted; it justifies no mechanism.
 
-Tradeoff order: correctness, safety, liveness, simplicity, performance,
-convenience.
+Performance is highly important: throughput, latency, script budgets and
+proof cost are product requirements, not afterthoughts.
 
 ## Engineering Principles
 

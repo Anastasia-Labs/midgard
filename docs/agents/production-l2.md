@@ -1,7 +1,7 @@
 # Production L2 Principles
 
 Read before adding a guard, retry, hold, stored record, status, alert, config
-knob or layer. The tradeoff order is in the root `AGENTS.md`.
+knob or layer.
 
 ## What production-grade means here
 
