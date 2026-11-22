@@ -25,7 +25,7 @@ export const devnetJourneyMode = (session: JourneySession): JourneyRunMode => {
   const { context, authority, watcherConfig, native, retain } = session;
   const { deployment } = context;
   const reusedWatcher = session.watcherStarted();
-  let config: { workflowJournalDirectory: string } | undefined;
+  let config: { decisionJournalDirectory: string } | undefined;
   return {
     // A devnet stages on the family's clock, so its limit holds the staging.
     readTiming: (fixture, options) =>
@@ -151,10 +151,10 @@ export const devnetJourneyMode = (session: JourneySession): JourneyRunMode => {
       if (config === undefined)
         throw new Error("The journey's watcher is not started");
       return existsSync(
-        join(config.workflowJournalDirectory, "watcher-journals.sqlite"),
+        join(config.decisionJournalDirectory, "watcher-journals.sqlite"),
       )
         ? readWatcherFaultDecisionEvidence({
-            directory: config.workflowJournalDirectory,
+            directory: config.decisionJournalDirectory,
             deploymentFingerprint: deployment.manifest.manifestId,
             launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
           }).map((decision) => ({ decision }))

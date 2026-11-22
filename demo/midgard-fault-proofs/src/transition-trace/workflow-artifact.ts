@@ -1,9 +1,9 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import type { FraudProofRawL1Snapshot } from "../workflow/raw-l1-snapshot.js";
 import type { TransitionDepositOpening } from "./history-opening.js";
 import {
@@ -30,7 +30,7 @@ export const createTransitionTraceWorkflowArtifact = ({
   /** `kind:assetName` of the proved event: its identity, never its outRef. */
   eventIdentity: string | null;
   depositOpening: TransitionDepositOpening | null;
-}): JournalJsonObject => {
+}): WorkflowJsonObject => {
   if (
     predecessor !== undefined &&
     predecessor.utxosRoot !== evidence.header.prevUtxosRoot
@@ -38,7 +38,7 @@ export const createTransitionTraceWorkflowArtifact = ({
     throw new Error(
       "Transition artifact predecessor is not the challenged header's predecessor",
     );
-  return normalizeJournalJson({
+  return normalizeWorkflowJson({
     schemaVersion: TRANSITION_TRACE_WORKFLOW_ARTIFACT,
     headerHash: evidence.headerHash,
     detectionId,
@@ -51,12 +51,12 @@ export const createTransitionTraceWorkflowArtifact = ({
     // Durable exact raw evidence is retained for recovery/audit. It does not
     // grant authority; every run reopens fresh history and raw L1 observations.
     l1Snapshot,
-  }) as JournalJsonObject;
+  }) as WorkflowJsonObject;
 };
 
 export const requireTransitionTraceWorkflowArtifact = (
-  artifact: JournalJsonObject,
-  freshlyDerived: JournalJsonObject,
+  artifact: WorkflowJsonObject,
+  freshlyDerived: WorkflowJsonObject,
 ): void => {
   if (
     Object.keys(artifact).sort().join(",") !==

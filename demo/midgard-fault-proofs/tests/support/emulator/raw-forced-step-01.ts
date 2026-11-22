@@ -20,7 +20,7 @@ import {
 import { buildLinearFaultContinue } from "../../../src/linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../../../src/runtime.js";
 import { computationThreadOutputPredicate } from "../../../src/tx-layout.js";
-import { buildAndSubmitTransactionUnjournaled } from "../submit-unjournaled.js";
+import { buildAndSubmitTransaction } from "../submit-steps.js";
 
 /**
  * A forced-source step 01 carrying exactly the caller's next datum and
@@ -106,22 +106,19 @@ export const submitRawForcedStep01 = async ({
       redeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await buildAndSubmitTransactionUnjournaled(
-    buildLinearFaultContinue,
-    {
-      lucid,
-      signer,
-      threadUtxo,
-      threadUnit: threadToken.unit,
-      stepReference,
-      stepScript: contracts.steps[stepIndex]!.spendingScript,
-      stepRole: role,
-      nextAddress: nextStep.spendingScriptAddress,
-      nextDatum,
-      redeemer,
-      awaitConfirmation: true,
-    },
-  );
+  const txHash = await buildAndSubmitTransaction(buildLinearFaultContinue, {
+    lucid,
+    signer,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    stepReference,
+    stepScript: contracts.steps[stepIndex]!.spendingScript,
+    stepRole: role,
+    nextAddress: nextStep.spendingScriptAddress,
+    nextDatum,
+    redeemer,
+    awaitConfirmation: true,
+  });
   if (outputIndex === undefined)
     throw new Error(`${family}: raw forced step-01 layout unresolved`);
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };

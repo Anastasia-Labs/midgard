@@ -1,4 +1,4 @@
-import type { FraudProofWorkflowIdentity } from "./journal.js";
+import type { FraudProofWorkflowIdentity } from "./identity.js";
 import type { ProofMaterialsHolder } from "./proof-materials-view.js";
 
 /**

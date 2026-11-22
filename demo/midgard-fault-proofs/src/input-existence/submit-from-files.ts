@@ -10,7 +10,7 @@ import {
   type SubmitProviderConfig,
 } from "../runtime.js";
 import { submitFaultProofTurns } from "../submit-fault-proof-turns.js";
-import { exactJournalRecord } from "../workflow/native-index-artifact.js";
+import { exactArtifactRecord } from "../workflow/native-index-artifact.js";
 import { admitInputExistenceArtifact } from "./artifact.js";
 import { createInputExistenceDeploymentStep } from "./deployment-step.js";
 
@@ -40,7 +40,7 @@ const referenceList = (value: unknown, label: string): readonly string[] => {
 };
 
 export const parseInputExistenceFileReferences = (value: unknown) => {
-  const row = exactJournalRecord(
+  const row = exactArtifactRecord(
     value,
     [
       "steps",

@@ -37,11 +37,11 @@ import {
   submitInputSetUniquenessStep03,
   submitInputSetUniquenessStep04Advance,
   submitInputSetUniquenessStep04Finalize,
-} from "./support/submit-unjournaled.input-set-uniqueness.js";
+} from "./support/submit-steps.input-set-uniqueness.js";
 import {
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-} from "./support/submit-unjournaled.js";
+  certifyFieldCarriage,
+  publishFieldCarriage,
+} from "./support/submit-steps.js";
 
 /** The accused pair of a forced `DuplicateInput` rejection. */
 export type AccusedInputPair = Omit<BoundDuplicateInput, "subject">;
@@ -163,13 +163,13 @@ export const exerciseForcedLifecycle = async ({
   expect(spendPlan.plan.tier).toBe("Inline");
   expect(referencePlan.plan.tier).toBe("Certified");
   const spendPublication = {
-    result: [] as Awaited<ReturnType<typeof publishCarriageUnjournaled>>,
+    result: [] as Awaited<ReturnType<typeof publishFieldCarriage>>,
     measurements: [] as CompleteSignedTransactionMeasurement[],
   };
   const referencePublication = await captureEmulatorSubmission(
     harness.emulator,
     () =>
-      publishCarriageUnjournaled({
+      publishFieldCarriage({
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned: referencePlan,
@@ -197,7 +197,7 @@ export const exerciseForcedLifecycle = async ({
     chunks: typeof spendPublication.result,
   ) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      certifyCarriageUnjournaled({
+      certifyFieldCarriage({
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,

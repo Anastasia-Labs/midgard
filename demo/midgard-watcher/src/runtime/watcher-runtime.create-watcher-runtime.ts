@@ -190,7 +190,7 @@ export const startWatcherRuntime = async (
     } = await resolveWatcherRuntimeWalletAddresses(input);
     await refusePermanently("journal_configuration", () =>
       validateWatcherFaultDecisionJournalConfiguration({
-        directory: input.config.workflowJournalDirectory,
+        directory: input.config.decisionJournalDirectory,
         deploymentFingerprint: deploymentIdentity.manifestId,
         launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
         authenticationKey: rollbackAuthenticationKey,
@@ -202,7 +202,7 @@ export const startWatcherRuntime = async (
     const replayHost = createWatcherRuntimeReplayHost(
       deploymentAuthority,
       userEventScripts,
-      input.config.workflowJournalDirectory,
+      input.config.decisionJournalDirectory,
       operationsSink,
     );
     const followedDeployment = {
@@ -266,7 +266,7 @@ export const startWatcherRuntime = async (
       log: (line) => process.stderr.write(`watcher own threads: ${line}\n`),
     });
     const activeSupervisor = createWatcherFaultProofSupervisor({
-      journalRoot: input.config.workflowJournalDirectory,
+      journalRoot: input.config.decisionJournalDirectory,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs: watcherDeadlineAlertHeadroomMs(
         watcherConfig.deadlines,
@@ -359,7 +359,7 @@ export const startWatcherRuntime = async (
       application: faultProofApplication,
       supervisor: activeSupervisor,
       stateQueueSource: headerSource,
-      journalDirectory: input.config.workflowJournalDirectory,
+      journalDirectory: input.config.decisionJournalDirectory,
       authenticationKey: rollbackAuthenticationKey,
       maximumClassificationConcurrency: 16,
       operationsSink,

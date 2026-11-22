@@ -20,17 +20,14 @@ import {
   setupMissingSignatureScenario,
 } from "./support/missing-signature-emulator.build-missing-signature-subject.js";
 import { proveMissingSignatureFault } from "./support/missing-signature-prover.prove-missing-signature-fault.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 type Harness = Awaited<ReturnType<typeof makeMissingSignatureEmulatorHarness>>;
 type Scenario = Awaited<ReturnType<typeof setupMissingSignatureScenario>>;
 type References = readonly [UTxO, UTxO, UTxO, UTxO];
 
 const init = async (harness: Harness, scenario: Scenario) =>
-  buildAndSubmitUnjournaled(buildMissingSignatureInit, {
+  buildAndSubmit(buildMissingSignatureInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -57,7 +54,7 @@ const advanceTo = async (
   let outRef = (await init(harness, scenario)).nextThreadOutRef;
   if (stepIndex === 0) return outRef;
   outRef = (
-    await buildAndSubmitUnjournaled(buildMissingSignatureStep01, {
+    await buildAndSubmit(buildMissingSignatureStep01, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -73,7 +70,7 @@ const advanceTo = async (
   ).nextThreadOutRef;
   if (stepIndex === 1) return outRef;
   outRef = (
-    await submitTurnsUnjournaled(buildMissingSignatureStep02, {
+    await submitTurns(buildMissingSignatureStep02, {
       lucid: harness.proverLucid,
       contracts: harness.missingSignature,
       categoryId: harness.category.categoryId,
@@ -87,7 +84,7 @@ const advanceTo = async (
   ).nextThreadOutRef;
   if (stepIndex === 2) return outRef;
   return (
-    await buildAndSubmitUnjournaled(buildMissingSignatureStep03, {
+    await buildAndSubmit(buildMissingSignatureStep03, {
       lucid: harness.proverLucid,
       contracts: harness.missingSignature,
       categoryId: harness.category.categoryId,
@@ -118,20 +115,17 @@ describe("missing-signature negatives and resume", () => {
         references,
         stepIndex,
       );
-      const cancelled = await buildAndSubmitUnjournaled(
-        buildLinearFaultCancel,
-        {
-          lucid: harness.proverLucid,
-          family: MISSING_SIGNATURE_CATEGORY_LABEL,
-          steps: harness.missingSignature.steps,
-          computationThread: harness.missingSignature.computationThread,
-          categoryId: harness.category.categoryId,
-          signer: harness.proverSigner,
-          threadOutRef,
-          referenceScriptUtxo: references[stepIndex],
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        },
-      );
+      const cancelled = await buildAndSubmit(buildLinearFaultCancel, {
+        lucid: harness.proverLucid,
+        family: MISSING_SIGNATURE_CATEGORY_LABEL,
+        steps: harness.missingSignature.steps,
+        computationThread: harness.missingSignature.computationThread,
+        categoryId: harness.category.categoryId,
+        signer: harness.proverSigner,
+        threadOutRef,
+        referenceScriptUtxo: references[stepIndex],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      });
       expect(cancelled.cancelledStepIndex).toBe(stepIndex);
       for (const step of harness.missingSignature.steps) {
         await expect(
@@ -184,7 +178,7 @@ describe("missing-signature negatives and resume", () => {
         contracts: harness.missingSignature,
       });
       const step04OutRef = await advanceTo(harness, scenario, references, 3);
-      const scan = await submitTurnsUnjournaled(buildMissingSignatureStep04, {
+      const scan = await submitTurns(buildMissingSignatureStep04, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,
@@ -223,7 +217,7 @@ describe("missing-signature negatives and resume", () => {
     if (resumed.kind === "proven") expect(resumed.txHashes).toHaveLength(1);
 
     const cancellable = await buildInterior();
-    const cancelled = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
+    const cancelled = await buildAndSubmit(buildLinearFaultCancel, {
       lucid: cancellable.harness.proverLucid,
       family: MISSING_SIGNATURE_CATEGORY_LABEL,
       steps: cancellable.harness.missingSignature.steps,
@@ -256,7 +250,7 @@ describe("missing-signature negatives and resume", () => {
     });
     const step02OutRef = await advanceTo(harness, scenario, references, 1);
     await expect(
-      submitTurnsUnjournaled(buildMissingSignatureStep02, {
+      submitTurns(buildMissingSignatureStep02, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,
@@ -270,7 +264,7 @@ describe("missing-signature negatives and resume", () => {
     ).rejects.toThrow(/outside the 1-item/u);
     const stale = `00${scenario.block.nativeTxCompactCbor.slice(2)}`;
     await expect(
-      submitTurnsUnjournaled(buildMissingSignatureStep02, {
+      submitTurns(buildMissingSignatureStep02, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,
@@ -282,7 +276,7 @@ describe("missing-signature negatives and resume", () => {
         referenceScriptUtxo: references[1],
       }),
     ).rejects.toThrow(/re-derives|cbor|compact/iu);
-    const step03 = await submitTurnsUnjournaled(buildMissingSignatureStep02, {
+    const step03 = await submitTurns(buildMissingSignatureStep02, {
       lucid: harness.proverLucid,
       contracts: harness.missingSignature,
       categoryId: harness.category.categoryId,
@@ -294,7 +288,7 @@ describe("missing-signature negatives and resume", () => {
       referenceScriptUtxo: references[1],
     });
     await expect(
-      buildAndSubmitUnjournaled(buildMissingSignatureStep03, {
+      buildAndSubmit(buildMissingSignatureStep03, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,
@@ -304,20 +298,17 @@ describe("missing-signature negatives and resume", () => {
         referenceScriptUtxo: references[2],
       }),
     ).rejects.toThrow(/not the thread's accused/u);
-    const step04 = await buildAndSubmitUnjournaled(
-      buildMissingSignatureStep03,
-      {
-        lucid: harness.proverLucid,
-        contracts: harness.missingSignature,
-        categoryId: harness.category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: step03.nextThreadOutRef,
-        missingRequiredSignerVkey: MISSING_SIGNATURE_TARGET_VKEY,
-        referenceScriptUtxo: references[2],
-      },
-    );
+    const step04 = await buildAndSubmit(buildMissingSignatureStep03, {
+      lucid: harness.proverLucid,
+      contracts: harness.missingSignature,
+      categoryId: harness.category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: step03.nextThreadOutRef,
+      missingRequiredSignerVkey: MISSING_SIGNATURE_TARGET_VKEY,
+      referenceScriptUtxo: references[2],
+    });
     await expect(
-      submitTurnsUnjournaled(buildMissingSignatureStep04, {
+      submitTurns(buildMissingSignatureStep04, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,

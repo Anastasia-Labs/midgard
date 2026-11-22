@@ -7,7 +7,7 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import { type ResolvedProverSigner } from "../runtime.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import { type FamilyAssemblyContext } from "../workflow/family-definition.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { type TransitionDepositOpening } from "./history-opening.js";
 import { captureTransitionTraceL1Events } from "./l1-events.js";
@@ -43,7 +43,7 @@ export const TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES = Object.freeze(
 
 export type Prepared = Readonly<{
   proof: TransitionProofInput;
-  artifact: JournalJsonObject;
+  artifact: WorkflowJsonObject;
   references: readonly UTxO[];
   depositPolicyId: string;
   depositOpening?: TransitionDepositOpening;

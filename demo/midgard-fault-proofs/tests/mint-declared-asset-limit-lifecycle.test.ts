@@ -136,7 +136,7 @@ import {
   submitMintDeclaredAssetLimitStep03Raw,
   submitMintDeclaredAssetLimitStep04,
   submitMintDeclaredAssetLimitStep04Raw,
-} from "./support/submit-unjournaled.mint-declared-asset-limit.js";
+} from "./support/submit-steps.mint-declared-asset-limit.js";
 
 const measureSubmissions =
   (

@@ -40,10 +40,7 @@ import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deploymen
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import { createRecordingLeaseCoordinator } from "./support/submit-init/removal.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 /**
  * Lands a block that commits one forced transaction ForcedTxValid with the
@@ -125,7 +122,7 @@ const bindAndOpen = async (
 ) => {
   const { harness, contracts, category, forced, references, membership } = run;
   const step01 = await captureEmulatorSubmission(harness.emulator, () =>
-    buildAndSubmitUnjournaled(buildRedeemerCanonicityStep01Forced, {
+    buildAndSubmit(buildRedeemerCanonicityStep01Forced, {
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,
@@ -148,7 +145,7 @@ const bindAndOpen = async (
     }),
   );
   const step02 = await captureEmulatorSubmission(harness.emulator, () =>
-    submitTurnsUnjournaled(buildRedeemerCanonicityStep02, {
+    submitTurns(buildRedeemerCanonicityStep02, {
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,
@@ -191,7 +188,7 @@ describe("redeemer-canonicity forced wrongful acceptance", () => {
     emitFit("forced-accepted-step02", step02.measurement);
     const { harness, contracts, category, references } = run;
     const step03 = await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildRedeemerCanonicityStep03, {
+      buildAndSubmit(buildRedeemerCanonicityStep03, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -292,7 +289,7 @@ export const refuseFinalizeAgainstHonestCanonicalRedeemer = async () => {
     }).canonical,
   ).toBe(true);
   await expect(
-    buildAndSubmitUnjournaled(buildRedeemerCanonicityStep03, {
+    buildAndSubmit(buildRedeemerCanonicityStep03, {
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,

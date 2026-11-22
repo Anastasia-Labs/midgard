@@ -17,7 +17,7 @@ import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_DISPUTE_ACTION } from "../src/validation-trace-dispute/actions.js";
-import { VALIDATION_TRACE_STAGING } from "../src/validation-trace-dispute/one-step-staging-journal.js";
+import { VALIDATION_TRACE_STAGING } from "../src/validation-trace-dispute/one-step-staging-types.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   defendTwoThreads,

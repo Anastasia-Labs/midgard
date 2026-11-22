@@ -13,7 +13,7 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
-import type { FraudProofWorkflowTerminal } from "../src/workflow/journal.js";
+import type { FraudProofWorkflowTerminal } from "../src/workflow/identity.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import { confirmedValidationTraceStages } from "./support/validation-trace-confirmed-stages.js";

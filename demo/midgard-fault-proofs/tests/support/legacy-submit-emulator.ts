@@ -25,4 +25,4 @@ export { buildInvalidRangeStep01 } from "../../src/submit-invalid-range-step-01.
 export { buildInvalidRangeStep02V1 } from "../../src/submit-invalid-range-step-02.js";
 export { buildZeroInputStep01 } from "../../src/submit-zero-input-step-01.js";
 export { buildZeroInputStep02V1 } from "../../src/submit-zero-input-step-02.js";
-export * from "./submit-unjournaled.legacy.js";
+export * from "./submit-steps.legacy.js";

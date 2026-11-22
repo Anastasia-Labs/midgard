@@ -10,7 +10,7 @@ import "./action-changed.js";
 import "./actuation-permit.js";
 import "./classification.js";
 import "./complete-replay.js";
-import "./journal.js";
+import "./identity.js";
 import "./l1-source.js";
 import "./release-finality-policy.js";
 import "./transaction-boundary.js";

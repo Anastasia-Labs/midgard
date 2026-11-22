@@ -32,10 +32,7 @@ import {
 } from "./support/mint-item-non-canonical-lifecycle.js";
 import { mintField } from "./support/mint-item-vectors.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 it("authenticates a wrongly accepted forced mint and refuses a forged forced leaf/direction", async () => {
   const harness = await makeFaultProofEmulatorHarness({
@@ -150,7 +147,7 @@ it("authenticates a wrongly accepted forced mint and refuses a forged forced lea
     },
   );
   await expectOnchainRefusal(() =>
-    buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep01Forced, {
+    buildAndSubmit(buildMintItemNonCanonicalStep01Forced, {
       ...common(),
       forcedSource: {
         header,
@@ -161,39 +158,30 @@ it("authenticates a wrongly accepted forced mint and refuses a forged forced lea
       },
     }),
   );
-  const bound = await buildAndSubmitUnjournaled(
-    buildMintItemNonCanonicalStep01Forced,
-    {
-      ...common(),
-      forcedSource: {
-        header,
-        membership,
-      },
+  const bound = await buildAndSubmit(buildMintItemNonCanonicalStep01Forced, {
+    ...common(),
+    forcedSource: {
+      header,
+      membership,
     },
-  );
+  });
   threadOutRef = bound.nextThreadOutRef;
-  const opened = await submitTurnsUnjournaled(buildMintItemNonCanonicalStep02, {
+  const opened = await submitTurns(buildMintItemNonCanonicalStep02, {
     ...registered.common(threadOutRef, 1),
     evidence,
     nativeTxCompactCbor: source.compactCbor.toString("hex"),
     witnessSetCompactCbor: witnessSetCborOf(tx),
   });
   threadOutRef = opened.nextThreadOutRef;
-  const scanned = await buildAndSubmitUnjournaled(
-    buildMintItemNonCanonicalStep03,
-    {
-      ...registered.common(threadOutRef, 2),
-      evidence,
-    },
-  );
+  const scanned = await buildAndSubmit(buildMintItemNonCanonicalStep03, {
+    ...registered.common(threadOutRef, 2),
+    evidence,
+  });
   expect(scanned.terminal).toBe(true);
-  const finalized = await buildAndSubmitUnjournaled(
-    buildMintItemNonCanonicalStep04,
-    {
-      ...registered.common(scanned.nextThreadOutRef, 3),
-      evidence,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    },
-  );
+  const finalized = await buildAndSubmit(buildMintItemNonCanonicalStep04, {
+    ...registered.common(scanned.nextThreadOutRef, 3),
+    evidence,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
+  });
   expect(finalized.fraudProofUnit).toBeTruthy();
 }, 120_000);

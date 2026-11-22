@@ -58,8 +58,8 @@ import {
   plutusScript,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { submitDirectPurposeTransition } from "./support/submit-steps.direct-purpose.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import {
   driveUnusedRedeemerThread,
   unusedRedeemerVerdict,
@@ -319,7 +319,7 @@ describe("unused-redeemer steps refuse a party other than the thread's prover", 
   it("refuses a stranger's forced step-01, then takes the prover's", async () => {
     const s = await scene(FORCED_OUT_OF_RANGE);
     const { harness, scenario } = s;
-    const init = await buildAndSubmitUnjournaled(buildDirectPurposeInit, {
+    const init = await buildAndSubmit(buildDirectPurposeInit, {
       family: UNUSED_REDEEMER_FAMILY,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
@@ -350,20 +350,17 @@ describe("unused-redeemer steps refuse a party other than the thread's prover", 
     expect(outRefLabel(await threadAt(s, firstStep, unit))).toBe(
       outRefLabel(thread),
     );
-    const step01 = await buildAndSubmitUnjournaled(
-      buildDirectPurposeStep01Forced,
-      {
-        family: UNUSED_REDEEMER_FAMILY,
-        lucid: harness.proverLucid,
-        contracts: harness.direct,
-        categoryId: harness.category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: outRefLabel(thread),
-        material: scenario.material,
-        referenceScriptUtxo: s.reference("step01"),
-        reconstruction: scenario.block.reconstruction,
-      },
-    );
+    const step01 = await buildAndSubmit(buildDirectPurposeStep01Forced, {
+      family: UNUSED_REDEEMER_FAMILY,
+      lucid: harness.proverLucid,
+      contracts: harness.direct,
+      categoryId: harness.category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: outRefLabel(thread),
+      material: scenario.material,
+      referenceScriptUtxo: s.reference("step01"),
+      reconstruction: scenario.block.reconstruction,
+    });
     const advanced = await threadAt(
       s,
       harness.direct.steps[1]!.spendingScriptAddress,

@@ -33,12 +33,9 @@ import {
   CHUNKED_VERIFY_WITNESS_ROLES,
   type FamilyAssemblyContext,
 } from "./family-definition.family-adapter-arm.js";
-import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson, type WorkflowJsonObject } from "./identity.js";
 
-export type CanonicalDecodabilityArtifact = JournalJsonObject &
+export type CanonicalDecodabilityArtifact = WorkflowJsonObject &
   CanonicalDecodabilityRawArtifact;
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -319,7 +316,7 @@ export const admitCanonicalDecodabilityArtifact = async (
 export const prepareCanonicalDecodabilityArtifact = async (
   evidence: CanonicalDecodabilityRawBlockEvidence,
 ): Promise<CanonicalDecodabilityArtifact> => {
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     ...canonicalDecodabilityArtifactFromRawEvidence(evidence),
   }) as CanonicalDecodabilityArtifact;
   await admitCanonicalDecodabilityArtifact(artifact);

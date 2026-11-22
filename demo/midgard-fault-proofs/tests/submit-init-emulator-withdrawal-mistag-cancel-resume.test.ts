@@ -12,7 +12,7 @@ import {
   buildWithdrawalMistagStep04,
 } from "../src/withdrawal-mistag/submit-withdrawal-mistag-steps.submit-withdrawal-mistag-intermediate-step.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import { makeWithdrawalMistagEmulatorHarness } from "./support/withdrawal-mistag-emulator.build-withdrawal-mistag-evidence-material.js";
 import {
   initWithdrawalMistagThread,
@@ -37,7 +37,7 @@ describe("withdrawal-mistag cancel and resume", () => {
       let threadOutRef = init.nextThreadOutRef;
       if (targetStep >= 1) {
         threadOutRef = (
-          await buildAndSubmitUnjournaled(buildWithdrawalMistagStep01, {
+          await buildAndSubmit(buildWithdrawalMistagStep01, {
             lucid: harness.proverLucid,
             contracts: harness.withdrawalMistag,
             signer: harness.proverSigner,
@@ -51,7 +51,7 @@ describe("withdrawal-mistag cancel and resume", () => {
       }
       if (targetStep >= 2) {
         threadOutRef = (
-          await buildAndSubmitUnjournaled(buildWithdrawalMistagStep02, {
+          await buildAndSubmit(buildWithdrawalMistagStep02, {
             lucid: harness.proverLucid,
             contracts: harness.withdrawalMistag,
             signer: harness.proverSigner,
@@ -63,7 +63,7 @@ describe("withdrawal-mistag cancel and resume", () => {
       }
       if (targetStep >= 3) {
         threadOutRef = (
-          await buildAndSubmitUnjournaled(buildWithdrawalMistagStep03, {
+          await buildAndSubmit(buildWithdrawalMistagStep03, {
             lucid: harness.proverLucid,
             contracts: harness.withdrawalMistag,
             signer: harness.proverSigner,
@@ -75,7 +75,7 @@ describe("withdrawal-mistag cancel and resume", () => {
       }
       if (targetStep >= 4) {
         threadOutRef = (
-          await buildAndSubmitUnjournaled(buildWithdrawalMistagStep04, {
+          await buildAndSubmit(buildWithdrawalMistagStep04, {
             lucid: harness.proverLucid,
             contracts: harness.withdrawalMistag,
             signer: harness.proverSigner,
@@ -89,20 +89,17 @@ describe("withdrawal-mistag cancel and resume", () => {
     };
 
     for (const targetStep of [0, 1, 2, 3, 4] as const) {
-      const cancelled = await buildAndSubmitUnjournaled(
-        buildLinearFaultCancel,
-        {
-          lucid: harness.proverLucid,
-          family: WITHDRAWAL_MISTAG_CATEGORY_LABEL,
-          steps: harness.withdrawalMistag.steps,
-          computationThread: harness.withdrawalMistag.computationThread,
-          categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawalMistag,
-          signer: harness.proverSigner,
-          threadOutRef: await advanceTo(targetStep),
-          referenceScriptUtxo: refs[targetStep],
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        },
-      );
+      const cancelled = await buildAndSubmit(buildLinearFaultCancel, {
+        lucid: harness.proverLucid,
+        family: WITHDRAWAL_MISTAG_CATEGORY_LABEL,
+        steps: harness.withdrawalMistag.steps,
+        computationThread: harness.withdrawalMistag.computationThread,
+        categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawalMistag,
+        signer: harness.proverSigner,
+        threadOutRef: await advanceTo(targetStep),
+        referenceScriptUtxo: refs[targetStep],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      });
       expect(cancelled.cancelledStepIndex).toBe(targetStep);
       for (const step of harness.withdrawalMistag.steps) {
         await expect(
@@ -128,60 +125,48 @@ describe("withdrawal-mistag cancel and resume", () => {
       stateQueueBlockUtxo: blockUtxo,
     } as const;
     await expect(
-      buildAndSubmitUnjournaled(buildWithdrawalMistagStep01, {
+      buildAndSubmit(buildWithdrawalMistagStep01, {
         ...step01Args,
         referenceScriptUtxo: refs[1],
       }),
     ).rejects.toThrow(/expected/u);
-    const step01 = await buildAndSubmitUnjournaled(
-      buildWithdrawalMistagStep01,
-      {
-        ...step01Args,
-        referenceScriptUtxo: refs[0],
-      },
-    );
-    const step02 = await buildAndSubmitUnjournaled(
-      buildWithdrawalMistagStep02,
-      {
-        lucid: harness.proverLucid,
-        contracts: harness.withdrawalMistag,
-        signer: harness.proverSigner,
-        prepared: scenario.prepared,
-        threadOutRef: step01.nextThreadOutRef,
-        referenceScriptUtxo: refs[1],
-      },
-    );
+    const step01 = await buildAndSubmit(buildWithdrawalMistagStep01, {
+      ...step01Args,
+      referenceScriptUtxo: refs[0],
+    });
+    const step02 = await buildAndSubmit(buildWithdrawalMistagStep02, {
+      lucid: harness.proverLucid,
+      contracts: harness.withdrawalMistag,
+      signer: harness.proverSigner,
+      prepared: scenario.prepared,
+      threadOutRef: step01.nextThreadOutRef,
+      referenceScriptUtxo: refs[1],
+    });
     // JSON round-trips are process boundaries: no mutable cursor or in-memory
     // machine survives, only the authenticated live out-ref.
     const afterStep02 = JSON.parse(
       JSON.stringify({ threadOutRef: step02.nextThreadOutRef }),
     ) as { readonly threadOutRef: string };
-    const step03 = await buildAndSubmitUnjournaled(
-      buildWithdrawalMistagStep03,
-      {
-        lucid: harness.proverLucid,
-        contracts: harness.withdrawalMistag,
-        signer: harness.proverSigner,
-        prepared: scenario.prepared,
-        threadOutRef: afterStep02.threadOutRef,
-        referenceScriptUtxo: refs[2],
-      },
-    );
+    const step03 = await buildAndSubmit(buildWithdrawalMistagStep03, {
+      lucid: harness.proverLucid,
+      contracts: harness.withdrawalMistag,
+      signer: harness.proverSigner,
+      prepared: scenario.prepared,
+      threadOutRef: afterStep02.threadOutRef,
+      referenceScriptUtxo: refs[2],
+    });
     const afterStep03 = JSON.parse(
       JSON.stringify({ threadOutRef: step03.nextThreadOutRef }),
     ) as { readonly threadOutRef: string };
-    const step04 = await buildAndSubmitUnjournaled(
-      buildWithdrawalMistagStep04,
-      {
-        lucid: harness.proverLucid,
-        contracts: harness.withdrawalMistag,
-        signer: harness.proverSigner,
-        prepared: scenario.prepared,
-        threadOutRef: afterStep03.threadOutRef,
-        referenceScriptUtxo: refs[3],
-      },
-    );
-    const fraud = await buildAndSubmitUnjournaled(buildWithdrawalMistagStep05, {
+    const step04 = await buildAndSubmit(buildWithdrawalMistagStep04, {
+      lucid: harness.proverLucid,
+      contracts: harness.withdrawalMistag,
+      signer: harness.proverSigner,
+      prepared: scenario.prepared,
+      threadOutRef: afterStep03.threadOutRef,
+      referenceScriptUtxo: refs[3],
+    });
+    const fraud = await buildAndSubmit(buildWithdrawalMistagStep05, {
       lucid: harness.proverLucid,
       contracts: harness.withdrawalMistag,
       signer: harness.proverSigner,

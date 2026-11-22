@@ -41,10 +41,7 @@ import {
   resolveObserverOpening,
 } from "./observer-order-invalid-raw.resolve-observer-opening.js";
 import { type ObserverOrderScanSuccessor } from "./observer-order-invalid-raw.submit-observer-order-invalid-step02-raw.js";
-import {
-  buildAndSubmitTransactionUnjournaled,
-  buildAndSubmitUnjournaled,
-} from "./submit-unjournaled.js";
+import { buildAndSubmit, buildAndSubmitTransaction } from "./submit-steps.js";
 
 /**
  * Step 03 with every prover-supplied value exposed: the resumed checkpoint
@@ -199,7 +196,7 @@ export const submitObserverOrderInvalidStep03Raw = async ({
       ObserverOrderInvalidStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
+  return await buildAndSubmitTransaction(buildLinearFaultContinue, {
     lucid,
     signer,
     threadUtxo,
@@ -254,7 +251,7 @@ export const submitObserverOrderInvalidStep04Raw = async ({
     family: FAMILY,
     stepIndex,
   });
-  return await buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
+  return await buildAndSubmit(buildLinearFaultFinalize, {
     lucid,
     family: FAMILY,
     stepIndex,

@@ -128,7 +128,7 @@ describe("watcher evidence reader", () => {
     await writeFile(
       other,
       JSON.stringify({
-        workflowJournalDirectory: watcher.journalDirectory,
+        decisionJournalDirectory: watcher.journalDirectory,
         watcherConfig: { storage: { path: watcher.storePath } },
         operationsEndpoint: "http://127.0.0.1:7402",
       }),

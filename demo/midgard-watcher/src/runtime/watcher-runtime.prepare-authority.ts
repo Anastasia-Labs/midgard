@@ -77,7 +77,7 @@ export const prepareWatcherRuntimeAuthority = async (
       requireWatcherRuntimeConfig(input.config),
     ),
   );
-  await prepareJournalDirectory(input.config.workflowJournalDirectory);
+  await prepareJournalDirectory(input.config.decisionJournalDirectory);
   const deploymentAuthority = await startup("deployment_authority", () =>
     refusePermanently("deployment_authority", () =>
       loadWatcherVerifiedDeploymentAuthority({

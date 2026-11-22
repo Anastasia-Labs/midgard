@@ -101,4 +101,4 @@ export {
  * as a passing security assertion.
  */
 export { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
-export * from "./submit-unjournaled.native-script-decoding.js";
+export * from "./submit-steps.native-script-decoding.js";

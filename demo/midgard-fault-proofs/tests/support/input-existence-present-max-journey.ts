@@ -55,10 +55,10 @@ import { deepProofChunks } from "./input-existence-deep-chunks.js";
 import { makeReferenceNativeTx } from "./no-reference-input-native.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init/forced-transitions.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-} from "./submit-unjournaled.js";
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+} from "./submit-steps.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 /** The Present maximum: the largest input field (819 inputs, a Certified
@@ -357,7 +357,7 @@ export const runPresentMaxJourney = async ({
     ).length,
   ).toBe(32763);
   const chunks = await captures("field-publication", () =>
-    publishCarriageUnjournaled({
+    publishFieldCarriage({
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned: plan,
@@ -375,7 +375,7 @@ export const runPresentMaxJourney = async ({
       }),
   );
   const certified = await captures("field-certification", () =>
-    certifyCarriageUnjournaled({
+    certifyFieldCarriage({
       lucid: harness.proverLucid,
       network: "Custom",
       signer: harness.proverSigner,
@@ -390,7 +390,7 @@ export const runPresentMaxJourney = async ({
     }),
   );
   const initResult = await captures("init", () =>
-    buildAndSubmitUnjournaled(buildInit, {
+    buildAndSubmit(buildInit, {
       lucid: harness.proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: harness.realBlueprint,
@@ -409,7 +409,7 @@ export const runPresentMaxJourney = async ({
     const advanced = await captures(
       `step-${(stepIndex + 1).toString()}`,
       async () =>
-        buildAndSubmitUnjournaled(family.step, {
+        buildAndSubmit(family.step, {
           blueprint: harness.realBlueprint,
           network: "Custom",
           witnessReferenceScripts: harness.witnessReferenceScripts,

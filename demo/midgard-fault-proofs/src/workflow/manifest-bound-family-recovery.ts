@@ -16,10 +16,7 @@ import {
   type FraudProofFamilyL1ObservationPort,
   observeFraudProofWorkflowHeader,
 } from "./family-l1-observation.js";
-import {
-  journalJsonDigest,
-  type JournalJsonObject,
-} from "./journal.fraud-proof-workflow-terminal.js";
+import { workflowJsonDigest, type WorkflowJsonObject } from "./identity.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowTerminalVerifier,
@@ -39,8 +36,8 @@ export const createCanonicalFamilyArtifactPort = <Material>(
   durableMaterial: (material: Material) => unknown = (material) => material,
 ) => {
   let current: { digest: string; material: Material } | undefined;
-  const admit = (artifact: JournalJsonObject, material: Material) => {
-    current = { digest: journalJsonDigest(artifact), material };
+  const admit = (artifact: WorkflowJsonObject, material: Material) => {
+    current = { digest: workflowJsonDigest(artifact), material };
     return artifact;
   };
   return {
@@ -53,7 +50,7 @@ export const createCanonicalFamilyArtifactPort = <Material>(
     },
     validatePreparedArtifact: async (
       input: Parameters<FraudProofFamilyWorkflowAdapter["prepare"]>[0] & {
-        artifact: JournalJsonObject;
+        artifact: WorkflowJsonObject;
       },
     ) => {
       current = undefined;
@@ -61,10 +58,10 @@ export const createCanonicalFamilyArtifactPort = <Material>(
       requireWorkflowArtifactMatches(input.artifact, durableMaterial(material));
       admit(input.artifact, material);
     },
-    require: (artifact: JournalJsonObject): Material => {
+    require: (artifact: WorkflowJsonObject): Material => {
       if (
         current === undefined ||
-        current.digest !== journalJsonDigest(artifact)
+        current.digest !== workflowJsonDigest(artifact)
       )
         throw new Error(
           "Family proof material was not admitted from this canonical replay",

@@ -23,7 +23,7 @@ import {
 } from "./support/double-spend-shared-carriage-harness.js";
 import { testProofMaterials } from "./support/proof-materials-holder.js";
 import { repeatedFirstChunkItems } from "./support/repeated-first-chunk-items.js";
-import { publishCarriageUnjournaled } from "./support/submit-unjournaled.js";
+import { publishFieldCarriage } from "./support/submit-steps.js";
 
 /** 800 spend inputs whose field repeats its first chunk as its second. */
 const repeatedFirstChunkSpendInputs = () =>
@@ -114,7 +114,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     const wallet = [withOtherAsset(first!, LOWEST_TX_HASH), ...rest];
     class PublicationStarted extends Error {}
     await expect(
-      publishCarriageUnjournaled({
+      publishFieldCarriage({
         ...adapterCarriage(wallet),
         signer: SIGNER,
         planned: plan,
@@ -252,7 +252,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
       ? [{ ...first!, txHash: LOWEST_TX_HASH }, ...rest]
       : [...publications];
     await expect(
-      publishCarriageUnjournaled({
+      publishFieldCarriage({
         ...adapterCarriage(wallet),
         signer: SIGNER,
         planned: plan,
@@ -279,7 +279,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     const wallet = [publications[0]!, publications[2]!];
     class PublicationStarted extends Error {}
     await expect(
-      publishCarriageUnjournaled({
+      publishFieldCarriage({
         ...adapterCarriage(wallet),
         signer: SIGNER,
         planned: plan,
@@ -299,7 +299,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     );
     const wallet = [...publications];
     await expect(
-      publishCarriageUnjournaled({
+      publishFieldCarriage({
         ...adapterCarriage(wallet),
         signer: SIGNER,
         planned: plan,

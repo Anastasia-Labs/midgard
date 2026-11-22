@@ -13,7 +13,7 @@ import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 
 import { exact } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 
@@ -45,7 +45,7 @@ export const encodeValidationTraceDisputeArtifact = ({
 }: {
   readonly headerHash: string;
   readonly material: ValidationTraceClaimMaterial;
-}): JournalJsonObject =>
+}): WorkflowJsonObject =>
   Object.freeze({
     schemaVersion: VALIDATION_TRACE_DISPUTE_ARTIFACT,
     headerHash,
@@ -80,7 +80,7 @@ const requireHex = (value: unknown, pattern: RegExp, label: string): string => {
 
 /** The artifact `value` encodes, or throws. */
 export const parseValidationTraceDisputeArtifact = (
-  value: JournalJsonObject,
+  value: WorkflowJsonObject,
 ): ValidationTraceDisputeArtifact => {
   const fields = exact(
     value,

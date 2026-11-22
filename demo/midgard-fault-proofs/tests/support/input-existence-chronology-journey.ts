@@ -35,7 +35,7 @@ import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { publishInputExistenceSelectionCarriage } from "./input-existence-execution-context.js";
 import { submitRawInputExistenceStep } from "./raw-input-existence-step.js";
 import { registerPexcludesExclusionRewardAccount } from "./submit-init/wallet.js";
-import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmit } from "./submit-steps.js";
 import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
 
 export type JourneyStep = 0 | 1 | 2 | 3;
@@ -166,7 +166,7 @@ export const startChronologyJourney = async ({
     ),
   };
   const init = await captureEmulatorSubmission(h.emulator, () =>
-    buildAndSubmitUnjournaled(buildInit, {
+    buildAndSubmit(buildInit, {
       lucid: h.proverLucid,
       blueprint: h.realBlueprint,
       deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue),
@@ -224,7 +224,7 @@ export const startChronologyJourney = async ({
               ? {}
               : { claimedPreUtxosRoot: carriage.claimedPreUtxosRoot }),
           })
-        : buildAndSubmitUnjournaled(buildInputExistenceStep, {
+        : buildAndSubmit(buildInputExistenceStep, {
             ...common(stepIndex),
             prepared: carried,
             usePublishedFieldCarriage: fieldCarriage !== undefined,

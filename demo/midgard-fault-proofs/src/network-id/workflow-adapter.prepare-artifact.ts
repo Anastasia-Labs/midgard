@@ -1,6 +1,6 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import {
   detectNetworkIdAcceptedForced,
   NETWORK_ID_ACCEPTED_FORCED_VIOLATION_ID,
@@ -30,7 +30,7 @@ export const prepareNetworkIdWorkflowArtifact = async ({
     { readonly decision: "fault_detected" }
   >;
   readonly expectedNetworkId: 0n | 1n;
-}): Promise<JournalJsonObject> => {
+}): Promise<WorkflowJsonObject> => {
   if (
     classification?.category === CATEGORY &&
     classification.selected.violationId ===
@@ -54,7 +54,7 @@ export const prepareNetworkIdWorkflowArtifact = async ({
         expectedNetworkId,
         detectionId: classification.selected.detectionId,
       }),
-    ) as unknown as JournalJsonObject;
+    ) as unknown as WorkflowJsonObject;
   }
   if (
     classification?.category === CATEGORY &&
@@ -73,7 +73,7 @@ export const prepareNetworkIdWorkflowArtifact = async ({
       await createNetworkIdWrongfulRejectionPlanner(expectedNetworkId)({
         block: evidence,
       }),
-    ) as unknown as JournalJsonObject;
+    ) as unknown as WorkflowJsonObject;
   }
   return artifactFromPrepared(
     await prepareNetworkIdFromCanonicalEvidence({

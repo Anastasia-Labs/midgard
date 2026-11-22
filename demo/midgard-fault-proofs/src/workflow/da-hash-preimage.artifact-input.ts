@@ -17,10 +17,7 @@ import {
   CORE_WITNESS_ROLES,
   type LinearFamilyReferenceScripts,
 } from "./family-definition.family-adapter-arm.js";
-import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson, type WorkflowJsonObject } from "./identity.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 
 export const DA_HASH_PREIMAGE_ARTIFACT =
@@ -28,7 +25,7 @@ export const DA_HASH_PREIMAGE_ARTIFACT =
 
 type DaHashPreimageArtifactEntry = readonly [string, string];
 
-export type DaHashPreimageArtifact = JournalJsonObject & {
+export type DaHashPreimageArtifact = WorkflowJsonObject & {
   readonly schemaVersion: typeof DA_HASH_PREIMAGE_ARTIFACT;
   readonly headerHash: string;
   readonly committedTransactionsRoot: string;
@@ -183,7 +180,7 @@ export const daHashPreimageArtifact = async (
       "da-hash-preimage production plan is not an in-memory authenticated raw-leaf plan",
     );
   }
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: DA_HASH_PREIMAGE_ARTIFACT,
     headerHash: plan.headerHash,
     committedTransactionsRoot: plan.committedTransactionsRoot,

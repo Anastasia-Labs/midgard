@@ -40,10 +40,7 @@ import {
 import { submitRawInvalidSignatureStep02 } from "./support/invalid-signature-emulator.submit-raw-invalid-signature-step02.js";
 import { network } from "./support/invalid-signature-wrongful-emulator.network.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 /**
  * A forced AddressWitnessSignatureInvalid reason names a field-7 witness by
@@ -218,7 +215,7 @@ const setupScenario = async (witnessIndex: bigint) => {
   });
   const header = setup.header;
   const witnessSet = signedSubject.witnessSetCompact;
-  const init = await buildAndSubmitUnjournaled(buildInit, {
+  const init = await buildAndSubmit(buildInit, {
     lucid: harness.proverLucid,
     witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: harness.realBlueprint,
@@ -229,37 +226,34 @@ const setupScenario = async (witnessIndex: bigint) => {
     fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
     awaitConfirmation: true,
   });
-  const bound = await buildAndSubmitUnjournaled(
-    buildInvalidSignatureStep01Forced,
-    {
-      lucid: harness.proverLucid,
-      contracts,
-      categoryId: catalogue.categories.invalidSignature.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef: `${init.txHash}#${init.firstStepOutputIndex}`,
-      evidence: {
-        subject: SDKFraudProof.forcedVerdictSubject({
-          transactionId: nativeTxId,
-          sourceKey: key,
-          rejectionReason: reason,
-        }),
-        witnessIndex,
-        witnessSetHash:
-          adjudicated.compact.transactionWitnessSetHash.toString("hex"),
-        witnessSet,
-        addressWitnesses: signedSubject.addrTxWits,
-        nativeTxCompactCbor: leaf.submitted_source.compact_cbor,
-      },
-      forcedSource: {
-        header,
-        membership,
-      },
-      referenceScriptUtxo: references[0],
+  const bound = await buildAndSubmit(buildInvalidSignatureStep01Forced, {
+    lucid: harness.proverLucid,
+    contracts,
+    categoryId: catalogue.categories.invalidSignature.categoryId,
+    signer: harness.proverSigner,
+    threadOutRef: `${init.txHash}#${init.firstStepOutputIndex}`,
+    evidence: {
+      subject: SDKFraudProof.forcedVerdictSubject({
+        transactionId: nativeTxId,
+        sourceKey: key,
+        rejectionReason: reason,
+      }),
+      witnessIndex,
+      witnessSetHash:
+        adjudicated.compact.transactionWitnessSetHash.toString("hex"),
+      witnessSet,
+      addressWitnesses: signedSubject.addrTxWits,
+      nativeTxCompactCbor: leaf.submitted_source.compact_cbor,
     },
-  );
+    forcedSource: {
+      header,
+      membership,
+    },
+    referenceScriptUtxo: references[0],
+  });
   const threadOutRef = bound.nextThreadOutRef;
   const finalize = () =>
-    submitTurnsUnjournaled(buildInvalidSignatureStep02, {
+    submitTurns(buildInvalidSignatureStep02, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       deploymentInfo,

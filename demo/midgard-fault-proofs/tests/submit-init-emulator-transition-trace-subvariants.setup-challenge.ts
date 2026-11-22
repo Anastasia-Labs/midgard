@@ -27,10 +27,7 @@ import { publishFraudProofChainReferenceScripts } from "./support/emulator/refer
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { sortedDaEntries } from "./support/submit-init/transaction-material.js";
-import {
-  buildAndSubmitUnjournaled,
-  type SubmittedStep,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, type SubmittedStep } from "./support/submit-steps.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
 
 export const historyRecords: unknown[] = [];
@@ -275,7 +272,7 @@ export const setupChallenge = async ({
     },
   );
   historyRecords.push({ header, headerHash: setup.headerHash, deploymentInfo });
-  const init = await buildAndSubmitUnjournaled(buildInit, {
+  const init = await buildAndSubmit(buildInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     deploymentInfo,

@@ -18,7 +18,7 @@ import "./family-definition.family-adapter-arm.js";
 import "./family-definition.family-definition.js";
 import "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import "./field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
-import "./journal.fraud-proof-workflow-terminal.js";
+import "./identity.js";
 import "./cursor-family-adapter.admit-reference-scripts.js";
 import "./cursor-family-state.js";
 import "./cursor-family-spec.js";

@@ -50,8 +50,8 @@ import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-  type JournalJsonObject,
-} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
+  type WorkflowJsonObject,
+} from "../../src/workflow/identity.js";
 import type { FraudProofRawL1FamilyStage } from "../../src/workflow/raw-l1-family-derivation.js";
 import {
   h28,
@@ -293,7 +293,7 @@ export const forcedHarness = ({
   /** The forced contradiction, or another direction's durable artifact. */
   readonly prepared:
     | PreparedNetworkIdWrongfulRejection
-    | { readonly headerHash: string; readonly artifact: JournalJsonObject };
+    | { readonly headerHash: string; readonly artifact: WorkflowJsonObject };
   readonly stage: FraudProofRawL1FamilyStage;
   readonly forcedDoorOccupied: boolean;
   /** Inline datum of the live scan thread, absent when the scan is empty. */
@@ -452,7 +452,7 @@ export const forcedHarness = ({
       ? prepared.artifact
       : (networkIdForcedArtifactFromPrepared(
           prepared,
-        ) as unknown as JournalJsonObject);
+        ) as unknown as WorkflowJsonObject);
   return {
     artifact,
     scanUtxos,

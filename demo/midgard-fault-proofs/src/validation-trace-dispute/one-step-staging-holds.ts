@@ -18,9 +18,9 @@ import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import { validationTraceOneStepContracts } from "./one-step-holders.js";
 import { resolvingPlan } from "./one-step-resolving-plan.js";
 import type {
-  ValidationTraceStagingJournal,
   ValidationTraceStagingOutput,
-} from "./one-step-staging-journal.js";
+  ValidationTraceStagings,
+} from "./one-step-staging-types.js";
 import type { ValidationTraceOwnViewOf } from "./own-view.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
@@ -58,11 +58,11 @@ export const validationTraceStagingHolds = ({
   readonly ownView: ValidationTraceOwnViewOf;
   readonly stagings: (
     context: FraudProofWorkflowAdapterContext,
-  ) => Promise<ValidationTraceStagingJournal>;
+  ) => Promise<ValidationTraceStagings>;
   /** The staging output a PrepareSelected move would read for the run
    * `datumCbor`. */
   readonly usable: (
-    known: ValidationTraceStagingJournal,
+    known: ValidationTraceStagings,
     datumCbor: string,
   ) => Promise<Readonly<{ staging: ValidationTraceStagingOutput }> | undefined>;
 }) => {

@@ -2,7 +2,7 @@ import type { PendingTransaction } from "@al-ft/midgard-l1-follower/mempool";
 import { CML } from "@lucid-evolution/lucid";
 
 import { selectOwnFraudProofRecord } from "../fraud-proof-record-selection.js";
-import { type FraudProofWorkflowTerminal } from "./journal.js";
+import { type FraudProofWorkflowTerminal } from "./identity.js";
 import { type FraudProofRawL1Scopes, nextViewOf } from "./next-state.js";
 import { historicalTransactions } from "./raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
 import {

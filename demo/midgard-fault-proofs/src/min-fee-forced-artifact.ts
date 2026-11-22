@@ -12,12 +12,12 @@ import {
 } from "./min-fee-forced.js";
 import { commitCountedRoot } from "./transition-trace/phas.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "./workflow/identity.js";
 
 export const MIN_FEE_FORCED_ARTIFACT = "midgard-min-fee-forced-artifact-v1";
-export type MinFeeForcedArtifact = JournalJsonObject &
+export type MinFeeForcedArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof MIN_FEE_FORCED_ARTIFACT;
     headerHash: string;
@@ -169,7 +169,7 @@ export const prepareMinFeeForcedArtifact = async ({
   );
   if (forced === undefined)
     throw new Error("minFee: retained forced source absent");
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: MIN_FEE_FORCED_ARTIFACT,
     detectionId: prepared.detectionId,
     forcedIndex: prepared.forcedIndex,

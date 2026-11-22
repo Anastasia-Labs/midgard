@@ -66,11 +66,11 @@ import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { TEST_PROOF_MATERIALS_HOLDER } from "./proof-materials-holder.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
   publishProofChunks,
-} from "./submit-unjournaled.js";
+} from "./submit-steps.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 import {
   buildValueNotPreservedFixture,
@@ -812,7 +812,7 @@ export const registerValueConservationCases = (
       references.set(action.position, publication.utxo);
     }
     const init = await record("initialize", async () =>
-      buildAndSubmitUnjournaled(buildResolvedInit, {
+      buildAndSubmit(buildResolvedInit, {
         label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
@@ -959,7 +959,7 @@ export const registerValueConservationCases = (
         planned.plan.tier === "Inline"
           ? []
           : await record(`field:${fieldIndex}:publish`, async () =>
-              publishCarriageUnjournaled({
+              publishFieldCarriage({
                 lucid: harness.proverLucid,
                 signer: harness.proverSigner,
                 planned,
@@ -971,7 +971,7 @@ export const registerValueConservationCases = (
         planned.plan.tier === "Certified"
           ? (
               await record(`field:${fieldIndex}:certify`, async () =>
-                certifyCarriageUnjournaled({
+                certifyFieldCarriage({
                   lucid: harness.proverLucid,
                   network,
                   signer: harness.proverSigner,
@@ -1036,7 +1036,7 @@ export const registerValueConservationCases = (
       if (!maximum && !checkedMutation && action.position === "unionUpdate") {
         const args = Data.from(action.args, ConservationUpdateArgs);
         await expect(
-          buildAndSubmitUnjournaled(buildConservationAction, {
+          buildAndSubmit(buildConservationAction, {
             lucid: harness.proverLucid,
             contracts: harness.family,
             categoryId: harness.category.categoryId,
@@ -1055,7 +1055,7 @@ export const registerValueConservationCases = (
           }),
         ).rejects.toThrow();
         await expect(
-          buildAndSubmitUnjournaled(buildConservationAction, {
+          buildAndSubmit(buildConservationAction, {
             lucid: harness.proverLucid,
             contracts: harness.family,
             categoryId: harness.category.categoryId,
@@ -1072,7 +1072,7 @@ export const registerValueConservationCases = (
 
       if (cancellation && !cancelled.has(action.position)) {
         await record(`cancel:${action.position}`, async () =>
-          buildAndSubmitUnjournaled(buildConservationCancel, {
+          buildAndSubmit(buildConservationCancel, {
             lucid: harness.proverLucid,
             contracts: harness.family,
             categoryId: harness.category.categoryId,
@@ -1092,7 +1092,7 @@ export const registerValueConservationCases = (
           ).some((u) => u.assets[init.computationThreadUnit] === 1n),
         ).toBe(false);
         const restarted = await record(`restart:${action.position}`, async () =>
-          buildAndSubmitUnjournaled(buildResolvedInit, {
+          buildAndSubmit(buildResolvedInit, {
             label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
             lucid: harness.proverLucid,
             blueprint: harness.realBlueprint,
@@ -1116,7 +1116,7 @@ export const registerValueConservationCases = (
       }
       if (honest && action.position === "unionTerminal") {
         await expect(
-          buildAndSubmitUnjournaled(buildConservationAction, {
+          buildAndSubmit(buildConservationAction, {
             lucid: harness.proverLucid,
             contracts: harness.family,
             categoryId: harness.category.categoryId,
@@ -1129,7 +1129,7 @@ export const registerValueConservationCases = (
           }),
         ).rejects.toThrow();
         await record("honest:cancel-terminal", () =>
-          buildAndSubmitUnjournaled(buildConservationCancel, {
+          buildAndSubmit(buildConservationCancel, {
             lucid: harness.proverLucid,
             contracts: harness.family,
             categoryId: harness.category.categoryId,
@@ -1166,31 +1166,28 @@ export const registerValueConservationCases = (
           if (threadUtxo === undefined) throw new Error("thread absent");
           return {
             kind: "advanced" as const,
-            ...(await buildAndSubmitUnjournaled(
-              buildConservationAcceptedSource,
-              {
-                lucid: harness.proverLucid,
-                blueprint: harness.realBlueprint,
-                network,
-                contracts: harness.family,
-                source: source.source,
-                signer: harness.proverSigner,
-                threadUtxo,
-                threadToken: {
-                  unit: init.computationThreadUnit,
-                  fraudulentHeaderHash: setup.headerHash,
-                },
-                stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-                txInclusion: block.txInclusion,
-                publishedProofChunks: publishedSourceProof,
-                referenceScriptUtxo: references.get(action.position)!,
-                witnessReferenceScripts: harness.witnessReferenceScripts,
-                awaitConfirmation: true,
+            ...(await buildAndSubmit(buildConservationAcceptedSource, {
+              lucid: harness.proverLucid,
+              blueprint: harness.realBlueprint,
+              network,
+              contracts: harness.family,
+              source: source.source,
+              signer: harness.proverSigner,
+              threadUtxo,
+              threadToken: {
+                unit: init.computationThreadUnit,
+                fraudulentHeaderHash: setup.headerHash,
               },
-            )),
+              stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+              txInclusion: block.txInclusion,
+              publishedProofChunks: publishedSourceProof,
+              referenceScriptUtxo: references.get(action.position)!,
+              witnessReferenceScripts: harness.witnessReferenceScripts,
+              awaitConfirmation: true,
+            })),
           };
         }
-        return await buildAndSubmitUnjournaled(buildConservationAction, {
+        return await buildAndSubmit(buildConservationAction, {
           lucid: harness.proverLucid,
           contracts: harness.family,
           categoryId: harness.category.categoryId,

@@ -17,10 +17,7 @@ import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment
 import { requireManifestBoundReferenceScriptUtxo } from "../workflow/deployment-manifest-binding.js";
 import type { OutputReferenceScriptDecodingContracts } from "./contracts.js";
 import { type OutputReferenceScriptDecodingEvidence } from "./output-reference-script-decoding.js";
-import {
-  type OutputReferenceScriptDecodingJournal,
-  type OutputReferenceScriptDecodingStage,
-} from "./workflow.js";
+import { type OutputReferenceScriptDecodingStage } from "./workflow.js";
 
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_WORKFLOW =
   "midgard-output-reference-script-decoding-production-workflow-v1" as const;
@@ -287,7 +284,6 @@ export type OutputReferenceScriptDecodingAuthenticatedSource = Readonly<{
 /** Complete replay member: scans every accepted field-2 output and exact forced reason. */
 export type OutputReferenceScriptDecodingRuntimeLoader = Readonly<{
   config: LoadManifestBoundOutputReferenceScriptDecodingConfig;
-  journal: OutputReferenceScriptDecodingJournal;
   observe: (identity: string) => Promise<OutputReferenceScriptDecodingStage>;
   resolveStage: (input: {
     readonly action:

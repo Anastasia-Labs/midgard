@@ -58,7 +58,7 @@ import {
   expectSingleUtxoWithUnit,
   network,
 } from "./support/submit-init-emulator-shared.js";
-import { submitLinearFaultCancel } from "./support/submit-unjournaled.linear-fault.js";
+import { submitLinearFaultCancel } from "./support/submit-steps.linear-fault.js";
 
 const FORCED_ORDER_KEY: SDK.OutputReference = {
   transactionId: "cd".repeat(32),

@@ -71,10 +71,7 @@ import {
   countedTransactionsRoot,
   midgardTxInput,
 } from "./support/submit-init/transaction-material.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 const STRANGER_FUNDING_LOVELACE = 1_000_000_000n;
 
@@ -109,7 +106,7 @@ const scene = async () => {
     h.catalogue,
     {},
   );
-  const init = await buildAndSubmitUnjournaled(buildInit, {
+  const init = await buildAndSubmit(buildInit, {
     lucid: h.proverLucid,
     blueprint: h.realBlueprint,
     deploymentInfo,
@@ -378,7 +375,7 @@ describe("double-spend steps refuse a party other than the thread's prover", () 
     expect(outRefLabel(await s.threadAt(s.init.firstStepAddress))).toBe(
       outRefLabel(thread),
     );
-    const step01 = await buildAndSubmitUnjournaled(buildStep01, {
+    const step01 = await buildAndSubmit(buildStep01, {
       ...s.step01Inputs,
       threadOutRef: outRefLabel(thread),
       txInclusion: parseSubmitStep01TxInclusion(s.inclusion.tx1.inclusion),
@@ -389,13 +386,13 @@ describe("double-spend steps refuse a party other than the thread's prover", () 
 
   it("refuses a stranger's step 03 selecting another input, then takes the prover's", async () => {
     const s = await scene();
-    const step01 = await buildAndSubmitUnjournaled(buildStep01, {
+    const step01 = await buildAndSubmit(buildStep01, {
       ...s.step01Inputs,
       threadOutRef: outRefLabel(await s.threadAt(s.init.firstStepAddress)),
       txInclusion: parseSubmitStep01TxInclusion(s.inclusion.tx1.inclusion),
       referenceScriptUtxo: s.refs.fraudProofDoubleSpend!.utxo,
     });
-    const step02 = await buildAndSubmitUnjournaled(buildStep02, {
+    const step02 = await buildAndSubmit(buildStep02, {
       ...s.step01Inputs,
       threadOutRef: outRefLabel(await s.threadAt(step01.secondStepAddress)),
       txInclusion: parseSubmitStep01TxInclusion(s.inclusion.tx2.inclusion),
@@ -411,7 +408,7 @@ describe("double-spend steps refuse a party other than the thread's prover", () 
     expect(outRefLabel(await s.threadAt(step02.thirdStepAddress))).toBe(
       outRefLabel(thread),
     );
-    const step03 = await submitTurnsUnjournaled(buildStep03, {
+    const step03 = await submitTurns(buildStep03, {
       lucid: s.h.proverLucid,
       blueprint: s.h.realBlueprint,
       deploymentInfo: s.deploymentInfo,

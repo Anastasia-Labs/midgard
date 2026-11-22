@@ -7,7 +7,7 @@ import { Effect } from "effect";
 
 import { buildResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
 import { network } from "./emulator/blueprints.js";
-import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmit } from "./submit-steps.js";
 import type { Block, Scene } from "./validation-trace-dispute-open-scene.js";
 import { measureWithinTransactionLimits } from "./validation-trace-dispute-transaction-limits.js";
 
@@ -36,7 +36,7 @@ export const initAndOpen = async (
   if (category === undefined)
     throw new Error("catalogue has no validation-trace category");
   const blockUtxo = await liveBlock(scene, block);
-  const init = await buildAndSubmitUnjournaled(buildResolvedInit, {
+  const init = await buildAndSubmit(buildResolvedInit, {
     lucid: h.proverLucid,
     blueprint: h.realBlueprint,
     network,

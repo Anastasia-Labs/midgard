@@ -53,7 +53,7 @@ import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 const B = MIDGARD_ENVELOPE_BATCH_ITEMS;
 
@@ -80,7 +80,7 @@ describe("committed-field-shape at the consensus field bound", () => {
 
     // A redeemer-carried claim cannot address a certified field.
     await expect(
-      buildAndSubmitUnjournaled(buildCommittedFieldShapeStep01, {
+      buildAndSubmit(buildCommittedFieldShapeStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts: harness.committedFieldShape,
@@ -100,7 +100,7 @@ describe("committed-field-shape at the consensus field bound", () => {
     const completions: boolean[] = [];
     for (;;) {
       const step = await captureEmulatorSubmission(harness.emulator, () =>
-        buildAndSubmitUnjournaled(buildCommittedFieldShapeStep01, {
+        buildAndSubmit(buildCommittedFieldShapeStep01, {
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           contracts: harness.committedFieldShape,
@@ -149,7 +149,7 @@ describe("committed-field-shape at the consensus field bound", () => {
     });
 
     const step02 = await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildCommittedFieldShapeStep02, {
+      buildAndSubmit(buildCommittedFieldShapeStep02, {
         lucid: harness.proverLucid,
         contracts: harness.committedFieldShape,
         categoryId: harness.category.categoryId,
@@ -406,7 +406,7 @@ describe("committed-field-shape at the consensus field bound", () => {
       MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE,
     );
     const step = await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildCommittedFieldShapeStep01, {
+      buildAndSubmit(buildCommittedFieldShapeStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts: harness.committedFieldShape,

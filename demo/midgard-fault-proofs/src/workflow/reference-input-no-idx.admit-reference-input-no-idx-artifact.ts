@@ -24,17 +24,14 @@ import {
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
 } from "./family-definition.family-adapter-arm.js";
-import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson, type WorkflowJsonObject } from "./identity.js";
 import {
   admitNativeInclusionArtifact,
   admitOutputCborList,
   admitTxInputList,
   canonicalHex,
   canonicalNaturalString,
-  exactJournalRecord,
+  exactArtifactRecord,
   HEX_28,
   HEX_32,
   type NativeInclusionArtifact,
@@ -45,7 +42,7 @@ import {
 export const REFERENCE_INPUT_NO_IDX_ARTIFACT =
   "midgard-production-reference-input-no-idx-artifact-v1" as const;
 
-export type ReferenceInputNoIdxArtifact = JournalJsonObject &
+export type ReferenceInputNoIdxArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof REFERENCE_INPUT_NO_IDX_ARTIFACT;
     headerHash: string;
@@ -81,7 +78,7 @@ export const admitReferenceInputNoIdxArtifact = (
   if (!HEX_28.test(carriageOwner)) {
     throw new Error("reference-input-no-idx carriage owner is malformed");
   }
-  const parsed = exactJournalRecord(
+  const parsed = exactArtifactRecord(
     value,
     [
       "schemaVersion",
@@ -292,7 +289,7 @@ export const prepareReferenceInputNoIdxArtifact = async ({
     transactionsPhasRoot: item.transactionsPhasRoot,
     txMembershipProofCbor: item.txMembershipProofCbor,
   });
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: REFERENCE_INPUT_NO_IDX_ARTIFACT,
     headerHash: prepared.headerHash,
     detectionId: classification.selected.detectionId,

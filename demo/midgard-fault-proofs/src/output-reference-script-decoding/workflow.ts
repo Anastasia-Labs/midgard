@@ -23,20 +23,3 @@ export type OutputReferenceScriptDecodingAction =
   | "cancel"
   | "removeDescendants"
   | "done";
-
-type SubmitAction = Exclude<OutputReferenceScriptDecodingAction, "done">;
-export type OutputReferenceScriptDecodingJournalEntry = Readonly<{
-  sequence: number;
-  identity: string;
-  sourceStage: OutputReferenceScriptDecodingStage;
-  targetStage: OutputReferenceScriptDecodingStage;
-  action: SubmitAction;
-  phase: "intent" | "submitted" | "confirmed";
-  txHash: string;
-}>;
-export interface OutputReferenceScriptDecodingJournal {
-  load(
-    identity: string,
-  ): Promise<readonly OutputReferenceScriptDecodingJournalEntry[]>;
-  append(entry: OutputReferenceScriptDecodingJournalEntry): Promise<void>;
-}

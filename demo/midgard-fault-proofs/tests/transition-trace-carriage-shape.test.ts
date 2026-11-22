@@ -21,7 +21,7 @@ import {
 } from "../src/funding/proof-materials-address.js";
 import { resolveTransitionTraceDataCarriage } from "../src/transition-trace/proof-carriage.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
-import { settleTurnsUnjournaled } from "./support/submit-unjournaled.js";
+import { settleTurns } from "./support/submit-steps.js";
 
 const DATUMS = [Data.to("aa".repeat(4096)), Data.to("bb".repeat(100))];
 
@@ -47,7 +47,7 @@ type CarriageArgs = Omit<
  * submitted and confirmed before it is called again.
  */
 const publishing = async (args: CarriageArgs) =>
-  await settleTurnsUnjournaled(resolveTransitionTraceDataCarriage, {
+  await settleTurns(resolveTransitionTraceDataCarriage, {
     ...args,
     publish: true,
   });

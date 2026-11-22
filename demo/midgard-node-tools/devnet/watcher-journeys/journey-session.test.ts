@@ -70,7 +70,7 @@ it("keeps one observer and authenticated-history service lifetime across targets
       "deploymentInfoPath",
       "manifestPath",
     ]);
-    expect(first.config.workflowJournalDirectory).toBe(
+    expect(first.config.decisionJournalDirectory).toBe(
       join(state.runDirectory, "work/journeys/runtime/workflows"),
     );
   } finally {

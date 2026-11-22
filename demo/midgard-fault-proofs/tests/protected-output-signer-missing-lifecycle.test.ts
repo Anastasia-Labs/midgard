@@ -130,11 +130,11 @@ import {
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+  submitTurns,
+} from "./support/submit-steps.js";
 
 describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
   it.each([
@@ -276,7 +276,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
         console.info("protected-output-signer-missing:max:references-ready");
       const initThread = async () => {
         const init = await captureEmulatorSubmission(harness.emulator, () =>
-          buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
+          buildAndSubmit(buildCommittedFieldShapeInit, {
             lucid: harness.proverLucid,
             blueprint: harness.realBlueprint,
             network,
@@ -299,7 +299,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       const cancellation = await captureEmulatorSubmission(
         harness.emulator,
         () =>
-          buildAndSubmitUnjournaled(buildProtectedOutputSignerMissingCancel, {
+          buildAndSubmit(buildProtectedOutputSignerMissingCancel, {
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,
@@ -323,33 +323,30 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       const step01Result = await captureEmulatorSubmission(
         harness.emulator,
         () =>
-          buildAndSubmitUnjournaled(
-            buildProtectedOutputSignerMissingStep01Accepted,
-            {
-              lucid: harness.proverLucid,
-              blueprint: harness.realBlueprint,
-              network,
-              contracts,
-              signer: harness.proverSigner,
-              evidence,
-              threadUtxo,
-              threadToken: {
-                unit: init.result.computationThreadUnit,
-                fraudulentHeaderHash: init.result.fraudulentHeaderHash,
-              },
-              stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-              txInclusion,
-              referenceScriptUtxo: references[0]!,
-              witnessReferenceScripts: harness.witnessReferenceScripts,
+          buildAndSubmit(buildProtectedOutputSignerMissingStep01Accepted, {
+            lucid: harness.proverLucid,
+            blueprint: harness.realBlueprint,
+            network,
+            contracts,
+            signer: harness.proverSigner,
+            evidence,
+            threadUtxo,
+            threadToken: {
+              unit: init.result.computationThreadUnit,
+              fraudulentHeaderHash: init.result.fraudulentHeaderHash,
             },
-          ),
+            stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+            txInclusion,
+            referenceScriptUtxo: references[0]!,
+            witnessReferenceScripts: harness.witnessReferenceScripts,
+          }),
       );
       if (process.env.MIDGARD_PRINT_FIT === "1")
         console.info("protected-output-signer-missing:max:step01-ready");
       const step02Result = await captureEmulatorSubmission(
         harness.emulator,
         () =>
-          submitTurnsUnjournaled(buildProtectedOutputSignerMissingStep02, {
+          submitTurns(buildProtectedOutputSignerMissingStep02, {
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,
@@ -381,7 +378,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       const openingScan = await captureEmulatorSubmission(
         harness.emulator,
         () =>
-          submitTurnsUnjournaled(buildSignerWitnessScan, {
+          submitTurns(buildSignerWitnessScan, {
             ...scanCommon,
             threadOutRef: step02Result.result.nextThreadOutRef,
           }),
@@ -479,7 +476,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       let scanThreadOutRef = openingScan.result.nextThreadOutRef;
       while (!scanResults.at(-1)!.result.terminal) {
         const result = await captureEmulatorSubmission(harness.emulator, () =>
-          submitTurnsUnjournaled(buildSignerWitnessScan, {
+          submitTurns(buildSignerWitnessScan, {
             ...scanCommon,
             threadOutRef: scanThreadOutRef,
             publishedCarriageUtxos: openingScan.result.carriageUtxos,
@@ -503,7 +500,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       const terminalResult = await captureEmulatorSubmission(
         harness.emulator,
         () =>
-          buildAndSubmitUnjournaled(buildSignerWitnessTerminal, {
+          buildAndSubmit(buildSignerWitnessTerminal, {
             lucid: harness.proverLucid,
             family: "protected-output-signer-missing",
             contracts,
@@ -1060,7 +1057,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       witnessSet: witnessSetOf(overBoundTx),
       witnessSetHash: overBoundEvidence.witnessSetHashHex,
     };
-    const overBoundChunks = await publishCarriageUnjournaled({
+    const overBoundChunks = await publishFieldCarriage({
       lucid: s.harness.proverLucid,
       signer: s.harness.proverSigner,
       planned: overBoundPlanned,
@@ -1069,7 +1066,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     });
     expect(overBoundChunks).toHaveLength(3);
     await expectOnchainRefusal(() =>
-      certifyCarriageUnjournaled({
+      certifyFieldCarriage({
         lucid: s.harness.proverLucid,
         network,
         signer: s.harness.proverSigner,

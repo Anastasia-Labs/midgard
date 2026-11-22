@@ -21,7 +21,7 @@ import {
   requireReplayPredecessorLedger,
 } from "../workflow/complete-replay.replay-context-identity.js";
 import { sameJson } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import {
   encodeValidationTraceDisputeArtifact,
   parseValidationTraceDisputeArtifact,
@@ -116,7 +116,7 @@ export const prepareValidationTraceArtifact = async ({
   readonly l1SlotConfig: L1SlotConfig;
   /** Receives the claim material the artifact was built from. */
   readonly onMaterial?: (material: ValidationTraceClaimMaterial) => void;
-}): Promise<JournalJsonObject> => {
+}): Promise<WorkflowJsonObject> => {
   if (classification.category !== "validationTraceDispute")
     throw new Error("validation-trace adapter received another family");
   const { material } = await detectedValidationTraceClaim({
@@ -149,7 +149,7 @@ export const validateValidationTraceArtifact = async ({
   readonly evidence: CanonicalBlockEvidence;
   readonly context: CompleteCanonicalReplayContext | undefined;
   readonly classification: FaultClassification;
-  readonly artifact: JournalJsonObject;
+  readonly artifact: WorkflowJsonObject;
   readonly l1SlotConfig: L1SlotConfig;
   /** Receives the material of the artifact, once it matches. */
   readonly onMaterial?: (material: ValidationTraceClaimMaterial) => void;

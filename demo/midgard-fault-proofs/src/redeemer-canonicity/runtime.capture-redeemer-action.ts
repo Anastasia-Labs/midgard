@@ -36,9 +36,9 @@ import {
   defineFamily,
 } from "../workflow/family-definition.family-definition.js";
 import {
-  journalJsonDigest,
-  type JournalJsonObject,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  workflowJsonDigest,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import {
   proofMaterialsAccess,
@@ -125,7 +125,7 @@ export const REDEEMER_CANONICITY_FAMILY_DEFINITION = defineFamily<
 
 export const prepareRedeemerCanonicityWorkflowArtifact = async (
   block: CanonicalBlockEvidence,
-): Promise<JournalJsonObject> => {
+): Promise<WorkflowJsonObject> => {
   const detection = selectDetection(
     detectRedeemerCanonicityFromCanonicalBlock(block),
   );
@@ -216,7 +216,7 @@ export const prepareRedeemerCanonicityWorkflowArtifact = async (
 const captureRedeemerAction = async (
   workflow: RedeemerWorkflowCore,
   action: FraudProofWorkflowAction,
-  artifact: JournalJsonObject,
+  artifact: WorkflowJsonObject,
   holder: ProofMaterialsHolder,
 ): Promise<CursorFamilyCapturedAction> => {
   const materials = proofMaterialsAccess({
@@ -371,9 +371,9 @@ const createRedeemerCanonicityTransactionPort = (
   category: "redeemerCanonicity",
   validatePreparedArtifact: async ({ evidence, artifact }) => {
     if (
-      journalJsonDigest(
+      workflowJsonDigest(
         await prepareRedeemerCanonicityWorkflowArtifact(evidence),
-      ) !== journalJsonDigest(artifact)
+      ) !== workflowJsonDigest(artifact)
     )
       throw new Error(
         "prepared family artifact differs from retained evidence",

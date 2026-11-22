@@ -399,7 +399,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       fundingProfileBundlePath: configuration.fundingProfileBundlePath,
       l1NodeTransportBinaryPath: native.l1NodeTransportBinaryPath,
       operationsEndpoint: `http://127.0.0.1:${operations.port}`,
-      workflowJournalDirectory: join(directory, "workflows"),
+      decisionJournalDirectory: join(directory, "workflows"),
       availability: {
         keySource: {
           kind: "environment",
@@ -437,10 +437,10 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     // and its connection: the evidence reader opens the file read-only.
     const readDecisions = async () =>
       existsSync(
-        join(config.workflowJournalDirectory, WATCHER_JOURNAL_DATABASE_FILE),
+        join(config.decisionJournalDirectory, WATCHER_JOURNAL_DATABASE_FILE),
       )
         ? readWatcherFaultDecisionEvidence({
-            directory: config.workflowJournalDirectory,
+            directory: config.decisionJournalDirectory,
             deploymentFingerprint: deployment.manifest.manifestId,
             launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
           }).map((decision) => ({ decision }))
@@ -793,14 +793,14 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     watcher = undefined;
     // The process's journal connection outlives the runtime; a restart is a
     // new process, so close it as an exit would.
-    closeWatcherJournalDatabase(config.workflowJournalDirectory);
+    closeWatcherJournalDatabase(config.decisionJournalDirectory);
     // A decision row whose bytes no longer match its MAC, as a bit the disk
     // flipped and SQLite does not check would leave. Completion pruning has
     // emptied the journal tables by now, so the row is written in; deleting
     // it is the operator's repair.
     const corruptJournalRow = (corrupt: boolean) => {
       const raw = new DatabaseSync(
-        join(config.workflowJournalDirectory, WATCHER_JOURNAL_DATABASE_FILE),
+        join(config.decisionJournalDirectory, WATCHER_JOURNAL_DATABASE_FILE),
       );
       try {
         const { changes } = corrupt
@@ -857,7 +857,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     // Repair the row and forget the refusal, as the restart that clears it
     // would; the held startup then completes on the repaired journals.
     corruptJournalRow(false);
-    closeWatcherJournalDatabase(config.workflowJournalDirectory);
+    closeWatcherJournalDatabase(config.decisionJournalDirectory);
     watcher = await stage("startup after journal repair", () => restarting);
     expect(watcher.faultProofSupervisor.status().journalIntegrity).toBeNull();
     succeeded = true;

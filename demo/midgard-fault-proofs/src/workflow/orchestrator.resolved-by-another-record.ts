@@ -1,4 +1,4 @@
-import type { FraudProofWorkflowIdentity } from "./journal.js";
+import type { FraudProofWorkflowIdentity } from "./identity.js";
 import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import {
   ownThreadsUnobservableReason,

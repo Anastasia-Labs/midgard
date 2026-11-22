@@ -4,8 +4,8 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { selectTimeoutCorrectionTarget } from "../src/remove-unattested-block.reconcile-last-timeout-correction-step.js";
-import { resolveTimeoutCorrectionValidityRange } from "../src/remove-unattested-block.recover-timeout-correction-attempt.js";
+import { resolveTimeoutCorrectionValidityRange } from "../src/remove-unattested-block.timeout-correction-params.js";
+import { selectTimeoutCorrectionTarget } from "../src/remove-unattested-block.timeout-correction-plan.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { nodeUnit } from "./unattested-timeout-suffix-lifecycle.build-contracts.js";
 import { setup } from "./unattested-timeout-suffix-lifecycle.setup.js";

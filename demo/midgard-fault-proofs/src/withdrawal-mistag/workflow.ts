@@ -35,7 +35,7 @@ import {
   defineFamily,
 } from "../workflow/family-definition.family-definition.js";
 import type { FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import { runOrResumeManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
@@ -80,7 +80,7 @@ export const withdrawalMistagEvidenceRequirement = async ({
   artifact,
 }: {
   action: FraudProofWorkflowAction;
-  artifact: JournalJsonObject;
+  artifact: WorkflowJsonObject;
 }) => {
   const stage = cursorFamilyActionInput({
     category: "withdrawalMistag",

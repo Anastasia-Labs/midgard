@@ -1,7 +1,7 @@
 /**
  * The native-script-decoding builders the tests drive, each bound into a
  * function that builds its step and submits it with no journal (see
- * ./submit-unjournaled.ts).
+ * ./submit-steps.ts).
  */
 import { buildNativeScriptDecodingInit } from "../../src/native-script-decoding/submit-native-script-decoding-init.js";
 import { buildNativeScriptDecodingStep01BindNormal } from "../../src/native-script-decoding/submit-native-script-decoding-step-01.submit-native-script-decoding-step01-bind-normal.js";
@@ -14,31 +14,30 @@ import {
 import { buildNativeScriptDecodingStep03BindDescriptor } from "../../src/native-script-decoding/submit-native-script-decoding-step-03.submit-native-script-decoding-step03-bind-descriptor.js";
 import { buildNativeScriptDecodingStep03OpenSubject } from "../../src/native-script-decoding/submit-native-script-decoding-step-03.submit-native-script-decoding-step03-open-subject.js";
 import { buildNativeScriptDecodingStep04 } from "../../src/native-script-decoding/submit-native-script-decoding-step-04.js";
-import { unjournaled, unjournaledTurns } from "./submit-unjournaled.js";
+import { stepSubmitter, turnsSubmitter } from "./submit-steps.js";
 
-export const submitNativeScriptDecodingInit = unjournaled(
+export const submitNativeScriptDecodingInit = stepSubmitter(
   buildNativeScriptDecodingInit,
 );
-export const submitNativeScriptDecodingStep01BindNormal = unjournaled(
+export const submitNativeScriptDecodingStep01BindNormal = stepSubmitter(
   buildNativeScriptDecodingStep01BindNormal,
 );
-export const submitNativeScriptDecodingStep01RecordForced = unjournaled(
+export const submitNativeScriptDecodingStep01RecordForced = stepSubmitter(
   buildNativeScriptDecodingStep01RecordForced,
 );
-export const submitNativeScriptDecodingStep02 = unjournaled(
+export const submitNativeScriptDecodingStep02 = stepSubmitter(
   buildNativeScriptDecodingStep02,
 );
-export const submitNativeScriptDecodingStep03AdvanceOrCloseClose = unjournaled(
-  buildNativeScriptDecodingStep03AdvanceOrCloseClose,
-);
+export const submitNativeScriptDecodingStep03AdvanceOrCloseClose =
+  stepSubmitter(buildNativeScriptDecodingStep03AdvanceOrCloseClose);
 export const submitNativeScriptDecodingStep03AdvanceOrCloseSegment =
-  unjournaled(buildNativeScriptDecodingStep03AdvanceOrCloseSegment);
-export const submitNativeScriptDecodingStep03BindDescriptor = unjournaled(
+  stepSubmitter(buildNativeScriptDecodingStep03AdvanceOrCloseSegment);
+export const submitNativeScriptDecodingStep03BindDescriptor = stepSubmitter(
   buildNativeScriptDecodingStep03BindDescriptor,
 );
-export const submitNativeScriptDecodingStep03OpenSubject = unjournaledTurns(
+export const submitNativeScriptDecodingStep03OpenSubject = turnsSubmitter(
   buildNativeScriptDecodingStep03OpenSubject,
 );
-export const submitNativeScriptDecodingStep04 = unjournaled(
+export const submitNativeScriptDecodingStep04 = stepSubmitter(
   buildNativeScriptDecodingStep04,
 );

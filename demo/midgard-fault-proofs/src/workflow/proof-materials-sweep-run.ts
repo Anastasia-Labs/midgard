@@ -9,7 +9,7 @@
  */
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
-import type { FraudProofWorkflowTerminal } from "./journal.js";
+import type { FraudProofWorkflowTerminal } from "./identity.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,

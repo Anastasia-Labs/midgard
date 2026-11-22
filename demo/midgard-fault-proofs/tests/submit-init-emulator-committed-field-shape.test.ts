@@ -25,7 +25,7 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 describe("committed-field-shape emulator lifecycle", () => {
   it("proves a real wrong-stride commitment through mint and removes its block", async () => {
@@ -54,7 +54,7 @@ describe("committed-field-shape emulator lifecycle", () => {
     expect(step01Reference.scriptRef).not.toBeNull();
     expect(step02Reference.scriptRef).not.toBeNull();
 
-    const init = await buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
+    const init = await buildAndSubmit(buildCommittedFieldShapeInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -76,7 +76,7 @@ describe("committed-field-shape emulator lifecycle", () => {
     const step01Capture = await captureEmulatorSubmission(
       harness.emulator,
       () =>
-        buildAndSubmitUnjournaled(buildCommittedFieldShapeStep01, {
+        buildAndSubmit(buildCommittedFieldShapeStep01, {
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           contracts: harness.committedFieldShape,
@@ -134,7 +134,7 @@ describe("committed-field-shape emulator lifecycle", () => {
 
     // Crash-resume is state based: the consumed step-01 out-ref cannot replay.
     await expect(
-      buildAndSubmitUnjournaled(buildCommittedFieldShapeStep01, {
+      buildAndSubmit(buildCommittedFieldShapeStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts: harness.committedFieldShape,
@@ -153,7 +153,7 @@ describe("committed-field-shape emulator lifecycle", () => {
     const step02Capture = await captureEmulatorSubmission(
       harness.emulator,
       () =>
-        buildAndSubmitUnjournaled(buildCommittedFieldShapeStep02, {
+        buildAndSubmit(buildCommittedFieldShapeStep02, {
           lucid: harness.proverLucid,
           contracts: harness.committedFieldShape,
           categoryId: harness.category.categoryId,

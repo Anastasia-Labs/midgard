@@ -1,6 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core";
 import type { WorkflowActuationPermit } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
-import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/journal";
+import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/identity";
 
 import type { WatcherFaultProofJob } from "./fault-proof-supervisor.validate-job.js";
 

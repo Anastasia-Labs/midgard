@@ -13,8 +13,8 @@ import type { ValidationTraceDisputeArtifact } from "./artifact.js";
 import type {
   SignedValidationTraceStaging,
   ValidationTraceResolveReader,
-  ValidationTraceStagingJournal,
-} from "./one-step-staging-journal.js";
+  ValidationTraceStagings,
+} from "./one-step-staging-types.js";
 
 /** A receipt of a thread we closed, live as our close left it. */
 export type ValidationTraceOwnReceipt = Readonly<{
@@ -56,7 +56,7 @@ export interface ValidationTraceOwnView {
    * not. */
   readonly caseThreads: () => Promise<readonly string[]>;
   /** Our staging outputs and the resolve moves of ours that read them. */
-  readonly stagings: () => Promise<ValidationTraceStagingJournal>;
+  readonly stagings: () => Promise<ValidationTraceStagings>;
   /** Every staging output a staging transaction of ours pays, landed or
    * not: the outputs our proof-materials needs pin. */
   readonly signedStagings: () => Promise<

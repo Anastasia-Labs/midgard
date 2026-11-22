@@ -7,7 +7,7 @@ import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "../publish-proof-chunks.js";
 import "./action-changed.js";
-import "./journal.js";
+import "./identity.js";
 import "./orchestrator.js";
 import "./raw-l1-publication-observation.js";
 import "./transaction-boundary.js";

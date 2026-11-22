@@ -46,7 +46,7 @@ export const recordedWatcher = async () => {
   await writeFile(
     processConfigPath,
     JSON.stringify({
-      workflowJournalDirectory: journalDirectory,
+      decisionJournalDirectory: journalDirectory,
       watcherConfig: { storage: { path: storePath } },
     }),
   );

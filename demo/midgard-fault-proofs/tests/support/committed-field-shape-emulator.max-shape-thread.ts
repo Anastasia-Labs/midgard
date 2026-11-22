@@ -26,7 +26,7 @@ import {
 } from "./committed-field-shape-emulator.committed-field-shape-scenario-material.js";
 import { network } from "./emulator/blueprints.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
-import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmit } from "./submit-steps.js";
 
 export const LABEL = "committed-field-shape-max";
 
@@ -35,7 +35,7 @@ const initThread = async (
   scenario: CommittedFieldShapeScenario,
 ) =>
   await captureEmulatorSubmission(harness.emulator, () =>
-    buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
+    buildAndSubmit(buildCommittedFieldShapeInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,

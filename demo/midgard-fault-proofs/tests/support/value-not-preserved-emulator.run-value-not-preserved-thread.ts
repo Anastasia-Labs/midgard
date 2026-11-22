@@ -42,10 +42,7 @@ import {
   emulatorSuccessorHeaderStart,
 } from "./submit-init/successor.js";
 import { countedTransactionsRoot } from "./submit-init/transaction-material.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./submit-steps.js";
 import { type ValueNotPreservedFixture } from "./value-not-preserved-emulator.build-value-not-preserved-fixture.js";
 import {
   commitHeaderAfterAnchorBlock,
@@ -215,7 +212,7 @@ export const runValueNotPreservedThread = async ({
   };
 
   const initCapture = await captureEmulatorSubmission(emulator, async () =>
-    buildAndSubmitUnjournaled(buildResolvedInit, {
+    buildAndSubmit(buildResolvedInit, {
       label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
       lucid: proverLucid,
       blueprint: harness.realBlueprint,
@@ -232,7 +229,7 @@ export const runValueNotPreservedThread = async ({
   const init = initCapture.result;
 
   const step01Capture = await captureEmulatorSubmission(emulator, async () =>
-    buildAndSubmitUnjournaled(buildValueNotPreservedStep01, {
+    buildAndSubmit(buildValueNotPreservedStep01, {
       lucid: proverLucid,
       blueprint: harness.realBlueprint,
       contracts: family,
@@ -267,7 +264,7 @@ export const runValueNotPreservedThread = async ({
       prevUtxosRootHex: fixture.ledger.rootHex,
     });
     const foldCapture = await captureEmulatorSubmission(emulator, async () =>
-      buildAndSubmitUnjournaled(buildValueNotPreservedStep02Fold, {
+      buildAndSubmit(buildValueNotPreservedStep02Fold, {
         lucid: proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -283,7 +280,7 @@ export const runValueNotPreservedThread = async ({
   }
 
   const finishCapture = await captureEmulatorSubmission(emulator, async () =>
-    buildAndSubmitUnjournaled(buildValueNotPreservedStep02Finish, {
+    buildAndSubmit(buildValueNotPreservedStep02Finish, {
       lucid: proverLucid,
       contracts: family,
       categoryId: category.categoryId,
@@ -301,7 +298,7 @@ export const runValueNotPreservedThread = async ({
   }
 
   const step03Capture = await captureEmulatorSubmission(emulator, async () =>
-    submitTurnsUnjournaled(buildValueNotPreservedStep03, {
+    submitTurns(buildValueNotPreservedStep03, {
       lucid: proverLucid,
       contracts: family,
       categoryId: category.categoryId,
@@ -320,7 +317,7 @@ export const runValueNotPreservedThread = async ({
   }
 
   const step04Capture = await captureEmulatorSubmission(emulator, async () =>
-    buildAndSubmitUnjournaled(buildValueNotPreservedStep04, {
+    buildAndSubmit(buildValueNotPreservedStep04, {
       lucid: proverLucid,
       contracts: family,
       categoryId: category.categoryId,

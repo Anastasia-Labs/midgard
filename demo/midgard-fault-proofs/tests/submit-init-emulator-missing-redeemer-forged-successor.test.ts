@@ -24,7 +24,7 @@ import {
   redeemerMissingVerdict,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
+import { submitDirectPurposeTransition } from "./support/submit-steps.direct-purpose.js";
 
 type Scenario = Parameters<typeof setupMissingRedeemerScenario>[0];
 

@@ -46,7 +46,7 @@ import "../src/submit-fabricated-deposit-step-03.js";
 import "../src/submit-fabricated-deposit-step-04.js";
 import "../src/transition-trace/phas.js";
 import "../src/workflow/fabricated-deposit-evidence.js";
-import "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import "../src/workflow/identity.js";
 import "./helpers/canonical-block-evidence-fixture.js";
 import "./fabricated-deposit.build-deposits-block-fixture.js";
 import "./fabricated-deposit.q39-fabricated-deposit-evidence-admission.js";

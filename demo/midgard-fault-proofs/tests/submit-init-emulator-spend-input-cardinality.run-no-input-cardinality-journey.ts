@@ -17,7 +17,7 @@ import {
   publishInputExistenceSelectionCarriage,
 } from "./support/input-existence-execution-context.js";
 import { buildNonExistentInputFixture } from "./support/submit-init/non-existent-input.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 /** Real shared source/selection stages, including each required publication. */
 export const runNoInputCardinalityJourney = async (
@@ -44,7 +44,7 @@ export const runNoInputCardinalityJourney = async (
     field: 0,
     inputIndex: fixture.badInputIndex,
   });
-  const init = await buildAndSubmitUnjournaled(buildInit, {
+  const init = await buildAndSubmit(buildInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     deploymentInfo: context.deploymentInfo,
@@ -61,7 +61,7 @@ export const runNoInputCardinalityJourney = async (
     init.computationThreadUnit,
   );
   const first = await captureEmulatorSubmission(harness.emulator, async () =>
-    buildAndSubmitUnjournaled(neSubmitStep01, {
+    buildAndSubmit(neSubmitStep01, {
       ...context.arguments,
       threadOutRef: outRefLabel(firstThread),
     }),
@@ -79,7 +79,7 @@ export const runNoInputCardinalityJourney = async (
       context.prepared,
       publishCarriage,
     );
-    return buildAndSubmitUnjournaled(neSubmitStep02, {
+    return buildAndSubmit(neSubmitStep02, {
       ...context.arguments,
       ...carriage,
       threadOutRef: first.result.nextThreadOutRef,

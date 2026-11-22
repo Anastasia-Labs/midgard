@@ -81,7 +81,7 @@ import {
 } from "./support/no-reference-input-emulator.js";
 import { submitRawInputExistenceStep } from "./support/raw-input-existence-step.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 describe("no-reference-input emulator lifecycle", () => {
   it("convicts a reference input that never existed, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
@@ -125,7 +125,7 @@ describe("no-reference-input emulator lifecycle", () => {
     const { setup, deploymentInfo, init, step03 } = journey;
 
     const step04 = requireInputExistenceTerminalResult(
-      await buildAndSubmitUnjournaled(submitNoReferenceInputStep04, {
+      await buildAndSubmit(submitNoReferenceInputStep04, {
         ...journey.stageArguments,
         threadOutRef: step03.nextThreadOutRef,
       }),
@@ -314,7 +314,7 @@ describe("no-reference-input emulator lifecycle", () => {
     expect(publications).toHaveLength(1);
 
     const step04 = requireInputExistenceTerminalResult(
-      await buildAndSubmitUnjournaled(submitNoReferenceInputStep04, {
+      await buildAndSubmit(submitNoReferenceInputStep04, {
         ...journey.stageArguments,
         threadOutRef: step03.nextThreadOutRef,
       }),

@@ -3,7 +3,7 @@ import {
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
 
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import {
   admitNativeScriptInvalidArtifact,
   prepareNativeScriptInvalidArtifact,
@@ -19,7 +19,7 @@ type ForcedPlan = Awaited<
   ReturnType<typeof admitNativeScriptInvalidForcedArtifact>
 >;
 export type NativeScriptInvalidWorkflowArtifact = Readonly<{
-  artifact: JournalJsonObject & { readonly headerHash: string };
+  artifact: WorkflowJsonObject & { readonly headerHash: string };
   prepared: Omit<PreparedNativeScriptInvalid, "txInclusion"> & {
     readonly txInclusion?: PreparedNativeScriptInvalid["txInclusion"];
   };
@@ -27,7 +27,7 @@ export type NativeScriptInvalidWorkflowArtifact = Readonly<{
   forced?: ForcedPlan;
 }>;
 export const admitNativeScriptInvalidWorkflowArtifact = async (
-  artifact: JournalJsonObject,
+  artifact: WorkflowJsonObject,
 ): Promise<NativeScriptInvalidWorkflowArtifact> => {
   if (artifact.schemaVersion !== NATIVE_SCRIPT_INVALID_FORCED_ARTIFACT) {
     const admitted = admitNativeScriptInvalidArtifact(artifact);
@@ -65,7 +65,7 @@ export const admitNativeScriptInvalidWorkflowArtifact = async (
 };
 export const prepareNativeScriptInvalidWorkflowArtifact = async (
   args: Parameters<typeof prepareNativeScriptInvalidArtifact>[0],
-): Promise<JournalJsonObject> =>
+): Promise<WorkflowJsonObject> =>
   args.classification.selected.detectionId.startsWith(
     "native-script-invalid:forced:",
   )

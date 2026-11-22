@@ -18,7 +18,7 @@ import { createFraudProofFamilyRawL1ObservationPort } from "../src/workflow/fami
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+} from "../src/workflow/identity.js";
 import {
   createAuthenticatedRawDatumPreimagePrerequisitePort,
   withRawDatumPreimagePrerequisite,

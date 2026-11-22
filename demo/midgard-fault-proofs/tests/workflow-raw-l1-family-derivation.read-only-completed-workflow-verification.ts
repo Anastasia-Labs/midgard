@@ -3,7 +3,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { verifyCompletedFraudProofWorkflow } from "../src/workflow/completed-verification.js";
-import type { FraudProofWorkflowTerminal } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import type { FraudProofWorkflowTerminal } from "../src/workflow/identity.js";
 import { deriveFraudProofRawL1CompletedTerminal } from "../src/workflow/raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
 import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
 import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";

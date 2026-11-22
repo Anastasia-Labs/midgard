@@ -364,9 +364,9 @@
       "midgard-source": "./src/workflow/installed-categories.ts",
       "import": "./dist/workflow/installed-categories.js"
     },
-    "./workflow/journal": {
-      "midgard-source": "./src/workflow/journal.ts",
-      "import": "./dist/workflow/journal.js"
+    "./workflow/identity": {
+      "midgard-source": "./src/workflow/identity.ts",
+      "import": "./dist/workflow/identity.js"
     },
     "./workflow/l1-source": {
       "midgard-source": "./src/workflow/l1-source.ts",
@@ -715,7 +715,7 @@
             "src/workflow/header-classifier.ts",
             "src/workflow/input-set-uniqueness.ts",
             "src/workflow/installed-categories.ts",
-            "src/workflow/journal.ts",
+            "src/workflow/identity.ts",
             "src/workflow/l1-source.ts",
             "src/workflow/missing-signature-adapter.ts",
             "src/workflow/missing-signature-state.ts",

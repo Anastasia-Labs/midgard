@@ -5,7 +5,7 @@ import {
   FIELD_CARRIAGE_PREREQUISITE,
   type FieldCarriagePrerequisitePort,
 } from "../src/workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import type { FraudProofWorkflowIdentity } from "../src/workflow/journal.js";
+import type { FraudProofWorkflowIdentity } from "../src/workflow/identity.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,

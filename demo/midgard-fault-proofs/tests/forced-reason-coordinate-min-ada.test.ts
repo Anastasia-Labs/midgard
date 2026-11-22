@@ -21,10 +21,10 @@ import {
   signNativeTx,
 } from "./support/forced-reason-signed-native-tx.js";
 import {
-  buildAndSubmitUnjournaled,
-  publishCarriageUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  buildAndSubmit,
+  publishFieldCarriage,
+  submitTurns,
+} from "./support/submit-steps.js";
 
 /**
  * A forced OutputBelowMinAda reason names an output by its field position,
@@ -86,7 +86,7 @@ describe("forced OutputBelowMinAda coordinate the node writes", () => {
     const reopened = await admitMinAdaForcedArtifact(
       JSON.parse(JSON.stringify(workflowArtifact)),
     );
-    const bound = await buildAndSubmitUnjournaled(buildMinAdaStep01Forced, {
+    const bound = await buildAndSubmit(buildMinAdaStep01Forced, {
       ...f.common,
       threadOutRef: f.threadOutRef,
       state: reopened.evidence.state,
@@ -107,14 +107,14 @@ describe("forced OutputBelowMinAda coordinate the node writes", () => {
     });
     // Two small outputs open without a certificate.
     expect(planned.plan.tier).not.toBe("Certified");
-    const carriage = await publishCarriageUnjournaled({
+    const carriage = await publishFieldCarriage({
       lucid: f.h.proverLucid,
       signer: f.h.proverSigner,
       planned,
       publisherAddress: f.h.proverSigner.proofMaterialsAddress,
       label: "min-ada outputs",
     });
-    const opened = await submitTurnsUnjournaled(buildMinAdaTxStep02, {
+    const opened = await submitTurns(buildMinAdaTxStep02, {
       ...f.common,
       threadOutRef: bound.nextThreadOutRef,
       prepared: f.prepared,
@@ -122,13 +122,13 @@ describe("forced OutputBelowMinAda coordinate the node writes", () => {
       referenceScriptUtxo: f.refs[1]!,
       yieldReferenceScriptUtxo: f.seeded.minAdaYieldReferenceScripts!.tx.utxo,
     });
-    const checked = await submitTurnsUnjournaled(buildMinAdaStep03, {
+    const checked = await submitTurns(buildMinAdaStep03, {
       ...f.common,
       threadOutRef: opened.nextThreadOutRef,
       outputItemCbors: f.prepared.outputItemCbors,
       referenceScriptUtxo: f.refs[2]!,
     });
-    const proof = await buildAndSubmitUnjournaled(buildMinAdaStep04, {
+    const proof = await buildAndSubmit(buildMinAdaStep04, {
       ...f.common,
       threadOutRef: checked.nextThreadOutRef,
       referenceScriptUtxo: f.refs[3]!,
@@ -172,14 +172,14 @@ describe("forced OutputBelowMinAda coordinate the node writes", () => {
     await expect(admitMinAdaForcedArtifact(f.artifact)).rejects.toThrow(
       /no contradiction/u,
     );
-    const bound = await buildAndSubmitUnjournaled(buildMinAdaStep01Forced, {
+    const bound = await buildAndSubmit(buildMinAdaStep01Forced, {
       ...f.common,
       threadOutRef: f.threadOutRef,
       state: f.state,
       forcedSource: f.source,
       referenceScriptUtxo: f.refs[0]!,
     });
-    const opened = await submitTurnsUnjournaled(buildMinAdaTxStep02, {
+    const opened = await submitTurns(buildMinAdaTxStep02, {
       ...f.common,
       threadOutRef: bound.nextThreadOutRef,
       prepared: f.prepared,
@@ -193,7 +193,7 @@ describe("forced OutputBelowMinAda coordinate the node writes", () => {
     // transaction runs: the step's own thread spend.
     const refusal = await expectOnchainRefusal(
       async () =>
-        await submitTurnsUnjournaled(buildMinAdaStep03, {
+        await submitTurns(buildMinAdaStep03, {
           ...f.common,
           threadOutRef: opened.nextThreadOutRef,
           outputItemCbors: f.prepared.outputItemCbors,

@@ -12,10 +12,10 @@ import {
   splitProofIntoChunkDatums,
 } from "../publish-proof-chunks.js";
 import {
-  journalJsonDigest,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  workflowJsonDigest,
+  type WorkflowJsonObject,
+} from "./identity.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import type { LocallyEvaluatedTransaction } from "./transaction-boundary.js";
 
@@ -53,7 +53,7 @@ export interface ProofChunkPrerequisitePort<
     readonly headerHash: string;
     readonly workflowId: string;
     readonly baseAction: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<
     | { readonly kind: "not_required" }
     | {
@@ -66,7 +66,7 @@ export interface ProofChunkPrerequisitePort<
   capture(input: {
     readonly headerHash: string;
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<{
     readonly transaction: LocallyEvaluatedTransaction;
   }>;
@@ -147,8 +147,8 @@ export const resolveDirectFirstProofChunks = async ({
 // The orchestrator hands back the journal-normalized (key-sorted) action, so
 // equality must be structural, not byte order.
 export const sameJson = (left: unknown, right: unknown): boolean =>
-  journalJsonDigest(normalizeJournalJson(left)) ===
-  journalJsonDigest(normalizeJournalJson(right));
+  workflowJsonDigest(normalizeWorkflowJson(left)) ===
+  workflowJsonDigest(normalizeWorkflowJson(right));
 
 export const record = (
   value: unknown,
@@ -291,7 +291,7 @@ export const routeActionIdentity = (
       input: record(
         rawAction.input,
         "proof-carriage route base action input",
-      ) as JournalJsonObject,
+      ) as WorkflowJsonObject,
     }),
     requirement: Object.freeze({
       proofCbor: "",

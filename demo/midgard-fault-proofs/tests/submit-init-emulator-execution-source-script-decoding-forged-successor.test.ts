@@ -42,8 +42,8 @@ import {
   type MissingRedeemerScenario,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { submitDirectPurposeTransition } from "./support/submit-steps.direct-purpose.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 /** Step-01 from the Init `thread`, paying `bindEvent` the `forged` datum. */
 const forgedStep01 = async (
@@ -57,7 +57,7 @@ const forgedStep01 = async (
   const contracts: DirectPurposeContracts = harness.direct;
   const signer = harness.proverSigner;
   if (scenario.block.txInclusion !== null)
-    return await buildAndSubmitUnjournaled(buildNativeTxBinding, {
+    return await buildAndSubmit(buildNativeTxBinding, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,

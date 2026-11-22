@@ -21,7 +21,7 @@ import {
   noReferenceInputOutRef,
 } from "./support/no-reference-input-emulator.js";
 import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 export const makeNoReferenceInputHarness = async () =>
   makeFaultProofEmulatorHarness({
@@ -67,7 +67,7 @@ export const driveNoReferenceInputToStep04 = async ({
       : { removalReferenceScripts: removalPublications.published },
   );
   const stageArguments = { ...context.arguments, deploymentInfo };
-  const init = await buildAndSubmitUnjournaled(buildInit, {
+  const init = await buildAndSubmit(buildInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     deploymentInfo,
@@ -83,7 +83,7 @@ export const driveNoReferenceInputToStep04 = async ({
     init.firstStepAddress,
     init.computationThreadUnit,
   );
-  const step01 = await buildAndSubmitUnjournaled(submitNoReferenceInputStep01, {
+  const step01 = await buildAndSubmit(submitNoReferenceInputStep01, {
     ...stageArguments,
     threadOutRef: outRefLabel(first),
   });
@@ -92,13 +92,13 @@ export const driveNoReferenceInputToStep04 = async ({
     harness,
     context.prepared,
   );
-  const step02 = await buildAndSubmitUnjournaled(submitNoReferenceInputStep02, {
+  const step02 = await buildAndSubmit(submitNoReferenceInputStep02, {
     ...stageArguments,
     ...fieldCarriage,
     threadOutRef: step01.nextThreadOutRef,
   });
   expect(step02.selectedInput).toEqual(context.prepared.selectedInput);
-  const step03 = await buildAndSubmitUnjournaled(submitNoReferenceInputStep03, {
+  const step03 = await buildAndSubmit(submitNoReferenceInputStep03, {
     ...stageArguments,
     threadOutRef: step02.nextThreadOutRef,
   });

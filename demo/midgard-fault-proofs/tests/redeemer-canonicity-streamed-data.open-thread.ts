@@ -52,10 +52,10 @@ import {
 } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import {
-  buildAndSubmitTransactionUnjournaled,
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  buildAndSubmit,
+  buildAndSubmitTransaction,
+  submitTurns,
+} from "./support/submit-steps.js";
 
 /**
  * Commits one transaction whose redeemer field holds a single Spend item
@@ -112,7 +112,7 @@ export const openAcceptedThread = async (redeemerData: Buffer) => {
   ]);
   if (threadUtxo === undefined) throw new Error("init thread absent");
   const step01 = await captureEmulatorSubmission(harness.emulator, () =>
-    buildAndSubmitUnjournaled(buildRedeemerCanonicityStep01Accepted, {
+    buildAndSubmit(buildRedeemerCanonicityStep01Accepted, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -131,7 +131,7 @@ export const openAcceptedThread = async (redeemerData: Buffer) => {
     }),
   );
   const step02 = await captureEmulatorSubmission(harness.emulator, () =>
-    submitTurnsUnjournaled(buildRedeemerCanonicityStep02, {
+    submitTurns(buildRedeemerCanonicityStep02, {
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,
@@ -169,7 +169,7 @@ type Thread = Omit<
 /** One honest data step from `threadOutRef`. */
 export const dataStep = async (thread: Thread, threadOutRef: string) =>
   await captureEmulatorSubmission(thread.harness.emulator, () =>
-    buildAndSubmitUnjournaled(buildRedeemerCanonicityStep02Data, {
+    buildAndSubmit(buildRedeemerCanonicityStep02Data, {
       lucid: thread.harness.proverLucid,
       contracts: thread.contracts,
       categoryId: thread.categoryId,
@@ -219,7 +219,7 @@ export const recordedCanonical = async (
 
 export const mint = async (thread: Thread, threadOutRef: string) =>
   await captureEmulatorSubmission(thread.harness.emulator, () =>
-    buildAndSubmitUnjournaled(buildRedeemerCanonicityStep03, {
+    buildAndSubmit(buildRedeemerCanonicityStep03, {
       lucid: thread.harness.proverLucid,
       contracts: thread.contracts,
       categoryId: thread.categoryId,
@@ -313,7 +313,7 @@ const dataStepRaw = async ({
       } as never,
       RedeemerCanonicityStep02DataRedeemerSchema as never,
     )) satisfies BuildTxWithRedeemer;
-  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
+  return await buildAndSubmitTransaction(buildLinearFaultContinue, {
     lucid: harness.proverLucid,
     signer: harness.proverSigner,
     threadUtxo,

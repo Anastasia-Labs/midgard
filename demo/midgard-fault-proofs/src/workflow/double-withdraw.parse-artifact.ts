@@ -4,7 +4,7 @@ import { parseSubmitDoubleWithdrawInclusion } from "../double-withdraw/submit-do
 import { prepareDoubleWithdrawFromCommittedLeaves } from "../prepare-double-withdraw.prepare-double-withdraw-from-committed-leaves.js";
 import type { PreparedDoubleWithdrawOutput } from "../prepare-double-withdraw.require-selected-pair.js";
 import type { CanonicalBlockClassification } from "./classification.js";
-import { type JournalJsonObject } from "./journal.js";
+import { type WorkflowJsonObject } from "./identity.js";
 
 export const DOUBLE_WITHDRAW_ARTIFACT =
   "midgard-production-double-withdraw-artifact-v1" as const;
@@ -14,7 +14,7 @@ type DoubleWithdrawArtifactEntry = Readonly<{
   valueCbor: string;
 }>;
 
-export type DoubleWithdrawArtifact = JournalJsonObject & {
+export type DoubleWithdrawArtifact = WorkflowJsonObject & {
   readonly schemaVersion: typeof DOUBLE_WITHDRAW_ARTIFACT;
   readonly headerHash: string;
   readonly committedWithdrawalsRoot: string;

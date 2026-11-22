@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 
-import { type FraudProofWorkflowIdentity } from "../src/workflow/journal.js";
+import { type FraudProofWorkflowIdentity } from "../src/workflow/identity.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,

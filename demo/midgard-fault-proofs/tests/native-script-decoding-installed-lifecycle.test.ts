@@ -18,7 +18,7 @@ import { withFieldCarriagePrerequisite } from "../src/workflow/field-carriage-pr
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+} from "../src/workflow/identity.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";

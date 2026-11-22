@@ -6,7 +6,7 @@ import {
   resolvePublishedProofChunks,
 } from "../publish-proof-chunks.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { type JournalJsonObject } from "./journal.js";
+import { type WorkflowJsonObject } from "./identity.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import {
   exact,
@@ -47,7 +47,7 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
   readonly proofCborForAction: (input: {
     readonly headerHash: string;
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }) => string | null | Promise<string | null>;
   /** Exact `cardanoProtocolParameters.snapshot.maxTxSize` from the manifest. */
   readonly maximumTransactionBytes?: string | number;
@@ -82,7 +82,7 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
   }: {
     readonly headerHash: string;
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<ProofChunkRequirement | null> => {
     const proofCbor = await proofCborForAction({
       headerHash,
@@ -100,7 +100,7 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
   }: {
     readonly headerHash: string;
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<{ readonly requirement: ProofChunkRequirement }> => {
     const input = exact(
       action.input,
@@ -134,7 +134,7 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
       input: record(
         parsedBaseAction.input,
         `${category} proof-chunk base action input`,
-      ) as JournalJsonObject,
+      ) as WorkflowJsonObject,
     };
     const required = await requirement({
       headerHash,

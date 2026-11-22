@@ -23,7 +23,7 @@ import { buildInit } from "../../../src/submit-init.submit-init.js";
 import { requireManifestBoundReferenceScriptUtxo } from "../../../src/workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
 import { bindFraudProofWorkflowDeployment } from "../../../src/workflow/deployment-manifest-binding.bind-fraud-proof-deployment.js";
 import type { LocallyEvaluatedTransaction } from "../../../src/workflow/transaction-boundary.js";
-import { buildAndSubmitUnjournaled } from "../submit-unjournaled.js";
+import { buildAndSubmit } from "../submit-steps.js";
 import { measureCompleteSignedTransaction } from "./measurement.js";
 import {
   type RetiredFamilyProofInput,
@@ -174,7 +174,7 @@ export const prepare = async (
     withdrawalMembershipProofCbor: leaf.membershipProofCbor,
   });
   selectSigner();
-  const init = await buildAndSubmitUnjournaled(buildInit, {
+  const init = await buildAndSubmit(buildInit, {
     lucid,
     blueprint: JSON.parse(deployment.blueprintJson),
     deploymentInfo: deployment.deploymentInfo,
@@ -230,11 +230,11 @@ export const prepare = async (
       ).step02State;
   selectSigner();
   const firstResult = deposit
-    ? await buildAndSubmitUnjournaled(buildFabricatedDepositStep01, {
+    ? await buildAndSubmit(buildFabricatedDepositStep01, {
         ...firstInput,
         depositInclusion,
       })
-    : await buildAndSubmitUnjournaled(buildFabricatedWithdrawalStep01, {
+    : await buildAndSubmit(buildFabricatedWithdrawalStep01, {
         ...firstInput,
         withdrawalInclusion,
       });
@@ -261,11 +261,8 @@ export const prepare = async (
     beforeSubmit: boundary("step02"),
   };
   const secondResult = deposit
-    ? await buildAndSubmitUnjournaled(buildFabricatedDepositStep02, secondInput)
-    : await buildAndSubmitUnjournaled(
-        buildFabricatedWithdrawalStep02,
-        secondInput,
-      );
+    ? await buildAndSubmit(buildFabricatedDepositStep02, secondInput)
+    : await buildAndSubmit(buildFabricatedWithdrawalStep02, secondInput);
   await spent(firstResult.nextThreadOutRef);
   const third = await threadAt(
     secondResult.nextThreadOutRef,
@@ -304,8 +301,8 @@ export const prepare = async (
   const step03 = async () => {
     selectSigner();
     return deposit
-      ? buildAndSubmitUnjournaled(buildFabricatedDepositStep03, thirdInput)
-      : buildAndSubmitUnjournaled(buildFabricatedWithdrawalStep03, thirdInput);
+      ? buildAndSubmit(buildFabricatedDepositStep03, thirdInput)
+      : buildAndSubmit(buildFabricatedWithdrawalStep03, thirdInput);
   };
   return {
     binding,

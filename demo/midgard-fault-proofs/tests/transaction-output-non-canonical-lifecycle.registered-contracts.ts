@@ -44,7 +44,7 @@ import {
 } from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import { type Common } from "./support/transaction-output-non-canonical-emulator.js";
 
 export const network = "Custom" as const;
@@ -149,7 +149,7 @@ export const registeredContracts = async (harness: Harness) => {
   });
   const init = async (fraudulentBlockOutRef: string) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
+      buildAndSubmit(buildCommittedFieldShapeInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -178,7 +178,7 @@ export const registeredContracts = async (harness: Harness) => {
   };
   const cancel = async (threadOutRef: string, stepIndex: StepIndex) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalCancel, {
+      buildAndSubmit(buildTransactionOutputNonCanonicalCancel, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

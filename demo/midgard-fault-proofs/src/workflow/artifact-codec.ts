@@ -1,17 +1,17 @@
 import {
-  journalJsonDigest,
-  type JournalJsonObject,
-  type JournalJsonValue,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  workflowJsonDigest,
+  type WorkflowJsonObject,
+  type WorkflowJsonValue,
+} from "./identity.js";
 
 const ENCODING = "midgard-workflow-artifact-v1";
 
 /** Lossless, deterministic persistence for package-built proof material.
  * Tags cover every node, so ordinary record keys cannot impersonate bytes or integers. */
-export const encodeWorkflowArtifact = (value: unknown): JournalJsonObject => {
+export const encodeWorkflowArtifact = (value: unknown): WorkflowJsonObject => {
   const active = new Set<object>();
-  const encode = (node: unknown): JournalJsonValue => {
+  const encode = (node: unknown): WorkflowJsonValue => {
     if (node === null) return ["null"];
     if (typeof node === "string" || typeof node === "boolean")
       return [typeof node, node];
@@ -34,7 +34,7 @@ export const encodeWorkflowArtifact = (value: unknown): JournalJsonObject => {
           throw new Error(
             "workflow artifact array is sparse or has extra fields",
           );
-        const children: JournalJsonValue[] = [];
+        const children: WorkflowJsonValue[] = [];
         for (let index = 0; index < node.length; index += 1) {
           const descriptor = Object.getOwnPropertyDescriptor(
             node,
@@ -79,21 +79,21 @@ export const encodeWorkflowArtifact = (value: unknown): JournalJsonObject => {
       active.delete(node);
     }
   };
-  return normalizeJournalJson({
+  return normalizeWorkflowJson({
     encoding: ENCODING,
     value: encode(value),
-  }) as JournalJsonObject;
+  }) as WorkflowJsonObject;
 };
 
 /** Persisted material never becomes a typed object by assertion. Return only
  * fresh, independently reconstructed material after checking its exact encoding. */
 export const requireWorkflowArtifactMatches = <T>(
-  artifact: JournalJsonObject,
+  artifact: WorkflowJsonObject,
   fresh: T,
 ): T => {
   if (
-    journalJsonDigest(artifact) !==
-    journalJsonDigest(encodeWorkflowArtifact(fresh))
+    workflowJsonDigest(artifact) !==
+    workflowJsonDigest(encodeWorkflowArtifact(fresh))
   )
     throw new Error(
       "prepared workflow artifact differs from freshly authenticated material",

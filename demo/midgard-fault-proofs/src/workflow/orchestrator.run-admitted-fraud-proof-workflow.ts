@@ -12,10 +12,10 @@ import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
-  type JournalJsonObject,
   normalizeFraudProofWorkflowIdentity,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "./identity.js";
 import { isCallerOwnedWorkflowFailure } from "./orchestrator.caller-owned-failure.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
@@ -82,7 +82,7 @@ export const runAdmittedFraudProofWorkflow = async ({
   readonly headerHash: string;
   readonly prepareFamilyArtifact: (
     adapter: FraudProofFamilyWorkflowAdapter,
-  ) => Promise<JournalJsonObject>;
+  ) => Promise<WorkflowJsonObject>;
   readonly registry: FraudProofWorkflowRegistry;
   /** This invocation of the objective: its wallet wiring, and the actuation
    * permit bound to it. */
@@ -180,12 +180,12 @@ export const runAdmittedFraudProofWorkflow = async ({
       resumeOnObservation,
     });
 
-  let artifact: JournalJsonObject;
+  let artifact: WorkflowJsonObject;
   try {
-    artifact = normalizeJournalJson(
+    artifact = normalizeWorkflowJson(
       await prepareFamilyArtifact(adapter),
       `${category} prepared artifact`,
-    ) as JournalJsonObject;
+    ) as WorkflowJsonObject;
   } catch (cause) {
     return artifactPendingResult(cause, resumeOnObservation);
   }

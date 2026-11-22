@@ -38,7 +38,7 @@ import {
   publishFinalFamilyReferenceScripts,
 } from "./support/final-catalogue-emulator.build-min-ada-tx-emulator-fixture.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 
 type TransactionOptions = {
@@ -325,7 +325,7 @@ export const setup = async ({
       encodeMidgardForcedTxCanonical(submitted).toString("hex"),
   };
   const init = () =>
-    buildAndSubmitUnjournaled(buildNativeScriptInvalidInit, {
+    buildAndSubmit(buildNativeScriptInvalidInit, {
       lucid: h.proverLucid,
       blueprint: h.realBlueprint,
       deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue),
@@ -335,7 +335,7 @@ export const setup = async ({
       witnessReferenceScripts: h.witnessReferenceScripts,
     });
   const bind = (threadOutRef: string, overrides = {}) =>
-    buildAndSubmitUnjournaled(buildNativeScriptInvalidStep01Forced, {
+    buildAndSubmit(buildNativeScriptInvalidStep01Forced, {
       ...common,
       threadOutRef,
       state,

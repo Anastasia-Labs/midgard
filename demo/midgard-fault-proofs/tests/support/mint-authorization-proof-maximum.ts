@@ -41,12 +41,12 @@ import {
 } from "./mint-authorization-emulator.js";
 import { mintAuthorizationMaximumMintField } from "./mint-authorization-maxima.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
   publishProofChunks,
-  submitTurnsUnjournaled,
-} from "./submit-unjournaled.js";
+  submitTurns,
+} from "./submit-steps.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 /** Synthetic sibling frontiers measure physical proof ceilings separately from retained-DA workflow cases. */
@@ -218,7 +218,7 @@ export const runMintAuthorizationProofMaximum = async (
     witnessSet: subject.witnessSetCompact,
   };
   const init = await capture("init", () =>
-    buildAndSubmitUnjournaled(buildResolvedInit, {
+    buildAndSubmit(buildResolvedInit, {
       label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       ...common,
       blueprint: h.realBlueprint,
@@ -235,7 +235,7 @@ export const runMintAuthorizationProofMaximum = async (
     }),
   );
   const one = await capture("step_01", () =>
-    buildAndSubmitUnjournaled(buildMintAuthorizationStep01, {
+    buildAndSubmit(buildMintAuthorizationStep01, {
       ...common,
       blueprint: h.realBlueprint,
       network,
@@ -257,7 +257,7 @@ export const runMintAuthorizationProofMaximum = async (
     label: "maximum mint field with maximum proofs",
   });
   const field = await capture("field-publications", () =>
-    publishCarriageUnjournaled({
+    publishFieldCarriage({
       lucid: h.proverLucid,
       signer: h.proverSigner,
       planned,
@@ -266,7 +266,7 @@ export const runMintAuthorizationProofMaximum = async (
     }),
   );
   const certified = await capture("field-certificate", () =>
-    certifyCarriageUnjournaled({
+    certifyFieldCarriage({
       lucid: h.proverLucid,
       network,
       signer: h.proverSigner,
@@ -322,7 +322,7 @@ export const runMintAuthorizationProofMaximum = async (
     }
   });
   const two = await capture("step_02", () =>
-    submitTurnsUnjournaled(buildMintAuthorizationStep02, {
+    submitTurns(buildMintAuthorizationStep02, {
       ...common,
       threadOutRef: one.nextThreadOutRef,
       reconstruction: block.reconstruction,
@@ -337,7 +337,7 @@ export const runMintAuthorizationProofMaximum = async (
     }),
   );
   const three = await capture("step_03", () =>
-    submitTurnsUnjournaled(buildMintAuthorizationStep03WitnessAbsence, {
+    submitTurns(buildMintAuthorizationStep03WitnessAbsence, {
       ...common,
       threadOutRef: two.nextThreadOutRef,
       scriptTxWitsItemCbors: [],
@@ -349,7 +349,7 @@ export const runMintAuthorizationProofMaximum = async (
     spendInputsItemCbors: subject.spendInputItemCbors,
   };
   const references = await capture("step_04-complete-references", () =>
-    submitTurnsUnjournaled(buildMintAuthorizationStep04AdvanceComplete, {
+    submitTurns(buildMintAuthorizationStep04AdvanceComplete, {
       ...common,
       ...inputFields,
       threadOutRef: three.nextThreadOutRef,
@@ -357,7 +357,7 @@ export const runMintAuthorizationProofMaximum = async (
     }),
   );
   const four = await capture("step_04", () =>
-    submitTurnsUnjournaled(buildMintAuthorizationStep04ResolveNext, {
+    submitTurns(buildMintAuthorizationStep04ResolveNext, {
       ...common,
       ...inputFields,
       threadOutRef: references.nextThreadOutRef,
@@ -370,7 +370,7 @@ export const runMintAuthorizationProofMaximum = async (
     }),
   );
   const final = await capture("step_04-complete", () =>
-    submitTurnsUnjournaled(buildMintAuthorizationStep04AdvanceComplete, {
+    submitTurns(buildMintAuthorizationStep04AdvanceComplete, {
       ...common,
       ...inputFields,
       threadOutRef: four.nextThreadOutRef,
@@ -378,7 +378,7 @@ export const runMintAuthorizationProofMaximum = async (
     }),
   );
   const proof = await capture("step_05", () =>
-    buildAndSubmitUnjournaled(buildMintAuthorizationStep05, {
+    buildAndSubmit(buildMintAuthorizationStep05, {
       ...common,
       threadOutRef: final.nextThreadOutRef,
       referenceScriptUtxo: refs.steps[4],

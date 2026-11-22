@@ -40,10 +40,7 @@ import {
   setupMintAuthorizationScenario,
 } from "./support/mint-authorization-emulator.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 const ACCUSED_POLICY_INDEX = 0n;
 const DIRECTION_SCRIPT_UNSATISFIED =
@@ -90,7 +87,7 @@ describe("mint-authorization direction-B emulator lifecycle", () => {
         contracts: family,
       });
 
-    const initResult = await buildAndSubmitUnjournaled(buildResolvedInit, {
+    const initResult = await buildAndSubmit(buildResolvedInit, {
       label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: proverLucid,
       blueprint: realBlueprint,
@@ -107,23 +104,20 @@ describe("mint-authorization direction-B emulator lifecycle", () => {
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
       witnessReferenceScripts: setup.witnessReferenceScripts,
     });
-    const step01 = await buildAndSubmitUnjournaled(
-      buildMintAuthorizationStep01,
-      {
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        contracts: family,
-        categoryId: category.categoryId,
-        network,
-        signer: proverSigner,
-        threadOutRef: initResult.nextThreadOutRef,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: block.txInclusion,
-        referenceScriptUtxo: step01Ref,
-        witnessReferenceScripts: setup.witnessReferenceScripts,
-      },
-    );
-    const step02 = await submitTurnsUnjournaled(buildMintAuthorizationStep02, {
+    const step01 = await buildAndSubmit(buildMintAuthorizationStep01, {
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      contracts: family,
+      categoryId: category.categoryId,
+      network,
+      signer: proverSigner,
+      threadOutRef: initResult.nextThreadOutRef,
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: block.txInclusion,
+      referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
+    });
+    const step02 = await submitTurns(buildMintAuthorizationStep02, {
       lucid: proverLucid,
       contracts: family,
       categoryId: category.categoryId,
@@ -139,7 +133,7 @@ describe("mint-authorization direction-B emulator lifecycle", () => {
     expect(step02.step03State.policy_id).toBe(directionB.policyIdHex);
     expect(step02.step03State.direction).toBe(DIRECTION_SCRIPT_UNSATISFIED);
 
-    const step03 = await submitTurnsUnjournaled(
+    const step03 = await submitTurns(
       buildMintAuthorizationStep03EvaluateUnsatisfied,
       {
         lucid: proverLucid,
@@ -156,18 +150,15 @@ describe("mint-authorization direction-B emulator lifecycle", () => {
     );
     expect(step03.nextStepAddress).toBe(family.steps[4].spendingScriptAddress);
 
-    const step05 = await buildAndSubmitUnjournaled(
-      buildMintAuthorizationStep05,
-      {
-        lucid: proverLucid,
-        contracts: family,
-        categoryId: category.categoryId,
-        signer: proverSigner,
-        threadOutRef: step03.nextThreadOutRef,
-        referenceScriptUtxo: step05Ref,
-        witnessReferenceScripts: setup.witnessReferenceScripts,
-      },
-    );
+    const step05 = await buildAndSubmit(buildMintAuthorizationStep05, {
+      lucid: proverLucid,
+      contracts: family,
+      categoryId: category.categoryId,
+      signer: proverSigner,
+      threadOutRef: step03.nextThreadOutRef,
+      referenceScriptUtxo: step05Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
+    });
     expect(step05.verdictState.direction).toBe(DIRECTION_SCRIPT_UNSATISFIED);
 
     for (const step of family.steps) {

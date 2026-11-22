@@ -22,7 +22,7 @@ import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 describe("canonical-decodability real-fault lifecycle", () => {
   it("mints permanent evidence and removes the fraudulent commitment", async () => {
@@ -58,25 +58,22 @@ describe("canonical-decodability real-fault lifecycle", () => {
       removalReferenceScripts: removalReferenceScripts.published,
     });
 
-    const init = await buildAndSubmitUnjournaled(
-      buildCanonicalDecodabilityInit,
-      {
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        network,
-        contracts: canonicalDecodability,
-        category,
-        catalogue: {
-          policyId: contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: catalogue.root,
-        },
-        signer: proverSigner,
-        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
+    const init = await buildAndSubmit(buildCanonicalDecodabilityInit, {
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      network,
+      contracts: canonicalDecodability,
+      category,
+      catalogue: {
+        policyId: contracts.fraudProofCatalogue.policyId,
+        spendingScriptAddress:
+          contracts.fraudProofCatalogue.spendingScriptAddress,
+        root: catalogue.root,
       },
-    );
+      signer: proverSigner,
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
     expect(init.fraudCategoryId).toBe("00000011");
     expect(init.fraudulentHeaderHash).toBe(setup.headerHash);
     const firstStep = await expectSingleUtxoWithUnit(
@@ -85,24 +82,21 @@ describe("canonical-decodability real-fault lifecycle", () => {
       init.computationThreadUnit,
     );
 
-    const step01 = await buildAndSubmitUnjournaled(
-      buildCanonicalDecodabilityStep01,
-      {
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        contracts: canonicalDecodability,
-        categoryId: category.categoryId,
-        network,
-        signer: proverSigner,
-        threadOutRef: outRefLabel(firstStep),
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: fixture.txInclusion,
-        fieldIndex: fixture.fieldIndex,
-        committedPreimage: fixture.committedPreimage,
-        referenceScriptUtxo: step01Ref,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      },
-    );
+    const step01 = await buildAndSubmit(buildCanonicalDecodabilityStep01, {
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      contracts: canonicalDecodability,
+      categoryId: category.categoryId,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(firstStep),
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: fixture.txInclusion,
+      fieldIndex: fixture.fieldIndex,
+      committedPreimage: fixture.committedPreimage,
+      referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
     expect(step01.verdict).toBe(fixture.prepared.evidence.verdict);
     expect(step01.complete).toBe(true);
     await expect(
@@ -129,18 +123,15 @@ describe("canonical-decodability real-fault lifecycle", () => {
       data: fixture.prepared.step02State,
     });
 
-    const step02 = await buildAndSubmitUnjournaled(
-      buildCanonicalDecodabilityStep02,
-      {
-        lucid: proverLucid,
-        contracts: canonicalDecodability,
-        categoryId: category.categoryId,
-        signer: proverSigner,
-        threadOutRef: outRefLabel(secondStep),
-        referenceScriptUtxo: step02Ref,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      },
-    );
+    const step02 = await buildAndSubmit(buildCanonicalDecodabilityStep02, {
+      lucid: proverLucid,
+      contracts: canonicalDecodability,
+      categoryId: category.categoryId,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(secondStep),
+      referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
     expect(step02.fraudProofUnit).toBe(
       toUnit(
         canonicalDecodability.fraudProof.policyId,

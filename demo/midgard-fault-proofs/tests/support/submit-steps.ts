@@ -70,10 +70,10 @@ type SubmitOptions = {
 /**
  * Builds one transaction and submits it. A builder that can return a
  * prerequisite or continuation turn goes through
- * {@link submitTurnsUnjournaled} instead, and a turn reaching this helper is
+ * {@link submitTurns} instead, and a turn reaching this helper is
  * refused rather than submitted as the step.
  */
-export const buildAndSubmitUnjournaled = async <
+export const buildAndSubmit = async <
   Args extends Submitter,
   Built extends { readonly transaction: LocallyEvaluatedTransaction },
 >(
@@ -83,7 +83,7 @@ export const buildAndSubmitUnjournaled = async <
   const built = await build(args as unknown as Args);
   if (isPrerequisiteTurn(built) || isContinuationTurn(built))
     throw new Error(
-      `${build.name} returned the turn ${built.label}; submit it with submitTurnsUnjournaled`,
+      `${build.name} returned the turn ${built.label}; submit it with submitTurns`,
     );
   const { transaction, ...fields } = built;
   await beforeSubmit?.(transaction);
@@ -103,10 +103,10 @@ export const buildAndSubmitUnjournaled = async <
 };
 
 /**
- * What {@link unjournaled} binds the builder `Build` into, for an export whose
+ * What {@link stepSubmitter} binds the builder `Build` into, for an export whose
  * inferred type names a module the test package does not depend on.
  */
-export type UnjournaledSubmitter<
+export type StepSubmitter<
   Build extends (
     ...args: never[]
   ) => Promise<{ readonly transaction: LocallyEvaluatedTransaction }>,
@@ -116,9 +116,9 @@ export type UnjournaledSubmitter<
 
 /**
  * `build` bound into a function that builds its step and submits it, as
- * {@link buildAndSubmitUnjournaled} does.
+ * {@link buildAndSubmit} does.
  */
-export const unjournaled =
+export const stepSubmitter =
   <
     Args extends Submitter,
     Built extends { readonly transaction: LocallyEvaluatedTransaction },
@@ -128,15 +128,13 @@ export const unjournaled =
   async (
     args: Args & SubmitOptions,
   ): Promise<OutsideWorkflowSubmission<Built>> =>
-    await buildAndSubmitUnjournaled(build, args);
+    await buildAndSubmit(build, args);
 
 /**
  * Builds one signed transaction with no fields of its own, such as a linear
  * thread hop, and submits it, returning its hash.
  */
-export const buildAndSubmitTransactionUnjournaled = async <
-  Args extends Submitter,
->(
+export const buildAndSubmitTransaction = async <Args extends Submitter>(
   build: (args: Args) => Promise<LocallyEvaluatedTransaction>,
   { awaitConfirmation = true, beforeSubmit, ...args }: Args & SubmitOptions,
 ): Promise<string> => {
@@ -151,14 +149,14 @@ export const buildAndSubmitTransactionUnjournaled = async <
 
 /**
  * `build` bound into a function that builds its signed transaction and
- * submits it, as {@link buildAndSubmitTransactionUnjournaled} does.
+ * submits it, as {@link buildAndSubmitTransaction} does.
  */
-export const unjournaledTransaction =
+export const transactionSubmitter =
   <Args extends Submitter>(
     build: (args: Args) => Promise<LocallyEvaluatedTransaction>,
   ) =>
   async (args: Args & SubmitOptions): Promise<string> =>
-    await buildAndSubmitTransactionUnjournaled(build, args);
+    await buildAndSubmitTransaction(build, args);
 
 /**
  * Drives a builder that returns turns to its step: every prerequisite and
@@ -166,7 +164,7 @@ export const unjournaledTransaction =
  * again with the same arguments, until it returns the step, which
  * is submitted last (see {@link submitFaultProofTurns}).
  */
-export const submitTurnsUnjournaled = async <
+export const submitTurns = async <
   Args extends {
     readonly lucid: LucidEvolution;
   },
@@ -213,9 +211,9 @@ export const submitTurnsUnjournaled = async <
 
 /**
  * `build` bound into a function that drives it to its step and submits it,
- * as {@link submitTurnsUnjournaled} does.
+ * as {@link submitTurns} does.
  */
-export const unjournaledTurns =
+export const turnsSubmitter =
   <
     Args extends {
       readonly lucid: LucidEvolution;
@@ -233,14 +231,14 @@ export const unjournaledTurns =
       Exclude<Step, PrerequisiteTurn | ContinuationTurn<unknown>>
     >
   > =>
-    await submitTurnsUnjournaled(build, args);
+    await submitTurns(build, args);
 
 /**
  * Submits what `build` returns, settling its turns first, for a builder
  * already bound to its arguments, such as one action of a family's workflow
  * submission. `label` names the transactions in a refusal.
  */
-export const submitBoundUnjournaled = async <
+export const submitBound = async <
   Step extends { readonly transaction: LocallyEvaluatedTransaction },
 >(
   lucid: LucidEvolution,
@@ -251,7 +249,7 @@ export const submitBoundUnjournaled = async <
   const named = {
     [label]: async (_: { readonly lucid: LucidEvolution }) => await build(),
   }[label]!;
-  return (await submitTurnsUnjournaled(named, {
+  return (await submitTurns(named, {
     lucid,
     ...options,
   })) as OutsideWorkflowSubmission<Step>;
@@ -263,7 +261,7 @@ export const submitBoundUnjournaled = async <
  * function called again with the same arguments (see
  * {@link settleFaultProofTurns}).
  */
-export const settleTurnsUnjournaled = settleFaultProofTurns;
+export const settleTurns = settleFaultProofTurns;
 
 /** A hook that sees each signed transaction before it is submitted. */
 type BeforeSubmit = (
@@ -274,7 +272,7 @@ type BeforeSubmit = (
  * Publishes every missing chunk of a field carriage plan, one confirmed
  * transaction at a time, and returns the plan's live chunks in plan order.
  */
-export const publishCarriageUnjournaled = async ({
+export const publishFieldCarriage = async ({
   beforeSubmit,
   ...args
 }: Parameters<typeof publishFaultProofFieldCarriage>[0] & {
@@ -291,7 +289,7 @@ export const publishCarriageUnjournaled = async ({
  * Builds the tier-3 certification of a published carriage, submits it and
  * returns its hash and confirmed certificate output.
  */
-export const certifyCarriageUnjournaled = async ({
+export const certifyFieldCarriage = async ({
   beforeSubmit,
   ...args
 }: Parameters<typeof certifyFaultProofFieldCarriage>[0] & {
@@ -333,7 +331,7 @@ export const publishProofChunks = async ({
  * next transaction it builds, a continuation or the step, unsubmitted, so a
  * test can inspect or measure it before submitting it itself.
  */
-export const buildPastPrerequisitesUnjournaled = async <
+export const buildPastPrerequisites = async <
   Args extends {
     readonly lucid: LucidEvolution;
   },

@@ -24,7 +24,7 @@ import {
   MEMBERSHIP_WITNESS_ROLES,
 } from "../workflow/family-definition.family-adapter-arm.js";
 import type { FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
-import { type JournalJsonObject } from "../workflow/journal.js";
+import { type WorkflowJsonObject } from "../workflow/identity.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   type FraudProofFamilyWorkflowAdapter,
@@ -200,7 +200,7 @@ export type RedeemerWorkflowCore = Omit<
   "adapter" | "terminalVerifier" | "releaseFinalityAuthority" | "decisionDigest"
 >;
 
-export const admitRedeemerWorkflowArtifact = (artifact: JournalJsonObject) => {
+export const admitRedeemerWorkflowArtifact = (artifact: WorkflowJsonObject) => {
   if (
     artifact.schemaVersion !==
       "midgard-redeemer-canonicity-workflow-artifact-v1" ||
@@ -238,7 +238,7 @@ export const admitRedeemerWorkflowArtifact = (artifact: JournalJsonObject) => {
     artifact.accepted === null
       ? null
       : parseSubmitStep01TxInclusion({
-          ...(artifact.accepted as JournalJsonObject),
+          ...(artifact.accepted as WorkflowJsonObject),
           nativeTx: nativeTxFromCoreCompact(
             decodeMidgardNativeTxCompact(
               Buffer.from(nativeTxCompactCbor, "hex"),
@@ -275,7 +275,7 @@ export const admitRedeemerWorkflowArtifact = (artifact: JournalJsonObject) => {
 
 export const redeemerField = (
   workflow: RedeemerWorkflowCore,
-  artifact: JournalJsonObject,
+  artifact: WorkflowJsonObject,
 ) => {
   const admitted = admitRedeemerWorkflowArtifact(artifact);
   const witnessSet = decodeMidgardNativeTxWitnessSetCompact(

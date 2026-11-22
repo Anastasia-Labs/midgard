@@ -16,7 +16,7 @@ import {
   expectSingleUtxoWithUnit,
 } from "./support/emulator/emulator-context.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
-import type { SubmittedStep } from "./support/submit-unjournaled.js";
+import type { SubmittedStep } from "./support/submit-steps.js";
 
 export const removeAndAssertPermanentProof = async ({
   harness,

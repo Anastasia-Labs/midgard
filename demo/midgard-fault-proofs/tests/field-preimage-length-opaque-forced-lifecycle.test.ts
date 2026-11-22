@@ -23,7 +23,7 @@ import {
 } from "./field-preimage-length-mismatch-lifecycle.setup.js";
 import { opaqueForcedLifecycleDaFixture } from "./field-preimage-length-opaque-forced-lifecycle.fixture.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import {
   authenticatedObservation,
   retainedSource,
@@ -105,11 +105,11 @@ it("adjudicates authenticated opaque forced bytes with the installed field-lengt
   const claim = carriage.claimResolver(carriage.carriageReferences);
   expect(claim).toEqual(inlineBodyClaim(0, preimage));
 
-  const init = await buildAndSubmitUnjournaled(buildFieldPreimageLengthInit, {
+  const init = await buildAndSubmit(buildFieldPreimageLengthInit, {
     config: fixture.config,
     fraudulentBlockOutRef: fixture.fraudulent.fraudulentBlockOutRef,
   });
-  const dispatch = await buildAndSubmitUnjournaled(
+  const dispatch = await buildAndSubmit(
     buildFieldPreimageLengthForcedDispatch,
     {
       config: fixture.config,
@@ -118,7 +118,7 @@ it("adjudicates authenticated opaque forced bytes with the installed field-lengt
   );
   await expectOnChainRefusal(
     () =>
-      buildAndSubmitUnjournaled(buildFieldPreimageLengthForcedAuthentication, {
+      buildAndSubmit(buildFieldPreimageLengthForcedAuthentication, {
         config: fixture.config,
         threadOutRef: dispatch.nextThreadOutRef,
         header,
@@ -128,7 +128,7 @@ it("adjudicates authenticated opaque forced bytes with the installed field-lengt
       }),
     "opaque forced field commitment substitution",
   );
-  const authentication = await buildAndSubmitUnjournaled(
+  const authentication = await buildAndSubmit(
     buildFieldPreimageLengthForcedAuthentication,
     {
       config: fixture.config,
@@ -144,13 +144,10 @@ it("adjudicates authenticated opaque forced bytes with the installed field-lengt
   const thread = await at(authentication.nextThreadOutRef);
   if (thread === undefined)
     throw new Error("authenticated computation thread is missing");
-  const terminal = await buildAndSubmitUnjournaled(
-    buildFieldPreimageLengthTerminal,
-    {
-      config: fixture.config,
-      threadOutRef: authentication.nextThreadOutRef,
-    },
-  );
+  const terminal = await buildAndSubmit(buildFieldPreimageLengthTerminal, {
+    config: fixture.config,
+    threadOutRef: authentication.nextThreadOutRef,
+  });
   const proof = await at(terminal.fraudProofOutRef);
   if (proof === undefined)
     throw new Error("installed terminal did not mint the fraud proof");

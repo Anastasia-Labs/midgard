@@ -42,7 +42,7 @@ import {
   type OpeningMutation,
   resolveObserverOpening,
 } from "./observer-order-invalid-raw.resolve-observer-opening.js";
-import { buildAndSubmitTransactionUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmitTransaction } from "./submit-steps.js";
 
 // ---------------------------------------------------------------------------
 // Raw submitters
@@ -139,7 +139,7 @@ export const submitObserverOrderInvalidStep01ForcedRaw = async ({
       ObserverOrderInvalidStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
+  return await buildAndSubmitTransaction(buildLinearFaultContinue, {
     lucid,
     signer,
     threadUtxo,
@@ -258,7 +258,7 @@ export const submitObserverOrderInvalidStep02Raw = async ({
       ObserverOrderInvalidStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
+  return await buildAndSubmitTransaction(buildLinearFaultContinue, {
     lucid,
     signer,
     threadUtxo,

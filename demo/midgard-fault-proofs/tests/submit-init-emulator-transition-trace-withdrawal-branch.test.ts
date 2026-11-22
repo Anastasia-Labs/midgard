@@ -38,7 +38,7 @@ import {
   transitionTraceDaEntry,
   withCommitSlot,
 } from "./support/emulator/header-fixtures.js";
-import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
+import { submitTurns } from "./support/submit-steps.js";
 
 // A withdrawal step deletes the spent output from the ledger. When the delete
 // proof ends in a Branch, withdrawal_v1 requires that branch to keep two
@@ -194,7 +194,7 @@ const commitWithdrawalStep = async (
     return proof;
   };
   const submit = async (proof: SDK.TransitionFaultProof) =>
-    submitTurnsUnjournaled(buildTransitionTraceProof, {
+    submitTurns(buildTransitionTraceProof, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       deploymentInfo: lifecycle.deploymentInfo,

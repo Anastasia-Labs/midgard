@@ -29,7 +29,7 @@ import {
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
 } from "./family-definition.family-adapter-arm.js";
-import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson } from "./identity.js";
 import { admitNativeInclusionTwoStepArtifact } from "./native-inclusion-two-step.admit-native-inclusion-two-step-artifact.js";
 import {
   HEX_32,
@@ -283,7 +283,7 @@ export const prepareNativeInclusionTwoStepArtifact = async <
   if (classification.selected.position > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error(`${category} detection position exceeds journal encoding`);
   }
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
     category,
     headerHash: preparedHeaderHash,

@@ -15,11 +15,11 @@ import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-sc
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+  submitTurns,
+} from "./support/submit-steps.js";
 
 /**
  * Publishes field `fieldIndex` of the setup's forced transaction and, when
@@ -42,7 +42,7 @@ export const publishNativeScriptFieldCarriage = async (
     anchorWitnessSetHash: f.state.bad_tx_witness_set_hash,
     label: "native-script maximum field",
   });
-  const chunks = await publishCarriageUnjournaled({
+  const chunks = await publishFieldCarriage({
     lucid: f.h.proverLucid,
     signer: f.h.proverSigner,
     planned,
@@ -56,7 +56,7 @@ export const publishNativeScriptFieldCarriage = async (
     script: f.h.contracts.fieldPreimageCertificate.mintingScript,
     label: "native-script field certificate",
   });
-  const certified = await certifyCarriageUnjournaled({
+  const certified = await certifyFieldCarriage({
     lucid: f.h.proverLucid,
     network,
     signer: f.h.proverSigner,
@@ -152,7 +152,7 @@ export const run = async (
     f.witnesses.map((w) => w.item),
   );
   for (let i = 0; i < 1000; i++) {
-    const next = await submitTurnsUnjournaled(buildNativeScriptInvalidStep02, {
+    const next = await submitTurns(buildNativeScriptInvalidStep02, {
       ...f.common,
       ...scriptCarriage,
       threadOutRef,
@@ -170,7 +170,7 @@ export const run = async (
   }
   let proof;
   if (f.witnesses.length <= 28) {
-    proof = await submitTurnsUnjournaled(buildNativeScriptInvalidStep03, {
+    proof = await submitTurns(buildNativeScriptInvalidStep03, {
       ...f.common,
       ...signerCarriage,
       unsafeSkipLocalViolationCheckForTest,
@@ -184,7 +184,7 @@ export const run = async (
       witnessReferenceScripts: f.h.witnessReferenceScripts,
     });
   } else {
-    const started = await submitTurnsUnjournaled(
+    const started = await submitTurns(
       buildNativeScriptInvalidStep03StartSignerScan,
       {
         ...f.common,
@@ -202,32 +202,26 @@ export const run = async (
       return;
     }
     for (let i = 0; i < 1000; i++) {
-      const advanced = await submitTurnsUnjournaled(
-        buildNativeScriptInvalidStep04,
-        {
-          ...f.common,
-          ...signerCarriage,
-          threadOutRef,
-          addressWitnessItems: f.witnesses.map((w) => w.item),
-          referenceScriptUtxo: f.refs[3]!,
-        },
-      );
+      const advanced = await submitTurns(buildNativeScriptInvalidStep04, {
+        ...f.common,
+        ...signerCarriage,
+        threadOutRef,
+        addressWitnessItems: f.witnesses.map((w) => w.item),
+        referenceScriptUtxo: f.refs[3]!,
+      });
       threadOutRef = advanced.nextThreadOutRef;
       if (advanced.action === "FinalizeSignerScan") break;
     }
     for (let i = 0; i < 1000; i++) {
-      const advanced = await buildAndSubmitUnjournaled(
-        buildNativeScriptInvalidStep05,
-        {
-          ...f.common,
-          unsafeSkipLocalViolationCheckForTest,
-          threadOutRef,
-          scriptItemCbor: f.scriptItem,
-          addressWitnessItems: f.witnesses.map((w) => w.item),
-          referenceScriptUtxo: f.refs[4]!,
-          witnessReferenceScripts: f.h.witnessReferenceScripts,
-        },
-      );
+      const advanced = await buildAndSubmit(buildNativeScriptInvalidStep05, {
+        ...f.common,
+        unsafeSkipLocalViolationCheckForTest,
+        threadOutRef,
+        scriptItemCbor: f.scriptItem,
+        addressWitnessItems: f.witnesses.map((w) => w.item),
+        referenceScriptUtxo: f.refs[4]!,
+        witnessReferenceScripts: f.h.witnessReferenceScripts,
+      });
       if ("fraudProofUnit" in advanced) {
         proof = advanced;
         break;

@@ -2,10 +2,7 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import type { HeaderFaultDecision } from "./header-classifier.authenticated-state-queue-observation-digest.js";
 import { requireRunnableHeaderFault } from "./header-classifier.require-runnable-header-fault.js";
-import {
-  journalJsonDigest,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson, workflowJsonDigest } from "./identity.js";
 
 export const WORKFLOW_ACTUATION_PERMIT =
   "midgard-production-workflow-actuation-permit-v1" as const;
@@ -164,7 +161,7 @@ export const createWorkflowReconciliationPermitController = (input: {
   const { decisionDigest, ...unsealed } = input.decision;
   if (
     input.decision.decision !== "fault_detected" ||
-    journalJsonDigest(normalizeJournalJson(unsealed)) !== decisionDigest ||
+    workflowJsonDigest(normalizeWorkflowJson(unsealed)) !== decisionDigest ||
     input.decision.deploymentFingerprint !== input.deploymentFingerprint
   )
     throw new Error(

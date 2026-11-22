@@ -36,7 +36,7 @@ export const parseWatcherProcessConfig = (
       "fundingProfileBundlePath",
       "l1NodeTransportBinaryPath",
       "operationsEndpoint",
-      "workflowJournalDirectory",
+      "decisionJournalDirectory",
       "availability",
       "faultProofInfrastructure",
     ],
@@ -123,8 +123,8 @@ export const parseWatcherProcessConfig = (
       "native chain-sync binary",
     ),
     operationsEndpoint,
-    workflowJournalDirectory: canonicalPath(
-      input.workflowJournalDirectory,
+    decisionJournalDirectory: canonicalPath(
+      input.decisionJournalDirectory,
       "workflow journal directory",
     ),
     faultProofInfrastructure: infrastructure,

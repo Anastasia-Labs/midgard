@@ -42,7 +42,7 @@ import {
   expectResolvedWithReclaim,
   walletLovelace,
 } from "./support/own-thread-reclaim-expectations.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import { createTestWorkflowProcess } from "./support/workflow-process.js";
 import {
   DEPLOYMENT_FINGERPRINT,
@@ -119,7 +119,7 @@ const scene = async () => {
     lucid: h.proverLucid,
     contracts: h.contracts,
   });
-  await buildAndSubmitUnjournaled(buildInit, {
+  await buildAndSubmit(buildInit, {
     lucid: h.proverLucid,
     witnessReferenceScripts: h.witnessReferenceScripts,
     blueprint: h.realBlueprint,

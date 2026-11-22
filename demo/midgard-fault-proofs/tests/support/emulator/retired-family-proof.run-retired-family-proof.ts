@@ -8,7 +8,7 @@ import { submitRemoveFraudulentBlock } from "../../../src/remove-fraudulent-bloc
 import { outRefLabel } from "../../../src/runtime.js";
 import { buildFabricatedDepositStep04 } from "../../../src/submit-fabricated-deposit-step-04.js";
 import { buildFabricatedWithdrawalStep04 } from "../../../src/submit-fabricated-withdrawal-step-04.js";
-import { buildAndSubmitUnjournaled } from "../submit-unjournaled.js";
+import { buildAndSubmit } from "../submit-steps.js";
 import { prepare } from "./retired-family-proof.prepare.js";
 import {
   type EligibleFamilyRefusalResult,
@@ -56,11 +56,8 @@ export const runRetiredFamilyProof = async (
     beforeSubmit: p.boundary("step04"),
   };
   const last = p.deposit
-    ? await buildAndSubmitUnjournaled(buildFabricatedDepositStep04, lastInput)
-    : await buildAndSubmitUnjournaled(
-        buildFabricatedWithdrawalStep04,
-        lastInput,
-      );
+    ? await buildAndSubmit(buildFabricatedDepositStep04, lastInput)
+    : await buildAndSubmit(buildFabricatedWithdrawalStep04, lastInput);
   expect(last.fault).toBe(fault);
   expect(last.fraudProofAssetName).toBe(p.init.computationThreadAssetName);
   const finalization = p.transactions.find(({ stage }) => stage === "step04");

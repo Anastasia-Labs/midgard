@@ -11,10 +11,7 @@ import {
   WorkflowActuationRevokedError,
 } from "./actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import type { HeaderFaultDecision } from "./header-classifier.js";
-import {
-  journalJsonDigest,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson, workflowJsonDigest } from "./identity.js";
 import type { WorkflowRun } from "./workflow-run.js";
 
 /**
@@ -87,10 +84,10 @@ export const bindWorkflowActuationRecoveryIdentity = (input: {
   const { decisionDigest, ...unsealed } = original;
   if (
     !/^[0-9a-f]{64}$/u.test(original.authenticatedObservationDigest) ||
-    journalJsonDigest(normalizeJournalJson(unsealed)) !== decisionDigest ||
-    journalJsonDigest(normalizeJournalJson(original)) !==
-      journalJsonDigest(
-        normalizeJournalJson({
+    workflowJsonDigest(normalizeWorkflowJson(unsealed)) !== decisionDigest ||
+    workflowJsonDigest(normalizeWorkflowJson(original)) !==
+      workflowJsonDigest(
+        normalizeWorkflowJson({
           ...state.decision,
           authenticatedObservationDigest:
             original.authenticatedObservationDigest,

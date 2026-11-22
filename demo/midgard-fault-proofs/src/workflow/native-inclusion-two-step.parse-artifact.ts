@@ -1,12 +1,12 @@
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
-import { type JournalJsonObject } from "./journal.js";
+import { type WorkflowJsonObject } from "./identity.js";
 
 export const NATIVE_INCLUSION_TWO_STEP_ARTIFACT =
   "midgard-production-native-inclusion-two-step-artifact-v1" as const;
 
 export type NativeInclusionTwoStepCategory = "invalidRange" | "zeroInput";
 
-export type NativeInclusionTwoStepArtifact = JournalJsonObject &
+export type NativeInclusionTwoStepArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof NATIVE_INCLUSION_TWO_STEP_ARTIFACT;
     category: NativeInclusionTwoStepCategory;

@@ -15,7 +15,7 @@ import "../script-decode/submit.js";
 import "./action-changed.js";
 import "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import "./field-carriage-prerequisite.requirement-identity.js";
-import "./journal.js";
+import "./identity.js";
 import "./orchestrator.fraud-proof-workflow-run-result.js";
 import "./orchestrator.js";
 import "./transaction-boundary.js";

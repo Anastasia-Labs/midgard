@@ -12,7 +12,7 @@ import {
 import type {
   FraudProofWorkflowIdentity,
   FraudProofWorkflowTerminal,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/identity.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import { type LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 import { THIRTEEN_STEP_CURSOR_SPEC } from "./support/thirteen-step-cursor-spec.js";

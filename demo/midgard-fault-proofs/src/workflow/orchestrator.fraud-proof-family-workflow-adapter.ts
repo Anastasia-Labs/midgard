@@ -7,8 +7,8 @@ import { type CompleteCanonicalReplayContext } from "./complete-replay.js";
 import {
   type FraudProofWorkflowIdentity,
   type FraudProofWorkflowTerminal,
-  type JournalJsonObject,
-} from "./journal.js";
+  type WorkflowJsonObject,
+} from "./identity.js";
 import type { FraudProofOwnThreads } from "./raw-l1-family-derivation.own-thread.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 import type { WorkflowFundingShortfallError } from "./workflow-funding-shortfall.js";
@@ -26,7 +26,7 @@ export type FraudProofWorkflowAction = {
   /** Stable within a workflow; changing action data requires a new id. */
   readonly actionId: string;
   /** Public, journal-safe inputs needed to reconstruct this transaction. */
-  readonly input: JournalJsonObject;
+  readonly input: WorkflowJsonObject;
 };
 
 export type FraudProofWorkflowReferenceScript = {
@@ -95,7 +95,7 @@ export interface FraudProofWorkflowTerminalVerifier {
     /** Deployment-manifest-bound finality identity this terminal must meet. */
     readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
     readonly candidate: FraudProofWorkflowTerminal;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<FraudProofWorkflowTerminal>;
 }
 
@@ -116,7 +116,7 @@ export type FraudProofWorkflowAdapterContext = {
   readonly reconciliationOnly?: boolean;
   readonly identity: FraudProofWorkflowIdentity;
   readonly workflowId: string;
-  readonly artifact: JournalJsonObject;
+  readonly artifact: WorkflowJsonObject;
   /**
    * The actions this run already skipped because they did not build: an
    * observation ranks the moves after them instead, and waits rather than
@@ -142,7 +142,7 @@ export interface FraudProofFamilyWorkflowAdapter {
       CanonicalBlockClassification,
       { readonly decision: "fault_detected" }
     >;
-  }): Promise<JournalJsonObject>;
+  }): Promise<WorkflowJsonObject>;
   /** Reconstructs typed material from this invocation's authenticated evidence
    * and checks it against the durable artifact before a resumed live capture. */
   validatePreparedArtifact?(input: {
@@ -152,12 +152,12 @@ export interface FraudProofFamilyWorkflowAdapter {
       CanonicalBlockClassification,
       { readonly decision: "fault_detected" }
     >;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<void>;
-  prepareRaw?(input: WorkflowRawFamilyEvidence): Promise<JournalJsonObject>;
+  prepareRaw?(input: WorkflowRawFamilyEvidence): Promise<WorkflowJsonObject>;
   validatePreparedRawArtifact?(input: {
     readonly routed: WorkflowRawFamilyEvidence;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<void>;
   observe(
     context: FraudProofWorkflowAdapterContext,

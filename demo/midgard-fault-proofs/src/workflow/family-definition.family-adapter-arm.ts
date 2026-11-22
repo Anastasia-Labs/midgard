@@ -17,7 +17,7 @@ import type {
   FieldCarriagePrerequisitePort,
   PreimageCarriageRequirement,
 } from "./field-carriage-prerequisite.js";
-import type { JournalJsonObject } from "./journal.js";
+import type { WorkflowJsonObject } from "./identity.js";
 import type { FraudProofL1Source } from "./l1-source.js";
 import type { LinearFamilyTransactionPort } from "./linear-family-adapter.js";
 import {
@@ -245,7 +245,7 @@ export type LinearFamilyAssemblyContext<
 
 export type LinearFamilyPrerequisiteInput = Readonly<{
   action: FraudProofWorkflowAction;
-  artifact: JournalJsonObject;
+  artifact: WorkflowJsonObject;
 }>;
 
 /**

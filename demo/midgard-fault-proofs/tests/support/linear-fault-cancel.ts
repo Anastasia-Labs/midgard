@@ -1,5 +1,5 @@
 import { buildLinearFaultCancel } from "../../src/linear-fault-cancel.js";
-import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmit } from "./submit-steps.js";
 
 type LinearFaultCancelInput = Parameters<typeof buildLinearFaultCancel>[0];
 
@@ -16,7 +16,7 @@ export const submitFamilyCancel = (
     >;
   },
 ) =>
-  buildAndSubmitUnjournaled(buildLinearFaultCancel, {
+  buildAndSubmit(buildLinearFaultCancel, {
     ...input,
     family,
     steps: contracts.steps,

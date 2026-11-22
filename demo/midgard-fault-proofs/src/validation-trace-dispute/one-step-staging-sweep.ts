@@ -48,9 +48,9 @@ import {
   finalAtReleaseDepth,
   VALIDATION_TRACE_STAGING_RECLAIM,
   type ValidationTraceResolveReader,
-  type ValidationTraceStagingJournal,
   type ValidationTraceStagingOutput,
-} from "./one-step-staging-journal.js";
+  type ValidationTraceStagings,
+} from "./one-step-staging-types.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
 /** Why our workflow's ending waits on its staging outputs. */
@@ -126,13 +126,13 @@ export const validationTraceStagingSweep = ({
   /** The staging output a PrepareSelected move would read for the run
    * `datumCbor`. */
   readonly usable: (
-    known: ValidationTraceStagingJournal,
+    known: ValidationTraceStagings,
     datumCbor: string,
   ) => Promise<Readonly<{ staging: ValidationTraceStagingOutput }> | undefined>;
   /** Our staging as the own view of the workflow `context` shows it. */
   readonly stagings: (
     context: FraudProofWorkflowAdapterContext,
-  ) => Promise<ValidationTraceStagingJournal>;
+  ) => Promise<ValidationTraceStagings>;
   /** The staging plans of our threads at the PrepareSelected move's
    * holder. */
   readonly plans: (
@@ -151,7 +151,7 @@ export const validationTraceStagingSweep = ({
     validationTraceOneStepHolderAt(deployment, address)?.holder;
 
   /** Each thread of ours our own view shows, by its token. */
-  const threadsOf = (known: ValidationTraceStagingJournal) => {
+  const threadsOf = (known: ValidationTraceStagings) => {
     const staged = new Set(known.stagings.map(({ outRef }) => outRef));
     const threads = new Map<string, Thread>();
     const of = (unit: string) => {
@@ -222,9 +222,9 @@ export const validationTraceStagingSweep = ({
    * holds it. */
   const withCopies = async (
     context: FraudProofWorkflowAdapterContext,
-    known: ValidationTraceStagingJournal,
+    known: ValidationTraceStagings,
     planned: readonly ValidationTraceStagingPlan[],
-  ): Promise<ValidationTraceStagingJournal> => {
+  ): Promise<ValidationTraceStagings> => {
     if (known.byContent === undefined || !traced(context)) return known;
     const listed = new Set(known.stagings.map(({ outRef }) => outRef));
     const copies: ValidationTraceStagingOutput[] = [];
@@ -244,7 +244,7 @@ export const validationTraceStagingSweep = ({
 
   /** The staging outputs a thread of ours still needs, and their pins. */
   const heldBy = async (
-    known: ValidationTraceStagingJournal,
+    known: ValidationTraceStagings,
     planned: readonly ValidationTraceStagingPlan[],
   ) => {
     const held = new Set<string>();

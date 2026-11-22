@@ -10,10 +10,10 @@ import {
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
 import {
-  journalJsonDigest,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  workflowJsonDigest,
+  type WorkflowJsonObject,
+} from "./identity.js";
 import type { LinearFamilyCategory } from "./linear-family-spec.js";
 import { linearFamilyObservation } from "./linear-family-state.js";
 import {
@@ -61,7 +61,7 @@ export interface LinearFamilyTransactionPort<
       CanonicalBlockClassification,
       { readonly decision: "fault_detected" }
     > & { readonly category: Category };
-  }): Promise<JournalJsonObject>;
+  }): Promise<WorkflowJsonObject>;
   /**
    * Invokes the exact family builder, which returns the signed body without
    * submitting it: the body has passed local UPLC and has not reached
@@ -69,7 +69,7 @@ export interface LinearFamilyTransactionPort<
    */
   capture(input: {
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
     /** The workflow and objective that find proof materials for the step. */
     readonly holder: ProofMaterialsHolder;
   }): Promise<LinearFamilyCapturedAction>;
@@ -82,8 +82,8 @@ const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 // The orchestrator hands back the journal-normalized (key-sorted) action, so
 // equality must be structural, not byte order.
 const sameJson = (left: unknown, right: unknown): boolean =>
-  journalJsonDigest(normalizeJournalJson(left)) ===
-  journalJsonDigest(normalizeJournalJson(right));
+  workflowJsonDigest(normalizeWorkflowJson(left)) ===
+  workflowJsonDigest(normalizeWorkflowJson(right));
 
 const assertExactCurrentAction = ({
   expected,

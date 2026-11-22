@@ -4,7 +4,7 @@ import type {
   WorkflowActuationRevokedError,
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/journal";
+import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/identity";
 import { Header, StateQueueNode } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 

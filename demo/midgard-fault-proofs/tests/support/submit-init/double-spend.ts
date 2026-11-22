@@ -34,10 +34,7 @@ import {
 import { publishFraudProofChainReferenceScripts } from "../emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "../emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "../emulator/setup-tx.submit-setup-tx.js";
-import {
-  type SubmittedStep,
-  submitTurnsUnjournaled,
-} from "../submit-unjournaled.js";
+import { type SubmittedStep, submitTurns } from "../submit-steps.js";
 import { bindCanonicalFixtureHeader } from "./deployment.js";
 import {
   type DoubleSpendFixtureOptions,
@@ -94,7 +91,7 @@ export const buildProvedDoubleSpendFixture = async ({
     fourthStepUtxo,
   } = await stageDoubleSpendStep04(options);
   const step04Capture = await captureEmulatorSubmission(emulator, () =>
-    submitTurnsUnjournaled(buildStep04, {
+    submitTurns(buildStep04, {
       lucid: proverLucid,
       blueprint: realBlueprint,
       deploymentInfo,

@@ -39,11 +39,11 @@ import {
   setupMintAuthorizationScenario,
 } from "./support/mint-authorization-emulator.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+  submitTurns,
+} from "./support/submit-steps.js";
 
 it.each(["signers", "native", "cancel"])(
   "measures maximum %s through the real registered native-policy path",
@@ -89,7 +89,7 @@ it.each(["signers", "native", "cancel"])(
         lucid: h.funderLucid,
         contracts: h.family,
       });
-      const init = await buildAndSubmitUnjournaled(buildResolvedInit, {
+      const init = await buildAndSubmit(buildResolvedInit, {
         label: MINT_AUTHORIZATION_CATEGORY_LABEL,
         lucid: h.proverLucid,
         blueprint: h.realBlueprint,
@@ -114,20 +114,17 @@ it.each(["signers", "native", "cancel"])(
         nativeTxCompactCbor: block.nativeTxCompactCbor,
         witnessSet: subject.witnessSetCompact,
       };
-      const one = await buildAndSubmitUnjournaled(
-        buildMintAuthorizationStep01,
-        {
-          ...common,
-          blueprint: h.realBlueprint,
-          network,
-          threadOutRef: init.nextThreadOutRef,
-          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-          txInclusion: block.txInclusion,
-          referenceScriptUtxo: refs[0],
-          witnessReferenceScripts: setup.witnessReferenceScripts,
-        },
-      );
-      const two = await submitTurnsUnjournaled(buildMintAuthorizationStep02, {
+      const one = await buildAndSubmit(buildMintAuthorizationStep01, {
+        ...common,
+        blueprint: h.realBlueprint,
+        network,
+        threadOutRef: init.nextThreadOutRef,
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: block.txInclusion,
+        referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      });
+      const two = await submitTurns(buildMintAuthorizationStep02, {
         ...common,
         threadOutRef: one.nextThreadOutRef,
         reconstruction: block.reconstruction,
@@ -153,7 +150,7 @@ it.each(["signers", "native", "cancel"])(
         ).length,
       );
       if (shape === "signers") expect(planned.plan.tier).toBe("Certified");
-      const publishedCarriageUtxos = await publishCarriageUnjournaled({
+      const publishedCarriageUtxos = await publishFieldCarriage({
         lucid: h.proverLucid,
         signer: h.proverSigner,
         planned,
@@ -168,7 +165,7 @@ it.each(["signers", "native", "cancel"])(
       const certified =
         planned.plan.tier !== "Certified"
           ? { certificateUtxo: undefined }
-          : await certifyCarriageUnjournaled({
+          : await certifyFieldCarriage({
               lucid: h.proverLucid,
               network,
               signer: h.proverSigner,
@@ -215,7 +212,7 @@ it.each(["signers", "native", "cancel"])(
           throw new Error("missing published native preimage");
         rawPreimageUtxos.push(utxo);
       }
-      const three = await submitTurnsUnjournaled(
+      const three = await submitTurns(
         buildMintAuthorizationStep03EvaluateUnsatisfied,
         {
           ...common,
@@ -280,7 +277,7 @@ it.each(["signers", "native", "cancel"])(
             .complete({ localUPLCEval: true }),
         ).rejects.toBeDefined();
         await expect(
-          buildAndSubmitUnjournaled(buildMintAuthorizationEvaluate, {
+          buildAndSubmit(buildMintAuthorizationEvaluate, {
             ...common,
             threadOutRef: three.nextThreadOutRef,
             scriptBytesHex: "820280",
@@ -289,18 +286,15 @@ it.each(["signers", "native", "cancel"])(
             referenceScriptUtxo: refs[5],
           }),
         ).rejects.toThrow("preimage differs");
-        const cancelled = await buildAndSubmitUnjournaled(
-          buildLinearFaultCancel,
-          {
-            ...common,
-            family: MINT_AUTHORIZATION_CATEGORY_LABEL,
-            steps: h.family.steps,
-            computationThread: h.family.computationThread,
-            threadOutRef: three.nextThreadOutRef,
-            referenceScriptUtxo: refs[5],
-            witnessReferenceScripts: setup.witnessReferenceScripts,
-          },
-        );
+        const cancelled = await buildAndSubmit(buildLinearFaultCancel, {
+          ...common,
+          family: MINT_AUTHORIZATION_CATEGORY_LABEL,
+          steps: h.family.steps,
+          computationThread: h.family.computationThread,
+          threadOutRef: three.nextThreadOutRef,
+          referenceScriptUtxo: refs[5],
+          witnessReferenceScripts: setup.witnessReferenceScripts,
+        });
         expect(cancelled.cancelledStepIndex).toBe(5);
         expect(
           await h.proverLucid.utxosAtWithUnit(
@@ -320,29 +314,23 @@ it.each(["signers", "native", "cancel"])(
       }
       let nextThreadOutRef = three.nextThreadOutRef;
       for (let count = 0; count < 3000; count++) {
-        const step = await buildAndSubmitUnjournaled(
-          buildMintAuthorizationEvaluate,
-          {
-            ...common,
-            threadOutRef: nextThreadOutRef,
-            scriptBytesHex: policy.scriptBytesHex,
-            addrWitnessItemCbors: witnesses,
-            rawPreimageUtxos,
-            referenceScriptUtxo: refs[5],
-          },
-        );
+        const step = await buildAndSubmit(buildMintAuthorizationEvaluate, {
+          ...common,
+          threadOutRef: nextThreadOutRef,
+          scriptBytesHex: policy.scriptBytesHex,
+          addrWitnessItemCbors: witnesses,
+          rawPreimageUtxos,
+          referenceScriptUtxo: refs[5],
+        });
         nextThreadOutRef = step.nextThreadOutRef;
         if (step.terminal) break;
       }
-      const five = await buildAndSubmitUnjournaled(
-        buildMintAuthorizationStep05,
-        {
-          ...common,
-          threadOutRef: nextThreadOutRef,
-          referenceScriptUtxo: refs[4],
-          witnessReferenceScripts: setup.witnessReferenceScripts,
-        },
-      );
+      const five = await buildAndSubmit(buildMintAuthorizationStep05, {
+        ...common,
+        threadOutRef: nextThreadOutRef,
+        referenceScriptUtxo: refs[4],
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      });
       expect(
         await h.proverLucid.utxosAtWithUnit(
           five.fraudProofAddress,

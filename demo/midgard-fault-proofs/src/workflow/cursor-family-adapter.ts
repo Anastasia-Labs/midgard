@@ -1,7 +1,7 @@
 import "./action-changed.js";
 import "./cursor-family-state.js";
 import "./family-l1-observation.js";
-import "./journal.js";
+import "./identity.js";
 import "./orchestrator.js";
 import "./signed-transaction-reconciliation.js";
 import "./transaction-boundary.js";

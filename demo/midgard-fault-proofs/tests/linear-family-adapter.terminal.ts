@@ -7,7 +7,7 @@ import {
 import {
   type FraudProofWorkflowIdentity,
   type FraudProofWorkflowTerminal,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/identity.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,

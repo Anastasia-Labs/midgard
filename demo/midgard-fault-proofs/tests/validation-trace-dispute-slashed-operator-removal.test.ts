@@ -29,7 +29,7 @@ import {
   validationTraceDefenderDeadlineMs,
 } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
-import type { FraudProofWorkflowTerminal } from "../src/workflow/journal.js";
+import type { FraudProofWorkflowTerminal } from "../src/workflow/identity.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   deriveFraudProofRawL1CompletedTerminal,

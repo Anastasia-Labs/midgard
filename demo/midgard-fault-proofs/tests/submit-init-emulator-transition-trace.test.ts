@@ -52,10 +52,7 @@ import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
 
 describe("fault-proof emulator integration", () => {
@@ -179,7 +176,7 @@ describe("fault-proof emulator integration", () => {
         ...transitionTraceYieldReferences,
       },
     });
-    const initResult = await buildAndSubmitUnjournaled(buildInit, {
+    const initResult = await buildAndSubmit(buildInit, {
       lucid: proverLucid,
       blueprint: realBlueprint,
       deploymentInfo,
@@ -212,20 +209,17 @@ describe("fault-proof emulator integration", () => {
     expect(proverPaymentCredential?.type).toBe("Key");
     const proverPaymentKeyHash = proverPaymentCredential!.hash;
 
-    const proofResult = await submitTurnsUnjournaled(
-      buildTransitionTraceProof,
-      {
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        deploymentInfo,
-        network,
-        signer: proverSigner,
-        threadOutRef: outRefLabel(firstStepUtxo),
-        proof: traceFixture.proof,
-        witnessReferenceScripts,
-        awaitConfirmation: true,
-      },
-    );
+    const proofResult = await submitTurns(buildTransitionTraceProof, {
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(firstStepUtxo),
+      proof: traceFixture.proof,
+      witnessReferenceScripts,
+      awaitConfirmation: true,
+    });
 
     expect(proofResult.txHash).toHaveLength(64);
     expect(proofResult.fraudulentHeaderHash).toBe(traceFixture.headerHash);

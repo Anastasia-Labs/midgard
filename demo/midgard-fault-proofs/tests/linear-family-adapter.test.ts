@@ -2,7 +2,7 @@ import "vitest";
 import "../src/remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import "../src/workflow/action-changed.js";
 import "../src/workflow/family-l1-observation.js";
-import "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import "../src/workflow/identity.js";
 import "../src/workflow/linear-family-adapter.js";
 import "../src/workflow/linear-family-state.js";
 import "../src/workflow/transaction-boundary.js";
@@ -12,9 +12,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../src/workflow/identity.js";
 import { createLinearFamilyWorkflowAdapter } from "../src/workflow/linear-family-adapter.js";
 import { linearFamilyObservation } from "../src/workflow/linear-family-state.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
@@ -197,10 +197,10 @@ describe("production linear family adapter V1", () => {
     }
     const normalized = {
       actionId: observation.action.actionId,
-      input: normalizeJournalJson(
+      input: normalizeWorkflowJson(
         observation.action.input,
         "action",
-      ) as JournalJsonObject,
+      ) as WorkflowJsonObject,
     };
     expect(Object.keys(normalized.input)).not.toEqual(
       Object.keys(observation.action.input),

@@ -13,7 +13,7 @@ import { network } from "./support/emulator/blueprints.js";
 import { restrictedProverWallet } from "./support/restricted-prover-wallet.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
-import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
+import { submitTurns } from "./support/submit-steps.js";
 
 describe("double-spend steps under the watcher's restricted wallet", () => {
   it("funds step 03 and step 04 and posts their collateral from the coins the restricted wallet offers", async () => {
@@ -36,7 +36,7 @@ describe("double-spend steps under the watcher's restricted wallet", () => {
       signer: staged.proverSigner,
     });
     const { transactionInclusion } = staged;
-    const step04 = await submitTurnsUnjournaled(buildStep04, {
+    const step04 = await submitTurns(buildStep04, {
       lucid: staged.proverLucid,
       blueprint: staged.realBlueprint,
       deploymentInfo: staged.deploymentInfo,

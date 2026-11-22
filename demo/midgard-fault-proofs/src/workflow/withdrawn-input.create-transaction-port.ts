@@ -24,7 +24,7 @@ import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-ass
 import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 import {
   admitNativeInclusionArtifact,
-  exactJournalRecord,
+  exactArtifactRecord,
 } from "./native-index-artifact.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
 import { proofMaterialsAccess } from "./proof-materials-view.js";
@@ -269,7 +269,7 @@ export const WITHDRAWN_INPUT_FAMILY_DEFINITION = defineLinearFamily({
   ],
   proofChunk: (_context, { action, artifact }) => {
     if (actionInput(action).stage !== "step_01") return null;
-    const record = exactJournalRecord(
+    const record = exactArtifactRecord(
       artifact,
       [
         "schemaVersion",

@@ -21,7 +21,7 @@ import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { makeHeader } from "./support/emulator/header-fixtures.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 /**
  * 365 committed spend inputs (constant §5.3 stride of 40 bytes each) make a
@@ -156,7 +156,7 @@ export const initThread = async (
   harness: Harness,
   scenario: Awaited<ReturnType<typeof setupScenario>>,
 ) =>
-  await buildAndSubmitUnjournaled(buildMinFeeInit, {
+  await buildAndSubmit(buildMinFeeInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -173,7 +173,7 @@ export const advanceStep01 = async (
   scenario: Awaited<ReturnType<typeof setupScenario>>,
   threadOutRef: string,
 ) =>
-  await buildAndSubmitUnjournaled(buildMinFeeStep01, {
+  await buildAndSubmit(buildMinFeeStep01, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     contracts: harness.minFee,

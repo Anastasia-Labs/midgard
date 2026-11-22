@@ -24,7 +24,7 @@ import {
   type InvalidSignatureEmulatorHarness,
   type InvalidSignatureSubject,
 } from "./invalid-signature-emulator.build-invalid-signature-subject.js";
-import { publishCarriageUnjournaled } from "./submit-unjournaled.js";
+import { publishFieldCarriage } from "./submit-steps.js";
 
 /**
  * Raw guard-bypassing finalizer for the adversarial polarity.
@@ -103,7 +103,7 @@ export const submitRawInvalidSignatureStep02 = async ({
     label: "Raw invalid-signature step 02",
   });
   signer.selectWallet(lucid);
-  const published = await publishCarriageUnjournaled({
+  const published = await publishFieldCarriage({
     lucid,
     signer,
     planned,

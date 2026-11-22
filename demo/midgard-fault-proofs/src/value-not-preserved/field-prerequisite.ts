@@ -7,7 +7,7 @@ import { deriveMidgardForcedTxProofSourceFromCanonicalCbor } from "@al-ft/midgar
 import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import { createAuthenticatedFieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import { journalJsonDigest } from "../workflow/journal.fraud-proof-workflow-terminal.js";
+import { workflowJsonDigest } from "../workflow/identity.js";
 import { admitValueConservationArtifact } from "./artifact.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 
@@ -32,7 +32,7 @@ export const createValueConservationFieldPrerequisite = ({
     category: "valueNotPreserved",
     requirementForAction: async ({ action, artifact }) => {
       if (action.input.stage !== "fold") return null;
-      const key = journalJsonDigest(artifact);
+      const key = workflowJsonDigest(artifact);
       let prepared = cache.get(key);
       if (prepared === undefined) {
         prepared = admitValueConservationArtifact(artifact, contracts);

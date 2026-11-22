@@ -55,7 +55,7 @@ import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deploymen
 import { inputExistenceExecutionContext } from "./support/input-existence-execution-context.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import { setupFraudulentBlock } from "./support/submit-init/removal.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 const inputCbor = (txId: string, outputIndex: bigint): Buffer =>
   Buffer.from(
@@ -157,7 +157,7 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         expectedHeaderHashes: [setup.headerHash],
       });
 
-      const initResult = await buildAndSubmitUnjournaled(buildInit, {
+      const initResult = await buildAndSubmit(buildInit, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         deploymentInfo,
@@ -186,13 +186,10 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         initResult.computationThreadUnit,
       );
 
-      const step01Result = await buildAndSubmitUnjournaled(
-        submitNoReferenceInputStep01,
-        {
-          ...context.arguments,
-          threadOutRef: outRefLabel(firstStepUtxo),
-        },
-      );
+      const step01Result = await buildAndSubmit(submitNoReferenceInputStep01, {
+        ...context.arguments,
+        threadOutRef: outRefLabel(firstStepUtxo),
+      });
       expect(step01Result.txHash).toHaveLength(64);
       // #604: the thread carries the §2.5 anchor. The field-1 commitment it
       // used to forward is still in the compact structure step-02 opens, and is
@@ -245,7 +242,7 @@ describe("registered fraud-proof families emulator lifecycle", () => {
       });
       const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
 
-      const initResult = await buildAndSubmitUnjournaled(buildInit, {
+      const initResult = await buildAndSubmit(buildInit, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         deploymentInfo,
@@ -270,7 +267,7 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         initResult.computationThreadUnit,
       );
 
-      const step01Result = await buildAndSubmitUnjournaled(
+      const step01Result = await buildAndSubmit(
         buildReferenceInputNoIdxStep01,
         {
           lucid: proverLucid,
@@ -341,7 +338,7 @@ describe("registered fraud-proof families emulator lifecycle", () => {
       });
       const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
 
-      const initResult = await buildAndSubmitUnjournaled(buildInit, {
+      const initResult = await buildAndSubmit(buildInit, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         deploymentInfo,
@@ -366,24 +363,21 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         initResult.computationThreadUnit,
       );
 
-      const step01Result = await buildAndSubmitUnjournaled(
-        buildInvalidSignatureStep01,
-        {
-          lucid: proverLucid,
-          blueprint: realBlueprint,
-          deploymentInfo,
-          network,
-          signer: proverSigner,
-          threadOutRef: outRefLabel(firstStepUtxo),
-          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-          txInclusion: fixture.inclusion,
-          badTxWitnessSetCompact,
-          referenceScriptUtxo:
-            harness.faultProofReferenceScripts.fraudProofInvalidSignature.utxo,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-          awaitConfirmation: true,
-        },
-      );
+      const step01Result = await buildAndSubmit(buildInvalidSignatureStep01, {
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(firstStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.inclusion,
+        badTxWitnessSetCompact,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofInvalidSignature.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        awaitConfirmation: true,
+      });
       expect(step01Result.txHash).toHaveLength(64);
       expect(step01Result.nativeTxId).toBe(fixture.nativeTxId);
       // #604: the thread carries `WitnessAnchor` — the id plus the committed

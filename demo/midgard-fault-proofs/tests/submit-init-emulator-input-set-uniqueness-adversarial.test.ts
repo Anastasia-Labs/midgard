@@ -52,10 +52,7 @@ import {
 } from "./support/input-set-uniqueness-emulator.build-input-set-uniqueness-fixture.js";
 import { submitRawInputSetUniquenessBind } from "./support/input-set-uniqueness-emulator.submit-raw-input-set-uniqueness-bind.js";
 import { submitRawInputSetUniquenessFinalize } from "./support/input-set-uniqueness-emulator.submit-raw-input-set-uniqueness-finalize.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 /** Init + honest step-01 against the harness's committed header. */
 const bindHonestly = async (
@@ -67,41 +64,35 @@ const bindHonestly = async (
   },
   step01Ref: UTxO,
 ) => {
-  const initResult = await buildAndSubmitUnjournaled(
-    buildInputSetUniquenessInit,
-    {
-      lucid: harness.proverLucid,
-      blueprint: harness.realBlueprint,
-      network,
-      contracts: harness.family,
-      category: harness.category,
-      catalogue: {
-        policyId: harness.contracts.fraudProofCatalogue.policyId,
-        spendingScriptAddress:
-          harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-        root: harness.catalogue.root,
-      },
-      signer: harness.proverSigner,
-      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-      witnessReferenceScripts: setup.witnessReferenceScripts,
+  const initResult = await buildAndSubmit(buildInputSetUniquenessInit, {
+    lucid: harness.proverLucid,
+    blueprint: harness.realBlueprint,
+    network,
+    contracts: harness.family,
+    category: harness.category,
+    catalogue: {
+      policyId: harness.contracts.fraudProofCatalogue.policyId,
+      spendingScriptAddress:
+        harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+      root: harness.catalogue.root,
     },
-  );
-  const step01 = await buildAndSubmitUnjournaled(
-    buildInputSetUniquenessStep01,
-    {
-      lucid: harness.proverLucid,
-      blueprint: harness.realBlueprint,
-      contracts: harness.family,
-      categoryId: harness.category.categoryId,
-      network,
-      signer: harness.proverSigner,
-      threadOutRef: initResult.nextThreadOutRef,
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.txInclusion,
-      referenceScriptUtxo: step01Ref,
-      witnessReferenceScripts: setup.witnessReferenceScripts,
-    },
-  );
+    signer: harness.proverSigner,
+    fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: setup.witnessReferenceScripts,
+  });
+  const step01 = await buildAndSubmit(buildInputSetUniquenessStep01, {
+    lucid: harness.proverLucid,
+    blueprint: harness.realBlueprint,
+    contracts: harness.family,
+    categoryId: harness.category.categoryId,
+    network,
+    signer: harness.proverSigner,
+    threadOutRef: initResult.nextThreadOutRef,
+    stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+    txInclusion: fixture.txInclusion,
+    referenceScriptUtxo: step01Ref,
+    witnessReferenceScripts: setup.witnessReferenceScripts,
+  });
   return { initResult, step01 };
 };
 
@@ -159,7 +150,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
       witnessReferenceScripts: setup.witnessReferenceScripts,
     } as const;
     await expect(
-      submitTurnsUnjournaled(buildInputSetUniquenessStep02, {
+      submitTurns(buildInputSetUniquenessStep02, {
         ...commonStep02,
         claim: {
           kind: "duplicateSpendInputs",
@@ -169,7 +160,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
       }),
     ).rejects.toThrow(/name different out-refs/u);
     await expect(
-      submitTurnsUnjournaled(buildInputSetUniquenessStep02, {
+      submitTurns(buildInputSetUniquenessStep02, {
         ...commonStep02,
         claim: {
           kind: "spendReferenceOverlap",
@@ -336,29 +327,26 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
-    const initResult = await buildAndSubmitUnjournaled(
-      buildInputSetUniquenessInit,
-      {
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: harness.family,
-        category: harness.category,
-        catalogue: {
-          policyId: harness.contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: harness.catalogue.root,
-        },
-        signer: harness.proverSigner,
-        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-        witnessReferenceScripts: setup.witnessReferenceScripts,
+    const initResult = await buildAndSubmit(buildInputSetUniquenessInit, {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      network,
+      contracts: harness.family,
+      category: harness.category,
+      catalogue: {
+        policyId: harness.contracts.fraudProofCatalogue.policyId,
+        spendingScriptAddress:
+          harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+        root: harness.catalogue.root,
       },
-    );
+      signer: harness.proverSigner,
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
+    });
 
     // The honest submitter refuses locally,
     await expect(
-      buildAndSubmitUnjournaled(buildInputSetUniquenessStep01, {
+      buildAndSubmit(buildInputSetUniquenessStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts: harness.family,

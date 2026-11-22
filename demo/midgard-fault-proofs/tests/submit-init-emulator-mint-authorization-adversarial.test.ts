@@ -49,10 +49,10 @@ import {
   tamperFieldPreimageBytes,
 } from "./support/mint-authorization-emulator.js";
 import {
-  buildAndSubmitUnjournaled,
+  buildAndSubmit,
   type SubmittedStep,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  submitTurns,
+} from "./support/submit-steps.js";
 
 const ACCUSED_POLICY_INDEX = 0n;
 
@@ -81,7 +81,7 @@ const driveInit = async (
       lucid: funderLucid,
       contracts: harness.family,
     });
-  const initResult = await buildAndSubmitUnjournaled(buildResolvedInit, {
+  const initResult = await buildAndSubmit(buildResolvedInit, {
     label: MINT_AUTHORIZATION_CATEGORY_LABEL,
     lucid: proverLucid,
     blueprint: realBlueprint,
@@ -123,7 +123,7 @@ describe("mint-authorization emulator adversarial polarity", () => {
     // step-01 refuses to bind it — l2TxMistag convicts that leaf, and this
     // family never convicts it a second time.
     await expect(
-      buildAndSubmitUnjournaled(buildMintAuthorizationStep01, {
+      buildAndSubmit(buildMintAuthorizationStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts: harness.family,
@@ -156,23 +156,20 @@ describe("mint-authorization emulator adversarial polarity", () => {
       throw new Error("normal mint-authorization fixture has no inclusion");
     }
     const { initResult, refs } = await driveInit(harness, setup);
-    const step01 = await buildAndSubmitUnjournaled(
-      buildMintAuthorizationStep01,
-      {
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        contracts: harness.family,
-        categoryId: harness.category.categoryId,
-        network,
-        signer: harness.proverSigner,
-        threadOutRef: initResult.nextThreadOutRef,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: block.txInclusion,
-        referenceScriptUtxo: refs[0],
-        witnessReferenceScripts: setup.witnessReferenceScripts,
-      },
-    );
-    const step02 = await submitTurnsUnjournaled(buildMintAuthorizationStep02, {
+    const step01 = await buildAndSubmit(buildMintAuthorizationStep01, {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      contracts: harness.family,
+      categoryId: harness.category.categoryId,
+      network,
+      signer: harness.proverSigner,
+      threadOutRef: initResult.nextThreadOutRef,
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: block.txInclusion,
+      referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: setup.witnessReferenceScripts,
+    });
+    const step02 = await submitTurns(buildMintAuthorizationStep02, {
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,
@@ -188,7 +185,7 @@ describe("mint-authorization emulator adversarial polarity", () => {
     expect(step02.step03State.policy_id).toBe(present.policyIdHex);
 
     await expect(
-      submitTurnsUnjournaled(buildMintAuthorizationStep03WitnessAbsence, {
+      submitTurns(buildMintAuthorizationStep03WitnessAbsence, {
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -219,23 +216,20 @@ describe("mint-authorization emulator adversarial polarity", () => {
       throw new Error("normal mint-authorization fixture has no inclusion");
     }
     const { initResult, refs } = await driveInit(harness, setup);
-    const step01 = await buildAndSubmitUnjournaled(
-      buildMintAuthorizationStep01,
-      {
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        contracts: harness.family,
-        categoryId: harness.category.categoryId,
-        network,
-        signer: harness.proverSigner,
-        threadOutRef: initResult.nextThreadOutRef,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: block.txInclusion,
-        referenceScriptUtxo: refs[0],
-        witnessReferenceScripts: setup.witnessReferenceScripts,
-      },
-    );
-    const step02 = await submitTurnsUnjournaled(buildMintAuthorizationStep02, {
+    const step01 = await buildAndSubmit(buildMintAuthorizationStep01, {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      contracts: harness.family,
+      categoryId: harness.category.categoryId,
+      network,
+      signer: harness.proverSigner,
+      threadOutRef: initResult.nextThreadOutRef,
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: block.txInclusion,
+      referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: setup.witnessReferenceScripts,
+    });
+    const step02 = await submitTurns(buildMintAuthorizationStep02, {
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,
@@ -251,7 +245,7 @@ describe("mint-authorization emulator adversarial polarity", () => {
     expect(step02.step03State.policy_id).toBe(satisfied.policyIdHex);
 
     await expect(
-      submitTurnsUnjournaled(buildMintAuthorizationStep03EvaluateUnsatisfied, {
+      submitTurns(buildMintAuthorizationStep03EvaluateUnsatisfied, {
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -307,7 +301,7 @@ describe("mint-authorization emulator adversarial polarity", () => {
         lucid: harness.funderLucid,
         contracts: harness.family,
       });
-    const initResult = await buildAndSubmitUnjournaled(buildResolvedInit, {
+    const initResult = await buildAndSubmit(buildResolvedInit, {
       label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
@@ -324,22 +318,19 @@ describe("mint-authorization emulator adversarial polarity", () => {
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
       witnessReferenceScripts: setup.witnessReferenceScripts,
     });
-    const step01 = await buildAndSubmitUnjournaled(
-      buildMintAuthorizationStep01,
-      {
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        contracts: harness.family,
-        categoryId: harness.category.categoryId,
-        network,
-        signer: harness.proverSigner,
-        threadOutRef: initResult.nextThreadOutRef,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: block.txInclusion,
-        referenceScriptUtxo: step01Ref,
-        witnessReferenceScripts: setup.witnessReferenceScripts,
-      },
-    );
+    const step01 = await buildAndSubmit(buildMintAuthorizationStep01, {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      contracts: harness.family,
+      categoryId: harness.category.categoryId,
+      network,
+      signer: harness.proverSigner,
+      threadOutRef: initResult.nextThreadOutRef,
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: block.txInclusion,
+      referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
+    });
 
     await expectOnchainRefusal(() =>
       submitRawMintAuthorizationStep02TamperedMint({

@@ -18,10 +18,10 @@ import { startInputNoIdxStep02Thread } from "../submit-init-emulator-input-no-id
 import { network } from "./emulator/blueprints.js";
 import { expectSingleUtxoWithUnit } from "./emulator/emulator-context.js";
 import {
-  buildAndSubmitUnjournaled,
+  buildAndSubmit,
   type SubmittedStep,
-  submitTurnsUnjournaled,
-} from "./submit-unjournaled.js";
+  submitTurns,
+} from "./submit-steps.js";
 
 export type InputNoIdxEmulatorHarness = Awaited<
   ReturnType<typeof makeEmulatorHarness>
@@ -34,7 +34,7 @@ export const advanceInputNoIdxToStep04 = async (
 ) => {
   const { deploymentInfo, initResult, secondStepUtxo, setup } =
     await startInputNoIdxStep02Thread({ harness, fixture });
-  const step02 = await submitTurnsUnjournaled(buildInputNoIdxStep02, {
+  const step02 = await submitTurns(buildInputNoIdxStep02, {
     lucid: harness.proverLucid,
     referenceScriptUtxo:
       harness.faultProofReferenceScripts
@@ -57,7 +57,7 @@ export const advanceInputNoIdxToStep04 = async (
     step02.thirdStepAddress,
     initResult.computationThreadUnit,
   );
-  const step03 = await buildAndSubmitUnjournaled(buildInputNoIdxStep03, {
+  const step03 = await buildAndSubmit(buildInputNoIdxStep03, {
     lucid: harness.proverLucid,
     referenceScriptUtxo:
       harness.faultProofReferenceScripts

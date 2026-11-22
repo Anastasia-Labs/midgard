@@ -40,7 +40,7 @@ import {
   transactionOutputScanControlData,
 } from "../../src/transaction-output-non-canonical/transaction-output-non-canonical.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
-import { buildAndSubmitTransactionUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmitTransaction } from "./submit-steps.js";
 
 export const FAMILY = "transaction-output-non-canonical";
 
@@ -185,24 +185,21 @@ export const continueRaw = async ({
       redeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await buildAndSubmitTransactionUnjournaled(
-    buildLinearFaultContinue,
-    {
-      lucid,
-      signer,
-      threadUtxo,
-      threadUnit: threadToken.unit,
-      stepReference,
-      stepScript: contracts.steps[stepIndex]!.spendingScript,
-      stepRole: role,
-      nextAddress,
-      nextDatum,
-      redeemer,
-      carriageUtxos,
-      extraReferenceInputs,
-      awaitConfirmation: true,
-    },
-  );
+  const txHash = await buildAndSubmitTransaction(buildLinearFaultContinue, {
+    lucid,
+    signer,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    stepReference,
+    stepScript: contracts.steps[stepIndex]!.spendingScript,
+    stepRole: role,
+    nextAddress,
+    nextDatum,
+    redeemer,
+    carriageUtxos,
+    extraReferenceInputs,
+    awaitConfirmation: true,
+  });
   if (outputIndex === undefined) throw new Error(`${role}: no layout`);
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
 };

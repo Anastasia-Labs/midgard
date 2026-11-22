@@ -26,7 +26,7 @@ import {
   type PreimageCarriageRequirement,
 } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import { withFieldCarriagePrerequisite } from "../workflow/field-carriage-prerequisite.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -52,7 +52,7 @@ import {
 import { validationTraceFieldGrammarCertification } from "./one-step-field-grammar-certify.js";
 import { validationTraceOneStepHolder } from "./one-step-holders.js";
 import { validationTraceCarriedField } from "./one-step-moves.js";
-import { finalAtReleaseDepth } from "./one-step-staging-journal.js";
+import { finalAtReleaseDepth } from "./one-step-staging-types.js";
 import { type OwnKeyActions, withOwnKeyActions } from "./own-key-actions.js";
 import type {
   ValidationTraceOwnPublication,
@@ -127,7 +127,7 @@ export const validationTraceCarriedFields = ({
       artifact,
     }: {
       readonly action: FraudProofWorkflowAction;
-      readonly artifact: JournalJsonObject;
+      readonly artifact: WorkflowJsonObject;
     }): Promise<PreimageCarriageRequirement | null> => {
       if (action.input.schemaVersion !== VALIDATION_TRACE_DISPUTE_ACTION)
         return null;

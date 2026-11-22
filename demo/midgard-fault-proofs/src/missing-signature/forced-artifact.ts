@@ -18,7 +18,7 @@ import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof
 import { Data } from "@lucid-evolution/lucid";
 
 import { commitCountedRoot } from "../transition-trace/phas.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import {
   detectMissingSignatureForcedTransaction,
   type PreparedMissingSignatureWrongfulRejection,
@@ -44,7 +44,7 @@ const MissingSignatureForcedArtifactSource =
 
 export const MISSING_SIGNATURE_FORCED_ARTIFACT =
   "midgard-missing-signature-forced-artifact-v1";
-export type MissingSignatureForcedArtifact = JournalJsonObject &
+export type MissingSignatureForcedArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof MISSING_SIGNATURE_FORCED_ARTIFACT;
     headerHash: string;
@@ -64,7 +64,7 @@ export const missingSignatureForcedArtifact = (
   ),
 });
 export const admitMissingSignatureForcedArtifact = async (
-  value: JournalJsonObject,
+  value: WorkflowJsonObject,
 ): Promise<PreparedMissingSignatureWrongfulRejection> => {
   if (
     Object.keys(value).sort().join() !==

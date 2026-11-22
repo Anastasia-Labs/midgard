@@ -27,10 +27,7 @@ import { setup } from "./native-script-invalid-wrongful-rejection-lifecycle.setu
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { submitRawNativeScriptInvalidAbsentScriptStep02 } from "./support/native-script-invalid-raw.submit-absent-script-step02-raw.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 /** A thread bound through step 01 with field 6's carriage published. */
 const boundThread = async (options: Parameters<typeof setup>[0]) => {
@@ -58,7 +55,7 @@ const convict = async ({
   const step02Measurements = [];
   while (step02Measurements.length < 1000 && closed === undefined) {
     const step = await captureEmulatorSubmission(f.h.emulator, () =>
-      submitTurnsUnjournaled(buildNativeScriptInvalidStep02, {
+      submitTurns(buildNativeScriptInvalidStep02, {
         ...f.common,
         ...carriage,
         threadOutRef,
@@ -74,7 +71,7 @@ const convict = async ({
   if (closed === undefined) throw new Error("step 02 did not close");
   expect(closed.result.scriptItemCbor).toBe("");
   const finalized = await captureEmulatorSubmission(f.h.emulator, () =>
-    buildAndSubmitUnjournaled(buildNativeScriptInvalidStep03AbsentFinalize, {
+    buildAndSubmit(buildNativeScriptInvalidStep03AbsentFinalize, {
       ...f.common,
       threadOutRef,
       referenceScriptUtxo: f.refs[2]!,

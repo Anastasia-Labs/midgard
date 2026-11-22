@@ -40,11 +40,11 @@ import type { ResolvedProverSigner } from "../../src/runtime.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
 import {
-  buildAndSubmitTransactionUnjournaled,
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-} from "./submit-unjournaled.js";
+  buildAndSubmit,
+  buildAndSubmitTransaction,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+} from "./submit-steps.js";
 
 // ---------------------------------------------------------------------------
 // Raw submitters
@@ -142,7 +142,7 @@ export const submitWidthStep02Raw = async ({
   signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishCarriageUnjournaled({
+    (await publishFieldCarriage({
       lucid,
       signer,
       planned,
@@ -153,7 +153,7 @@ export const submitWidthStep02Raw = async ({
     suppliedCertificateUtxo ??
     (planned.plan.tier === "Certified"
       ? (
-          await certifyCarriageUnjournaled({
+          await certifyFieldCarriage({
             lucid,
             network: lucid.config().network!,
             signer,
@@ -254,7 +254,7 @@ export const submitWidthStep02Raw = async ({
       FieldItemWidthStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
+  return await buildAndSubmitTransaction(buildLinearFaultContinue, {
     lucid,
     signer,
     threadUtxo,
@@ -302,7 +302,7 @@ export const submitWidthStep03Raw = async ({
     stepIndex,
     threadOutRef,
   });
-  return await buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
+  return await buildAndSubmit(buildLinearFaultFinalize, {
     lucid,
     family: "field-item-width-illegal",
     stepIndex,

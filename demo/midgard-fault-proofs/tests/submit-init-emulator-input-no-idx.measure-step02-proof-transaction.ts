@@ -17,7 +17,7 @@ import { network } from "./support/emulator/blueprints.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { setupFraudulentBlock } from "./support/submit-init/removal.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 /*
  * The byte-exact `CompletePublished` proof-fit pin that stood here is **gone,
@@ -129,7 +129,7 @@ export const startInputNoIdxStep02Thread = async ({
     harness.contracts,
     harness.catalogue,
   );
-  const initResult = await buildAndSubmitUnjournaled(buildInit, {
+  const initResult = await buildAndSubmit(buildInit, {
     lucid: harness.proverLucid,
     witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: harness.realBlueprint,
@@ -145,7 +145,7 @@ export const startInputNoIdxStep02Thread = async ({
     initResult.firstStepAddress,
     initResult.computationThreadUnit,
   );
-  const step01Result = await buildAndSubmitUnjournaled(buildInputNoIdxStep01, {
+  const step01Result = await buildAndSubmit(buildInputNoIdxStep01, {
     lucid: harness.proverLucid,
     referenceScriptUtxo:
       harness.faultProofReferenceScripts.fraudProofNonExistentInputNoIndex!

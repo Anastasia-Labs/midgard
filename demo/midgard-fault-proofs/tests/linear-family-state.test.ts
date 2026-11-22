@@ -2,7 +2,7 @@ import type { EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { CURSOR_FAMILY_SPECS } from "../src/workflow/cursor-family-spec.js";
-import type { FraudProofWorkflowTerminal } from "../src/workflow/journal.js";
+import type { FraudProofWorkflowTerminal } from "../src/workflow/identity.js";
 import {
   LINEAR_FAMILY_CATEGORIES,
   LINEAR_FAMILY_SPECS,

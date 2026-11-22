@@ -250,7 +250,7 @@ export const openJourneySession = async (runDirectory: string) => {
         fundingProfileBundlePath: authority.fundingProfileBundlePath,
         l1NodeTransportBinaryPath: nativeQuery.binaryPath,
         operationsEndpoint,
-        workflowJournalDirectory: join(runtimeDirectory, "workflows"),
+        decisionJournalDirectory: join(runtimeDirectory, "workflows"),
         availability: {
           keySource: availabilityKey,
           journalPath: join(runtimeDirectory, "availability.sqlite"),
@@ -447,7 +447,7 @@ export const openJourneySession = async (runDirectory: string) => {
       retain,
       retainPayload: retainedDa.retain,
       proverAddress,
-      workflowJournalDirectory: join(runtimeDirectory, "workflows"),
+      decisionJournalDirectory: join(runtimeDirectory, "workflows"),
       ensureWatcher,
       watcherStarted: () => started !== undefined,
       assertHealthy,

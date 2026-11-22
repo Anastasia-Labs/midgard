@@ -59,7 +59,7 @@ export type SignedValidationTraceStaging = Readonly<{
 
 /** What our own view shows of our staging: our staging outputs and the
  * resolve moves of ours that read them. */
-export type ValidationTraceStagingJournal = Readonly<{
+export type ValidationTraceStagings = Readonly<{
   stagings: readonly ValidationTraceStagingOutput[];
   readers: readonly ValidationTraceResolveReader[];
   /** The live staging outputs of ours holding the run `datumCbor` that

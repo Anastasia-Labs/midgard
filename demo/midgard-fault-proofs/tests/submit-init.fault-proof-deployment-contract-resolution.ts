@@ -38,7 +38,7 @@ import {
   referenceScriptAuthNativeScript,
 } from "./submit-init.submit-init-signer-resolution.js";
 import { laterStepEntries } from "./support/emulator/header-fixtures.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 const caseConfigInitializationNonce = {
   txHash: "ab".repeat(32),
@@ -450,7 +450,7 @@ describe("fault-proof deployment contract resolution", () => {
     };
 
     await expect(
-      buildAndSubmitUnjournaled(buildInit, {
+      buildAndSubmit(buildInit, {
         lucid: fakeLucid as never,
         blueprint,
         deploymentInfo: deploymentManifest({
@@ -503,7 +503,7 @@ describe("fault-proof deployment contract resolution", () => {
     };
 
     await expect(
-      buildAndSubmitUnjournaled(buildInit, {
+      buildAndSubmit(buildInit, {
         lucid: fakeLucid as never,
         blueprint,
         deploymentInfo: deploymentManifest({

@@ -8,13 +8,13 @@ import { Data } from "@lucid-evolution/lucid";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { commitCountedRoot } from "../transition-trace/phas.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import { detectMinAdaForcedReplay, prepareMinAdaForcedPlan } from "./forced.js";
 
 export const MIN_ADA_FORCED_ARTIFACT = "midgard-min-ada-forced-artifact-v1";
-export type MinAdaForcedArtifact = JournalJsonObject &
+export type MinAdaForcedArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof MIN_ADA_FORCED_ARTIFACT;
     headerHash: string;
@@ -183,7 +183,7 @@ export const prepareMinAdaForcedArtifact = async ({
   );
   if (forced === undefined)
     throw new Error("minAda: retained forced source absent");
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: MIN_ADA_FORCED_ARTIFACT,
     detectionId: prepared.detectionId,
     forcedIndex: prepared.forcedIndex,

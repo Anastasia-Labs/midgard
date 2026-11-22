@@ -12,7 +12,7 @@ import type {
 } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofWorkflowTerminal } from "../workflow/journal.js";
+import type { FraudProofWorkflowTerminal } from "../workflow/identity.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,

@@ -25,10 +25,7 @@ import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 describe("redeemer-canonicity forced lifecycle", () => {
   it("authenticates a canonical redeemer against the exact malformed reason", async () => {
@@ -92,7 +89,7 @@ describe("redeemer-canonicity forced lifecycle", () => {
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
     });
     const step01 = await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildRedeemerCanonicityStep01Forced, {
+      buildAndSubmit(buildRedeemerCanonicityStep01Forced, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -116,7 +113,7 @@ describe("redeemer-canonicity forced lifecycle", () => {
     );
     emitFit("forced-step01", step01.measurement);
     const step02 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitTurnsUnjournaled(buildRedeemerCanonicityStep02, {
+      submitTurns(buildRedeemerCanonicityStep02, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -142,7 +139,7 @@ describe("redeemer-canonicity forced lifecycle", () => {
       onStep: (measurement) => emitFit("forced-step02-data", measurement),
     });
     const step03 = await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildRedeemerCanonicityStep03, {
+      buildAndSubmit(buildRedeemerCanonicityStep03, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

@@ -17,7 +17,7 @@ import "../src/workflow/family-application-registry.family-application-registry.
 import "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import "../src/workflow/header-classifier.classify-header.js";
 import "../src/workflow/header-classifier.create-header-classifier.js";
-import "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import "../src/workflow/identity.js";
 import "../src/workflow/release-finality-policy.js";
 import "../src/workflow/runtime.js";
 import "../src/workflow/transaction-boundary.js";

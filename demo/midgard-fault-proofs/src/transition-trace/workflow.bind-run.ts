@@ -13,7 +13,7 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { createChunkedRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
@@ -55,7 +55,7 @@ const bindRun = (context: TransitionContext) => {
   const witnesses: FaultProofWitnessReferenceScripts =
     context.references.witnesses;
   const prerequisite = context.fieldCarriagePrerequisites[0]!;
-  const admit = (artifact: JournalJsonObject): Prepared => {
+  const admit = (artifact: WorkflowJsonObject): Prepared => {
     if (typeof artifact.detectionId !== "string")
       throw new Error("Transition artifact has no detection identity");
     const fresh = cell.prepared?.get(artifact.detectionId);
@@ -71,8 +71,8 @@ const bindRun = (context: TransitionContext) => {
     artifact,
   }: {
     action: FraudProofWorkflowAction;
-    artifact: JournalJsonObject;
-  }): Promise<JournalJsonObject> => {
+    artifact: WorkflowJsonObject;
+  }): Promise<WorkflowJsonObject> => {
     if (action.input.stage === "step_08") {
       const prepared = admit(artifact);
       if (transitionTraceFinalIndex(prepared.proof) !== 6)
@@ -114,7 +114,7 @@ const bindRun = (context: TransitionContext) => {
     artifact,
   }: {
     action: FraudProofWorkflowAction;
-    artifact: JournalJsonObject;
+    artifact: WorkflowJsonObject;
   }) => {
     const prepared = admit(artifact);
     const input = cursorFamilyActionInput({

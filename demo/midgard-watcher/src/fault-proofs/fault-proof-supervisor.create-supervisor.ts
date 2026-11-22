@@ -8,7 +8,7 @@ import { requireRunnableHeaderFault } from "@al-ft/midgard-fault-proofs/workflow
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-} from "@al-ft/midgard-fault-proofs/workflow/journal";
+} from "@al-ft/midgard-fault-proofs/workflow/identity";
 import { isSqliteBusyError } from "@al-ft/midgard-fault-proofs/workflow/sqlite-busy";
 
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";

@@ -32,7 +32,7 @@ import {
   encodeValidationTraceDisputeArtifact,
   parseValidationTraceDisputeArtifact,
 } from "../../src/validation-trace-dispute/artifact.js";
-import { VALIDATION_TRACE_STAGING_RECLAIM } from "../../src/validation-trace-dispute/one-step-staging-journal.js";
+import { VALIDATION_TRACE_STAGING_RECLAIM } from "../../src/validation-trace-dispute/one-step-staging-types.js";
 import {
   captureValidationTraceInit,
   validationTraceThreadUnit,

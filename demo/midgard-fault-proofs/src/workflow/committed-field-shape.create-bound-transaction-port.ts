@@ -45,7 +45,7 @@ import {
   type FieldCarriagePrerequisitePort,
   type PreimageCarriageRequirement,
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson } from "./identity.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
 import { workflowStepTransaction } from "./step-transaction.js";
@@ -103,7 +103,7 @@ const prepareArtifactFromEvidence = async ({
     Buffer.from(transaction.nodeTxId, "hex"),
     "committed-field-shape transaction",
   );
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: COMMITTED_FIELD_SHAPE_ARTIFACT,
     headerHash: admitted.headerHash,
     committedTransactionsRoot: admitted.expectedTransactionsRoot,

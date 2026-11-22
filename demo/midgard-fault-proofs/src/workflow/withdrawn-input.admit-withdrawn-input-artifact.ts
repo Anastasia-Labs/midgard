@@ -21,13 +21,13 @@ import {
   planFaultProofFieldOpening,
 } from "../field-opening.plan-fault-proof-field-opening.js";
 import type { CanonicalBlockClassification } from "./classification.js";
-import { type JournalJsonObject } from "./journal.js";
+import { type WorkflowJsonObject } from "./identity.js";
 import {
   admitNativeInclusionArtifact,
   admitTxInputList,
   canonicalHex,
   EVEN_HEX,
-  exactJournalRecord,
+  exactArtifactRecord,
   HEX_28,
   HEX_32,
   type NativeInclusionArtifact,
@@ -40,7 +40,7 @@ export const WITHDRAWN_INPUT_ARTIFACT =
 
 type InputJson = Readonly<{ tx_id: string; output_index: string }>;
 
-export type WithdrawnInputArtifact = JournalJsonObject &
+export type WithdrawnInputArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof WITHDRAWN_INPUT_ARTIFACT;
     headerHash: string;
@@ -132,7 +132,7 @@ export const admitWithdrawnInputArtifact = async (
   if (!HEX_28.test(carriageOwner)) {
     throw new Error("withdrawn-input carriage owner is malformed");
   }
-  const parsed = exactJournalRecord(
+  const parsed = exactArtifactRecord(
     value,
     [
       "schemaVersion",

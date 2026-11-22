@@ -12,9 +12,9 @@ import {
   MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../src/workflow/identity.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -87,7 +87,7 @@ const fixtureFor = async () => {
       throw new Error("wrong raw family");
     // This adapter only probes routing and the prepared artifact. The installed
     // family adapter owns the reversible typed encoding of proof material.
-    return normalizeJournalJson(
+    return normalizeWorkflowJson(
       JSON.parse(
         JSON.stringify(
           {
@@ -99,7 +99,7 @@ const fixtureFor = async () => {
             typeof value === "bigint" ? value.toString() : value,
         ),
       ),
-    ) as JournalJsonObject;
+    ) as WorkflowJsonObject;
   };
   const forbidden = vi.fn(async (): Promise<never> => {
     throw new Error("raw route entered canonical preparation or submission");

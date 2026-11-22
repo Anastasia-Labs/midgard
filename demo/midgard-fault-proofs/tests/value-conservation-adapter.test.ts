@@ -5,7 +5,7 @@ import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+} from "../src/workflow/identity.js";
 import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 const hash = (byte: string) => byte.repeat(32);
 const outRef = (byte: string, index = 0) => `${hash(byte)}#${index}`;

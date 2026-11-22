@@ -355,9 +355,7 @@ export type WitnessScriptDecodingAction =
   | "removeDescendants"
   | "done";
 
-export type WitnessScriptDecodingJournalEntry = Readonly<{
-  sequence: number;
-  identity: string;
+export type WitnessScriptDecodingObservation = Readonly<{
   stage: WitnessScriptDecodingStage;
   transactionId: string;
   outputReference: string | null;

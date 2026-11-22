@@ -1,7 +1,7 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import { WorkflowActionChangedError } from "./action-changed.js";
-import type { JournalJsonObject } from "./journal.js";
+import type { WorkflowJsonObject } from "./identity.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import type { ProofMaterialsHolder } from "./proof-materials-view.js";
 import type { SCRIPT_DECODE_PREREQUISITE } from "./script-decode-prerequisite.actions.js";
@@ -55,7 +55,7 @@ export class ScriptDecodeRecordHeldError extends WorkflowActionChangedError {
 export type ScriptDecodeItemForAction = (
   input: Readonly<{
     action: FraudProofWorkflowAction;
-    artifact: JournalJsonObject;
+    artifact: WorkflowJsonObject;
   }>,
 ) => Uint8Array | null | Promise<Uint8Array | null>;
 
@@ -77,13 +77,13 @@ export interface ScriptDecodePrerequisitePort<
     /** The workflow that finds the staged chunks, and its objective. */
     readonly holder: ProofMaterialsHolder;
     readonly baseAction: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<ScriptDecodeInspection>;
   capture(input: {
     readonly headerHash: string;
     readonly holder: ProofMaterialsHolder;
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<{
     readonly transaction: LocallyEvaluatedTransaction;
   }>;

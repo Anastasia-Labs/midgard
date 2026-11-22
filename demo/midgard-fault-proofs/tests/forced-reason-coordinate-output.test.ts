@@ -32,10 +32,7 @@ import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { deployHarnessFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 import { buildForcedOutputFixture } from "./support/transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
 import {
   MALFORMED_OUTPUT,
@@ -171,7 +168,7 @@ const setupForcedThread = async ({
   };
   const init = await registered.init(setup.fraudulentBlockOutRef);
   const bound = await captureEmulatorSubmission(harness.emulator, () =>
-    buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep01Forced, {
+    buildAndSubmit(buildTransactionOutputNonCanonicalStep01Forced, {
       ...step,
       threadOutRef: `${init.result.txHash}#${init.result.firstStepOutputIndex.toString()}`,
       finding: evidence,
@@ -184,7 +181,7 @@ const setupForcedThread = async ({
   );
   const authenticate = async () =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      submitTurnsUnjournaled(buildTransactionOutputNonCanonicalStep02, {
+      submitTurns(buildTransactionOutputNonCanonicalStep02, {
         ...step,
         ...source,
         threadOutRef: bound.result.nextThreadOutRef,
@@ -198,7 +195,7 @@ const setupForcedThread = async ({
     );
   const mint = async (threadOutRef: string) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep04, {
+      buildAndSubmit(buildTransactionOutputNonCanonicalStep04, {
         ...step,
         threadOutRef,
         evidence,
@@ -247,7 +244,7 @@ const setupScenario = async (offset: bigint) => {
   const scanToTerminal = async (): Promise<string> => {
     let threadOutRef = authenticated.nextThreadOutRef;
     for (;;) {
-      const scanned = await buildAndSubmitUnjournaled(
+      const scanned = await buildAndSubmit(
         buildTransactionOutputNonCanonicalStep03,
         {
           ...s.step,
@@ -293,7 +290,7 @@ describe("forced OutputNonCanonical coordinate the node writes", () => {
     expect(s.evidence.decisiveFaultHolds).toBe(true);
     const terminal = await s.scanToTerminal();
     await expect(
-      buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep04, {
+      buildAndSubmit(buildTransactionOutputNonCanonicalStep04, {
         ...s.step,
         threadOutRef: terminal,
         evidence: s.evidence,

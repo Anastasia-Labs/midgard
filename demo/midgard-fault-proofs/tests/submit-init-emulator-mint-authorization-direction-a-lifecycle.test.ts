@@ -46,7 +46,7 @@ import {
   setupMintAuthorizationScenario,
   smallMintItemCbors,
 } from "./support/mint-authorization-emulator.js";
-import { submitResolvedInit } from "./support/submit-unjournaled.init.js";
+import { submitResolvedInit } from "./support/submit-steps.init.js";
 import {
   submitMintAuthorizationStep01,
   submitMintAuthorizationStep02,
@@ -54,7 +54,7 @@ import {
   submitMintAuthorizationStep04AdvanceComplete,
   submitMintAuthorizationStep04ResolveNext,
   submitMintAuthorizationStep05,
-} from "./support/submit-unjournaled.mint-authorization.js";
+} from "./support/submit-steps.mint-authorization.js";
 
 const ACCUSED_POLICY_INDEX = 0n;
 const DIRECTION_SCRIPT_ABSENT =

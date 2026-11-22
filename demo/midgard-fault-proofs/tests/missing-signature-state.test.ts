@@ -1,7 +1,7 @@
 import type { EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
-import type { FraudProofWorkflowTerminal } from "../src/workflow/journal.js";
+import type { FraudProofWorkflowTerminal } from "../src/workflow/identity.js";
 import { missingSignatureObservation } from "../src/workflow/missing-signature-state.js";
 
 const hash = (byte: string): string => byte.repeat(32);

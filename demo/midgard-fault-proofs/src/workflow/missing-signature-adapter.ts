@@ -6,10 +6,10 @@ import {
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
 import {
-  journalJsonDigest,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  workflowJsonDigest,
+  type WorkflowJsonObject,
+} from "./identity.js";
 import { missingSignatureObservation } from "./missing-signature-state.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
@@ -50,7 +50,7 @@ export interface MissingSignatureTransactionPort {
       CanonicalBlockClassification,
       { readonly decision: "fault_detected" }
     > & { readonly category: "missingSignature" };
-  }): Promise<JournalJsonObject>;
+  }): Promise<WorkflowJsonObject>;
   /**
    * Builds exactly one authenticated cursor action and returns its signed,
    * unsubmitted transaction. A step-04 scan batch and step-04 finalization use the same port;
@@ -58,7 +58,7 @@ export interface MissingSignatureTransactionPort {
    */
   capture(input: {
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
     /** The workflow and objective that find proof materials for the step. */
     readonly holder: ProofMaterialsHolder;
   }): Promise<MissingSignatureCapturedAction>;
@@ -72,8 +72,8 @@ const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 // The orchestrator hands back the journal-normalized (key-sorted) action, so
 // equality must be structural, not byte order.
 const sameJson = (left: unknown, right: unknown): boolean =>
-  journalJsonDigest(normalizeJournalJson(left)) ===
-  journalJsonDigest(normalizeJournalJson(right));
+  workflowJsonDigest(normalizeWorkflowJson(left)) ===
+  workflowJsonDigest(normalizeWorkflowJson(right));
 
 const admitReferenceScripts = (
   transaction: LocallyEvaluatedTransaction,

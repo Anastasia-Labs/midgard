@@ -20,10 +20,7 @@ import {
 import { EXECUTION_RESERVE_FRACTION } from "./emulator/proof-fit.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
-import {
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-} from "./submit-unjournaled.js";
+import { certifyFieldCarriage, publishFieldCarriage } from "./submit-steps.js";
 
 export type CertifiedCommittedField = Readonly<{
   plan: MidgardFieldCarriagePlan;
@@ -124,7 +121,7 @@ export const publishCertifiedCommittedField = async ({
     plan,
   };
   const publication = await captureEmulatorSubmission(emulator, () =>
-    publishCarriageUnjournaled({
+    publishFieldCarriage({
       lucid,
       signer,
       planned,
@@ -143,7 +140,7 @@ export const publishCertifiedCommittedField = async ({
     })
   ).utxo;
   const minted = await captureEmulatorSubmission(emulator, () =>
-    certifyCarriageUnjournaled({
+    certifyFieldCarriage({
       lucid,
       network,
       signer,

@@ -42,8 +42,8 @@ import {
 import { network } from "./emulator/blueprints.js";
 import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
 import type { MissingRedeemerScenario } from "./missing-redeemer-emulator.subject.js";
-import { submitDirectPurposeTransition } from "./submit-unjournaled.direct-purpose.js";
-import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
+import { submitDirectPurposeTransition } from "./submit-steps.direct-purpose.js";
+import { buildAndSubmit } from "./submit-steps.js";
 
 /** Step-01 from the Init `thread`, paying `bindEvent` the `forged` datum. */
 const forgedStep01 = async (
@@ -57,7 +57,7 @@ const forgedStep01 = async (
   const contracts: DirectPurposeContracts = harness.direct;
   const signer = harness.proverSigner;
   if (scenario.block.txInclusion !== null)
-    return await buildAndSubmitUnjournaled(buildNativeTxBinding, {
+    return await buildAndSubmit(buildNativeTxBinding, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,

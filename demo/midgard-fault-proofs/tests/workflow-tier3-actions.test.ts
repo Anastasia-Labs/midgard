@@ -17,7 +17,7 @@ import { deriveL2TransactionSourceCbor } from "../src/prepare-double-spend.encod
 import { buildInit } from "../src/submit-init.js";
 import { createDoubleSpendConstrainedWorkflowAdapter } from "../src/workflow/double-spend-adapter.create-double-spend-constrained-workflow-adapter.js";
 import type { DoubleSpendConstrainedWorkflowAdapterConfig } from "../src/workflow/double-spend-adapter.preflight-of.js";
-import type { JournalJsonObject } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import type { WorkflowJsonObject } from "../src/workflow/identity.js";
 import {
   type LocallyEvaluatedTransaction,
   workflowPreflightTransaction,
@@ -134,7 +134,7 @@ describe("Q38 tier-3 workflow action chains", () => {
       headerHash: HEADER_HASH,
       tx1: txArtifact,
       tx2: txArtifact,
-    } as unknown as JournalJsonObject;
+    } as unknown as WorkflowJsonObject;
 
     const publication = await observe({
       adapter,
@@ -359,7 +359,7 @@ describe("Q38 tier-3 workflow action chains", () => {
       outputIndex: "0",
       transactionsPhasRoot: h32(0x31),
       txMembershipProofCbor: "d87980",
-    } as JournalJsonObject;
+    } as WorkflowJsonObject;
 
     const publication = await observe({
       adapter,
@@ -477,7 +477,7 @@ describe("Q38 tier-3 workflow action chains", () => {
     } as unknown as DoubleSpendConstrainedWorkflowAdapterConfig);
     const artifact = {
       headerHash: HEADER_HASH,
-    } as unknown as JournalJsonObject;
+    } as unknown as WorkflowJsonObject;
     const observation = await observe({
       adapter,
       category: "doubleSpend",

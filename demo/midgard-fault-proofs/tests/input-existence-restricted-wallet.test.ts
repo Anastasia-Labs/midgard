@@ -22,7 +22,7 @@ import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { restrictedProverWallet } from "./support/restricted-prover-wallet.js";
 import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 describe("non-existent-input steps under the watcher's restricted wallet", () => {
   it("funds every step and posts its collateral from the coins the restricted wallet offers and convicts", async () => {
@@ -94,14 +94,11 @@ describe("non-existent-input steps under the watcher's restricted wallet", () =>
           emulator: h.emulator,
           signer: args.signer,
         });
-        const result = await buildAndSubmitUnjournaled(
-          buildInputExistenceStep,
-          {
-            ...args,
-            signer: funding.signer,
-            beforeSubmit: funding.beforeSubmit,
-          },
-        );
+        const result = await buildAndSubmit(buildInputExistenceStep, {
+          ...args,
+          signer: funding.signer,
+          beforeSubmit: funding.beforeSubmit,
+        });
         checked += funding.checked();
         return result;
       },

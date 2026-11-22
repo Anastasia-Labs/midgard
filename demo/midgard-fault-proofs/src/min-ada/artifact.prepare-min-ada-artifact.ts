@@ -2,7 +2,7 @@ import { MIN_ADA_VIOLATION_ID } from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import {
   canonicalHex,
   EVEN_HEX,
@@ -18,7 +18,7 @@ import {
 export const MIN_ADA_ARTIFACT =
   "midgard-production-min-ada-artifact-v1" as const;
 
-type CommonArtifact = JournalJsonObject &
+type CommonArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof MIN_ADA_ARTIFACT;
     headerHash: string;

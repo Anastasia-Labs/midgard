@@ -28,7 +28,7 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { createStructuredDataPreimageRequirement } from "../workflow/raw-datum-preimage.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
@@ -134,7 +134,7 @@ export const mintAuthorizationRefineAction =
     readonly observed: Readonly<{
       stage: Readonly<{ kind: string; step?: number; threadOutRef?: string }>;
     }>;
-  }): Promise<JournalJsonObject> =>
+  }): Promise<WorkflowJsonObject> =>
     observed.stage.kind === "step" &&
     observed.stage.step === 4 &&
     observed.stage.threadOutRef !== undefined

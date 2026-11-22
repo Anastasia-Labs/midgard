@@ -1,7 +1,7 @@
 /**
  * The mint-declared-asset-limit builders the tests drive, each bound into a
  * function that builds its step and submits it with no journal (see
- * ./submit-unjournaled.ts).
+ * ./submit-steps.ts).
  */
 import {
   buildMintDeclaredAssetLimitStep01Accepted,
@@ -20,37 +20,34 @@ import {
   buildMintDeclaredAssetLimitStep04,
   buildMintDeclaredAssetLimitStep04Raw,
 } from "../../src/mint-declared-asset-limit/submit-step-04.js";
-import {
-  unjournaled,
-  type UnjournaledSubmitter,
-} from "./submit-unjournaled.js";
+import { type StepSubmitter, stepSubmitter } from "./submit-steps.js";
 
-export { submitCommittedFieldShapeInit } from "./submit-unjournaled.committed-field-shape.js";
+export { submitCommittedFieldShapeInit } from "./submit-steps.committed-field-shape.js";
 
-export const submitMintDeclaredAssetLimitStep01Accepted = unjournaled(
+export const submitMintDeclaredAssetLimitStep01Accepted = stepSubmitter(
   buildMintDeclaredAssetLimitStep01Accepted,
 );
-export const submitMintDeclaredAssetLimitStep01Forced = unjournaled(
+export const submitMintDeclaredAssetLimitStep01Forced = stepSubmitter(
   buildMintDeclaredAssetLimitStep01Forced,
 );
-export const submitMintDeclaredAssetLimitStep01ForcedRaw = unjournaled(
+export const submitMintDeclaredAssetLimitStep01ForcedRaw = stepSubmitter(
   buildMintDeclaredAssetLimitStep01ForcedRaw,
 );
-export const submitMintDeclaredAssetLimitStep02 = unjournaled(
+export const submitMintDeclaredAssetLimitStep02 = stepSubmitter(
   buildMintDeclaredAssetLimitStep02,
 );
-export const submitMintDeclaredAssetLimitStep02Raw: UnjournaledSubmitter<
+export const submitMintDeclaredAssetLimitStep02Raw: StepSubmitter<
   typeof buildMintDeclaredAssetLimitStep02Raw
-> = unjournaled(buildMintDeclaredAssetLimitStep02Raw);
-export const submitMintDeclaredAssetLimitStep03 = unjournaled(
+> = stepSubmitter(buildMintDeclaredAssetLimitStep02Raw);
+export const submitMintDeclaredAssetLimitStep03 = stepSubmitter(
   buildMintDeclaredAssetLimitStep03,
 );
-export const submitMintDeclaredAssetLimitStep03Raw = unjournaled(
+export const submitMintDeclaredAssetLimitStep03Raw = stepSubmitter(
   buildMintDeclaredAssetLimitStep03Raw,
 );
-export const submitMintDeclaredAssetLimitStep04 = unjournaled(
+export const submitMintDeclaredAssetLimitStep04 = stepSubmitter(
   buildMintDeclaredAssetLimitStep04,
 );
-export const submitMintDeclaredAssetLimitStep04Raw = unjournaled(
+export const submitMintDeclaredAssetLimitStep04Raw = stepSubmitter(
   buildMintDeclaredAssetLimitStep04Raw,
 );

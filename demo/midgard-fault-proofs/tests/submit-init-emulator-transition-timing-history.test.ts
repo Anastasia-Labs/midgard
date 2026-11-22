@@ -37,11 +37,11 @@ import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parame
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
-import { submitInit } from "./support/submit-unjournaled.init.js";
+import { submitInit } from "./support/submit-steps.init.js";
 import {
   submitTransitionTraceFinal,
   submitTransitionTraceRoute,
-} from "./support/submit-unjournaled.transition-trace.js";
+} from "./support/submit-steps.transition-trace.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
 
 const records: unknown[] = [];

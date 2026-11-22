@@ -21,7 +21,7 @@ import "./complete-replay.js";
 import "./deployment-manifest-binding.js";
 import "./family-l1-observation.js";
 import "./field-carriage-prerequisite.js";
-import "./journal.js";
+import "./identity.js";
 import "./missing-signature-adapter.js";
 import "./orchestrator.js";
 import "./transaction-boundary.js";

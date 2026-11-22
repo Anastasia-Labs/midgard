@@ -14,10 +14,7 @@ import { expect } from "vitest";
 import type { PreparedInputExistence } from "../../../src/input-existence/prepare.js";
 import { buildInputExistenceStep } from "../../../src/input-existence/submit.js";
 import { buildInit } from "../../../src/submit-init.submit-init.js";
-import {
-  buildAndSubmitUnjournaled,
-  type SubmittedStep,
-} from "../submit-unjournaled.js";
+import { buildAndSubmit, type SubmittedStep } from "../submit-steps.js";
 import { network } from "./blueprints.js";
 import type { makeFaultProofEmulatorHarness } from "./harness.js";
 import {
@@ -48,8 +45,7 @@ export const runInputExistenceRoute = async ({
   field,
   prepared,
   fraudulentBlockOutRef,
-  submitStep = (args) =>
-    buildAndSubmitUnjournaled(buildInputExistenceStep, args),
+  submitStep = (args) => buildAndSubmit(buildInputExistenceStep, args),
   carriage,
   outcome,
 }: {
@@ -108,7 +104,7 @@ export const runInputExistenceRoute = async ({
     })
   ).utxo;
   const init = await captureEmulatorSubmission(h.emulator, () =>
-    buildAndSubmitUnjournaled(buildInit, {
+    buildAndSubmit(buildInit, {
       lucid: h.proverLucid,
       blueprint: h.realBlueprint,
       deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue),

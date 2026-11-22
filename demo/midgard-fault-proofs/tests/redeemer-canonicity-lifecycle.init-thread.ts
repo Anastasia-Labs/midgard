@@ -14,7 +14,7 @@ import {
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 export const emitFit = (
   stage: string,
@@ -95,7 +95,7 @@ export const initThread = async ({
   >;
   readonly fraudulentBlockOutRef: string;
 }) =>
-  await buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
+  await buildAndSubmit(buildCommittedFieldShapeInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -139,7 +139,7 @@ export const readRedeemerData = async ({
   let current = threadOutRef;
   for (let steps = 0; ; ) {
     const captured = await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildRedeemerCanonicityStep02Data, {
+      buildAndSubmit(buildRedeemerCanonicityStep02Data, {
         lucid: harness.proverLucid,
         contracts,
         categoryId,
@@ -184,7 +184,7 @@ export const finalizeWithoutGuards = async ({
     stepIndex,
     threadOutRef,
   });
-  return await buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
+  return await buildAndSubmit(buildLinearFaultFinalize, {
     lucid: harness.proverLucid,
     family: "redeemer-canonicity",
     stepIndex,

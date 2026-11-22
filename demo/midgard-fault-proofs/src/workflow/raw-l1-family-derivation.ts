@@ -4,7 +4,7 @@ import "@al-ft/midgard-sdk/da";
 import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "effect";
-import "./journal.js";
+import "./identity.js";
 import "./release-economics-policy.js";
 import "./raw-l1-family-derivation.state-queue-topology.js";
 import "./raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";

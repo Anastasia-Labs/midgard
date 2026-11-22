@@ -52,7 +52,7 @@ import {
   type NativeScriptDecodingProverDeps,
 } from "./support/native-script-decoding-prover.locate-native-script-decoding-thread.js";
 import { proveNativeScriptDecodingFault } from "./support/native-script-decoding-prover.prove-native-script-decoding-fault.js";
-import { publishProofChunks } from "./support/submit-unjournaled.js";
+import { publishProofChunks } from "./support/submit-steps.js";
 import {
   submitNativeScriptDecodingInit,
   submitNativeScriptDecodingStep01BindNormal,
@@ -62,7 +62,7 @@ import {
   submitNativeScriptDecodingStep03BindDescriptor,
   submitNativeScriptDecodingStep03OpenSubject,
   submitNativeScriptDecodingStep04,
-} from "./support/submit-unjournaled.native-script-decoding.js";
+} from "./support/submit-steps.native-script-decoding.js";
 
 /** The emulator has no L1 depth or maturity to observe; both gates are off. */
 const EMULATOR_PROVER_POLICY = {

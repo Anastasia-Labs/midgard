@@ -47,7 +47,7 @@ import {
 } from "./support/distinct-asset-accumulation-limit-emulator.subject.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
+import { submitDirectPurposeTransition } from "./support/submit-steps.direct-purpose.js";
 
 const STRANGER_FUNDING_LOVELACE = 1_000_000_000n;
 

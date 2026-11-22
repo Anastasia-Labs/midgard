@@ -15,10 +15,7 @@ import {
   setupMissingSignatureScenario,
 } from "./support/missing-signature-emulator.build-missing-signature-subject.js";
 import { submitRawMissingSignatureStep04 } from "./support/missing-signature-emulator.submit-raw-missing-signature-step04.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 describe("missing-signature adversarial emulator polarity", () => {
   it("refuses every honest-path local forgery and rejects the guard-bypassing conviction at step-04 on-chain", async () => {
@@ -36,7 +33,7 @@ describe("missing-signature adversarial emulator polarity", () => {
         lucid: harness.funderLucid,
         contracts: harness.missingSignature,
       });
-    const init = await buildAndSubmitUnjournaled(buildMissingSignatureInit, {
+    const init = await buildAndSubmit(buildMissingSignatureInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -52,7 +49,7 @@ describe("missing-signature adversarial emulator polarity", () => {
       fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
-    const one = await buildAndSubmitUnjournaled(buildMissingSignatureStep01, {
+    const one = await buildAndSubmit(buildMissingSignatureStep01, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -67,7 +64,7 @@ describe("missing-signature adversarial emulator polarity", () => {
     });
 
     await expect(
-      submitTurnsUnjournaled(buildMissingSignatureStep02, {
+      submitTurns(buildMissingSignatureStep02, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,
@@ -80,7 +77,7 @@ describe("missing-signature adversarial emulator polarity", () => {
       }),
     ).rejects.toThrow(/outside the 1-item/u);
     await expect(
-      submitTurnsUnjournaled(buildMissingSignatureStep02, {
+      submitTurns(buildMissingSignatureStep02, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,
@@ -93,7 +90,7 @@ describe("missing-signature adversarial emulator polarity", () => {
       }),
     ).rejects.toThrow(/not the .* commits|not the disputed transaction/u);
 
-    const two = await submitTurnsUnjournaled(buildMissingSignatureStep02, {
+    const two = await submitTurns(buildMissingSignatureStep02, {
       lucid: harness.proverLucid,
       contracts: harness.missingSignature,
       categoryId: harness.category.categoryId,
@@ -105,7 +102,7 @@ describe("missing-signature adversarial emulator polarity", () => {
       referenceScriptUtxo: step02Ref,
     });
     await expect(
-      buildAndSubmitUnjournaled(buildMissingSignatureStep03, {
+      buildAndSubmit(buildMissingSignatureStep03, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,
@@ -115,7 +112,7 @@ describe("missing-signature adversarial emulator polarity", () => {
         referenceScriptUtxo: step03Ref,
       }),
     ).rejects.toThrow(/not the thread's accused/u);
-    const three = await buildAndSubmitUnjournaled(buildMissingSignatureStep03, {
+    const three = await buildAndSubmit(buildMissingSignatureStep03, {
       lucid: harness.proverLucid,
       contracts: harness.missingSignature,
       categoryId: harness.category.categoryId,
@@ -127,7 +124,7 @@ describe("missing-signature adversarial emulator polarity", () => {
 
     // Plane one: the honest builder refuses before paying.
     await expect(
-      submitTurnsUnjournaled(buildMissingSignatureStep04, {
+      submitTurns(buildMissingSignatureStep04, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,

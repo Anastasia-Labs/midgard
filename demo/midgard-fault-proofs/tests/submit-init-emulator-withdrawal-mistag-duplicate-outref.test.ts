@@ -16,7 +16,7 @@ import {
 } from "../src/withdrawal-mistag/submit-withdrawal-mistag-steps.submit-withdrawal-mistag-intermediate-step.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import { setupDuplicateOutRefMistagScenario } from "./support/withdrawal-mistag-duplicate-outref.js";
 import { makeWithdrawalMistagEmulatorHarness } from "./support/withdrawal-mistag-emulator.build-withdrawal-mistag-evidence-material.js";
 import {
@@ -109,37 +109,28 @@ describe("withdrawal-mistag over duplicate-outref withdrawals", () => {
       prepared: scenario.prepared,
     };
     const init = await initWithdrawalMistagThread({ harness, scenario });
-    const step01 = await buildAndSubmitUnjournaled(
-      buildWithdrawalMistagStep01,
-      {
-        ...common,
-        threadOutRef: init.nextThreadOutRef,
-        hubOracleUtxo: scenario.setup.hubOracle,
-        stateQueueBlockUtxo: blockUtxo,
-        referenceScriptUtxo: refs[0],
-      },
-    );
-    const step02 = await buildAndSubmitUnjournaled(
-      buildWithdrawalMistagStep02,
-      {
-        ...common,
-        threadOutRef: step01.nextThreadOutRef,
-        referenceScriptUtxo: refs[1],
-      },
-    );
-    const step03 = await buildAndSubmitUnjournaled(
-      buildWithdrawalMistagStep03,
-      {
-        ...common,
-        threadOutRef: step02.nextThreadOutRef,
-        referenceScriptUtxo: refs[2],
-      },
-    );
+    const step01 = await buildAndSubmit(buildWithdrawalMistagStep01, {
+      ...common,
+      threadOutRef: init.nextThreadOutRef,
+      hubOracleUtxo: scenario.setup.hubOracle,
+      stateQueueBlockUtxo: blockUtxo,
+      referenceScriptUtxo: refs[0],
+    });
+    const step02 = await buildAndSubmit(buildWithdrawalMistagStep02, {
+      ...common,
+      threadOutRef: step01.nextThreadOutRef,
+      referenceScriptUtxo: refs[1],
+    });
+    const step03 = await buildAndSubmit(buildWithdrawalMistagStep03, {
+      ...common,
+      threadOutRef: step02.nextThreadOutRef,
+      referenceScriptUtxo: refs[2],
+    });
     // Step-04 derives the verdict from the authenticated absence and
     // refuses to forward a claim that agrees with it.
     await expectOnchainRefusal(
       () =>
-        buildAndSubmitUnjournaled(buildWithdrawalMistagStep04, {
+        buildAndSubmit(buildWithdrawalMistagStep04, {
           ...common,
           threadOutRef: step03.nextThreadOutRef,
           referenceScriptUtxo: refs[3],

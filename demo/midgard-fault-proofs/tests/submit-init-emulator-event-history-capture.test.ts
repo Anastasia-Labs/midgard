@@ -59,7 +59,7 @@ import {
 } from "./support/emulator/history-pair.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
-import * as fabricated from "./support/submit-unjournaled.fabricated-event.js";
+import * as fabricated from "./support/submit-steps.fabricated-event.js";
 
 afterAll(() => {
   const dir = join(process.cwd(), "../../artifacts/event-history");

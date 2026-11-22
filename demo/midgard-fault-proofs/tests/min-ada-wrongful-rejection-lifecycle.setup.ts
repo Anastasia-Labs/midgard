@@ -40,7 +40,7 @@ import {
   publishFinalFamilyReferenceScripts,
 } from "./support/final-catalogue-emulator.build-min-ada-tx-emulator-fixture.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 
 export let scenarioSequence = 0;
@@ -299,7 +299,7 @@ export const setup = async ({
   };
   const initialize = () =>
     capture("init", () =>
-      buildAndSubmitUnjournaled(buildMinAdaInit, {
+      buildAndSubmit(buildMinAdaInit, {
         lucid: h.proverLucid,
         blueprint: h.realBlueprint,
         deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue),

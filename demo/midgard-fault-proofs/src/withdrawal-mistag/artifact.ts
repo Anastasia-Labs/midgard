@@ -5,9 +5,9 @@ import type { CanonicalBlockClassification } from "../workflow/classification.js
 import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.replay-context-identity.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import {
   detectWithdrawalMistagReplay,
   prepareWithdrawalMistagReplay,
@@ -17,7 +17,7 @@ import {
 export const WITHDRAWAL_MISTAG_ARTIFACT =
   "midgard-withdrawal-mistag-workflow-artifact-v2";
 export const admitWithdrawalMistagWorkflowArtifact = async (
-  value: JournalJsonObject,
+  value: WorkflowJsonObject,
 ) => {
   if (
     Object.keys(value).sort().join(",") !==
@@ -89,7 +89,7 @@ export const prepareWithdrawalMistagWorkflowArtifact = async ({
     classification.headerHash !== evidence.headerHash
   )
     throw new Error("withdrawalMistag classification mismatch");
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: WITHDRAWAL_MISTAG_ARTIFACT,
     headerHash: evidence.headerHash,
     detectionId: finding.detectionId,
@@ -98,7 +98,7 @@ export const prepareWithdrawalMistagWorkflowArtifact = async ({
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
     predecessorLedger:
       predecessor === undefined ? null : ledgerJson(predecessor),
-  }) as JournalJsonObject;
+  }) as WorkflowJsonObject;
   await admitWithdrawalMistagWorkflowArtifact(artifact);
   return artifact;
 };

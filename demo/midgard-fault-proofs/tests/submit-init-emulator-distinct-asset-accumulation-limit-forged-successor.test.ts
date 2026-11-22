@@ -44,8 +44,8 @@ import {
 } from "./support/distinct-asset-accumulation-limit-emulator.subject.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { submitDirectPurposeTransition } from "./support/submit-steps.direct-purpose.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 type Scenario = Parameters<typeof setupDistinctAssetScenario>[0];
 
@@ -61,7 +61,7 @@ const forgedStep01 = async (
   const contracts = harness.direct;
   const signer = harness.proverSigner;
   if (scenario.block.txInclusion !== null)
-    return await buildAndSubmitUnjournaled(buildNativeTxBinding, {
+    return await buildAndSubmit(buildNativeTxBinding, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,

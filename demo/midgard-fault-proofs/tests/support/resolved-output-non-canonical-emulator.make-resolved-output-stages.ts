@@ -62,14 +62,14 @@ import {
   type Captured,
   forcedSourceOf,
 } from "./resolved-output-non-canonical-emulator.resolved-output-evidence.js";
-import { submitCommittedFieldShapeInit } from "./submit-unjournaled.committed-field-shape.js";
+import { submitCommittedFieldShapeInit } from "./submit-steps.committed-field-shape.js";
 import {
   submitLinearFaultContinue,
   submitLinearFaultFinalize,
-} from "./submit-unjournaled.linear-fault.js";
+} from "./submit-steps.linear-fault.js";
 import {
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
+  certifyFieldCarriage,
+  publishFieldCarriage,
   submitResolvedOutputNonCanonicalCancel,
   submitResolvedOutputNonCanonicalStep01Accepted,
   submitResolvedOutputNonCanonicalStep01Forced,
@@ -78,7 +78,7 @@ import {
   submitResolvedOutputNonCanonicalStep04,
   submitResolvedOutputNonCanonicalStep04Datum,
   submitResolvedOutputNonCanonicalStep05,
-} from "./submit-unjournaled.resolved-output-non-canonical.js";
+} from "./submit-steps.resolved-output-non-canonical.js";
 
 export const makeResolvedOutputStages = async (
   context: ResolvedOutputContext,
@@ -308,14 +308,14 @@ export const makeResolvedOutputStages = async (
     });
     expect(planned.plan.tier).toBe("Certified");
     harness.proverSigner.selectWallet(harness.proverLucid);
-    const chunkUtxos = await publishCarriageUnjournaled({
+    const chunkUtxos = await publishFieldCarriage({
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
       publisherAddress: harness.proverSigner.proofMaterialsAddress,
       label: `${FAMILY} raw field opening`,
     });
-    const { certificateUtxo } = await certifyCarriageUnjournaled({
+    const { certificateUtxo } = await certifyFieldCarriage({
       lucid: harness.proverLucid,
       network,
       signer: harness.proverSigner,
@@ -726,7 +726,7 @@ export const makeResolvedOutputStages = async (
     });
     expect(planned.plan.tier).toBe("Certified");
     harness.proverSigner.selectWallet(harness.proverLucid);
-    const chunkUtxos = await publishCarriageUnjournaled({
+    const chunkUtxos = await publishFieldCarriage({
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -734,7 +734,7 @@ export const makeResolvedOutputStages = async (
       label: `${FAMILY} other-field opening`,
     });
     return (
-      await certifyCarriageUnjournaled({
+      await certifyFieldCarriage({
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,

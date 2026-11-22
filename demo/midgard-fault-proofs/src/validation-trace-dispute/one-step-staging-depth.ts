@@ -6,7 +6,7 @@ import {
   FraudProofL1UnavailableError,
   isFraudProofL1WaitError,
 } from "../workflow/l1-source.js";
-import type { ValidationTraceStagingOutput } from "./one-step-staging-journal.js";
+import type { ValidationTraceStagingOutput } from "./one-step-staging-types.js";
 
 /** Whether `staging`'s transaction is safe: at depth `confirmationDepth` or
  * deeper, as the L1 provider counts its confirmations; a transaction the

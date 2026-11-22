@@ -19,8 +19,8 @@ import {
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
 } from "./family-definition.family-adapter-arm.js";
-import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
-import { exactJournalRecord } from "./native-index-artifact.js";
+import { normalizeWorkflowJson } from "./identity.js";
+import { exactArtifactRecord } from "./native-index-artifact.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import type { ProofMaterialsAccess } from "./proof-materials-view.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
@@ -66,7 +66,7 @@ export const prepareWithdrawnInputArtifact = async ({
   ) {
     throw new Error("withdrawn-input selected public evidence changed");
   }
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: WITHDRAWN_INPUT_ARTIFACT,
     headerHash: evidence.headerHash,
     detectionId: classification.selected.detectionId,
@@ -125,7 +125,7 @@ export type BoundConfig = Readonly<{
 }>;
 
 export const actionInput = (action: FraudProofWorkflowAction) => {
-  const input = exactJournalRecord(
+  const input = exactArtifactRecord(
     action.input,
     Object.keys(action.input),
     "withdrawn-input action",

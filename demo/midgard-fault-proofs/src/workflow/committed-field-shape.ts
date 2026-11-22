@@ -14,7 +14,7 @@ import "../remove-fraudulent-block.js";
 import "../step-support.js";
 import "./complete-replay.js";
 import "./family-definition.js";
-import "./journal.js";
+import "./identity.js";
 import "./cursor-family-adapter.js";
 import "./cursor-family-state.js";
 import "./cursor-family-spec.js";

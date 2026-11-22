@@ -46,8 +46,8 @@ import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.pu
 import {
   submitDirectPurposeTransition,
   submitDirectPurposeTransitions,
-} from "./submit-unjournaled.direct-purpose.js";
-import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
+} from "./submit-steps.direct-purpose.js";
+import { buildAndSubmit } from "./submit-steps.js";
 
 /** The direct-walk families' catalogue categories. */
 export type DirectWalkCategory = Extract<
@@ -277,7 +277,7 @@ export const driveDirectWalkThread = async <
     return found.utxo;
   };
   const init = await captureEmulatorSubmission(harness.emulator, () =>
-    buildAndSubmitUnjournaled(buildDirectPurposeInit, {
+    buildAndSubmit(buildDirectPurposeInit, {
       family,
       lucid: proverLucid,
       blueprint: harness.realBlueprint,
@@ -320,11 +320,11 @@ export const driveDirectWalkThread = async <
   };
   const step01 = await captureEmulatorSubmission(harness.emulator, () =>
     scenario.block.txInclusion === null
-      ? buildAndSubmitUnjournaled(buildDirectPurposeStep01Forced, {
+      ? buildAndSubmit(buildDirectPurposeStep01Forced, {
           ...common,
           reconstruction: scenario.block.reconstruction,
         })
-      : buildAndSubmitUnjournaled(buildDirectPurposeStep01Accepted, {
+      : buildAndSubmit(buildDirectPurposeStep01Accepted, {
           ...common,
           blueprint: harness.realBlueprint,
           network,
@@ -388,7 +388,7 @@ export const driveDirectWalkThread = async <
   /** `at` is the terminal's input when the caller advanced the thread. */
   const terminal = (requireConviction = true, at: UTxO = thread) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildDirectPurposeTerminal, {
+      buildAndSubmit(buildDirectPurposeTerminal, {
         family: terminalFamily,
         lucid: proverLucid,
         contracts: direct,

@@ -33,19 +33,19 @@ import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-sc
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitRawMinAdaAbsentOutputStep02 } from "./support/min-ada-raw.submit-absent-output-step02-raw.js";
 import {
-  buildAndSubmitUnjournaled,
-  buildPastPrerequisitesUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  buildAndSubmit,
+  buildPastPrerequisites,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+  submitTurns,
+} from "./support/submit-steps.js";
 
 type Options = NonNullable<Parameters<typeof setup>[0]>;
 
 /** A thread bound through step 01 with field 2's carriage published. */
 const boundThread = async (options: Options) => {
   const f = await setup(options);
-  const bound = await buildAndSubmitUnjournaled(buildMinAdaStep01Forced, {
+  const bound = await buildAndSubmit(buildMinAdaStep01Forced, {
     ...f.common,
     threadOutRef: f.threadOutRef,
     state: f.state,
@@ -64,7 +64,7 @@ const boundThread = async (options: Options) => {
     publish: true,
     label: "min-ada absent outputs",
   });
-  const carriage = await publishCarriageUnjournaled({
+  const carriage = await publishFieldCarriage({
     lucid: f.h.proverLucid,
     signer: f.h.proverSigner,
     planned,
@@ -75,7 +75,7 @@ const boundThread = async (options: Options) => {
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? (
-          await certifyCarriageUnjournaled({
+          await certifyFieldCarriage({
             lucid: f.h.proverLucid,
             network,
             signer: f.h.proverSigner,
@@ -118,7 +118,7 @@ const convict = async ({
   threadOutRef,
 }: Awaited<ReturnType<typeof boundThread>>) => {
   const closed = await captureEmulatorSubmission(f.h.emulator, () =>
-    submitTurnsUnjournaled(buildMinAdaTxStep02, {
+    submitTurns(buildMinAdaTxStep02, {
       ...f.common,
       threadOutRef,
       prepared: f.prepared,
@@ -130,14 +130,14 @@ const convict = async ({
   );
   expect(closed.result.nextStepIndex).toBe(2);
   const authenticated = await captureEmulatorSubmission(f.h.emulator, () =>
-    submitTurnsUnjournaled(buildMinAdaStep03, {
+    submitTurns(buildMinAdaStep03, {
       ...f.common,
       threadOutRef: closed.result.nextThreadOutRef,
       referenceScriptUtxo: f.refs[2]!,
     }),
   );
   const minted = await captureEmulatorSubmission(f.h.emulator, () =>
-    buildAndSubmitUnjournaled(buildMinAdaStep04, {
+    buildAndSubmit(buildMinAdaStep04, {
       ...f.common,
       threadOutRef: authenticated.result.nextThreadOutRef,
       referenceScriptUtxo: f.refs[3]!,
@@ -220,18 +220,15 @@ describe("minAda forced rejection of an absent output", () => {
       namedOutputIndex: 1,
     });
     const { f } = thread;
-    const grammar = await buildPastPrerequisitesUnjournaled(
-      buildMinAdaTxStep02,
-      {
-        ...f.common,
-        threadOutRef: thread.threadOutRef,
-        prepared: f.prepared,
-        publishedCarriageUtxos: thread.carriage,
-        referenceScriptUtxo: f.refs[1]!,
-        yieldReferenceScriptUtxo: f.seeded.minAdaYieldReferenceScripts!.tx.utxo,
-        unsafeSkipLocalViolationCheckForTest: true,
-      },
-    );
+    const grammar = await buildPastPrerequisites(buildMinAdaTxStep02, {
+      ...f.common,
+      threadOutRef: thread.threadOutRef,
+      prepared: f.prepared,
+      publishedCarriageUtxos: thread.carriage,
+      referenceScriptUtxo: f.refs[1]!,
+      yieldReferenceScriptUtxo: f.seeded.minAdaYieldReferenceScripts!.tx.utxo,
+      unsafeSkipLocalViolationCheckForTest: true,
+    });
     // The grammar transaction stays at step 02: it is a continuation.
     expect(isContinuationTurn(grammar)).toBe(true);
     if (!isContinuationTurn(grammar)) return;

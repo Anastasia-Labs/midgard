@@ -22,7 +22,7 @@ import {
   type FabricatedDepositArtifact,
   requireFabricatedDepositArtifact,
 } from "../src/workflow/fabricated-deposit-evidence.js";
-import { normalizeJournalJson } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson } from "../src/workflow/identity.js";
 import {
   AUTHENTIC_DEPOSIT_ID,
   buildDepositsBlockFixture,
@@ -109,13 +109,13 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
     await expect(
       authority.readmit(
         JSON.parse(
-          JSON.stringify(normalizeJournalJson(detections[0]!.artifact)),
+          JSON.stringify(normalizeWorkflowJson(detections[0]!.artifact)),
         ),
       ),
     ).resolves.toEqual(detections[0]!.artifact);
     await expect(
       authority.readmit(
-        normalizeJournalJson({
+        normalizeWorkflowJson({
           ...detections[0]!.artifact,
           depositInclusion: {
             ...detections[0]!.artifact.depositInclusion,
@@ -240,7 +240,7 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
       await expect(
         authority.readmit(
           JSON.parse(
-            JSON.stringify(normalizeJournalJson(detections[0]!.artifact)),
+            JSON.stringify(normalizeWorkflowJson(detections[0]!.artifact)),
           ),
         ),
       ).resolves.toEqual(detections[0]!.artifact);

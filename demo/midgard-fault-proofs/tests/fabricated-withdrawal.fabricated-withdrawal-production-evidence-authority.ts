@@ -14,7 +14,7 @@ import {
   createFabricatedWithdrawalEvidenceAuthority,
   requireFabricatedWithdrawalArtifact,
 } from "../src/workflow/fabricated-withdrawal-evidence.js";
-import { normalizeJournalJson } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson } from "../src/workflow/identity.js";
 import {
   buildWithdrawalsBlockFixture,
   DA_PROVENANCE,
@@ -150,7 +150,7 @@ describe("fabricated-withdrawal production evidence authority", () => {
       await expect(
         authority.readmit(
           JSON.parse(
-            JSON.stringify(normalizeJournalJson(detections[0]!.artifact)),
+            JSON.stringify(normalizeWorkflowJson(detections[0]!.artifact)),
           ),
         ),
       ).resolves.toEqual(detections[0]!.artifact);
@@ -194,7 +194,9 @@ describe("fabricated-withdrawal production evidence authority", () => {
       retainedDataOutRef: null,
     });
     const readmitted = await authority.readmit(
-      JSON.parse(JSON.stringify(normalizeJournalJson(detections[0]!.artifact))),
+      JSON.parse(
+        JSON.stringify(normalizeWorkflowJson(detections[0]!.artifact)),
+      ),
     );
     expect(
       requireFabricatedWithdrawalArtifact(
@@ -205,7 +207,7 @@ describe("fabricated-withdrawal production evidence authority", () => {
     ).toBe(readmitted);
     await expect(
       authority.readmit(
-        normalizeJournalJson({
+        normalizeWorkflowJson({
           ...readmitted,
           withdrawalInclusion: {
             ...readmitted.withdrawalInclusion,

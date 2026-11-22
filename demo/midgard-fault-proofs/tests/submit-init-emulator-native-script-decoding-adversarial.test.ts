@@ -84,13 +84,13 @@ import {
   submitRawDecodingCancel,
   submitRawDecodingStep,
 } from "./support/native-script-decoding-emulator.js";
-import { submitLinearFaultCancel } from "./support/submit-unjournaled.linear-fault.js";
+import { submitLinearFaultCancel } from "./support/submit-steps.linear-fault.js";
 import {
   submitNativeScriptDecodingStep02,
   submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
   submitNativeScriptDecodingStep03BindDescriptor,
   submitNativeScriptDecodingStep03OpenSubject,
-} from "./support/submit-unjournaled.native-script-decoding.js";
+} from "./support/submit-steps.native-script-decoding.js";
 
 describe("native-script-decoding adversarial-prover emulator suite", () => {
   it("refuses a direction-A conviction over a well-formed payload", async () => {

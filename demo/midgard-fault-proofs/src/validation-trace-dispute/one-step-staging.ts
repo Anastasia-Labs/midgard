@@ -50,13 +50,6 @@ import {
   type ValidationTraceStagingStep,
 } from "./one-step-staging-funding.js";
 import { validationTraceStagingHolds } from "./one-step-staging-holds.js";
-import {
-  type SignedValidationTraceStaging,
-  VALIDATION_TRACE_STAGING,
-  VALIDATION_TRACE_STAGING_RECLAIM,
-  type ValidationTraceStagingJournal,
-  type ValidationTraceStagingOutput,
-} from "./one-step-staging-journal.js";
 import { pinWorkflowValidationTraceStagings } from "./one-step-staging-pins.js";
 import {
   stagedOutRef,
@@ -64,6 +57,13 @@ import {
   type ValidationTraceStagingReclaim,
   validationTraceStagingSweep,
 } from "./one-step-staging-sweep.js";
+import {
+  type SignedValidationTraceStaging,
+  VALIDATION_TRACE_STAGING,
+  VALIDATION_TRACE_STAGING_RECLAIM,
+  type ValidationTraceStagingOutput,
+  type ValidationTraceStagings,
+} from "./one-step-staging-types.js";
 import { type OwnKeyActions, withOwnKeyActions } from "./own-key-actions.js";
 import type { ValidationTraceOwnViewOf } from "./own-view.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
@@ -171,7 +171,7 @@ export const validationTraceStaging = ({
    * its content.
    */
   const usable = async (
-    { stagings, readers, byContent }: ValidationTraceStagingJournal,
+    { stagings, readers, byContent }: ValidationTraceStagings,
     datumCbor: string,
   ) => {
     const candidates = stagings
@@ -196,7 +196,7 @@ export const validationTraceStaging = ({
    * among those `reads` holds: one live and deep enough, or, when `onLedger`
    * is false, any. */
   const readBy = async (
-    { stagings }: ValidationTraceStagingJournal,
+    { stagings }: ValidationTraceStagings,
     reads: ReadonlySet<string>,
     datumCbor: string,
     onLedger = true,

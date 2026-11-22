@@ -49,10 +49,10 @@ import {
   witnessSetCompactCborHex,
 } from "./support/observers-forbidden-on-untagged-network-raw.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-} from "./support/submit-unjournaled.js";
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+} from "./support/submit-steps.js";
 
 export let publicationsRecorded = false;
 
@@ -173,7 +173,7 @@ export const makeHarness = async () => {
       label: `observers field ${shape.label}`,
     });
     if (planned.plan.tier !== "Certified") {
-      await publishCarriageUnjournaled({
+      await publishFieldCarriage({
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -183,7 +183,7 @@ export const makeHarness = async () => {
       return { tier: planned.plan.tier, chunks: [], certificate: undefined };
     }
     const carriage = await captureEmulatorSubmission(harness.emulator, () =>
-      publishCarriageUnjournaled({
+      publishFieldCarriage({
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -192,7 +192,7 @@ export const makeHarness = async () => {
       }),
     );
     const certificate = await captureEmulatorSubmission(harness.emulator, () =>
-      certifyCarriageUnjournaled({
+      certifyFieldCarriage({
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,
@@ -227,7 +227,7 @@ export const makeHarness = async () => {
 
   const init = (fraudulentBlockOutRef: string, fraudulentHeaderHash: string) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
+      buildAndSubmit(buildCommittedFieldShapeInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -265,7 +265,7 @@ export const makeHarness = async () => {
     stateQueueBlockOutRef: string,
   ) =>
     captureEmulatorSubmission(harness.emulator, async () =>
-      buildAndSubmitUnjournaled(buildObserversForbiddenStep01Accepted, {
+      buildAndSubmit(buildObserversForbiddenStep01Accepted, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -289,7 +289,7 @@ export const makeHarness = async () => {
     forcedSource: Readonly<Record<string, unknown>>,
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildObserversForbiddenStep01Forced, {
+      buildAndSubmit(buildObserversForbiddenStep01Forced, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -323,7 +323,7 @@ export const makeHarness = async () => {
     shape: ObserverShape,
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildObserversForbiddenStep02, {
+      buildAndSubmit(buildObserversForbiddenStep02, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

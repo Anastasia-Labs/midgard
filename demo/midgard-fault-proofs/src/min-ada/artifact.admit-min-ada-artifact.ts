@@ -8,7 +8,7 @@ import {
   canonicalHex,
   canonicalNaturalString,
   EVEN_HEX,
-  exactJournalRecord,
+  exactArtifactRecord,
 } from "../workflow/native-index-artifact.js";
 import {
   type AdmittedMinAdaArtifact,
@@ -22,7 +22,7 @@ import { minAdaOutputFacts } from "./scan.js";
 export const admitMinAdaArtifact = (value: unknown): AdmittedMinAdaArtifact => {
   const candidate = value as Readonly<Record<string, unknown>>;
   if (candidate.kind === "min-ada-tx") {
-    const parsed = exactJournalRecord(
+    const parsed = exactArtifactRecord(
       value,
       [
         "schemaVersion",

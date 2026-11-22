@@ -28,7 +28,7 @@ import {
   classifyCanonicalBlockViolations,
 } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
-import type { JournalJsonObject } from "../src/workflow/journal.js";
+import type { WorkflowJsonObject } from "../src/workflow/identity.js";
 import {
   FraudProofRawL1DerivationError,
   type FraudProofRawL1FamilyStage,
@@ -89,7 +89,7 @@ describe("network-id forced (§5.2) production workflow", () => {
     // `forcedSourceCbor` carries the header, counted root and forced leaf.
     expect(networkIdForcedArtifactFromPrepared(admitted)).toEqual(artifact);
     expect(
-      admitNetworkIdWorkflowArtifact(artifact as unknown as JournalJsonObject),
+      admitNetworkIdWorkflowArtifact(artifact as unknown as WorkflowJsonObject),
     ).toEqual({ direction: "forced", prepared: admitted });
   });
 

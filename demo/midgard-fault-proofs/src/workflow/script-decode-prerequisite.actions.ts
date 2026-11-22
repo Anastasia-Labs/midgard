@@ -13,7 +13,7 @@ import {
   sha256,
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import { parseBaseAction } from "./field-carriage-prerequisite.requirement-identity.js";
-import type { JournalJsonObject } from "./journal.js";
+import type { WorkflowJsonObject } from "./identity.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 
 export const SCRIPT_DECODE_PREREQUISITE =
@@ -88,7 +88,7 @@ export const scriptDecodeAction = <S extends ScriptDecodeStage>({
       }),
       scriptHashHex,
       ...fields,
-    }) as JournalJsonObject,
+    }) as WorkflowJsonObject,
   });
 
 export const isScriptDecodePrerequisiteAction = (

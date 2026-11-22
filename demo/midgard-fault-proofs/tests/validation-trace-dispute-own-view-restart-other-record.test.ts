@@ -16,7 +16,7 @@
  * outputs, and end resolved by their record again. */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { VALIDATION_TRACE_STAGING_RECLAIM } from "../src/validation-trace-dispute/one-step-staging-journal.js";
+import { VALIDATION_TRACE_STAGING_RECLAIM } from "../src/validation-trace-dispute/one-step-staging-types.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import { liveCase } from "./support/validation-trace-dispute-one-step-case.js";
 import {

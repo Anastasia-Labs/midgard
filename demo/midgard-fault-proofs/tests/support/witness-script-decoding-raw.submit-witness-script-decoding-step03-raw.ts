@@ -31,10 +31,7 @@ import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
 import type { WitnessScriptDecodingContracts } from "../../src/witness-script-decoding/contracts.js";
 import type { WitnessScriptDecodingScanArgs } from "../../src/witness-script-decoding/submit-step-03.js";
-import {
-  buildAndSubmitTransactionUnjournaled,
-  buildAndSubmitUnjournaled,
-} from "./submit-unjournaled.js";
+import { buildAndSubmit, buildAndSubmitTransaction } from "./submit-steps.js";
 import { FAMILY } from "./witness-script-decoding-raw.over-bound-field-carriage-plan.js";
 
 /**
@@ -108,22 +105,19 @@ export const submitWitnessScriptDecodingStep03Raw = async ({
       WitnessScriptDecodingStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await buildAndSubmitTransactionUnjournaled(
-    buildLinearFaultContinue,
-    {
-      lucid,
-      signer,
-      threadUtxo,
-      threadUnit: threadToken.unit,
-      stepReference,
-      stepScript: contracts.steps[stepIndex].spendingScript,
-      stepRole: `${FAMILY} raw step 03`,
-      nextAddress: nextStep.spendingScriptAddress,
-      nextDatum,
-      redeemer,
-      awaitConfirmation: true,
-    },
-  );
+  const txHash = await buildAndSubmitTransaction(buildLinearFaultContinue, {
+    lucid,
+    signer,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    stepReference,
+    stepScript: contracts.steps[stepIndex].spendingScript,
+    stepRole: `${FAMILY} raw step 03`,
+    nextAddress: nextStep.spendingScriptAddress,
+    nextDatum,
+    redeemer,
+    awaitConfirmation: true,
+  });
   if (outputIndex === undefined) throw new Error(`${FAMILY}: raw layout`);
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
 };
@@ -165,7 +159,7 @@ export const submitWitnessScriptDecodingStep04Raw = async ({
     family: FAMILY,
     stepIndex,
   });
-  return await buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
+  return await buildAndSubmit(buildLinearFaultFinalize, {
     lucid,
     family: FAMILY,
     stepIndex,

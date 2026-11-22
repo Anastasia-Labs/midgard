@@ -8,7 +8,7 @@ import "../src/workflow/raw-l1-family-derivation.derive-retained-state-queue-hea
 import "../src/workflow/raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
 import "../src/workflow/family-l1-observation.js";
 import "../src/workflow/raw-l1-family-derivation.state-queue-topology.js";
-import "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import "../src/workflow/identity.js";
 import "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import "../src/workflow/completed-verification.js";
 import "./support/raw-l1-terminal-fixture.fixture.js";

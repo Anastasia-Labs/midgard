@@ -1,6 +1,6 @@
 import type { StateQueueMutationLease } from "../remove-fraudulent-block.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { journalJsonDigest } from "../workflow/journal.fraud-proof-workflow-terminal.js";
+import { workflowJsonDigest } from "../workflow/identity.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -51,7 +51,8 @@ export const createValueConservationAdapter = ({
       const observed = await current(context);
       if (
         observed.kind !== "action_required" ||
-        journalJsonDigest(observed.action) !== journalJsonDigest(context.action)
+        workflowJsonDigest(observed.action) !==
+          workflowJsonDigest(context.action)
       )
         throw new WorkflowActionChangedError(
           "value conservation: requested action differs from authenticated current checkpoint",

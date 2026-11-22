@@ -51,7 +51,7 @@ import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js
 import { submitSetupTx } from "./emulator/setup-tx.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init/forced-transitions.js";
 import { setupFraudulentBlock } from "./submit-init/removal.js";
-import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmit } from "./submit-steps.js";
 
 const network = "Custom" as const;
 
@@ -143,7 +143,7 @@ const initializeThread = async ({
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash: string;
 }) =>
-  await buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
+  await buildAndSubmit(buildCommittedFieldShapeInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -220,7 +220,7 @@ export const stageZeroInputAcceptance = async ({
     },
   ]);
   if (threadUtxo === undefined) throw new Error("zero-input thread absent");
-  const bound = await buildAndSubmitUnjournaled(buildZeroInputStep01Accepted, {
+  const bound = await buildAndSubmit(buildZeroInputStep01Accepted, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -343,7 +343,7 @@ export const stageZeroInputHonestRejection =
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
       fraudulentHeaderHash: setup.headerHash,
     });
-    const bound = await buildAndSubmitUnjournaled(buildZeroInputStep01Forced, {
+    const bound = await buildAndSubmit(buildZeroInputStep01Forced, {
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,

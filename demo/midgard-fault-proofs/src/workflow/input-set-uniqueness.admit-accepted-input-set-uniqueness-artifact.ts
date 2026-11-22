@@ -17,12 +17,12 @@ import {
   type InputSetUniquenessClaim,
   scanInputSetUniqueness,
 } from "../input-set-uniqueness/scan.js";
-import { type JournalJsonObject } from "./journal.js";
+import { type WorkflowJsonObject } from "./identity.js";
 import {
   admitNativeInclusionArtifact,
   canonicalHex,
   EVEN_HEX,
-  exactJournalRecord,
+  exactArtifactRecord,
   HEX_28,
   type NativeInclusionArtifact,
   NATURAL_DECIMAL,
@@ -50,7 +50,7 @@ type ClaimJson =
       referenceIndex: string;
     }>;
 
-export type InputSetUniquenessArtifact = JournalJsonObject &
+export type InputSetUniquenessArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof INPUT_SET_UNIQUENESS_ARTIFACT;
     headerHash: string;
@@ -62,7 +62,7 @@ export type InputSetUniquenessArtifact = JournalJsonObject &
     claim: ClaimJson;
   }>;
 
-export type InputSetUniquenessForcedArtifact = JournalJsonObject &
+export type InputSetUniquenessForcedArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof INPUT_SET_UNIQUENESS_FORCED_ARTIFACT;
     headerHash: string;
@@ -128,7 +128,7 @@ export const claimIdentity = (claim: InputSetUniquenessClaim): string =>
     : `${claim.kind}:${claim.firstIndex.toString()}:${claim.secondIndex.toString()}`;
 
 const parseClaim = (value: unknown): InputSetUniquenessClaim => {
-  const record = exactJournalRecord(
+  const record = exactArtifactRecord(
     value,
     typeof value === "object" && value !== null && "kind" in value
       ? (value as { readonly kind?: unknown }).kind === "spendReferenceOverlap"
@@ -195,7 +195,7 @@ export const admitAcceptedInputSetUniquenessArtifact = (
   if (!HEX_28.test(carriageOwner)) {
     throw new Error("input-set-uniqueness carriage owner is malformed");
   }
-  const parsed = exactJournalRecord(
+  const parsed = exactArtifactRecord(
     value,
     [
       "schemaVersion",

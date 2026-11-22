@@ -8,11 +8,8 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import type { MintingPolicy, UTxO } from "@lucid-evolution/lucid";
 
 import type { FaultProofFieldOpeningPlan } from "../field-opening.js";
-import {
-  journalJsonDigest,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
-import type { JournalJsonObject } from "./journal.js";
+import type { WorkflowJsonObject } from "./identity.js";
+import { normalizeWorkflowJson, workflowJsonDigest } from "./identity.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import type { ProofMaterialsHolder } from "./proof-materials-view.js";
 import {
@@ -117,7 +114,7 @@ export interface FieldCarriagePrerequisitePort<
     readonly headerHash: string;
     readonly holder: ProofMaterialsHolder;
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<
     Readonly<{
       publications: readonly UTxO[];
@@ -129,7 +126,7 @@ export interface FieldCarriagePrerequisitePort<
     readonly headerHash: string;
     readonly holder: ProofMaterialsHolder;
     readonly baseAction: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<
     | { readonly kind: "not_required" | "satisfied" }
     | { readonly kind: "pending"; readonly reason: string }
@@ -139,7 +136,7 @@ export interface FieldCarriagePrerequisitePort<
     readonly headerHash: string;
     readonly holder: ProofMaterialsHolder;
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<{
     /** A chunk publication, which carries no upper validity bound, or the
      * certificate over the published chunks. */
@@ -154,8 +151,8 @@ export const sha256 = (value: string): string =>
 export const sameJson = (left: unknown, right: unknown): boolean =>
   left === undefined || right === undefined
     ? left === right
-    : journalJsonDigest(normalizeJournalJson(left)) ===
-      journalJsonDigest(normalizeJournalJson(right));
+    : workflowJsonDigest(normalizeWorkflowJson(left)) ===
+      workflowJsonDigest(normalizeWorkflowJson(right));
 
 export const record = (
   value: unknown,

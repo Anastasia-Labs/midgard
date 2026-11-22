@@ -6,7 +6,7 @@ import { requireInputSetUniquenessThreadUtxo } from "../../src/input-set-uniquen
 import { buildLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
 import { parseOutRef } from "../../src/runtime.js";
 import type { InputSetUniquenessHarness } from "./input-set-uniqueness-emulator.build-input-set-uniqueness-fixture.js";
-import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmit } from "./submit-steps.js";
 
 /**
  * Input-set-uniqueness forced-scan step-04 Finalize built by hand: it spends
@@ -35,7 +35,7 @@ export const submitRawInputSetUniquenessScanFinalize = async ({
       threadOutRef,
     },
   );
-  return await buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
+  return await buildAndSubmit(buildLinearFaultFinalize, {
     lucid,
     family: "input-set-uniqueness",
     stepIndex,

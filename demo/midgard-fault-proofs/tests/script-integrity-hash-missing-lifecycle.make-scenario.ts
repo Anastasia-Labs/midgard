@@ -32,7 +32,7 @@ import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 /**
  * One committed block on the registered chain with the family's seven
@@ -119,7 +119,7 @@ export const makeScenario = async ({
     );
   const init = async () =>
     (
-      await buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingInit, {
+      await buildAndSubmit(buildScriptIntegrityHashMissingInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -141,29 +141,23 @@ export const makeScenario = async ({
     txInclusion = block.txInclusion!,
   ) =>
     (
-      await buildAndSubmitUnjournaled(
-        buildScriptIntegrityHashMissingStep01Accepted,
-        {
-          ...common(0),
-          blueprint: harness.realBlueprint,
-          network,
-          threadOutRef,
-          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-          txInclusion,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        },
-      )
+      await buildAndSubmit(buildScriptIntegrityHashMissingStep01Accepted, {
+        ...common(0),
+        blueprint: harness.realBlueprint,
+        network,
+        threadOutRef,
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      })
     ).nextThreadOutRef;
   const forced01 = async (threadOutRef: string) =>
     (
-      await buildAndSubmitUnjournaled(
-        buildScriptIntegrityHashMissingStep01Forced,
-        {
-          ...common(0),
-          threadOutRef,
-          direction: 1n,
-        },
-      )
+      await buildAndSubmit(buildScriptIntegrityHashMissingStep01Forced, {
+        ...common(0),
+        threadOutRef,
+        direction: 1n,
+      })
     ).nextThreadOutRef;
   const step02 = async (
     threadOutRef: string,
@@ -181,7 +175,7 @@ export const makeScenario = async ({
     },
   ) =>
     (
-      await buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingStep02, {
+      await buildAndSubmit(buildScriptIntegrityHashMissingStep02, {
         ...common(1),
         threadOutRef,
         nextDatum: datum(2, {
@@ -221,7 +215,7 @@ export const makeScenario = async ({
     },
   ) =>
     (
-      await buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingStep03, {
+      await buildAndSubmit(buildScriptIntegrityHashMissingStep03, {
         ...common(2),
         threadOutRef,
         staged,
@@ -243,13 +237,13 @@ export const makeScenario = async ({
       })
     ).nextThreadOutRef;
   const step04 = (threadOutRef: string) =>
-    buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingStep04, {
+    buildAndSubmit(buildScriptIntegrityHashMissingStep04, {
       ...common(6),
       threadOutRef,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
   const cancel = (threadOutRef: string, index: number) =>
-    buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingCancel, {
+    buildAndSubmit(buildScriptIntegrityHashMissingCancel, {
       ...common(index),
       threadOutRef,
       witnessReferenceScripts: harness.witnessReferenceScripts,

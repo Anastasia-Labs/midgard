@@ -10,7 +10,7 @@ import { publishRemovalReferenceScripts } from "./support/emulator/reference-scr
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import {
   advanceWithdrawnInputToStep03,
   makeWithdrawnInputEmulatorScenario,
@@ -21,7 +21,7 @@ describe("withdrawn-input emulator lifecycle", () => {
     pinStepTranscript();
     const scenario = await makeWithdrawnInputEmulatorScenario("fault");
     const { step02 } = await advanceWithdrawnInputToStep03(scenario);
-    const final = await buildAndSubmitUnjournaled(buildWithdrawnInputStep03, {
+    const final = await buildAndSubmit(buildWithdrawnInputStep03, {
       lucid: scenario.harness.proverLucid,
       contracts: scenario.contracts,
       categoryId: scenario.category.categoryId,

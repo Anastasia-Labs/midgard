@@ -2,9 +2,9 @@ import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
   type FraudProofWorkflowTerminal,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "./identity.js";
 import type {
   FraudProofWorkflowAction,
   FraudProofWorkflowPreflight,
@@ -27,10 +27,10 @@ export const validateAction = (
   }
   return {
     actionId: action.actionId,
-    input: normalizeJournalJson(
+    input: normalizeWorkflowJson(
       action.input,
       `workflow action ${action.actionId}`,
-    ) as JournalJsonObject,
+    ) as WorkflowJsonObject,
   };
 };
 

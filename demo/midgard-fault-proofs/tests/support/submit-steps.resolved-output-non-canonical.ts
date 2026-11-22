@@ -1,7 +1,7 @@
 /**
  * The resolved-output-non-canonical builders the tests drive, each bound into a
  * function that builds its step and submits it with no journal, beside the
- * generic helpers of ./submit-unjournaled.ts, so a test takes both from one
+ * generic helpers of ./submit-steps.ts, so a test takes both from one
  * module.
  */
 import { buildResolvedOutputNonCanonicalCancel } from "../../src/resolved-output-non-canonical/submit-cancel.js";
@@ -12,31 +12,31 @@ import { buildResolvedOutputNonCanonicalStep03 } from "../../src/resolved-output
 import { buildResolvedOutputNonCanonicalStep04 } from "../../src/resolved-output-non-canonical/submit-step-04.js";
 import { buildResolvedOutputNonCanonicalStep04Datum } from "../../src/resolved-output-non-canonical/submit-step-04-datum.js";
 import { buildResolvedOutputNonCanonicalStep05 } from "../../src/resolved-output-non-canonical/submit-step-05.js";
-import { unjournaled, unjournaledTurns } from "./submit-unjournaled.js";
+import { stepSubmitter, turnsSubmitter } from "./submit-steps.js";
 
-export const submitResolvedOutputNonCanonicalCancel = unjournaled(
+export const submitResolvedOutputNonCanonicalCancel = stepSubmitter(
   buildResolvedOutputNonCanonicalCancel,
 );
-export const submitResolvedOutputNonCanonicalStep01Accepted = unjournaled(
+export const submitResolvedOutputNonCanonicalStep01Accepted = stepSubmitter(
   buildResolvedOutputNonCanonicalStep01Accepted,
 );
-export const submitResolvedOutputNonCanonicalStep01Forced = unjournaled(
+export const submitResolvedOutputNonCanonicalStep01Forced = stepSubmitter(
   buildResolvedOutputNonCanonicalStep01Forced,
 );
-export const submitResolvedOutputNonCanonicalStep02 = unjournaledTurns(
+export const submitResolvedOutputNonCanonicalStep02 = turnsSubmitter(
   buildResolvedOutputNonCanonicalStep02,
 );
-export const submitResolvedOutputNonCanonicalStep03 = unjournaled(
+export const submitResolvedOutputNonCanonicalStep03 = stepSubmitter(
   buildResolvedOutputNonCanonicalStep03,
 );
-export const submitResolvedOutputNonCanonicalStep04 = unjournaled(
+export const submitResolvedOutputNonCanonicalStep04 = stepSubmitter(
   buildResolvedOutputNonCanonicalStep04,
 );
-export const submitResolvedOutputNonCanonicalStep04Datum = unjournaled(
+export const submitResolvedOutputNonCanonicalStep04Datum = stepSubmitter(
   buildResolvedOutputNonCanonicalStep04Datum,
 );
-export const submitResolvedOutputNonCanonicalStep05 = unjournaled(
+export const submitResolvedOutputNonCanonicalStep05 = stepSubmitter(
   buildResolvedOutputNonCanonicalStep05,
 );
 
-export * from "./submit-unjournaled.js";
+export * from "./submit-steps.js";

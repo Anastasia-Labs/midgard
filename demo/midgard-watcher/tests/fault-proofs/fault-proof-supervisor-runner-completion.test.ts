@@ -1,7 +1,7 @@
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-} from "@al-ft/midgard-fault-proofs/workflow/journal";
+} from "@al-ft/midgard-fault-proofs/workflow/identity";
 import { describe, expect, it, vi } from "vitest";
 
 import { admitWatcherProofRunnerCompletion } from "../../src/fault-proofs/fault-proof-supervisor.admit-runner-completion.js";

@@ -23,7 +23,7 @@ import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import { exactJournalRecord } from "./native-index-artifact.js";
+import { exactArtifactRecord } from "./native-index-artifact.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import {
   type ProofMaterialsAccess,
@@ -71,7 +71,7 @@ type BoundConfig = Readonly<{
 }>;
 
 export const actionInput = (action: FraudProofWorkflowAction) => {
-  const input = exactJournalRecord(
+  const input = exactArtifactRecord(
     action.input,
     Object.keys(action.input),
     "withdrawn-reference-input action",

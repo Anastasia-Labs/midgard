@@ -38,7 +38,7 @@ import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { makeReferenceNativeTx } from "./support/no-reference-input-native.js";
 import { submitRawNoReferenceInputForcedStep } from "./support/no-reference-input-raw-step.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 /**
  * A forced InputNotFound reason names a reference input by source kind 1 and
@@ -257,7 +257,7 @@ const setupScenario = async (inputIndex: bigint) => {
     prepared,
   };
   const init = async () => {
-    const result = await buildAndSubmitUnjournaled(buildInit, {
+    const result = await buildAndSubmit(buildInit, {
       lucid: harness.proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: harness.realBlueprint,
@@ -271,7 +271,7 @@ const setupScenario = async (inputIndex: bigint) => {
     return `${result.txHash}#${result.firstStepOutputIndex}`;
   };
   const step = (threadOutRef: string, stepIndex: 0 | 1 | 2 | 3) =>
-    buildAndSubmitUnjournaled(submitNoReferenceInputForcedStep, {
+    buildAndSubmit(submitNoReferenceInputForcedStep, {
       blueprint: harness.realBlueprint,
       network: "Custom",
       witnessReferenceScripts: harness.witnessReferenceScripts,

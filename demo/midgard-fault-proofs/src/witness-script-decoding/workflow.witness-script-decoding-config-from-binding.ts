@@ -15,17 +15,7 @@ import { type SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import type { WitnessScriptDecodingContracts } from "./contracts.js";
-import {
-  type WitnessScriptDecodingJournalEntry,
-  WitnessScriptDecodingResultClasses,
-} from "./witness-script-decoding.js";
-
-export type WitnessScriptDecodingJournal = Readonly<{
-  load: (
-    identity: string,
-  ) => Promise<readonly WitnessScriptDecodingJournalEntry[]>;
-  append: (entry: WitnessScriptDecodingJournalEntry) => Promise<void>;
-}>;
+import { WitnessScriptDecodingResultClasses } from "./witness-script-decoding.js";
 
 export const WITNESS_SCRIPT_DECODING_WORKFLOW =
   "midgard-witness-script-decoding-production-workflow-v1" as const;

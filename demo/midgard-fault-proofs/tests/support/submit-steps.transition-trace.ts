@@ -1,7 +1,7 @@
 /**
  * The transition-trace builders the tests drive, each bound into a function
  * that builds its step and submits it with no journal (see
- * ./submit-unjournaled.ts). Like the diagnostic CLI, each one publishes any
+ * ./submit-steps.ts). Like the diagnostic CLI, each one publishes any
  * proof carriage its step lacks before the step.
  */
 import { resolveTransitionTraceByteCarriage } from "../../src/transition-trace/proof-carriage.js";
@@ -9,26 +9,26 @@ import { buildTransitionTraceFinal } from "../../src/transition-trace/submit.sub
 import { buildTransitionTraceProof } from "../../src/transition-trace/submit.submit-transition-trace-proof.js";
 import { buildTransitionTraceRoute } from "../../src/transition-trace/submit.submit-transition-trace-route.js";
 import {
-  buildPastPrerequisitesUnjournaled,
-  settleTurnsUnjournaled,
-  unjournaledTurns,
-} from "./submit-unjournaled.js";
+  buildPastPrerequisites,
+  settleTurns,
+  turnsSubmitter,
+} from "./submit-steps.js";
 
 type FinalArgs = Parameters<typeof buildTransitionTraceFinal>[0];
 type ProofArgs = Parameters<typeof buildTransitionTraceProof>[0];
 type RouteArgs = Parameters<typeof buildTransitionTraceRoute>[0];
 
-export const submitTransitionTraceFinal = unjournaledTurns(
+export const submitTransitionTraceFinal = turnsSubmitter(
   async function buildTransitionTraceFinalPublishing(args: FinalArgs) {
     return await buildTransitionTraceFinal({ publishCarriage: true, ...args });
   },
 );
-export const submitTransitionTraceProof = unjournaledTurns(
+export const submitTransitionTraceProof = turnsSubmitter(
   async function buildTransitionTraceProofPublishing(args: ProofArgs) {
     return await buildTransitionTraceProof({ publishCarriage: true, ...args });
   },
 );
-export const submitTransitionTraceRoute = unjournaledTurns(
+export const submitTransitionTraceRoute = turnsSubmitter(
   async function buildTransitionTraceRoutePublishing(args: RouteArgs) {
     return await buildTransitionTraceRoute({ publishCarriage: true, ...args });
   },
@@ -37,11 +37,11 @@ export const submitTransitionTraceRoute = unjournaledTurns(
 /**
  * Submits every prerequisite the final builder returns, then returns the next
  * transaction it builds, a proof hop or the step, unsubmitted (see
- * {@link buildPastPrerequisitesUnjournaled}). It publishes no proof carriage:
+ * {@link buildPastPrerequisites}). It publishes no proof carriage:
  * the carriage the hop reads must already be live.
  */
 export const buildTransitionTraceFinalHop = async (args: FinalArgs) =>
-  await buildPastPrerequisitesUnjournaled(buildTransitionTraceFinal, args);
+  await buildPastPrerequisites(buildTransitionTraceFinal, args);
 
 /**
  * Publishes every chunk of `chunks` with no live output holding it at
@@ -54,7 +54,7 @@ export const publishTransitionTraceBytes = async (
     "publish"
   >,
 ) =>
-  await settleTurnsUnjournaled(resolveTransitionTraceByteCarriage, {
+  await settleTurns(resolveTransitionTraceByteCarriage, {
     ...args,
     publish: true,
   });

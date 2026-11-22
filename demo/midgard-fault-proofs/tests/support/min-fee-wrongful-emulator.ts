@@ -54,11 +54,11 @@ import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-
 import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init/forced-transitions.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-  submitTurnsUnjournaled,
-} from "./submit-unjournaled.js";
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+  submitTurns,
+} from "./submit-steps.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 export const makeMinFeeWrongfulRejectionScenario = async (
@@ -247,7 +247,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
     scriptPublications.push(publication.publicationMeasurement);
   }
   const init = () =>
-    buildAndSubmitUnjournaled(buildMinFeeInit, {
+    buildAndSubmit(buildMinFeeInit, {
       lucid: h.proverLucid,
       blueprint: h.realBlueprint,
       network,
@@ -264,7 +264,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
       witnessReferenceScripts: h.witnessReferenceScripts,
     });
   const bind = (threadOutRef: string, overrides = {}) =>
-    buildAndSubmitUnjournaled(buildMinFeeStep01Forced, {
+    buildAndSubmit(buildMinFeeStep01Forced, {
       lucid: h.proverLucid,
       contracts,
       categoryId: category.categoryId,
@@ -295,7 +295,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
             }),
         label: "min-fee maximum field",
       });
-      const published = await publishCarriageUnjournaled({
+      const published = await publishFieldCarriage({
         lucid: h.proverLucid,
         signer: h.proverSigner,
         planned,
@@ -309,7 +309,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
           script: h.contracts.fieldPreimageCertificate.mintingScript,
           label: "min-fee field certificate",
         });
-        const certificate = await certifyCarriageUnjournaled({
+        const certificate = await certifyFieldCarriage({
           lucid: h.proverLucid,
           network,
           signer: h.proverSigner,
@@ -331,7 +331,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
     threadOutRef: string,
     unsafeSkipLocalViolationCheckForTest = false,
   ) =>
-    submitTurnsUnjournaled(buildMinFeeStep02, {
+    submitTurns(buildMinFeeStep02, {
       lucid: h.proverLucid,
       contracts,
       categoryId: category.categoryId,
@@ -349,7 +349,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
       unsafeSkipLocalViolationCheckForTest,
     });
   const cancel = (threadOutRef: string, step: number) =>
-    buildAndSubmitUnjournaled(buildLinearFaultCancel, {
+    buildAndSubmit(buildLinearFaultCancel, {
       lucid: h.proverLucid,
       family: MIN_FEE_CATEGORY_LABEL,
       steps: contracts.steps,

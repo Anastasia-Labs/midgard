@@ -29,10 +29,7 @@ import {
   buildRemovalForFixture,
   expectRemovedFraudProofState,
 } from "./support/submit-init/removal.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 describe("Q53 fraud-proof reward idempotency", () => {
   const expectExactNonZeroFullSlashEconomics = (
@@ -160,7 +157,7 @@ describe("Q53 fraud-proof reward idempotency", () => {
       root: fixture.catalogue.root,
     };
     const init = await atStage("min-fee init", async () =>
-      buildAndSubmitUnjournaled(buildMinFeeInit, {
+      buildAndSubmit(buildMinFeeInit, {
         lucid: fixture.proverLucid,
         blueprint: fixture.realBlueprint,
         network,
@@ -173,7 +170,7 @@ describe("Q53 fraud-proof reward idempotency", () => {
       }),
     );
     const step01 = await atStage("min-fee step-01", async () =>
-      buildAndSubmitUnjournaled(buildMinFeeStep01, {
+      buildAndSubmit(buildMinFeeStep01, {
         lucid: fixture.proverLucid,
         blueprint: fixture.realBlueprint,
         contracts: minFee,
@@ -191,7 +188,7 @@ describe("Q53 fraud-proof reward idempotency", () => {
       field.map((item) => Buffer.from(item, "hex")),
     ) as unknown as MinFeeFieldItemCbors;
     const minFeeProof = await atStage("min-fee step-02", async () =>
-      submitTurnsUnjournaled(buildMinFeeStep02, {
+      submitTurns(buildMinFeeStep02, {
         lucid: fixture.proverLucid,
         contracts: minFee,
         categoryId: category.categoryId,

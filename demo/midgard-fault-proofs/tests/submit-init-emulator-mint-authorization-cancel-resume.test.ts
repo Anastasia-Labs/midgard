@@ -18,10 +18,7 @@ import {
   setupMintAuthorizationScenario,
   smallMintItemCbors,
 } from "./support/mint-authorization-emulator.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 describe("mint-authorization cancellation and restart", () => {
   it("cancels through the public submitter after all evidence is resolved and starts a fresh thread", async () => {
@@ -48,7 +45,7 @@ describe("mint-authorization cancellation and restart", () => {
         harness.contracts.fraudProofCatalogue.spendingScriptAddress,
       root: harness.catalogue.root,
     };
-    const init = await buildAndSubmitUnjournaled(buildResolvedInit, {
+    const init = await buildAndSubmit(buildResolvedInit, {
       label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
@@ -60,23 +57,20 @@ describe("mint-authorization cancellation and restart", () => {
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
       witnessReferenceScripts: setup.witnessReferenceScripts,
     });
-    const step01 = await buildAndSubmitUnjournaled(
-      buildMintAuthorizationStep01,
-      {
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        contracts: harness.family,
-        categoryId: harness.category.categoryId,
-        network,
-        signer: harness.proverSigner,
-        threadOutRef: init.nextThreadOutRef,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: block.txInclusion,
-        referenceScriptUtxo: refs[0],
-        witnessReferenceScripts: setup.witnessReferenceScripts,
-      },
-    );
-    const step02 = await submitTurnsUnjournaled(buildMintAuthorizationStep02, {
+    const step01 = await buildAndSubmit(buildMintAuthorizationStep01, {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      contracts: harness.family,
+      categoryId: harness.category.categoryId,
+      network,
+      signer: harness.proverSigner,
+      threadOutRef: init.nextThreadOutRef,
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: block.txInclusion,
+      referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: setup.witnessReferenceScripts,
+    });
+    const step02 = await submitTurns(buildMintAuthorizationStep02, {
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,
@@ -89,7 +83,7 @@ describe("mint-authorization cancellation and restart", () => {
       mintItemCbors: subject.mintItemCbors,
       referenceScriptUtxo: refs[1],
     });
-    const step03 = await submitTurnsUnjournaled(
+    const step03 = await submitTurns(
       buildMintAuthorizationStep03WitnessAbsence,
       {
         lucid: harness.proverLucid,
@@ -104,7 +98,7 @@ describe("mint-authorization cancellation and restart", () => {
       },
     );
     const advance = (threadOutRef: string) =>
-      submitTurnsUnjournaled(buildMintAuthorizationStep04AdvanceComplete, {
+      submitTurns(buildMintAuthorizationStep04AdvanceComplete, {
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -119,7 +113,7 @@ describe("mint-authorization cancellation and restart", () => {
       (await advance(step03.nextThreadOutRef)).nextThreadOutRef,
     );
 
-    const cancelled = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
+    const cancelled = await buildAndSubmit(buildLinearFaultCancel, {
       lucid: harness.proverLucid,
       family: MINT_AUTHORIZATION_CATEGORY_LABEL,
       steps: harness.family.steps,
@@ -141,7 +135,7 @@ describe("mint-authorization cancellation and restart", () => {
       ).resolves.toHaveLength(0);
     }
 
-    const restarted = await buildAndSubmitUnjournaled(buildResolvedInit, {
+    const restarted = await buildAndSubmit(buildResolvedInit, {
       label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,

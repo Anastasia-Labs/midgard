@@ -28,7 +28,7 @@ import {
 } from "./support/missing-signature-forced-scenario.js";
 import { buildMissingSignatureForcedTransaction as transactionFor } from "./support/missing-signature-forced-shapes.js";
 import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 // The ledger's Ed25519 check is libsodium's, which initialises
 // asynchronously; production entry points await it, and so does this file.
@@ -181,7 +181,7 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
       let thread = await s.init();
       for (let i = 0; i < position; i++) thread = await s.advance(thread, i);
       await s.record(`cancel-${position}`, () =>
-        buildAndSubmitUnjournaled(buildMissingSignatureForcedCancel, {
+        buildAndSubmit(buildMissingSignatureForcedCancel, {
           lucid: s.harness.proverLucid,
           contracts: s.harness.missingSignature,
           categoryId: s.harness.category.categoryId,

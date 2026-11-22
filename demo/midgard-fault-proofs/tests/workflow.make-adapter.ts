@@ -11,7 +11,7 @@ import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+} from "../src/workflow/identity.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,

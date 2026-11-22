@@ -5,9 +5,9 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { commitCountedRoot } from "../transition-trace/phas.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import type { InputExistenceKind } from "./kind.js";
 import {
   type InputExistenceForcedSource,
@@ -76,8 +76,8 @@ export const inputExistenceForcedArtifacts = (kind: InputExistenceKind) => {
   const { forcedSourceMaterial } = inputExistenceWrongfulRejection(kind);
   const write = (
     prepared: PreparedInputExistenceWrongfulRejection,
-  ): JournalJsonObject =>
-    normalizeJournalJson({
+  ): WorkflowJsonObject =>
+    normalizeWorkflowJson({
       schemaVersion: forcedArtifact,
       headerHash: prepared.headerHash,
       source: Data.to(
@@ -94,7 +94,7 @@ export const inputExistenceForcedArtifacts = (kind: InputExistenceKind) => {
               value: prepared.ledgerMembership.value,
               proof: Data.to(prepared.ledgerMembership.proof, SDK.Proof),
             },
-    }) as JournalJsonObject;
+    }) as WorkflowJsonObject;
 
   /** Revalidate all committed evidence on every durable admission. */
   const admit = async (

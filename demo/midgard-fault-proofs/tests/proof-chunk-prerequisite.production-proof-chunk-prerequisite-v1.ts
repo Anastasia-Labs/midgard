@@ -9,7 +9,7 @@ import {
   type PublishedProofChunk,
   splitProofIntoChunkDatums,
 } from "../src/publish-proof-chunks.js";
-import { normalizeJournalJson } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson } from "../src/workflow/identity.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
@@ -287,7 +287,7 @@ describe("production proof-chunk prerequisite V1", () => {
       base: underlying,
       prerequisite: publication,
     });
-    const normalized = normalizeJournalJson(
+    const normalized = normalizeWorkflowJson(
       publicationAction,
       "action",
     ) as unknown as FraudProofWorkflowAction;

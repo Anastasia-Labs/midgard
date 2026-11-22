@@ -10,7 +10,7 @@ import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../../src/workflow/famil
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
-} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
+} from "../../src/workflow/identity.js";
 import { createFraudProofWorkflowRegistry } from "../../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runAdmittedFraudProofWorkflow } from "../../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
 import * as cancel from "../../src/workflow/own-thread-reclaim.linear-cancel-port.js";

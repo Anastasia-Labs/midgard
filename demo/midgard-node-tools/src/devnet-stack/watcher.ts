@@ -175,7 +175,7 @@ const watcherConfigs = (
     fundingProfileBundlePath: paths.fundingProfiles,
     l1NodeTransportBinaryPath: artifacts.transportBinary,
     operationsEndpoint: operationsEndpoint(run),
-    workflowJournalDirectory: join(layout.watcherData, "workflows"),
+    decisionJournalDirectory: join(layout.watcherData, "workflows"),
     availability: {
       keySource: secrets.availability,
       journalPath: join(layout.watcherData, "availability.sqlite"),

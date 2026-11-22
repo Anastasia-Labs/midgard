@@ -26,7 +26,7 @@ import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.pub
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
-import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmit } from "./submit-steps.js";
 import {
   buildWithdrawalMistagEvidenceMaterial,
   makeWithdrawalMistagEmulatorHarness,
@@ -179,7 +179,7 @@ export const driveWithdrawalMistagToFraud = async ({
   );
   const blockUtxo = await withdrawalMistagBlockUtxo({ harness, scenario });
   const step01 = await stage("step-01", () =>
-    buildAndSubmitUnjournaled(buildWithdrawalMistagStep01, {
+    buildAndSubmit(buildWithdrawalMistagStep01, {
       lucid: harness.proverLucid,
       contracts: harness.withdrawalMistag,
       signer: harness.proverSigner,
@@ -192,7 +192,7 @@ export const driveWithdrawalMistagToFraud = async ({
     }),
   );
   const step02 = await stage("step-02", () =>
-    buildAndSubmitUnjournaled(buildWithdrawalMistagStep02, {
+    buildAndSubmit(buildWithdrawalMistagStep02, {
       lucid: harness.proverLucid,
       contracts: harness.withdrawalMistag,
       signer: harness.proverSigner,
@@ -203,7 +203,7 @@ export const driveWithdrawalMistagToFraud = async ({
     }),
   );
   const step03 = await stage("step-03", () =>
-    buildAndSubmitUnjournaled(buildWithdrawalMistagStep03, {
+    buildAndSubmit(buildWithdrawalMistagStep03, {
       lucid: harness.proverLucid,
       contracts: harness.withdrawalMistag,
       signer: harness.proverSigner,
@@ -214,7 +214,7 @@ export const driveWithdrawalMistagToFraud = async ({
     }),
   );
   const step04 = await stage("step-04", () =>
-    buildAndSubmitUnjournaled(buildWithdrawalMistagStep04, {
+    buildAndSubmit(buildWithdrawalMistagStep04, {
       lucid: harness.proverLucid,
       contracts: harness.withdrawalMistag,
       signer: harness.proverSigner,
@@ -225,7 +225,7 @@ export const driveWithdrawalMistagToFraud = async ({
     }),
   );
   const fraud = await stage("step-05", () =>
-    buildAndSubmitUnjournaled(buildWithdrawalMistagStep05, {
+    buildAndSubmit(buildWithdrawalMistagStep05, {
       lucid: harness.proverLucid,
       contracts: harness.withdrawalMistag,
       signer: harness.proverSigner,
@@ -255,7 +255,7 @@ export const initWithdrawalMistagThread = async ({
   >;
   readonly scenario: Awaited<ReturnType<typeof setupWithdrawalMistagScenario>>;
 }) =>
-  await buildAndSubmitUnjournaled(buildWithdrawalMistagInit, {
+  await buildAndSubmit(buildWithdrawalMistagInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,

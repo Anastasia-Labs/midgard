@@ -32,7 +32,7 @@ import "../src/workflow/field-carriage-prerequisite.with-field-carriage-prerequi
 import "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import "../src/workflow/header-classifier.classify-header.js";
 import "../src/workflow/header-classifier.create-header-classifier.js";
-import "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import "../src/workflow/identity.js";
 import "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import "../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import "../src/workflow/raw-l1-publication-observation.js";
@@ -62,7 +62,7 @@ import { createHeaderClassifier } from "../src/workflow/header-classifier.create
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowTerminal,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+} from "../src/workflow/identity.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import { FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY } from "../src/workflow/release-finality-policy.js";

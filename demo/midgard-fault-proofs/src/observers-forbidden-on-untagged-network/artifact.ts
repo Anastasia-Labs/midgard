@@ -3,7 +3,7 @@ import type { VerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { ProofThreadForcedSourcePayloadSchema } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import {
   type ObserversForbiddenEvidence,
   observersForbiddenEvidenceCloses,
@@ -14,7 +14,7 @@ import {
 export const OBSERVERS_FORBIDDEN_ARTIFACT =
   "midgard-production-observers-forbidden-on-untagged-network-artifact-v1" as const;
 
-export type ObserversForbiddenArtifact = JournalJsonObject &
+export type ObserversForbiddenArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof OBSERVERS_FORBIDDEN_ARTIFACT;
     headerHash: string;

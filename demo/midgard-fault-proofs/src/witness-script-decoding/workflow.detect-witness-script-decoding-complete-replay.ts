@@ -26,14 +26,13 @@ import {
   type WitnessScriptDecodingAction,
   type WitnessScriptDecodingEvidence,
   witnessScriptDecodingEvidenceCloses,
-  type WitnessScriptDecodingJournalEntry,
+  type WitnessScriptDecodingObservation,
 } from "./witness-script-decoding.js";
 import { type WitnessScriptDecodingAuthenticatedSource } from "./workflow.derive-witness-script-decoding-authenticated-source.js";
 import {
   type LoadManifestBoundWitnessScriptDecodingConfig,
   type ManifestBoundWitnessScriptDecodingConfig,
   type WitnessScriptDecodingAuthenticatedStage,
-  type WitnessScriptDecodingJournal,
   witnessScriptDecodingViolationId,
 } from "./workflow.witness-script-decoding-config-from-binding.js";
 
@@ -166,15 +165,7 @@ export const detectWitnessScriptDecodingCompleteReplay = (
 
 export type WitnessScriptDecodingRuntimeLoader = Readonly<{
   config: LoadManifestBoundWitnessScriptDecodingConfig;
-  journal: WitnessScriptDecodingJournal;
-  observe: (
-    identity: string,
-  ) => Promise<
-    Pick<
-      WitnessScriptDecodingJournalEntry,
-      "stage" | "transactionId" | "outputReference" | "checkpointHash"
-    >
-  >;
+  observe: (identity: string) => Promise<WitnessScriptDecodingObservation>;
   resolveStage: (input: {
     readonly action: Exclude<WitnessScriptDecodingAction, "done"> | "cancel";
     readonly evidence: WitnessScriptDecodingEvidence;

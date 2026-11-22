@@ -5,7 +5,7 @@ import "@lucid-evolution/lucid";
 import "vitest";
 import "../src/publish-proof-chunks.js";
 import "../src/workflow/action-changed.js";
-import "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import "../src/workflow/identity.js";
 import "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import "../src/workflow/proof-chunk-prerequisite.route-action-identity.js";
 import "../src/workflow/proof-chunk-prerequisite.create-authenticated-proof-chunk-prerequisite-port.js";

@@ -14,10 +14,7 @@ import { resolveProverSigner } from "../../src/runtime.js";
 import { network } from "./emulator/blueprints.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
-import {
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-} from "./submit-unjournaled.js";
+import { certifyFieldCarriage, publishFieldCarriage } from "./submit-steps.js";
 
 /** The address production publishes carriage from: the prover signer's. */
 const carriagePublisher = (seedPhrase: string) =>
@@ -100,7 +97,7 @@ const publishAsProverSigner = async ({
   readonly walletAddressType: "Base" | "Enterprise";
 }): Promise<UTxO[]> => {
   const publication = await captureEmulatorSubmission(emulator, () =>
-    publishCarriageUnjournaled({
+    publishFieldCarriage({
       lucid,
       signer,
       planned: plan,
@@ -157,7 +154,7 @@ const publishAsProverSigner = async ({
     })
   ).utxo;
   const certified = await captureEmulatorSubmission(emulator, () =>
-    certifyCarriageUnjournaled({
+    certifyFieldCarriage({
       lucid,
       network,
       signer,

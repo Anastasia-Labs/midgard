@@ -56,7 +56,7 @@ import "../src/submit-fabricated-withdrawal-step-03.js";
 import "../src/submit-fabricated-withdrawal-step-04.js";
 import "../src/transition-trace/phas.js";
 import "../src/workflow/fabricated-withdrawal-evidence.js";
-import "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import "../src/workflow/identity.js";
 import "./helpers/canonical-block-evidence-fixture.js";
 import "./fabricated-withdrawal.build-withdrawals-block-fixture.js";
 import "./fabricated-withdrawal.q40-fabricated-withdrawal-evidence-admission.js";

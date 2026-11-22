@@ -58,7 +58,7 @@ import {
   submitTransactionOutputNonCanonicalStep02,
   submitTransactionOutputNonCanonicalStep03,
   submitTransactionOutputNonCanonicalStep04,
-} from "./support/submit-unjournaled.transaction-output-non-canonical.js";
+} from "./support/submit-steps.transaction-output-non-canonical.js";
 import { buildForcedOutputFixture } from "./support/transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
 import {
   canonicalOutputOfLength,

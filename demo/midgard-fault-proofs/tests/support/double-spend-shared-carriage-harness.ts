@@ -25,8 +25,8 @@ import type { DoubleSpendWorkflowStage } from "../../src/workflow/double-spend-a
 import type { DoubleSpendConstrainedWorkflowAdapterConfig } from "../../src/workflow/double-spend-adapter.preflight-of.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  type JournalJsonObject,
-} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
+  type WorkflowJsonObject,
+} from "../../src/workflow/identity.js";
 import type { FraudProofWorkflowAction } from "../../src/workflow/orchestrator.js";
 import {
   buildFixtureTransaction,
@@ -103,7 +103,7 @@ export const certifiedOpening = (
     headerHash: HEADER_HASH,
     tx1: txArtifact,
     tx2: txArtifact,
-  } as unknown as JournalJsonObject;
+  } as unknown as WorkflowJsonObject;
   const certificate = (txHash: string): UTxO => ({
     txHash,
     outputIndex: 0,
@@ -136,7 +136,7 @@ export const doubleSpendHarness = ({
   walletUtxos,
   certificateUtxos,
 }: {
-  readonly artifact: JournalJsonObject;
+  readonly artifact: WorkflowJsonObject;
   readonly stage: DoubleSpendWorkflowStage;
   readonly walletUtxos: readonly UTxO[];
   readonly certificateUtxos: readonly UTxO[];

@@ -1,7 +1,7 @@
 /**
  * The input-set-uniqueness builders the tests drive, each bound into a function
  * that builds its step and submits it with no journal (see
- * ./submit-unjournaled.ts).
+ * ./submit-steps.ts).
  */
 import { buildInputSetUniquenessForcedStep01 } from "../../src/input-set-uniqueness/submit-input-set-uniqueness-forced-step-01.js";
 import { buildInputSetUniquenessInit } from "../../src/input-set-uniqueness/submit-input-set-uniqueness-init.js";
@@ -12,26 +12,26 @@ import {
   buildInputSetUniquenessStep04Advance,
   buildInputSetUniquenessStep04Finalize,
 } from "../../src/input-set-uniqueness/submit-input-set-uniqueness-step-04.js";
-import { unjournaled, unjournaledTurns } from "./submit-unjournaled.js";
+import { stepSubmitter, turnsSubmitter } from "./submit-steps.js";
 
-export const submitInputSetUniquenessForcedStep01 = unjournaled(
+export const submitInputSetUniquenessForcedStep01 = stepSubmitter(
   buildInputSetUniquenessForcedStep01,
 );
-export const submitInputSetUniquenessInit = unjournaled(
+export const submitInputSetUniquenessInit = stepSubmitter(
   buildInputSetUniquenessInit,
 );
-export const submitInputSetUniquenessStep01 = unjournaled(
+export const submitInputSetUniquenessStep01 = stepSubmitter(
   buildInputSetUniquenessStep01,
 );
-export const submitInputSetUniquenessStep02 = unjournaledTurns(
+export const submitInputSetUniquenessStep02 = turnsSubmitter(
   buildInputSetUniquenessStep02,
 );
-export const submitInputSetUniquenessStep03 = unjournaledTurns(
+export const submitInputSetUniquenessStep03 = turnsSubmitter(
   buildInputSetUniquenessStep03,
 );
-export const submitInputSetUniquenessStep04Advance = unjournaledTurns(
+export const submitInputSetUniquenessStep04Advance = turnsSubmitter(
   buildInputSetUniquenessStep04Advance,
 );
-export const submitInputSetUniquenessStep04Finalize = unjournaled(
+export const submitInputSetUniquenessStep04Finalize = stepSubmitter(
   buildInputSetUniquenessStep04Finalize,
 );

@@ -47,7 +47,7 @@ import { proveMissingSignatureFault } from "./support/missing-signature-prover.p
 import { buildTransactionInclusionFixture } from "./support/submit-init/inclusion.js";
 import { ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS } from "./support/submit-init/membership.js";
 import { countedTransactionsRoot } from "./support/submit-init/transaction-material.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 const OWNER = Buffer.alloc(28, 0x11);
 const TX_ID = Buffer.alloc(32, 0x22);
@@ -181,27 +181,24 @@ describe("missing-signature compiled envelope", () => {
       lucid: harness.funderLucid,
       contracts: harness.missingSignature,
     });
-    const initialized = await buildAndSubmitUnjournaled(
-      buildMissingSignatureInit,
-      {
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: harness.missingSignature,
-        category: harness.category,
-        catalogue: {
-          policyId: harness.contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: harness.catalogue.root,
-        },
-        signer: harness.proverSigner,
-        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
+    const initialized = await buildAndSubmit(buildMissingSignatureInit, {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      network,
+      contracts: harness.missingSignature,
+      category: harness.category,
+      catalogue: {
+        policyId: harness.contracts.fraudProofCatalogue.policyId,
+        spendingScriptAddress:
+          harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+        root: harness.catalogue.root,
       },
-    );
+      signer: harness.proverSigner,
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
     const capture = await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildMissingSignatureStep01, {
+      buildAndSubmit(buildMissingSignatureStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,

@@ -8,7 +8,7 @@ import {
 } from "../../src/transition-trace/proof-material.js";
 import { prepareTransitionFieldCarriage } from "../../src/transition-trace/submit.transition-field-step.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
-import { settleTurnsUnjournaled } from "./submit-unjournaled.js";
+import { settleTurns } from "./submit-steps.js";
 
 /** Publish the field-preimage certificate minting script as a reference. */
 export const publishTransitionFieldCertificateReference = async (
@@ -46,7 +46,7 @@ export const publishTransitionFieldCarriages = async ({
 }): Promise<void> => {
   if (transitionL2Replay(proof) === undefined) return;
   for (const field of [0, 2] as const)
-    await settleTurnsUnjournaled(prepareTransitionFieldCarriage, {
+    await settleTurns(prepareTransitionFieldCarriage, {
       lucid,
       network,
       signer,

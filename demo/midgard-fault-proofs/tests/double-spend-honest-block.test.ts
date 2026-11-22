@@ -11,7 +11,7 @@ import { submitRawDoubleSpendStep04 } from "./support/double-spend-step04-raw.js
 import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
-import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
+import { submitTurns } from "./support/submit-steps.js";
 
 describe("double-spend proof against an honest block", () => {
   it("lets a fresh key reach step 04, then refuses the proof at the final input comparison", async () => {
@@ -31,7 +31,7 @@ describe("double-spend proof against an honest block", () => {
 
     // The builder refuses: tx2 does not spend the input the thread carries.
     await expect(
-      submitTurnsUnjournaled(buildStep04, {
+      submitTurns(buildStep04, {
         lucid: staged.proverLucid,
         blueprint: staged.realBlueprint,
         deploymentInfo: staged.deploymentInfo,

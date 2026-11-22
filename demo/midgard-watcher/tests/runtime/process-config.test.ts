@@ -289,7 +289,7 @@ describe("production process authority separation", () => {
       watcherRuntimeConfigPath: join(directory, "watcher.json"),
       deploymentAuthorityPath: join(directory, "deployment-authority.json"),
       ruleBundlePath: join(directory, "rule-bundle.json"),
-      workflowJournalDirectory: join(directory, "workflows"),
+      decisionJournalDirectory: join(directory, "workflows"),
     });
     await writeFile(
       config.watcherRuntimeConfigPath,

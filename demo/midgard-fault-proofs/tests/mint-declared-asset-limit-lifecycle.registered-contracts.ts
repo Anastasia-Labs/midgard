@@ -40,9 +40,9 @@ import {
 } from "./support/emulator/registered-chain.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import {
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-} from "./support/submit-unjournaled.js";
+  certifyFieldCarriage,
+  publishFieldCarriage,
+} from "./support/submit-steps.js";
 
 export const network = "Custom" as const;
 
@@ -282,7 +282,7 @@ export const publishCarriage = async (
     label,
   });
   const carriage = await captureEmulatorSubmission(harness.emulator, () =>
-    publishCarriageUnjournaled({
+    publishFieldCarriage({
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -293,7 +293,7 @@ export const publishCarriage = async (
   const certificate =
     planned.plan.tier === "Certified"
       ? await captureEmulatorSubmission(harness.emulator, () =>
-          certifyCarriageUnjournaled({
+          certifyFieldCarriage({
             lucid: harness.proverLucid,
             network,
             signer: harness.proverSigner,

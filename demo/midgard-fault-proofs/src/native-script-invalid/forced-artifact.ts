@@ -8,9 +8,9 @@ import { Data } from "@lucid-evolution/lucid";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { commitCountedRoot } from "../transition-trace/phas.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import {
   detectNativeScriptInvalidForcedReplay,
   prepareNativeScriptInvalidForcedPlan,
@@ -18,7 +18,7 @@ import {
 
 export const NATIVE_SCRIPT_INVALID_FORCED_ARTIFACT =
   "midgard-native-script-invalid-forced-artifact-v1";
-export type NativeScriptInvalidForcedArtifact = JournalJsonObject &
+export type NativeScriptInvalidForcedArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof NATIVE_SCRIPT_INVALID_FORCED_ARTIFACT;
     headerHash: string;
@@ -175,7 +175,7 @@ export const prepareNativeScriptInvalidForcedArtifact = async ({
   );
   if (forced === undefined)
     throw new Error("nativeScriptInvalid: retained forced source absent");
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: NATIVE_SCRIPT_INVALID_FORCED_ARTIFACT,
     detectionId: prepared.detectionId,
     forcedIndex: prepared.forcedIndex,

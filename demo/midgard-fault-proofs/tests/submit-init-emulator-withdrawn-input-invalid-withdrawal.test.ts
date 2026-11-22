@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildWithdrawnInputStep03 } from "../src/withdrawn-input/submit-withdrawn-input-step-03.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import {
   advanceWithdrawnInputToStep03,
   makeWithdrawnInputEmulatorScenario,
@@ -13,7 +13,7 @@ describe("withdrawn-input invalid-withdrawal refusal", () => {
       await makeWithdrawnInputEmulatorScenario("invalidWithdrawal");
     const { step02 } = await advanceWithdrawnInputToStep03(scenario);
     await expect(
-      buildAndSubmitUnjournaled(buildWithdrawnInputStep03, {
+      buildAndSubmit(buildWithdrawnInputStep03, {
         lucid: scenario.harness.proverLucid,
         contracts: scenario.contracts,
         categoryId: scenario.category.categoryId,

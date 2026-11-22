@@ -5,7 +5,7 @@ import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation.js";
-import type { FraudProofWorkflowIdentity } from "../src/workflow/journal.js";
+import type { FraudProofWorkflowIdentity } from "../src/workflow/identity.js";
 import {
   createMissingSignatureWorkflowAdapter,
   MISSING_SIGNATURE_TRANSACTION_PORT,

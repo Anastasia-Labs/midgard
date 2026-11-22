@@ -47,10 +47,7 @@ import {
   publishMintAuthorizationReferenceScripts,
   setupMintAuthorizationScenario,
 } from "./support/mint-authorization-emulator.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 const ACCUSED_POLICY_INDEX = 0n;
 
@@ -103,7 +100,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
         lucid: funderLucid,
         contracts: family,
       });
-    const initResult = await buildAndSubmitUnjournaled(buildResolvedInit, {
+    const initResult = await buildAndSubmit(buildResolvedInit, {
       label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: proverLucid,
       blueprint: realBlueprint,
@@ -120,23 +117,20 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
       witnessReferenceScripts: setup.witnessReferenceScripts,
     });
-    const step01 = await buildAndSubmitUnjournaled(
-      buildMintAuthorizationStep01,
-      {
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        contracts: family,
-        categoryId: category.categoryId,
-        network,
-        signer: proverSigner,
-        threadOutRef: initResult.nextThreadOutRef,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: block.txInclusion,
-        referenceScriptUtxo: step01Ref,
-        witnessReferenceScripts: setup.witnessReferenceScripts,
-      },
-    );
-    const step02 = await submitTurnsUnjournaled(buildMintAuthorizationStep02, {
+    const step01 = await buildAndSubmit(buildMintAuthorizationStep01, {
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      contracts: family,
+      categoryId: category.categoryId,
+      network,
+      signer: proverSigner,
+      threadOutRef: initResult.nextThreadOutRef,
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: block.txInclusion,
+      referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
+    });
+    const step02 = await submitTurns(buildMintAuthorizationStep02, {
       lucid: proverLucid,
       contracts: family,
       categoryId: category.categoryId,
@@ -149,7 +143,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       mintItemCbors: subject.mintItemCbors,
       referenceScriptUtxo: step02Ref,
     });
-    const step03 = await submitTurnsUnjournaled(
+    const step03 = await submitTurns(
       buildMintAuthorizationStep03WitnessAbsence,
       {
         lucid: proverLucid,
@@ -164,7 +158,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       },
     );
     const advance = (threadOutRef: string) =>
-      submitTurnsUnjournaled(buildMintAuthorizationStep04AdvanceComplete, {
+      submitTurns(buildMintAuthorizationStep04AdvanceComplete, {
         lucid: proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -178,18 +172,15 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
     const step04 = await advance(
       (await advance(step03.nextThreadOutRef)).nextThreadOutRef,
     );
-    const step05 = await buildAndSubmitUnjournaled(
-      buildMintAuthorizationStep05,
-      {
-        lucid: proverLucid,
-        contracts: family,
-        categoryId: category.categoryId,
-        signer: proverSigner,
-        threadOutRef: step04.nextThreadOutRef,
-        referenceScriptUtxo: step05Ref,
-        witnessReferenceScripts: setup.witnessReferenceScripts,
-      },
-    );
+    const step05 = await buildAndSubmit(buildMintAuthorizationStep05, {
+      lucid: proverLucid,
+      contracts: family,
+      categoryId: category.categoryId,
+      signer: proverSigner,
+      threadOutRef: step04.nextThreadOutRef,
+      referenceScriptUtxo: step05Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
+    });
     const [fraudProofUtxo] = await proverLucid.utxosAtWithUnit(
       step05.fraudProofAddress,
       step05.fraudProofUnit,
@@ -238,7 +229,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
         lucid: funderLucid,
         contracts: family,
       });
-    const initResult = await buildAndSubmitUnjournaled(buildResolvedInit, {
+    const initResult = await buildAndSubmit(buildResolvedInit, {
       label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: proverLucid,
       blueprint: realBlueprint,
@@ -255,23 +246,20 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
       witnessReferenceScripts: setup.witnessReferenceScripts,
     });
-    const step01 = await buildAndSubmitUnjournaled(
-      buildMintAuthorizationStep01,
-      {
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        contracts: family,
-        categoryId: category.categoryId,
-        network,
-        signer: proverSigner,
-        threadOutRef: initResult.nextThreadOutRef,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: block.txInclusion,
-        referenceScriptUtxo: step01Ref,
-        witnessReferenceScripts: setup.witnessReferenceScripts,
-      },
-    );
-    const step02 = await submitTurnsUnjournaled(buildMintAuthorizationStep02, {
+    const step01 = await buildAndSubmit(buildMintAuthorizationStep01, {
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      contracts: family,
+      categoryId: category.categoryId,
+      network,
+      signer: proverSigner,
+      threadOutRef: initResult.nextThreadOutRef,
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: block.txInclusion,
+      referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
+    });
+    const step02 = await submitTurns(buildMintAuthorizationStep02, {
       lucid: proverLucid,
       contracts: family,
       categoryId: category.categoryId,
@@ -342,7 +330,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       nativeTxCompactCbor: block.nativeTxCompactCbor,
       witnessSet: subject.witnessSetCompact,
     };
-    const step03 = await submitTurnsUnjournaled(
+    const step03 = await submitTurns(
       buildMintAuthorizationStep03EvaluateUnsatisfied,
       {
         ...common,
@@ -355,32 +343,26 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
     );
     let threadOutRef = step03.nextThreadOutRef;
     for (let count = 0; count < 3000; count++) {
-      const step = await buildAndSubmitUnjournaled(
-        buildMintAuthorizationEvaluate,
-        {
-          ...common,
-          threadOutRef,
-          scriptBytesHex: directionB.scriptBytesHex,
-          addrWitnessItemCbors: subject.addrWitnessItemCbors,
-          rawPreimageUtxos,
-          referenceScriptUtxo: evaluateRef,
-        },
-      );
+      const step = await buildAndSubmit(buildMintAuthorizationEvaluate, {
+        ...common,
+        threadOutRef,
+        scriptBytesHex: directionB.scriptBytesHex,
+        addrWitnessItemCbors: subject.addrWitnessItemCbors,
+        rawPreimageUtxos,
+        referenceScriptUtxo: evaluateRef,
+      });
       threadOutRef = step.nextThreadOutRef;
       if (step.terminal) break;
     }
-    const step05 = await buildAndSubmitUnjournaled(
-      buildMintAuthorizationStep05,
-      {
-        lucid: proverLucid,
-        contracts: family,
-        categoryId: category.categoryId,
-        signer: proverSigner,
-        threadOutRef,
-        referenceScriptUtxo: step05Ref,
-        witnessReferenceScripts: setup.witnessReferenceScripts,
-      },
-    );
+    const step05 = await buildAndSubmit(buildMintAuthorizationStep05, {
+      lucid: proverLucid,
+      contracts: family,
+      categoryId: category.categoryId,
+      signer: proverSigner,
+      threadOutRef,
+      referenceScriptUtxo: step05Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
+    });
     const [fraudProofUtxo] = await proverLucid.utxosAtWithUnit(
       step05.fraudProofAddress,
       step05.fraudProofUnit,

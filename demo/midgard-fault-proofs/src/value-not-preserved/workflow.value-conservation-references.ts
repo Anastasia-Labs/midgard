@@ -9,7 +9,7 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { type CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
-import { type JournalJsonObject } from "../workflow/journal.js";
+import { type WorkflowJsonObject } from "../workflow/identity.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { type FraudProofRawL1Utxo } from "../workflow/raw-l1-snapshot.js";
 import type { ConservationPosition } from "./union-plan.js";
@@ -57,7 +57,7 @@ export const fromRaw = (raw: FraudProofRawL1Utxo): UTxO => {
   };
 };
 
-export const text = (input: JournalJsonObject, field: string): string => {
+export const text = (input: WorkflowJsonObject, field: string): string => {
   const value = input[field];
   if (typeof value !== "string" || value.length === 0)
     throw new Error(`value conservation: missing ${field}`);

@@ -19,6 +19,12 @@ import { Effect } from "effect";
 
 import { parseContractDeploymentInfo } from "./inspect-contracts.js";
 import {
+  resolveTimeoutCorrectionValidityRange,
+  type SubmitUnattestedTimeoutCorrectionParams,
+  TimeoutCorrectionAttemptInFlightError,
+  timeoutCorrectionWallet,
+} from "./remove-unattested-block.timeout-correction-params.js";
+import {
   hasCompetingCorrection,
   headerHashOf,
   planNextTimeoutCorrection,
@@ -26,13 +32,7 @@ import {
   requireDeploymentScript,
   selectTimeoutCorrectionTarget,
   type SubmitUnattestedTimeoutCorrectionResult,
-} from "./remove-unattested-block.reconcile-last-timeout-correction-step.js";
-import {
-  resolveTimeoutCorrectionValidityRange,
-  type SubmitUnattestedTimeoutCorrectionParams,
-  TimeoutCorrectionAttemptInFlightError,
-  timeoutCorrectionWallet,
-} from "./remove-unattested-block.recover-timeout-correction-attempt.js";
+} from "./remove-unattested-block.timeout-correction-plan.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   requireDeploymentReferenceScript,

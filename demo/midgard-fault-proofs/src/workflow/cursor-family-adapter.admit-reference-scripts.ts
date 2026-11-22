@@ -4,11 +4,8 @@ import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import type { StateQueueMutationLease } from "../remove-fraudulent-block.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
-import {
-  journalJsonDigest,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
-import type { JournalJsonObject } from "./journal.js";
+import type { WorkflowJsonObject } from "./identity.js";
+import { normalizeWorkflowJson, workflowJsonDigest } from "./identity.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
@@ -44,17 +41,17 @@ export interface CursorFamilyTransactionPort<
       CanonicalBlockClassification,
       { readonly decision: "fault_detected" }
     > & { readonly category: Category };
-  }): Promise<JournalJsonObject>;
+  }): Promise<WorkflowJsonObject>;
   prepareRaw?: FraudProofFamilyWorkflowAdapter["prepareRaw"];
   validatePreparedRawArtifact?: FraudProofFamilyWorkflowAdapter["validatePreparedRawArtifact"];
   validatePreparedArtifact?(
     input: Parameters<CursorFamilyTransactionPort<Category>["prepare"]>[0] & {
-      readonly artifact: JournalJsonObject;
+      readonly artifact: WorkflowJsonObject;
     },
   ): Promise<void>;
   capture(input: {
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
     /** The workflow and objective that find proof materials for the step. */
     readonly holder: ProofMaterialsHolder;
   }): Promise<CursorFamilyCapturedAction>;
@@ -69,8 +66,8 @@ const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 export const sameJson = (left: unknown, right: unknown): boolean =>
   left === undefined || right === undefined
     ? left === right
-    : journalJsonDigest(normalizeJournalJson(left)) ===
-      journalJsonDigest(normalizeJournalJson(right));
+    : workflowJsonDigest(normalizeWorkflowJson(left)) ===
+      workflowJsonDigest(normalizeWorkflowJson(right));
 
 const admitReferenceScripts = ({
   category,

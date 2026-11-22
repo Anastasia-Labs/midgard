@@ -25,16 +25,16 @@ import {
   type LinearFamilyReferenceScripts,
 } from "./family-definition.family-adapter-arm.js";
 import {
-  journalJsonDigest,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  workflowJsonDigest,
+  type WorkflowJsonObject,
+} from "./identity.js";
 import type { WorkflowRawFamilyEvidence } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 
 export const L2_TX_MISTAG_ARTIFACT =
   "midgard-production-l2-tx-mistag-artifact-v1" as const;
 
-export type L2TxMistagArtifact = JournalJsonObject &
+export type L2TxMistagArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof L2_TX_MISTAG_ARTIFACT;
     headerHash: string;
@@ -262,7 +262,7 @@ const artifactFromInclusion = async ({
   readonly headerHash: string;
   readonly inclusion: L2TxMistagCommittedLeafInclusion;
 }): Promise<L2TxMistagArtifact> => {
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: L2_TX_MISTAG_ARTIFACT,
     headerHash,
     detectionId: `l2-tx-mistag:${inclusion.transactionIndex.toString()}:${inclusion.nativeTxId}:1`,
@@ -357,10 +357,10 @@ export const validatePreparedL2TxMistagRawArtifact = async ({
   artifact,
 }: {
   readonly routed: WorkflowRawFamilyEvidence;
-  readonly artifact: JournalJsonObject;
+  readonly artifact: WorkflowJsonObject;
 }): Promise<void> => {
   const expected = await prepareL2TxMistagRawArtifact(routed);
-  if (journalJsonDigest(expected) !== journalJsonDigest(artifact))
+  if (workflowJsonDigest(expected) !== workflowJsonDigest(artifact))
     throw new Error(
       "l2-tx-mistag durable artifact differs from authenticated raw evidence",
     );

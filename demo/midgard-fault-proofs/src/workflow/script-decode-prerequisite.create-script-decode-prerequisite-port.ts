@@ -30,7 +30,7 @@ import {
   scriptDecodeStagingDatums,
 } from "../script-decode/submit.js";
 import { WorkflowActionChangedError } from "./action-changed.js";
-import type { JournalJsonObject } from "./journal.js";
+import type { WorkflowJsonObject } from "./identity.js";
 import {
   proofMaterialsAccess,
   type ProofMaterialsHolder,
@@ -89,7 +89,7 @@ export const createScriptDecodePrerequisitePort = <
 }): ScriptDecodePrerequisitePort<Category> => {
   const scriptOf = async (input: {
     readonly action: Parameters<ScriptDecodeItemForAction>[0]["action"];
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }) => {
     const item = await itemForAction(input);
     return item === null ? undefined : plutusItemScript(item);

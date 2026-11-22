@@ -186,7 +186,7 @@ describe("attached journey session", () => {
     await writeFile(
       foreign,
       JSON.stringify({
-        workflowJournalDirectory: join(stack.root, "workflows"),
+        decisionJournalDirectory: join(stack.root, "workflows"),
         watcherConfig: { storage: { path: stack.storePath } },
         operationsEndpoint: "http://127.0.0.1:7402",
       }),

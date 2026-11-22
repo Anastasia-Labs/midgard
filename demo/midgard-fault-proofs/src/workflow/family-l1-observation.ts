@@ -12,7 +12,7 @@ import {
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
-} from "./journal.fraud-proof-workflow-terminal.js";
+} from "./identity.js";
 import type { FraudProofL1Source } from "./l1-source.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,

@@ -6,7 +6,7 @@ import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { buildResolvedInit } from "../src/submit-init.submit-resolved-init.js";
 import { VALUE_NOT_PRESERVED_CATEGORY_LABEL } from "../src/value-not-preserved/contracts.js";
 import { network } from "./support/emulator/blueprints.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import {
   buildValueNotPreservedFixture,
   vnpOutput,
@@ -48,7 +48,7 @@ describe("value-not-preserved cancellation and restart", () => {
       through: "finish",
     });
 
-    const cancelled = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
+    const cancelled = await buildAndSubmit(buildLinearFaultCancel, {
       lucid: harness.proverLucid,
       family: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
       steps: harness.family.steps,
@@ -70,7 +70,7 @@ describe("value-not-preserved cancellation and restart", () => {
       ).resolves.toHaveLength(0);
     }
 
-    const restarted = await buildAndSubmitUnjournaled(buildResolvedInit, {
+    const restarted = await buildAndSubmit(buildResolvedInit, {
       label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,

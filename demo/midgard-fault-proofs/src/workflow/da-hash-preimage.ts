@@ -11,7 +11,7 @@ import "../submit-init.js";
 import "./complete-replay.js";
 import "./family-definition.js";
 import "./family-l1-observation.js";
-import "./journal.js";
+import "./identity.js";
 import "./linear-family-adapter.js";
 import "./manifest-bound-family-assembly.js";
 import "./orchestrator.js";

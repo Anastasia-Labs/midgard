@@ -32,10 +32,7 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { deployFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
 import { setupFraudulentBlock } from "./support/submit-init/removal.js";
-import {
-  submitBoundUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { submitBound, submitTurns } from "./support/submit-steps.js";
 import { MALFORMED_OUTPUT } from "./support/transaction-output-non-canonical-emulator.continue-raw.js";
 import {
   committedInclusions,
@@ -181,10 +178,8 @@ const buildScenario = async () => {
     stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
     acceptedInclusion: inclusion,
   };
-  const bound = await submitBoundUnjournaled(
-    harness.proverLucid,
-    "submitStep01",
-    () => submission.submit("submitStep01", evidence),
+  const bound = await submitBound(harness.proverLucid, "submitStep01", () =>
+    submission.submit("submitStep01", evidence),
   );
   expect(bound.stage).toBe("step02");
   stage = {
@@ -219,7 +214,7 @@ describe("transactionOutputNonCanonical step 02 through the field grammar certif
     // no certificate deployment: at this size the walk runs the step over its
     // execution budget.
     await expect(
-      submitTurnsUnjournaled(buildTransactionOutputNonCanonicalStep02, {
+      submitTurns(buildTransactionOutputNonCanonicalStep02, {
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -241,7 +236,7 @@ describe("transactionOutputNonCanonical step 02 through the field grammar certif
     const authenticated = await captureEmulatorSubmission(
       harness.emulator,
       () =>
-        submitBoundUnjournaled(harness.proverLucid, "submitStep02", () =>
+        submitBound(harness.proverLucid, "submitStep02", () =>
           submission.submit("submitStep02", evidence),
         ),
     );
@@ -271,19 +266,15 @@ describe("transactionOutputNonCanonical step 02 through the field grammar certif
       nativeTxCompactCbor: "",
       witnessSetCompactCbor: "",
     });
-    const scanned = await submitBoundUnjournaled(
-      harness.proverLucid,
-      "submitStep03",
-      () => submission.submit("submitStep03", evidence),
+    const scanned = await submitBound(harness.proverLucid, "submitStep03", () =>
+      submission.submit("submitStep03", evidence),
     );
     expect(scanned.stage).toBe("step04");
     advanceStage({
       threadOutRef: scanned.outputReference!,
     });
-    const minted = await submitBoundUnjournaled(
-      harness.proverLucid,
-      "submitStep04",
-      () => submission.submit("submitStep04", evidence),
+    const minted = await submitBound(harness.proverLucid, "submitStep04", () =>
+      submission.submit("submitStep04", evidence),
     );
     expect(minted.stage).toBe("proven");
     const fraudProofs = await harness.proverLucid.utxosAt(

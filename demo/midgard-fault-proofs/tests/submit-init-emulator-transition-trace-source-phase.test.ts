@@ -20,7 +20,7 @@ import {
 } from "./submit-init-emulator-transition-trace-subvariants.setup-challenge.js";
 import { network } from "./support/emulator/blueprints.js";
 import { funderPaymentKeyHash } from "./support/emulator/emulator-context.js";
-import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
+import { submitTurns } from "./support/submit-steps.js";
 import { buildForcedAndL2Block } from "./support/transition-trace-phase-band.forced-and-l2-block.js";
 
 /**
@@ -57,7 +57,7 @@ const submit = async (
   landed: Awaited<ReturnType<typeof landBlock>>,
   proof: ReturnType<typeof buildTransitionFaultProof>,
 ) =>
-  await submitTurnsUnjournaled(buildTransitionTraceProof, {
+  await submitTurns(buildTransitionTraceProof, {
     lucid: landed.harness.proverLucid,
     blueprint: landed.harness.realBlueprint,
     deploymentInfo: landed.lifecycle.deploymentInfo,

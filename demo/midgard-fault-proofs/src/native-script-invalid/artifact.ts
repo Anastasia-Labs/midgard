@@ -6,13 +6,13 @@ import { NATIVE_SCRIPT_INVALID_VIOLATION_ID } from "@al-ft/midgard-sdk/fraud-pro
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import {
   admitNativeInclusionArtifact,
   canonicalHex,
   canonicalNaturalString,
   EVEN_HEX,
-  exactJournalRecord,
+  exactArtifactRecord,
   HEX_28,
   HEX_32,
   type NativeInclusionArtifact,
@@ -26,7 +26,7 @@ import {
 export const NATIVE_SCRIPT_INVALID_ARTIFACT =
   "midgard-production-native-script-invalid-artifact-v1" as const;
 
-export type NativeScriptInvalidArtifact = JournalJsonObject &
+export type NativeScriptInvalidArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof NATIVE_SCRIPT_INVALID_ARTIFACT;
     headerHash: string;
@@ -117,7 +117,7 @@ export const prepareNativeScriptInvalidArtifact = async ({
 export const admitNativeScriptInvalidArtifact = (
   value: unknown,
 ): AdmittedNativeScriptInvalidArtifact => {
-  const parsed = exactJournalRecord(
+  const parsed = exactArtifactRecord(
     value,
     [
       "schemaVersion",

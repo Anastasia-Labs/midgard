@@ -35,10 +35,10 @@ import {
 } from "./support/mint-item-vectors.js";
 import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
-  buildAndSubmitUnjournaled,
+  buildAndSubmit,
   type SubmittedStep,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  submitTurns,
+} from "./support/submit-steps.js";
 
 describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
   it("proves grammar and ordering faults, refuses honest mint/burn and forged evidence, cancels, resumes and removes", async () => {
@@ -168,7 +168,7 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
           init.result.firstStepOutputIndex,
         );
         return measured(() =>
-          buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep01Accepted, {
+          buildAndSubmit(buildMintItemNonCanonicalStep01Accepted, {
             lucid: harness.proverLucid,
             blueprint: harness.realBlueprint,
             network: "Custom",
@@ -261,7 +261,7 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
             continue;
           }
           const advanced = await measured(() =>
-            submitTurnsUnjournaled(buildMintItemNonCanonicalStep02, {
+            submitTurns(buildMintItemNonCanonicalStep02, {
               ...common(openingRef, 1),
               evidence,
               nativeTxCompactCbor: inclusion.nativeTxCompactCbor,
@@ -424,7 +424,7 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
         };
         if (i === 0) {
           const finalized = await measured(() =>
-            buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep04, args),
+            buildAndSubmit(buildMintItemNonCanonicalStep04, args),
           );
           expect(finalized.fraudProofUnit).toBeTruthy();
         } else {

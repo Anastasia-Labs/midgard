@@ -25,7 +25,7 @@ export type NativeInclusionArtifact = Readonly<{
   txMembershipProofCbor: string;
 }>;
 
-export const exactJournalRecord = (
+export const exactArtifactRecord = (
   value: unknown,
   keys: readonly string[],
   label: string,
@@ -115,7 +115,7 @@ export const admitNativeInclusionArtifact = (
   artifact: NativeInclusionArtifact;
   inclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
 }> => {
-  const parsed = exactJournalRecord(
+  const parsed = exactArtifactRecord(
     value,
     [
       "nativeTxId",
@@ -192,7 +192,7 @@ export const admitTxInputList = (
   }
   const json = Object.freeze(
     value.map((entry, index) => {
-      const parsed = exactJournalRecord(
+      const parsed = exactArtifactRecord(
         entry,
         ["tx_id", "output_index"],
         `${label}[${index.toString()}]`,

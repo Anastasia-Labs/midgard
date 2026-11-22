@@ -44,13 +44,13 @@ import { publishRemovalReferenceScripts } from "./support/emulator/reference-scr
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { fixtureLedgerAfter } from "./support/fixture-ledger.js";
-import { submitInit } from "./support/submit-unjournaled.init.js";
+import { submitInit } from "./support/submit-steps.init.js";
 import {
   buildTransitionTraceFinalHop,
   publishTransitionTraceBytes,
   submitTransitionTraceFinal,
   submitTransitionTraceRoute,
-} from "./support/submit-unjournaled.transition-trace.js";
+} from "./support/submit-steps.transition-trace.js";
 import {
   RAW_HISTORY_ROWS,
   rawDatum,

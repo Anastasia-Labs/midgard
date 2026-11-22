@@ -23,7 +23,7 @@ import {
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
 import { FAMILY } from "./observers-forbidden-on-untagged-network-raw.submit-observers-forbidden-step01-forced-raw.js";
-import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmit } from "./submit-steps.js";
 
 /**
  * Step 02 without the off-chain `observersForbiddenEvidenceCloses` and bound
@@ -131,7 +131,7 @@ export const submitObserversForbiddenStep02Raw = async ({
     }),
     referenceInputs,
   );
-  return await buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
+  return await buildAndSubmit(buildLinearFaultFinalize, {
     lucid,
     family: FAMILY,
     stepIndex,

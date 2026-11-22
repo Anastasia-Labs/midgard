@@ -19,8 +19,8 @@ import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
-import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
-import type { JournalJsonObject } from "./journal.js";
+import type { WorkflowJsonObject } from "./identity.js";
+import { normalizeWorkflowJson } from "./identity.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -53,8 +53,8 @@ export const createCursorFamilyWorkflowAdapter = <
       ReturnType<FraudProofFamilyL1ObservationPort<Category>["observe"]>
     >;
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
-  }) => Promise<JournalJsonObject>;
+    readonly artifact: WorkflowJsonObject;
+  }) => Promise<WorkflowJsonObject>;
 }): FraudProofFamilyWorkflowAdapter => {
   const category = spec.category;
   if (
@@ -66,7 +66,7 @@ export const createCursorFamilyWorkflowAdapter = <
     throw new Error(`${category} cursor-family ports changed identity`);
   }
   const prepared = new Map<string, CursorFamilyCapturedAction>();
-  const current = async (headerHash: string, artifact: JournalJsonObject) => {
+  const current = async (headerHash: string, artifact: WorkflowJsonObject) => {
     const observed = await l1.observe({ headerHash });
     let workflow: FraudProofWorkflowObservation = cursorFamilyObservation({
       spec,
@@ -75,7 +75,7 @@ export const createCursorFamilyWorkflowAdapter = <
       stage: observed.stage,
     });
     if (workflow.kind === "action_required" && refineAction !== undefined) {
-      const fields = normalizeJournalJson(
+      const fields = normalizeWorkflowJson(
         await refineAction({ observed, action: workflow.action, artifact }),
       );
       if (
@@ -94,7 +94,10 @@ export const createCursorFamilyWorkflowAdapter = <
         kind: "action_required",
         action: {
           actionId: workflow.action.actionId,
-          input: { ...workflow.action.input, ...(fields as JournalJsonObject) },
+          input: {
+            ...workflow.action.input,
+            ...(fields as WorkflowJsonObject),
+          },
         },
       };
     }

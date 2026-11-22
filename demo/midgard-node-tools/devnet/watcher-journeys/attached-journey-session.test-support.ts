@@ -205,7 +205,7 @@ export const runningStackWatcher = async (
   await writeFile(
     processConfigPath,
     JSON.stringify({
-      workflowJournalDirectory: join(root, "workflows"),
+      decisionJournalDirectory: join(root, "workflows"),
       watcherConfig: { storage: { path: storePath } },
     }),
   );

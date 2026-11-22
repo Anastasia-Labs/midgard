@@ -40,7 +40,7 @@ import {
 } from "./support/input-existence-chronology-journey.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 const TIMEOUT = 600_000;
 const FIELDS = [0, 1] as const;
@@ -170,7 +170,7 @@ const startHonestRejectionJourney = async (field: 0 | 1) => {
     ),
   };
   const init = await captureEmulatorSubmission(h.emulator, () =>
-    buildAndSubmitUnjournaled(buildInit, {
+    buildAndSubmit(buildInit, {
       lucid: h.proverLucid,
       blueprint: h.realBlueprint,
       deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue),
@@ -185,7 +185,7 @@ const startHonestRejectionJourney = async (field: 0 | 1) => {
   let threadOutRef = `${init.result.txHash}#${init.result.firstStepOutputIndex}`;
   const send = async (stepIndex: 0 | 1 | 2 | 3) => {
     const submitted = await captureEmulatorSubmission(h.emulator, () =>
-      buildAndSubmitUnjournaled(buildInputExistenceStep, {
+      buildAndSubmit(buildInputExistenceStep, {
         lucid: h.proverLucid,
         blueprint: h.realBlueprint,
         network,

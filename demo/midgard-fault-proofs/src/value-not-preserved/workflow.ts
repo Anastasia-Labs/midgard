@@ -12,7 +12,7 @@ import "../workflow/cursor-family-runtime.js";
 import "../workflow/deployment-manifest-binding.js";
 import "../workflow/family-l1-observation.js";
 import "../workflow/field-carriage-prerequisite.js";
-import "../workflow/journal.js";
+import "../workflow/identity.js";
 import "../workflow/orchestrator.js";
 import "../workflow/proof-chunk-prerequisite.js";
 import "../workflow/raw-l1-family-derivation.js";

@@ -97,7 +97,7 @@ export const writeWatcherRuntimeProcessConfig = async (
     fundingProfileBundlePath: join(directory, "funding-profiles.json"),
     l1NodeTransportBinaryPath: "/usr/local/bin/midgard-l1-node-transport",
     operationsEndpoint: "http://127.0.0.1:43124",
-    workflowJournalDirectory: join(directory, "workflows"),
+    decisionJournalDirectory: join(directory, "workflows"),
     availability: {
       keySource: environment("WATCHER_AVAILABILITY_KEY"),
       journalPath: join(directory, "availability.sqlite"),

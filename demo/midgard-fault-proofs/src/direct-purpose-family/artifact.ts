@@ -17,10 +17,10 @@ import type { CanonicalBlockClassification } from "../workflow/classification.js
 import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.replay-context-identity.js";
 import {
-  journalJsonDigest,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  workflowJsonDigest,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import type {
   DirectPurposeAdmitted,
   DirectPurposeArtifactAdmission,
@@ -39,7 +39,7 @@ const admitCoordinate = (
   label: string,
   value: unknown,
 ): DirectPurposeSourceCoordinate => {
-  const c = value as JournalJsonObject;
+  const c = value as WorkflowJsonObject;
   if (
     typeof c !== "object" ||
     c === null ||
@@ -58,7 +58,7 @@ export const admitDirectPurposeArtifact = async <
   Prepared extends DirectPurposeReplay,
 >(
   family: DirectPurposeArtifactAdmission<Prepared>,
-  value: JournalJsonObject,
+  value: WorkflowJsonObject,
 ): Promise<DirectPurposeAdmitted<Prepared>> => {
   const { label } = family;
   if (
@@ -113,7 +113,7 @@ export const prepareDirectPurposeArtifact = async <
       { decision: "fault_detected" }
     >;
   },
-): Promise<JournalJsonObject> => {
+): Promise<WorkflowJsonObject> => {
   const predecessor = completeCanonicalReplayPredecessorLedger({
     evidence,
     context: replayContext,
@@ -131,7 +131,7 @@ export const prepareDirectPurposeArtifact = async <
     classification.headerHash !== evidence.headerHash
   )
     throw new Error(`${family.label} classification mismatch`);
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: family.artifactVersion,
     headerHash: evidence.headerHash,
     detectionId: finding.detectionId,
@@ -140,7 +140,7 @@ export const prepareDirectPurposeArtifact = async <
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
     predecessorLedger:
       predecessor === undefined ? null : ledgerJson(predecessor),
-  }) as JournalJsonObject;
+  }) as WorkflowJsonObject;
   await admitDirectPurposeArtifact(family, artifact);
   return artifact;
 };
@@ -180,7 +180,7 @@ const plan = async <
   Proof extends DirectPurposeProof,
 >(
   family: DirectPurposeArtifactFamily<Prepared, Proof>,
-  artifact: JournalJsonObject,
+  artifact: WorkflowJsonObject,
   contracts: DirectPurposeContracts,
   prover: string,
 ): Promise<DirectPurposePlannedArtifact<Prepared, Proof>> => {
@@ -216,7 +216,7 @@ export const planDirectPurposeArtifact = <
     contracts,
     prover,
   }: {
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
     readonly contracts: DirectPurposeContracts;
     readonly prover: string;
   },
@@ -224,7 +224,7 @@ export const planDirectPurposeArtifact = <
   const cache = caches.get(family) ?? new Map<string, Promise<unknown>>();
   caches.set(family, cache);
   const key = [
-    journalJsonDigest(artifact),
+    workflowJsonDigest(artifact),
     prover,
     ...contracts.steps.map((step) => step.spendingScriptHash),
   ].join(":");

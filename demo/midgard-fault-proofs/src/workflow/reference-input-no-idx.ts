@@ -13,7 +13,7 @@ import "../submit-reference-input-no-idx-step-03.js";
 import "../submit-reference-input-no-idx-step-04.js";
 import "./complete-replay.js";
 import "./family-definition.js";
-import "./journal.js";
+import "./identity.js";
 import "./linear-family-adapter.js";
 import "./manifest-bound-family-assembly.js";
 import "./native-index-artifact.js";

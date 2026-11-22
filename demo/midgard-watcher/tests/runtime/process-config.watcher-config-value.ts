@@ -124,7 +124,7 @@ export const productionConfig = (): WatcherProcessConfig =>
     fundingProfileBundlePath: "/etc/midgard/funding-profiles.json",
     l1NodeTransportBinaryPath: "/usr/local/bin/midgard-l1-node-transport",
     operationsEndpoint: "http://127.0.0.1:43124",
-    workflowJournalDirectory: "/var/lib/midgard-watcher/workflows",
+    decisionJournalDirectory: "/var/lib/midgard-watcher/workflows",
     availability: {
       keySource: { kind: "environment", variable: "WATCHER_AVAILABILITY_KEY" },
       journalPath: "/var/lib/midgard-watcher/availability.sqlite",

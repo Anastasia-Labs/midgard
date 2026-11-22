@@ -45,8 +45,8 @@ import {
   scriptLockedEntries,
   setupIntegrityScenario,
 } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
-import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { submitDirectPurposeTransition } from "./support/submit-steps.direct-purpose.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import {
   admissibleForcedWith,
   holdingNativeScript,
@@ -66,7 +66,7 @@ const forgedStep01 = async (
   const contracts = harness.direct;
   const signer = harness.proverSigner;
   if (scenario.block.txInclusion !== null)
-    return await buildAndSubmitUnjournaled(buildNativeTxBinding, {
+    return await buildAndSubmit(buildNativeTxBinding, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,

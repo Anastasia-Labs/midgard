@@ -21,10 +21,7 @@ import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 import { buildForcedOutputFixture } from "./support/transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
 import { TRANSACTION_OUTPUT_SCAN_CHUNK_BYTES } from "./support/transaction-output-non-canonical-emulator.continue-raw.js";
 import { record } from "./transaction-output-non-canonical-lifecycle.record-fit.js";
@@ -208,7 +205,7 @@ export const forcedDatumScenario = async (transaction: NativeTx) => {
   };
   const bindToDatum = async (measured?: MeasuredScan) => {
     const init = await registered.init(setup.fraudulentBlockOutRef);
-    const bound = await buildAndSubmitUnjournaled(
+    const bound = await buildAndSubmit(
       buildTransactionOutputNonCanonicalStep01Forced,
       {
         ...stepCommon(registered),
@@ -221,7 +218,7 @@ export const forcedDatumScenario = async (transaction: NativeTx) => {
         referenceScriptUtxo: registered.references[0]!,
       },
     );
-    const authenticated = await submitTurnsUnjournaled(
+    const authenticated = await submitTurns(
       buildTransactionOutputNonCanonicalStep02,
       {
         ...stepCommon(registered),
@@ -266,7 +263,7 @@ export const scanToDatum = async (
     const scanned = await captureEmulatorSubmission(
       registered.harness.emulator,
       () =>
-        buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep03, {
+        buildAndSubmit(buildTransactionOutputNonCanonicalStep03, {
           ...stepCommon(registered),
           threadOutRef: current,
           evidence,

@@ -2,10 +2,10 @@ import type { FraudProofTerminalDeploymentBinding } from "./deployment-manifest-
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
-  journalJsonDigest,
   normalizeFraudProofWorkflowIdentity,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  workflowJsonDigest,
+} from "./identity.js";
 import { normalizeWorkflowTerminal } from "./orchestrator.normalize-workflow-terminal.js";
 import { deriveFraudProofRawL1CompletedTerminal } from "./raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
 import { fraudProofRawL1SnapshotRequestForFamily } from "./raw-l1-family-derivation.derive-terminal.js";
@@ -95,13 +95,13 @@ export const verifyCompletedFraudProofWorkflow = async ({
     return { kind: "pending", reason: derived.kind };
   const observed = derived.terminal;
   const facts = (value: FraudProofWorkflowTerminal) =>
-    normalizeJournalJson({
+    normalizeWorkflowJson({
       ...value,
       observedAt: { ...value.observedAt, confirmationDepth: 0 },
     });
   if (
     terminal !== undefined &&
-    journalJsonDigest(facts(observed)) !== journalJsonDigest(facts(terminal))
+    workflowJsonDigest(facts(observed)) !== workflowJsonDigest(facts(terminal))
   )
     throw new Error(
       "completed workflow terminal differs from authenticated L1 facts",

@@ -37,7 +37,7 @@ import {
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
+} from "../../src/workflow/identity.js";
 import {
   createAuthenticatedRawDatumPreimagePrerequisitePort,
   withRawDatumPreimagePrerequisite,
@@ -69,7 +69,7 @@ import {
 } from "./mint-authorization-maxima.js";
 import { runMintAuthorizationProofMaximum } from "./mint-authorization-proof-maximum.js";
 import { mintAuthorizationRetainedReferenceFixture } from "./mint-authorization-retained-reference.js";
-import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmit } from "./submit-steps.js";
 
 /** Every scenario of the suite, in the order one file running them all runs them. */
 const MINT_AUTHORIZATION_INSTALLED_CASES = [
@@ -556,7 +556,7 @@ export const captureAndRestart = async (name: string): Promise<void> => {
       );
       expect(thread).toBeDefined();
       const cancelled = await captureEmulatorSubmission(h.emulator, () =>
-        buildAndSubmitUnjournaled(buildLinearFaultCancel, {
+        buildAndSubmit(buildLinearFaultCancel, {
           lucid: h.proverLucid,
           family: MINT_AUTHORIZATION_CATEGORY_LABEL,
           steps: h.family.steps,

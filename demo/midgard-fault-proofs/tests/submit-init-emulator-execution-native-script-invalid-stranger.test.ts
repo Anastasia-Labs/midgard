@@ -62,7 +62,7 @@ import {
 } from "./support/execution-native-script-invalid-emulator.subject.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import { rejectedFor } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
-import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
+import { submitDirectPurposeTransition } from "./support/submit-steps.direct-purpose.js";
 
 const STRANGER_FUNDING_LOVELACE = 1_000_000_000n;
 

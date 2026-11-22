@@ -24,10 +24,7 @@ import {
   makeDecodingEmulatorHarness,
 } from "./support/native-script-decoding-emulator.setup-decoding-scenario.js";
 import { submitRawDecodingStep } from "./support/native-script-decoding-emulator.submit-raw-decoding-step.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 type DecodingHarness = Awaited<ReturnType<typeof makeDecodingEmulatorHarness>>;
 
@@ -87,7 +84,7 @@ export const driveNormalThreadToStep03 = async ({
 }): Promise<string> => {
   const { proverLucid, proverSigner, decoding, category, realBlueprint } =
     harness;
-  const init = await buildAndSubmitUnjournaled(buildNativeScriptDecodingInit, {
+  const init = await buildAndSubmit(buildNativeScriptDecodingInit, {
     lucid: proverLucid,
     witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
@@ -106,7 +103,7 @@ export const driveNormalThreadToStep03 = async ({
   if (scenario.block.txInclusion === null) {
     throw new Error("normal-source fixture carries no tx inclusion");
   }
-  const step01 = await buildAndSubmitUnjournaled(
+  const step01 = await buildAndSubmit(
     buildNativeScriptDecodingStep01BindNormal,
     {
       lucid: proverLucid,
@@ -122,19 +119,16 @@ export const driveNormalThreadToStep03 = async ({
       referenceScriptUtxo: refs[0],
     },
   );
-  const step02 = await buildAndSubmitUnjournaled(
-    buildNativeScriptDecodingStep02,
-    {
-      lucid: proverLucid,
-      contracts: decoding,
-      categoryId: category.categoryId,
-      signer: proverSigner,
-      threadOutRef: step01.nextThreadOutRef,
-      reconstruction: scenario.block.reconstruction,
-      chosenOutpoint: { sourceKind: scenario.accusedSourceKind, cursor: 0n },
-      referenceScriptUtxo: refs[1],
-    },
-  );
+  const step02 = await buildAndSubmit(buildNativeScriptDecodingStep02, {
+    lucid: proverLucid,
+    contracts: decoding,
+    categoryId: category.categoryId,
+    signer: proverSigner,
+    threadOutRef: step01.nextThreadOutRef,
+    reconstruction: scenario.block.reconstruction,
+    chosenOutpoint: { sourceKind: scenario.accusedSourceKind, cursor: 0n },
+    referenceScriptUtxo: refs[1],
+  });
   return step02.nextThreadOutRef;
 };
 
@@ -150,7 +144,7 @@ export const driveForcedThreadToStep02 = async ({
 }): Promise<string> => {
   const { proverLucid, proverSigner, decoding, category, realBlueprint } =
     harness;
-  const init = await buildAndSubmitUnjournaled(buildNativeScriptDecodingInit, {
+  const init = await buildAndSubmit(buildNativeScriptDecodingInit, {
     lucid: proverLucid,
     witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
@@ -166,7 +160,7 @@ export const driveForcedThreadToStep02 = async ({
     signer: proverSigner,
     fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
   });
-  const step01 = await buildAndSubmitUnjournaled(
+  const step01 = await buildAndSubmit(
     buildNativeScriptDecodingStep01RecordForced,
     {
       lucid: proverLucid,
@@ -197,21 +191,18 @@ export const bindAndScanHonestly = async ({
   readonly threadOutRef: string;
 }): Promise<string> => {
   const { proverLucid, proverSigner, decoding, category } = harness;
-  const opened = await submitTurnsUnjournaled(
-    buildNativeScriptDecodingStep03OpenSubject,
-    {
-      lucid: proverLucid,
-      contracts: decoding,
-      categoryId: category.categoryId,
-      signer: proverSigner,
-      threadOutRef,
-      nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
-      subjectFieldInputs: scenario.subjectFieldInputs,
-      referenceScriptUtxo: refs[2],
-    },
-  );
+  const opened = await submitTurns(buildNativeScriptDecodingStep03OpenSubject, {
+    lucid: proverLucid,
+    contracts: decoding,
+    categoryId: category.categoryId,
+    signer: proverSigner,
+    threadOutRef,
+    nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
+    subjectFieldInputs: scenario.subjectFieldInputs,
+    referenceScriptUtxo: refs[2],
+  });
   const subjectOutpoint = scenario.subjectFieldInputs[0]!;
-  const bind = await buildAndSubmitUnjournaled(
+  const bind = await buildAndSubmit(
     buildNativeScriptDecodingStep03BindDescriptor,
     {
       lucid: proverLucid,
@@ -231,7 +222,7 @@ export const bindAndScanHonestly = async ({
   );
   let cursor = bind.nextThreadOutRef;
   for (const segment of plan.segments) {
-    const scan = await buildAndSubmitUnjournaled(
+    const scan = await buildAndSubmit(
       buildNativeScriptDecodingStep03AdvanceOrCloseSegment,
       {
         lucid: proverLucid,

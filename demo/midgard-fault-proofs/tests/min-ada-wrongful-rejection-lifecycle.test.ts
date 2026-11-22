@@ -59,11 +59,11 @@ import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-sc
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+  submitTurns,
+} from "./support/submit-steps.js";
 
 describe("minimum-Ada forced rejection", () => {
   it.each([
@@ -92,7 +92,7 @@ describe("minimum-Ada forced rejection", () => {
         JSON.parse(JSON.stringify(workflowArtifact)),
       );
       const bound = await f.capture("bind", () =>
-        buildAndSubmitUnjournaled(buildMinAdaStep01Forced, {
+        buildAndSubmit(buildMinAdaStep01Forced, {
           ...f.common,
           threadOutRef: f.threadOutRef,
           state: reopened.evidence.state,
@@ -113,7 +113,7 @@ describe("minimum-Ada forced rejection", () => {
         label: "min-ada outputs",
       });
       const carriage = await f.capture("field-publications", () =>
-        publishCarriageUnjournaled({
+        publishFieldCarriage({
           lucid: f.h.proverLucid,
           signer: f.h.proverSigner,
           planned,
@@ -131,7 +131,7 @@ describe("minimum-Ada forced rejection", () => {
           }),
         );
         const certified = await f.capture("certificate", () =>
-          certifyCarriageUnjournaled({
+          certifyFieldCarriage({
             lucid: f.h.proverLucid,
             network,
             signer: f.h.proverSigner,
@@ -151,7 +151,7 @@ describe("minimum-Ada forced rejection", () => {
         certificateUtxo = certified.certificateUtxo;
       }
       const opened = await f.capture("open", () =>
-        submitTurnsUnjournaled(buildMinAdaTxStep02, {
+        submitTurns(buildMinAdaTxStep02, {
           ...f.common,
           threadOutRef: bound.nextThreadOutRef,
           prepared: f.prepared,
@@ -198,7 +198,7 @@ describe("minimum-Ada forced rejection", () => {
           JSON.parse(JSON.stringify(f.artifact)),
         );
         const rebound = await f.capture("restart-bind", () =>
-          buildAndSubmitUnjournaled(buildMinAdaStep01Forced, {
+          buildAndSubmit(buildMinAdaStep01Forced, {
             ...f.common,
             threadOutRef: `${restart.txHash}#${restart.firstStepOutputIndex}`,
             state: retained.evidence.state,
@@ -207,7 +207,7 @@ describe("minimum-Ada forced rejection", () => {
           }),
         );
         const reopened = await f.capture("restart-open", () =>
-          submitTurnsUnjournaled(buildMinAdaTxStep02, {
+          submitTurns(buildMinAdaTxStep02, {
             ...f.common,
             threadOutRef: rebound.nextThreadOutRef,
             prepared: retained.evidence,
@@ -221,7 +221,7 @@ describe("minimum-Ada forced rejection", () => {
         predicateThread = reopened.nextThreadOutRef;
       }
       const checked = await f.capture("predicate", () =>
-        submitTurnsUnjournaled(buildMinAdaStep03, {
+        submitTurns(buildMinAdaStep03, {
           ...f.common,
           threadOutRef: predicateThread,
           outputItemCbors: f.prepared.outputItemCbors,
@@ -229,7 +229,7 @@ describe("minimum-Ada forced rejection", () => {
         }),
       );
       const proof = await f.capture("mint", () =>
-        buildAndSubmitUnjournaled(buildMinAdaStep04, {
+        buildAndSubmit(buildMinAdaStep04, {
           ...f.common,
           threadOutRef: checked.nextThreadOutRef,
           referenceScriptUtxo: f.refs[3]!,
@@ -282,14 +282,14 @@ describe("minimum-Ada forced rejection", () => {
     await expect(admitMinAdaForcedArtifact(f.artifact)).rejects.toThrow(
       "no contradiction",
     );
-    const bound = await buildAndSubmitUnjournaled(buildMinAdaStep01Forced, {
+    const bound = await buildAndSubmit(buildMinAdaStep01Forced, {
       ...f.common,
       threadOutRef: f.threadOutRef,
       state: f.state,
       forcedSource: f.source,
       referenceScriptUtxo: f.refs[0]!,
     });
-    const opened = await submitTurnsUnjournaled(buildMinAdaTxStep02, {
+    const opened = await submitTurns(buildMinAdaTxStep02, {
       ...f.common,
       threadOutRef: bound.nextThreadOutRef,
       prepared: f.prepared,
@@ -298,7 +298,7 @@ describe("minimum-Ada forced rejection", () => {
       unsafeSkipLocalViolationCheckForTest: true,
     });
     await expect(
-      submitTurnsUnjournaled(buildMinAdaStep03, {
+      submitTurns(buildMinAdaStep03, {
         ...f.common,
         threadOutRef: opened.nextThreadOutRef,
         outputItemCbors: f.prepared.outputItemCbors,
@@ -325,7 +325,7 @@ describe("minimum-Ada forced rejection", () => {
       ).toBe(0n);
       expect(reopened.evidence.subject).toStrictEqual(f.prepared.subject);
       const bound = await f.capture("bind", () =>
-        buildAndSubmitUnjournaled(buildMinAdaStep01Forced, {
+        buildAndSubmit(buildMinAdaStep01Forced, {
           ...f.common,
           threadOutRef: f.threadOutRef,
           state: reopened.evidence.state,
@@ -334,7 +334,7 @@ describe("minimum-Ada forced rejection", () => {
         }),
       );
       const opened = await f.capture("open", () =>
-        submitTurnsUnjournaled(buildMinAdaTxStep02, {
+        submitTurns(buildMinAdaTxStep02, {
           ...f.common,
           threadOutRef: bound.nextThreadOutRef,
           prepared: reopened.evidence,
@@ -344,7 +344,7 @@ describe("minimum-Ada forced rejection", () => {
         }),
       );
       const checked = await f.capture("predicate", () =>
-        submitTurnsUnjournaled(buildMinAdaStep03, {
+        submitTurns(buildMinAdaStep03, {
           ...f.common,
           threadOutRef: opened.nextThreadOutRef,
           outputItemCbors: f.prepared.outputItemCbors,
@@ -352,7 +352,7 @@ describe("minimum-Ada forced rejection", () => {
         }),
       );
       const proof = await f.capture("mint", () =>
-        buildAndSubmitUnjournaled(buildMinAdaStep04, {
+        buildAndSubmit(buildMinAdaStep04, {
           ...f.common,
           threadOutRef: checked.nextThreadOutRef,
           referenceScriptUtxo: f.refs[3]!,
@@ -405,14 +405,14 @@ describe("minimum-Ada forced rejection", () => {
       const f = await setup({ accepted: true, datumHex });
       // Off chain the detector finds nothing to argue.
       await expect(f.prepareArtifact()).rejects.toThrow();
-      const bound = await buildAndSubmitUnjournaled(buildMinAdaStep01Forced, {
+      const bound = await buildAndSubmit(buildMinAdaStep01Forced, {
         ...f.common,
         threadOutRef: f.threadOutRef,
         state: f.state,
         forcedSource: f.source,
         referenceScriptUtxo: f.refs[0]!,
       });
-      const opened = await submitTurnsUnjournaled(buildMinAdaTxStep02, {
+      const opened = await submitTurns(buildMinAdaTxStep02, {
         ...f.common,
         threadOutRef: bound.nextThreadOutRef,
         prepared: f.prepared,
@@ -422,7 +422,7 @@ describe("minimum-Ada forced rejection", () => {
       });
       // The local guard is skipped, so the refusal comes from the step-03
       // predicate evaluation itself.
-      const refused = await submitTurnsUnjournaled(buildMinAdaStep03, {
+      const refused = await submitTurns(buildMinAdaStep03, {
         ...f.common,
         threadOutRef: opened.nextThreadOutRef,
         outputItemCbors: f.prepared.outputItemCbors,
@@ -440,7 +440,7 @@ describe("minimum-Ada forced rejection", () => {
   it("rejects authenticated unrelated reason and source/index/direction substitutions", async () => {
     const unrelated = await setup({ wrongReason: true });
     await expect(
-      buildAndSubmitUnjournaled(buildMinAdaStep01Forced, {
+      buildAndSubmit(buildMinAdaStep01Forced, {
         ...unrelated.common,
         threadOutRef: unrelated.threadOutRef,
         state: unrelated.state,
@@ -463,7 +463,7 @@ describe("minimum-Ada forced rejection", () => {
       },
     ])
       await expect(
-        buildAndSubmitUnjournaled(buildMinAdaStep01Forced, {
+        buildAndSubmit(buildMinAdaStep01Forced, {
           ...f.common,
           threadOutRef: f.threadOutRef,
           state: f.state,

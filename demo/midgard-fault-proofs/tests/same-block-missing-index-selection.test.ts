@@ -59,10 +59,7 @@ import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-sc
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSecondHeaderTx } from "./support/emulator/setup-tx.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 import { depositEventsRetainedBlock } from "./support/transition-trace-retained.deposit-events-retained-block.js";
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
@@ -189,7 +186,7 @@ const convictWithNoIdxRoute = async ({
     signer: h.proverSigner,
     awaitConfirmation: true,
   } as const;
-  const init = await buildAndSubmitUnjournaled(buildInit, {
+  const init = await buildAndSubmit(buildInit, {
     ...common,
     fraudCategory: category,
     fraudulentBlockOutRef,
@@ -214,7 +211,7 @@ const convictWithNoIdxRoute = async ({
         classification,
       }),
     );
-    const step01 = await buildAndSubmitUnjournaled(buildInputNoIdxStep01, {
+    const step01 = await buildAndSubmit(buildInputNoIdxStep01, {
       ...common,
       referenceScriptUtxo: steps[0]!,
       witnessReferenceScripts: h.witnessReferenceScripts,
@@ -222,14 +219,14 @@ const convictWithNoIdxRoute = async ({
       stateQueueBlockOutRef: fraudulentBlockOutRef,
       txInclusion: admitted.badInclusion,
     });
-    const step02 = await submitTurnsUnjournaled(buildInputNoIdxStep02, {
+    const step02 = await submitTurns(buildInputNoIdxStep02, {
       ...common,
       referenceScriptUtxo: steps[1]!,
       threadOutRef: await thread(step01.secondStepAddress),
       inputsPreimage: admitted.inputs,
       nativeTxCompactCbor: admitted.badInclusion.nativeTxCompactCbor,
     });
-    const step03 = await buildAndSubmitUnjournaled(buildInputNoIdxStep03, {
+    const step03 = await buildAndSubmit(buildInputNoIdxStep03, {
       ...common,
       referenceScriptUtxo: steps[2]!,
       witnessReferenceScripts: h.witnessReferenceScripts,
@@ -237,7 +234,7 @@ const convictWithNoIdxRoute = async ({
       stateQueueBlockOutRef: fraudulentBlockOutRef,
       txInclusion: admitted.producingInclusion,
     });
-    finalStep = await submitTurnsUnjournaled(buildInputNoIdxStep04, {
+    finalStep = await submitTurns(buildInputNoIdxStep04, {
       ...common,
       referenceScriptUtxo: steps[3]!,
       witnessReferenceScripts: h.witnessReferenceScripts,
@@ -252,39 +249,30 @@ const convictWithNoIdxRoute = async ({
         classification,
       }),
     );
-    const step01 = await buildAndSubmitUnjournaled(
-      buildReferenceInputNoIdxStep01,
-      {
-        ...common,
-        referenceScriptUtxo: steps[0]!,
-        witnessReferenceScripts: h.witnessReferenceScripts,
-        threadOutRef: await thread(init.firstStepAddress),
-        stateQueueBlockOutRef: fraudulentBlockOutRef,
-        txInclusion: admitted.badInclusion,
-      },
-    );
-    const step02 = await submitTurnsUnjournaled(
-      buildReferenceInputNoIdxStep02,
-      {
-        ...common,
-        referenceScriptUtxo: steps[1]!,
-        threadOutRef: await thread(step01.secondStepAddress),
-        referenceInputsPreimage: admitted.referenceInputs,
-        nativeTxCompactCbor: admitted.badInclusion.nativeTxCompactCbor,
-      },
-    );
-    const step03 = await buildAndSubmitUnjournaled(
-      buildReferenceInputNoIdxStep03,
-      {
-        ...common,
-        referenceScriptUtxo: steps[2]!,
-        witnessReferenceScripts: h.witnessReferenceScripts,
-        threadOutRef: await thread(step02.thirdStepAddress),
-        stateQueueBlockOutRef: fraudulentBlockOutRef,
-        txInclusion: admitted.producingInclusion,
-      },
-    );
-    finalStep = await submitTurnsUnjournaled(buildReferenceInputNoIdxStep04, {
+    const step01 = await buildAndSubmit(buildReferenceInputNoIdxStep01, {
+      ...common,
+      referenceScriptUtxo: steps[0]!,
+      witnessReferenceScripts: h.witnessReferenceScripts,
+      threadOutRef: await thread(init.firstStepAddress),
+      stateQueueBlockOutRef: fraudulentBlockOutRef,
+      txInclusion: admitted.badInclusion,
+    });
+    const step02 = await submitTurns(buildReferenceInputNoIdxStep02, {
+      ...common,
+      referenceScriptUtxo: steps[1]!,
+      threadOutRef: await thread(step01.secondStepAddress),
+      referenceInputsPreimage: admitted.referenceInputs,
+      nativeTxCompactCbor: admitted.badInclusion.nativeTxCompactCbor,
+    });
+    const step03 = await buildAndSubmit(buildReferenceInputNoIdxStep03, {
+      ...common,
+      referenceScriptUtxo: steps[2]!,
+      witnessReferenceScripts: h.witnessReferenceScripts,
+      threadOutRef: await thread(step02.thirdStepAddress),
+      stateQueueBlockOutRef: fraudulentBlockOutRef,
+      txInclusion: admitted.producingInclusion,
+    });
+    finalStep = await submitTurns(buildReferenceInputNoIdxStep04, {
       ...common,
       referenceScriptUtxo: steps[3]!,
       witnessReferenceScripts: h.witnessReferenceScripts,

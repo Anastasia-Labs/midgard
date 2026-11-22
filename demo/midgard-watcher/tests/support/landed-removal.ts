@@ -12,7 +12,7 @@ import { verifyCompletedFraudProofWorkflow } from "@al-ft/midgard-fault-proofs/w
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-} from "@al-ft/midgard-fault-proofs/workflow/journal";
+} from "@al-ft/midgard-fault-proofs/workflow/identity";
 import { deriveFraudProofRawL1CompletedTerminal } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-family-derivation";
 import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,

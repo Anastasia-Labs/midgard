@@ -18,9 +18,9 @@ import {
 } from "../workflow/family-l1-observation.js";
 import { withFieldCarriagePrerequisite } from "../workflow/field-carriage-prerequisite.js";
 import {
-  journalJsonDigest,
-  type JournalJsonObject,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  workflowJsonDigest,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import { nextViewOf } from "../workflow/next-state.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -209,8 +209,8 @@ export const createManifestBoundValueConservationWorkflow = async (
     string,
     ReturnType<typeof admitValueConservationArtifact>
   >();
-  const admit = (artifact: JournalJsonObject) => {
-    const digest = journalJsonDigest(artifact);
+  const admit = (artifact: WorkflowJsonObject) => {
+    const digest = workflowJsonDigest(artifact);
     let admitted = cache.get(digest);
     if (admitted === undefined) {
       admitted = admitValueConservationArtifact(artifact, contracts);
@@ -220,7 +220,7 @@ export const createManifestBoundValueConservationWorkflow = async (
   };
   const actionAt = async (
     action: FraudProofWorkflowAction,
-    artifact: JournalJsonObject,
+    artifact: WorkflowJsonObject,
   ) => {
     const admitted = await admit(artifact);
     const index = action.input.index;

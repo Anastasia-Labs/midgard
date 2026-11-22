@@ -40,7 +40,7 @@ import { submitMintStep01ForcedUnreachableRaw } from "./support/mint-item-non-ca
 import { registeredContracts } from "./support/mint-item-non-canonical-lifecycle.js";
 import { mintField } from "./support/mint-item-vectors.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import {
   MAXIMUM_PROOF_STEP_COUNT,
   syntheticDeepMembershipProof,
@@ -180,14 +180,14 @@ const convict = async ({
   threadOutRef,
 }: Awaited<ReturnType<typeof forcedThread>>) => {
   const bound = await captureEmulatorSubmission(harness.emulator, () =>
-    buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep01Forced, {
+    buildAndSubmit(buildMintItemNonCanonicalStep01Forced, {
       ...registered.common(threadOutRef, 0),
       finding: { subject, fieldIndex: 5, itemIndex: 0 },
       forcedSource,
     }),
   );
   const minted = await captureEmulatorSubmission(harness.emulator, () =>
-    buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep04UnreachableClaim, {
+    buildAndSubmit(buildMintItemNonCanonicalStep04UnreachableClaim, {
       ...registered.common(bound.result.nextThreadOutRef, 3),
       witnessReferenceScripts: harness.witnessReferenceScripts,
     }),

@@ -39,7 +39,7 @@ import {
 } from "../funding/proof-materials-address.js";
 import { withOwnKeyActions } from "../validation-trace-dispute/own-key-actions.js";
 import { WorkflowActionChangedError } from "./action-changed.js";
-import type { FraudProofWorkflowIdentity } from "./journal.js";
+import type { FraudProofWorkflowIdentity } from "./identity.js";
 import type { FraudProofWorkflowAdapterContext } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import type {
   FraudProofFamilyWorkflowAdapter,

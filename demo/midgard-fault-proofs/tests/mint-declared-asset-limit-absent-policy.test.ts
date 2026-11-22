@@ -50,7 +50,7 @@ import {
 } from "./support/emulator/measurement.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 /** A one-asset policy item whose policy id encodes `index`. */
 const policyItem = (index: number) => {
@@ -181,36 +181,30 @@ const boundForcedThread = async ({
     categoryId: category.categoryId,
     signer: harness.proverSigner,
   };
-  const initialized = await buildAndSubmitUnjournaled(
-    buildCommittedFieldShapeInit,
-    {
-      lucid: harness.proverLucid,
-      blueprint: harness.realBlueprint,
-      network,
-      contracts: contracts as never,
-      category,
-      catalogue: {
-        policyId: harness.contracts.fraudProofCatalogue.policyId,
-        spendingScriptAddress:
-          harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-        root: registered.catalogue.root,
-      },
-      signer: harness.proverSigner,
-      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-      fraudulentHeaderHash: setup.headerHash,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
+  const initialized = await buildAndSubmit(buildCommittedFieldShapeInit, {
+    lucid: harness.proverLucid,
+    blueprint: harness.realBlueprint,
+    network,
+    contracts: contracts as never,
+    category,
+    catalogue: {
+      policyId: harness.contracts.fraudProofCatalogue.policyId,
+      spendingScriptAddress:
+        harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+      root: registered.catalogue.root,
     },
-  );
-  const bound = await buildAndSubmitUnjournaled(
-    buildMintDeclaredAssetLimitStep01Forced,
-    {
-      ...step,
-      threadOutRef: `${initialized.txHash}#${initialized.firstStepOutputIndex.toString()}`,
-      finding: evidence,
-      forcedSource: { header: setup.header, membership },
-      referenceScriptUtxo: references[0],
-    },
-  );
+    signer: harness.proverSigner,
+    fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+    fraudulentHeaderHash: setup.headerHash,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
+  });
+  const bound = await buildAndSubmit(buildMintDeclaredAssetLimitStep01Forced, {
+    ...step,
+    threadOutRef: `${initialized.txHash}#${initialized.firstStepOutputIndex.toString()}`,
+    finding: evidence,
+    forcedSource: { header: setup.header, membership },
+    referenceScriptUtxo: references[0],
+  });
   const staged =
     policyIndex >= 0n && policyIndex < BigInt(policies.length)
       ? planMintDeclaredAssetLimitField({
@@ -237,7 +231,7 @@ const boundForcedThread = async ({
       action: Parameters<typeof buildMintDeclaredAssetLimitStep02>[0]["action"],
     ) => {
       const captured = await captureEmulatorSubmission(harness.emulator, () =>
-        buildAndSubmitUnjournaled(buildMintDeclaredAssetLimitStep02, {
+        buildAndSubmit(buildMintDeclaredAssetLimitStep02, {
           ...step,
           threadOutRef,
           evidence,
@@ -270,7 +264,7 @@ const boundForcedThread = async ({
   };
   const convict = async (threadOutRef: string) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildMintDeclaredAssetLimitStep04, {
+      buildAndSubmit(buildMintDeclaredAssetLimitStep04, {
         ...step,
         threadOutRef,
         evidence,

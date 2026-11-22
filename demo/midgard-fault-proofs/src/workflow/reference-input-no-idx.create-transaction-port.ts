@@ -22,7 +22,7 @@ import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import { exactJournalRecord } from "./native-index-artifact.js";
+import { exactArtifactRecord } from "./native-index-artifact.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
 import {
@@ -61,7 +61,7 @@ type BoundConfig = Readonly<{
 export const actionInput = (
   action: FraudProofWorkflowAction,
 ): Readonly<Record<string, unknown>> => {
-  const input = exactJournalRecord(
+  const input = exactArtifactRecord(
     action.input,
     Object.keys(action.input),
     "reference-input-no-idx workflow action",

@@ -6,12 +6,12 @@ import {
 
 import { type FaultProofFieldOpeningPlan } from "../field-opening.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
-import { type JournalJsonObject } from "./journal.js";
+import { type WorkflowJsonObject } from "./identity.js";
 
 export const INVALID_SIGNATURE_ARTIFACT =
   "midgard-production-invalid-signature-artifact-v1" as const;
 
-export type InvalidSignatureArtifact = JournalJsonObject &
+export type InvalidSignatureArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof INVALID_SIGNATURE_ARTIFACT;
     headerHash: string;

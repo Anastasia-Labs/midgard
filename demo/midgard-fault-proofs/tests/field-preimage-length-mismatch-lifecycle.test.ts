@@ -61,8 +61,8 @@ import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-sc
 import { FIELD_PREIMAGE_LENGTH_FORCED_FIELD_INDEX } from "./support/field-preimage-length-mismatch-forced-fixture.js";
 import { countedTransactionsRoot } from "./support/submit-init/transaction-material.js";
 import {
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
+  certifyFieldCarriage,
+  publishFieldCarriage,
   submitFieldPreimageLengthAcceptedAuthentication,
   submitFieldPreimageLengthAcceptedDispatch,
   submitFieldPreimageLengthCancel,
@@ -70,7 +70,7 @@ import {
   submitFieldPreimageLengthForcedDispatch,
   submitFieldPreimageLengthInit,
   submitFieldPreimageLengthTerminal,
-} from "./support/submit-unjournaled.field-preimage-length-mismatch.js";
+} from "./support/submit-steps.field-preimage-length-mismatch.js";
 
 describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
   it.each([
@@ -156,7 +156,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     const rawPublication = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        publishCarriageUnjournaled({
+        publishFieldCarriage({
           lucid: fixture.harness.proverLucid,
           signer: fixture.harness.proverSigner,
           planned: {
@@ -174,7 +174,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     const chunkPublication = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        publishCarriageUnjournaled({
+        publishFieldCarriage({
           lucid: fixture.harness.proverLucid,
           signer: fixture.harness.proverSigner,
           planned,
@@ -199,7 +199,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     const certificateMint = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        certifyCarriageUnjournaled({
+        certifyFieldCarriage({
           lucid: fixture.harness.proverLucid,
           network,
           signer: fixture.harness.proverSigner,

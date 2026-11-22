@@ -53,7 +53,7 @@ import {
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { l2TransactionSourceCbor, makeNativeTx } from "./emulator/native-tx.js";
-import { buildAndSubmitTransactionUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmitTransaction } from "./submit-steps.js";
 
 export const FAMILY = "observers-forbidden-on-untagged-network";
 
@@ -333,7 +333,7 @@ export const submitObserversForbiddenStep01ForcedRaw = async ({
       ObserversForbiddenStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
+  return await buildAndSubmitTransaction(buildLinearFaultContinue, {
     lucid,
     signer,
     threadUtxo,

@@ -2,7 +2,7 @@ import {
   assertWorkflowActuationPermitIdentity,
   type WorkflowActuationPermit,
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
-import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/journal";
+import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/identity";
 
 import type { WatcherProofVerifiedCompletion } from "./fault-proof-objective-table.js";
 import type {

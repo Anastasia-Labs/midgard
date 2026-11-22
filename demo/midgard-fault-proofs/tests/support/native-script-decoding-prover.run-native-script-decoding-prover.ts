@@ -43,7 +43,7 @@ import {
   submitNativeScriptDecodingStep03BindDescriptor,
   submitNativeScriptDecodingStep03OpenSubject,
   submitNativeScriptDecodingStep04,
-} from "./submit-unjournaled.native-script-decoding.js";
+} from "./submit-steps.native-script-decoding.js";
 
 // ## The core
 

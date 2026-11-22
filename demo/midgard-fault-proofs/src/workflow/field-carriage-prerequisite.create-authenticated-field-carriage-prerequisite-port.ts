@@ -29,7 +29,7 @@ import {
   publicationAction,
   requirementIdentity,
 } from "./field-carriage-prerequisite.requirement-identity.js";
-import type { JournalJsonObject } from "./journal.js";
+import type { WorkflowJsonObject } from "./identity.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import type { ProofMaterialsHolder } from "./proof-materials-view.js";
 import {
@@ -62,7 +62,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
   readonly publications: FraudProofAuthenticatedPublicationObserver;
   readonly requirementForAction: (input: {
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }) =>
     | PreimageCarriageRequirement
     | null
@@ -76,7 +76,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
   }
   const requirement = async (input: {
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<Requirement | null> => {
     const resolved = await requirementForAction(input);
     return resolved === null ? null : requirementIdentity(resolved);
@@ -108,7 +108,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     readonly headerHash: string;
     readonly holder: ProofMaterialsHolder;
     readonly baseAction: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }) => {
     const required = await requirement({ action: baseAction, artifact });
     if (required === null || required.planned.plan.tier === "Inline") {
@@ -166,7 +166,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     artifact,
   }: {
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
     readonly headerHash: string;
     readonly holder: ProofMaterialsHolder;
   }): Promise<

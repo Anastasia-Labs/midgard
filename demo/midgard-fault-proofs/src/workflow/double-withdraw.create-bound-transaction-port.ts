@@ -30,7 +30,7 @@ import {
   type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.family-adapter-arm.js";
 import type { ManifestBoundLinearFamilyWorkflow } from "./family-definition.family-definition.js";
-import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson } from "./identity.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
@@ -92,7 +92,7 @@ const prepareArtifactFromEvidence = async ({
       "double-withdraw classification changed its deterministic committed pair",
     );
   }
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: DOUBLE_WITHDRAW_ARTIFACT,
     headerHash: admitted.headerHash,
     committedWithdrawalsRoot: evidence.header.withdrawalsRoot,

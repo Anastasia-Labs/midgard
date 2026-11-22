@@ -7,7 +7,7 @@ import {
   type ProofMaterialsAccess,
   proofMaterialsAccess,
 } from "../workflow/proof-materials-view.js";
-import type { SignedValidationTraceStaging } from "./one-step-staging-journal.js";
+import type { SignedValidationTraceStaging } from "./one-step-staging-types.js";
 
 /**
  * Keeps the staging outputs `signed` names out of the proof-materials

@@ -21,7 +21,7 @@ import {
   submitSetupTx,
   withPlaceholderDeposit,
 } from "./support/submit-init-emulator-shared.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
 
@@ -50,7 +50,7 @@ const scene = async () => {
     lucid: h.proverLucid,
     contracts: h.contracts,
   });
-  await buildAndSubmitUnjournaled(buildInit, {
+  await buildAndSubmit(buildInit, {
     lucid: h.proverLucid,
     witnessReferenceScripts: h.witnessReferenceScripts,
     blueprint: h.realBlueprint,

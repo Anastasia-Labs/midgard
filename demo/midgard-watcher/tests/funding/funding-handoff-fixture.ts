@@ -1,7 +1,7 @@
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
-} from "@al-ft/midgard-fault-proofs/workflow/journal";
+} from "@al-ft/midgard-fault-proofs/workflow/identity";
 
 export const fundingTerminal = (
   headerHash: string,

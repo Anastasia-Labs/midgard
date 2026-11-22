@@ -42,13 +42,13 @@ import { submitRawInvalidSignatureStep02 } from "./invalid-signature-emulator.su
 import { network } from "./invalid-signature-wrongful-emulator.network.js";
 import { submitFamilyCancel } from "./linear-fault-cancel.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init/forced-transitions.js";
-import { submitInit } from "./submit-unjournaled.init.js";
+import { submitInit } from "./submit-steps.init.js";
 import {
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
+  certifyFieldCarriage,
+  publishFieldCarriage,
   submitInvalidSignatureStep01Forced,
   submitInvalidSignatureStep02,
-} from "./submit-unjournaled.invalid-signature.js";
+} from "./submit-steps.invalid-signature.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 /** Complete registered invalid-signature lifecycle, including raw on-chain
@@ -467,7 +467,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
     opening.plan.tier === "Inline"
       ? null
       : await captureEmulatorSubmission(harness.emulator, () =>
-          publishCarriageUnjournaled({
+          publishFieldCarriage({
             lucid: harness.proverLucid,
             signer: harness.proverSigner,
             planned: opening,
@@ -485,7 +485,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
       label: "invalid signature field certificate",
     });
     const certified = await captureEmulatorSubmission(harness.emulator, () =>
-      certifyCarriageUnjournaled({
+      certifyFieldCarriage({
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,

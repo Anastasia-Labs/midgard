@@ -17,7 +17,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as family from "../src/missing-signature/index.js";
 import { buildRemoveFraudulentBlock } from "../src/remove-fraudulent-block.build-remove-fraudulent-block.js";
-import { normalizeJournalJson } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson } from "../src/workflow/identity.js";
 import { unsafeCreateMissingSignatureTransactionPortForTest } from "../src/workflow/missing-signature.create-manifest-bound-missing-signature-workflow.js";
 import { createMissingSignatureFieldPrerequisite } from "../src/workflow/missing-signature.create-missing-signature-field-prerequisite.js";
 import { MISSING_SIGNATURE_ARTIFACT } from "../src/workflow/missing-signature.parse-artifact.js";
@@ -77,7 +77,7 @@ const acceptedArtifact = (scenario: MissingSignatureScenario) => {
     txCbor,
     l2TransactionSourceCbor: sources.get(nodeTxId)!,
   }));
-  return normalizeJournalJson({
+  return normalizeWorkflowJson({
     schemaVersion: MISSING_SIGNATURE_ARTIFACT,
     headerHash: scenario.setup.headerHash,
     committedTransactionsRoot: scenario.block.header.transactionsRoot,

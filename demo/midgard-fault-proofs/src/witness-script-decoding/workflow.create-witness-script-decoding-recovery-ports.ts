@@ -30,7 +30,7 @@ import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-fa
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
-import { type WitnessScriptDecodingJournalEntry } from "./witness-script-decoding.js";
+import { type WitnessScriptDecodingObservation } from "./witness-script-decoding.js";
 import { createManifestBoundWitnessScriptDecodingSubmission } from "./workflow.create-manifest-bound-witness-script-decoding-submission.js";
 import {
   deriveWitnessScriptDecodingAuthenticatedSource,
@@ -70,10 +70,7 @@ export const witnessScriptDecodingObservationFromL1 = (
       FraudProofFamilyL1ObservationPort<"witnessScriptDecoding">["observe"]
     >
   >["stage"],
-): Pick<
-  WitnessScriptDecodingJournalEntry,
-  "stage" | "transactionId" | "outputReference" | "checkpointHash"
-> => {
+): WitnessScriptDecodingObservation => {
   switch (stage.kind) {
     case "not_started":
       return {

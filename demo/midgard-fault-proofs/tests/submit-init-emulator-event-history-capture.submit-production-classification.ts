@@ -14,7 +14,7 @@ import {
 } from "./submit-init-emulator-event-history-capture.setup-proof.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 export const submitProductionClassification = async (
   h: Harness,
@@ -30,7 +30,7 @@ export const submitProductionClassification = async (
     p.kind === "Deposit"
       ? await buildFabricatedDepositStep03(input)
       : await buildFabricatedWithdrawalStep03(input);
-  return buildAndSubmitUnjournaled(submit, {
+  return buildAndSubmit(submit, {
     lucid: h.lucid,
     contracts,
     // Built from the shared fields: a retirement journey's list harness

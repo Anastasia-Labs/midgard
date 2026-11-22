@@ -9,7 +9,7 @@ import {
 import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type SubmitStep01TxInclusion } from "../step-support.js";
-import { type JournalJsonObject } from "./journal.js";
+import { type WorkflowJsonObject } from "./identity.js";
 
 export const MISSING_SIGNATURE_ARTIFACT =
   "midgard-production-missing-signature-artifact-v1" as const;
@@ -20,7 +20,7 @@ type MissingSignatureArtifactTransaction = Readonly<{
   l2TransactionSourceCbor: string;
 }>;
 
-export type MissingSignatureArtifact = JournalJsonObject & {
+export type MissingSignatureArtifact = WorkflowJsonObject & {
   readonly schemaVersion: typeof MISSING_SIGNATURE_ARTIFACT;
   readonly headerHash: string;
   readonly committedTransactionsRoot: string;

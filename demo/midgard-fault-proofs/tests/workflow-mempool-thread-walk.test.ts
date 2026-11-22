@@ -29,7 +29,7 @@ import {
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+} from "../src/workflow/identity.js";
 import {
   createAuthenticatedRawDatumPreimagePrerequisitePort,
   withRawDatumPreimagePrerequisite,

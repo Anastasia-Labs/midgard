@@ -23,8 +23,8 @@ import { firstMissingFieldPublication } from "../workflow/bespoke-adapter-field-
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import type {
   FraudProofWorkflowIdentity,
-  JournalJsonObject,
-} from "../workflow/journal.js";
+  WorkflowJsonObject,
+} from "../workflow/identity.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -551,7 +551,7 @@ export const createNetworkIdWorkflowAdapter = (
         CanonicalBlockClassification,
         { readonly decision: "fault_detected" }
       >;
-    }): Promise<JournalJsonObject> => {
+    }): Promise<WorkflowJsonObject> => {
       return await prepareNetworkIdWorkflowArtifact({
         evidence,
         classification,

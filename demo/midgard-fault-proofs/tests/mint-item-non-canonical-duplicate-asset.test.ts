@@ -38,10 +38,10 @@ import {
 } from "./support/mint-item-vectors.js";
 import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
-  buildAndSubmitUnjournaled,
+  buildAndSubmit,
   type SubmittedStep,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  submitTurns,
+} from "./support/submit-steps.js";
 
 /** The largest item with its last 32-byte name repeating the one before. */
 const maximumItemRepeatingLastName = () => {
@@ -210,7 +210,7 @@ describe("mintItemNonCanonical over a mint that repeats a key", () => {
       );
       fraudulentHeaderHash = init.result.fraudulentHeaderHash;
       const bound = await measured(async () =>
-        buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep01Accepted, {
+        buildAndSubmit(buildMintItemNonCanonicalStep01Accepted, {
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           network: "Custom",
@@ -238,7 +238,7 @@ describe("mintItemNonCanonical over a mint that repeats a key", () => {
         | undefined;
       for (;;) {
         const opened = await measured(() =>
-          submitTurnsUnjournaled(buildMintItemNonCanonicalStep02, {
+          submitTurns(buildMintItemNonCanonicalStep02, {
             ...common(threadOutRef, 1),
             ...source,
             publishCarriage: true,
@@ -253,7 +253,7 @@ describe("mintItemNonCanonical over a mint that repeats a key", () => {
       }
       for (;;) {
         const scanned = await measured(() =>
-          buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep03, {
+          buildAndSubmit(buildMintItemNonCanonicalStep03, {
             ...common(threadOutRef, 2),
             evidence,
           }),
@@ -263,7 +263,7 @@ describe("mintItemNonCanonical over a mint that repeats a key", () => {
       }
       if (shape.repeated) {
         const minted = await measured(() =>
-          buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep04, {
+          buildAndSubmit(buildMintItemNonCanonicalStep04, {
             ...common(threadOutRef, 3),
             evidence,
             witnessReferenceScripts: harness.witnessReferenceScripts,

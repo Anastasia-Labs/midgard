@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { requireTransitionTraceWorkflowArtifact } from "../src/transition-trace/workflow-artifact.js";
 import type {
-  JournalJsonObject,
-  JournalJsonValue,
-} from "../src/workflow/journal.js";
+  WorkflowJsonObject,
+  WorkflowJsonValue,
+} from "../src/workflow/identity.js";
 
 // Admission compares already verified immutable facts. These bytes are not an
 // L1 authority; on-chain reopening separately authenticates the actual hashes.
-const artifact = (): JournalJsonObject => ({
+const artifact = (): WorkflowJsonObject => ({
   schemaVersion: "midgard-transition-trace-workflow-artifact-v3",
   headerHash: "aa",
   detectionId: "deposit-0",
@@ -22,7 +22,7 @@ const artifact = (): JournalJsonObject => ({
 
 describe("transition staged opening journal identity", () => {
   it("survives serialization and a moved snapshot with the same immutable opening", () => {
-    const prior = JSON.parse(JSON.stringify(artifact())) as JournalJsonObject;
+    const prior = JSON.parse(JSON.stringify(artifact())) as WorkflowJsonObject;
     const fresh = {
       ...artifact(),
       l1Snapshot: { evidence: "current" },
@@ -48,7 +48,7 @@ describe("transition staged opening journal identity", () => {
       ).toThrow(/deposit opening/);
     },
   );
-  it.each<JournalJsonValue>([
+  it.each<WorkflowJsonValue>([
     null,
     {},
     { commitmentCbor: "dd", openingCbor: "ee", extra: "00" },

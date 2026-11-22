@@ -8,12 +8,12 @@ import {
   parseSubmitStep01TxInclusion,
 } from "../step-support.js";
 import { type MinFeeFieldItemCbors } from "../submit-min-fee-step-02.js";
-import { type JournalJsonObject } from "./journal.js";
+import { type WorkflowJsonObject } from "./identity.js";
 
 export const MIN_FEE_ARTIFACT =
   "midgard-production-min-fee-artifact-v1" as const;
 
-export type MinFeeArtifact = JournalJsonObject &
+export type MinFeeArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof MIN_FEE_ARTIFACT;
     headerHash: string;

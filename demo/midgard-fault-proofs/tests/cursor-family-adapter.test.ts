@@ -6,7 +6,7 @@ import "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adap
 import "../src/workflow/cursor-family-spec.js";
 import "../src/workflow/cursor-family-state.js";
 import "../src/workflow/family-l1-observation.js";
-import "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import "../src/workflow/identity.js";
 import "../src/workflow/transaction-boundary.js";
 import "./cursor-family-adapter.terminal.js";
 import "./cursor-family-adapter.production-cursor-family-adapter-v1.js";

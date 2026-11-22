@@ -9,7 +9,7 @@ import {
   admitClaimedCoordinateDecimal,
   claimedCoordinateDecimal,
 } from "../evidence/claimed-coordinate.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import {
   type MintDeclaredAssetLimitEvidence,
   MintDeclaredAssetLimitVerdictSubjectSchema,
@@ -25,7 +25,7 @@ import {
 export const MINT_DECLARED_ASSET_LIMIT_ARTIFACT =
   "midgard-production-mint-declared-asset-limit-artifact-v1" as const;
 
-export type MintDeclaredAssetLimitArtifact = JournalJsonObject &
+export type MintDeclaredAssetLimitArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof MINT_DECLARED_ASSET_LIMIT_ARTIFACT;
     headerHash: string;

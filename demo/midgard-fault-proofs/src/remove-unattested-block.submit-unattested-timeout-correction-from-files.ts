@@ -1,5 +1,5 @@
-import { type SubmitUnattestedTimeoutCorrectionResult } from "./remove-unattested-block.reconcile-last-timeout-correction-step.js";
 import { submitUnattestedTimeoutCorrection } from "./remove-unattested-block.submit-unattested-timeout-correction.js";
+import { type SubmitUnattestedTimeoutCorrectionResult } from "./remove-unattested-block.timeout-correction-plan.js";
 import {
   makeLucidForSubmit,
   type ProverSignerConfig,

@@ -42,7 +42,7 @@ import {
   submitRemovalForFixture,
 } from "./support/submit-init/removal.js";
 import { EMULATOR_HEADER_CLOCK_HEADROOM_MS } from "./support/submit-init/successor.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 type DeploymentContext = Awaited<
   ReturnType<typeof buildProvedFixtureDeploymentContext>
@@ -178,7 +178,7 @@ describe("preprod-emulator-curated operator allow-list and catalogue", () => {
       scriptHash: claimed.spendingScriptHash,
     });
     await expectOnchainRefusal(() =>
-      buildAndSubmitUnjournaled(buildResolvedInit, {
+      buildAndSubmit(buildResolvedInit, {
         lucid: context.proverLucid,
         blueprint: realBlueprint,
         network,

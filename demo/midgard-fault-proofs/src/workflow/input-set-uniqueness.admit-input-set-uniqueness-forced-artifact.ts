@@ -27,7 +27,7 @@ import {
 import {
   canonicalHex,
   EVEN_HEX,
-  exactJournalRecord,
+  exactArtifactRecord,
   HEX_28,
   HEX_32,
   NATURAL_DECIMAL,
@@ -41,7 +41,7 @@ export const admitInputSetUniquenessForcedArtifact = (
   if (!HEX_28.test(carriageOwner)) {
     throw new Error("input-set-uniqueness carriage owner is malformed");
   }
-  const parsed = exactJournalRecord(
+  const parsed = exactArtifactRecord(
     value,
     [
       "schemaVersion",

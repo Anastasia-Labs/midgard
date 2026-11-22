@@ -20,7 +20,7 @@ import { outRefLabel } from "../../src/runtime.js";
 import { buildResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
 import { network } from "./emulator/blueprints.js";
 import { type ProvedDoubleSpendFixture } from "./submit-init-emulator-fixtures.js";
-import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmit } from "./submit-steps.js";
 
 export const VALIDATION_TRACE_CATEGORY_ID =
   SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.validationTraceDispute;
@@ -53,7 +53,7 @@ export const mintValidationTraceProof = async (
   const category = catalogue.categories.validationTraceDispute;
   if (category === undefined)
     throw new Error("catalogue has no validation-trace category");
-  const init = await buildAndSubmitUnjournaled(buildResolvedInit, {
+  const init = await buildAndSubmit(buildResolvedInit, {
     lucid: proverLucid,
     blueprint: fixture.realBlueprint,
     network,

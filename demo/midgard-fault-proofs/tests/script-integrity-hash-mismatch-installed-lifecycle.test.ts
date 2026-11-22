@@ -31,7 +31,7 @@ import {
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+} from "../src/workflow/identity.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   type DirectWalkHarness,

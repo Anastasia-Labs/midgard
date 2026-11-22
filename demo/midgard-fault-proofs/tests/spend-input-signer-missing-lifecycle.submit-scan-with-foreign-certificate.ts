@@ -35,10 +35,10 @@ import {
   network,
 } from "./spend-input-signer-missing-lifecycle.registered-contracts.js";
 import {
-  buildAndSubmitTransactionUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-} from "./support/submit-unjournaled.js";
+  buildAndSubmitTransaction,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+} from "./support/submit-steps.js";
 
 /**
  * The opening scan turn over `threadOutRef` with a certificate and chunks
@@ -99,14 +99,14 @@ export const submitScanWithForeignCertificate = async ({
   });
   expect(planned.plan.tier).toBe("Certified");
   signer.selectWallet(lucid);
-  const carriageUtxos = await publishCarriageUnjournaled({
+  const carriageUtxos = await publishFieldCarriage({
     lucid,
     signer,
     planned,
     publisherAddress: signer.proofMaterialsAddress,
     label: "foreign address witnesses",
   });
-  const { certificateUtxo } = await certifyCarriageUnjournaled({
+  const { certificateUtxo } = await certifyFieldCarriage({
     lucid,
     network,
     signer,
@@ -192,7 +192,7 @@ export const submitScanWithForeignCertificate = async ({
       SignerWitnessScanRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  return buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
+  return buildAndSubmitTransaction(buildLinearFaultContinue, {
     lucid,
     signer,
     threadUtxo,

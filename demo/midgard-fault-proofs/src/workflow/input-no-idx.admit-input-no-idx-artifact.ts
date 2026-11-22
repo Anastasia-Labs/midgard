@@ -24,6 +24,7 @@ import {
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
 } from "./family-definition.family-adapter-arm.js";
+import { normalizeWorkflowJson } from "./identity.js";
 import {
   type AdmittedArtifact,
   exact,
@@ -40,7 +41,6 @@ import {
   record,
   safeNatural,
 } from "./input-no-idx.parse-inclusion.js";
-import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import type { ProofMaterialsAccess } from "./proof-materials-view.js";
 
@@ -230,7 +230,7 @@ export const prepareInputNoIdxArtifact = async ({
     transactionsPhasRoot: inclusion.transactionsPhasRoot,
     txMembershipProofCbor: inclusion.txMembershipProofCbor,
   });
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: INPUT_NO_IDX_ARTIFACT,
     headerHash: prepared.headerHash,
     detectionId: classification.selected.detectionId,

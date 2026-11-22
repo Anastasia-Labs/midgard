@@ -9,7 +9,7 @@ import { createNetworkIdWorkflowAdapter } from "../src/network-id/workflow-adapt
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+} from "../src/workflow/identity.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   type Harness,

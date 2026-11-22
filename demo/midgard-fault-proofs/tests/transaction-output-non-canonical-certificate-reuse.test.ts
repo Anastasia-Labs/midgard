@@ -29,7 +29,7 @@ import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import { buildForcedOutputFixture } from "./support/transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
 import { canonicalOutputOfLength } from "./support/transaction-output-non-canonical-emulator.continue-raw.js";
 import {
@@ -85,7 +85,7 @@ const stepTwoReady = async () => {
   );
   expect(evidence.carriage).toBe("Certified");
   const init = await registered.init(setup.fraudulentBlockOutRef);
-  const bound = await buildAndSubmitUnjournaled(
+  const bound = await buildAndSubmit(
     buildTransactionOutputNonCanonicalStep01Forced,
     {
       lucid: harness.proverLucid,

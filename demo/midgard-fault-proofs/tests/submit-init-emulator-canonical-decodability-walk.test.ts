@@ -38,7 +38,7 @@ import {
 } from "./support/canonical-decodability-emulator.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 const B = MIDGARD_ENVELOPE_BATCH_ITEMS;
 
@@ -73,25 +73,22 @@ describe("canonical-decodability batched walk", () => {
       harness,
       fixture,
     });
-    const init = await buildAndSubmitUnjournaled(
-      buildCanonicalDecodabilityInit,
-      {
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        network,
-        contracts: canonicalDecodability,
-        category,
-        catalogue: {
-          policyId: contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: catalogue.root,
-        },
-        signer: proverSigner,
-        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-        witnessReferenceScripts,
+    const init = await buildAndSubmit(buildCanonicalDecodabilityInit, {
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      network,
+      contracts: canonicalDecodability,
+      category,
+      catalogue: {
+        policyId: contracts.fraudProofCatalogue.policyId,
+        spendingScriptAddress:
+          contracts.fraudProofCatalogue.spendingScriptAddress,
+        root: catalogue.root,
       },
-    );
+      signer: proverSigner,
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts,
+    });
     const unit = init.computationThreadUnit;
     const stepAddress = (step: 0 | 1) =>
       canonicalDecodability.steps[step].spendingScriptAddress;
@@ -167,24 +164,21 @@ describe("canonical-decodability batched walk", () => {
     }
     expect(outRefLabel(await threadAt(0))).toBe(firstStep);
 
-    const first = await buildAndSubmitUnjournaled(
-      buildCanonicalDecodabilityStep01,
-      {
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        contracts: canonicalDecodability,
-        categoryId: category.categoryId,
-        network,
-        signer: proverSigner,
-        threadOutRef: firstStep,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: fixture.txInclusion,
-        fieldIndex: fixture.fieldIndex,
-        committedPreimage,
-        referenceScriptUtxo: step01Ref,
-        witnessReferenceScripts,
-      },
-    );
+    const first = await buildAndSubmit(buildCanonicalDecodabilityStep01, {
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      contracts: canonicalDecodability,
+      categoryId: category.categoryId,
+      network,
+      signer: proverSigner,
+      threadOutRef: firstStep,
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: fixture.txInclusion,
+      fieldIndex: fixture.fieldIndex,
+      committedPreimage,
+      referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts,
+    });
     expect(first.complete).toBe(false);
     expect(first.verdict).toBeNull();
     expect(first.nextStepAddress).toBe(stepAddress(0));
@@ -247,18 +241,15 @@ describe("canonical-decodability batched walk", () => {
       proverLucid.utxosAtWithUnit(stepAddress(0), unit),
     ).resolves.toHaveLength(0);
 
-    const step02 = await buildAndSubmitUnjournaled(
-      buildCanonicalDecodabilityStep02,
-      {
-        lucid: proverLucid,
-        contracts: canonicalDecodability,
-        categoryId: category.categoryId,
-        signer: proverSigner,
-        threadOutRef: second.nextThreadOutRef,
-        referenceScriptUtxo: step02Ref,
-        witnessReferenceScripts,
-      },
-    );
+    const step02 = await buildAndSubmit(buildCanonicalDecodabilityStep02, {
+      lucid: proverLucid,
+      contracts: canonicalDecodability,
+      categoryId: category.categoryId,
+      signer: proverSigner,
+      threadOutRef: second.nextThreadOutRef,
+      referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts,
+    });
     await expectSingleUtxoWithUnit(
       proverLucid,
       step02.fraudProofAddress,

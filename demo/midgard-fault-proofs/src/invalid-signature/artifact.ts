@@ -8,9 +8,9 @@ import { Data } from "@lucid-evolution/lucid";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { commitCountedRoot } from "../transition-trace/phas.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import {
   invalidSignatureEvidenceFromForcedSource,
   invalidSignatureWrongfulRejectionCloses,
@@ -20,7 +20,7 @@ import {
 
 export const INVALID_SIGNATURE_FORCED_ARTIFACT =
   "midgard-invalid-signature-forced-artifact-v1";
-export type InvalidSignatureForcedArtifact = JournalJsonObject &
+export type InvalidSignatureForcedArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof INVALID_SIGNATURE_FORCED_ARTIFACT;
     headerHash: string;
@@ -141,7 +141,7 @@ export const prepareInvalidSignatureForcedArtifact = async ({
   );
   if (forced === undefined)
     throw new Error("invalidSignature: retained forced source absent");
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: INVALID_SIGNATURE_FORCED_ARTIFACT,
     headerHash: prepared.headerHash,
     forcedSourceCbor: Data.to(

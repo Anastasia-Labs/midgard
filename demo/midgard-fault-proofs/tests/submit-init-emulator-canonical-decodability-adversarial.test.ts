@@ -20,7 +20,7 @@ import {
 } from "./support/canonical-decodability-emulator.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 describe("canonical-decodability honest-commitment adversary", () => {
   it("binds verdict 0 but cannot fabricate or finalize a conviction", async () => {
@@ -48,25 +48,22 @@ describe("canonical-decodability honest-commitment adversary", () => {
       harness,
       fixture,
     });
-    const init = await buildAndSubmitUnjournaled(
-      buildCanonicalDecodabilityInit,
-      {
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        network,
-        contracts: canonicalDecodability,
-        category,
-        catalogue: {
-          policyId: contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: catalogue.root,
-        },
-        signer: proverSigner,
-        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-        witnessReferenceScripts,
+    const init = await buildAndSubmit(buildCanonicalDecodabilityInit, {
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      network,
+      contracts: canonicalDecodability,
+      category,
+      catalogue: {
+        policyId: contracts.fraudProofCatalogue.policyId,
+        spendingScriptAddress:
+          contracts.fraudProofCatalogue.spendingScriptAddress,
+        root: catalogue.root,
       },
-    );
+      signer: proverSigner,
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts,
+    });
     const firstStep = await expectSingleUtxoWithUnit(
       proverLucid,
       init.firstStepAddress,
@@ -74,7 +71,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
     );
 
     await expect(
-      buildAndSubmitUnjournaled(buildCanonicalDecodabilityStep01, {
+      buildAndSubmit(buildCanonicalDecodabilityStep01, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         contracts: canonicalDecodability,
@@ -189,7 +186,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
     );
     expect(outRefLabel(secondStep)).toBe(bind.nextThreadOutRef);
     await expect(
-      buildAndSubmitUnjournaled(buildCanonicalDecodabilityStep02, {
+      buildAndSubmit(buildCanonicalDecodabilityStep02, {
         lucid: proverLucid,
         contracts: canonicalDecodability,
         categoryId: category.categoryId,

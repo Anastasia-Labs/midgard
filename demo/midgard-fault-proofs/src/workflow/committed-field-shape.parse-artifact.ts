@@ -18,7 +18,7 @@ import {
 } from "../prepare-double-spend.resolve-double-spend-pair.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import type { CanonicalBlockClassification } from "./classification.js";
-import { type JournalJsonObject } from "./journal.js";
+import { type WorkflowJsonObject } from "./identity.js";
 
 export const COMMITTED_FIELD_SHAPE_ARTIFACT =
   "midgard-production-committed-field-shape-artifact-v1" as const;
@@ -29,7 +29,7 @@ type ArtifactTransaction = Readonly<{
   l2TransactionSourceCbor: string;
 }>;
 
-export type CommittedFieldShapeArtifact = JournalJsonObject & {
+export type CommittedFieldShapeArtifact = WorkflowJsonObject & {
   readonly schemaVersion: typeof COMMITTED_FIELD_SHAPE_ARTIFACT;
   readonly headerHash: string;
   readonly committedTransactionsRoot: string;

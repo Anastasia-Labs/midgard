@@ -14,7 +14,7 @@ import {
   parseSubmitInputNoIdxOutputsPreimage,
   type SubmitInputNoIdxOutputsPreimage,
 } from "../submit-input-no-idx-step-04.make-input-no-idx-step04-spend-redeemer.js";
-import { type JournalJsonObject } from "./journal.js";
+import { type WorkflowJsonObject } from "./identity.js";
 
 export const INPUT_NO_IDX_ARTIFACT =
   "midgard-production-input-no-idx-artifact-v1" as const;
@@ -27,7 +27,7 @@ type InclusionJson = Readonly<{
   txMembershipProofCbor: string;
 }>;
 
-export type InputNoIdxArtifact = JournalJsonObject &
+export type InputNoIdxArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof INPUT_NO_IDX_ARTIFACT;
     headerHash: string;

@@ -28,7 +28,7 @@ import { join } from "node:path";
 const request = JSON.parse(process.argv[process.argv.length - 1]);
 const read = async (config) => {
   if (request.read === "decisions") {
-    const directory = config.workflowJournalDirectory;
+    const directory = config.decisionJournalDirectory;
     if (!existsSync(join(directory, "watcher-journals.sqlite"))) return [];
     const { readWatcherFaultDecisionEvidence } = await import("./dist/index.js");
     return readWatcherFaultDecisionEvidence({

@@ -24,10 +24,7 @@ import {
 } from "./support/final-catalogue-emulator.build-min-ada-tx-emulator-fixture.js";
 import { buildNativeScriptInvalidEmulatorFixture } from "./support/final-catalogue-emulator.build-native-script-invalid-emulator-fixture.js";
 import { setupFraudulentBlock } from "./support/submit-init/removal.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 describe("native-script-invalid standalone emulator lifecycle", () => {
   it("rejects a forced 29-signer direct submission before touching builder dependencies", async () => {
@@ -36,7 +33,7 @@ describe("native-script-invalid standalone emulator lifecycle", () => {
     });
     const unreachable = null as never;
     await expect(
-      submitTurnsUnjournaled(buildNativeScriptInvalidStep03, {
+      submitTurns(buildNativeScriptInvalidStep03, {
         lucid: unreachable,
         contracts: unreachable,
         categoryId: "unreachable",
@@ -89,42 +86,33 @@ describe("native-script-invalid standalone emulator lifecycle", () => {
       witnessReferenceScripts: harness.witnessReferenceScripts,
     } as const;
 
-    const init = await buildAndSubmitUnjournaled(
-      buildNativeScriptInvalidInit,
-      initParams,
-    );
-    const step01 = await buildAndSubmitUnjournaled(
-      buildNativeScriptInvalidStep01,
-      {
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: harness.family,
-        categoryId: harness.category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: `${init.txHash}#${init.firstStepOutputIndex.toString()}`,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion,
-        referenceScriptUtxo: refs[0],
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      },
-    );
-    const step02 = await submitTurnsUnjournaled(
-      buildNativeScriptInvalidStep02,
-      {
-        lucid: harness.proverLucid,
-        contracts: harness.family,
-        categoryId: harness.category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: step01.nextThreadOutRef,
-        nativeTxCompactCbor: prepared.nativeTxCompactCbor,
-        witnessSet: fixture.witnessSet,
-        scriptWitnessItems: fixture.scriptWitnessItems,
-        scriptIndex: prepared.scriptIndex,
-        referenceScriptUtxo: refs[1],
-      },
-    );
-    const proof = await submitTurnsUnjournaled(buildNativeScriptInvalidStep03, {
+    const init = await buildAndSubmit(buildNativeScriptInvalidInit, initParams);
+    const step01 = await buildAndSubmit(buildNativeScriptInvalidStep01, {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      network,
+      contracts: harness.family,
+      categoryId: harness.category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: `${init.txHash}#${init.firstStepOutputIndex.toString()}`,
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion,
+      referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
+    const step02 = await submitTurns(buildNativeScriptInvalidStep02, {
+      lucid: harness.proverLucid,
+      contracts: harness.family,
+      categoryId: harness.category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: step01.nextThreadOutRef,
+      nativeTxCompactCbor: prepared.nativeTxCompactCbor,
+      witnessSet: fixture.witnessSet,
+      scriptWitnessItems: fixture.scriptWitnessItems,
+      scriptIndex: prepared.scriptIndex,
+      referenceScriptUtxo: refs[1],
+    });
+    const proof = await submitTurns(buildNativeScriptInvalidStep03, {
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,
@@ -212,61 +200,49 @@ describe("native-script-invalid standalone emulator lifecycle", () => {
         categoryId: harness.category.categoryId,
         signer: harness.proverSigner,
       } as const;
-      const init = await buildAndSubmitUnjournaled(
-        buildNativeScriptInvalidInit,
-        {
-          lucid: harness.proverLucid,
-          blueprint: harness.realBlueprint,
-          deploymentInfo: buildRemovalDeploymentInfo(
-            harness.contracts,
-            harness.catalogue,
-          ),
-          network,
-          signer: harness.proverSigner,
-          fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        },
-      );
-      const step01 = await buildAndSubmitUnjournaled(
-        buildNativeScriptInvalidStep01,
-        {
-          ...common,
-          blueprint: harness.realBlueprint,
-          network,
-          threadOutRef: `${init.txHash}#${init.firstStepOutputIndex.toString()}`,
-          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-          txInclusion: parseSubmitStep01TxInclusion(prepared.txInclusion),
-          referenceScriptUtxo: refs[0],
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        },
-      );
-      const step02 = await submitTurnsUnjournaled(
-        buildNativeScriptInvalidStep02,
-        {
-          ...common,
-          threadOutRef: step01.nextThreadOutRef,
-          nativeTxCompactCbor: prepared.nativeTxCompactCbor,
-          witnessSet: fixture.witnessSet,
-          scriptWitnessItems: fixture.scriptWitnessItems,
-          scriptIndex: prepared.scriptIndex,
-          referenceScriptUtxo: refs[1],
-        },
-      );
+      const init = await buildAndSubmit(buildNativeScriptInvalidInit, {
+        lucid: harness.proverLucid,
+        blueprint: harness.realBlueprint,
+        deploymentInfo: buildRemovalDeploymentInfo(
+          harness.contracts,
+          harness.catalogue,
+        ),
+        network,
+        signer: harness.proverSigner,
+        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      });
+      const step01 = await buildAndSubmit(buildNativeScriptInvalidStep01, {
+        ...common,
+        blueprint: harness.realBlueprint,
+        network,
+        threadOutRef: `${init.txHash}#${init.firstStepOutputIndex.toString()}`,
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: parseSubmitStep01TxInclusion(prepared.txInclusion),
+        referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      });
+      const step02 = await submitTurns(buildNativeScriptInvalidStep02, {
+        ...common,
+        threadOutRef: step01.nextThreadOutRef,
+        nativeTxCompactCbor: prepared.nativeTxCompactCbor,
+        witnessSet: fixture.witnessSet,
+        scriptWitnessItems: fixture.scriptWitnessItems,
+        scriptIndex: prepared.scriptIndex,
+        referenceScriptUtxo: refs[1],
+      });
       const start = await captureEmulatorSubmission(
         harness.emulator,
         async () =>
-          await submitTurnsUnjournaled(
-            buildNativeScriptInvalidStep03StartSignerScan,
-            {
-              ...common,
-              threadOutRef: step02.nextThreadOutRef,
-              nativeTxCompactCbor: prepared.nativeTxCompactCbor,
-              witnessSet: fixture.witnessSet,
-              scriptItemCbor: fixture.scriptItem,
-              addressWitnessItems: fixture.addressWitnessItems,
-              referenceScriptUtxo: refs[2],
-            },
-          ),
+          await submitTurns(buildNativeScriptInvalidStep03StartSignerScan, {
+            ...common,
+            threadOutRef: step02.nextThreadOutRef,
+            nativeTxCompactCbor: prepared.nativeTxCompactCbor,
+            witnessSet: fixture.witnessSet,
+            scriptItemCbor: fixture.scriptItem,
+            addressWitnessItems: fixture.addressWitnessItems,
+            referenceScriptUtxo: refs[2],
+          }),
       );
       expect(start.result.signerCount).toBe(16n);
 
@@ -278,7 +254,7 @@ describe("native-script-invalid standalone emulator lifecycle", () => {
         const stage = await captureEmulatorSubmission(
           harness.emulator,
           async () =>
-            await submitTurnsUnjournaled(buildNativeScriptInvalidStep04, {
+            await submitTurns(buildNativeScriptInvalidStep04, {
               ...common,
               threadOutRef: signerThreadOutRef,
               nativeTxCompactCbor: prepared.nativeTxCompactCbor,
@@ -301,7 +277,7 @@ describe("native-script-invalid standalone emulator lifecycle", () => {
         const stage = await captureEmulatorSubmission(
           harness.emulator,
           async () =>
-            await buildAndSubmitUnjournaled(buildNativeScriptInvalidStep05, {
+            await buildAndSubmit(buildNativeScriptInvalidStep05, {
               ...common,
               threadOutRef: evaluatorThreadOutRef,
               scriptItemCbor: fixture.scriptItem,

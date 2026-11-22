@@ -19,7 +19,7 @@
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 
 import { requireReplayPredecessorLedger } from "../workflow/complete-replay.replay-context-identity.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import { validateValidationTraceArtifact } from "./detected-claim.js";
@@ -57,7 +57,7 @@ export const validationTraceArtifactCheck = ({
   /** Each block's last preparation, by the digest of its inputs. */
   const preparedBy = new Map<
     string,
-    Readonly<{ inputs: string; artifact: JournalJsonObject }>
+    Readonly<{ inputs: string; artifact: WorkflowJsonObject }>
   >();
   return {
     /** Forgets the block's last pass, once its material is prepared anew. */
@@ -66,8 +66,8 @@ export const validationTraceArtifactCheck = ({
      * inputs of the same content while its material stands, else `build`'s. */
     prepare: async (
       { evidence, replayContext, classification }: ArtifactInputs,
-      build: () => Promise<JournalJsonObject>,
-    ): Promise<JournalJsonObject> => {
+      build: () => Promise<WorkflowJsonObject>,
+    ): Promise<WorkflowJsonObject> => {
       const { headerHash } = evidence;
       const inputs = digestOf({ evidence, replayContext, classification });
       const last = preparedBy.get(headerHash);

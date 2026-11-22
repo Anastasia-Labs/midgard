@@ -4,7 +4,7 @@ import {
   type EvidenceProvenance,
 } from "@al-ft/midgard-sdk/fraud-proof";
 
-import type { FraudProofWorkflowTerminal } from "./journal.js";
+import type { FraudProofWorkflowTerminal } from "./identity.js";
 import type { FraudProofL1Source } from "./l1-source.js";
 import { FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { FraudProofWorkflowTerminalVerifier } from "./orchestrator.js";

@@ -7,7 +7,7 @@ import { parseOutRef } from "../src/runtime.js";
 import { buildInit } from "../src/submit-init.submit-init.js";
 import { network } from "./support/emulator/blueprints.js";
 import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 const THREADS_PER_ROUND = 8;
 
@@ -31,7 +31,7 @@ describe("computation-thread Init flood against an honest block", () => {
     const flood = async () => {
       for (let index = 0; index < THREADS_PER_ROUND; index += 1) {
         const before = await walletLovelace();
-        const init = await buildAndSubmitUnjournaled(buildInit, {
+        const init = await buildAndSubmit(buildInit, {
           lucid,
           blueprint: staged.realBlueprint,
           deploymentInfo: staged.deploymentInfo,
@@ -71,22 +71,18 @@ describe("computation-thread Init flood against an honest block", () => {
     let cancelFees = 0n;
     for (const { outRef, lovelace } of threads) {
       const walletBefore = await walletLovelace();
-      const cancelled = await buildAndSubmitUnjournaled(
-        buildLinearFaultCancel,
-        {
-          lucid,
-          family: "double-spend",
-          steps: staged.contracts.fraudProofContracts.doubleSpend.steps,
-          computationThread: staged.contracts.computationThread,
-          categoryId: staged.catalogue.categories.doubleSpend.categoryId,
-          signer,
-          threadOutRef: outRef,
-          referenceScriptUtxo:
-            staged.doubleSpendStepReferenceScripts["fraudProofDoubleSpend"]!
-              .utxo,
-          witnessReferenceScripts: staged.witnessReferenceScripts,
-        },
-      );
+      const cancelled = await buildAndSubmit(buildLinearFaultCancel, {
+        lucid,
+        family: "double-spend",
+        steps: staged.contracts.fraudProofContracts.doubleSpend.steps,
+        computationThread: staged.contracts.computationThread,
+        categoryId: staged.catalogue.categories.doubleSpend.categoryId,
+        signer,
+        threadOutRef: outRef,
+        referenceScriptUtxo:
+          staged.doubleSpendStepReferenceScripts["fraudProofDoubleSpend"]!.utxo,
+        witnessReferenceScripts: staged.witnessReferenceScripts,
+      });
       expect(cancelled.reclaimedLovelace).toBe(lovelace);
       cancelFees += lovelace - ((await walletLovelace()) - walletBefore);
     }

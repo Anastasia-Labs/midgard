@@ -62,7 +62,7 @@
   "fundingProfileBundlePath": "/etc/midgard/bundles/funding-profiles.json",
   "l1NodeTransportBinaryPath": "/usr/local/bin/midgard-l1-node-transport",
   "operationsEndpoint": "http://127.0.0.1:7402",
-  "workflowJournalDirectory": "/var/lib/midgard-watcher/workflows",
+  "decisionJournalDirectory": "/var/lib/midgard-watcher/workflows",
   "availability": {
     "keySource": {
       "kind": "file",

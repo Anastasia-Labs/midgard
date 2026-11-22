@@ -30,15 +30,15 @@ export type FraudProofWorkflowIdentity = {
   readonly decisionDigest?: string;
 };
 
-export type JournalJsonPrimitive = string | number | boolean | null;
+export type WorkflowJsonPrimitive = string | number | boolean | null;
 
-export type JournalJsonValue =
-  | JournalJsonPrimitive
-  | readonly JournalJsonValue[]
-  | { readonly [key: string]: JournalJsonValue };
+export type WorkflowJsonValue =
+  | WorkflowJsonPrimitive
+  | readonly WorkflowJsonValue[]
+  | { readonly [key: string]: WorkflowJsonValue };
 
-export type JournalJsonObject = {
-  readonly [key: string]: JournalJsonValue;
+export type WorkflowJsonObject = {
+  readonly [key: string]: WorkflowJsonValue;
 };
 
 export const FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION =
@@ -154,7 +154,7 @@ export const normalizeFraudProofWorkflowIdentity = (
   });
 };
 
-const stableJson = (value: JournalJsonValue): string => {
+const stableJson = (value: WorkflowJsonValue): string => {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
   }
@@ -167,10 +167,10 @@ const stableJson = (value: JournalJsonValue): string => {
     .join(",")}}`;
 };
 
-export const normalizeJournalJson = (
+export const normalizeWorkflowJson = (
   value: unknown,
   field = "journal value",
-): JournalJsonValue => {
+): WorkflowJsonValue => {
   if (
     value === null ||
     typeof value === "string" ||
@@ -187,7 +187,7 @@ export const normalizeJournalJson = (
   if (Array.isArray(value)) {
     return Object.freeze(
       value.map((entry, index) =>
-        normalizeJournalJson(entry, `${field}[${index.toString()}]`),
+        normalizeWorkflowJson(entry, `${field}[${index.toString()}]`),
       ),
     );
   }
@@ -204,13 +204,13 @@ export const normalizeJournalJson = (
         .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
         .map(([key, child]) => [
           key,
-          normalizeJournalJson(child, `${field}.${key}`),
+          normalizeWorkflowJson(child, `${field}.${key}`),
         ]),
     ),
   );
 };
 
-export const journalJsonDigest = (value: JournalJsonValue): string =>
+export const workflowJsonDigest = (value: WorkflowJsonValue): string =>
   createHash("sha256").update(stableJson(value)).digest("hex");
 
 export const computeFraudProofWorkflowId = (

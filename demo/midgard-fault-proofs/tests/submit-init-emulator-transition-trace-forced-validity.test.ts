@@ -46,7 +46,7 @@ import {
   transitionTraceOutRef,
 } from "./support/emulator/header-fixtures.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
-import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
+import { submitTurns } from "./support/submit-steps.js";
 
 describe("transition-trace forced order validity interval", () => {
   it.each(["honest-inclusion", "late-inclusion", "omission"] as const)(
@@ -210,7 +210,7 @@ describe("transition-trace forced order validity interval", () => {
       expect(transitionTraceFinalIndex(proof)).toBe(6);
       const thread = await firstThreadUtxo({ harness, init: lifecycle.init });
       const run = () =>
-        submitTurnsUnjournaled(buildTransitionTraceProof, {
+        submitTurns(buildTransitionTraceProof, {
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           deploymentInfo: lifecycle.deploymentInfo,

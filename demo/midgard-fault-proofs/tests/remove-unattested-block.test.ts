@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   planNextTimeoutCorrection,
   selectTimeoutCorrectionTarget,
-} from "../src/remove-unattested-block.reconcile-last-timeout-correction-step.js";
+} from "../src/remove-unattested-block.timeout-correction-plan.js";
 const h = (byte: string) => byte.repeat(28);
 const tx = (byte: string) => byte.repeat(32);
 const address = credentialToAddress("Preprod", { type: "Key", hash: h("dd") });

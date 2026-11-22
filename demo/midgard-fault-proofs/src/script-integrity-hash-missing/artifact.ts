@@ -13,9 +13,9 @@ import {
 } from "../field-opening.plan-fault-proof-field-opening.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import {
   prepareScriptIntegrityHashMissingEvidence,
   type ScriptIntegrityHashMissingEvidence,
@@ -98,7 +98,7 @@ export const testingOnlyScriptIntegrityHashMissingArtifact = ({
   const evidence = prepareScriptIntegrityHashMissingEvidence(rawEvidence);
   const evidenceJson = encodePortable(evidence);
   const sourceJson = encodePortable(source);
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: SCRIPT_INTEGRITY_HASH_MISSING_ARTIFACT,
     headerHash: evidence.finding.headerHash,
     detectionId,
@@ -110,7 +110,7 @@ export const testingOnlyScriptIntegrityHashMissingArtifact = ({
   return Object.freeze(artifact);
 };
 
-export type ScriptIntegrityHashMissingArtifact = JournalJsonObject &
+export type ScriptIntegrityHashMissingArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof SCRIPT_INTEGRITY_HASH_MISSING_ARTIFACT;
     headerHash: string;
@@ -265,7 +265,7 @@ export const prepareScriptIntegrityHashMissingArtifact = async ({
   });
   const evidenceJson = encodePortable(reconstructed);
   const sourceJson = encodePortable(source);
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: SCRIPT_INTEGRITY_HASH_MISSING_ARTIFACT,
     headerHash: evidence.headerHash,
     detectionId: detection.detectionId,

@@ -11,7 +11,7 @@ import { createFraudProofFamilyRawL1ObservationPort } from "../src/workflow/fami
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+} from "../src/workflow/identity.js";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
   FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,

@@ -38,10 +38,7 @@ import {
 } from "./emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import type { Common } from "./mint-item-non-canonical-emulator.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitBoundUnjournaled,
-} from "./submit-unjournaled.js";
+import { buildAndSubmit, submitBound } from "./submit-steps.js";
 
 const network = "Custom" as const;
 const CATEGORY_ID = "00000036";
@@ -124,7 +121,7 @@ export const registeredContracts = async (harness: Harness) => {
   });
   const init = async (fraudulentBlockOutRef: string) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
+      buildAndSubmit(buildCommittedFieldShapeInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -153,7 +150,7 @@ export const registeredContracts = async (harness: Harness) => {
   };
   const cancel = async (threadOutRef: string, stepIndex: 0 | 1 | 2 | 3) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildMintItemNonCanonicalCancel, {
+      buildAndSubmit(buildMintItemNonCanonicalCancel, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -308,7 +305,7 @@ export const journaledMintContinuation = async ({
       ...carriage,
     }),
   });
-  const result = await submitBoundUnjournaled(common.lucid, action, () =>
+  const result = await submitBound(common.lucid, action, () =>
     submission.submit(action, evidence),
   );
   expect(result.outputReference).not.toBeNull();

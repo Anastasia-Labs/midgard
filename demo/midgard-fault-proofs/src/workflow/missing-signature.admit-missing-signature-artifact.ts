@@ -38,10 +38,7 @@ import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { type FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
-import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson, type WorkflowJsonObject } from "./identity.js";
 import {
   type AdmittedMissingSignatureArtifact,
   HEX_28,
@@ -231,7 +228,7 @@ export const prepareMissingSignatureArtifact = async ({
       "missing-signature public evidence has no vkey preimage; the direct family must not accept operator input and this case requires validationTraceDispute",
     );
   }
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: MISSING_SIGNATURE_ARTIFACT,
     headerHash: admitted.headerHash,
     committedTransactionsRoot: admitted.expectedTransactionsRoot,
@@ -322,7 +319,7 @@ export const stringField = (
 
 export const prepareMissingSignatureWorkflowArtifact = async (
   input: Parameters<typeof prepareMissingSignatureArtifact>[0],
-): Promise<JournalJsonObject> => {
+): Promise<WorkflowJsonObject> => {
   if (
     input.classification.selected.violationId !==
     MISSING_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID

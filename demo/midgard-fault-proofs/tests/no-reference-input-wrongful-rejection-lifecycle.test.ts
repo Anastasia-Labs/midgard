@@ -50,10 +50,10 @@ import { submitRawNoReferenceInputForcedStep } from "./support/no-reference-inpu
 import { pinStepTranscript } from "./support/step-transcript.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-} from "./support/submit-unjournaled.js";
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+} from "./support/submit-steps.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 
 describe("noReferenceInput wrongful rejection registered lifecycle", () => {
@@ -375,7 +375,7 @@ describe("noReferenceInput wrongful rejection registered lifecycle", () => {
         plan.plan.tier === "Inline"
           ? []
           : await captures("field-publications", () =>
-              publishCarriageUnjournaled({
+              publishFieldCarriage({
                 lucid: harness.proverLucid,
                 signer: harness.proverSigner,
                 planned: plan,
@@ -391,7 +391,7 @@ describe("noReferenceInput wrongful rejection registered lifecycle", () => {
           label: "reference-input certificate",
         });
         const certified = await captures("field-certification", () =>
-          certifyCarriageUnjournaled({
+          certifyFieldCarriage({
             lucid: harness.proverLucid,
             network: "Custom",
             signer: harness.proverSigner,
@@ -420,7 +420,7 @@ describe("noReferenceInput wrongful rejection registered lifecycle", () => {
       };
       const init = async (label: string) => {
         const result = await captures(label, () =>
-          buildAndSubmitUnjournaled(buildInit, {
+          buildAndSubmit(buildInit, {
             lucid: harness.proverLucid,
             witnessReferenceScripts: harness.witnessReferenceScripts,
             blueprint: harness.realBlueprint,
@@ -480,7 +480,7 @@ describe("noReferenceInput wrongful rejection registered lifecycle", () => {
         label: string,
       ) =>
         captures(label, async () =>
-          buildAndSubmitUnjournaled(submitNoReferenceInputForcedStep, {
+          buildAndSubmit(submitNoReferenceInputForcedStep, {
             ...common,
             threadOutRef,
             stepIndex,

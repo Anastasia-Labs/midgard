@@ -38,7 +38,7 @@ import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { network } from "./emulator/blueprints.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { type ReferenceInputNoIdxHarness } from "./reference-input-no-idx-emulator.build-reference-input-no-idx-block-fixture.js";
-import { publishCarriageUnjournaled } from "./submit-unjournaled.js";
+import { publishFieldCarriage } from "./submit-steps.js";
 
 /**
  * Publishes all four step validators as reference scripts, the deployment
@@ -166,7 +166,7 @@ export const submitRawReferenceInputNoIdxStep02 = async ({
     label: "Raw reference-input-no-idx step 02 reference-inputs",
   });
   signer.selectWallet(lucid);
-  const published = await publishCarriageUnjournaled({
+  const published = await publishFieldCarriage({
     lucid,
     signer,
     planned,

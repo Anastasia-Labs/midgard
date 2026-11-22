@@ -49,10 +49,10 @@ import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { submitRawNonExistentInputForcedStep } from "./support/non-existent-input-raw-step.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-} from "./support/submit-unjournaled.js";
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+} from "./support/submit-steps.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 
 describe("nonExistentInput wrongful rejection registered lifecycle", () => {
@@ -368,7 +368,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
         plan.plan.tier === "Inline"
           ? []
           : await captures("field-publications", () =>
-              publishCarriageUnjournaled({
+              publishFieldCarriage({
                 lucid: harness.proverLucid,
                 signer: harness.proverSigner,
                 planned: plan,
@@ -384,7 +384,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
           label: "no-input certificate",
         });
         const certified = await captures("field-certification", () =>
-          certifyCarriageUnjournaled({
+          certifyFieldCarriage({
             lucid: harness.proverLucid,
             network: "Custom",
             signer: harness.proverSigner,
@@ -413,7 +413,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
       };
       const init = async (label: string) => {
         const result = await captures(label, () =>
-          buildAndSubmitUnjournaled(buildInit, {
+          buildAndSubmit(buildInit, {
             lucid: harness.proverLucid,
             witnessReferenceScripts: harness.witnessReferenceScripts,
             blueprint: harness.realBlueprint,
@@ -473,7 +473,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
         label: string,
       ) =>
         captures(label, async () =>
-          buildAndSubmitUnjournaled(submitNonExistentInputForcedStep, {
+          buildAndSubmit(submitNonExistentInputForcedStep, {
             ...common,
             threadOutRef,
             stepIndex,

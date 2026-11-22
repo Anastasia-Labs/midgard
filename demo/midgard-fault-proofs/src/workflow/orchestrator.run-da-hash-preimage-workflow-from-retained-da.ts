@@ -11,10 +11,7 @@ import {
   classifyCanonicalBlockViolations,
 } from "./classification.classify-canonical-block-violations.js";
 import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
-import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson, type WorkflowJsonObject } from "./identity.js";
 import type {
   FraudProofWorkflowRegistry,
   FraudProofWorkflowTerminalVerifier,
@@ -127,14 +124,14 @@ export const runDaHashPreimageWorkflowFromRetainedDa = async ({
       "dedicated Q44 workflow found no authenticated raw source-leaf defect",
     );
   }
-  const familyArtifact = normalizeJournalJson({
+  const familyArtifact = normalizeWorkflowJson({
     schemaVersion: "midgard-production-da-hash-preimage-artifact-v1",
     headerHash: routed.plan.headerHash,
     committedTransactionsRoot: routed.plan.committedTransactionsRoot,
     l2TransactionCount: routed.plan.l2TransactionCount,
     committedTxId: routed.plan.violation.committedTxId,
     entries: routed.evidence.entries,
-  }) as JournalJsonObject;
+  }) as WorkflowJsonObject;
   return await runAdmittedFraudProofWorkflow({
     deploymentFingerprint: verified.deploymentFingerprint,
     category: "daHashPreimage",

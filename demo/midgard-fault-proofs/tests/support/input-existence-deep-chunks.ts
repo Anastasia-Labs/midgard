@@ -15,7 +15,7 @@ import { Data } from "@lucid-evolution/lucid";
 import type { PublishedProofChunk } from "../../src/proof-chunk-carriage.js";
 import { registerChunkedVerifyRewardAccount } from "./emulator/emulator-context.js";
 import type { FaultProofEmulatorHarness } from "./emulator/harness.js";
-import { publishProofChunks } from "./submit-unjournaled.js";
+import { publishProofChunks } from "./submit-steps.js";
 
 export const deepProofChunks = async (
   harness: FaultProofEmulatorHarness,

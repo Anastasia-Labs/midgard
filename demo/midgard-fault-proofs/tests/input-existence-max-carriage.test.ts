@@ -44,11 +44,11 @@ import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
   publishProofChunks,
-} from "./support/submit-unjournaled.js";
+} from "./support/submit-steps.js";
 import {
   syntheticDeepInsertProof,
   syntheticDeepMembershipProof,
@@ -295,7 +295,7 @@ describe("registered maximum event/transition counted membership", () => {
           })
         ).utxo;
         const tag = `field${field}-${shape}-${partial ? "eight-partial" : "packed"}`;
-        const fieldChunks = await publishCarriageUnjournaled({
+        const fieldChunks = await publishFieldCarriage({
           lucid: h.proverLucid,
           signer: h.proverSigner,
           planned: prepared.fieldPlan,
@@ -304,7 +304,7 @@ describe("registered maximum event/transition counted membership", () => {
           beforeSubmit: ({ signed }) =>
             captureSigned(tag + "-field-publication", signed.toCBOR()),
         });
-        const certificate = await certifyCarriageUnjournaled({
+        const certificate = await certifyFieldCarriage({
           lucid: h.proverLucid,
           network,
           signer: h.proverSigner,
@@ -357,7 +357,7 @@ describe("registered maximum event/transition counted membership", () => {
           h.contracts,
           h.catalogue,
         );
-        const init = await buildAndSubmitUnjournaled(buildInit, {
+        const init = await buildAndSubmit(buildInit, {
           lucid: h.proverLucid,
           blueprint: h.realBlueprint,
           deploymentInfo,
@@ -376,7 +376,7 @@ describe("registered maximum event/transition counted membership", () => {
             `step${stepIndex + 1}`,
           );
           const submitted = await captureEmulatorSubmission(h.emulator, () =>
-            buildAndSubmitUnjournaled(buildInputExistenceStep, {
+            buildAndSubmit(buildInputExistenceStep, {
               lucid: h.proverLucid,
               blueprint: h.realBlueprint,
               network,

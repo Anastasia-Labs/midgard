@@ -28,10 +28,7 @@ import {
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
 } from "./family-definition.family-adapter-arm.js";
-import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson, type WorkflowJsonObject } from "./identity.js";
 import {
   type AdmittedMinFeeArtifact,
   HEX_28,
@@ -107,7 +104,7 @@ export const admitMinFeeArtifact = (
 };
 
 export const admitWorkflowArtifact = async (
-  artifact: JournalJsonObject,
+  artifact: WorkflowJsonObject,
   owner: string,
 ) => {
   if (artifact.schemaVersion !== MIN_FEE_FORCED_ARTIFACT)
@@ -200,7 +197,7 @@ export const prepareMinFeeArtifact = async ({
   if (classification.selected.detectionId !== detectionId) {
     throw new Error("min-fee prepared evidence changed classification");
   }
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: MIN_FEE_ARTIFACT,
     headerHash: prepared.headerHash,
     detectionId,

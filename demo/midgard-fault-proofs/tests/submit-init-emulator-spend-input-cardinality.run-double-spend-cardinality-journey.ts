@@ -32,10 +32,7 @@ import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deploymen
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { buildTransactionInclusionFixture } from "./support/submit-init/inclusion.js";
 import { countedTransactionsRoot } from "./support/submit-init/transaction-material.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 export const L1_MAX_TX_SIZE = 16_384;
 
@@ -173,7 +170,7 @@ export const runDoubleSpendCardinalityJourney = async (
   });
   const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
 
-  const initResult = await buildAndSubmitUnjournaled(buildInit, {
+  const initResult = await buildAndSubmit(buildInit, {
     lucid: proverLucid,
     witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
@@ -188,7 +185,7 @@ export const runDoubleSpendCardinalityJourney = async (
     initResult.firstStepAddress,
     initResult.computationThreadUnit,
   );
-  const step01Result = await buildAndSubmitUnjournaled(buildStep01, {
+  const step01Result = await buildAndSubmit(buildStep01, {
     lucid: proverLucid,
     referenceScriptUtxo:
       harness.faultProofReferenceScripts.fraudProofDoubleSpend!.utxo,
@@ -207,7 +204,7 @@ export const runDoubleSpendCardinalityJourney = async (
     step01Result.secondStepAddress,
     initResult.computationThreadUnit,
   );
-  const step02Result = await buildAndSubmitUnjournaled(buildStep02, {
+  const step02Result = await buildAndSubmit(buildStep02, {
     lucid: proverLucid,
     referenceScriptUtxo:
       harness.faultProofReferenceScripts.fraudProofDoubleSpendStep02!.utxo,
@@ -229,7 +226,7 @@ export const runDoubleSpendCardinalityJourney = async (
     initResult.computationThreadUnit,
   );
   const step03Capture = await captureEmulatorSubmission(emulator, async () =>
-    submitTurnsUnjournaled(buildStep03, {
+    submitTurns(buildStep03, {
       lucid: proverLucid,
       referenceScriptUtxo:
         harness.faultProofReferenceScripts.fraudProofDoubleSpendStep03!.utxo,
@@ -267,7 +264,7 @@ export const runDoubleSpendCardinalityJourney = async (
     initResult.computationThreadUnit,
   );
   const step04Capture = await captureEmulatorSubmission(emulator, async () =>
-    submitTurnsUnjournaled(buildStep04, {
+    submitTurns(buildStep04, {
       lucid: proverLucid,
       referenceScriptUtxo:
         harness.faultProofReferenceScripts.fraudProofDoubleSpendStep04!.utxo,

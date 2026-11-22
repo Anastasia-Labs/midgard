@@ -12,7 +12,7 @@ import { Effect } from "effect";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { type FaultProofFieldOpeningPlan } from "../src/field-opening.js";
-import { publishCarriageUnjournaled } from "./support/submit-unjournaled.js";
+import { publishFieldCarriage } from "./support/submit-steps.js";
 
 const address = credentialToAddress("Custom", {
   type: "Key",
@@ -142,7 +142,7 @@ it.each(["none", "copy"] as const)(
       );
       return true;
     });
-    const result = await publishCarriageUnjournaled({
+    const result = await publishFieldCarriage({
       lucid,
       signer: {
         source: "test",

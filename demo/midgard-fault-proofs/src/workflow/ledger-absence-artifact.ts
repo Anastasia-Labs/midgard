@@ -17,25 +17,22 @@ import { ledgerKeyBytesHex } from "../step-support.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { completeCanonicalReplayPredecessorLedger } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import type { CompleteCanonicalReplayContext } from "./complete-replay.replay-context-identity.js";
+import { normalizeWorkflowJson, type WorkflowJsonObject } from "./identity.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
-import {
-  exactJournalRecord,
+  exactArtifactRecord,
   safeNaturalNumber,
 } from "./native-index-artifact.js";
 
 export const LEDGER_ABSENCE_ARTIFACT =
   "midgard-production-input-existence-artifact-v1";
 export type LedgerAbsenceCategory = "nonExistentInput" | "noReferenceInput";
-export type LedgerAbsenceArtifact = JournalJsonObject &
+export type LedgerAbsenceArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof LEDGER_ABSENCE_ARTIFACT;
     category: LedgerAbsenceCategory;
     detectionId: string;
     position: number;
-    evidence: JournalJsonObject;
+    evidence: WorkflowJsonObject;
   }>;
 
 const identity = (
@@ -59,7 +56,7 @@ const identity = (
 };
 
 export const admitLedgerAbsenceArtifact = (value: unknown, owner: string) => {
-  const raw = exactJournalRecord(
+  const raw = exactArtifactRecord(
     value,
     ["schemaVersion", "category", "detectionId", "position", "evidence"],
     "production input-existence artifact",
@@ -78,7 +75,7 @@ export const admitLedgerAbsenceArtifact = (value: unknown, owner: string) => {
   ) {
     throw new Error("input-existence artifact detection identity changed");
   }
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: LEDGER_ABSENCE_ARTIFACT,
     category: raw.category,
     detectionId: raw.detectionId,

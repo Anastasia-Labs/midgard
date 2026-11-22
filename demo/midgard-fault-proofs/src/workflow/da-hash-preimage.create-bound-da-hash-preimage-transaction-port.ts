@@ -21,7 +21,7 @@ import {
   type ManifestBoundLinearFamilyWorkflow,
 } from "./family-definition.family-definition.js";
 import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
-import { type JournalJsonObject } from "./journal.js";
+import { type WorkflowJsonObject } from "./identity.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyCapturedAction,
@@ -52,7 +52,7 @@ const createBoundDaHashPreimageTransactionPort = ({
     artifact,
   }: {
     readonly action: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
+    readonly artifact: WorkflowJsonObject;
   }): Promise<LinearFamilyCapturedAction> => {
     const plan = await admitDaHashPreimageArtifact(artifact);
     if (plan.headerHash !== config.headerHash) {

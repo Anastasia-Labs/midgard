@@ -31,7 +31,7 @@ import {
   transitionTraceDaEntry,
   transitionTraceOutRef,
 } from "./support/emulator/header-fixtures.js";
-import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
+import { submitTurns } from "./support/submit-steps.js";
 
 type ShortRoot = "withdrawals" | "transitionTrace" | "eventToStep";
 
@@ -173,7 +173,7 @@ const submit = async (
   landed: Landed,
   proof: SDKFraudProof.TransitionFaultProof,
 ) =>
-  await submitTurnsUnjournaled(buildTransitionTraceProof, {
+  await submitTurns(buildTransitionTraceProof, {
     lucid: landed.harness.proverLucid,
     blueprint: landed.harness.realBlueprint,
     deploymentInfo: landed.lifecycle.deploymentInfo,

@@ -47,10 +47,7 @@ import {
   submitWidthStep02Raw,
   submitWidthStep03Raw,
 } from "./support/field-item-width-illegal-shapes.submit-width-step02-raw.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 export let publicationsRecorded = false;
 
@@ -148,7 +145,7 @@ export const makeHarness = async () => {
 
   const init = (fraudulentBlockOutRef: string) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
+      buildAndSubmit(buildCommittedFieldShapeInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -182,7 +179,7 @@ export const makeHarness = async () => {
     ]);
     if (threadUtxo === undefined) throw new Error("init thread absent");
     return captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildFieldItemWidthIllegalStep01Accepted, {
+      buildAndSubmit(buildFieldItemWidthIllegalStep01Accepted, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -209,7 +206,7 @@ export const makeHarness = async () => {
     >[0]["forcedSource"],
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildFieldItemWidthIllegalStep01Forced, {
+      buildAndSubmit(buildFieldItemWidthIllegalStep01Forced, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -231,7 +228,7 @@ export const makeHarness = async () => {
         },
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitTurnsUnjournaled(buildFieldItemWidthIllegalStep02, {
+      submitTurns(buildFieldItemWidthIllegalStep02, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -310,7 +307,7 @@ export const makeHarness = async () => {
     });
   const step03 = (threadOutRef: string, evidence: FieldItemWidthEvidence) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildFieldItemWidthIllegalStep03, {
+      buildAndSubmit(buildFieldItemWidthIllegalStep03, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -333,7 +330,7 @@ export const makeHarness = async () => {
     });
   const cancel = async (threadOutRef: string, stepIndex: 0 | 1 | 2) => {
     const cancelled = await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildFieldItemWidthIllegalCancel, {
+      buildAndSubmit(buildFieldItemWidthIllegalCancel, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

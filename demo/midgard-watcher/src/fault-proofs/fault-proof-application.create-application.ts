@@ -8,14 +8,14 @@ import {
   FraudProofL1CheckpointChangedError,
   headerDecisionReplayContext,
   installWorkflowApplicationRegistry,
-  journalJsonDigest,
-  normalizeJournalJson,
+  normalizeWorkflowJson,
   resolveFamilyApplicationReferences,
   runFraudProofWorkflowCli,
   TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
   verifyCompletedFraudProofWorkflow,
   WORKFLOW_RUNNER_FACTORIES,
   type WorkflowAdapterRunner,
+  workflowJsonDigest,
 } from "@al-ft/midgard-fault-proofs";
 import { Header } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
@@ -429,8 +429,8 @@ export function createApplication({
       });
       if (
         binding.deploymentFingerprint !== deploymentIdentity.manifestId ||
-        journalJsonDigest(normalizeJournalJson(binding.releaseFinality)) !==
-          journalJsonDigest(normalizeJournalJson(finality))
+        workflowJsonDigest(normalizeWorkflowJson(binding.releaseFinality)) !==
+          workflowJsonDigest(normalizeWorkflowJson(finality))
       )
         throw new Error(
           "completed workflow changed its verified deployment release",

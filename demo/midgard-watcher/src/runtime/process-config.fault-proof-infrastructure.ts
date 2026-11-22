@@ -135,7 +135,7 @@ export type WatcherProcessConfig = Readonly<{
   fundingProfileBundlePath: string;
   l1NodeTransportBinaryPath: string;
   operationsEndpoint: string;
-  workflowJournalDirectory: string;
+  decisionJournalDirectory: string;
   availability: Readonly<{
     keySource: WatcherWalletKeySource;
     journalPath: string;

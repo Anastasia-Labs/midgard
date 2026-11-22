@@ -1,6 +1,6 @@
 /**
  * The direct-purpose transitions the tests drive, each built, submitted with
- * no journal and confirmed (see ./submit-unjournaled.ts), with the thread's
+ * no journal and confirmed (see ./submit-steps.ts), with the thread's
  * next output read back once it is live.
  */
 import type { UTxO } from "@lucid-evolution/lucid";

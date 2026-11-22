@@ -13,10 +13,7 @@ import type {
   CompleteCanonicalReplay,
   CompleteCanonicalReplayContext,
 } from "./complete-replay.replay-context-identity.js";
-import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson, type WorkflowJsonObject } from "./identity.js";
 import type {
   FraudProofWorkflowRegistry,
   FraudProofWorkflowTerminalVerifier,
@@ -122,9 +119,9 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
         `authenticated Q17 committed-field defect requires the exact canonicalDecodability registry; found=${registryScope.join(",")}`,
       );
     }
-    const familyArtifact = normalizeJournalJson(
+    const familyArtifact = normalizeWorkflowJson(
       canonicalDecodabilityArtifactFromRawEvidence(routed.evidence),
-    ) as JournalJsonObject;
+    ) as WorkflowJsonObject;
     return await runAdmittedFraudProofWorkflow({
       deploymentFingerprint: normalizedDeploymentFingerprint,
       category: "canonicalDecodability",

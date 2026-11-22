@@ -33,9 +33,9 @@ import { validationTraceFraudProofUnit } from "./close.js";
 import { validationTraceOneStepHolderAt } from "./one-step-holders.js";
 import type {
   ValidationTraceResolveReader,
-  ValidationTraceStagingJournal,
   ValidationTraceStagingOutput,
-} from "./one-step-staging-journal.js";
+  ValidationTraceStagings,
+} from "./one-step-staging-types.js";
 import {
   ownStepOutputs,
   type ValidationTraceDisputeCapture,
@@ -378,7 +378,7 @@ export const validationTraceChainOwnView = ({
       },
       caseThreads: async () =>
         (await capture()).threads.map(({ unit }) => unit),
-      stagings: async (): Promise<ValidationTraceStagingJournal> => {
+      stagings: async (): Promise<ValidationTraceStagings> => {
         const { readers, bound } = await stagings();
         const { view, holder } = proofMaterialsAccess({
           signer,

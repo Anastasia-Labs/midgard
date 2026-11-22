@@ -42,7 +42,7 @@ import { buildLinearFaultContinue } from "../../src/linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import type { WitnessScriptDecodingContracts } from "../../src/witness-script-decoding/contracts.js";
-import { buildAndSubmitTransactionUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmitTransaction } from "./submit-steps.js";
 import {
   FAMILY,
   type WitnessSetCarriage,
@@ -149,22 +149,19 @@ export const submitWitnessScriptDecodingStep01ForcedRaw = async ({
       WitnessScriptDecodingStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await buildAndSubmitTransactionUnjournaled(
-    buildLinearFaultContinue,
-    {
-      lucid,
-      signer,
-      threadUtxo,
-      threadUnit: threadToken.unit,
-      stepReference,
-      stepScript: contracts.steps[0].spendingScript,
-      stepRole: `${FAMILY} raw forced step 01`,
-      nextAddress: nextStep.spendingScriptAddress,
-      nextDatum,
-      redeemer,
-      awaitConfirmation: true,
-    },
-  );
+  const txHash = await buildAndSubmitTransaction(buildLinearFaultContinue, {
+    lucid,
+    signer,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    stepReference,
+    stepScript: contracts.steps[0].spendingScript,
+    stepRole: `${FAMILY} raw forced step 01`,
+    nextAddress: nextStep.spendingScriptAddress,
+    nextDatum,
+    redeemer,
+    awaitConfirmation: true,
+  });
   if (outputIndex === undefined) throw new Error(`${FAMILY}: raw layout`);
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
 };
@@ -323,24 +320,21 @@ export const submitWitnessScriptDecodingStep02Raw = async ({
       WitnessScriptDecodingStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await buildAndSubmitTransactionUnjournaled(
-    buildLinearFaultContinue,
-    {
-      lucid,
-      signer,
-      threadUtxo,
-      threadUnit: threadToken.unit,
-      stepReference,
-      stepScript: contracts.steps[stepIndex].spendingScript,
-      stepRole: `${FAMILY} raw step 02`,
-      nextAddress: nextStep.spendingScriptAddress,
-      nextDatum,
-      redeemer,
-      carriageUtxos,
-      extraReferenceInputs,
-      awaitConfirmation: true,
-    },
-  );
+  const txHash = await buildAndSubmitTransaction(buildLinearFaultContinue, {
+    lucid,
+    signer,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    stepReference,
+    stepScript: contracts.steps[stepIndex].spendingScript,
+    stepRole: `${FAMILY} raw step 02`,
+    nextAddress: nextStep.spendingScriptAddress,
+    nextDatum,
+    redeemer,
+    carriageUtxos,
+    extraReferenceInputs,
+    awaitConfirmation: true,
+  });
   if (outputIndex === undefined) throw new Error(`${FAMILY}: raw layout`);
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
 };

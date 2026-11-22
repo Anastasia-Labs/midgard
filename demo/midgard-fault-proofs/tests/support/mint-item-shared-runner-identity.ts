@@ -16,7 +16,7 @@ import * as observations from "../../src/workflow/family-l1-observation.js";
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
+} from "../../src/workflow/identity.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,

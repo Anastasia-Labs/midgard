@@ -64,14 +64,14 @@ import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { makeIsolatedAlwaysSucceedsAuthenticatedValidator } from "./emulator/validators.js";
 import { submitFamilyCancel } from "./linear-fault-cancel.js";
 import { expectStateQueueHeaderOrder } from "./submit-init/queue-assertions.js";
-import { buildPastPrerequisitesUnjournaled } from "./submit-unjournaled.js";
-import { submitInit } from "./submit-unjournaled.legacy.js";
+import { buildPastPrerequisites } from "./submit-steps.js";
+import { submitInit } from "./submit-steps.legacy.js";
 import {
   publishTransitionTraceBytes,
   submitTransitionTraceFinal,
   submitTransitionTraceProof,
   submitTransitionTraceRoute,
-} from "./submit-unjournaled.transition-trace.js";
+} from "./submit-steps.transition-trace.js";
 import {
   publishTransitionFieldCarriages,
   publishTransitionFieldCertificateReference,
@@ -613,7 +613,7 @@ export const transitionTraceFinalCaseRunner = (
     // needs is confirmed, and left for the test to submit.
     const captureFinal = async (threadOutRef: string) =>
       (
-        await buildPastPrerequisitesUnjournaled(
+        await buildPastPrerequisites(
           buildTransitionTraceFinal,
           finalArgs(threadOutRef),
         )

@@ -2,7 +2,7 @@ import { type CanonicalBlockClassification } from "./classification.js";
 import {
   type FraudProofWorkflowIdentity,
   type FraudProofWorkflowTerminal,
-} from "./journal.js";
+} from "./identity.js";
 import type { FraudProofResolvedByAnotherRecord } from "./resolved-by-another-record.js";
 
 /** A pending run's own readiness state, named by its family. */

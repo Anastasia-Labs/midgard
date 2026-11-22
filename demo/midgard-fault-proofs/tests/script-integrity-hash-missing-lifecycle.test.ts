@@ -139,7 +139,7 @@ import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { installFieldCarriage } from "./support/install-field-carriage.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 describe("script-integrity-hash-missing real lifecycle", () => {
   it("publishes, proves accepted absent integrity hash, mints, and removes", async () => {
@@ -300,7 +300,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       return captured.result;
     };
     const initialize = () =>
-      buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingInit, {
+      buildAndSubmit(buildScriptIntegrityHashMissingInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -317,7 +317,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const cancel = (threadOutRef: string, referenceScriptUtxo: UTxO) =>
-      buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingCancel, {
+      buildAndSubmit(buildScriptIntegrityHashMissingCancel, {
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -328,7 +328,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       });
     if (block.txInclusion === null) throw new Error("normal inclusion missing");
     const accepted01 = (threadOutRef: string) =>
-      buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingStep01Accepted, {
+      buildAndSubmit(buildScriptIntegrityHashMissingStep01Accepted, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -342,7 +342,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const accepted02 = (threadOutRef: string) =>
-      buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingStep02Accepted, {
+      buildAndSubmit(buildScriptIntegrityHashMissingStep02Accepted, {
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -355,7 +355,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         referenceScriptUtxo: refs[1]!,
       });
     const direct03 = (threadOutRef: string) =>
-      buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingStep03Direct, {
+      buildAndSubmit(buildScriptIntegrityHashMissingStep03Direct, {
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -791,28 +791,25 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         nextThreadOutRef: `${next.txHash}#${next.outputIndex.toString()}`,
       };
     };
-    const init = await buildAndSubmitUnjournaled(
-      buildScriptIntegrityHashMissingInit,
-      {
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: family,
-        category,
-        catalogue: {
-          policyId: harness.contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: harness.catalogue.root,
-        },
-        signer: harness.proverSigner,
-        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
+    const init = await buildAndSubmit(buildScriptIntegrityHashMissingInit, {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      network,
+      contracts: family,
+      category,
+      catalogue: {
+        policyId: harness.contracts.fraudProofCatalogue.policyId,
+        spendingScriptAddress:
+          harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+        root: harness.catalogue.root,
       },
-    );
+      signer: harness.proverSigner,
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
     const step01 = await forcedActorStep(1, init.nextThreadOutRef);
     const step02 = await forcedActorStep(2, step01.nextThreadOutRef);
-    const step03 = await buildAndSubmitUnjournaled(
+    const step03 = await buildAndSubmit(
       buildScriptIntegrityHashMissingStep03Direct,
       {
         lucid: harness.proverLucid,
@@ -826,18 +823,15 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         referenceScriptUtxo: refs[2]!,
       },
     );
-    const final = await buildAndSubmitUnjournaled(
-      buildScriptIntegrityHashMissingStep04,
-      {
-        lucid: harness.proverLucid,
-        contracts: family,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: step03.nextThreadOutRef,
-        referenceScriptUtxo: refs[6]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      },
-    );
+    const final = await buildAndSubmit(buildScriptIntegrityHashMissingStep04, {
+      lucid: harness.proverLucid,
+      contracts: family,
+      categoryId: category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: step03.nextThreadOutRef,
+      referenceScriptUtxo: refs[6]!,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
     expect(final.fraudProofUnit).toContain(category.categoryId);
     coverage.reason(REASON, "forced_rejection_wrong");
     coverage.scenario("wrongful_forced_rejection_success");
@@ -1153,7 +1147,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         ScriptIntegrityStepDatums[index] as never,
       );
     const init = await measured("init", () =>
-      buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingInit, {
+      buildAndSubmit(buildScriptIntegrityHashMissingInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -1172,7 +1166,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     );
     console.info("[script-integrity-max] initialized");
     const bound = await measured("step01", () =>
-      buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingStep01Accepted, {
+      buildAndSubmit(buildScriptIntegrityHashMissingStep01Accepted, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -1187,7 +1181,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       }),
     );
     const subjectState = await measured("step02", () =>
-      buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingStep02Accepted, {
+      buildAndSubmit(buildScriptIntegrityHashMissingStep02Accepted, {
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -1250,30 +1244,27 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         () =>
           grammarResumeIndex === 0
             ? productionTransition("step_04", 4, outRef, 4)
-            : buildAndSubmitUnjournaled(
-                buildScriptIntegrityHashMissingScriptGrammar,
-                {
-                  lucid: harness.proverLucid,
-                  contracts: family,
-                  categoryId: category.categoryId,
-                  signer: harness.proverSigner,
-                  threadOutRef: outRef,
-                  referenceScriptUtxo: refs[3]!,
-                  authenticatedCarriageUtxos: carriage(scriptPublished),
-                  closes: false,
-                  nextDatum: datum(3, state),
-                  buildArgs: ({ input_index, output_index }) => ({
-                    Resume: {
-                      input_index,
-                      output_index,
-                      opening: opening(scriptPlan, scriptPublished, refs[3]!),
-                      checkpoint_bytes:
-                        encodeFieldGrammarCheckpoint(prior).toString("hex"),
-                      item_budget: BigInt(itemBudget),
-                    },
-                  }),
-                },
-              ),
+            : buildAndSubmit(buildScriptIntegrityHashMissingScriptGrammar, {
+                lucid: harness.proverLucid,
+                contracts: family,
+                categoryId: category.categoryId,
+                signer: harness.proverSigner,
+                threadOutRef: outRef,
+                referenceScriptUtxo: refs[3]!,
+                authenticatedCarriageUtxos: carriage(scriptPublished),
+                closes: false,
+                nextDatum: datum(3, state),
+                buildArgs: ({ input_index, output_index }) => ({
+                  Resume: {
+                    input_index,
+                    output_index,
+                    opening: opening(scriptPlan, scriptPublished, refs[3]!),
+                    checkpoint_bytes:
+                      encodeFieldGrammarCheckpoint(prior).toString("hex"),
+                    item_budget: BigInt(itemBudget),
+                  },
+                }),
+              }),
       );
       grammarResumeIndex += 1;
       outRef = transition.nextThreadOutRef;
@@ -1288,30 +1279,27 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         // Field 8's certificate and chunks cannot resume the field-6 grammar:
         // the certificate names its field, and the door refuses the mismatch.
         await expectOnchainRefusal(() =>
-          buildAndSubmitUnjournaled(
-            buildScriptIntegrityHashMissingScriptGrammar,
-            {
-              lucid: harness.proverLucid,
-              contracts: family,
-              categoryId: category.categoryId,
-              signer: harness.proverSigner,
-              threadOutRef: outRef,
-              referenceScriptUtxo: refs[3]!,
-              authenticatedCarriageUtxos: carriage(redeemerPublished),
-              closes: false,
-              nextDatum: datum(3, state),
-              buildArgs: ({ input_index, output_index }) => ({
-                Resume: {
-                  input_index,
-                  output_index,
-                  opening: opening(redeemerPlan, redeemerPublished, refs[3]!),
-                  checkpoint_bytes:
-                    encodeFieldGrammarCheckpoint(grammar).toString("hex"),
-                  item_budget: BigInt(itemBudget),
-                },
-              }),
-            },
-          ),
+          buildAndSubmit(buildScriptIntegrityHashMissingScriptGrammar, {
+            lucid: harness.proverLucid,
+            contracts: family,
+            categoryId: category.categoryId,
+            signer: harness.proverSigner,
+            threadOutRef: outRef,
+            referenceScriptUtxo: refs[3]!,
+            authenticatedCarriageUtxos: carriage(redeemerPublished),
+            closes: false,
+            nextDatum: datum(3, state),
+            buildArgs: ({ input_index, output_index }) => ({
+              Resume: {
+                input_index,
+                output_index,
+                opening: opening(redeemerPlan, redeemerPublished, refs[3]!),
+                checkpoint_bytes:
+                  encodeFieldGrammarCheckpoint(grammar).toString("hex"),
+                item_budget: BigInt(itemBudget),
+              },
+            }),
+          }),
         );
         coverage.seamMutated("field_certificate");
       }
@@ -1335,7 +1323,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       },
     };
     transition = await measured("script-grammar-close-start-scan", () =>
-      buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingScriptGrammar, {
+      buildAndSubmit(buildScriptIntegrityHashMissingScriptGrammar, {
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -1382,7 +1370,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       transition = await measured(
         `script-scan-${scanResumeIndex.toString().padStart(2, "0")}`,
         () =>
-          buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingScriptScan, {
+          buildAndSubmit(buildScriptIntegrityHashMissingScriptScan, {
             lucid: harness.proverLucid,
             contracts: family,
             categoryId: category.categoryId,
@@ -1430,28 +1418,25 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       },
     };
     transition = await measured("redeemer-grammar-start", () =>
-      buildAndSubmitUnjournaled(
-        buildScriptIntegrityHashMissingRedeemerGrammar,
-        {
-          lucid: harness.proverLucid,
-          contracts: family,
-          categoryId: category.categoryId,
-          signer: harness.proverSigner,
-          threadOutRef: outRef,
-          referenceScriptUtxo: refs[5]!,
-          authenticatedCarriageUtxos: carriage(redeemerPublished),
-          closes: false,
-          nextDatum: datum(5, state),
-          buildArgs: ({ input_index, output_index }) => ({
-            Start: {
-              input_index,
-              output_index,
-              opening: opening(redeemerPlan, redeemerPublished, refs[5]!),
-              item_budget: BigInt(itemBudget),
-            },
-          }),
-        },
-      ),
+      buildAndSubmit(buildScriptIntegrityHashMissingRedeemerGrammar, {
+        lucid: harness.proverLucid,
+        contracts: family,
+        categoryId: category.categoryId,
+        signer: harness.proverSigner,
+        threadOutRef: outRef,
+        referenceScriptUtxo: refs[5]!,
+        authenticatedCarriageUtxos: carriage(redeemerPublished),
+        closes: false,
+        nextDatum: datum(5, state),
+        buildArgs: ({ input_index, output_index }) => ({
+          Start: {
+            input_index,
+            output_index,
+            opening: opening(redeemerPlan, redeemerPublished, refs[5]!),
+            item_budget: BigInt(itemBudget),
+          },
+        }),
+      }),
     );
     outRef = transition.nextThreadOutRef;
     let redeemerResumeIndex = 0;
@@ -1474,29 +1459,26 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       transition = await measured(
         `redeemer-grammar-resume-${redeemerResumeIndex.toString().padStart(2, "0")}`,
         () =>
-          buildAndSubmitUnjournaled(
-            buildScriptIntegrityHashMissingRedeemerGrammar,
-            {
-              lucid: harness.proverLucid,
-              contracts: family,
-              categoryId: category.categoryId,
-              signer: harness.proverSigner,
-              threadOutRef: outRef,
-              referenceScriptUtxo: refs[5]!,
-              authenticatedCarriageUtxos: carriage(redeemerPublished),
-              closes: false,
-              nextDatum: datum(5, state),
-              buildArgs: ({ input_index, output_index }) => ({
-                Resume: {
-                  input_index,
-                  output_index,
-                  opening: opening(redeemerPlan, redeemerPublished, refs[5]!),
-                  checkpoint_bytes: encodeField8(prior).toString("hex"),
-                  item_budget: BigInt(itemBudget),
-                },
-              }),
-            },
-          ),
+          buildAndSubmit(buildScriptIntegrityHashMissingRedeemerGrammar, {
+            lucid: harness.proverLucid,
+            contracts: family,
+            categoryId: category.categoryId,
+            signer: harness.proverSigner,
+            threadOutRef: outRef,
+            referenceScriptUtxo: refs[5]!,
+            authenticatedCarriageUtxos: carriage(redeemerPublished),
+            closes: false,
+            nextDatum: datum(5, state),
+            buildArgs: ({ input_index, output_index }) => ({
+              Resume: {
+                input_index,
+                output_index,
+                opening: opening(redeemerPlan, redeemerPublished, refs[5]!),
+                checkpoint_bytes: encodeField8(prior).toString("hex"),
+                item_budget: BigInt(itemBudget),
+              },
+            }),
+          }),
       );
       redeemerResumeIndex += 1;
       if (redeemerResumeIndex === 1) {
@@ -1518,31 +1500,28 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       has_redeemers: true,
     };
     transition = await measured("redeemer-grammar-finish", () =>
-      buildAndSubmitUnjournaled(
-        buildScriptIntegrityHashMissingRedeemerGrammar,
-        {
-          lucid: harness.proverLucid,
-          contracts: family,
-          categoryId: category.categoryId,
-          signer: harness.proverSigner,
-          threadOutRef: outRef,
-          referenceScriptUtxo: refs[5]!,
-          authenticatedCarriageUtxos: carriage(redeemerPublished),
-          closes: true,
-          nextDatum: datum(6, decision),
-          buildArgs: ({ input_index, output_index }) => ({
-            Finish: {
-              input_index,
-              output_index,
-              opening: opening(redeemerPlan, redeemerPublished, refs[5]!),
-              checkpoint_bytes: encodeField8(redeemerGrammar).toString("hex"),
-            },
-          }),
-        },
-      ),
+      buildAndSubmit(buildScriptIntegrityHashMissingRedeemerGrammar, {
+        lucid: harness.proverLucid,
+        contracts: family,
+        categoryId: category.categoryId,
+        signer: harness.proverSigner,
+        threadOutRef: outRef,
+        referenceScriptUtxo: refs[5]!,
+        authenticatedCarriageUtxos: carriage(redeemerPublished),
+        closes: true,
+        nextDatum: datum(6, decision),
+        buildArgs: ({ input_index, output_index }) => ({
+          Finish: {
+            input_index,
+            output_index,
+            opening: opening(redeemerPlan, redeemerPublished, refs[5]!),
+            checkpoint_bytes: encodeField8(redeemerGrammar).toString("hex"),
+          },
+        }),
+      }),
     );
     const final = await measured("step04-mint", () =>
-      buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingStep04, {
+      buildAndSubmit(buildScriptIntegrityHashMissingStep04, {
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -1942,35 +1921,32 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       label: "integrity small redeemer opening",
     });
     const resume = (checkpointBytes: Buffer, budget: bigint) =>
-      buildAndSubmitUnjournaled(
-        buildScriptIntegrityHashMissingRedeemerGrammar,
-        {
-          ...s.common(5),
-          threadOutRef: started,
-          authenticatedCarriageUtxos: redeemerPublished,
-          closes: false,
-          nextDatum: s.datum(5, {
-            subject,
-            witness_set_hash: s.witnessSetHash,
-            script_integrity_hash: ABSENT_HASH,
-            phase: {
-              RedeemerGrammar: {
-                checkpoint_hash: hashScriptIntegrityField8Checkpoint(second!),
-                contains_non_native_script: false,
-              },
+      buildAndSubmit(buildScriptIntegrityHashMissingRedeemerGrammar, {
+        ...s.common(5),
+        threadOutRef: started,
+        authenticatedCarriageUtxos: redeemerPublished,
+        closes: false,
+        nextDatum: s.datum(5, {
+          subject,
+          witness_set_hash: s.witnessSetHash,
+          script_integrity_hash: ABSENT_HASH,
+          phase: {
+            RedeemerGrammar: {
+              checkpoint_hash: hashScriptIntegrityField8Checkpoint(second!),
+              contains_non_native_script: false,
             },
-          }),
-          buildArgs: ({ input_index, output_index }) => ({
-            Resume: {
-              input_index,
-              output_index,
-              opening: redeemerOpening,
-              checkpoint_bytes: checkpointBytes.toString("hex"),
-              item_budget: budget,
-            },
-          }),
-        },
-      );
+          },
+        }),
+        buildArgs: ({ input_index, output_index }) => ({
+          Resume: {
+            input_index,
+            output_index,
+            opening: redeemerOpening,
+            checkpoint_bytes: checkpointBytes.toString("hex"),
+            item_budget: budget,
+          },
+        }),
+      });
     // Consensus bound: one item past `staged_batch_limit` is refused.
     await expectOnchainRefusal(() =>
       resume(encodeScriptIntegrityField8Checkpoint(first!), 33n),

@@ -24,16 +24,13 @@ import {
 } from "../withdrawn-reference-input/prepare-withdrawn-reference-input.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { CORE_WITNESS_ROLES } from "./family-definition.family-adapter-arm.js";
-import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowJson, type WorkflowJsonObject } from "./identity.js";
 import {
   admitNativeInclusionArtifact,
   admitTxInputList,
   canonicalHex,
   EVEN_HEX,
-  exactJournalRecord,
+  exactArtifactRecord,
   HEX_28,
   HEX_32,
   type NativeInclusionArtifact,
@@ -46,7 +43,7 @@ export const WITHDRAWN_REFERENCE_INPUT_ARTIFACT =
 
 type InputJson = Readonly<{ tx_id: string; output_index: string }>;
 
-export type WithdrawnReferenceInputArtifact = JournalJsonObject &
+export type WithdrawnReferenceInputArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof WITHDRAWN_REFERENCE_INPUT_ARTIFACT;
     headerHash: string;
@@ -101,7 +98,7 @@ export const admitWithdrawnReferenceInputArtifact = async (
   if (!HEX_28.test(carriageOwner)) {
     throw new Error("withdrawn-reference-input carriage owner is malformed");
   }
-  const parsed = exactJournalRecord(
+  const parsed = exactArtifactRecord(
     value,
     [
       "schemaVersion",
@@ -302,7 +299,7 @@ export const prepareWithdrawnReferenceInputArtifact = async ({
   ) {
     throw new Error("withdrawn-reference-input public evidence changed");
   }
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: WITHDRAWN_REFERENCE_INPUT_ARTIFACT,
     headerHash: evidence.headerHash,
     detectionId: classification.selected.detectionId,

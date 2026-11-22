@@ -72,7 +72,7 @@ import {
   transitionTraceOutRef,
   withCommitSlot,
 } from "./support/submit-init-emulator-shared.js";
-import { submitTransitionTraceProof } from "./support/submit-unjournaled.transition-trace.js";
+import { submitTransitionTraceProof } from "./support/submit-steps.transition-trace.js";
 
 afterAll(async () => {
   const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;

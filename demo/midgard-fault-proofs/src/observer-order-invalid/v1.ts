@@ -28,7 +28,7 @@ import {
 } from "../workflow/family-definition.family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import type { FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
-import { journalJsonDigest } from "../workflow/journal.fraud-proof-workflow-terminal.js";
+import { workflowJsonDigest } from "../workflow/identity.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import type { FraudProofWorkflowRunResult } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
@@ -214,9 +214,9 @@ const createTransactionPort = (
     category: CATEGORY,
     validatePreparedArtifact: async ({ evidence, artifact }) => {
       if (
-        journalJsonDigest(
+        workflowJsonDigest(
           await prepareObserverOrderWorkflowArtifact(evidence),
-        ) !== journalJsonDigest(artifact)
+        ) !== workflowJsonDigest(artifact)
       )
         throw new Error(
           "prepared family artifact differs from retained evidence",

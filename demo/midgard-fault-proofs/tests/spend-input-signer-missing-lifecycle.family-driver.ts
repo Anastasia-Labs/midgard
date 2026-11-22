@@ -25,10 +25,7 @@ import {
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 /** Thin step drivers over one harness, family, and reference set. */
 export const familyDriver = (
@@ -42,7 +39,7 @@ export const familyDriver = (
   const signer = harness.proverSigner;
   const categoryId = category.categoryId;
   const init = (blockOutRef: string) =>
-    buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
+    buildAndSubmit(buildCommittedFieldShapeInit, {
       lucid,
       blueprint: harness.realBlueprint,
       network,
@@ -79,7 +76,7 @@ export const familyDriver = (
     blockOutRef: string,
     txInclusion: SubmitStep01TxInclusion,
   ) =>
-    buildAndSubmitUnjournaled(buildSpendInputSignerMissingStep01Accepted, {
+    buildAndSubmit(buildSpendInputSignerMissingStep01Accepted, {
       lucid,
       blueprint: harness.realBlueprint,
       network,
@@ -101,7 +98,7 @@ export const familyDriver = (
     evidence: SpendInputSignerMissingEvidence,
     forcedSource: Readonly<Record<string, unknown>>,
   ) =>
-    buildAndSubmitUnjournaled(buildSpendInputSignerMissingStep01Forced, {
+    buildAndSubmit(buildSpendInputSignerMissingStep01Forced, {
       lucid,
       contracts,
       categoryId,
@@ -117,7 +114,7 @@ export const familyDriver = (
     nativeTxCompactCbor: string,
     witnessSetCompactCbor: string,
   ) =>
-    submitTurnsUnjournaled(buildSpendInputSignerMissingStep02, {
+    submitTurns(buildSpendInputSignerMissingStep02, {
       lucid,
       network,
       contracts,
@@ -139,7 +136,7 @@ export const familyDriver = (
     nativeTxCompactCbor: string,
     witnessSetCompactCbor: string,
   ) =>
-    submitTurnsUnjournaled(buildSignerWitnessScan, {
+    submitTurns(buildSignerWitnessScan, {
       lucid,
       family: FAMILY,
       contracts,
@@ -156,7 +153,7 @@ export const familyDriver = (
     threadOutRef: string,
     evidence: SpendInputSignerMissingEvidence,
   ) =>
-    buildAndSubmitUnjournaled(buildSignerWitnessTerminal, {
+    buildAndSubmit(buildSignerWitnessTerminal, {
       lucid,
       family: FAMILY,
       contracts,
@@ -168,7 +165,7 @@ export const familyDriver = (
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
   const cancel = (threadOutRef: string, stepIndex: number) =>
-    buildAndSubmitUnjournaled(buildSpendInputSignerMissingCancel, {
+    buildAndSubmit(buildSpendInputSignerMissingCancel, {
       lucid,
       contracts,
       categoryId,
@@ -190,7 +187,7 @@ export const familyDriver = (
       stepIndex: SIGNER_WITNESS_TERMINAL_STEP_INDEX,
       threadOutRef,
     });
-    return buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
+    return buildAndSubmit(buildLinearFaultFinalize, {
       lucid,
       family: FAMILY,
       stepIndex: SIGNER_WITNESS_TERMINAL_STEP_INDEX,

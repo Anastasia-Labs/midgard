@@ -15,14 +15,14 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { eventKeyPhase } from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import {
   admitNativeInclusionArtifact,
   canonicalHex,
   EVEN_HEX,
-  exactJournalRecord,
+  exactArtifactRecord,
   HEX_28,
 } from "../workflow/native-index-artifact.js";
 import type {
@@ -125,8 +125,8 @@ const canonicalCbor = <T>(value: unknown, schema: T, label: string): T => {
 
 export const inputExistenceArtifact = (
   prepared: PreparedInputExistence,
-): JournalJsonObject =>
-  normalizeJournalJson({
+): WorkflowJsonObject =>
+  normalizeWorkflowJson({
     schemaVersion: INPUT_EXISTENCE_ARTIFACT,
     field: prepared.field,
     headerHash: prepared.source.headerHash,
@@ -158,13 +158,13 @@ export const inputExistenceArtifact = (
               kind: "absent",
               proof: Data.to(prepared.ledgerEvidence.Absent.proof, SDK.Proof),
             },
-  }) as JournalJsonObject;
+  }) as WorkflowJsonObject;
 
 export const admitInputExistenceArtifact = (
   value: unknown,
   owner: string,
 ): PreparedInputExistence => {
-  const artifact = exactJournalRecord(
+  const artifact = exactArtifactRecord(
     value,
     [
       "schemaVersion",
@@ -217,7 +217,7 @@ export const admitInputExistenceArtifact = (
     throw new Error("input-existence artifact: source is absent");
   }
   const accepted = "kind" in sourceRecord && sourceRecord.kind === "accepted";
-  const record = exactJournalRecord(
+  const record = exactArtifactRecord(
     sourceRecord,
     accepted ? ["kind", "inclusion"] : ["kind", "membership"],
     "input-existence source",
@@ -401,7 +401,7 @@ export const admitInputExistenceArtifact = (
     if (typeof raw !== "object" || raw === null || Array.isArray(raw))
       throw new Error("input-existence artifact: ledger witness absent");
     const present = "kind" in raw && raw.kind === "present";
-    const ledger = exactJournalRecord(
+    const ledger = exactArtifactRecord(
       raw,
       present ? ["kind", "value", "proof"] : ["kind", "proof"],
       "input-existence ledger",

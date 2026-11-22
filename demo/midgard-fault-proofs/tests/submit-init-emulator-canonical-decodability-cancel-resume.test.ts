@@ -15,7 +15,7 @@ import {
   setupCanonicalDecodabilityScenario,
 } from "./support/canonical-decodability-emulator.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 const initializedScenario = async () => {
   const harness = await makeCanonicalDecodabilityEmulatorHarness();
@@ -28,7 +28,7 @@ const initializedScenario = async () => {
     harness,
     fixture,
   });
-  const init = await buildAndSubmitUnjournaled(buildCanonicalDecodabilityInit, {
+  const init = await buildAndSubmit(buildCanonicalDecodabilityInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -56,7 +56,7 @@ describe("canonical-decodability cancellation and resume", () => {
       init.firstStepAddress,
       init.computationThreadUnit,
     );
-    const cancelled = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
+    const cancelled = await buildAndSubmit(buildLinearFaultCancel, {
       lucid: harness.proverLucid,
       family: CANONICAL_DECODABILITY_CATEGORY_LABEL,
       steps: harness.canonicalDecodability.steps,
@@ -85,7 +85,7 @@ describe("canonical-decodability cancellation and resume", () => {
       init.firstStepAddress,
       init.computationThreadUnit,
     );
-    await buildAndSubmitUnjournaled(buildCanonicalDecodabilityStep01, {
+    await buildAndSubmit(buildCanonicalDecodabilityStep01, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       contracts: harness.canonicalDecodability,
@@ -107,18 +107,15 @@ describe("canonical-decodability cancellation and resume", () => {
       harness.canonicalDecodability.steps[1].spendingScriptAddress,
       init.computationThreadUnit,
     );
-    const final = await buildAndSubmitUnjournaled(
-      buildCanonicalDecodabilityStep02,
-      {
-        lucid: harness.proverLucid,
-        contracts: harness.canonicalDecodability,
-        categoryId: harness.category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: outRefLabel(resumed),
-        referenceScriptUtxo: step02Ref,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      },
-    );
+    const final = await buildAndSubmit(buildCanonicalDecodabilityStep02, {
+      lucid: harness.proverLucid,
+      contracts: harness.canonicalDecodability,
+      categoryId: harness.category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: outRefLabel(resumed),
+      referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
     await expectSingleUtxoWithUnit(
       harness.proverLucid,
       final.fraudProofAddress,
@@ -135,25 +132,22 @@ describe("canonical-decodability cancellation and resume", () => {
       init.firstStepAddress,
       init.computationThreadUnit,
     );
-    const bound = await buildAndSubmitUnjournaled(
-      buildCanonicalDecodabilityStep01,
-      {
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        contracts: harness.canonicalDecodability,
-        categoryId: harness.category.categoryId,
-        network,
-        signer: harness.proverSigner,
-        threadOutRef: outRefLabel(first),
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: fixture.txInclusion,
-        fieldIndex: fixture.fieldIndex,
-        committedPreimage: fixture.committedPreimage,
-        referenceScriptUtxo: step01Ref,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      },
-    );
-    const cancelled = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
+    const bound = await buildAndSubmit(buildCanonicalDecodabilityStep01, {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      contracts: harness.canonicalDecodability,
+      categoryId: harness.category.categoryId,
+      network,
+      signer: harness.proverSigner,
+      threadOutRef: outRefLabel(first),
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: fixture.txInclusion,
+      fieldIndex: fixture.fieldIndex,
+      committedPreimage: fixture.committedPreimage,
+      referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
+    const cancelled = await buildAndSubmit(buildLinearFaultCancel, {
       lucid: harness.proverLucid,
       family: CANONICAL_DECODABILITY_CATEGORY_LABEL,
       steps: harness.canonicalDecodability.steps,

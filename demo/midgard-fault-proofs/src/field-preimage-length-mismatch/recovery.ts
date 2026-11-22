@@ -15,9 +15,9 @@ import {
 import type { LinearFamilyPrerequisiteInput } from "../workflow/family-definition.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import {
-  journalJsonDigest,
-  type JournalJsonObject,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  workflowJsonDigest,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   workflowTransactionInputOutRefs,
@@ -62,18 +62,21 @@ export const createFieldPreimageLengthRecoveryPorts = (
     | undefined;
   const admit = (
     evidence: FieldPreimageLengthWorkflowEvidence,
-    artifact?: JournalJsonObject,
+    artifact?: WorkflowJsonObject,
   ) => {
     if (evidence.prepared.headerHash !== binding.definition.headerHash)
       throw new Error(`${CATEGORY} recovery evidence changed target`);
     const fresh = proofMaterial(evidence);
     const value = artifact ?? encodeWorkflowArtifact(fresh);
     if (artifact !== undefined) requireWorkflowArtifactMatches(artifact, fresh);
-    current = { digest: journalJsonDigest(value), evidence: fresh };
+    current = { digest: workflowJsonDigest(value), evidence: fresh };
     return value;
   };
-  const requireMaterial = (artifact: JournalJsonObject) => {
-    if (current === undefined || current.digest !== journalJsonDigest(artifact))
+  const requireMaterial = (artifact: WorkflowJsonObject) => {
+    if (
+      current === undefined ||
+      current.digest !== workflowJsonDigest(artifact)
+    )
       throw new Error(
         `${CATEGORY} proof material was not freshly authenticated`,
       );

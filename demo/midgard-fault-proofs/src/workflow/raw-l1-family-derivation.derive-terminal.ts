@@ -9,7 +9,7 @@ import { fraudSlashFeeLovelace } from "../remove-fraudulent-block.assert-exact-f
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
-} from "./journal.fraud-proof-workflow-terminal.js";
+} from "./identity.js";
 import {
   bodyOutputsContainUnit,
   exactRemoval,

@@ -28,6 +28,7 @@ import {
   CHUNKED_VERIFY_WITNESS_ROLES,
   type LinearFamilyReferenceScripts,
 } from "./family-definition.family-adapter-arm.js";
+import { normalizeWorkflowJson, type WorkflowJsonObject } from "./identity.js";
 import {
   type AdmittedArtifact,
   EVEN_HEX,
@@ -44,10 +45,6 @@ import {
   record,
   safeNatural,
 } from "./invalid-signature.parse-address-witnesses.js";
-import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "./journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 
 export const admitInvalidSignatureArtifact = (
@@ -190,7 +187,7 @@ export const admitInvalidSignatureArtifact = (
 };
 
 export const admitWorkflowArtifact = async (
-  artifact: JournalJsonObject,
+  artifact: WorkflowJsonObject,
   owner: string,
 ) => {
   if (artifact.schemaVersion !== INVALID_SIGNATURE_FORCED_ARTIFACT)
@@ -285,7 +282,7 @@ export const prepareInvalidSignatureArtifact = async ({
       "invalid-signature prepared evidence changed the selected witness",
     );
   }
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: INVALID_SIGNATURE_ARTIFACT,
     headerHash: prepared.headerHash,
     detectionId: classification.selected.detectionId,

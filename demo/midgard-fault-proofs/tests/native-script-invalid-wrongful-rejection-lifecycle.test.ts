@@ -52,7 +52,7 @@ import { admitNativeScriptInvalidWorkflowArtifact } from "../src/native-script-i
 import { run } from "./native-script-invalid-wrongful-rejection-lifecycle.run.js";
 import { setup } from "./native-script-invalid-wrongful-rejection-lifecycle.setup.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
+import { submitTurns } from "./support/submit-steps.js";
 
 // The ledger's Ed25519 check is libsodium's, which initialises
 // asynchronously; production entry points await it, and so does this file.
@@ -181,7 +181,7 @@ describe("native script wrongful forced rejection", { timeout: 30_000 }, () => {
     ).rejects.toThrow();
     const bound = await f.bind(outRef);
     await expect(
-      submitTurnsUnjournaled(buildNativeScriptInvalidStep02, {
+      submitTurns(buildNativeScriptInvalidStep02, {
         ...f.common,
         threadOutRef: bound.nextThreadOutRef,
         scriptWitnessItems: f.scripts,

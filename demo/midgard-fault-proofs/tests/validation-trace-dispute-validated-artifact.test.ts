@@ -9,9 +9,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../src/workflow/identity.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   detectOn,
@@ -21,7 +21,7 @@ import {
 import { makeRunner } from "./support/validation-trace-dispute-runner.js";
 
 /** `artifact` with the last hex digit of its challenger root changed. */
-const oneByteOff = (artifact: JournalJsonObject): JournalJsonObject => {
+const oneByteOff = (artifact: WorkflowJsonObject): WorkflowJsonObject => {
   const root = artifact.challengerRoot as string;
   const last = root.at(-1) === "0" ? "1" : "0";
   return { ...artifact, challengerRoot: `${root.slice(0, -1)}${last}` };
@@ -49,9 +49,9 @@ describe("a saved validation-trace artifact checked again", () => {
       throw new Error("the failing block detects no fault");
     const prepared = { evidence, classification, replayContext: context };
     // The artifact normalised as the orchestrator hands it to the adapter.
-    const artifact = normalizeJournalJson(
+    const artifact = normalizeWorkflowJson(
       await adapter.prepare(prepared),
-    ) as JournalJsonObject;
+    ) as WorkflowJsonObject;
     inputs = { ...prepared, artifact };
   }, 600_000);
 

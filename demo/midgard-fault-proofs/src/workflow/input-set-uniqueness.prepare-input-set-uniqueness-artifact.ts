@@ -28,6 +28,7 @@ import {
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
 } from "./family-definition.family-adapter-arm.js";
+import { normalizeWorkflowJson } from "./identity.js";
 import {
   claimIdentity,
   claimJson,
@@ -43,8 +44,7 @@ import {
   admitInputSetUniquenessForcedArtifact,
   selectedIdentity,
 } from "./input-set-uniqueness.admit-input-set-uniqueness-forced-artifact.js";
-import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
-import { exactJournalRecord } from "./native-index-artifact.js";
+import { exactArtifactRecord } from "./native-index-artifact.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import type { ProofMaterialsAccess } from "./proof-materials-view.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
@@ -92,7 +92,7 @@ export const prepareInputSetUniquenessArtifact = async ({
         ForcedTransactionEventKey: { tx_order_id: transaction.key },
       },
     });
-    const artifact = normalizeJournalJson({
+    const artifact = normalizeWorkflowJson({
       schemaVersion: INPUT_SET_UNIQUENESS_FORCED_ARTIFACT,
       headerHash: evidence.headerHash,
       detectionId: detection.detectionId,
@@ -134,7 +134,7 @@ export const prepareInputSetUniquenessArtifact = async ({
     throw new Error("input-set-uniqueness selected claim disappeared");
   }
   const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: INPUT_SET_UNIQUENESS_ARTIFACT,
     headerHash: evidence.headerHash,
     detectionId: classification.selected.detectionId,
@@ -192,7 +192,7 @@ export type BoundConfig = Readonly<{
 }>;
 
 const record = (value: unknown, label: string) =>
-  exactJournalRecord(
+  exactArtifactRecord(
     value,
     typeof value === "object" && value !== null ? Object.keys(value) : [],
     label,

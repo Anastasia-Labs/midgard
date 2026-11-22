@@ -25,10 +25,7 @@ import {
 } from "./support/network-id-emulator.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import { setupFraudulentBlock } from "./support/submit-init/removal.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 describe("Q35 network-id real-fault lifecycle", () => {
   it.each([
@@ -86,7 +83,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
       });
       const prepared = { ...fixture.prepared, headerHash: setup.headerHash };
       const init = await submitMeasured(() =>
-        buildAndSubmitUnjournaled(buildNetworkIdInit, {
+        buildAndSubmit(buildNetworkIdInit, {
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           network,
@@ -112,7 +109,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
         init.computationThreadUnit,
       );
       const step01 = await submitMeasured(() =>
-        buildAndSubmitUnjournaled(buildNetworkIdStep01, {
+        buildAndSubmit(buildNetworkIdStep01, {
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           contracts: harness.networkId,
@@ -142,7 +139,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
         owner: harness.proverSigner.paymentKeyHash,
       });
       const step02 = await submitMeasured(() =>
-        submitTurnsUnjournaled(buildNetworkIdStep02, {
+        submitTurns(buildNetworkIdStep02, {
           lucid: harness.proverLucid,
           contracts: harness.networkId,
           categoryId: harness.category.categoryId,
@@ -246,7 +243,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
       fixture,
     });
     const prepared = { ...fixture.prepared, headerHash: setup.headerHash };
-    const init = await buildAndSubmitUnjournaled(buildNetworkIdInit, {
+    const init = await buildAndSubmit(buildNetworkIdInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -268,7 +265,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
       init.computationThreadUnit,
     );
     await expect(
-      buildAndSubmitUnjournaled(buildNetworkIdStep01, {
+      buildAndSubmit(buildNetworkIdStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts: harness.networkId,
@@ -304,7 +301,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
       catalogue: harness.catalogue,
       fixture,
     });
-    const init = await buildAndSubmitUnjournaled(buildNetworkIdInit, {
+    const init = await buildAndSubmit(buildNetworkIdInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -326,7 +323,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
       init.computationThreadUnit,
     );
     let boundaryCalled = false;
-    const cancelled = await buildAndSubmitUnjournaled(buildNetworkIdCancel, {
+    const cancelled = await buildAndSubmit(buildNetworkIdCancel, {
       lucid: harness.proverLucid,
       contracts: harness.networkId,
       categoryId: harness.category.categoryId,

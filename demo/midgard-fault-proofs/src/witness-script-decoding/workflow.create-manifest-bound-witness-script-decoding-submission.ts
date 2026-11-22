@@ -22,7 +22,7 @@ import { buildWitnessScriptDecodingStep04 } from "./submit-step-04.js";
 import {
   type WitnessScriptDecodingAction,
   type WitnessScriptDecodingEvidence,
-  type WitnessScriptDecodingJournalEntry,
+  type WitnessScriptDecodingObservation,
 } from "./witness-script-decoding.js";
 import {
   required,
@@ -40,12 +40,7 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
   readonly config: ManifestBoundWitnessScriptDecodingConfig;
   readonly observe: (
     identity: string,
-  ) => Promise<
-    Pick<
-      WitnessScriptDecodingJournalEntry,
-      "stage" | "transactionId" | "outputReference" | "checkpointHash"
-    >
-  >;
+  ) => Promise<WitnessScriptDecodingObservation>;
   readonly resolveStage: WitnessScriptDecodingRuntimeLoader["resolveStage"];
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   /** The workflow's view of its proof-materials address, on a workflow. */

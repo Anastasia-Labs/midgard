@@ -39,7 +39,7 @@ import { buildValueNotPreservedStep02Fold } from "../src/value-not-preserved/sub
 import type { FaultProofWitnessReferenceScripts } from "../src/witness-reference-scripts.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import {
   buildValueNotPreservedFixture,
   vnpOutput,
@@ -65,7 +65,7 @@ const initThread = async (
   fraudulentBlockOutRef: string,
   witnessReferenceScripts: FaultProofWitnessReferenceScripts,
 ) =>
-  buildAndSubmitUnjournaled(buildResolvedInit, {
+  buildAndSubmit(buildResolvedInit, {
     label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
@@ -127,7 +127,7 @@ describe("value-not-preserved negative scenarios", () => {
     } as const;
     // The honest submitter's §1.4 acceptance-gate twin refuses locally.
     await expect(
-      buildAndSubmitUnjournaled(buildValueNotPreservedStep01, {
+      buildAndSubmit(buildValueNotPreservedStep01, {
         lucid: proverLucid,
         blueprint: harness.realBlueprint,
         contracts: family,
@@ -217,25 +217,22 @@ describe("value-not-preserved negative scenarios", () => {
     const claimedAsset = {
       TokenAsset: { policy_id: POLICY_ID_HEX, asset_name: ASSET_NAME_HEX },
     } as const;
-    const step01 = await buildAndSubmitUnjournaled(
-      buildValueNotPreservedStep01,
-      {
-        lucid: proverLucid,
-        blueprint: harness.realBlueprint,
-        contracts: family,
-        categoryId: harness.category.categoryId,
-        network,
-        signer: proverSigner,
-        threadOutRef: init.nextThreadOutRef,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: fixture.txInclusion,
-        claimedAsset,
-        claimedDirection: "ClaimedAssetInflated",
-        prevUtxosRoot: fixture.ledger.rootHex,
-        referenceScriptUtxo: refs[0],
-        witnessReferenceScripts: setup.witnessReferenceScripts,
-      },
-    );
+    const step01 = await buildAndSubmit(buildValueNotPreservedStep01, {
+      lucid: proverLucid,
+      blueprint: harness.realBlueprint,
+      contracts: family,
+      categoryId: harness.category.categoryId,
+      network,
+      signer: proverSigner,
+      threadOutRef: init.nextThreadOutRef,
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: fixture.txInclusion,
+      claimedAsset,
+      claimedDirection: "ClaimedAssetInflated",
+      prevUtxosRoot: fixture.ledger.rootHex,
+      referenceScriptUtxo: refs[0],
+      witnessReferenceScripts: setup.witnessReferenceScripts,
+    });
     const spendInputsOpening = spendInputsOpeningV1({
       nativeTxCompactCbor: fixture.nativeTxCompactCbor,
       spendInputsPreimageCbor: fixture.spendInputsPreimageCbor,
@@ -259,7 +256,7 @@ describe("value-not-preserved negative scenarios", () => {
       prevUtxosRootHex: fixture.ledger.rootHex,
     });
     await expectOnchainRefusal(async () =>
-      buildAndSubmitUnjournaled(buildValueNotPreservedStep02Fold, {
+      buildAndSubmit(buildValueNotPreservedStep02Fold, {
         lucid: proverLucid,
         contracts: family,
         categoryId: harness.category.categoryId,
@@ -291,7 +288,7 @@ describe("value-not-preserved negative scenarios", () => {
       })),
     };
     await expectOnchainRefusal(async () =>
-      buildAndSubmitUnjournaled(buildValueNotPreservedStep02Fold, {
+      buildAndSubmit(buildValueNotPreservedStep02Fold, {
         lucid: proverLucid,
         contracts: family,
         categoryId: harness.category.categoryId,
@@ -305,19 +302,16 @@ describe("value-not-preserved negative scenarios", () => {
 
     // The SAME thread accepts the honest witness: it was the forgery that
     // was refused, not the thread.
-    const honestFold = await buildAndSubmitUnjournaled(
-      buildValueNotPreservedStep02Fold,
-      {
-        lucid: proverLucid,
-        contracts: family,
-        categoryId: harness.category.categoryId,
-        signer: proverSigner,
-        threadOutRef: step01.nextThreadOutRef,
-        spendInputsOpening,
-        valueWitness: genuineWitness,
-        referenceScriptUtxo: refs[1],
-      },
-    );
+    const honestFold = await buildAndSubmit(buildValueNotPreservedStep02Fold, {
+      lucid: proverLucid,
+      contracts: family,
+      categoryId: harness.category.categoryId,
+      signer: proverSigner,
+      threadOutRef: step01.nextThreadOutRef,
+      spendInputsOpening,
+      valueWitness: genuineWitness,
+      referenceScriptUtxo: refs[1],
+    });
     expect(honestFold.foldState.input_cursor).toBe(1n);
     expect(honestFold.foldState.claimed_delta).toBe(25n);
   }, 600_000);

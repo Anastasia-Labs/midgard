@@ -10,10 +10,10 @@ import {
   type HeaderFaultDecision,
 } from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import {
-  journalJsonDigest,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  workflowJsonDigest,
+  type WorkflowJsonObject,
+} from "../src/workflow/identity.js";
 import { createCanonicalFamilyArtifactPort } from "../src/workflow/manifest-bound-family-recovery.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
@@ -67,7 +67,7 @@ const recovery = () => {
   };
   const decision = {
     ...unsealed,
-    decisionDigest: journalJsonDigest(normalizeJournalJson(unsealed)),
+    decisionDigest: workflowJsonDigest(normalizeWorkflowJson(unsealed)),
   };
   const controller = createWorkflowReconciliationPermitController({
     decision,
@@ -150,7 +150,7 @@ it("re-admits exact typed material after restart without deserializing saved JSO
   >[0];
   const first = createCanonicalFamilyArtifactPort(async () => fresh());
   const artifact = await first.prepare(input);
-  const saved = JSON.parse(JSON.stringify(artifact)) as JournalJsonObject;
+  const saved = JSON.parse(JSON.stringify(artifact)) as WorkflowJsonObject;
   const restarted = createCanonicalFamilyArtifactPort(async () => fresh());
   expect(() => restarted.require(saved)).toThrow("was not admitted");
   await restarted.validatePreparedArtifact({ ...input, artifact: saved });

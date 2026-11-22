@@ -12,10 +12,7 @@ import {
   type CompleteSignedTransactionMeasurement,
 } from "./emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
-import {
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-} from "./submit-unjournaled.js";
+import { certifyFieldCarriage, publishFieldCarriage } from "./submit-steps.js";
 
 /** Publishes (and, at tier 3, certifies) every planned field of `fields`
  * that does not travel inline. */
@@ -44,7 +41,7 @@ export const publishDirectWalkCarriage = async ({
     const tier = planned.plan.tier;
     if (tier === "Inline") continue;
     const published = await captureEmulatorSubmission(harness.emulator, () =>
-      publishCarriageUnjournaled({
+      publishFieldCarriage({
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -64,7 +61,7 @@ export const publishDirectWalkCarriage = async ({
         })
       ).utxo;
       const certified = await captureEmulatorSubmission(harness.emulator, () =>
-        certifyCarriageUnjournaled({
+        certifyFieldCarriage({
           lucid: harness.proverLucid,
           network,
           signer: harness.proverSigner,

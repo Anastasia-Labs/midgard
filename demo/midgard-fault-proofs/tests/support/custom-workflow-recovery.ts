@@ -19,13 +19,13 @@ import {
   HEADER_DECISION,
   type HeaderFaultDecision,
 } from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
-import type { InstalledFraudProofCategory } from "../../src/workflow/installed-categories.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  journalJsonDigest,
-  normalizeJournalJson,
-} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  workflowJsonDigest,
+} from "../../src/workflow/identity.js";
+import type { InstalledFraudProofCategory } from "../../src/workflow/installed-categories.js";
 import type { FraudProofRawL1FamilyStage } from "../../src/workflow/raw-l1-family-derivation.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
 import {
@@ -171,7 +171,7 @@ export const customWorkflowRecoveryFixture = async (
   };
   const decision = {
     ...unsealed,
-    decisionDigest: journalJsonDigest(normalizeJournalJson(unsealed)),
+    decisionDigest: workflowJsonDigest(normalizeWorkflowJson(unsealed)),
   };
   const identity = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,

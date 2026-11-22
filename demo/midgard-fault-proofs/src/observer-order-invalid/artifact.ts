@@ -7,7 +7,7 @@ import {
   admitClaimedCoordinateDecimal,
   claimedCoordinateDecimal,
 } from "../evidence/claimed-coordinate.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type { WorkflowJsonObject } from "../workflow/identity.js";
 import {
   type ObserverOrderInvalidEvidence,
   ObserverOrderInvalidVerdictSubjectSchema,
@@ -21,7 +21,7 @@ import {
 export const OBSERVER_ORDER_INVALID_ARTIFACT =
   "midgard-production-observer-order-invalid-artifact-v1" as const;
 
-export type ObserverOrderInvalidArtifact = JournalJsonObject &
+export type ObserverOrderInvalidArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof OBSERVER_ORDER_INVALID_ARTIFACT;
     headerHash: string;

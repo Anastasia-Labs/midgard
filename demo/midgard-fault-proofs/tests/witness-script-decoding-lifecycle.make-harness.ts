@@ -57,11 +57,11 @@ import { TRACED_REFUSALS } from "./support/emulator/traced-refusals.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { recordPlutusItem } from "./support/script-decode-emulator.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+  submitTurns,
+} from "./support/submit-steps.js";
 import {
   ADJACENT_FIELD_BYTES,
   overBoundFieldCarriagePlan,
@@ -281,7 +281,7 @@ export const makeHarness = async ({
   const init = async (fraudulentBlockOutRef: string, name: string | null) =>
     (
       await measured(name, () =>
-        buildAndSubmitUnjournaled(buildWitnessScriptDecodingInit, {
+        buildAndSubmit(buildWitnessScriptDecodingInit, {
           lucid,
           blueprint: harness.realBlueprint,
           network,
@@ -306,7 +306,7 @@ export const makeHarness = async ({
     name: string | null = null,
   ) => {
     await measured(name, () =>
-      buildAndSubmitUnjournaled(buildWitnessScriptDecodingCancel, {
+      buildAndSubmit(buildWitnessScriptDecodingCancel, {
         lucid,
         contracts,
         categoryId,
@@ -328,7 +328,7 @@ export const makeHarness = async ({
   ) =>
     (
       await measured(name, () =>
-        buildAndSubmitUnjournaled(buildWitnessScriptDecodingStep01Accepted, {
+        buildAndSubmit(buildWitnessScriptDecodingStep01Accepted, {
           lucid,
           blueprint: harness.realBlueprint,
           network,
@@ -354,7 +354,7 @@ export const makeHarness = async ({
   ) =>
     (
       await measured(name, () =>
-        buildAndSubmitUnjournaled(buildWitnessScriptDecodingStep01Forced, {
+        buildAndSubmit(buildWitnessScriptDecodingStep01Forced, {
           lucid,
           contracts,
           categoryId,
@@ -407,7 +407,7 @@ export const makeHarness = async ({
       item && (await recordPlutusItem(harness.emulator, lucid, item));
     return (
       await measured(name, () =>
-        submitTurnsUnjournaled(buildWitnessScriptDecodingStep02, {
+        submitTurns(buildWitnessScriptDecodingStep02, {
           lucid,
           network,
           contracts,
@@ -458,7 +458,7 @@ export const makeHarness = async ({
       label: `witness field ${shape.label}`,
     });
     const carriage = await captureEmulatorSubmission(harness.emulator, () =>
-      publishCarriageUnjournaled({
+      publishFieldCarriage({
         lucid,
         signer,
         planned,
@@ -478,7 +478,7 @@ export const makeHarness = async ({
       return { carriageUtxos: carriage.result, certificateUtxo: undefined };
     }
     const certificate = await captureEmulatorSubmission(harness.emulator, () =>
-      certifyCarriageUnjournaled({
+      certifyFieldCarriage({
         lucid,
         network,
         signer,
@@ -528,7 +528,7 @@ export const makeHarness = async ({
       witnessSet: shape.carriage.witnessSet,
       witnessSetHash: shape.carriage.witnessSetHash,
     };
-    const chunkUtxos = await publishCarriageUnjournaled({
+    const chunkUtxos = await publishFieldCarriage({
       lucid,
       signer,
       planned,
@@ -537,7 +537,7 @@ export const makeHarness = async ({
     });
     expect(chunkUtxos).toHaveLength(3);
     await expectOnchainRefusal(() =>
-      certifyCarriageUnjournaled({
+      certifyFieldCarriage({
         lucid,
         network,
         signer,
@@ -635,7 +635,7 @@ export const makeHarness = async ({
     let close: CompleteSignedTransactionMeasurement | undefined;
     while (!closed) {
       const { result, measurement } = await measured(null, () =>
-        buildAndSubmitUnjournaled(buildWitnessScriptDecodingStep03, {
+        buildAndSubmit(buildWitnessScriptDecodingStep03, {
           lucid,
           contracts,
           categoryId,
@@ -675,7 +675,7 @@ export const makeHarness = async ({
     name: string | null,
   ) => {
     const { result } = await measured(name, () =>
-      buildAndSubmitUnjournaled(buildWitnessScriptDecodingStep04, {
+      buildAndSubmit(buildWitnessScriptDecodingStep04, {
         lucid,
         contracts,
         categoryId,

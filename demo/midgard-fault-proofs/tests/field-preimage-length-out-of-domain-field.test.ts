@@ -23,7 +23,7 @@ import { removeFraudulentBlock } from "./field-preimage-length-mismatch-lifecycl
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { submitRawFieldPreimageLengthOutOfDomainStep02 } from "./support/field-preimage-length-raw.submit-out-of-domain-step02-raw.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import { MAXIMUM_PROOF_STEP_COUNT } from "./support/synthetic-deep-proof.js";
 
 /** A thread on a block committing one forced leaf, dispatched to step 02. */
@@ -33,7 +33,7 @@ const pendingThread = async (
 ) => {
   const fixture = await forcedSetup(verdict, false, leaf);
   const init = await captureEmulatorSubmission(fixture.harness.emulator, () =>
-    buildAndSubmitUnjournaled(buildFieldPreimageLengthInit, {
+    buildAndSubmit(buildFieldPreimageLengthInit, {
       config: fixture.config,
       fraudulentBlockOutRef: fixture.fraudulent.fraudulentBlockOutRef,
     }),
@@ -41,7 +41,7 @@ const pendingThread = async (
   const dispatch = await captureEmulatorSubmission(
     fixture.harness.emulator,
     () =>
-      buildAndSubmitUnjournaled(buildFieldPreimageLengthForcedDispatch, {
+      buildAndSubmit(buildFieldPreimageLengthForcedDispatch, {
         config: fixture.config,
         threadOutRef: init.result.nextThreadOutRef,
       }),
@@ -57,7 +57,7 @@ const convict = async ({
   const authenticated = await captureEmulatorSubmission(
     fixture.harness.emulator,
     () =>
-      buildAndSubmitUnjournaled(buildFieldPreimageLengthForcedOutOfDomain, {
+      buildAndSubmit(buildFieldPreimageLengthForcedOutOfDomain, {
         config: fixture.config,
         threadOutRef: dispatch.result.nextThreadOutRef,
         header: fixture.forced.header,
@@ -65,7 +65,7 @@ const convict = async ({
       }),
   );
   const minted = await captureEmulatorSubmission(fixture.harness.emulator, () =>
-    buildAndSubmitUnjournaled(buildFieldPreimageLengthTerminal, {
+    buildAndSubmit(buildFieldPreimageLengthTerminal, {
       config: fixture.config,
       threadOutRef: authenticated.result.nextThreadOutRef,
     }),

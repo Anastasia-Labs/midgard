@@ -10,7 +10,7 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { type FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import { type DoubleSpendL1ObservationPort } from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
-import type { JournalJsonObject, JournalJsonValue } from "./journal.js";
+import type { WorkflowJsonObject, WorkflowJsonValue } from "./identity.js";
 import type { FraudProofL1Source } from "./l1-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -79,17 +79,17 @@ export type ManifestBoundDoubleSpendWorkflow = {
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 };
 
-export type DoubleSpendArtifact = JournalJsonObject & {
+export type DoubleSpendArtifact = WorkflowJsonObject & {
   readonly headerHash: string;
-  readonly tx1: JournalJsonObject & {
-    readonly inclusion: JournalJsonObject;
+  readonly tx1: WorkflowJsonObject & {
+    readonly inclusion: WorkflowJsonObject;
     readonly nativeTxId: string;
     readonly nativeTxCompactCbor: string;
     readonly spendInputCbors: readonly string[];
     readonly doubleSpentInputIndex: number;
   };
-  readonly tx2: JournalJsonObject & {
-    readonly inclusion: JournalJsonObject;
+  readonly tx2: WorkflowJsonObject & {
+    readonly inclusion: WorkflowJsonObject;
     readonly nativeTxId: string;
     readonly nativeTxCompactCbor: string;
     readonly spendInputCbors: readonly string[];
@@ -97,7 +97,7 @@ export type DoubleSpendArtifact = JournalJsonObject & {
   };
 };
 
-export const journalValue = (value: unknown): JournalJsonValue => {
+export const journalValue = (value: unknown): WorkflowJsonValue => {
   if (typeof value === "bigint") return value.toString();
   if (
     value === null ||
@@ -118,11 +118,11 @@ export const journalValue = (value: unknown): JournalJsonValue => {
   );
 };
 
-export const artifactFrom = (value: JournalJsonObject): DoubleSpendArtifact =>
+export const artifactFrom = (value: WorkflowJsonObject): DoubleSpendArtifact =>
   value as DoubleSpendArtifact;
 
 export const requireJournalString = (
-  value: JournalJsonValue | undefined,
+  value: WorkflowJsonValue | undefined,
   label: string,
 ): string => {
   if (typeof value !== "string") {
@@ -133,7 +133,7 @@ export const requireJournalString = (
 
 export const action = (
   actionId: string,
-  input: JournalJsonObject,
+  input: WorkflowJsonObject,
 ): FraudProofWorkflowAction => ({ actionId, input });
 
 export const preflightOf = (

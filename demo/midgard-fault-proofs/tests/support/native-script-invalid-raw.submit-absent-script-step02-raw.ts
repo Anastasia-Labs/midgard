@@ -29,7 +29,7 @@ import type { NativeScriptInvalidContracts } from "../../src/native-script-inval
 import { NATIVE_SCRIPT_INVALID_ABSENT_SCRIPT_ITEM_HASH } from "../../src/native-script-invalid/submit-step-02.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
-import { buildAndSubmitTransactionUnjournaled } from "./submit-unjournaled.js";
+import { buildAndSubmitTransaction } from "./submit-steps.js";
 
 const FAMILY = "native-script-invalid";
 const label = "raw native-script-invalid step-02 absent script";
@@ -164,7 +164,7 @@ export const submitRawNativeScriptInvalidAbsentScriptStep02 = async ({
       Step02Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
+  return await buildAndSubmitTransaction(buildLinearFaultContinue, {
     lucid,
     signer,
     threadUtxo,

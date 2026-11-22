@@ -33,10 +33,7 @@ import { publishRemovalReferenceScripts } from "./support/emulator/reference-scr
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { setupFraudulentBlock } from "./support/submit-init/removal.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 import { buildForcedOutputFixture } from "./support/transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
 import { submitOutputStep04Raw } from "./support/transaction-output-non-canonical-emulator.publish-output-field-carriage.js";
 import { nodeTransactionSpendingHeldInput } from "./transaction-output-non-canonical-datum-lifecycle.scenario.js";
@@ -188,7 +185,7 @@ const openAndScan = async ({
     signer: harness.proverSigner,
   };
   const authenticated = await measured(registered, () =>
-    submitTurnsUnjournaled(buildTransactionOutputNonCanonicalStep02, {
+    submitTurns(buildTransactionOutputNonCanonicalStep02, {
       ...step,
       threadOutRef,
       evidence,
@@ -204,7 +201,7 @@ const openAndScan = async ({
     const scanned = await measured(
       registered,
       () =>
-        buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep03, {
+        buildAndSubmit(buildTransactionOutputNonCanonicalStep03, {
           ...step,
           threadOutRef: current,
           evidence,
@@ -280,29 +277,26 @@ export const runAcceptedBlock = async (
     );
     fraudulentHeaderHash = init.result.fraudulentHeaderHash;
     const bound = await measured(registered, async () =>
-      buildAndSubmitUnjournaled(
-        buildTransactionOutputNonCanonicalStep01Accepted,
-        {
-          lucid: harness.proverLucid,
-          blueprint: harness.realBlueprint,
-          network,
-          contracts: registered.contracts,
-          signer: harness.proverSigner,
-          finding: evidence,
-          threadUtxo: await registered.threadUtxoOf(
-            init.result.txHash,
-            init.result.firstStepOutputIndex,
-          ),
-          threadToken: {
-            unit: init.result.computationThreadUnit,
-            fraudulentHeaderHash: init.result.fraudulentHeaderHash,
-          },
-          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-          txInclusion: inclusion,
-          referenceScriptUtxo: registered.references[0]!,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
+      buildAndSubmit(buildTransactionOutputNonCanonicalStep01Accepted, {
+        lucid: harness.proverLucid,
+        blueprint: harness.realBlueprint,
+        network,
+        contracts: registered.contracts,
+        signer: harness.proverSigner,
+        finding: evidence,
+        threadUtxo: await registered.threadUtxoOf(
+          init.result.txHash,
+          init.result.firstStepOutputIndex,
+        ),
+        threadToken: {
+          unit: init.result.computationThreadUnit,
+          fraudulentHeaderHash: init.result.fraudulentHeaderHash,
         },
-      ),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: inclusion,
+        referenceScriptUtxo: registered.references[0]!,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      }),
     );
     const terminal = await openAndScan({
       registered,
@@ -315,7 +309,7 @@ export const runAcceptedBlock = async (
     });
     if (repeated) {
       const minted = await measured(registered, () =>
-        buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep04, {
+        buildAndSubmit(buildTransactionOutputNonCanonicalStep04, {
           ...terminal.step,
           threadOutRef: terminal.threadOutRef,
           evidence,
@@ -419,7 +413,7 @@ export const runForcedLeaf = async ({
     registered.init(setup.fraudulentBlockOutRef),
   );
   const bound = await measured(registered, () =>
-    buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep01Forced, {
+    buildAndSubmit(buildTransactionOutputNonCanonicalStep01Forced, {
       lucid: harness.proverLucid,
       contracts: registered.contracts,
       categoryId: registered.category.categoryId,
@@ -445,7 +439,7 @@ export const runForcedLeaf = async ({
     return log;
   }
   const minted = await measured(registered, () =>
-    buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep04, {
+    buildAndSubmit(buildTransactionOutputNonCanonicalStep04, {
       ...terminal.step,
       threadOutRef: terminal.threadOutRef,
       evidence,

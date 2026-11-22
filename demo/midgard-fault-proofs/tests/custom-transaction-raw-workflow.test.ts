@@ -9,7 +9,7 @@ import {
   MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
   OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
-import type { JournalJsonObject } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import type { WorkflowJsonObject } from "../src/workflow/identity.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -52,7 +52,7 @@ const releaseFinalityAuthority = {
 const prepare = async (
   category: Category,
   routed: WorkflowRawFamilyEvidence,
-): Promise<JournalJsonObject> => {
+): Promise<WorkflowJsonObject> => {
   if (
     category === "mintDeclaredAssetLimit" &&
     routed.kind === "mint_declared_asset_limit"

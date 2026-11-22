@@ -40,10 +40,10 @@ import {
   expectInputNoIdxConviction,
 } from "./support/input-no-idx-step04-thread.js";
 import {
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  certifyFieldCarriage,
+  publishFieldCarriage,
+  submitTurns,
+} from "./support/submit-steps.js";
 
 /** 761 producing outputs of 43 preimage bytes fill field 2 to the maximum. */
 const TIER3_PRODUCING_OUTPUT_COUNT = 761;
@@ -83,7 +83,7 @@ const buildTier3Scenario = async () => {
     label: LABEL,
   });
   expect(planned.plan.tier).toBe("Certified");
-  const chunkUtxos = await publishCarriageUnjournaled({
+  const chunkUtxos = await publishFieldCarriage({
     lucid: harness.proverLucid,
     signer: harness.proverSigner,
     planned,
@@ -97,7 +97,7 @@ const buildTier3Scenario = async () => {
       script: preimageCertificate.mintingScript,
       label: "field preimage certificate",
     });
-  const { certificateUtxo } = await certifyCarriageUnjournaled({
+  const { certificateUtxo } = await certifyFieldCarriage({
     lucid: harness.proverLucid,
     network,
     signer: harness.proverSigner,
@@ -117,7 +117,7 @@ const buildTier3Scenario = async () => {
   );
 
   const step04 = (fieldGrammar: typeof grammar.fieldGrammar | undefined) =>
-    submitTurnsUnjournaled(buildInputNoIdxStep04, {
+    submitTurns(buildInputNoIdxStep04, {
       lucid: harness.proverLucid,
       referenceScriptUtxo:
         harness.faultProofReferenceScripts
@@ -180,7 +180,7 @@ describe("input-no-idx step 04 through the field grammar certificate", () => {
 
     const { deploymentInfo, fourthStepOutRef } =
       await advanceInputNoIdxToStep04(harness, fixture);
-    const step04Result = await submitTurnsUnjournaled(buildInputNoIdxStep04, {
+    const step04Result = await submitTurns(buildInputNoIdxStep04, {
       lucid: harness.proverLucid,
       referenceScriptUtxo:
         harness.faultProofReferenceScripts

@@ -38,10 +38,10 @@ import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { submitRawSignerWitnessScanTurn } from "./support/emulator/signer-witness-scan-raw-turn.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
-  buildAndSubmitUnjournaled,
+  buildAndSubmit,
   type SubmittedStep,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  submitTurns,
+} from "./support/submit-steps.js";
 
 /**
  * One committed block on the registered chain (a normal subject or a forced
@@ -106,25 +106,22 @@ export const makeScenario = async ({
     referenceScriptUtxo: refs[index]!,
   });
   const init = async () => {
-    const result = await buildAndSubmitUnjournaled(
-      buildCommittedFieldShapeInit,
-      {
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: contracts as never,
-        category,
-        catalogue: {
-          policyId: harness.contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: harness.catalogue.root,
-        },
-        signer: harness.proverSigner,
-        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
+    const result = await buildAndSubmit(buildCommittedFieldShapeInit, {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      network,
+      contracts: contracts as never,
+      category,
+      catalogue: {
+        policyId: harness.contracts.fraudProofCatalogue.policyId,
+        spendingScriptAddress:
+          harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+        root: harness.catalogue.root,
       },
-    );
+      signer: harness.proverSigner,
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
     return result.nextThreadOutRef;
   };
   const threadAt = async (threadOutRef: string) => {
@@ -150,23 +147,20 @@ export const makeScenario = async ({
       threadOutRef,
     });
     return (
-      await buildAndSubmitUnjournaled(
-        buildProtectedOutputSignerMissingStep01Accepted,
-        {
-          lucid: harness.proverLucid,
-          blueprint: harness.realBlueprint,
-          network,
-          contracts,
-          signer: harness.proverSigner,
-          evidence,
-          threadUtxo,
-          threadToken,
-          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-          txInclusion,
-          referenceScriptUtxo: refs[0]!,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        },
-      )
+      await buildAndSubmit(buildProtectedOutputSignerMissingStep01Accepted, {
+        lucid: harness.proverLucid,
+        blueprint: harness.realBlueprint,
+        network,
+        contracts,
+        signer: harness.proverSigner,
+        evidence,
+        threadUtxo,
+        threadToken,
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion,
+        referenceScriptUtxo: refs[0]!,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      })
     ).nextThreadOutRef;
   };
   const forcedMembership = () =>
@@ -190,7 +184,7 @@ export const makeScenario = async ({
       >;
     } = {},
   ) =>
-    buildAndSubmitUnjournaled(buildProtectedOutputSignerMissingStep01Forced, {
+    buildAndSubmit(buildProtectedOutputSignerMissingStep01Forced, {
       ...common(0),
       threadOutRef,
       evidence,
@@ -205,7 +199,7 @@ export const makeScenario = async ({
     subject: MidgardNativeTxFull | MidgardForcedTxFull,
     fieldGrammar?: FaultProofFieldGrammarDeployment,
   ) =>
-    submitTurnsUnjournaled(buildProtectedOutputSignerMissingStep02, {
+    submitTurns(buildProtectedOutputSignerMissingStep02, {
       ...common(1),
       threadOutRef,
       evidence,
@@ -224,7 +218,7 @@ export const makeScenario = async ({
       "carriageUtxos" | "certificateUtxo"
     >,
   ) =>
-    submitTurnsUnjournaled(buildSignerWitnessScan, {
+    submitTurns(buildSignerWitnessScan, {
       ...common(2),
       family: "protected-output-signer-missing",
       threadOutRef,
@@ -245,7 +239,7 @@ export const makeScenario = async ({
     threadOutRef: string,
     evidence: ProtectedOutputSignerMissingEvidence,
   ) =>
-    buildAndSubmitUnjournaled(buildSignerWitnessTerminal, {
+    buildAndSubmit(buildSignerWitnessTerminal, {
       ...common(3),
       family: "protected-output-signer-missing",
       threadOutRef,
@@ -263,7 +257,7 @@ export const makeScenario = async ({
       stepIndex,
       threadOutRef,
     });
-    return await buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
+    return await buildAndSubmit(buildLinearFaultFinalize, {
       lucid: harness.proverLucid,
       family: "protected-output-signer-missing",
       stepIndex,
@@ -289,7 +283,7 @@ export const makeScenario = async ({
     });
   };
   const cancel = (threadOutRef: string, index: number) =>
-    buildAndSubmitUnjournaled(buildProtectedOutputSignerMissingCancel, {
+    buildAndSubmit(buildProtectedOutputSignerMissingCancel, {
       ...common(index),
       threadOutRef,
       witnessReferenceScripts: harness.witnessReferenceScripts,
@@ -309,7 +303,7 @@ export const makeScenario = async ({
     readonly carriageReferenceInputs: readonly UTxO[];
     readonly redeemerSchema: unknown;
   }) =>
-    buildAndSubmitUnjournaled(buildProtectedOutputSignerOpeningTransition, {
+    buildAndSubmit(buildProtectedOutputSignerOpeningTransition, {
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,

@@ -28,10 +28,7 @@ import {
   requireDatum,
   toError,
 } from "./missing-signature-prover.assert-evidence-coherent.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./submit-steps.js";
 
 export const runMissingSignatureProver = async (
   finding: MissingSignatureFinding,
@@ -191,21 +188,18 @@ export const runMissingSignatureProver = async (
     while (true) {
       switch (cursor) {
         case "init": {
-          const result = await buildAndSubmitUnjournaled(
-            buildMissingSignatureInit,
-            {
-              lucid,
-              blueprint: deps.blueprint,
-              network: deps.network,
-              contracts,
-              category: deps.category,
-              catalogue: deps.catalogue,
-              signer,
-              fraudulentBlockOutRef: finding.fraudulentBlockOutRef,
-              fraudulentHeaderHash: finding.headerHash,
-              witnessReferenceScripts: deps.witnessReferenceScripts,
-            },
-          );
+          const result = await buildAndSubmit(buildMissingSignatureInit, {
+            lucid,
+            blueprint: deps.blueprint,
+            network: deps.network,
+            contracts,
+            category: deps.category,
+            catalogue: deps.catalogue,
+            signer,
+            fraudulentBlockOutRef: finding.fraudulentBlockOutRef,
+            fraudulentHeaderHash: finding.headerHash,
+            witnessReferenceScripts: deps.witnessReferenceScripts,
+          });
           txHashes.push(result.txHash);
           currentOutRef = result.nextThreadOutRef;
           await journal({
@@ -218,22 +212,19 @@ export const runMissingSignatureProver = async (
           break;
         }
         case "step01": {
-          const result = await buildAndSubmitUnjournaled(
-            buildMissingSignatureStep01,
-            {
-              lucid,
-              blueprint: deps.blueprint,
-              network: deps.network,
-              contracts,
-              categoryId: deps.category.categoryId,
-              signer,
-              threadOutRef: currentOutRef!,
-              stateQueueBlockOutRef: finding.fraudulentBlockOutRef,
-              txInclusion,
-              referenceScriptUtxo: deps.referenceScriptUtxos.step01,
-              witnessReferenceScripts: deps.witnessReferenceScripts,
-            },
-          );
+          const result = await buildAndSubmit(buildMissingSignatureStep01, {
+            lucid,
+            blueprint: deps.blueprint,
+            network: deps.network,
+            contracts,
+            categoryId: deps.category.categoryId,
+            signer,
+            threadOutRef: currentOutRef!,
+            stateQueueBlockOutRef: finding.fraudulentBlockOutRef,
+            txInclusion,
+            referenceScriptUtxo: deps.referenceScriptUtxos.step01,
+            witnessReferenceScripts: deps.witnessReferenceScripts,
+          });
           txHashes.push(result.txHash);
           currentOutRef = result.nextThreadOutRef;
           await journal({
@@ -246,22 +237,19 @@ export const runMissingSignatureProver = async (
           break;
         }
         case "step02": {
-          const result = await submitTurnsUnjournaled(
-            buildMissingSignatureStep02,
-            {
-              lucid,
-              contracts,
-              categoryId: deps.category.categoryId,
-              signer,
-              threadOutRef: currentOutRef!,
-              requiredSignerHashes: subject.requiredSignerHashes,
-              nativeTxCompactCbor: subject.nativeTxCompactCbor,
-              badRequiredSignerHashIndex: finding.accusedRequiredSignerIndex,
-              publishCarriage: deps.publishCarriage,
-              certificateUtxo: deps.fieldCertificates?.step02,
-              referenceScriptUtxo: deps.referenceScriptUtxos.step02,
-            },
-          );
+          const result = await submitTurns(buildMissingSignatureStep02, {
+            lucid,
+            contracts,
+            categoryId: deps.category.categoryId,
+            signer,
+            threadOutRef: currentOutRef!,
+            requiredSignerHashes: subject.requiredSignerHashes,
+            nativeTxCompactCbor: subject.nativeTxCompactCbor,
+            badRequiredSignerHashIndex: finding.accusedRequiredSignerIndex,
+            publishCarriage: deps.publishCarriage,
+            certificateUtxo: deps.fieldCertificates?.step02,
+            referenceScriptUtxo: deps.referenceScriptUtxos.step02,
+          });
           txHashes.push(result.txHash);
           currentOutRef = result.nextThreadOutRef;
           await journal({
@@ -274,18 +262,15 @@ export const runMissingSignatureProver = async (
           break;
         }
         case "step03": {
-          const result = await buildAndSubmitUnjournaled(
-            buildMissingSignatureStep03,
-            {
-              lucid,
-              contracts,
-              categoryId: deps.category.categoryId,
-              signer,
-              threadOutRef: currentOutRef!,
-              missingRequiredSignerVkey: finding.resolvedVkey!,
-              referenceScriptUtxo: deps.referenceScriptUtxos.step03,
-            },
-          );
+          const result = await buildAndSubmit(buildMissingSignatureStep03, {
+            lucid,
+            contracts,
+            categoryId: deps.category.categoryId,
+            signer,
+            threadOutRef: currentOutRef!,
+            missingRequiredSignerVkey: finding.resolvedVkey!,
+            referenceScriptUtxo: deps.referenceScriptUtxos.step03,
+          });
           txHashes.push(result.txHash);
           currentOutRef = result.nextThreadOutRef;
           await journal({
@@ -304,23 +289,20 @@ export const runMissingSignatureProver = async (
               `step-04 exceeded its deterministic ${maximumStep04Transactions.toString()}-transaction scan schedule.`,
             );
           }
-          const result = await submitTurnsUnjournaled(
-            buildMissingSignatureStep04,
-            {
-              lucid,
-              contracts,
-              categoryId: deps.category.categoryId,
-              signer,
-              threadOutRef: currentOutRef!,
-              addrTxWits: subject.addrTxWits,
-              nativeTxCompactCbor: subject.nativeTxCompactCbor,
-              witnessSetCompact: subject.witnessSetCompact,
-              publishCarriage: deps.publishCarriage,
-              certificateUtxo: deps.fieldCertificates?.step04,
-              referenceScriptUtxo: deps.referenceScriptUtxos.step04,
-              witnessReferenceScripts: deps.witnessReferenceScripts,
-            },
-          );
+          const result = await submitTurns(buildMissingSignatureStep04, {
+            lucid,
+            contracts,
+            categoryId: deps.category.categoryId,
+            signer,
+            threadOutRef: currentOutRef!,
+            addrTxWits: subject.addrTxWits,
+            nativeTxCompactCbor: subject.nativeTxCompactCbor,
+            witnessSetCompact: subject.witnessSetCompact,
+            publishCarriage: deps.publishCarriage,
+            certificateUtxo: deps.fieldCertificates?.step04,
+            referenceScriptUtxo: deps.referenceScriptUtxos.step04,
+            witnessReferenceScripts: deps.witnessReferenceScripts,
+          });
           txHashes.push(result.txHash);
           if (result.kind === "advanced") {
             currentOutRef = result.nextThreadOutRef;

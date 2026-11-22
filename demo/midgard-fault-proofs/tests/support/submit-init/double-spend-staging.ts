@@ -36,10 +36,7 @@ import {
   submitSetupTx,
   withPlaceholderDeposit,
 } from "../submit-init-emulator-shared.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "../submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "../submit-steps.js";
 import { commitInitializedProvedFixtureHeader } from "./commit-header.js";
 import { buildProvedFixtureDeploymentContext } from "./deployment.js";
 import { buildTransactionInclusionFixture } from "./inclusion.js";
@@ -282,7 +279,7 @@ export const stageDoubleSpendStep04 = async ({
   const fraudulentBlockOutRef =
     successors[0]?.continuedAnchorOutRef ?? setup.fraudulentBlockOutRef;
   const submitInitCapture = await captureEmulatorSubmission(emulator, () =>
-    buildAndSubmitUnjournaled(buildInit, {
+    buildAndSubmit(buildInit, {
       lucid: proverLucid,
       blueprint: realBlueprint,
       deploymentInfo,
@@ -324,7 +321,7 @@ export const stageDoubleSpendStep04 = async ({
     [submitInitResult.computationThreadUnit, 1n],
   ]);
 
-  const step01Result = await buildAndSubmitUnjournaled(buildStep01, {
+  const step01Result = await buildAndSubmit(buildStep01, {
     lucid: proverLucid,
     blueprint: realBlueprint,
     deploymentInfo,
@@ -365,7 +362,7 @@ export const stageDoubleSpendStep04 = async ({
     1n,
   );
 
-  const step02Result = await buildAndSubmitUnjournaled(buildStep02, {
+  const step02Result = await buildAndSubmit(buildStep02, {
     lucid: proverLucid,
     blueprint: realBlueprint,
     deploymentInfo,
@@ -414,7 +411,7 @@ export const stageDoubleSpendStep04 = async ({
     funderLucid,
     proverSigner,
   });
-  const step03Result = await submitTurnsUnjournaled(buildStep03, {
+  const step03Result = await submitTurns(buildStep03, {
     lucid: proverLucid,
     blueprint: realBlueprint,
     deploymentInfo,

@@ -41,7 +41,7 @@ import {
 } from "./support/committed-field-shape-emulator.submit-raw-committed-field-shape-step02.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 const B = MIDGARD_ENVELOPE_BATCH_ITEMS;
 
@@ -77,7 +77,7 @@ describe("committed-field-shape batched walk", () => {
         lucid: harness.funderLucid,
         contracts: committedFieldShape,
       });
-    const init = await buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
+    const init = await buildAndSubmit(buildCommittedFieldShapeInit, {
       lucid: proverLucid,
       blueprint: realBlueprint,
       network,
@@ -170,23 +170,20 @@ describe("committed-field-shape batched walk", () => {
       tx: scenario.canonicalTx,
       fieldIndex: scenario.fieldIndex,
     });
-    const first = await buildAndSubmitUnjournaled(
-      buildCommittedFieldShapeStep01,
-      {
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        contracts: committedFieldShape,
-        categoryId: category.categoryId,
-        network,
-        signer: proverSigner,
-        threadOutRef: firstStep,
-        stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
-        txInclusion: scenario.inclusion,
-        prepared,
-        referenceScriptUtxo: step01Ref,
-        witnessReferenceScripts,
-      },
-    );
+    const first = await buildAndSubmit(buildCommittedFieldShapeStep01, {
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      contracts: committedFieldShape,
+      categoryId: category.categoryId,
+      network,
+      signer: proverSigner,
+      threadOutRef: firstStep,
+      stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+      txInclusion: scenario.inclusion,
+      prepared,
+      referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts,
+    });
     expect(first.complete).toBe(false);
     expect(first.step02State).toBeNull();
     expect(first.nextStepAddress).toBe(stepAddress(0));
@@ -242,18 +239,15 @@ describe("committed-field-shape batched walk", () => {
       proverLucid.utxosAtWithUnit(stepAddress(0), unit),
     ).resolves.toHaveLength(0);
 
-    const step02 = await buildAndSubmitUnjournaled(
-      buildCommittedFieldShapeStep02,
-      {
-        lucid: proverLucid,
-        contracts: committedFieldShape,
-        categoryId: category.categoryId,
-        signer: proverSigner,
-        threadOutRef: second.nextThreadOutRef,
-        referenceScriptUtxo: step02Ref,
-        witnessReferenceScripts,
-      },
-    );
+    const step02 = await buildAndSubmit(buildCommittedFieldShapeStep02, {
+      lucid: proverLucid,
+      contracts: committedFieldShape,
+      categoryId: category.categoryId,
+      signer: proverSigner,
+      threadOutRef: second.nextThreadOutRef,
+      referenceScriptUtxo: step02Ref,
+      witnessReferenceScripts,
+    });
     await expectSingleUtxoWithUnit(
       proverLucid,
       step02.fraudProofAddress,

@@ -35,8 +35,8 @@ import {
 } from "./double-spend-adapter.preflight-of.js";
 import type {
   FraudProofWorkflowTerminal,
-  JournalJsonObject,
-} from "./journal.js";
+  WorkflowJsonObject,
+} from "./identity.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -677,7 +677,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           spendInputCbors: prepared.tx2.spendInputCbors,
           doubleSpentInputIndex: prepared.tx2.doubleSpentInputIndex,
         },
-      }) as JournalJsonObject;
+      }) as WorkflowJsonObject;
     },
     observe: async ({ artifact, workflowId, identity }) => {
       const next = await nextAction({

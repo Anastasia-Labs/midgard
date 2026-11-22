@@ -51,13 +51,13 @@ import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import { setupFraudulentBlock } from "./support/submit-init/removal.js";
-import { submitCommittedFieldShapeInit } from "./support/submit-unjournaled.committed-field-shape.js";
-import { publishCarriageUnjournaled } from "./support/submit-unjournaled.js";
+import { submitCommittedFieldShapeInit } from "./support/submit-steps.committed-field-shape.js";
+import { publishFieldCarriage } from "./support/submit-steps.js";
 import {
   submitZeroInputStep01Accepted,
   submitZeroInputStep01Forced,
   submitZeroInputStep02V1,
-} from "./support/submit-unjournaled.zero-input.js";
+} from "./support/submit-steps.zero-input.js";
 
 const network = "Custom" as const;
 
@@ -355,7 +355,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       publish: true,
       label: "zero input forced field",
     });
-    await publishCarriageUnjournaled({
+    await publishFieldCarriage({
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,

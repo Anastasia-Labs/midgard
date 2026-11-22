@@ -16,7 +16,7 @@ import "../remove-fraudulent-block.js";
 import "../step-support.js";
 import "./complete-replay.js";
 import "./family-definition.js";
-import "./journal.js";
+import "./identity.js";
 import "./linear-family-adapter.js";
 import "./manifest-bound-family-assembly.js";
 import "./proof-chunk-prerequisite.js";

@@ -6,9 +6,9 @@ import {
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import type { HeaderFaultDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import {
-  journalJsonDigest,
-  normalizeJournalJson,
-} from "@al-ft/midgard-fault-proofs/workflow/journal";
+  normalizeWorkflowJson,
+  workflowJsonDigest,
+} from "@al-ft/midgard-fault-proofs/workflow/identity";
 import {
   createWorkflowObjectiveWallet,
   createWorkflowRun,
@@ -31,7 +31,7 @@ const fixture = (): { decision: HeaderFaultDecision } => {
     replayVersion: "midgard-complete-canonical-replay-v1",
     replayDigest: "14".repeat(32),
     launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-    launchScopeDigest: journalJsonDigest([
+    launchScopeDigest: workflowJsonDigest([
       ...WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     ]),
     classificationDigest: "16".repeat(32),
@@ -43,7 +43,7 @@ const fixture = (): { decision: HeaderFaultDecision } => {
   } as const;
   const decision = {
     ...envelope,
-    decisionDigest: journalJsonDigest(normalizeJournalJson(envelope)),
+    decisionDigest: workflowJsonDigest(normalizeWorkflowJson(envelope)),
   };
   return { decision };
 };

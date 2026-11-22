@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { zeroInputEvidenceCloses } from "../src/zero-input/family.js";
 import { buildZeroInputStep02V1 } from "../src/zero-input/submit-step-02.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 import {
   stageZeroInputAcceptance,
   stageZeroInputHonestRejection,
@@ -24,7 +24,7 @@ const expectUnlistedProver = (staged: ZeroInputStagedThread) =>
 const expectBuilderRefusal = async (staged: ZeroInputStagedThread) => {
   expect(zeroInputEvidenceCloses(staged.evidence)).toBe(false);
   await expect(
-    buildAndSubmitUnjournaled(buildZeroInputStep02V1, {
+    buildAndSubmit(buildZeroInputStep02V1, {
       lucid: staged.harness.proverLucid,
       contracts: staged.contracts,
       categoryId: staged.categoryId,

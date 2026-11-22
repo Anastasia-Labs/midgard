@@ -18,9 +18,9 @@ import {
 } from "../step-support.js";
 import { commitCountedRoot } from "../transition-trace/phas.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 import { flattenMidgardValueAssets } from "./evidence.js";
 import {
@@ -32,7 +32,7 @@ import { ConservationClaim } from "./union-schemas.js";
 
 export const VALUE_CONSERVATION_ARTIFACT =
   "midgard-value-conservation-artifact-v1";
-export type ValueConservationArtifact = JournalJsonObject &
+export type ValueConservationArtifact = WorkflowJsonObject &
   Readonly<{
     schemaVersion: typeof VALUE_CONSERVATION_ARTIFACT;
     headerCbor: string;
@@ -44,7 +44,7 @@ export type ValueConservationArtifact = JournalJsonObject &
     acceptedProofCbor: string | null;
     eventCbor: string;
     transitionCbor: string;
-    inputs: readonly (JournalJsonObject & {
+    inputs: readonly (WorkflowJsonObject & {
       readonly outputCbor: string;
       readonly proofCbor: string;
     })[];
@@ -119,7 +119,7 @@ const counted = async <K, V>(
 
 /** Re-verifies retained bytes, all counted roots and every input value on restart. */
 export const admitValueConservationArtifact = async (
-  value: JournalJsonObject,
+  value: WorkflowJsonObject,
   contracts: ValueNotPreservedContracts,
 ) => {
   const keys = [
@@ -179,7 +179,7 @@ export const admitValueConservationArtifact = async (
     )
   )
     throw new Error("value conservation: malformed spent-input artifact");
-  const artifact = normalizeJournalJson(value) as ValueConservationArtifact;
+  const artifact = normalizeWorkflowJson(value) as ValueConservationArtifact;
   const header = decode(artifact.headerCbor, SDK.Header);
   const claim = decode(artifact.claimCbor, ConservationClaim);
   const transaction = (

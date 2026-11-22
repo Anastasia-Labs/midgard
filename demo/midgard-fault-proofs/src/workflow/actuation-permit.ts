@@ -1,5 +1,5 @@
 import "./header-classifier.js";
-import "./journal.js";
+import "./identity.js";
 import "./actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 export {

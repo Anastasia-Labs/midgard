@@ -5,7 +5,7 @@
  * same run, and returns every such action as an alarm on its result, even
  * when another move landed. */
 import { WorkflowActionChangedError } from "./action-changed.js";
-import type { FraudProofWorkflowIdentity } from "./journal.js";
+import type { FraudProofWorkflowIdentity } from "./identity.js";
 import type { FraudProofWorkflowObservation } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   type FraudProofWorkflowAlarm,

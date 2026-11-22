@@ -75,7 +75,7 @@ import {
   submitSetupTx,
   withCommitSlot,
 } from "./support/submit-init-emulator-shared.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 const historyRecords = fabricatedFamilyHistoryEvidence(
   "full-withdrawal-history.json",
@@ -706,7 +706,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
         headerHash,
         inclusion,
       });
-      const step01Result = await buildAndSubmitUnjournaled(
+      const step01Result = await buildAndSubmit(
         buildFabricatedWithdrawalStep01,
         {
           beforeSubmit: async ({ signed }) =>
@@ -754,7 +754,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       });
 
       // ## step-02: authenticate the L1 withdrawal-event witness
-      const step02Result = await buildAndSubmitUnjournaled(
+      const step02Result = await buildAndSubmit(
         buildFabricatedWithdrawalStep02,
         {
           beforeSubmit: async ({ signed }) =>
@@ -809,7 +809,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       });
 
       // ## step-03: re-open the authenticated event datum and pin the fault
-      const step03Result = await buildAndSubmitUnjournaled(
+      const step03Result = await buildAndSubmit(
         buildFabricatedWithdrawalStep03,
         {
           beforeSubmit: async ({ signed }) =>
@@ -853,7 +853,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       });
 
       // ## step-04: adjudicate and mint the permanent fraud-proof token
-      const step04Result = await buildAndSubmitUnjournaled(
+      const step04Result = await buildAndSubmit(
         buildFabricatedWithdrawalStep04,
         {
           beforeSubmit: async ({ signed }) =>
@@ -1089,7 +1089,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
         withdrawalMembershipProofCbor: Data.to(honestProof, SDK.Proof),
       });
       await expect(
-        buildAndSubmitUnjournaled(buildFabricatedWithdrawalStep01, {
+        buildAndSubmit(buildFabricatedWithdrawalStep01, {
           beforeSubmit: async ({ signed }) =>
             recordFamilyTransaction(
               historyRecords,
@@ -1132,55 +1132,49 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       // Advance the unchanged honest source through genuine stages01/02. The
       // next refusal must come from stage03's applied script, not its off-chain
       // content-matches preflight and not a fabricated thread or commitment.
-      const first = await buildAndSubmitUnjournaled(
-        buildFabricatedWithdrawalStep01,
-        {
-          beforeSubmit: async ({ signed }) =>
-            recordFamilyTransaction(
-              historyRecords,
-              `withdrawal-honest-step-01-${mode}`,
-              signed,
-            ),
-          now: () => harness.emulator.now(),
-          lucid: proverLucid,
-          contracts: fabricatedWithdrawal,
-          network,
-          signer: proverSigner,
-          threadOutRef: outRefLabel(stillFirstStep),
-          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-          withdrawalInclusion: parseSubmitFabricatedWithdrawalInclusion({
-            committedWithdrawalIdCbor: keyCbor,
-            committedWithdrawalInfoCbor: authenticInfoCbor,
-            withdrawalsPhasRoot: counted.phasRoot,
-            withdrawalMembershipProofCbor: Data.to(honestProof, SDK.Proof),
-          }),
-          referenceScriptUtxo: referenceScriptUtxos[0],
-          awaitConfirmation: true,
+      const first = await buildAndSubmit(buildFabricatedWithdrawalStep01, {
+        beforeSubmit: async ({ signed }) =>
+          recordFamilyTransaction(
+            historyRecords,
+            `withdrawal-honest-step-01-${mode}`,
+            signed,
+          ),
+        now: () => harness.emulator.now(),
+        lucid: proverLucid,
+        contracts: fabricatedWithdrawal,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(stillFirstStep),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        withdrawalInclusion: parseSubmitFabricatedWithdrawalInclusion({
+          committedWithdrawalIdCbor: keyCbor,
+          committedWithdrawalInfoCbor: authenticInfoCbor,
+          withdrawalsPhasRoot: counted.phasRoot,
+          withdrawalMembershipProofCbor: Data.to(honestProof, SDK.Proof),
+        }),
+        referenceScriptUtxo: referenceScriptUtxos[0],
+        awaitConfirmation: true,
+      });
+      const second = await buildAndSubmit(buildFabricatedWithdrawalStep02, {
+        beforeSubmit: async ({ signed }) =>
+          recordFamilyTransaction(
+            historyRecords,
+            `withdrawal-honest-step-02-${mode}`,
+            signed,
+          ),
+        now: () => harness.emulator.now(),
+        lucid: proverLucid,
+        contracts: fabricatedWithdrawal,
+        network,
+        signer: proverSigner,
+        threadOutRef: first.nextThreadOutRef,
+        evidence: {
+          kind: "present_event",
+          eventOutRef: outRefLabel(admitted.witness.anchor.utxo),
         },
-      );
-      const second = await buildAndSubmitUnjournaled(
-        buildFabricatedWithdrawalStep02,
-        {
-          beforeSubmit: async ({ signed }) =>
-            recordFamilyTransaction(
-              historyRecords,
-              `withdrawal-honest-step-02-${mode}`,
-              signed,
-            ),
-          now: () => harness.emulator.now(),
-          lucid: proverLucid,
-          contracts: fabricatedWithdrawal,
-          network,
-          signer: proverSigner,
-          threadOutRef: first.nextThreadOutRef,
-          evidence: {
-            kind: "present_event",
-            eventOutRef: outRefLabel(admitted.witness.anchor.utxo),
-          },
-          referenceScriptUtxo: referenceScriptUtxos[1],
-          awaitConfirmation: true,
-        },
-      );
+        referenceScriptUtxo: referenceScriptUtxos[1],
+        awaitConfirmation: true,
+      });
       expect(second.verdict).toEqual({
         WithdrawalEventObserved: { commitment: admitted.captured.commitment },
       });

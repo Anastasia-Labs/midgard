@@ -15,7 +15,7 @@ import {
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-} from "@al-ft/midgard-fault-proofs/workflow/journal";
+} from "@al-ft/midgard-fault-proofs/workflow/identity";
 import { WORKFLOW_RUNNER_FACTORIES } from "@al-ft/midgard-fault-proofs/workflow/runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

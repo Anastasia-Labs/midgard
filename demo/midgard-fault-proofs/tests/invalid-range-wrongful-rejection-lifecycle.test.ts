@@ -44,7 +44,7 @@ import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
-import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
 
 const network = "Custom" as const;
 
@@ -207,7 +207,7 @@ const stageForcedRejection = async (interval: {
   const captures: Awaited<ReturnType<typeof captureEmulatorSubmission>>[] = [];
   const initialize = async () => {
     const c = await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildInit, {
+      buildAndSubmit(buildInit, {
         lucid: harness.proverLucid,
         witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: harness.realBlueprint,
@@ -227,7 +227,7 @@ const stageForcedRejection = async (interval: {
   };
   const bind = async (threadOutRef: string) => {
     const c = await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildInvalidRangeStep01Forced, {
+      buildAndSubmit(buildInvalidRangeStep01Forced, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -297,7 +297,7 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
     await cancel(await bind(await initialize()), 1);
     const terminalOutRef = await bind(await initialize());
     const final = await captureEmulatorSubmission(harness.emulator, () =>
-      buildAndSubmitUnjournaled(buildInvalidRangeStep02V1, {
+      buildAndSubmit(buildInvalidRangeStep02V1, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -379,7 +379,7 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
     expect(invalidRangeEvidenceCloses(claimed)).toBe(true);
     await expectOnchainRefusal(
       () =>
-        buildAndSubmitUnjournaled(buildInvalidRangeStep02V1, {
+        buildAndSubmit(buildInvalidRangeStep02V1, {
           lucid: staged.harness.proverLucid,
           contracts: staged.contracts,
           categoryId: staged.category.categoryId,

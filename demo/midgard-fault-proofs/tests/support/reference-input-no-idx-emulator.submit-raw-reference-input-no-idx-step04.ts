@@ -37,7 +37,7 @@ import {
 } from "../../src/witness-reference-scripts.js";
 import { network } from "./emulator/blueprints.js";
 import { type RawStepConfig } from "./reference-input-no-idx-emulator.submit-raw-reference-input-no-idx-step02.js";
-import { publishCarriageUnjournaled } from "./submit-unjournaled.js";
+import { publishFieldCarriage } from "./submit-steps.js";
 
 /**
  * A raw step-04 finalize: the honest submitter's thread-burn/token-mint
@@ -102,7 +102,7 @@ export const submitRawReferenceInputNoIdxStep04 = async ({
     label: "Raw reference-input-no-idx step 04 outputs",
   });
   signer.selectWallet(lucid);
-  const published = await publishCarriageUnjournaled({
+  const published = await publishFieldCarriage({
     lucid,
     signer,
     planned,

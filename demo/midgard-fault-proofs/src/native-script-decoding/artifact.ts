@@ -5,9 +5,9 @@ import type { CanonicalBlockClassification } from "../workflow/classification.js
 import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.replay-context-identity.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import {
   detectNativeScriptDecodingReplay,
   type NativeScriptDecodingCoordinate,
@@ -18,7 +18,7 @@ import {
 export const NATIVE_SCRIPT_DECODING_ARTIFACT =
   "midgard-native-script-decoding-workflow-artifact-v2";
 export const admitNativeScriptDecodingWorkflowArtifact = async (
-  value: JournalJsonObject,
+  value: WorkflowJsonObject,
 ) => {
   if (
     Object.keys(value).sort().join(",") !==
@@ -48,7 +48,7 @@ export const admitNativeScriptDecodingWorkflowArtifact = async (
           label: "nativeScriptDecoding predecessor ledger",
         });
   const rawCoordinate = value.coordinate;
-  const c = rawCoordinate as JournalJsonObject;
+  const c = rawCoordinate as WorkflowJsonObject;
   if (
     typeof c !== "object" ||
     c === null ||
@@ -109,7 +109,7 @@ export const prepareNativeScriptDecodingWorkflowArtifact = async ({
     classification.headerHash !== evidence.headerHash
   )
     throw new Error("nativeScriptDecoding classification mismatch");
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: NATIVE_SCRIPT_DECODING_ARTIFACT,
     headerHash: evidence.headerHash,
     detectionId: finding.detectionId,
@@ -118,7 +118,7 @@ export const prepareNativeScriptDecodingWorkflowArtifact = async ({
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
     predecessorLedger:
       predecessor === undefined ? null : ledgerJson(predecessor),
-  }) as JournalJsonObject;
+  }) as WorkflowJsonObject;
   await admitNativeScriptDecodingWorkflowArtifact(artifact);
   return artifact;
 };

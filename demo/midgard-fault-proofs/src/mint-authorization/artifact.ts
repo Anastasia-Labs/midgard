@@ -5,15 +5,15 @@ import type { CanonicalBlockClassification } from "../workflow/classification.js
 import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.replay-context-identity.js";
 import {
-  journalJsonDigest,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  workflowJsonDigest,
+  type WorkflowJsonObject,
+} from "../workflow/identity.js";
 import {
   canonicalHex,
   canonicalNaturalString,
   EVEN_HEX,
-  exactJournalRecord,
+  exactArtifactRecord,
   HEX_28,
   safeNaturalNumber,
 } from "../workflow/native-index-artifact.js";
@@ -28,9 +28,9 @@ export const MINT_AUTHORIZATION_ARTIFACT =
 
 /** Serialized material is only a preimage; replay rederives the entire claim. */
 const deriveMintAuthorizationWorkflowArtifact = async (
-  value: JournalJsonObject,
+  value: WorkflowJsonObject,
 ) => {
-  const record = exactJournalRecord(
+  const record = exactArtifactRecord(
     value,
     [
       "schemaVersion",
@@ -68,7 +68,7 @@ const deriveMintAuthorizationWorkflowArtifact = async (
           utxosRoot: current.header.prevUtxosRoot,
           label: "mint authorization predecessor ledger",
         });
-  const raw = exactJournalRecord(
+  const raw = exactArtifactRecord(
     record.coordinate,
     ["sourceIndex", "policyIndex"],
     "mint authorization coordinate",
@@ -109,9 +109,9 @@ const admittedArtifacts = new Map<
 >();
 
 export const admitMintAuthorizationWorkflowArtifact = (
-  value: JournalJsonObject,
+  value: WorkflowJsonObject,
 ): ReturnType<typeof deriveMintAuthorizationWorkflowArtifact> => {
-  const key = journalJsonDigest(normalizeJournalJson(value));
+  const key = workflowJsonDigest(normalizeWorkflowJson(value));
   const known = admittedArtifacts.get(key);
   if (known !== undefined) {
     admittedArtifacts.delete(key);
@@ -160,7 +160,7 @@ export const prepareMintAuthorizationWorkflowArtifact = async ({
     classification.selected.position !== finding.position
   )
     throw new Error("mint authorization: classification changed");
-  const artifact = normalizeJournalJson({
+  const artifact = normalizeWorkflowJson({
     schemaVersion: MINT_AUTHORIZATION_ARTIFACT,
     headerHash: evidence.headerHash,
     detectionId: finding.detectionId,
@@ -169,7 +169,7 @@ export const prepareMintAuthorizationWorkflowArtifact = async ({
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
     predecessorLedger:
       predecessor === undefined ? null : ledgerJson(predecessor),
-  }) as JournalJsonObject;
+  }) as WorkflowJsonObject;
   await admitMintAuthorizationWorkflowArtifact(artifact);
   return artifact;
 };

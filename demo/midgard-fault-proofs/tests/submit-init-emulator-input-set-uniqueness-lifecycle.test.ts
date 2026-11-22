@@ -56,7 +56,7 @@ import {
   submitInputSetUniquenessInit,
   submitInputSetUniquenessStep01,
   submitInputSetUniquenessStep02,
-} from "./support/submit-unjournaled.input-set-uniqueness.js";
+} from "./support/submit-steps.input-set-uniqueness.js";
 
 describe("input-set-uniqueness emulator lifecycle", () => {
   it("proves a duplicate spend input end to end, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {

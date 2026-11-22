@@ -10,7 +10,7 @@ import "@lucid-evolution/lucid";
 import "effect";
 import "../field-opening.js";
 import "./action-changed.js";
-import "./journal.js";
+import "./identity.js";
 import "./orchestrator.js";
 import "./raw-datum-preimage.js";
 import "./raw-l1-publication-observation.js";

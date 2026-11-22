@@ -24,10 +24,7 @@ import {
   mintField,
 } from "./support/mint-item-vectors.js";
 import { setupFraudulentBlock } from "./support/submit-init/removal.js";
-import {
-  buildAndSubmitUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
 const MAXIMUM_TURNS = 40;
 
@@ -68,7 +65,7 @@ describe("mintItemNonCanonical step 02 over a Certified mint field", () => {
     expect(evidence.canonical).toBe(false);
     expect(evidence.carriage).toBe("Certified");
     const init = await registered.init(setup.fraudulentBlockOutRef);
-    const bound = await buildAndSubmitUnjournaled(
+    const bound = await buildAndSubmit(
       buildMintItemNonCanonicalStep01Accepted,
       {
         lucid: harness.proverLucid,
@@ -100,17 +97,14 @@ describe("mintItemNonCanonical step 02 over a Certified mint field", () => {
     let threadOutRef = bound.nextThreadOutRef;
     const counts: bigint[] = [];
     for (let turn = 0; turn < MAXIMUM_TURNS; turn += 1) {
-      const advanced = await submitTurnsUnjournaled(
-        buildMintItemNonCanonicalStep02,
-        {
-          ...common(threadOutRef, 1),
-          evidence,
-          nativeTxCompactCbor: inclusion.nativeTxCompactCbor,
-          witnessSetCompactCbor: witnessSetCborOf(tx),
-          publishCarriage: evidence.carriage === "RawUtxo",
-          certificateReferenceScriptUtxo: certificateReference,
-        },
-      );
+      const advanced = await submitTurns(buildMintItemNonCanonicalStep02, {
+        ...common(threadOutRef, 1),
+        evidence,
+        nativeTxCompactCbor: inclusion.nativeTxCompactCbor,
+        witnessSetCompactCbor: witnessSetCborOf(tx),
+        publishCarriage: evidence.carriage === "RawUtxo",
+        certificateReferenceScriptUtxo: certificateReference,
+      });
       expect(advanced.carriageTier).toBe("Certified");
       counts.push(await certificates());
       threadOutRef = advanced.nextThreadOutRef;

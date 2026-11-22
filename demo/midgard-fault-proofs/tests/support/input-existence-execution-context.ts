@@ -31,10 +31,10 @@ import { submitSecondHeaderTx } from "./emulator/setup-tx.js";
 import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
+  certifyFieldCarriage,
+  publishFieldCarriage,
   type SubmittedStep,
-} from "./submit-unjournaled.js";
+} from "./submit-steps.js";
 import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
@@ -215,7 +215,7 @@ export const publishInputExistenceSelectionCarriage = async (
     : prepared;
   const fieldCarriageUtxos: UTxO[] = [];
   for (const planned of inputExistenceFieldPlans(selected)) {
-    const chunks = await publishCarriageUnjournaled({
+    const chunks = await publishFieldCarriage({
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -230,7 +230,7 @@ export const publishInputExistenceSelectionCarriage = async (
         script: policy.mintingScript,
         label: "retained input-existence certificate",
       });
-      const certificate = await certifyCarriageUnjournaled({
+      const certificate = await certifyFieldCarriage({
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,

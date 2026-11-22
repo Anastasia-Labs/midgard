@@ -30,10 +30,10 @@ import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import {
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-  submitTurnsUnjournaled,
-} from "./support/submit-unjournaled.js";
+  certifyFieldCarriage,
+  publishFieldCarriage,
+  submitTurns,
+} from "./support/submit-steps.js";
 
 /** 761 outputs of 43 preimage bytes fill field 2 to the maximum. */
 const OUTPUT_COUNT = 761;
@@ -83,7 +83,7 @@ describe("min-fee step 02 at a large field", () => {
       label: LABEL,
     });
     expect(planned.plan.tier).toBe("Certified");
-    const chunkUtxos = await publishCarriageUnjournaled({
+    const chunkUtxos = await publishFieldCarriage({
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -97,7 +97,7 @@ describe("min-fee step 02 at a large field", () => {
         script: preimageCertificate.mintingScript,
         label: "field preimage certificate",
       });
-    const { certificateUtxo } = await certifyCarriageUnjournaled({
+    const { certificateUtxo } = await certifyFieldCarriage({
       lucid: harness.proverLucid,
       network,
       signer: harness.proverSigner,
@@ -118,7 +118,7 @@ describe("min-fee step 02 at a large field", () => {
     });
 
     const convicted = await captureEmulatorSubmission(harness.emulator, () =>
-      submitTurnsUnjournaled(buildMinFeeStep02, {
+      submitTurns(buildMinFeeStep02, {
         lucid: harness.proverLucid,
         contracts: harness.minFee,
         categoryId: harness.category.categoryId,

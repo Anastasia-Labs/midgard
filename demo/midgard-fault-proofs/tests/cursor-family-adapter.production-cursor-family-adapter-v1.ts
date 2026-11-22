@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import {
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+  normalizeWorkflowJson,
+  type WorkflowJsonObject,
+} from "../src/workflow/identity.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import {
@@ -79,7 +79,7 @@ describe("production cursor family adapter V1", () => {
     const original = required(stage.value);
     const action = {
       ...original,
-      input: normalizeJournalJson(original.input) as JournalJsonObject,
+      input: normalizeWorkflowJson(original.input) as WorkflowJsonObject,
     };
     expect(JSON.stringify(action)).not.toBe(JSON.stringify(original));
     await expect(

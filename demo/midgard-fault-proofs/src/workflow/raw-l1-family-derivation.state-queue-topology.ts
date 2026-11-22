@@ -18,7 +18,7 @@ import {
   COMPUTATION_THREAD_STEP_ROLES,
   type ComputationThreadStep,
 } from "./computation-thread-steps.js";
-import { type FraudProofWorkflowTerminal } from "./journal.js";
+import { type FraudProofWorkflowTerminal } from "./identity.js";
 import type { FraudProofRawL1Scopes } from "./next-state.js";
 import type {
   FraudProofRawL1ComputationStepRole,

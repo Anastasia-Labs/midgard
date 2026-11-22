@@ -21,7 +21,7 @@ import { validationTraceStaging } from "../src/validation-trace-dispute/one-step
 import type {
   ValidationTraceResolveReader,
   ValidationTraceStagingOutput,
-} from "../src/validation-trace-dispute/one-step-staging-journal.js";
+} from "../src/validation-trace-dispute/one-step-staging-types.js";
 import type { ValidationTraceOwnViewOf } from "../src/validation-trace-dispute/own-view.js";
 import { FraudProofL1UnavailableError } from "../src/workflow/l1-source.js";
 

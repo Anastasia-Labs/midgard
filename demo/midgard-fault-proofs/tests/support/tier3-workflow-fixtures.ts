@@ -12,8 +12,8 @@ import type { DoubleSpendWorkflowStage } from "../../src/workflow/double-spend-a
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-  type JournalJsonObject,
-} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
+  type WorkflowJsonObject,
+} from "../../src/workflow/identity.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.js";
 import { h28, h32 } from "../helpers/canonical-block-evidence-fixture.js";
 
@@ -132,7 +132,7 @@ export const observe = async ({
 }: {
   readonly adapter: FraudProofFamilyWorkflowAdapter;
   readonly category: "doubleSpend" | "networkId";
-  readonly artifact: JournalJsonObject;
+  readonly artifact: WorkflowJsonObject;
 }) =>
   await adapter.observe({
     identity: workflowIdentity(category),

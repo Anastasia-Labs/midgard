@@ -36,11 +36,11 @@ import { makeMissingSignatureEmulatorHarness } from "./missing-signature-emulato
 import { buildMissingSignatureForcedTransaction as transactionFor } from "./missing-signature-forced-shapes.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init/forced-transitions.js";
 import {
-  buildAndSubmitUnjournaled,
-  certifyCarriageUnjournaled,
-  publishCarriageUnjournaled,
-  submitTurnsUnjournaled,
-} from "./submit-unjournaled.js";
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+  submitTurns,
+} from "./submit-steps.js";
 
 export const network = "Custom" as const;
 type Harness = Awaited<ReturnType<typeof makeMissingSignatureEmulatorHarness>>;
@@ -213,7 +213,7 @@ export const setupMissingSignatureForcedScenario = async (
   const init = async () =>
     (
       await record("init", () =>
-        buildAndSubmitUnjournaled(buildMissingSignatureInit, {
+        buildAndSubmit(buildMissingSignatureInit, {
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           network,
@@ -234,7 +234,7 @@ export const setupMissingSignatureForcedScenario = async (
   const certificates = new Map<number, UTxO>();
   const action = (threadOutRef: string, index: number, evidence = prepared) =>
     record(`step-${index}`, () =>
-      submitTurnsUnjournaled(buildMissingSignatureForcedAction, {
+      submitTurns(buildMissingSignatureForcedAction, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,
@@ -301,7 +301,7 @@ export const setupMissingSignatureForcedScenario = async (
             owner: harness.proverSigner.paymentKeyHash,
           });
     const chunks = await record("field-publication", () =>
-      publishCarriageUnjournaled({
+      publishFieldCarriage({
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -318,7 +318,7 @@ export const setupMissingSignatureForcedScenario = async (
       }),
     );
     const certificate = await record("certify", () =>
-      certifyCarriageUnjournaled({
+      certifyFieldCarriage({
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,
@@ -355,7 +355,7 @@ export const setupMissingSignatureForcedScenario = async (
       anchorWitnessSetHash: prepared.verifiedWitnessSetHash,
       owner: harness.proverSigner.paymentKeyHash,
     });
-    return buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
+    return buildAndSubmit(buildLinearFaultFinalize, {
       lucid: harness.proverLucid,
       family: "missing-signature forced",
       stepIndex: 3,

@@ -32,7 +32,7 @@ import {
   type Requirement,
   sha256,
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import type { JournalJsonObject } from "./journal.fraud-proof-workflow-terminal.js";
+import type { WorkflowJsonObject } from "./identity.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import { rawDatumPreimagePublicationPlan } from "./raw-datum-preimage.js";
 
@@ -290,7 +290,7 @@ export const parseBaseAction = (
   }
   return {
     actionId: parsed.actionId,
-    input: record(parsed.input, `${label} input`) as JournalJsonObject,
+    input: record(parsed.input, `${label} input`) as WorkflowJsonObject,
   };
 };
 
