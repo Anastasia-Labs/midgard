@@ -158,7 +158,6 @@ export type DeploymentManifestStepStatus =
  */
 export type DeploymentManifest = {
   readonly schemaVersion: typeof MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION;
-  readonly manifestId: string;
   readonly consensusProfile: MidgardConsensusProfile;
   readonly consensusProfileDigest: string;
   readonly network: "Mainnet" | "Preprod" | "Preview" | "Custom";
@@ -258,15 +257,13 @@ export type DeploymentManifest = {
   /**
    * The local node's tip the deployer read before it first signed the
    * hub-oracle nonce, settled under `l1Finality.confirmationDepth` blocks: a
-   * point at or before the deployment's L1 origin. Optional, so a manifest
-   * written without it keeps its manifestId.
+   * point at or before the deployment's L1 origin. Optional.
    */
   readonly l1Origin?: L1Origin;
 };
 
 export const DEPLOYMENT_MANIFEST_ROOT_KEYS = Object.freeze([
   "schemaVersion",
-  "manifestId",
   "consensusProfile",
   "consensusProfileDigest",
   "network",
@@ -291,10 +288,7 @@ export const DEPLOYMENT_MANIFEST_ROOT_KEYS = Object.freeze([
   "l1SlotConfig",
 ] as const);
 
-/**
- * Root keys a manifest may omit. An absent key is not hashed, so a manifest
- * without it has the manifestId it had before the key existed.
- */
+/** Root keys a manifest may omit. */
 export const DEPLOYMENT_MANIFEST_OPTIONAL_ROOT_KEYS = Object.freeze([
   "l1Origin",
 ] as const);
@@ -306,11 +300,3 @@ export type DeploymentManifestJsonValue =
   | string
   | readonly DeploymentManifestJsonValue[]
   | { readonly [key: string]: DeploymentManifestJsonValue };
-
-export const MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION =
-  "midgard-deployment-marker-v1" as const;
-
-export type DeploymentMarker = {
-  readonly schemaVersion: typeof MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION;
-  readonly manifestId: string;
-};

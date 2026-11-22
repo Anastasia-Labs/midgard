@@ -53,7 +53,7 @@ export const parseDeploymentManifestEventHistoryBounds = (
   return Object.freeze(bounds);
 };
 
-/** Exact list deployment parameters, included in the manifest identity. */
+/** Exact list deployment parameters, recorded in the manifest. */
 export type DeploymentManifestEventHistoryRecipe = Readonly<{
   kind: "Deposit" | "Withdrawal";
   hubPolicyId: string;

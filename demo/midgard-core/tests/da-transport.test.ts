@@ -96,15 +96,15 @@ describe("DA libp2p transport protocol freeze", () => {
     expect(DaLocalPayloadStatus.verified).toBe(1);
     expect(DaConflictEvidenceKind.equivocation).toBe(4);
     expect(daGossipTopic(deployment, DaGossipTopic.payloadAnnouncements)).toBe(
-      `/midgard/${h("01", 32)}/da/payload-announcements/1`,
+      `/midgard/${h("01", 28)}/da/payload-announcements/1`,
     );
     expect(
       daRequestResponseProtocolId(
-        h("01", 32).toUpperCase(),
+        h("01", 28).toUpperCase(),
         DaRequestResponseProtocol.payloadSubmit,
       ),
-    ).toBe(`/midgard/${h("01", 32)}/da/payload-submit/1`);
-    expect(normalizeDaDeploymentFingerprintHex(h("AB", 32))).toBe(h("ab", 32));
+    ).toBe(`/midgard/${h("01", 28)}/da/payload-submit/1`);
+    expect(normalizeDaDeploymentFingerprintHex(h("AB", 28))).toBe(h("ab", 28));
   });
 
   it("parses the exact canonical producer and watcher runtime manifests", () => {
@@ -112,8 +112,7 @@ describe("DA libp2p transport protocol freeze", () => {
     expect(producer).toMatchObject({
       network: "Preview",
       deployment: {
-        fingerprint: h("ab", 32),
-        contract_deployment_manifest_id: h("ab", 32),
+        fingerprint: h("ab", 28),
       },
       runtime_topology: { target: "producer" },
     });
@@ -138,6 +137,10 @@ describe("DA libp2p transport protocol freeze", () => {
   });
 
   it("rejects every unknown or missing root and nested runtime-manifest key", () => {
+    const setDeployment =
+      (key: string, value: string) => (manifest: Record<string, unknown>) => {
+        (manifest.deployment as Record<string, unknown>)[key] = value;
+      };
     const cases: readonly {
       readonly mutate: (manifest: Record<string, unknown>) => void;
       readonly error: RegExp;
@@ -153,6 +156,18 @@ describe("DA libp2p transport protocol freeze", () => {
           delete manifest.network;
         },
         error: /network is required/u,
+      },
+      {
+        mutate: setDeployment("fingerprint", h("ab", 32)),
+        error: /deployment_fingerprint must be 28-byte hex/u,
+      },
+      {
+        mutate: setDeployment("contract_deployment_manifest_id", h("ab", 32)),
+        error: /deployment\.contract_deployment_manifest_id is unexpected/u,
+      },
+      {
+        mutate: setDeployment("identity_source", "manifest_id"),
+        error: /identity_source must be hub_oracle_policy_id/u,
       },
       {
         mutate: (manifest) => {
@@ -233,7 +248,7 @@ describe("DA libp2p transport protocol freeze", () => {
       } satisfies DaPayloadSubmitRequest,
       [
         "87",
-        `5820${h("01", 32)}`,
+        `581c${h("01", 28)}`,
         `581c${h("02", 28)}`,
         `5820${h("03", 32)}`,
         "01",
@@ -323,7 +338,7 @@ describe("DA libp2p transport protocol freeze", () => {
       } satisfies DaAttestationGossip,
       [
         "8a",
-        `5820${h("01", 32)}`,
+        `581c${h("01", 28)}`,
         `581c${h("02", 28)}`,
         `5820${h("03", 32)}`,
         "4180",
@@ -349,7 +364,7 @@ describe("DA libp2p transport protocol freeze", () => {
       } satisfies DaConflictEvidence,
       [
         "85",
-        `5820${h("01", 32)}`,
+        `581c${h("01", 28)}`,
         `581c${h("02", 28)}`,
         "04",
         `5820${h("0e", 32)}`,

@@ -26,6 +26,7 @@ import { requireRecord } from "./primitives.js";
 import {
   DEPLOYMENT_MANIFEST_OPTIONAL_ROOT_KEYS,
   DEPLOYMENT_MANIFEST_ROOT_KEYS,
+  type DeploymentManifest,
   type DeploymentManifestJsonValue,
 } from "./types.js";
 
@@ -138,19 +139,14 @@ const exactRoot = (candidate: Record<string, unknown>): void => {
   }
 };
 
-export const computeDeploymentManifestId = (
-  identityInput: Record<string, unknown>,
-): string => {
-  if (Object.prototype.hasOwnProperty.call(identityInput, "manifestId")) {
-    throw new Error("Deployment manifest identity input must omit manifestId");
-  }
-  const normalized = normalizeDeploymentManifestJsonValueInternal(
-    identityInput,
-    "Deployment manifest identity input",
-    false,
-  );
-  return bytesToHex(sha256(new TextEncoder().encode(stableJson(normalized))));
-};
+/**
+ * The deployment's identity: the hub-oracle minting policy id, 28 bytes as 56
+ * lowercase hex. The manifest records it as `contracts.hubOracleMint.scriptHash`,
+ * which finalized verification derives from that contract's script.
+ */
+export const deploymentManifestHubOraclePolicyId = (
+  manifest: DeploymentManifest,
+): string => manifest.contracts.hubOracleMint.scriptHash;
 
 /**
  * A named network's manifest must carry that network's static mapping; a
@@ -211,21 +207,6 @@ export const verifyDeploymentManifestIdentity = (
   );
   if (Object.prototype.hasOwnProperty.call(candidate, "l1Origin")) {
     parseL1OriginRecord(candidate.l1Origin, "Deployment manifest l1Origin");
-  }
-  if (
-    typeof candidate.manifestId !== "string" ||
-    !/^[0-9a-f]{64}$/u.test(candidate.manifestId)
-  ) {
-    throw new Error(
-      "Deployment manifest manifestId must be lowercase SHA-256 hex",
-    );
-  }
-  const { manifestId, ...identityInput } = candidate;
-  const expectedManifestId = computeDeploymentManifestId(identityInput);
-  if (manifestId !== expectedManifestId) {
-    throw new Error(
-      `Deployment manifest id mismatch: expected ${expectedManifestId}, found ${manifestId}`,
-    );
   }
   return candidate;
 };

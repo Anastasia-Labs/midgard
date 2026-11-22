@@ -1,4 +1,7 @@
-import { computeDeploymentManifestJsonDigest } from "./deployment-manifest-identity.js";
+import {
+  computeDeploymentManifestJsonDigest,
+  type DeploymentManifest,
+} from "./deployment-manifest-identity.js";
 
 export const DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION =
   "midgard-watcher-deployment-release-bindings-v1" as const;
@@ -164,12 +167,14 @@ export const parseDeploymentReleaseBindings = (
   });
 };
 
+/** The trust-root key signs the digest of the whole manifest and the release
+ * bindings, so a manifest differing in any one field has another payload. */
 export const makeDeploymentReleaseSignaturePayload = (
-  manifestId: string,
+  manifest: DeploymentManifest,
   releaseBindings: unknown,
 ): Buffer => {
   const digest = computeDeploymentManifestJsonDigest({
-    manifestId: releaseString(manifestId, "$.manifestId", RELEASE_HEX_32),
+    manifest,
     releaseBindings: parseDeploymentReleaseBindings(releaseBindings),
   });
   return Buffer.from(

@@ -18,7 +18,6 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "../src/da-transport.js";
 import {
-  computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
@@ -333,5 +332,5 @@ export const finalizedManifest = () => {
       maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
     },
   };
-  return { ...document, manifestId: computeDeploymentManifestId(document) };
+  return document;
 };

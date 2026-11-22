@@ -33,7 +33,7 @@ describe("coherent read-only actor interference metadata", () => {
           {
             id,
             actor: "actor",
-            deploymentIdentity: deployment,
+            hubOraclePolicyId: deployment,
             headerHash: "header",
             action,
             signedCbor: `immutable ${id}`,
@@ -121,7 +121,7 @@ describe("coherent read-only actor interference metadata", () => {
       const lease = f.journal.acquire("actor", "builder", 100, 20);
       expect(f.journal.actorSnapshot("actor", "deployment")).toMatchObject({
         actor: "actor",
-        deploymentIdentity: "deployment",
+        hubOraclePolicyId: "deployment",
         lease: { owner: "builder", generation: 1, expiresAtMs: 120 },
         retainedRecordCount: 0,
         pendingIntentCount: 0,
@@ -180,7 +180,7 @@ describe("coherent read-only actor interference metadata", () => {
       const intent = {
         id: "foreign",
         actor: "actor",
-        deploymentIdentity: "foreign",
+        hubOraclePolicyId: "foreign",
         headerHash: "header",
         action: "publish",
         signedCbor: "exact immutable bytes",
@@ -225,7 +225,7 @@ describe("coherent read-only actor interference metadata", () => {
         {
           id: "prior",
           actor: "actor",
-          deploymentIdentity: "deployment",
+          hubOraclePolicyId: "deployment",
           headerHash: "header",
           action: "publish",
           signedCbor: "exact bytes",
@@ -286,7 +286,7 @@ describe("pending-only offline journal inventory", () => {
         {
           id: "pending",
           actor: "actor",
-          deploymentIdentity: "deployment",
+          hubOraclePolicyId: "deployment",
           headerHash: "header",
           action: "publish",
           signedCbor: "private-bytes",

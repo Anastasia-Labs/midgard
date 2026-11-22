@@ -18,16 +18,6 @@ export const requireRecord = (
   return value as Record<string, unknown>;
 };
 
-export const requireDeploymentManifestId = (
-  value: unknown,
-  field: string,
-): string => {
-  if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
-    throw new Error(`${field} must be lowercase SHA-256 hex`);
-  }
-  return value;
-};
-
 export const requireExactKeys = (
   value: Record<string, unknown>,
   required: readonly string[],

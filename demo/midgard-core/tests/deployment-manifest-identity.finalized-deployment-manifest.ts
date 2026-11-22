@@ -7,7 +7,6 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { deploymentDaRetentionDays } from "../src/da-transport.js";
 import {
-  computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
   verifyDeploymentManifestIdentity,
@@ -187,20 +186,15 @@ describe("finalized deployment manifest", () => {
       },
       /operatorActivation.status is unsupported/,
     ],
-  ] as const)(
-    "rejects invalid %s even with a matching document ID",
-    (_name, mutate, error) => {
-      const manifest = finalizedManifest();
-      mutate(manifest);
-      const { manifestId: _manifestId, ...identity } = manifest;
-      manifest.manifestId = computeDeploymentManifestId(identity);
-      // Identity-only verification deliberately does not claim finalization.
-      if (_name !== "network") {
-        expect(verifyDeploymentManifestIdentity(manifest)).toBe(manifest);
-      }
-      expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(error);
-    },
-  );
+  ] as const)("rejects invalid %s", (_name, mutate, error) => {
+    const manifest = finalizedManifest();
+    mutate(manifest);
+    // Identity-only verification deliberately does not claim finalization.
+    if (_name !== "network") {
+      expect(verifyDeploymentManifestIdentity(manifest)).toBe(manifest);
+    }
+    expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(error);
+  });
 
   it("refuses a noncanonical consensus profile or profile digest", () => {
     const manifest = finalizedManifest();
@@ -258,17 +252,15 @@ describe("finalized deployment manifest", () => {
       if (role === "reference-script-auth minting")
         reference.scriptHash = policyId;
     }
-    const { manifestId: _manifestId, ...identity } = manifest;
-    manifest.manifestId = computeDeploymentManifestId(identity);
     expect(verifyFinalizedDeploymentManifest(manifest)).toBe(manifest);
   });
 
-  it("rechecks document identity after a previously verified caller-owned value changes", () => {
+  it("verifies a previously verified caller-owned value again after it changes", () => {
     const manifest = finalizedManifest();
     verifyFinalizedDeploymentManifest(manifest);
-    manifest.artifacts.blueprintHash = "66".repeat(32);
+    manifest.steps.initProtocol.status = "pending";
     expect(() => verifyFinalizedDeploymentManifest(manifest)).toThrow(
-      /id mismatch/,
+      /steps\.initProtocol\.status must be complete/,
     );
   });
 });

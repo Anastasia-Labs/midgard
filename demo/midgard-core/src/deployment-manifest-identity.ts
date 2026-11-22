@@ -30,17 +30,12 @@ export {
   verifyReferenceScriptPublicationAuthority,
 } from "./deployment-manifest-identity/finalized.js";
 export {
-  computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
+  deploymentManifestHubOraclePolicyId,
   normalizeDeploymentManifestJsonValue,
   verifyDeploymentManifestIdentity,
   verifyDeploymentManifestL1SlotConfig,
 } from "./deployment-manifest-identity/identity.js";
-export {
-  assertDeploymentMarkerMatches,
-  makeDeploymentMarker,
-  parseDeploymentMarker,
-} from "./deployment-manifest-identity/marker.js";
 export * from "./deployment-manifest-identity/members.js";
 export { parseDeploymentManifestCardanoProtocolParameters } from "./deployment-manifest-identity/protocol-parameters.js";
 export {
@@ -63,7 +58,5 @@ export {
   type DeploymentManifestJsonValue,
   type DeploymentManifestL1Finality,
   type DeploymentManifestStepStatus,
-  type DeploymentMarker,
-  MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
 } from "./deployment-manifest-identity/types.js";
 export { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "./deployment-profile.js";

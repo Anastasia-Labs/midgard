@@ -158,16 +158,15 @@ export const validateFinalizedDa = (value: unknown): void => {
   }
 };
 
-// manifestIds whose deep finalized verification already succeeded in this
-// process. Reusing one is sound only because verifyDeploymentManifestIdentity
-// runs uncached on every call: it re-hashes the manifest's full normalized
-// content and requires manifestId to equal that hash, so a mutated manifest
-// either fails identity verification outright or arrives under a new
-// manifestId and misses this cache. Everything the deep pass checks is a pure
-// function of that same content plus module constants.
-export const VERIFIED_FINALIZED_MANIFEST_ID_CACHE_LIMIT = 64;
+// Content digests (computeDeploymentManifestJsonDigest of the whole manifest)
+// of manifests whose deep finalized verification already succeeded in this
+// process. The digest is recomputed from the manifest on every call, so a
+// mutated manifest arrives under a new digest and misses this cache.
+// Everything the deep pass checks is a pure function of that same content plus
+// module constants.
+export const VERIFIED_FINALIZED_MANIFEST_DIGEST_CACHE_LIMIT = 64;
 
-export const verifiedFinalizedManifestIds = new Set<string>();
+export const verifiedFinalizedManifestDigests = new Set<string>();
 
 export type ReferenceScriptPublicationAuthority =
   | {

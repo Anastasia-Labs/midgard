@@ -7,8 +7,8 @@ import {
 } from "./finalized.validate-finalized-contracts.js";
 import {
   validateFinalizedDa,
-  VERIFIED_FINALIZED_MANIFEST_ID_CACHE_LIMIT,
-  verifiedFinalizedManifestIds,
+  VERIFIED_FINALIZED_MANIFEST_DIGEST_CACHE_LIMIT,
+  verifiedFinalizedManifestDigests,
   verifyReferenceScriptPublicationAuthority,
 } from "./finalized.validate-finalized-da.js";
 import {
@@ -35,8 +35,8 @@ export const verifyFinalizedDeploymentManifest = (
   value: unknown,
 ): DeploymentManifest => {
   const candidate = verifyDeploymentManifestIdentity(value);
-  const verifiedManifestId = candidate.manifestId as string;
-  if (verifiedFinalizedManifestIds.has(verifiedManifestId)) {
+  const contentDigest = computeDeploymentManifestJsonDigest(candidate);
+  if (verifiedFinalizedManifestDigests.has(contentDigest)) {
     return candidate as DeploymentManifest;
   }
   const createdAt = requireIsoTimestamp(candidate.createdAt, "createdAt");
@@ -371,14 +371,14 @@ export const verifyFinalizedDeploymentManifest = (
     }
   }
   if (
-    verifiedFinalizedManifestIds.size >=
-    VERIFIED_FINALIZED_MANIFEST_ID_CACHE_LIMIT
+    verifiedFinalizedManifestDigests.size >=
+    VERIFIED_FINALIZED_MANIFEST_DIGEST_CACHE_LIMIT
   ) {
-    const oldest = verifiedFinalizedManifestIds.values().next().value;
+    const oldest = verifiedFinalizedManifestDigests.values().next().value;
     if (oldest !== undefined) {
-      verifiedFinalizedManifestIds.delete(oldest);
+      verifiedFinalizedManifestDigests.delete(oldest);
     }
   }
-  verifiedFinalizedManifestIds.add(verifiedManifestId);
+  verifiedFinalizedManifestDigests.add(contentDigest);
   return candidate as DeploymentManifest;
 };

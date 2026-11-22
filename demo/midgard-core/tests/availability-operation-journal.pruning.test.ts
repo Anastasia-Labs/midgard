@@ -29,7 +29,7 @@ const intent = (
 ): AvailabilityOperationIntent => ({
   id,
   actor: "actor",
-  deploymentIdentity: "deployment",
+  hubOraclePolicyId: "deployment",
   headerHash: "header",
   action: "publish",
   signedCbor: `signed ${id}`,

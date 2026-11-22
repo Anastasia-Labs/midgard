@@ -246,7 +246,7 @@ export const openAvailabilityOperationJournal = (
           open.state !== "confirmed" ||
           open.intent.action !== "open" ||
           open.intent.actor !== actor ||
-          open.intent.deploymentIdentity !== deployment ||
+          open.intent.hubOraclePolicyId !== deployment ||
           open.intent.headerHash !== header
         )
           throw new Error(
@@ -307,7 +307,7 @@ export const openAvailabilityOperationJournal = (
         }
         assertWorkflow(
           lease,
-          intent.deploymentIdentity,
+          intent.hubOraclePolicyId,
           intent.headerHash,
           intent.action,
           nowMs,
@@ -344,7 +344,7 @@ export const openAvailabilityOperationJournal = (
           "INSERT INTO availability_operation_intents VALUES (?, ?, ?, ?, ?, ?)",
         ).run(
           intent.id,
-          intent.deploymentIdentity,
+          intent.hubOraclePolicyId,
           intent.actor,
           JSON.stringify(record),
           record.state,
@@ -394,18 +394,18 @@ export const openAvailabilityOperationJournal = (
           db.prepare(
             "DELETE FROM availability_operation_resources WHERE intent_id = ?",
           ).run(id);
-        const { actor, deploymentIdentity, headerHash } = record.intent;
+        const { actor, hubOraclePolicyId, headerHash } = record.intent;
         if (state === "confirmed" && record.intent.completesWorkflow)
           db.prepare(
             "UPDATE availability_operation_workflows SET retired_by = ?, release = NULL WHERE actor = ? AND deployment = ? AND header_hash = ? AND (retired_by IS NULL OR release IS NOT NULL)",
-          ).run(id, actor, deploymentIdentity, headerHash);
+          ).run(id, actor, hubOraclePolicyId, headerHash);
         // Re-opening cleared an earlier confirmed Open's retirement, so its row
         // stays live for the release walk to re-derive, and that Open stays.
         if (state === "expired" && record.intent.action === "open")
           db.prepare(
             `DELETE FROM availability_operation_workflows AS w WHERE actor = ? AND deployment = ? AND header_hash = ? AND NOT EXISTS (SELECT 1 FROM availability_operation_intents AS i WHERE i.actor = w.actor AND i.deployment = w.deployment AND i.state = 'confirmed'
             AND json_extract(i.record, '$.intent.action') = 'open' AND json_extract(i.record, '$.intent.headerHash') = w.header_hash)`,
-          ).run(actor, deploymentIdentity, headerHash);
+          ).run(actor, hubOraclePolicyId, headerHash);
       });
     },
     rewind(lease, id, detail, nowMs) {
@@ -449,7 +449,7 @@ export const openAvailabilityOperationJournal = (
               "SELECT record FROM availability_operation_intents WHERE tx_hash = ? AND actor = ? AND deployment = ? AND state = 'confirmed'",
               ref.split("#")[0]!,
               lease.scope,
-              closure[0]!.intent.deploymentIdentity,
+              closure[0]!.intent.hubOraclePolicyId,
             );
             if (
               record &&
@@ -486,7 +486,7 @@ export const openAvailabilityOperationJournal = (
               )
               .get(
                 intent.actor,
-                intent.deploymentIdentity,
+                intent.hubOraclePolicyId,
                 intent.headerHash,
                 intent.id,
               );

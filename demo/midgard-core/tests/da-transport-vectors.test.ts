@@ -92,7 +92,7 @@ import { isUnknownArray } from "../src/narrowing.js";
 const h = (byte: string, count: number): string => byte.repeat(count);
 const b = (byte: number, count: number): Buffer => Buffer.alloc(count, byte);
 
-const deploymentFingerprint = b(0x01, 32);
+const deploymentFingerprint = b(0x01, 28);
 const headerHash = b(0x02, 28);
 const payloadHash = b(0x03, 32);
 const rootSummaryHash = b(0x06, 32);
@@ -141,7 +141,7 @@ describe("DA transport full message vectors", () => {
       attestationsByHeader: "attestations-by-header",
     });
 
-    const fingerprint = h("01", 32);
+    const fingerprint = h("01", 28);
     expect(
       Object.values(DaGossipTopic).map((topic) =>
         daGossipTopic(deploymentFingerprint, topic),
@@ -172,7 +172,7 @@ describe("DA transport full message vectors", () => {
       encodeDaCapabilitiesRequestCbor,
       decodeDaCapabilitiesRequestCbor,
       { deploymentFingerprint } satisfies DaCapabilitiesRequest,
-      `815820${h("01", 32)}`,
+      `81581c${h("01", 28)}`,
     );
     assertVector(
       "DaCapabilitiesResponseV1",
@@ -191,7 +191,7 @@ describe("DA transport full message vectors", () => {
       } satisfies DaCapabilitiesResponse,
       [
         "89",
-        `5820${h("01", 32)}`,
+        `581c${h("01", 28)}`,
         "01",
         "8101",
         "820001",
@@ -257,7 +257,7 @@ describe("DA transport full message vectors", () => {
       } satisfies DaPayloadAnnouncement,
       [
         "8b",
-        `5820${h("01", 32)}`,
+        `581c${h("01", 28)}`,
         `581c${h("02", 28)}`,
         `5820${h("03", 32)}`,
         "01",
@@ -302,7 +302,7 @@ describe("DA transport full message vectors", () => {
       } satisfies DaPayloadSubmitRequest,
       [
         "87",
-        `5820${h("01", 32)}`,
+        `581c${h("01", 28)}`,
         `581c${h("02", 28)}`,
         `5820${h("03", 32)}`,
         "01",
@@ -368,7 +368,7 @@ describe("DA transport full message vectors", () => {
       } satisfies DaPayloadByHeaderRequest,
       [
         "84",
-        `5820${h("01", 32)}`,
+        `581c${h("01", 28)}`,
         `581c${h("02", 28)}`,
         "82",
         `5820${h("03", 32)}`,
@@ -422,7 +422,7 @@ describe("DA transport full message vectors", () => {
       } satisfies DaPayloadChunkRequest,
       [
         "84",
-        `5820${h("01", 32)}`,
+        `581c${h("01", 28)}`,
         `581c${h("02", 28)}`,
         `5820${h("03", 32)}`,
         "02",
@@ -461,7 +461,7 @@ describe("DA transport full message vectors", () => {
         headerHash,
         maxInlineBytes: 1_048_576,
       } satisfies DaProofBundleByHeaderRequest,
-      ["83", `5820${h("01", 32)}`, `581c${h("02", 28)}`, "1a00100000"].join(""),
+      ["83", `581c${h("01", 28)}`, `581c${h("02", 28)}`, "1a00100000"].join(""),
     );
 
     assertVector(
@@ -496,7 +496,7 @@ describe("DA transport full message vectors", () => {
         headerHash,
         stepIndex: 7,
       } satisfies DaTraceStepByIndexRequest,
-      ["83", `5820${h("01", 32)}`, `581c${h("02", 28)}`, "07"].join(""),
+      ["83", `581c${h("01", 28)}`, `581c${h("02", 28)}`, "07"].join(""),
     );
 
     assertVector(
@@ -529,7 +529,7 @@ describe("DA transport full message vectors", () => {
         headerHash,
         eventKey: Buffer.from("event"),
       } satisfies DaEventToStepByEventRequest,
-      ["83", `5820${h("01", 32)}`, `581c${h("02", 28)}`, "456576656e74"].join(
+      ["83", `581c${h("01", 28)}`, `581c${h("02", 28)}`, "456576656e74"].join(
         "",
       ),
     );
@@ -567,7 +567,7 @@ describe("DA transport full message vectors", () => {
       } satisfies DaAttestationsByHeaderRequest,
       [
         "84",
-        `5820${h("01", 32)}`,
+        `581c${h("01", 28)}`,
         `581c${h("02", 28)}`,
         "82",
         "00",
@@ -605,7 +605,7 @@ describe("DA transport full message vectors", () => {
         `581c${h("02", 28)}`,
         "81",
         "8a",
-        `5820${h("01", 32)}`,
+        `581c${h("01", 28)}`,
         `581c${h("02", 28)}`,
         `5820${h("03", 32)}`,
         "4180",
@@ -668,12 +668,12 @@ describe("DA transport full message vectors", () => {
     });
     expect(() =>
       encodeDaPayloadChunkRequestCbor({
-        deploymentFingerprint: b(0x01, 31),
+        deploymentFingerprint: b(0x01, 32),
         headerHash,
         payloadHash,
         chunkIndex: 0,
       }),
-    ).toThrow(/deployment_fingerprint must be 32 bytes/);
+    ).toThrow(/deployment_fingerprint must be 28 bytes/);
     expect(() =>
       encodeDaPayloadChunkRequestCbor({
         deploymentFingerprint,

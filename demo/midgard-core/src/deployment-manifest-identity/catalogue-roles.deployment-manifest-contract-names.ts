@@ -1,6 +1,6 @@
 // Every deployment contract, in deployment order; the list continues in the
-// additions file. Deployment identity checks it as a set, so reordering it
-// changes no manifest identity. Every roster order derives from it: the
+// additions file. Manifest verification checks it as a set, so its order does
+// not affect which manifests verify. Every roster order derives from it: the
 // manifest's members, publication (the published members only) and the
 // reference-role map. Place a new contract where it should be published.
 //

@@ -52,7 +52,7 @@ describe("read-only complete availability journal holds inventory", () => {
           {
             id: state,
             actor: "actor",
-            deploymentIdentity: "deployment",
+            hubOraclePolicyId: "deployment",
             headerHash: "header",
             action: "publish",
             signedCbor: "PRIVATE-SIGNED-CBOR",
@@ -183,7 +183,7 @@ describe("read-only complete availability journal holds inventory", () => {
         intent: {
           id: "later",
           actor: "later",
-          deploymentIdentity: "deployment",
+          hubOraclePolicyId: "deployment",
           headerHash: "header",
           action: "open",
           signedCbor: "PRIVATE-CBOR",
