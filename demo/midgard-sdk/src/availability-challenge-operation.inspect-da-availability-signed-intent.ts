@@ -81,7 +81,7 @@ export type DaAvailabilityOperationResult = Readonly<{
 }>;
 
 export type DaAvailabilityOperationContext = Readonly<{
-  deploymentIdentity: string;
+  hubOraclePolicyId: string;
   actor: string;
   stateQueuePolicyId: string;
   journal: AvailabilityOperationJournal;
@@ -237,7 +237,7 @@ const outRefs = (
     : [];
 
 export const inspectDaAvailabilitySignedIntent = (input: {
-  deploymentIdentity: string;
+  hubOraclePolicyId: string;
   actor: string;
   headerHash: string;
   action: string;
@@ -245,7 +245,7 @@ export const inspectDaAvailabilitySignedIntent = (input: {
   completesWorkflow?: boolean;
 }): AvailabilityOperationIntent => {
   if (
-    !/^[0-9a-f]{64}$/u.test(input.deploymentIdentity) ||
+    !/^[0-9a-f]{56}$/u.test(input.hubOraclePolicyId) ||
     !/^[0-9a-f]{56}$/u.test(input.actor) ||
     !/^[0-9a-f]{56}$/u.test(input.headerHash) ||
     !/^(prepare|open|publish|settle|close|timeout|prune|remove)$/u.test(
@@ -312,13 +312,13 @@ export const inspectDaAvailabilitySignedIntent = (input: {
       "Availability operation was not signed by its reserved actor",
     );
   return Object.freeze({
-    deploymentIdentity: input.deploymentIdentity,
+    hubOraclePolicyId: input.hubOraclePolicyId,
     actor: input.actor,
     headerHash: input.headerHash,
     action: input.action,
     signedCbor: input.signedCbor,
     id: hash(
-      `${input.deploymentIdentity}:${input.actor}:${input.headerHash}:${input.action}:${txHash}:${completesWorkflow}`,
+      `${input.hubOraclePolicyId}:${input.actor}:${input.headerHash}:${input.action}:${txHash}:${completesWorkflow}`,
     ),
     txHash,
     spentOutRefs,

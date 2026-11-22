@@ -23,11 +23,10 @@ export const reconcileDaAvailabilityOperations = (
     const results: DaAvailabilityOperationResult[] = [];
     const anchors = context.journal.finalizedAnchors(context.actor);
     const records = [
-      ...context.journal.pending(context.deploymentIdentity, context.actor),
-      ...context.journal.unfinalized(context.deploymentIdentity, context.actor),
+      ...context.journal.pending(context.hubOraclePolicyId, context.actor),
+      ...context.journal.unfinalized(context.hubOraclePolicyId, context.actor),
       ...anchors.filter(
-        ({ intent }) =>
-          intent.deploymentIdentity === context.deploymentIdentity,
+        ({ intent }) => intent.hubOraclePolicyId === context.hubOraclePolicyId,
       ),
     ];
     const byTransaction = new Map(
@@ -43,7 +42,7 @@ export const reconcileDaAvailabilityOperations = (
       const found = context.journal.findTransaction(txHash);
       if (
         found?.state !== "confirmed" ||
-        found.intent.deploymentIdentity !== context.deploymentIdentity ||
+        found.intent.hubOraclePolicyId !== context.hubOraclePolicyId ||
         found.intent.actor !== context.actor
       )
         return undefined;
@@ -159,7 +158,7 @@ export const reconcileDaAvailabilityOperations = (
     // that no longer holds them. Other evidence changes nothing and is read
     // again on the next pass.
     for (const { intent } of anchors) {
-      if (intent.deploymentIdentity === context.deploymentIdentity) continue;
+      if (intent.hubOraclePolicyId === context.hubOraclePolicyId) continue;
       const scope = observationScope();
       const observed = await scope.read(async () => {
         await assertCurrent(scope);

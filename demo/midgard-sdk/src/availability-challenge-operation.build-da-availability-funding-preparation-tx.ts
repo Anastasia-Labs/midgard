@@ -304,7 +304,7 @@ export const buildDaAvailabilityFundingPreparationTx = async (
 
 const assertContext = (context: DaAvailabilityOperationContext): void => {
   if (
-    !/^[0-9a-f]{64}$/u.test(context.deploymentIdentity) ||
+    !/^[0-9a-f]{56}$/u.test(context.hubOraclePolicyId) ||
     !/^[0-9a-f]{56}$/u.test(context.actor) ||
     !/^[0-9a-f]{56}$/u.test(context.stateQueuePolicyId) ||
     !Number.isSafeInteger(context.minimumConfirmationDepth) ||

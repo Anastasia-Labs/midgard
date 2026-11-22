@@ -23,10 +23,7 @@ const SCENE_TIMEOUT_MS = 300_000;
 type Sections = ReturnType<typeof userHistoryManifestSections>;
 
 const manifestOf = (sections: Sections): DeploymentManifest =>
-  ({
-    ...sections,
-    manifestId: "ee".repeat(32),
-  }) as unknown as DeploymentManifest;
+  sections as unknown as DeploymentManifest;
 
 describe("userHistoryContractsFromDeploymentManifest", () => {
   let scene: UserHistoryScene;

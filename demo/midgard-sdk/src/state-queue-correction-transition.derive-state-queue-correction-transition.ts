@@ -25,7 +25,7 @@ export const deriveStateQueueCorrectionTransition = (
   input: DeriveStateQueueCorrectionTransitionInput,
 ): StateQueueCorrectionTransition | null => {
   if (
-    !HEX_32.test(input.deploymentIdentityDigest) ||
+    !HEX_28.test(input.hubOraclePolicyId) ||
     !HEX_28.test(input.stateQueuePolicyId) ||
     !HEX_32.test(input.transactionHash) ||
     !HEX_32.test(input.blockHash) ||
@@ -123,7 +123,7 @@ export const deriveStateQueueCorrectionTransition = (
   }
   const canonical = {
     schemaVersion: STATE_QUEUE_CORRECTION_TRANSITION_SCHEMA_VERSION,
-    deploymentIdentityDigest: input.deploymentIdentityDigest,
+    hubOraclePolicyId: input.hubOraclePolicyId,
     stateQueuePolicyId: input.stateQueuePolicyId,
     transactionHash: input.transactionHash,
     blockHash: input.blockHash,

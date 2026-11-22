@@ -30,7 +30,7 @@ export const parseStateQueueAuthenticatedTransition = (
 ): StateQueueAuthenticatedTransition | null => {
   const record = exactRecord(value, [
     "schemaVersion",
-    "deploymentIdentityDigest",
+    "hubOraclePolicyId",
     "stateQueuePolicyId",
     "transactionHash",
     "blockHash",
@@ -73,7 +73,7 @@ export const parseStateQueueAuthenticatedTransition = (
     record === null ||
     record.schemaVersion !==
       STATE_QUEUE_AUTHENTICATED_TRANSITION_SCHEMA_VERSION ||
-    !HEX_32.test(record.deploymentIdentityDigest as string) ||
+    !HEX_28.test(record.hubOraclePolicyId as string) ||
     !HEX_28.test(record.stateQueuePolicyId as string) ||
     !HEX_32.test(record.transactionHash as string) ||
     !HEX_32.test(record.blockHash as string) ||
@@ -119,7 +119,7 @@ export const parseStateQueueAuthenticatedTransition = (
   }
   const canonical = {
     schemaVersion: record.schemaVersion,
-    deploymentIdentityDigest: record.deploymentIdentityDigest as string,
+    hubOraclePolicyId: record.hubOraclePolicyId as string,
     stateQueuePolicyId: record.stateQueuePolicyId as string,
     transactionHash: record.transactionHash as string,
     blockHash: record.blockHash as string,
@@ -257,7 +257,7 @@ export const parseStateQueueAuthenticatedTransition = (
     const timeout = timeoutRemoval(decoded);
     if (timeout === null) return null;
     const outerNestedIdentityMatches =
-      nested.deploymentIdentityDigest === canonical.deploymentIdentityDigest &&
+      nested.hubOraclePolicyId === canonical.hubOraclePolicyId &&
       nested.stateQueuePolicyId === canonical.stateQueuePolicyId &&
       nested.transactionHash === canonical.transactionHash &&
       nested.blockHash === canonical.blockHash &&

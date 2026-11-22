@@ -170,7 +170,7 @@ export const openRecord = (
 ): AvailabilityOperationRecord => ({
   intent: {
     id: "open-intent",
-    deploymentIdentity: "d1".repeat(32),
+    hubOraclePolicyId: "d1".repeat(28),
     actor: "a0".repeat(28),
     headerHash: HEADER,
     action: "open",

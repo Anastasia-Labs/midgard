@@ -14,7 +14,7 @@ const h28 = (byte: string): string => byte.repeat(56);
 const h32 = (byte: string): string => byte.repeat(64);
 const outRef = (byte: string, index = 0): string =>
   `${h32(byte)}#${index.toString()}`;
-const deployment = h32("a");
+const hubOraclePolicyId = h28("a");
 const policy = h28("b");
 const header1 = h28("1");
 const header2 = h28("2");
@@ -143,7 +143,7 @@ const derive = ({
       ? [...spentInputOutRefs, lock.consumedOutRef]
       : spentInputOutRefs;
   const checkpoint = deriveStateQueueAuthenticatedReplayCheckpoint({
-    deploymentIdentityDigest: deployment,
+    hubOraclePolicyId,
     stateQueuePolicyId: policy,
     transactionHash,
     blockHash: h32((sequence + 4).toString(16)),
@@ -259,7 +259,7 @@ describe("authenticated state-queue replay checkpoint V1", () => {
     expect(parseStateQueueAuthenticatedReplayCheckpoint(fraud)).toEqual(fraud);
     expect(
       replayStateQueueAuthenticatedCheckpoints({
-        deploymentIdentityDigest: deployment,
+        hubOraclePolicyId,
         stateQueuePolicyId: policy,
         minimumFinalityDepth: 30n,
         anchor: { queue: anchor, blockNo: "0", transactionIndex: "0" },
@@ -389,7 +389,7 @@ describe("authenticated state-queue replay checkpoint V1", () => {
       ],
     });
     const input = {
-      deploymentIdentityDigest: deployment,
+      hubOraclePolicyId,
       stateQueuePolicyId: policy,
       minimumFinalityDepth: 30n,
       anchor: { queue: anchor, blockNo: "0", transactionIndex: "0" },
