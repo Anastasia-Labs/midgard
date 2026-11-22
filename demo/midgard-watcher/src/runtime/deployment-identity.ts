@@ -48,6 +48,7 @@ export {
 export {
   assertWatcherDeploymentAvailabilityChallengeAuthority,
   assertWatcherDeploymentProtocolParameterAuthority,
+  matchesWatcherSignedDeploymentManifest,
   watcherDeploymentAppliedScriptHashes,
   watcherDeploymentAvailabilityChallengeAuthority,
   watcherDeploymentProtocolParameterAuthority,

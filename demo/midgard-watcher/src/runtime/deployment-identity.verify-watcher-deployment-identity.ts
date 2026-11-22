@@ -62,6 +62,7 @@ import {
   releaseEconomicsAuthorityByDeploymentIdentity,
   releaseFinalityAuthorityByDeploymentIdentity,
   releaseFinalityByDeploymentIdentity,
+  signedManifestByDeploymentIdentity,
   type SignedUserEventScript,
   USER_EVENT_SIGNED_CONTRACT_NAMES,
   userEventScriptsByDeploymentIdentity,
@@ -374,5 +375,6 @@ export const verifyWatcherDeploymentIdentity = (input: {
     verified,
     availabilityChallengeAuthority,
   );
+  signedManifestByDeploymentIdentity.set(verified, manifest);
   return verified;
 };
