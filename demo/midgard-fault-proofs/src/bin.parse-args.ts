@@ -71,7 +71,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let badAddrTxWitIndex: string | undefined;
   let workflowRuntimeConfigPath: string | undefined;
   let deploymentFingerprint: string | undefined;
-  let correctionJournalPath: string | undefined;
 
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
@@ -267,9 +266,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--deployment-fingerprint":
         deploymentFingerprint = rest[++index];
         break;
-      case "--correction-journal":
-        correctionJournalPath = rest[++index];
-        break;
       case "--help":
       case "-h":
         console.log(usage);
@@ -343,6 +339,5 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     badAddrTxWitIndex,
     workflowRuntimeConfigPath,
     deploymentFingerprint,
-    correctionJournalPath,
   };
 };

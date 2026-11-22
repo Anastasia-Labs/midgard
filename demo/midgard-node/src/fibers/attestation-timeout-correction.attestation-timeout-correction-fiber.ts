@@ -4,10 +4,7 @@ import { Globals } from "../services/globals.globals.js";
 import { Database, NodeConfig } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
 import { Lucid } from "../services/lucid.js";
-import {
-  ContractDeploymentIdentity,
-  MidgardContracts,
-} from "../services/midgard-contracts.make-midgard-contract-runtime.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   attestationTimeoutCorrectionAction,
   attestationTimeoutCorrectionStep,
@@ -21,13 +18,7 @@ export const attestationTimeoutCorrectionFiber = (
 ): Effect.Effect<
   void,
   never,
-  | Lucid
-  | MidgardContracts
-  | ContractDeploymentIdentity
-  | Database
-  | Globals
-  | NodeConfig
-  | IntentJournal
+  Lucid | MidgardContracts | Database | Globals | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
     const globals = yield* Globals;

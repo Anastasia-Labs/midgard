@@ -16,7 +16,6 @@ export const NODE_INTENT_FAMILIES = [
   "scheduler_refresh",
   "merge",
   "attest",
-  "correction",
   "register",
   "activate",
   "deregister",
@@ -42,7 +41,6 @@ export const CONTENT_REF_FAMILIES: ReadonlySet<NodeIntentFamily> = new Set([
   "commit",
   "merge",
   "attest",
-  "correction",
   "reserve_payout",
   "settlement",
 ]);
@@ -123,7 +121,7 @@ export type RecordOutcome =
 
 /**
  * Why a family records: `send` when it sends the bytes itself right after
- * (the submit seam, the correction workflow), so the record also takes S6's
+ * (the submit seam), so the record also takes S6's
  * send decision in its transaction; `record_only` when S6 sends them
  * (settlement). `slotTime` maps an L1 slot to its POSIX ms, for the
  * node-behind hold.

@@ -294,7 +294,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       yield* Ref.make<AttestationTimeoutCorrectionHealth>({
         lastProgressAtMs: now,
         lastQueueReadAtMs: now,
-        correctionProgress: null,
         lastFailureAtMs: 0,
         lastError: null,
         consecutiveFailures: 0,

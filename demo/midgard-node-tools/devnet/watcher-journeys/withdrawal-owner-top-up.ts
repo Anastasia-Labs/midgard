@@ -127,7 +127,6 @@ const devnetTopUp = async (
     resume,
     onCheckpoint: (checkpoint) =>
       writeJourneyArtifact(checkpointPath, checkpoint),
-    timeoutCorrectionJournalPath: join(directory, "timeout-correction.json"),
     finalityDepth: JOURNEY_ACTION_DEPTH,
     liveTail: { ledgerAt },
   });

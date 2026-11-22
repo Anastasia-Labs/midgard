@@ -453,7 +453,7 @@ depends on. It contains:
 | Store | Postgres | SQLite (Q1) | Postgres; one member may run active/passive across hosts (Q1) |
 | Tracked set (§5.2) | Items 1–13 | State queue and auth validator, hub oracle, deposit, withdrawal and tx-order lists, correction lock, fraud-proof addresses and policies, scheduler and operator lists, DA params and attestation, reference scripts, own prover wallet, CEK credential | State queue and auth validator, hub oracle, DA params, attestation and bond pool, availability-challenge address, correction lock, reference scripts, own submitter wallet |
 | Derivations (S3) | Heads; landed queue and topology; event set and key set; event status; deposit spendability; correction admission; in-order landed-block processing (#744/#695); MPF roots; `confirmed_ledger`; wallet view | Heads; landed queue; per-header verification inputs; fault classification; proof objectives; user-event history | Heads; landed queue; headers awaiting attestation; availability verification; promise and retention obligations |
-| Intents (S5) | Commit, merge, DA attestation, timeout correction, operator register/exit/takeover, reserve payout, reference publication and sweep, script-reward registration, PHAS membership, availability-challenge registration, list inserts | Fault-proof step txs, collateral, prover funding | DA attestation/availability txs, bond pool top-up and withdraw, retirement and promise txs; signed availability decisions (non-tx class B) |
+| Intents (S5) | Commit, merge, DA attestation, operator register/exit/takeover, reserve payout, reference publication and sweep, script-reward registration, PHAS membership, availability-challenge registration, list inserts | Fault-proof step txs, collateral, prover funding | DA attestation/availability txs, bond pool top-up and withdraw, retirement and promise txs; signed availability decisions (non-tx class B) |
 | Deleted (§13) | Kupo/Ogmios reads, coverage path, finalization machine, receipts, repair, plans, rewind/restore, speculative mode, foreign-tip reconciliation | Multi-provider consistency, Kupo/Ogmios capture, rollback engine state machine, whole-snapshot CAS, file journals | Rollback-feed quarantine, recovery CLI, Kupo replay provider, Ogmios sessions, JSONL cursor journal, JSON store, mutex and instance lock (Q1) |
 
 ## 5. Data classes and schema
@@ -1165,7 +1165,7 @@ it can still land. It would then commit an event that no longer exists on L1.
 ```sql
 CREATE TABLE l1_intents (
   tx_hash         bytea  PRIMARY KEY,
-  family          text   NOT NULL,     -- commit, merge, attest, correction, register, …
+  family          text   NOT NULL,     -- commit, merge, attest, register, …
   workflow_key    text   NOT NULL,     -- e.g. 'commit:tail=<outref>', 'attest:<header>'
   tx_cbor         bytea  NOT NULL,     -- signed bytes, exactly as submitted
   inputs          bytea[] NOT NULL, reference_inputs bytea[] NOT NULL, collaterals bytea[] NOT NULL,
@@ -1246,7 +1246,7 @@ actions are idempotent:
 |---|---|---|
 | Node | commit | The tail outref is unspent, the scheduler slot is still ours at `valid_from`, and the included events are still canonical and at least d behind the tip. |
 | Node | merge | The queue head and the confirmed node are unchanged. |
-| Node | DA attestation, attestation-timeout correction | The header is still in the landed queue. The correction condition still holds. |
+| Node | DA attestation | The header is still in the landed queue. |
 | Node | register, activate, exit, takeover, retire, recover-bond | The operator-set projection still allows the transition. |
 | Node | reserve payout, settlement | The event is still in the list projection, and not settled by another tx. |
 | Node | reference publication or sweep, script-reward registration, PHAS membership | The target state has not been reached by the facts. |

@@ -152,20 +152,14 @@ export const nextL1ProviderHealthEvidence = ({
  * correction that fails every tick leaves the node reporting Ready.
  */
 export type AttestationTimeoutCorrectionHealth = {
-  /** When the step last moved a correction forward: a step that completed, or
-   * a removal transaction the correction confirmed mid-step (a correction with
-   * several descendants to prune spends several confirmations in one step).
-   * Starts at node startup, like the worker heartbeats. */
+  /** When a step last succeeded. Each step reads the queue and the lock and
+   * submits at most one removal, so a landed removal shows as its header gone
+   * from the next step's read. Starts at node startup, like the worker
+   * heartbeats. */
   readonly lastProgressAtMs: number;
   /** When the step last read and classified the state queue. Starts at node
    * startup. */
   readonly lastQueueReadAtMs: number;
-  /** The correction and confirmed-removal count last credited as progress, so
-   * a step that re-saves an unchanged journal is not mistaken for progress. */
-  readonly correctionProgress: {
-    readonly targetHeaderHash: string;
-    readonly confirmedRemovals: number;
-  } | null;
   readonly lastFailureAtMs: number;
   readonly lastError: string | null;
   /** Failed steps since the last successful one. */

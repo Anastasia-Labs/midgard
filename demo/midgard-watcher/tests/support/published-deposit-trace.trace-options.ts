@@ -48,8 +48,6 @@ export type PublishedDepositTraceOptions = {
   onStage?: (name: string) => void;
   resume?: PublishedDepositTraceCheckpoint;
   onCheckpoint?: (checkpoint: PublishedDepositTraceCheckpoint) => Promise<void>;
-  /** Durable journal of abandoned-header removals; in memory when absent. */
-  timeoutCorrectionJournalPath?: string;
   /** Blocks a removal must be buried under before the watcher may start. */
   finalityDepth?: number;
   /** Absent, abandoned headers are removed and the trace starts at the confirmed state. */

@@ -83,7 +83,6 @@ export const createTransitionTraceJourneyFixture = ({
       resume,
       onCheckpoint: (checkpoint) =>
         writeJourneyArtifact(checkpointPath, checkpoint),
-      timeoutCorrectionJournalPath: join(directory, "timeout-correction.json"),
       // The watcher observes the queue at its action depth, so the abandoned
       // header removal only has to be that deep before the watcher starts.
       finalityDepth: JOURNEY_ACTION_DEPTH,

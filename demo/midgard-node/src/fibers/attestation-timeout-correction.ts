@@ -1,11 +1,9 @@
 import "node:fs/promises";
-import "node:path";
 import "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
 import "@al-ft/midgard-fault-proofs/remove-fraudulent-block";
 import "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import "@al-ft/midgard-sdk/core";
 import "@al-ft/midgard-sdk/state-queue";
-import "@effect/sql";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../commands/readiness.js";
@@ -25,6 +23,4 @@ export {
   ATTESTATION_TIMEOUT_ALERT_LEAD_MS,
   attestationTimeoutCorrectionReadinessBounds,
   observeAndRecordAttestationTimeoutQueue,
-  recordTimeoutCorrectionJournalProgress,
-  withTimeoutCorrectionProgress,
 } from "./attestation-timeout-correction.reconcile-state-queue-corrections.js";

@@ -187,25 +187,6 @@ const merge = async (read: Read): Promise<boolean> => {
 const attest = async (read: Read): Promise<boolean> =>
   queueNode(await read.queue(), contentRefHex(read.state)) !== undefined;
 
-/**
- * The removed header is still landed, and its correction's target is still
- * unattested and timed out at the transaction's lower validity bound.
- * Key: `correction:<target>:<kind>:<removed>`.
- */
-const correction = async (read: Read): Promise<boolean> => {
-  const [target] = keyRest(read.state, "correction:").split(":");
-  const queue = await read.queue();
-  const node = queueNode(queue, target ?? "");
-  return (
-    queueNode(queue, contentRefHex(read.state)) !== undefined &&
-    node !== undefined &&
-    node.daStatus === "Unattested" &&
-    node.blockTimeMs !== null &&
-    node.blockTimeMs + SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS <=
-      BigInt(validFromMs(read))
-  );
-};
-
 const registeredOf = (set: OperatorSet, operator: string) =>
   set.registered.filter(
     (node) => SDKOperators.registeredNodeOperator(node.datum) === operator,
@@ -276,7 +257,6 @@ const PREDICATES: Readonly<
   scheduler_refresh: operatorTransition,
   merge,
   attest,
-  correction,
   register: operatorTransition,
   activate: operatorTransition,
   deregister: operatorTransition,

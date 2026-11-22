@@ -56,7 +56,6 @@ export {
   type AdmittedNetworkIdArtifact,
   networkIdForcedArtifactFromPrepared,
   type NetworkIdRawL1ObservationPort,
-  type NetworkIdWorkflowTerminalFacts,
 } from "./workflow-adapter.admit-network-id-forced-artifact.js";
 export {
   createManifestBoundNetworkIdWorkflow,

@@ -448,10 +448,6 @@
       "midgard-source": "./src/workflow/sqlite-busy.ts",
       "import": "./dist/workflow/sqlite-busy.js"
     },
-    "./workflow/superseded-attempt-read-schedule": {
-      "midgard-source": "./src/workflow/superseded-attempt-read-schedule.ts",
-      "import": "./dist/workflow/superseded-attempt-read-schedule.js"
-    },
     "./workflow/transaction-boundary": {
       "midgard-source": "./src/workflow/transaction-boundary.ts",
       "import": "./dist/workflow/transaction-boundary.js"
@@ -740,7 +736,6 @@
             "src/workflow/runtime.ts",
             "src/workflow/signed-transaction-reconciliation.ts",
             "src/workflow/sqlite-busy.ts",
-            "src/workflow/superseded-attempt-read-schedule.ts",
             "src/workflow/transaction-boundary.ts",
             "src/workflow/workflow-funding-shortfall.ts",
             "src/workflow/workflow-run.ts",

@@ -1,4 +1,3 @@
-import type { TimeoutCorrectionJournal } from "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
@@ -50,21 +49,3 @@ export const observeAttestationTimeoutQueue = (
       remainingMs,
     } as const;
   });
-
-/** An absent target does not establish the outcome of retained signed bytes.
- * Completed work also reopens if its exact target returns after a rollback. */
-export const timeoutCorrectionJournalNeedsRecovery = (
-  journal:
-    | Pick<TimeoutCorrectionJournal, "completed" | "targetHeaderHash">
-    | undefined,
-  queue: readonly SDKStateQueue.StateQueueUTxO[],
-): boolean =>
-  journal !== undefined &&
-  (!journal.completed ||
-    queue
-      .slice(1)
-      .some(
-        ({ datum }) =>
-          datum.key !== "Empty" &&
-          datum.key.Key.key === journal.targetHeaderHash,
-      ));

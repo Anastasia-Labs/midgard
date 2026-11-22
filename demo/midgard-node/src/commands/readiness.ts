@@ -158,8 +158,8 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
           `attestation_timeout_correction_failing:${unattested.headerHash}:${correction.consecutiveFailures}:${overdueMs}`,
         );
       }
-      // A step that neither fails nor finishes (hung waiting on a
-      // confirmation) never raises the failure count.
+      // A step that neither fails nor finishes (a hung L1 read) never
+      // raises the failure count.
       const sinceProgressMs = input.nowMillis - correction.lastProgressAtMs;
       if (sinceProgressMs > correction.stallBoundMs) {
         reasons.push(

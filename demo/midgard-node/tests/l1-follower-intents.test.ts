@@ -149,11 +149,7 @@ describe.each(["sqlite", "postgres"] as const)(
 
     it("holds instead of abandoning when the queue is unhealthy or the mempool read fails", async () => {
       const s = await openScenario(dialect);
-      const attest = await s.record(
-        "correction",
-        s.spend(s.spare(0)),
-        s.firstHash,
-      );
+      const attest = await s.record("attest", s.spend(s.spare(0)), s.firstHash);
       const orphan = simHeader(2, GENESIS);
       await s.chain.forward([
         {

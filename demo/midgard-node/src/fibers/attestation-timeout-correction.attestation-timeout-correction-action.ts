@@ -1,63 +1,40 @@
 import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
 
 import { proofMaterialsAddress } from "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
-import {
-  createFileTimeoutCorrectionJournalStore,
-  submitUnattestedTimeoutCorrection,
-} from "@al-ft/midgard-fault-proofs/remove-unattested-block";
+import { submitUnattestedTimeoutCorrection } from "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { Cause, Effect, Ref, Runtime } from "effect";
 
 import { StateQueueMutationLeasesDB } from "../database/index.js";
-import {
-  attestationTimeoutJournalPathOverride,
-  contractDeploymentInfoPathOverride,
-} from "../environment.js";
+import { contractDeploymentInfoPathOverride } from "../environment.js";
 import { l1NowUnixTimeMs } from "../l1-heads.js";
-import { timeoutCorrectionJournalNeedsRecovery } from "../services/attestation-timeout-observation.js";
 import { Globals } from "../services/globals.globals.js";
 import { type AttestationTimeoutCorrectionHealth } from "../services/globals.js";
 import { Database, NodeConfig } from "../services/index.js";
-import { IntentJournal, openPlan } from "../services/intent-journal.js";
+import { type IntentJournal } from "../services/intent-journal.js";
 import { landedStateQueueUTxOs } from "../services/landed-state-queue.js";
 import { Lucid } from "../services/lucid.js";
-import {
-  ContractDeploymentIdentity,
-  MidgardContracts,
-} from "../services/midgard-contracts.make-midgard-contract-runtime.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   readSelectedWalletViewInputs,
   signOverWalletView,
 } from "../transactions/utils.wallet-view.js";
-import { intentJournalTimeoutCorrectionRecovery } from "./attestation-timeout-correction.intent-journal-recovery.js";
 import {
   observeAndRecordAttestationTimeoutQueue,
   TIMEOUT_CORRECTION_LEASE_HOLDER,
-  withCorrectionIntentJournal,
-  withTimeoutCorrectionProgress,
 } from "./attestation-timeout-correction.reconcile-state-queue-corrections.js";
 
 export const attestationTimeoutCorrectionAction = (): Effect.Effect<
   void,
   unknown,
-  | Lucid
-  | MidgardContracts
-  | ContractDeploymentIdentity
-  | Database
-  | Globals
-  | NodeConfig
-  | IntentJournal
+  Lucid | MidgardContracts | Database | Globals | NodeConfig | IntentJournal
 > =>
   Effect.gen(function* () {
-    // S5: the pass's plan opens before its first L1 read.
-    const plan = yield* openPlan;
     const lucid = yield* Lucid;
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
     const contracts = yield* MidgardContracts;
-    const deploymentIdentity = yield* ContractDeploymentIdentity;
     const queue = yield* landedStateQueueUTxOs(
       contracts.stateQueue,
       "attestation-timeout correction",
@@ -74,41 +51,6 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
       queue,
       { l1NowMs, readAtMs: Date.now() },
     );
-    if (deploymentIdentity.manifest === undefined) {
-      return yield* Effect.fail(
-        new Error(
-          "Attestation-timeout correction requires the exact authenticated deployment manifest (its L1 finality depths).",
-        ),
-      );
-    }
-    const recoveryDepths = {
-      confirmationDepth:
-        deploymentIdentity.manifest.l1Finality.confirmationDepth,
-      securityParameter:
-        deploymentIdentity.manifest.l1Finality.automaticRecoveryMaxDepth,
-    };
-    const journalPath =
-      attestationTimeoutJournalPathOverride() ??
-      resolve(
-        dirname(nodeConfig.LEDGER_MPF_DB_PATH),
-        "attestation-timeout-correction-v1.json",
-      );
-    const journalStore = withTimeoutCorrectionProgress(
-      withCorrectionIntentJournal(
-        createFileTimeoutCorrectionJournalStore(journalPath),
-        yield* IntentJournal,
-        { plan, slotTime: (slot) => lucid.api.slotToUnixTime(slot) },
-      ),
-      globals.ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
-    );
-    const retainedJournal = yield* Effect.tryPromise({
-      try: () => journalStore.load(),
-      catch: (cause) => cause,
-    });
-    const resumeRetainedJournal = timeoutCorrectionJournalNeedsRecovery(
-      retainedJournal,
-      queue,
-    );
     const observation = yield* observed;
     const lock = yield* SDK.fetchCorrectionLockUTxOProgram(lucid.api, {
       correctionLockAddress: contracts.correctionLock.spendingScriptAddress,
@@ -119,18 +61,13 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
       lock.datum.Locked.correction_identity === "AttestationTimeout";
     if (
       !resumeLockedTimeout &&
-      !resumeRetainedJournal &&
       (observation.status === "queue-empty" ||
         observation.status === "queue-attested" ||
         observation.status === "waiting")
     ) {
       return;
     }
-    if (
-      !resumeLockedTimeout &&
-      !resumeRetainedJournal &&
-      observation.status === "near-timeout"
-    ) {
+    if (!resumeLockedTimeout && observation.status === "near-timeout") {
       yield* Effect.logWarning(
         `Pending state-queue block is nearing its DA-attestation timeout (header=${observation.headerHash},deadline_ms=${observation.deadlineMs.toString()},remaining_ms=${observation.remainingMs.toString()}).`,
       );
@@ -186,14 +123,9 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
                   paymentKeyHash: paymentCredential.hash,
                   selectWallet: () => undefined,
                 },
-                journalStore,
-                awaitConfirmation: true,
-                // Retained attempts are observed from the intent journal and
-                // follower facts only; S6 alone resends a live one.
-                recovery: intentJournalTimeoutCorrectionRecovery(
-                  (effect) => Runtime.runPromise(runtime)(effect),
-                  recoveryDepths,
-                ),
+                // One step per tick: the next tick, on the next L1 head,
+                // reads the queue and the lock and builds the step after it.
+                awaitConfirmation: false,
                 // Funded from the operator wallet's view (§8.5) and signed
                 // over it, like every other node transaction.
                 wallet: {
@@ -220,7 +152,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
           // lands: the queue-terminal projection records it, and the
           // landed-block rebase disposes of the removed blocks' journals.
           yield* Effect.logInfo(
-            `Attestation-timeout correction result status=${result.status},target=${result.targetHeaderHash ?? "none"},transactions=${result.submittedTxHashes.join(",")}.`,
+            `Attestation-timeout correction result status=${result.status},target=${result.targetHeaderHash ?? "none"},transaction=${result.pendingTxHash ?? "none"}.`,
           );
         }),
     );

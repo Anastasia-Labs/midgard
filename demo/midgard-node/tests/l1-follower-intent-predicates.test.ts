@@ -5,8 +5,6 @@
  * - merge: the header it names is the queue's head, and it spends the head
  *   and the root;
  * - attestation: the header it names is landed;
- * - correction: the removed header is landed and the target is still
- *   unattested and timed out at the lower validity bound;
  * - payout absorb/initialize: the event it names is listed and not
  *   retired; fund/conclude: every input is still a live fact.
  *
@@ -17,7 +15,6 @@
  * `l1-follower-intent-predicates-wallet.test.ts`.
  */
 import type { FactStore } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { eventIdOf, listEvent } from "./helpers/intent-predicates-commit.js";
@@ -81,32 +78,6 @@ describe("the node's §8.4 predicates over the follower's projections", () => {
       Buffer.alloc(28, 0xee),
     );
     expect(await s.verdict(absent)).toBe(false);
-  });
-
-  it("correction: wanted while the removed header is landed and the target is unattested and timed out", async () => {
-    const s = await open();
-    const deadline = Number(s.first.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS);
-    const correction = await s.record(
-      "correction",
-      `correction:${s.firstHash}:remove-last:${s.firstHash}`,
-      s.spend([s.head, s.spare(0)]),
-      Buffer.from(s.firstHash, "hex"),
-    );
-    expect(await s.verdict(correction, { slotToPosixMs: () => deadline })).toBe(
-      true,
-    );
-    expect(
-      await s.verdict(correction, { slotToPosixMs: () => deadline - 1 }),
-    ).toBe(false);
-    const gone = await s.record(
-      "correction",
-      `correction:${s.firstHash}:prune-descendant:${"ee".repeat(28)}`,
-      s.spend([s.spare(1)]),
-      Buffer.alloc(28, 0xee),
-    );
-    expect(await s.verdict(gone, { slotToPosixMs: () => deadline })).toBe(
-      false,
-    );
   });
 
   it("payout absorb/initialize: wanted while the event is listed and not retired", async () => {

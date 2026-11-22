@@ -130,6 +130,3 @@ export const contractDeploymentInfoPathOverride = (): string | undefined =>
  */
 export const realBlueprintPathOverride = (): string | undefined =>
   trimmedEnvironmentValue("MIDGARD_REAL_BLUEPRINT_PATH");
-
-export const attestationTimeoutJournalPathOverride = (): string | undefined =>
-  trimmedEnvironmentValue("MIDGARD_ATTESTATION_TIMEOUT_JOURNAL_PATH");

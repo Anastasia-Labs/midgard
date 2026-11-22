@@ -342,9 +342,6 @@ describe("Q38 tier-3 workflow action chains", () => {
           stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
         }),
       },
-      terminalFacts: async () => {
-        throw new Error("terminal state is outside this test");
-      },
     } as unknown as NetworkIdWorkflowAdapterConfig;
     const adapter = createNetworkIdWorkflowAdapter(config);
     const artifact = {

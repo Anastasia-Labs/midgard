@@ -9,7 +9,6 @@ import {
 } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { FraudProofWorkflowTerminal } from "../workflow/journal.js";
 import { type FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
 import type { FraudProofOwnThreads } from "../workflow/raw-l1-family-derivation.own-thread.js";
 import { type FraudProofAuthenticatedPublicationObserver } from "../workflow/raw-l1-publication-observation.js";
@@ -210,11 +209,6 @@ export const admitNetworkIdWorkflowArtifact = (
     throw new Error("network-id workflow artifact has an unknown direction");
   }
   return { direction: "accepted", prepared: preparedFromArtifact(value) };
-};
-
-export type NetworkIdWorkflowTerminalFacts = {
-  readonly economics: FraudProofWorkflowTerminal["economics"];
-  readonly observedAt: FraudProofWorkflowTerminal["observedAt"];
 };
 
 export interface NetworkIdRawL1ObservationPort {

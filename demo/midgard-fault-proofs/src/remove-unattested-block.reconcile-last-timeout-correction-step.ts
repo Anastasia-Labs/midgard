@@ -2,6 +2,7 @@ import {
   type CorrectionLockDatum,
   getStateQueueNodeFromStateQueueDatum,
   NO_DA_ATTESTATION,
+  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
 } from "@al-ft/midgard-sdk/core";
 import {
   DA_ATTESTATION_TIMEOUT_MS,
@@ -11,84 +12,21 @@ import { type Script, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { type ContractDeploymentInfo } from "./inspect-contracts.js";
-import {
-  headerHashOf,
-  outRefsOf,
-  replaceJournalStepStatus,
-  type TimeoutCorrectionJournal,
-  type TimeoutCorrectionStepReconciliation,
-  type TimeoutCorrectionTransactionStatus,
-  type TimeoutCorrectionTxKind,
-} from "./remove-unattested-block.parse-timeout-correction-journal.js";
 import { requireMatchingScriptHash } from "./runtime.js";
-import { type SignedWorkflowTransaction } from "./workflow/signed-transaction-reconciliation.js";
 
-/**
- * Reconcile the sole recoverable transaction intent against both its
- * provider-authenticated status and the freshly authenticated queue. A
- * confirmed transaction is not journal-confirmed until its exact spent
- * outrefs and removed header have disappeared from the canonical queue.
- */
-export const reconcileLastTimeoutCorrectionStep = (
-  journal: TimeoutCorrectionJournal,
-  queue: readonly StateQueueUTxO[],
-  transactionStatus: TimeoutCorrectionTransactionStatus,
-): TimeoutCorrectionStepReconciliation => {
-  const stepIndex = journal.steps.findIndex(
-    (step) => step.status === "prepared" || step.status === "submitted",
-  );
-  const lastStep = journal.steps[stepIndex];
-  if (
-    lastStep === undefined ||
-    (lastStep.status !== "prepared" && lastStep.status !== "submitted")
-  ) {
-    return { disposition: "none", journal };
-  }
-  if (
-    transactionStatus === "pending" ||
-    transactionStatus === "unknown" ||
-    transactionStatus === "not_found" ||
-    transactionStatus === "failed"
-  ) {
-    return { disposition: "pending", journal };
-  }
-  if (transactionStatus === "expired" || transactionStatus === "invalidated") {
-    return {
-      disposition: "superseded",
-      journal: replaceJournalStepStatus(journal, stepIndex, "retired"),
-    };
-  }
-  // Owner ruling (whichever lands wins): an attempt impossible at the tip no
-  // longer holds the correction. It is replaced at once by an attempt that
-  // shares one of its inputs, and adopted if a rollback lands it after all.
-  if (transactionStatus === "superseded") {
-    return {
-      disposition: "superseded",
-      journal: replaceJournalStepStatus(journal, stepIndex, "abandoned"),
-    };
-  }
-  if (!timeoutCorrectionEffectIsCanonical(lastStep, queue)) {
-    return { disposition: "pending", journal };
-  }
-  return {
-    disposition: "confirmed",
-    journal: replaceJournalStepStatus(journal, stepIndex, "confirmed"),
-  };
-};
+export type TimeoutCorrectionTxKind = "prune-descendant" | "remove-block";
 
-/** The exact spent outrefs and the removed header are gone from the queue. */
-export const timeoutCorrectionEffectIsCanonical = (
-  step: TimeoutCorrectionJournal["steps"][number],
-  queue: readonly StateQueueUTxO[],
-): boolean => {
-  const currentOutRefs = new Set(outRefsOf(queue));
-  return (
-    step.inputOutRefs.every((outRef) => !currentOutRefs.has(outRef)) &&
-    !queue.some(
-      (node, index) =>
-        index > 0 && headerHashOf(node) === step.removedHeaderHash,
-    )
+export const headerHashOf = (node: StateQueueUTxO): string => {
+  if (node.datum.key === "Empty") {
+    throw new Error("Confirmed-state root does not have a block header hash.");
+  }
+  const headerHash = node.assetName.slice(
+    STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length,
   );
+  if (node.datum.key.Key.key !== headerHash) {
+    throw new Error("State-queue node key does not match its NFT asset name.");
+  }
+  return headerHash;
 };
 
 export type TimeoutCorrectionPlan = {
@@ -96,7 +34,6 @@ export type TimeoutCorrectionPlan = {
   readonly predecessor: StateQueueUTxO;
   readonly target: StateQueueUTxO;
   readonly removed: StateQueueUTxO;
-  readonly inputOutRefs: readonly string[];
 };
 
 /** Locate the authenticated target without discarding its unaffected prefix. */
@@ -135,7 +72,6 @@ export const planNextTimeoutCorrection = (
       predecessor,
       target,
       removed: descendant,
-      inputOutRefs: outRefsOf([target, descendant]),
     };
   }
   if (target.datum.next !== "Empty")
@@ -145,7 +81,6 @@ export const planNextTimeoutCorrection = (
     predecessor,
     target,
     removed: target,
-    inputOutRefs: outRefsOf([predecessor, target]),
   };
 };
 
@@ -189,44 +124,6 @@ export const selectTimeoutCorrectionTarget = async (
   return waiting;
 };
 
-/** Reopen reverted effects without replacing their retained signed attempts. */
-export const reopenRolledBackTimeoutCorrectionSteps = (
-  journal: TimeoutCorrectionJournal,
-  queue: readonly StateQueueUTxO[],
-): TimeoutCorrectionJournal => {
-  const liveInputs = new Set(outRefsOf(queue));
-  const liveHeaders = new Set(queue.slice(1).map(headerHashOf));
-  let reopened = false;
-  const steps = journal.steps.map((step) => {
-    if (
-      (step.status !== "confirmed" && step.status !== "superseded") ||
-      (!liveHeaders.has(step.removedHeaderHash) &&
-        !step.inputOutRefs.some((input) => liveInputs.has(input)))
-    )
-      return step;
-    reopened = true;
-    return { ...step, status: "prepared" as const };
-  });
-  return reopened ? { ...journal, completed: false, steps } : journal;
-};
-
-/** A rollback reopens the objective; it does not retire previously signed attempts. */
-export const reconcileCompletedTimeoutCorrectionJournal = (
-  journal: TimeoutCorrectionJournal,
-  queue: readonly StateQueueUTxO[],
-): TimeoutCorrectionJournal | undefined => {
-  const reconciled = reopenRolledBackTimeoutCorrectionSteps(journal, queue);
-  if (!reconciled.completed) return reconciled;
-  if (
-    queue.some(
-      (node, index) =>
-        index > 0 && headerHashOf(node) === journal.targetHeaderHash,
-    )
-  )
-    return { ...reconciled, completed: false };
-  return queue.length === 1 ? reconciled : undefined;
-};
-
 export const hasCompetingCorrection = (
   lock: CorrectionLockDatum,
   target?: string,
@@ -234,23 +131,6 @@ export const hasCompetingCorrection = (
   lock !== "Idle" &&
   (lock.Locked.correction_identity !== "AttestationTimeout" ||
     (target !== undefined && lock.Locked.target_header_hash !== target));
-
-export const pendingTimeoutCorrection = (
-  journal?: TimeoutCorrectionJournal,
-): SubmitUnattestedTimeoutCorrectionResult => ({
-  status: "pending",
-  targetHeaderHash: journal?.targetHeaderHash ?? null,
-  deadlineMs: journal?.targetDeadlineMs ?? null,
-  pendingTxHash:
-    journal?.steps.find(
-      (step) => step.status === "prepared" || step.status === "submitted",
-    )?.txHash ?? null,
-  submittedTxHashes: journal?.steps.map((step) => step.txHash) ?? [],
-  removedHeaderHashes:
-    journal?.steps
-      .filter((step) => step.status === "confirmed")
-      .map((step) => step.removedHeaderHash) ?? [],
-});
 
 export const releaseTimeoutCorrectionLeaseBeforeYield = async (
   lease: { readonly release: () => Promise<void> } | undefined,
@@ -288,81 +168,10 @@ export const requireDeploymentScript = (
   return script;
 };
 
-/** An L1 point: a slot and its block hash (hex). */
-export type TimeoutCorrectionL1Point = Readonly<{ slot: number; hash: string }>;
-
-/**
- * What a recovery knows of one retained signed attempt. It is read, never
- * acted on: no recovery resubmits (the node's intent reconciler is the only
- * resubmitter).
- *
- * - `included`: on the chain, at `inclusion`.
- * - `pending`: it may still land, so it keeps holding the correction.
- * - `expired`, `invalidated`, `conflict`, `abandoned`: it cannot land on the
- *   chain at `canonicalPoint`. Only `final` makes that permanent.
- * - `unknown`: no answer now (the source is not ready); retried.
- */
-export type TimeoutCorrectionAttemptObservation = Readonly<{
-  status:
-    | "included"
-    | "pending"
-    | "expired"
-    | "invalidated"
-    | "conflict"
-    | "abandoned"
-    | "unknown";
-  /**
-   * Beyond every legal rollback (depth > k): an inclusion that stays, or a
-   * dead reason that can no longer be undone.
-   */
-  final: boolean;
-  /** The chain tip the observation was read at, when there is one. */
-  canonicalPoint: TimeoutCorrectionL1Point | null;
-  /** The block at depth k + 1 under `canonicalPoint`, when it is known. */
-  releaseFinalPoint: TimeoutCorrectionL1Point | null;
-  /**
-   * `included`: the block it landed in, its depth under `canonicalPoint` (1
-   * at the tip) and the level that depth has (plan §9).
-   */
-  inclusion?: Readonly<{
-    slot: number;
-    height: number;
-    depth: number;
-    level: "landed" | "safe" | "final";
-  }>;
-  /** `pending`: every input it spends is unspent on the chain now. */
-  inputsAvailable?: boolean;
-  reason: string;
-}>;
-
-/** The read-only source of attempt observations (see the observation). */
-export type TimeoutCorrectionRecovery = Readonly<{
-  observeAttempt(
-    input: SignedWorkflowTransaction,
-  ): Promise<TimeoutCorrectionAttemptObservation>;
-}>;
-
-/**
- * The journal transition an observation implies: included is confirmed once
- * the queue shows its effect, a final dead attempt is retired, and one dead
- * only at the tip is superseded (abandoned, so a replacement must share an
- * input with it and whichever lands wins).
- */
-export const timeoutCorrectionAttemptStatus = (
-  observed: TimeoutCorrectionAttemptObservation,
-): TimeoutCorrectionTransactionStatus => {
-  if (observed.status === "included") return "confirmed";
-  if (observed.status === "pending" || observed.status === "unknown")
-    return "pending";
-  if (!observed.final) return "superseded";
-  return observed.status === "expired" ? "expired" : "invalidated";
-};
-
 export type SubmitUnattestedTimeoutCorrectionResult = {
   readonly status: "empty" | "not-ready" | "pending" | "complete";
   readonly targetHeaderHash: string | null;
   readonly deadlineMs: string | null;
+  /** The step this run submitted and left in flight. */
   readonly pendingTxHash: string | null;
-  readonly submittedTxHashes: readonly string[];
-  readonly removedHeaderHashes: readonly string[];
 };

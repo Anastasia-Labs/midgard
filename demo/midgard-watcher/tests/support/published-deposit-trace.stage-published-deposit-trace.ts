@@ -1,9 +1,5 @@
 import { proofMaterialsAddressOfFundingAddress } from "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
-import {
-  createFileTimeoutCorrectionJournalStore,
-  submitUnattestedTimeoutCorrection,
-  type TimeoutCorrectionJournal,
-} from "@al-ft/midgard-fault-proofs/remove-unattested-block";
+import { submitUnattestedTimeoutCorrection } from "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
@@ -65,7 +61,6 @@ export const stagePublishedDepositTrace = async (
     onStage = () => {},
     resume,
     onCheckpoint = async () => {},
-    timeoutCorrectionJournalPath,
     finalityDepth,
     liveTail,
   }: PublishedDepositTraceOptions,
@@ -146,16 +141,6 @@ export const stagePublishedDepositTrace = async (
     }
   };
   const removeAbandonedHeaders = async () => {
-    let memory: TimeoutCorrectionJournal | undefined;
-    const journalStore =
-      timeoutCorrectionJournalPath === undefined
-        ? {
-            load: async () => memory,
-            save: async (journal: TimeoutCorrectionJournal) => {
-              memory = journal;
-            },
-          }
-        : createFileTimeoutCorrectionJournalStore(timeoutCorrectionJournalPath);
     for (;;) {
       const liveRoot = await Effect.runPromise(
         SDK.getLinkedListNodeViewFromUTxO(
@@ -174,7 +159,6 @@ export const stagePublishedDepositTrace = async (
           paymentKeyHash: operatorVkey,
           selectWallet: () => undefined,
         },
-        journalStore,
         awaitConfirmation: true,
         nowMs: () => chain.now(),
       });

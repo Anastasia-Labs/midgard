@@ -1,4 +1,3 @@
-import type { TimeoutCorrectionJournal } from "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Cause, Effect, Exit, FiberId, Ref, Runtime } from "effect";
@@ -6,11 +5,7 @@ import { UnknownException } from "effect/Cause";
 import { describe, expect, it } from "vitest";
 
 import { attestationTimeoutCorrectionStep } from "../src/fibers/attestation-timeout-correction.attestation-timeout-correction-action.js";
-import {
-  attestationTimeoutCorrectionReadinessBounds,
-  recordTimeoutCorrectionJournalProgress,
-  withTimeoutCorrectionProgress,
-} from "../src/fibers/attestation-timeout-correction.reconcile-state-queue-corrections.js";
+import { attestationTimeoutCorrectionReadinessBounds } from "../src/fibers/attestation-timeout-correction.reconcile-state-queue-corrections.js";
 import type { AttestationTimeoutCorrectionHealth } from "../src/services/globals.js";
 
 const unattestedHeader = { headerHash: "cd".repeat(32), deadlineMs: 1_000 };
@@ -18,7 +13,6 @@ const health = () =>
   Ref.unsafeMake<AttestationTimeoutCorrectionHealth>({
     lastProgressAtMs: 0,
     lastQueueReadAtMs: 0,
-    correctionProgress: null,
     lastFailureAtMs: 0,
     lastError: null,
     consecutiveFailures: 0,
@@ -107,96 +101,5 @@ describe("attestation-timeout correction step", () => {
         daAttestationTimeoutMs: SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS,
       }),
     );
-  });
-
-  describe("correction progress", () => {
-    const target = "ef".repeat(28);
-    const journal = (
-      targetHeaderHash: string,
-      statuses: readonly ("prepared" | "submitted" | "confirmed")[],
-    ): TimeoutCorrectionJournal => ({
-      version: 1,
-      targetHeaderHash,
-      targetDeadlineMs: "1000",
-      completed: false,
-      steps: statuses.map((status, index) => ({
-        kind: "prune-descendant",
-        removedHeaderHash: "34".repeat(28),
-        inputOutRefs: [],
-        txHash: index.toString(16).padStart(64, "0"),
-        signedCbor: "",
-        validFromSlot: "0",
-        validToSlot: "0",
-        status,
-      })),
-    });
-    const progressAfter = (
-      recorded: Ref.Ref<AttestationTimeoutCorrectionHealth>,
-      saved: TimeoutCorrectionJournal,
-      nowMs: number,
-    ) =>
-      Effect.runSync(
-        recordTimeoutCorrectionJournalProgress(recorded, saved, nowMs).pipe(
-          Effect.zipRight(Ref.get(recorded)),
-        ),
-      ).lastProgressAtMs;
-
-    it("credits a started correction and each confirmed removal, never a resubmission", () => {
-      const recorded = health();
-      expect(progressAfter(recorded, journal(target, ["prepared"]), 10)).toBe(
-        10,
-      );
-      // Resubmitting a removal that never lands is not progress.
-      expect(progressAfter(recorded, journal(target, ["submitted"]), 20)).toBe(
-        10,
-      );
-      expect(
-        progressAfter(recorded, journal(target, ["prepared", "prepared"]), 30),
-      ).toBe(10);
-      expect(progressAfter(recorded, journal(target, ["confirmed"]), 40)).toBe(
-        40,
-      );
-      expect(
-        progressAfter(
-          recorded,
-          journal(target, ["confirmed", "submitted"]),
-          50,
-        ),
-      ).toBe(40);
-      expect(
-        progressAfter(
-          recorded,
-          journal(target, ["confirmed", "confirmed"]),
-          60,
-        ),
-      ).toBe(60);
-      // A correction of another header starts afresh.
-      expect(
-        progressAfter(recorded, journal("12".repeat(28), ["prepared"]), 70),
-      ).toBe(70);
-    });
-
-    it("credits progress through the journal store the correction saves to", async () => {
-      const recorded = health();
-      const saved: TimeoutCorrectionJournal[] = [];
-      const store = withTimeoutCorrectionProgress(
-        {
-          load: async () => saved.at(-1),
-          save: async (next) => {
-            saved.push(next);
-          },
-        },
-        recorded,
-      );
-      await store.save(journal(target, ["confirmed"]));
-      expect(saved).toHaveLength(1);
-      expect(await store.load()).toBe(saved[0]);
-      const credited = Effect.runSync(Ref.get(recorded));
-      expect(credited.lastProgressAtMs).toBeGreaterThan(0);
-      expect(credited.correctionProgress).toEqual({
-        targetHeaderHash: target,
-        confirmedRemovals: 1,
-      });
-    });
   });
 });

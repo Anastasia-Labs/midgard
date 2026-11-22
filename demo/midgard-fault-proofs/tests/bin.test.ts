@@ -646,8 +646,6 @@ describe("fault-proof CLI argument parsing", () => {
           "remove-unattested-block",
           "--deployment-info",
           "deployment.json",
-          "--correction-journal",
-          "journal.json",
           "--midgard-node-url",
           "http://midgard-node.test",
         ]),

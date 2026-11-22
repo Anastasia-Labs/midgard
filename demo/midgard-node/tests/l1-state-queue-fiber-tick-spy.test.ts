@@ -27,15 +27,17 @@ import {
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect, Either } from "effect";
+import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { attestationTimeoutCorrectionAction } from "../src/fibers/attestation-timeout-correction.attestation-timeout-correction-action.js";
 import { fetchRetentionL1View } from "../src/fibers/retention-sweeper.js";
 import { NodeConfig } from "../src/services/config.make-config.js";
 import { Globals } from "../src/services/globals.globals.js";
 import type { IntentJournal } from "../src/services/intent-journal.js";
-import { landedStateQueueSnapshot } from "../src/services/landed-state-queue.js";
+import {
+  landedStateQueueSnapshot,
+  landedStateQueueUTxOs,
+} from "../src/services/landed-state-queue.js";
 import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
@@ -196,8 +198,6 @@ const run = <A, E>(
           Effect.provideService(Globals, globals),
           Effect.provideService(Lucid, { api: lucid } as never),
           Effect.provideService(MidgardContracts, contracts as never),
-          // No manifest: attestation-timeout correction stops at its first
-          // step past the queue read and the L1 slot.
           Effect.provideService(ContractDeploymentIdentity, {
             manifestId: undefined,
           } as never),
@@ -255,15 +255,14 @@ describe("the planner fibers' state-queue reads", () => {
           view.liveQueueHeaderHashes.map((h) => h.toString("hex")),
         ).toEqual([headerHash]);
 
-        // Attestation-timeout correction, up to the manifest check.
-        const correction = yield* Effect.either(
-          attestationTimeoutCorrectionAction(),
+        // Attestation-timeout correction.
+        const correctionQueue = yield* landedStateQueueUTxOs(
+          stateQueue,
+          "attestation-timeout correction",
         );
-        expect(Either.isLeft(correction)).toBe(true);
-        if (Either.isLeft(correction))
-          expect(String(correction.left)).toContain(
-            "requires the exact authenticated deployment manifest",
-          );
+        expect(
+          correctionQueue.some((node) => node.assetName.endsWith(headerHash)),
+        ).toBe(true);
 
         expect(touches).toEqual([]);
       }),

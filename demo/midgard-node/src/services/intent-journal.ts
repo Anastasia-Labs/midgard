@@ -2,14 +2,16 @@
  * The node's intent journal (plan §8.2, I1): every node L1 family journals
  * the exact signed bytes of a transaction in `l1_intents` before its first
  * submission, in the node database, through the follower's
- * `recordIntentIn`. Status is never written: it is derived from the
+ * `recordIntentIn`. The attestation-timeout correction is not a family: each
+ * tick reads the state queue and the correction lock, builds the step they
+ * call for and submits it without a journal row. Status is never written: it is derived from the
  * follower's facts (`deriveIntentStatusesIn`, or `deriveIntentStatusIn` for
  * one transaction), and S6 (the node follower's
  * intent reconciler, `l1-follower.intents.ts`) resubmits the journaled bytes
  * of live intents and never sends a dead one.
  *
  * - The submit seam (`submitSignedTxWithRecovery`) takes a `SubmissionIntent`
- *   and requires this service, so no node submission can skip it.
+ *   and requires this service, so no family's submission can skip it.
  * - S5 (§8.1): every journaled intent carries its family's plan, opened
  *   (`openPlan`) before the family's first L1 read. The record compares the
  *   plan's generation with the cursor in its own transaction: a rewind

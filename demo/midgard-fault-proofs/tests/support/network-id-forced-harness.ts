@@ -446,9 +446,6 @@ export const forcedHarness = ({
       isCurrentHead: async () => true,
     },
     rawL1: withoutRawL1 ? undefined : rawL1,
-    terminalFacts: async () => {
-      throw new Error("terminal state is outside this test");
-    },
   } as unknown as NetworkIdWorkflowAdapterConfig;
   const artifact =
     "artifact" in prepared

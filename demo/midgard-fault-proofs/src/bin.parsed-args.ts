@@ -64,7 +64,6 @@ export type ParsedArgs = {
   readonly badAddrTxWitIndex: string | undefined;
   readonly workflowRuntimeConfigPath: string | undefined;
   readonly deploymentFingerprint: string | undefined;
-  readonly correctionJournalPath: string | undefined;
 };
 
 const fraudCategoryUsage = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.join("|");
@@ -118,7 +117,7 @@ export const usage = `Usage:
   midgard-fault-proofs submit-invalid-signature-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> --witness-set-compact <invalid-signature-witness-set-compact.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-invalid-signature-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --addr-tx-wits-preimage <invalid-signature-addr-tx-wits-preimage.json> --native-tx-compact <native-tx-compact.json> --witness-set-compact <invalid-signature-witness-set-compact.json> --bad-addr-tx-wit-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <${fraudCategoryUsage}>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs remove-unattested-block --deployment-info <path> --correction-journal <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--no-await-confirmation] [wallet options]
+  midgard-fault-proofs remove-unattested-block --deployment-info <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--no-await-confirmation] [wallet options]
 `;
 
 export const parseFraudCategory = (

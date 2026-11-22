@@ -6,10 +6,7 @@ import { Effect, Either, Ref } from "effect";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { observeAndRecordAttestationTimeoutQueue } from "../src/fibers/attestation-timeout-correction.reconcile-state-queue-corrections.js";
-import {
-  observeAttestationTimeoutQueue,
-  timeoutCorrectionJournalNeedsRecovery,
-} from "../src/services/attestation-timeout-observation.js";
+import { observeAttestationTimeoutQueue } from "../src/services/attestation-timeout-observation.js";
 import type { AttestationTimeoutCorrectionHealth } from "../src/services/globals.js";
 import {
   resolveCommitAppendFenceEndTimeCapLocal,
@@ -336,7 +333,6 @@ it("records the tick's one queue classification for readiness, and returns a cla
   const health = Ref.unsafeMake<AttestationTimeoutCorrectionHealth>({
     lastProgressAtMs: 0,
     lastQueueReadAtMs: 0,
-    correctionProgress: null,
     lastFailureAtMs: 0,
     lastError: null,
     consecutiveFailures: 0,
@@ -402,7 +398,6 @@ it("judges the DA-attestation deadline at L1 now: a local clock 10 minutes fast 
   const health = Ref.unsafeMake<AttestationTimeoutCorrectionHealth>({
     lastProgressAtMs: 0,
     lastQueueReadAtMs: 0,
-    correctionProgress: null,
     lastFailureAtMs: 0,
     lastError: null,
     consecutiveFailures: 0,
@@ -427,33 +422,4 @@ it("judges the DA-attestation deadline at L1 now: a local clock 10 minutes fast 
   expect(Effect.runSync(Ref.get(health))).toMatchObject({
     lastQueueReadAtMs: readAtMs,
   });
-});
-
-it("dispatches retained attempt recovery after another actor removes the target, and reopens completed targets on rollback", async () => {
-  const { queue, tailHash } = await fixture(true);
-  const afterRemoval = queue.slice(0, -1);
-  expect(
-    await Effect.runPromise(
-      observeAttestationTimeoutQueue(afterRemoval, 9_000_000n, 120_000n),
-    ),
-  ).toEqual({ status: "queue-attested" });
-  expect(
-    timeoutCorrectionJournalNeedsRecovery(
-      { completed: false, targetHeaderHash: tailHash },
-      afterRemoval,
-    ),
-  ).toBe(true);
-  expect(
-    timeoutCorrectionJournalNeedsRecovery(
-      { completed: true, targetHeaderHash: tailHash },
-      afterRemoval,
-    ),
-  ).toBe(false);
-  expect(
-    timeoutCorrectionJournalNeedsRecovery(
-      { completed: true, targetHeaderHash: tailHash },
-      queue,
-    ),
-  ).toBe(true);
-  expect(timeoutCorrectionJournalNeedsRecovery(undefined, queue)).toBe(false);
 });

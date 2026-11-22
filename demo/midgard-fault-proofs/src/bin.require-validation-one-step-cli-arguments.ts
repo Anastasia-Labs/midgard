@@ -56,13 +56,9 @@ export const buildRemoveUnattestedBlockCliConfig = (args: ParsedArgs) => {
   if (args.deploymentInfoPath === undefined) {
     throw new Error(`Missing required --deployment-info <path>.\n${usage}`);
   }
-  if (args.correctionJournalPath === undefined) {
-    throw new Error(`Missing required --correction-journal <path>.\n${usage}`);
-  }
   refuseRemovalMidgardNodeUrl(args, "remove-unattested-block");
   return {
     deploymentInfoPath: args.deploymentInfoPath,
-    journalPath: args.correctionJournalPath,
     network: parseNetwork(args.network),
     provider: args.provider,
     blockfrostApiUrl: args.blockfrostApiUrl,

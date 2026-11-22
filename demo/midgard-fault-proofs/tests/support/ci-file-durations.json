@@ -514,7 +514,6 @@
     "tests/submit-init-emulator.test.ts": 5.8,
     "tests/submit-init.test.ts": 4,
     "tests/submit-input-no-idx-step-02.test.ts": 1,
-    "tests/superseded-attempt-read-schedule.test.ts": 1,
     "tests/support/emulator/catalogue-registration.test.ts": 4.2,
     "tests/transaction-output-non-canonical-certificate-reuse.test.ts": 3.6,
     "tests/transaction-output-non-canonical-datum-lifecycle.test.ts": 15,

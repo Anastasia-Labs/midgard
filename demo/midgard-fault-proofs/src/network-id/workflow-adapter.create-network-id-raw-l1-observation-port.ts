@@ -42,10 +42,7 @@ import type { VerifiedFraudProofReleaseEconomicsPolicy } from "../workflow/relea
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "../workflow/release-finality-policy.js";
 import type { NetworkIdContracts } from "./contracts.js";
 import type { NetworkIdCatalogueCategory } from "./submit-common.js";
-import {
-  type NetworkIdRawL1ObservationPort,
-  type NetworkIdWorkflowTerminalFacts,
-} from "./workflow-adapter.admit-network-id-forced-artifact.js";
+import { type NetworkIdRawL1ObservationPort } from "./workflow-adapter.admit-network-id-forced-artifact.js";
 
 export const createNetworkIdRawL1ObservationPort = ({
   authority,
@@ -269,12 +266,6 @@ export type NetworkIdWorkflowAdapterConfig = {
   };
   /** Strict production route; omit only in emulator/diagnostic construction. */
   readonly rawL1?: NetworkIdRawL1ObservationPort;
-  /** Candidate chain facts; the shared independent verifier reauthenticates them. */
-  readonly terminalFacts?: (input: {
-    readonly headerHash: string;
-    readonly removalTxHash: string;
-    readonly proofTokenOutRef: string;
-  }) => Promise<NetworkIdWorkflowTerminalFacts>;
 };
 
 export type NetworkIdRemovalConfig = NetworkIdWorkflowAdapterConfig["removal"];

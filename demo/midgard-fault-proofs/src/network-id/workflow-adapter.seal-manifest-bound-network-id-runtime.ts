@@ -32,7 +32,6 @@ export type ManifestBoundNetworkIdWorkflowConfig = Omit<
   | "catalogue"
   | "removal"
   | "rawL1"
-  | "terminalFacts"
   | "witnessReferenceScripts"
   | "fieldGrammar"
 > & {

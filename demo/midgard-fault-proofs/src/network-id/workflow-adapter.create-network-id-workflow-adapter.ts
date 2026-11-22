@@ -1,7 +1,7 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk/core";
 import { NetworkIdForcedScanDatum } from "@al-ft/midgard-sdk/fraud-proof";
-import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
@@ -96,13 +96,6 @@ export const createNetworkIdWorkflowAdapter = (
       readonly transaction: LocallyEvaluatedTransaction;
       readonly mutationLease?: StateQueueMutationLease;
     }
-  >();
-  // The removal this process last submitted per header: the legacy
-  // provider route reads its completion facts from it, since only the raw-L1
-  // route derives a removal from the chain. A restart forgets it.
-  const submittedRemovals = new Map<
-    string,
-    Readonly<{ txHash: string; removedStateQueueOutRef: string }>
   >();
   const category = CATEGORY;
 
@@ -288,12 +281,6 @@ export const createNetworkIdWorkflowAdapter = (
       return { kind: "pending", reason: rawStage.reason };
     const state =
       rawStage === undefined ? await live(prepared.headerHash) : undefined;
-    const proofUnit =
-      state?.proofUnit ??
-      toUnit(
-        config.contracts.fraudProof.policyId,
-        `${config.category.categoryId}${prepared.headerHash}`,
-      );
     const stateQueueOutRef =
       rawStage === undefined
         ? state?.stateQueue === undefined
@@ -326,54 +313,11 @@ export const createNetworkIdWorkflowAdapter = (
             "fraudulent header disappeared without the permanent Q35 proof token",
         };
       }
-      const removal = submittedRemovals.get(prepared.headerHash);
-      if (removal === undefined) {
-        return {
-          kind: "conflict",
-          reason:
-            "fraudulent header disappeared and the provider route cannot derive its removal",
-        };
-      }
-      const removalTxHash = removal.txHash;
-      if (state?.proof === undefined) {
-        return {
-          kind: "conflict",
-          reason: "raw L1 removal did not provide a derived terminal",
-        };
-      }
-      if (config.terminalFacts === undefined) {
-        return {
-          kind: "conflict",
-          reason:
-            "legacy network-id observation has no authenticated terminal-facts authority",
-        };
-      }
-      const facts = await config.terminalFacts({
-        headerHash: prepared.headerHash,
-        removalTxHash,
-        proofTokenOutRef: proofOutRef,
-      });
+      // Only the raw-L1 route derives a removal from the chain.
       return {
-        kind: "completed",
-        terminal: {
-          schemaVersion: "midgard-fraud-proof-workflow-terminal-v1",
-          category,
-          headerHash: prepared.headerHash,
-          proofToken: {
-            unit: proofUnit,
-            outRef: proofOutRef,
-            createdByTxHash: state.proof.txHash,
-            retainedAtFinalState: true,
-          },
-          correction: {
-            removalTxHash,
-            removedStateQueueOutRef: removal.removedStateQueueOutRef,
-            fraudulentHeaderAbsent: true,
-            referencedProofTokenOutRef: proofOutRef,
-          },
-          economics: facts.economics,
-          observedAt: facts.observedAt,
-        },
+        kind: "conflict",
+        reason:
+          "fraudulent header disappeared and the provider route cannot derive its removal",
       };
     }
     if (proofOutRef !== undefined) {
@@ -1098,16 +1042,6 @@ export const createNetworkIdWorkflowAdapter = (
           detail:
             "captured locally evaluated transaction is unavailable or differs from the preflight hash",
         };
-      }
-      if (actionKind(context.action) === "remove") {
-        const admitted = admitNetworkIdWorkflowArtifact(context.artifact);
-        submittedRemovals.set(admitted.prepared.headerHash, {
-          txHash: prepared.transaction.txHash,
-          removedStateQueueOutRef: requireString(
-            context.action.input.nextRemovalOutRef,
-            "removed state-queue out-ref",
-          ),
-        });
       }
       try {
         const txHash = await submitCapturedTransaction(prepared.transaction);
