@@ -152,6 +152,8 @@ const setup = async () => {
         eventWaitMs: 1n,
         maximumAdmissionRangeMs: 1n,
         maximumProtectionWaitMs: 0n,
+        ledgerRetentionMs: 900_000n,
+        maturityMs: 900_000n,
       }),
     });
     sources.push(port);
