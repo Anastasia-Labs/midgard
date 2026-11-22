@@ -30,14 +30,16 @@ import {
   validationTransactionCommitmentV1,
 } from "@al-ft/midgard-validation/validation-machine";
 import { CML, Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import {
   encodeEventToStepValueCbor,
   encodeTransactionRootValue,
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
+  isBlockReplayFault,
 } from "../../src/block-replay.js";
+import type { Ledger } from "../../src/ledger-store/index.js";
 import { forcedVerdictForRejection } from "../../src/workflow/forced-rejection-reason.js";
 
 export type LedgerEntry = Readonly<{ outRef: Buffer; output: Buffer }>;
@@ -73,6 +75,10 @@ export type FixtureEvent =
       readonly references?: readonly Buffer[];
       /** Lovelace of the one output (default: the spent inputs' total). */
       readonly lovelace?: bigint;
+      /** A transaction built elsewhere (canonical bytes for the event's
+       * phase), carried in place of the fixture's own; `spend` and
+       * `references` must name its inputs. */
+      readonly built?: { readonly txId: Buffer; readonly cbor: Buffer };
     }
   | {
       readonly phase: "Deposit";
@@ -83,6 +89,7 @@ export type FixtureEvent =
 const transactionOf = (
   event: Extract<FixtureEvent, { spend: readonly Buffer[] }>,
 ) => {
+  if (event.built !== undefined) return event.built;
   const tx = makeNativeTx({
     // Input sets are canonical in ascending key order.
     spendInputs: [...event.spend].sort(Buffer.compare),
@@ -309,6 +316,29 @@ export const fixtureBlock = async (
       verifyForcedSource: () => Effect.void,
     },
   };
+};
+
+/** `ledger`, recording every out-ref read from it or from a ledger applied
+ * over it, and refusing to list its entries. */
+export const recordingLedger = (ledger: Ledger, reads: string[]): Ledger => ({
+  root: ledger.root,
+  read: (outRefs) => {
+    for (const outRef of outRefs) reads.push(outRef.toString("hex"));
+    return ledger.read(outRefs);
+  },
+  apply: async (mutations) =>
+    recordingLedger(await ledger.apply(mutations), reads),
+  entries: () => {
+    throw new Error("the replay listed the whole ledger");
+  },
+});
+
+/** The block fault's message of a failed replay; any other failure printed
+ * whole; `undefined` when the replay succeeded. */
+export const blockFaultOf = (exit: Exit.Exit<unknown, unknown>) => {
+  if (Exit.isSuccess(exit)) return undefined;
+  const fault = [...Cause.defects(exit.cause)].find(isBlockReplayFault);
+  return fault === undefined ? Cause.pretty(exit.cause) : fault.message;
 };
 
 /** The replay settings every fixture block is built for. */

@@ -10,17 +10,14 @@ import { outRefFromByte } from "@al-ft/midgard-validation/tests/validation-fixtu
 import { Cause, Effect, Exit } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import {
-  isBlockReplayFault,
-  isReplayLocalFault,
-  replayBlockEvents,
-} from "../src/block-replay.js";
+import { isReplayLocalFault, replayBlockEvents } from "../src/block-replay.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
   type Ledger,
 } from "../src/ledger-store/index.js";
 import {
+  blockFaultOf as faultOf,
   FIXTURE_REPLAY_SETTINGS,
   fixtureBlock,
   type FixtureEvent,
@@ -28,6 +25,7 @@ import {
   fundedEntry,
   type LedgerEntry,
   producedOutRef,
+  recordingLedger,
 } from "./support/block-replay-block.js";
 
 beforeAll(() => ledgerEd25519SignatureReady());
@@ -39,20 +37,6 @@ const parent = Array.from({ length: 8 }, (_, index) =>
   fundedEntry(0x21 + index),
 );
 const p = (index: number) => parent[index]!.outRef;
-
-/** A ledger that records every out-ref read from it or from a ledger
- * applied over it, and refuses to list its entries. */
-const recording = (ledger: Ledger, reads: string[]): Ledger => ({
-  root: ledger.root,
-  read: (outRefs) => {
-    for (const outRef of outRefs) reads.push(outRef.toString("hex"));
-    return ledger.read(outRefs);
-  },
-  apply: async (mutations) => recording(await ledger.apply(mutations), reads),
-  entries: () => {
-    throw new Error("the replay listed the whole ledger");
-  },
-});
 
 const admitted = (entries: readonly LedgerEntry[], root: string) =>
   createLedgerStore(createMemoryLedgerStorage()).admit(entries, root);
@@ -90,7 +74,9 @@ const replay = async (events: readonly FixtureEvent[], reads?: string[]) => {
       header: block.payload.block_body.header,
       payload: block.payload,
       parent:
-        reads === undefined ? parentLedger : recording(parentLedger, reads),
+        reads === undefined
+          ? parentLedger
+          : recordingLedger(parentLedger, reads),
       ...FIXTURE_REPLAY_SETTINGS,
       ...block.material,
       verifyForcedSource: ({ rejection }) =>
@@ -160,12 +146,6 @@ const EVERY_KIND_ROOTS = [
 
 const hex = (outRef: Buffer) => outRef.toString("hex");
 const funded = fixtureOutput().toString("hex");
-
-const faultOf = (exit: Exit.Exit<unknown, unknown>) => {
-  if (Exit.isSuccess(exit)) return undefined;
-  const fault = [...Cause.defects(exit.cause)].find(isBlockReplayFault);
-  return fault === undefined ? Cause.pretty(exit.cause) : fault.message;
-};
 
 describe("the block replay over a parent ledger", () => {
   it("reads only the out-refs the block's events name and never lists the ledger", async () => {

@@ -235,6 +235,8 @@ export const normalFixture = async (
     payload: bound,
     sourceKey,
     transactionId: tx.txId.toString("hex"),
+    /** The one entry the block's parent ledger holds. */
+    spentEntry: { outRef: spent, output: Buffer.from(output) },
     imported: (payload: SDKDa.DaPayload = bound) =>
       verdict(payload, {
         parentUtxosRoot: prior,
