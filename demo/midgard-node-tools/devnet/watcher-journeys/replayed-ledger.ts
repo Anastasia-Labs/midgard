@@ -120,23 +120,25 @@ export const openJourneyReplayedLedger = async (input: {
     minimumCheckpointDepth,
     observationAuthority: protocolAuthority,
   });
-  // The deployment's replayed ledgers, as the watcher keeps them.
-  mkdirSync(input.checkpointDirectory, { recursive: true, mode: 0o700 });
-  const storage = openSqliteLedgerStorage(
-    join(
-      input.checkpointDirectory,
-      `replayed-ledger-${deploymentIdentity.manifestId}.sqlite`,
-    ),
-  );
-  const keeper = createWatcherReplayedLedger({
-    follower: source,
-    l1SlotConfig: slotConfig,
-    store: createLedgerStore(storage),
-    availabilityAuthority:
-      watcherReplayAvailabilityAuthority(deploymentIdentity),
-  });
+  let storage: ReturnType<typeof openSqliteLedgerStorage> | undefined;
+  let keeper: ReturnType<typeof createWatcherReplayedLedger>;
   let da: Awaited<ReturnType<typeof createWatcherRetainedDaRuntime>>;
   try {
+    // The deployment's replayed ledgers, as the watcher keeps them.
+    mkdirSync(input.checkpointDirectory, { recursive: true, mode: 0o700 });
+    storage = openSqliteLedgerStorage(
+      join(
+        input.checkpointDirectory,
+        `replayed-ledger-${deploymentIdentity.manifestId}.sqlite`,
+      ),
+    );
+    keeper = createWatcherReplayedLedger({
+      follower: source,
+      l1SlotConfig: slotConfig,
+      store: createLedgerStore(storage),
+      availabilityAuthority:
+        watcherReplayAvailabilityAuthority(deploymentIdentity),
+    });
     da = await createWatcherRetainedDaRuntime({
       watcherConfig: input.watcherConfig,
       deploymentIdentity,
@@ -144,7 +146,7 @@ export const openJourneyReplayedLedger = async (input: {
   } catch (error) {
     source.close();
     userEvents.close();
-    storage.close();
+    storage?.close();
     await follower.close();
     throw error;
   }
