@@ -7,6 +7,7 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
 } from "@al-ft/midgard-core/codec";
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
 import * as SDK from "@al-ft/midgard-sdk/users";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
@@ -351,7 +352,9 @@ export const stackLedgerOwnerFunding = async (
   const { contracts, chain, references, publisherLucid, operatorLucid } =
     context.deployment;
   const owner = context.layout.wallets.ledgerOwner;
-  const fingerprint = context.deployment.manifest.manifestId;
+  const fingerprint = deploymentManifestHubOraclePolicyId(
+    context.deployment.manifest,
+  );
   const pendingPath = join(
     context.runDirectory,
     "work/journeys",
@@ -401,9 +404,9 @@ export const stackLedgerOwnerFunding = async (
     readPendingDeposit: async () => {
       if (!existsSync(pendingPath)) return undefined;
       const pending = await readJourneyArtifact<
-        Partial<StackLedgerOwnerDeposit> & { deploymentFingerprint?: string }
+        Partial<StackLedgerOwnerDeposit> & { hubOraclePolicyId?: string }
       >(pendingPath);
-      if (pending.deploymentFingerprint !== fingerprint)
+      if (pending.hubOraclePolicyId !== fingerprint)
         throw new Error(
           "The ledger owner's pending deposit belongs to a different deployment",
         );
@@ -462,7 +465,7 @@ export const stackLedgerOwnerFunding = async (
         submit: async () => {
           onStage("ledger owner deposit");
           await writeJourneyArtifact(pendingPath, {
-            deploymentFingerprint: fingerprint,
+            hubOraclePolicyId: fingerprint,
             ...pending,
           });
           await signed.submit();

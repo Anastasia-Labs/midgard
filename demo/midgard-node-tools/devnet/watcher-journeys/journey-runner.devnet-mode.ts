@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { appendFile, copyFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   readWatcherFaultDecisionEvidence,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -51,9 +52,12 @@ export const devnetJourneyMode = (session: JourneySession): JourneyRunMode => {
       const headPath = join(context.runDirectory, "work/journeys/head.json");
       if (!session.watcherStarted() && existsSync(headPath)) {
         const head = await readJourneyArtifact<{
-          deploymentFingerprint: string;
+          hubOraclePolicyId: string;
         }>(headPath);
-        if (head.deploymentFingerprint !== deployment.manifest.manifestId)
+        if (
+          head.hubOraclePolicyId !==
+          deploymentManifestHubOraclePolicyId(deployment.manifest)
+        )
           throw new Error(
             "Watcher session readiness head belongs to a different deployment",
           );
@@ -155,7 +159,9 @@ export const devnetJourneyMode = (session: JourneySession): JourneyRunMode => {
       )
         ? readWatcherFaultDecisionEvidence({
             directory: config.decisionJournalDirectory,
-            deploymentFingerprint: deployment.manifest.manifestId,
+            hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+              deployment.manifest,
+            ),
             launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
           }).map((decision) => ({ decision }))
         : [];

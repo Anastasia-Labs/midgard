@@ -5,6 +5,7 @@ import {
   E2E_STATE_CORRECTION_RECOVERY_OBSERVATION_SCHEMA_VERSION,
   exactKeys,
   exactString,
+  lowerHex,
   nonNegativeInteger,
   record,
   type RecoveryObservation,
@@ -143,7 +144,7 @@ export const parseAuthenticatedL1Observation = (
       "schemaVersion",
       "runId",
       "network",
-      "manifestId",
+      "hubOraclePolicyId",
       "txHash",
       "includedAt",
       "observedAtTip",
@@ -176,7 +177,11 @@ export const parseAuthenticatedL1Observation = (
     ),
     runId: canonicalString(candidate.runId, `${field}.runId`),
     network: exactString(candidate.network, "Preprod", `${field}.network`),
-    manifestId: sha256Hex(candidate.manifestId, `${field}.manifestId`),
+    hubOraclePolicyId: lowerHex(
+      candidate.hubOraclePolicyId,
+      28,
+      `${field}.hubOraclePolicyId`,
+    ),
     txHash: sha256Hex(candidate.txHash, `${field}.txHash`),
     includedAt: parseChainPoint(candidate.includedAt, `${field}.includedAt`),
     observedAtTip: parseObservedChainPoint(
@@ -227,7 +232,7 @@ export const parseRecoveryObservation = (
     [
       "schemaVersion",
       "runId",
-      "manifestId",
+      "hubOraclePolicyId",
       "id",
       "beforeJournalSha256",
       "afterJournalSha256",
@@ -248,7 +253,11 @@ export const parseRecoveryObservation = (
       `${field}.schemaVersion`,
     ),
     runId: canonicalString(candidate.runId, `${field}.runId`),
-    manifestId: sha256Hex(candidate.manifestId, `${field}.manifestId`),
+    hubOraclePolicyId: lowerHex(
+      candidate.hubOraclePolicyId,
+      28,
+      `${field}.hubOraclePolicyId`,
+    ),
     id: canonicalString(candidate.id, `${field}.id`),
     beforeJournalSha256: sha256Hex(
       candidate.beforeJournalSha256,

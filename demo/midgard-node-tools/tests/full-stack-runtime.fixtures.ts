@@ -12,11 +12,11 @@ import {
   stackFixture,
 } from "./full-stack-fixtures.js";
 
-export const manifestId = "a".repeat(64);
+export const hubOraclePolicyId = "a".repeat(56);
 export const committeeReady = (signerIndex: number) => ({
   ready: true,
   deployment: {
-    configuredFingerprint: manifestId,
+    hubOraclePolicyId,
     storeMatchesConfigured: true,
   },
   peer: { signerIndex, localPeerId: `peer-${signerIndex}` },
@@ -104,7 +104,7 @@ export async function stack() {
         liveness: "live",
         readiness: "ready",
         readinessReasons: [],
-        deploymentFingerprint: manifestId,
+        hubOraclePolicyId,
         launchScope: { complete: true },
       },
     };
@@ -132,12 +132,14 @@ export async function stack() {
   await mkdir(join(directory, "deploymentInfo"));
   await writeFile(
     join(directory, "deploymentInfo/contract-deployment-info.json"),
-    JSON.stringify({ manifestId }),
+    JSON.stringify({
+      contracts: { hubOracleMint: { scriptHash: hubOraclePolicyId } },
+    }),
   );
   await writeFile(
     join(directory, "run/services/committee-0.json"),
     JSON.stringify({
-      deployment: { fingerprint: manifestId },
+      deployment: { fingerprint: hubOraclePolicyId },
       da_committee: { members: [{ signer_index: 0, peer_id: "peer-0" }] },
     }),
   );

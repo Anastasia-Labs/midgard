@@ -114,14 +114,14 @@ const file = (output: string, name: keyof typeof SIGNED_RELEASE_FILES) =>
   join(output, SIGNED_RELEASE_FILES[name]);
 
 /** The environment an operator gives public listen for a signed release. */
-const publicListenEnv = (output: string, manifestId: string) => ({
+const publicListenEnv = (output: string, hubOraclePolicyId: string) => ({
   MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: file(output, "authority"),
   MIDGARD_PUBLIC_RELEASE_TRUST_ROOTS_FILE: file(output, "trustRoots"),
   MIDGARD_PUBLIC_RELEASE_PROVENANCE_FILE: file(output, "provenance"),
   MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE: file(output, "manifest"),
   MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE: file(output, "parameterRegistry"),
   MIDGARD_BLUEPRINT_CLASSIFICATION_FILE: file(output, "classification"),
-  MIDGARD_PUBLIC_MANIFEST_ID: manifestId,
+  MIDGARD_PUBLIC_HUB_ORACLE_POLICY_ID: hubOraclePolicyId,
   MIDGARD_PUBLIC_RELEASE_REVISION: SOURCE_REVISION,
   MIDGARD_PUBLIC_NODE_IMAGE: ROLE_IMAGES.node,
   MIDGARD_PUBLIC_POSTGRES_IMAGE: ROLE_IMAGES.postgres,
@@ -147,7 +147,7 @@ describe("sign-deployment-release for a public profile", () => {
   it("writes a release that public listen authenticates, and refuses a changed identity, classification or trust root", async () => {
     expect(fixture.manifest.deploymentProfile.name).toBe("preprod-public");
     const { output, result } = await sign("accepted", provenance());
-    const env = publicListenEnv(output, result.manifestId);
+    const env = publicListenEnv(output, result.hubOraclePolicyId);
     expect(() => authenticatePublicHttpRelease(env)).not.toThrow();
 
     expect(() =>

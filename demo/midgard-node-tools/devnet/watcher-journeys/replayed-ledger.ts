@@ -93,7 +93,7 @@ export const openJourneyReplayedLedger = async (input: {
     },
   });
   const identity = {
-    deploymentManifestId: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     blueprintHash: deploymentIdentity.blueprintHash,
     network: deploymentIdentity.network,
   };
@@ -129,7 +129,7 @@ export const openJourneyReplayedLedger = async (input: {
     storage = openSqliteLedgerStorage(
       join(
         input.ledgerStoreDirectory,
-        `replayed-ledger-${deploymentIdentity.manifestId}.sqlite`,
+        `replayed-ledger-${deploymentIdentity.hubOraclePolicyId}.sqlite`,
       ),
     );
     keeper = createWatcherReplayedLedger({

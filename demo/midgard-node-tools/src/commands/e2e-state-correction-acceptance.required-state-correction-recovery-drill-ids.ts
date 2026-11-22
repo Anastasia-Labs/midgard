@@ -36,7 +36,7 @@ export const REQUIRED_STATE_CORRECTION_GATE_LABELS = [
 ] as const;
 
 type DeploymentBinding = {
-  readonly manifestId: string;
+  readonly hubOraclePolicyId: string;
   readonly blueprintSha256: string;
   readonly catalogueRoot: string;
   readonly parametersSha256: string;
@@ -135,6 +135,8 @@ export type E2EStateCorrectionAcceptance = {
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 
+const POLICY_ID_PATTERN = /^[0-9a-f]{56}$/u;
+
 const LOVELACE_PATTERN = /^(?:0|[1-9][0-9]*)$/u;
 
 export const record = (
@@ -194,6 +196,14 @@ export const sha256 = (value: unknown, field: string): string => {
   return parsed;
 };
 
+const policyId = (value: unknown, field: string): string => {
+  const parsed = string(value, field);
+  if (!POLICY_ID_PATTERN.test(parsed)) {
+    throw new Error(`${field} must be a lowercase 28-byte policy id`);
+  }
+  return parsed;
+};
+
 export const positiveLovelace = (value: unknown, field: string): string => {
   const parsed = string(value, field);
   if (!LOVELACE_PATTERN.test(parsed) || BigInt(parsed) <= 0n) {
@@ -236,11 +246,19 @@ export const parseDeployment = (value: unknown): DeploymentBinding => {
   const candidate = record(value, "state-correction deployment");
   exactKeys(
     candidate,
-    ["manifestId", "blueprintSha256", "catalogueRoot", "parametersSha256"],
+    [
+      "hubOraclePolicyId",
+      "blueprintSha256",
+      "catalogueRoot",
+      "parametersSha256",
+    ],
     "state-correction deployment",
   );
   return {
-    manifestId: sha256(candidate.manifestId, "deployment.manifestId"),
+    hubOraclePolicyId: policyId(
+      candidate.hubOraclePolicyId,
+      "deployment.hubOraclePolicyId",
+    ),
     blueprintSha256: sha256(
       candidate.blueprintSha256,
       "deployment.blueprintSha256",

@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { submitRemoveFraudulentBlock } from "@al-ft/midgard-fault-proofs/remove-fraudulent-block";
 import { resolveProverSigner } from "@al-ft/midgard-fault-proofs/runtime";
@@ -93,7 +94,9 @@ it.skipIf(runDirectory === undefined || !selected)(
               "work/removal-preflight-latest-evaluation.json",
             ),
             {
-              deploymentFingerprint: context.deployment.manifest.manifestId,
+              hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+                context.deployment.manifest,
+              ),
               captured,
               signed: false,
               submitted: false,

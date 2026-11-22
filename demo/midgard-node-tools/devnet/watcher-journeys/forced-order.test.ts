@@ -82,7 +82,9 @@ it.each([false, true])(
           awaitTx: (hash: string) => emulator.awaitTx(hash),
         },
         deployment: {
-          manifest: { manifestId: "44".repeat(32) },
+          manifest: {
+            contracts: { hubOracleMint: { scriptHash: "44".repeat(28) } },
+          },
           operatorLucid: lucid,
           contracts: { txOrder: { spendingScriptAddress: account.address } },
           references: new Map(

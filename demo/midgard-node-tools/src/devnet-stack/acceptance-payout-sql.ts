@@ -24,13 +24,13 @@ export type AcceptanceSettlementSnapshot = {
 export const readAcceptanceSettlements = async (
   run: RunEnv,
   scope: AcceptanceNativePayoutScope,
-  deploymentId: string,
+  hubOraclePolicyId: string,
   eventIds: readonly string[],
   maxRows: number,
   maxTransactionBytes: number,
 ): Promise<AcceptanceSettlementSnapshot> => {
   requireAcceptance(
-    /^[0-9a-f]{64}$/u.test(deploymentId) &&
+    /^[0-9a-f]{56}$/u.test(hubOraclePolicyId) &&
       eventIds.length === 4 &&
       new Set(eventIds).size === 4 &&
       eventIds.every((id) => /^[0-9a-f]+$/u.test(id)),
@@ -106,7 +106,7 @@ export const readAcceptanceSettlements = async (
       const foreign = await read<
         { other: boolean }[]
       >`SELECT EXISTS (SELECT 1 FROM settlement_jobs
-        WHERE deployment_id <> ${deploymentId}) AS other`;
+        WHERE hub_oracle_policy_id <> ${hubOraclePolicyId}) AS other`;
       scope.assertCurrent();
       requireAcceptance(
         foreign.length === 1 && foreign[0]!.other === false,
@@ -119,8 +119,8 @@ export const readAcceptanceSettlements = async (
           THEN a.signed_cbor ELSE NULL END AS signed_cbor,
         CASE WHEN cardinality(a.required_outputs) <= ${maxTransactionBytes}
           THEN array_to_json(a.required_outputs) ELSE NULL END AS required_outputs
-        FROM settlement_attempts a JOIN settlement_jobs j USING (deployment_id, kind, event_id)
-        WHERE a.deployment_id = ${deploymentId} AND a.kind = 'withdrawal'
+        FROM settlement_attempts a JOIN settlement_jobs j USING (hub_oracle_policy_id, kind, event_id)
+        WHERE a.hub_oracle_policy_id = ${hubOraclePolicyId} AND a.kind = 'withdrawal'
         AND a.status <> 'expired' AND j.phase = 'complete' AND a.event_id IN ${read(eventIds)}
         ORDER BY a.event_id, a.tx_hash LIMIT ${maxRows + 1}`;
       scope.assertCurrent();

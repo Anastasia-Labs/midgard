@@ -145,7 +145,7 @@ export const verifyJourneyWorkflowBindings = async (input: {
       startedAt,
       finishedAt: new Date().toISOString(),
       durationMs: performance.now() - started,
-      deploymentFingerprint: authority.deploymentIdentity.manifestId,
+      hubOraclePolicyId: authority.deploymentIdentity.hubOraclePolicyId,
       configurationFiles,
       sourceIdentity: sources,
       installedCategories: application.installedCategories,
@@ -177,14 +177,14 @@ export const verifyJourneyWorkflowBindings = async (input: {
       try {
         const readiness = await application.assertStartupReady({
           category,
-          deploymentFingerprint: authority.deploymentIdentity.manifestId,
+          hubOraclePolicyId: authority.deploymentIdentity.hubOraclePolicyId,
           headerHash: WATCHER_STARTUP_READINESS_HEADER_HASH,
           runtimeConfigPath: input.config.watcherRuntimeConfigPath,
         });
         assert.equal(readiness.category, category);
         assert.equal(
-          readiness.deploymentFingerprint,
-          authority.deploymentIdentity.manifestId,
+          readiness.hubOraclePolicyId,
+          authority.deploymentIdentity.hubOraclePolicyId,
         );
         receipts.push({
           category,

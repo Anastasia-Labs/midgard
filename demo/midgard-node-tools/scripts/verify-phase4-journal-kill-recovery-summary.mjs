@@ -572,7 +572,7 @@ const validatePhasRegistrationProof = (reasons, proof, isolation) => {
     "registered",
     "cardanoImage",
     "networkMagic",
-    "manifestId",
+    "hubOraclePolicyId",
     "registrationTxHash",
     "rewardAddress",
     "rewardAddressBase16",
@@ -594,7 +594,7 @@ const validatePhasRegistrationProof = (reasons, proof, isolation) => {
   );
   check(
     reasons,
-    HASH_32.test(proof.manifestId) &&
+    /^[a-f0-9]{56}$/u.test(proof.hubOraclePolicyId) &&
       HASH_32.test(proof.registrationTxHash) &&
       /^[a-f0-9]{56}$/u.test(proof.scriptHash) &&
       /^stake_test1[0-9a-z]+$/u.test(proof.rewardAddress) &&

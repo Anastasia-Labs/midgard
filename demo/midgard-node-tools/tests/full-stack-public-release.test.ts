@@ -2,7 +2,10 @@ import { generateKeyPairSync } from "node:crypto";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  computeDeploymentManifestJsonDigest,
+  deploymentManifestHubOraclePolicyId,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -47,9 +50,11 @@ describe("public-release step", () => {
       status: "retry",
     });
     const signed = (await stack.release.execute(undefined)) as {
-      manifestId: string;
+      hubOraclePolicyId: string;
     };
-    expect(signed.manifestId).toBe(fixture.manifest.manifestId);
+    expect(signed.hubOraclePolicyId).toBe(
+      deploymentManifestHubOraclePolicyId(fixture.manifest),
+    );
     expect((await readdir(stack.releaseDirectory)).sort()).toEqual(
       Object.values(SIGNED_RELEASE_FILES).sort(),
     );
@@ -121,7 +126,7 @@ describe("public-release step", () => {
     const { evidence, ...rest } = stack.provenance;
     await stack.writeProvenance({ evidence, ...rest });
     await expect(stack.release.execute(undefined)).resolves.toMatchObject({
-      manifestId: fixture.manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(fixture.manifest),
     });
     expect(await readFile(path, "utf8")).toBe(before);
     expect(
@@ -179,7 +184,7 @@ describe("public-release step", () => {
     await stack.writeProvenance(provenance);
     await signOutOfBand(stack, provenance);
     await expect(stack.release.execute(undefined)).resolves.toMatchObject({
-      manifestId: fixture.manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(fixture.manifest),
     });
     await expect(stack.release.reconcile(undefined)).resolves.toMatchObject({
       status: "complete",
@@ -267,7 +272,7 @@ describe("public-release step", () => {
     expect(await exists(stack.releaseDirectory)).toBe(false);
     await withDigest(computeDeploymentManifestJsonDigest(fixture.retained));
     await expect(stack.release.execute(undefined)).resolves.toMatchObject({
-      manifestId: fixture.manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(fixture.manifest),
     });
   });
 

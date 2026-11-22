@@ -80,7 +80,7 @@ export async function journey() {
     return {
       headerHash,
       sha256: "5a".repeat(32),
-      deploymentId: "ab".repeat(32),
+      hubOraclePolicyId: "ab".repeat(28),
     };
   };
   const steps = journeySteps(processes, ledger, verifyDa);
@@ -122,8 +122,10 @@ export async function journey() {
       await writeFile(
         path,
         JSON.stringify({
-          manifestId: "ab".repeat(32),
-          contracts: { payoutMint: { scriptHash: "cd".repeat(28) } },
+          contracts: {
+            hubOracleMint: { scriptHash: "ab".repeat(28) },
+            payoutMint: { scriptHash: "cd".repeat(28) },
+          },
         }),
       );
     },
@@ -231,7 +233,7 @@ export const completedWithdrawal = async (
     attempts: null,
     payoutToken: payoutToken(conclusion),
   };
-  const manifestId = "ab".repeat(32);
+  const hubOraclePolicyId = "ab".repeat(28);
   const operationsEndpoint = "http://127.0.0.1:9464";
   await writeFile(
     runtimeConfigurationPath(processes),
@@ -246,7 +248,7 @@ export const completedWithdrawal = async (
   await writeFile(
     join(servicesDirectory(processes), "committee-0.json"),
     JSON.stringify({
-      deployment: { fingerprint: manifestId },
+      deployment: { fingerprint: hubOraclePolicyId },
       da_committee: {
         members: config.da.members.map((_, index) => ({
           signer_index: index,
@@ -266,7 +268,7 @@ export const completedWithdrawal = async (
         liveness: "live",
         readiness: "ready",
         readinessReasons: [],
-        deploymentFingerprint: manifestId,
+        hubOraclePolicyId,
         launchScope: { complete: true },
       },
     ],
@@ -277,7 +279,7 @@ export const completedWithdrawal = async (
           {
             ready: true,
             deployment: {
-              configuredFingerprint: manifestId,
+              hubOraclePolicyId,
               storeMatchesConfigured: true,
             },
             peer: { signerIndex: index, localPeerId: `peer-${index}` },

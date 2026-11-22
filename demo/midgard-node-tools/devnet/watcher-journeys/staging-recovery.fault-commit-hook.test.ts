@@ -108,7 +108,7 @@ const openStage = async () => {
     },
   } as unknown as JourneyBlockActor;
   const { commitTxHash: _, ...draft } = {
-    deploymentFingerprint: "ef".repeat(32),
+    hubOraclePolicyId: "ef".repeat(28),
     predecessor,
     current,
     commitTxHash,
@@ -127,7 +127,9 @@ const openStage = async () => {
       getUtxosByOutRef: async () => [],
     },
     deployment: {
-      manifest: { manifestId: draft.deploymentFingerprint },
+      manifest: {
+        contracts: { hubOracleMint: { scriptHash: draft.hubOraclePolicyId } },
+      },
       operatorLucid: lucid,
       publisherLucid,
       chain: {

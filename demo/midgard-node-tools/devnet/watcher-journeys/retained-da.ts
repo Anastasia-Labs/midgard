@@ -23,11 +23,11 @@ import { PostgresPublicRetainedDaStore } from "da-committee-node/store/public-re
 export const startJourneyRetainedDa = async ({
   runDirectory,
   runEnv,
-  deploymentFingerprint,
+  hubOraclePolicyId,
 }: {
   runDirectory: string;
   runEnv: Readonly<Record<string, string>>;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
 }) => {
   const database = runEnv.MIDGARD_PHASE4_POSTGRES_DATABASE!;
   const username = runEnv.MIDGARD_PHASE4_POSTGRES_USER!;
@@ -94,7 +94,7 @@ export const startJourneyRetainedDa = async ({
         flag: "wx",
       });
     const listener = new PublicRetainedDaListener({
-      deploymentFingerprint,
+      deploymentFingerprint: hubOraclePolicyId,
       privateKey: identity.privateKey,
       store: reader,
       config: {
@@ -136,7 +136,7 @@ export const startJourneyRetainedDa = async ({
         });
         await writer.saveDaPayload(
           libp2pSubmittedDaPayloadRecord({
-            deploymentFingerprint,
+            deploymentFingerprint: hubOraclePolicyId,
             headerHash: block.headerHash,
             payloadSchemaVersion: 1,
             payloadCbor,

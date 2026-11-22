@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
@@ -61,7 +62,7 @@ export async function stageJourney(
     decodeJourneyRetainedBlock(block, ledgerAt);
   const { deployment, provider } = context;
   const { contracts, chain } = deployment;
-  const fingerprint = deployment.manifest.manifestId;
+  const fingerprint = deploymentManifestHubOraclePolicyId(deployment.manifest);
   const checkpointPath = join(directory, "staged.json");
   const headPath = join(context.runDirectory, "work/journeys/head.json");
   // An attached stack's own committee attests: the drill publishes payloads
@@ -199,7 +200,7 @@ export async function stageJourney(
   let resume = existsSync(checkpointPath)
     ? await readJourneyArtifact<StagingCheckpoint>(checkpointPath)
     : undefined;
-  if (resume !== undefined && resume.deploymentFingerprint !== fingerprint)
+  if (resume !== undefined && resume.hubOraclePolicyId !== fingerprint)
     throw new Error("Journey checkpoint belongs to a different deployment");
   if (
     resume !== undefined &&
@@ -285,14 +286,14 @@ export async function stageJourney(
         );
       const historyPath = join(directory, `history-${name}.json`);
       let history: {
-        deploymentFingerprint: string;
+        hubOraclePolicyId: string;
         block: JourneyBlock;
         commitTxHash?: string;
         signedCommit?: NonNullable<StagingCheckpoint["signedCommit"]>;
       };
       if (existsSync(historyPath)) {
         history = await readJourneyArtifact(historyPath);
-        if (history.deploymentFingerprint !== fingerprint)
+        if (history.hubOraclePolicyId !== fingerprint)
           throw new Error(
             "History checkpoint belongs to a different deployment",
           );
@@ -304,7 +305,7 @@ export async function stageJourney(
         await actor.onboardOperator();
         const endTime = BigInt(chain.now() + JOURNEY_HEADER_END_AHEAD_MS);
         history = {
-          deploymentFingerprint: fingerprint,
+          hubOraclePolicyId: fingerprint,
           block: await build({
             l1SlotConfig: deployment.manifest.l1SlotConfig,
             predecessor: retainedPredecessor,
@@ -454,7 +455,7 @@ export async function stageJourney(
       ? resume.current
       : await buildFault();
   const checkpoint: StagingCheckpoint = resume ?? {
-    deploymentFingerprint: fingerprint,
+    hubOraclePolicyId: fingerprint,
     predecessor,
     current,
   };
@@ -589,10 +590,10 @@ export async function stageJourney(
         (await tailOutput(successorPredecessor)) === undefined
       ) {
         const head = await readJourneyArtifact<{
-          deploymentFingerprint: string;
+          hubOraclePolicyId: string;
           block: JourneySuccessor;
         }>(headPath);
-        if (head.deploymentFingerprint !== fingerprint)
+        if (head.hubOraclePolicyId !== fingerprint)
           throw new Error("Successor head belongs to a different deployment");
         await assertTail(head.block);
         await retain(head.block, head.block.commitTxHash);

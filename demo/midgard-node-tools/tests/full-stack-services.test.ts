@@ -160,12 +160,13 @@ it("generates committee configurations accepted by the real loader: the run's L1
       expect(services[service]!.image).toBe(
         "midgard-stack-da:${COMPOSE_PROJECT_NAME}",
       );
-    // Readiness compares the committee's configured fingerprint with this id.
-    const { manifestId } = JSON.parse(await readFile(manifest, "utf8"));
+    // Readiness compares the committee's fingerprint with this policy id.
+    const hubOraclePolicyId = JSON.parse(await readFile(manifest, "utf8"))
+      .contracts.hubOracleMint.scriptHash;
     const committeeManifest = JSON.parse(
       await readFile(join(generated.directory, "committee-0.json"), "utf8"),
     );
-    expect(committeeManifest.deployment.fingerprint).toBe(manifestId);
+    expect(committeeManifest.deployment.fingerprint).toBe(hubOraclePolicyId);
     expect(
       committeeManifest.da_committee.members.map(
         (member: { signer_index: number }) => member.signer_index,

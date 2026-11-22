@@ -18,7 +18,7 @@ import type { RecordedCall } from "./full-stack-fixtures.js";
 import {
   closeRuntimeStacks,
   committeeReady,
-  manifestId,
+  hubOraclePolicyId,
   stack,
 } from "./full-stack-runtime.fixtures.js";
 import { nodeFollowerPlan } from "./node-follower-plan.js";
@@ -69,7 +69,7 @@ async function composeEnvironment(
 afterEach(closeRuntimeStacks);
 
 describe("committee readiness", () => {
-  const expected = { manifestId, peerIds: ["peer-0", "peer-1"] };
+  const expected = { hubOraclePolicyId, peerIds: ["peer-0", "peer-1"] };
   it("accepts this deployment's committee member at its signer index", () =>
     expect(committeeIsReady(committeeReady(1), 1, expected)).toBe(true));
   it("refuses another service that answers on the committee port", () => {
@@ -81,7 +81,7 @@ describe("committee readiness", () => {
         ...foreign,
         deployment: {
           ...foreign.deployment,
-          configuredFingerprint: "b".repeat(64),
+          hubOraclePolicyId: "b".repeat(56),
         },
       },
       {

@@ -21,7 +21,7 @@ export type StackDatabaseObservation = {
   /** The row storage.ts writes once per stack database; null when absent. */
   readonly marker: {
     readonly runId: string;
-    readonly manifestId: string;
+    readonly hubOraclePolicyId: string;
   } | null;
   /** Keyed by `${kind}:${eventId}`. */
   readonly settlements: ReadonlyMap<string, SettlementObservation>;
@@ -56,7 +56,7 @@ export function stackSettlementTargets(
 
 /** The stack database's identity row and the settlement rows and L1 facts payout.ts reads. */
 export const collectStackDatabase = (
-  manifestId: string,
+  hubOraclePolicyId: string,
   payoutPolicyId: string,
   targets: readonly Pick<StackSettlementTarget, "kind" | "eventId">[],
 ): Effect.Effect<StackDatabaseObservation, never, Database> =>
@@ -66,8 +66,11 @@ export const collectStackDatabase = (
       SELECT to_regclass('public.full_stack_controller_identity') IS NOT NULL AS exists
     `;
     const [row] = table?.exists
-      ? yield* sql<{ readonly runId: string; readonly manifestId: string }>`
-          SELECT run_id AS "runId", manifest_id AS "manifestId"
+      ? yield* sql<{
+          readonly runId: string;
+          readonly hubOraclePolicyId: string;
+        }>`
+          SELECT run_id AS "runId", hub_oracle_policy_id AS "hubOraclePolicyId"
             FROM full_stack_controller_identity
         `
       : [];
@@ -75,7 +78,7 @@ export const collectStackDatabase = (
     for (const { kind, eventId } of targets) {
       const jobs = yield* sql<{ readonly phase: string }>`
         SELECT phase FROM settlement_jobs
-          WHERE deployment_id = ${manifestId} AND kind = ${kind} AND event_id = ${eventId}
+          WHERE hub_oracle_policy_id = ${hubOraclePolicyId} AND kind = ${kind} AND event_id = ${eventId}
       `;
       const attempts = yield* sql<{
         readonly phase: string;
@@ -85,7 +88,7 @@ export const collectStackDatabase = (
       }>`
         SELECT phase, status, tx_hash AS "txHash", signed_cbor AS "signedCbor"
           FROM settlement_attempts
-          WHERE deployment_id = ${manifestId} AND kind = ${kind} AND event_id = ${eventId}
+          WHERE hub_oracle_policy_id = ${hubOraclePolicyId} AND kind = ${kind} AND event_id = ${eventId}
       `;
       const [token] =
         kind === "withdrawal"
@@ -103,18 +106,18 @@ export const collectStackDatabase = (
       marker:
         row === undefined
           ? null
-          : { runId: row.runId, manifestId: row.manifestId },
+          : { runId: row.runId, hubOraclePolicyId: row.hubOraclePolicyId },
       settlements,
     };
   }).pipe(Effect.orDie);
 
 /** One withdrawal's settlement rows and payout-token L1 facts, as `collectStackDatabase` reads them. */
 export const withdrawalOnL1 = (
-  manifestId: string,
+  hubOraclePolicyId: string,
   payoutPolicyId: string,
   eventId: string,
 ): Effect.Effect<SettlementObservation | undefined, never, Database> =>
-  collectStackDatabase(manifestId, payoutPolicyId, [
+  collectStackDatabase(hubOraclePolicyId, payoutPolicyId, [
     { kind: "withdrawal", eventId },
   ]).pipe(
     Effect.map(({ settlements }) =>
@@ -163,19 +166,19 @@ function settlementFailure(
 export function stackDatabaseGates({
   journal,
   cycles,
-  manifestId,
+  hubOraclePolicyId,
   observation,
 }: {
   readonly journal: StackJournal | undefined;
   readonly cycles: number;
-  readonly manifestId: string;
+  readonly hubOraclePolicyId: string;
   readonly observation: StackDatabaseObservation;
 }): readonly DbEvidence[] {
   const marker = observation.marker;
   const identityMatches =
     journal !== undefined &&
     marker?.runId === journal.runId &&
-    marker.manifestId === manifestId;
+    marker.hubOraclePolicyId === hubOraclePolicyId;
   const outcomes = Array.from({ length: cycles }, (_, cycle) =>
     journal === undefined
       ? "the stack journal did not verify"
@@ -188,7 +191,7 @@ export function stackDatabaseGates({
       source: SOURCE,
       details: {
         runId: marker?.runId ?? "",
-        manifestId: marker?.manifestId ?? "",
+        hubOraclePolicyId: marker?.hubOraclePolicyId ?? "",
         ...(identityMatches
           ? {}
           : {

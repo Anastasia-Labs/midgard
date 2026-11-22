@@ -11,7 +11,7 @@ import type { JourneyChainCorrection } from "./correction.chain-correction.js";
 export interface JourneyPendingEvidenceStamp {
   readonly category: SDK.FraudProofCatalogueCategoryName;
   readonly headerHash: string;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly completedAtConfirmationDepth: number;
   readonly terminalObservedAt: string;
   readonly successorTxHash: string;
@@ -38,7 +38,7 @@ export interface JourneyFinalizedEvidenceStamp
 export const finalizePendingJourneyEvidence = async ({
   journeysDirectory,
   readCorrection,
-  deploymentFingerprint,
+  hubOraclePolicyId,
   releaseFinalityPolicyDigest,
   finalityDepth,
   nativeEvidencePath,
@@ -49,7 +49,7 @@ export const finalizePendingJourneyEvidence = async ({
   readCorrection(
     request: JourneyPendingEvidenceStamp,
   ): Promise<JourneyChainCorrection | undefined>;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   releaseFinalityPolicyDigest: string;
   finalityDepth: number;
   nativeEvidencePath: string;
@@ -72,7 +72,7 @@ export const finalizePendingJourneyEvidence = async ({
       continue;
     const request =
       await readJourneyArtifact<JourneyPendingEvidenceStamp>(requestPath);
-    expect(request.deploymentFingerprint).toBe(deploymentFingerprint);
+    expect(request.hubOraclePolicyId).toBe(hubOraclePolicyId);
     expect(request.releaseFinalityPolicyDigest).toBe(
       releaseFinalityPolicyDigest,
     );

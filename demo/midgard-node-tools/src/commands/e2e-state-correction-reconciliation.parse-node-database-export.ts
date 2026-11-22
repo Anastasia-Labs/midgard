@@ -18,7 +18,7 @@ export const parseNodeDatabaseExport = (value: unknown): NodeDatabaseExport => {
     [
       "schemaVersion",
       "runId",
-      "manifestId",
+      "hubOraclePolicyId",
       "stateQueue",
       "jobs",
       "watcher",
@@ -37,7 +37,7 @@ export const parseNodeDatabaseExport = (value: unknown): NodeDatabaseExport => {
     schemaVersion: E2E_STATE_CORRECTION_FINAL_SNAPSHOT_SCHEMA_VERSION,
     runId: candidate.runId,
     network: "Preprod",
-    manifestId: candidate.manifestId,
+    hubOraclePolicyId: candidate.hubOraclePolicyId,
     observedAt: {
       slot: "0",
       blockHash: "00".repeat(32),
@@ -63,7 +63,7 @@ export const parseNodeDatabaseExport = (value: unknown): NodeDatabaseExport => {
   return {
     schemaVersion: "midgard-e2e-state-correction-node-db-export-v1",
     runId: parsed.runId,
-    manifestId: parsed.manifestId,
+    hubOraclePolicyId: parsed.hubOraclePolicyId,
     stateQueue: parsed.stateQueue,
     jobs: parsed.jobs,
     watcher: parsed.watcher,

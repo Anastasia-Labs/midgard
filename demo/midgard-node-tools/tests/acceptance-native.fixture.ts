@@ -298,7 +298,7 @@ export const readConfig = (
     assertUnchanged,
     binding: {
       runDir: "/owned/run",
-      deploymentManifestId: "11".repeat(32),
+      hubOraclePolicyId: "11".repeat(28),
       releaseAuthoritySha256: "22".repeat(32),
       codeStamp: "33".repeat(32),
       nativeBinarySha256: "44".repeat(32),

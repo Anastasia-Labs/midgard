@@ -9,10 +9,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
-import {
-  computeDeploymentManifestDaCommitteeSignersHash,
-  computeDeploymentManifestId,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
+import { computeDeploymentManifestDaCommitteeSignersHash } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { formatL1Origin } from "@al-ft/midgard-core/l1-origin";
 import { entropyToMnemonic } from "bip39";
@@ -139,7 +136,7 @@ async function deployStack(
   const deployment =
     publicManifest === undefined
       ? await writeFinalizedDeploymentInfo(forCommittee)
-      : await refinalize(publicManifest, forCommittee, primary.directory);
+      : await rewriteManifest(publicManifest, forCommittee, primary.directory);
   const manifest = JSON.parse(await readFile(deployment.path, "utf8")) as {
     referenceScriptDeployAddress: string;
     hubOracleOneShot: { txHash: string; outputIndex: number };
@@ -170,18 +167,14 @@ async function deployStack(
   return { primaryManifest, manifest, origin };
 }
 
-/** A finalized manifest, changed and finalized again under its new identity. */
-async function refinalize(
+/** A finalized manifest with one change, written to a file of its own. */
+async function rewriteManifest(
   manifest: Record<string, unknown>,
   change: (raw: Record<string, unknown>) => void,
   directory: string,
 ) {
   const raw = structuredClone(manifest);
   change(raw);
-  delete raw.manifestId;
-  raw.manifestId = computeDeploymentManifestId(
-    raw as unknown as Parameters<typeof computeDeploymentManifestId>[0],
-  );
   const path = join(directory, "finalized-manifest.json");
   await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`);
   return { path };
@@ -422,13 +415,13 @@ export async function composeServiceHash(
 
 /** The stack's Postgres as operator-2's controller reads it. */
 function fakePostgres() {
-  let identity: { run_id: string; manifest_id: string } | null = null;
+  let identity: { run_id: string; hub_oracle_policy_id: string } | null = null;
   return (call: RecordedCall) => {
     const query = call.args.at(-1)!;
     const created =
       /VALUES \(true,'([^']+)','([^']+)'\)/u.exec(query) ?? undefined;
     if (created !== undefined && identity === null)
-      identity = { run_id: created[1]!, manifest_id: created[2]! };
+      identity = { run_id: created[1]!, hub_oracle_policy_id: created[2]! };
     if (query.includes("to_regclass")) return { exists: identity !== null };
     if (query.includes("full_stack_controller_identity")) return identity;
     return { empty: true };

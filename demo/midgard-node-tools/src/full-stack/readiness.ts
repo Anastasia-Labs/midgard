@@ -6,13 +6,13 @@
 export function committeeIsReady(
   value: unknown,
   signerIndex: number,
-  expected: { manifestId: string; peerIds: readonly string[] },
+  expected: { hubOraclePolicyId: string; peerIds: readonly string[] },
 ) {
   const committee = value as
     | {
         ready?: boolean;
         deployment?: {
-          configuredFingerprint?: string;
+          hubOraclePolicyId?: string;
           storeMatchesConfigured?: boolean;
         };
         peer?: { signerIndex?: number; localPeerId?: string };
@@ -20,7 +20,7 @@ export function committeeIsReady(
     | undefined;
   return (
     committee?.ready === true &&
-    committee.deployment?.configuredFingerprint === expected.manifestId &&
+    committee.deployment?.hubOraclePolicyId === expected.hubOraclePolicyId &&
     committee.deployment.storeMatchesConfigured === true &&
     committee.peer?.signerIndex === signerIndex &&
     committee.peer.localPeerId === expected.peerIds[signerIndex]
@@ -85,7 +85,7 @@ export function stackIsReady(input: {
   node: unknown;
   watcher: unknown;
   committees: unknown[];
-  manifestId: string;
+  hubOraclePolicyId: string;
   committeePeerIds: readonly string[];
 }) {
   const watcher = input.watcher as
@@ -93,7 +93,7 @@ export function stackIsReady(input: {
         liveness?: string;
         readiness?: string;
         readinessReasons?: unknown[];
-        deploymentFingerprint?: string;
+        hubOraclePolicyId?: string;
         launchScope?: { complete?: boolean };
       }
     | undefined;
@@ -102,13 +102,13 @@ export function stackIsReady(input: {
     watcher?.liveness === "live" &&
     watcher.readiness === "ready" &&
     watcher.readinessReasons?.length === 0 &&
-    watcher.deploymentFingerprint === input.manifestId &&
+    watcher.hubOraclePolicyId === input.hubOraclePolicyId &&
     watcher.launchScope?.complete === true &&
     input.committees.length > 0 &&
     input.committees.length === input.committeePeerIds.length &&
     input.committees.every((value, index) =>
       committeeIsReady(value, index, {
-        manifestId: input.manifestId,
+        hubOraclePolicyId: input.hubOraclePolicyId,
         peerIds: input.committeePeerIds,
       }),
     )

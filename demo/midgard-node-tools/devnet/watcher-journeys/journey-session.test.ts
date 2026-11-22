@@ -206,7 +206,7 @@ it("starts against the retained head before staging and closes after fixture fai
   await writeFile(
     join(state.runDirectory, "work/journeys/head.json"),
     JSON.stringify({
-      deploymentFingerprint: "ab".repeat(32),
+      hubOraclePolicyId: "ab".repeat(28),
       block: { headerHash },
     }),
   );
@@ -298,7 +298,7 @@ it("keeps concurrent sessions' replayed-ledger stores in separately owned direct
     for (const directory of state.replayLedgerStoreDirectories)
       expect(() =>
         openSqliteLedgerStorage(
-          join(directory, `replayed-ledger-${"ab".repeat(32)}.sqlite`),
+          join(directory, `replayed-ledger-${"ab".repeat(28)}.sqlite`),
         ),
       ).toThrow("is open in another process");
   } finally {

@@ -57,7 +57,7 @@ phas_registration_proof_pending="$snapshot_dir/phas-registration-proof.pending.j
 jq -e \
   --argjson cardanoSlot "$cardano_slot" \
   'def exact($required): type == "object" and keys == ($required | sort);
-   exact(["schemaVersion","source","readOnly","registered","cardanoImage","networkMagic","manifestId","registrationTxHash","rewardAddress","rewardAddressBase16","scriptHash","transactionBody","registrationDepositLovelace","confirmation","observedAtTip"]) and
+   exact(["schemaVersion","source","readOnly","registered","cardanoImage","networkMagic","hubOraclePolicyId","registrationTxHash","rewardAddress","rewardAddressBase16","scriptHash","transactionBody","registrationDepositLovelace","confirmation","observedAtTip"]) and
    (.cardanoImage | exact(["ref","id"])) and
    (.transactionBody | exact(["schemaVersion","artifactSha256","cborSha256","cborSizeBytes","cardanoCliTxHash","certificate"])) and
    (.transactionBody.certificate | exact(["kind","index","count","credentialType","scriptHash"])) and
@@ -114,7 +114,7 @@ jq -e \
    (.images | exact(["cardanoNode","ogmios","kupo","postgres"])) and
    ([.images[] | exact(["ref","id"])] | all) and
    (.artifacts | exact(["sourceSha256","distSha256","toolsSourceSha256","toolsDistSha256","genesisSha256","configSha256","acceptanceEnvSha256","composeSha256","phase4AssetsSha256","phasRegistrationProofSha256"])) and
-   (.phasRegistration | exact(["schemaVersion","source","readOnly","registered","cardanoImage","networkMagic","manifestId","registrationTxHash","rewardAddress","rewardAddressBase16","scriptHash","transactionBody","registrationDepositLovelace","confirmation","observedAtTip"])) and
+   (.phasRegistration | exact(["schemaVersion","source","readOnly","registered","cardanoImage","networkMagic","hubOraclePolicyId","registrationTxHash","rewardAddress","rewardAddressBase16","scriptHash","transactionBody","registrationDepositLovelace","confirmation","observedAtTip"])) and
    (.phasRegistration.cardanoImage | exact(["ref","id"])) and
    (.phasRegistration.transactionBody | exact(["schemaVersion","artifactSha256","cborSha256","cborSizeBytes","cardanoCliTxHash","certificate"])) and
    (.phasRegistration.transactionBody.certificate | exact(["kind","index","count","credentialType","scriptHash"])) and

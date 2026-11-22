@@ -12,7 +12,7 @@ import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 
 /** What a journey replay store follows: one deployment from one L1 origin. */
 export type JourneyReplayStoreIdentity = Readonly<{
-  deploymentManifestId: string;
+  hubOraclePolicyId: string;
   blueprintHash: string;
   origin: L1Origin | null;
 }>;
@@ -52,13 +52,13 @@ const deploymentDifferences = (
   recorded: JourneyReplayStoreIdentity,
   wanted: Pick<
     JourneyReplayStoreIdentity,
-    "deploymentManifestId" | "blueprintHash"
+    "hubOraclePolicyId" | "blueprintHash"
   >,
 ) =>
   [
-    recorded.deploymentManifestId === wanted.deploymentManifestId
+    recorded.hubOraclePolicyId === wanted.hubOraclePolicyId
       ? undefined
-      : `deployment ${recorded.deploymentManifestId}, not ${wanted.deploymentManifestId}`,
+      : `deployment ${recorded.hubOraclePolicyId}, not ${wanted.hubOraclePolicyId}`,
     recorded.blueprintHash === wanted.blueprintHash
       ? undefined
       : `blueprint ${recorded.blueprintHash}, not ${wanted.blueprintHash}`,
@@ -161,7 +161,7 @@ export const requireJourneyReplayStore = async (
   runDirectory: string,
   deployment: Pick<
     JourneyReplayStoreIdentity,
-    "deploymentManifestId" | "blueprintHash"
+    "hubOraclePolicyId" | "blueprintHash"
   >,
 ): Promise<void> => {
   const directory = replayDirectory(runDirectory);

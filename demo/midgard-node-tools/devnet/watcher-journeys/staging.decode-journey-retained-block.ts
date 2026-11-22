@@ -65,7 +65,7 @@ export type JourneyFaultPreparationInput = JourneyFixtureStage & {
 };
 
 export type StagingCheckpoint = {
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   predecessor: JourneySuccessor;
   current: JourneyBlock;
   commitTxHash?: string;

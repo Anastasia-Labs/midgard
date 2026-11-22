@@ -6,6 +6,7 @@ import { join, relative } from "node:path";
 import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   type DeploymentManifest,
+  deploymentManifestHubOraclePolicyId,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { AllowListRefusal } from "@al-ft/midgard-core/deployment-profile";
 import type { Script, UTxO } from "@lucid-evolution/lucid";
@@ -257,11 +258,13 @@ describe("stack journey deployment", () => {
       ...(await recordedRelease(manifest)),
       handshakeMagic: journeyNetwork().magic,
     });
-    expect(opened.manifest.manifestId).toBe(manifest.manifestId);
+    expect(deploymentManifestHubOraclePolicyId(opened.manifest)).toBe(
+      deploymentManifestHubOraclePolicyId(manifest),
+    );
     expect(opened.blueprintJson).toBe(blueprintJson);
   });
 
-  it("refuses a node on another network, another blueprint, or an edited manifest", async () => {
+  it("refuses a node on another network or another blueprint", async () => {
     await expect(
       readStackJourneyDeployment({
         ...(await recordedRelease(manifest)),
@@ -274,16 +277,6 @@ describe("stack journey deployment", () => {
         handshakeMagic: journeyNetwork().magic,
       }),
     ).rejects.toThrow(/blueprint/u);
-    await expect(
-      readStackJourneyDeployment({
-        ...(await recordedRelease({
-          ...manifest,
-          updatedAt: "2026-07-29T00:00:00.000Z",
-          genesis: { ...manifest.genesis, headerHash: "11".repeat(28) },
-        })),
-        handshakeMagic: journeyNetwork().magic,
-      }),
-    ).rejects.toThrow();
   });
 
   const referenceUtxos = (): UTxO[] =>

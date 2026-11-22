@@ -375,7 +375,7 @@ describe("the check before each family", () => {
       });
     return { run, calls };
   };
-  const draft = { deploymentFingerprint: "f", predecessor: {}, current: {} };
+  const draft = { hubOraclePolicyId: "f", predecessor: {}, current: {} };
 
   it("checks a family that has not started staging", async () => {
     const { run, calls } = await family();

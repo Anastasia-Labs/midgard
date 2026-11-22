@@ -21,18 +21,21 @@ export async function settlementEvidence(
   const manifest = (await readJsonIfPresent(
     stackPaths(processes).manifest,
   )) as {
-    manifestId: string;
-    contracts: { payoutMint: { scriptHash: string } };
+    contracts: {
+      hubOracleMint: { scriptHash: string };
+      payoutMint: { scriptHash: string };
+    };
   };
-  if (!/^[0-9a-f]{64}$/.test(manifest.manifestId))
-    throw new Error("Noncanonical deployment ID");
+  const hubOraclePolicyId = manifest.contracts.hubOracleMint.scriptHash;
+  if (!/^[0-9a-f]{56}$/.test(hubOraclePolicyId))
+    throw new Error("Noncanonical hub-oracle policy id");
   // A withdrawal's payout is judged from the follower's L1 facts, since any
   // operator may send its conclusion; the local rows only gate its depth.
   const payoutToken =
     kind === "withdrawal"
       ? `, 'payoutToken', (${payoutTokenQuery(manifest.contracts.payoutMint.scriptHash, eventId)})`
       : "";
-  const query = `SELECT json_build_object('jobs', (SELECT json_agg(json_build_object('phase', phase)) FROM settlement_jobs WHERE deployment_id='${manifest.manifestId}' AND kind='${kind}' AND event_id='${eventId}'), 'attempts', (SELECT json_agg(json_build_object('phase',phase,'status',status,'txHash',tx_hash,'signedCbor',signed_cbor)) FROM settlement_attempts WHERE deployment_id='${manifest.manifestId}' AND kind='${kind}' AND event_id='${eventId}')${payoutToken})`;
+  const query = `SELECT json_build_object('jobs', (SELECT json_agg(json_build_object('phase', phase)) FROM settlement_jobs WHERE hub_oracle_policy_id='${hubOraclePolicyId}' AND kind='${kind}' AND event_id='${eventId}'), 'attempts', (SELECT json_agg(json_build_object('phase',phase,'status',status,'txHash',tx_hash,'signedCbor',signed_cbor)) FROM settlement_attempts WHERE hub_oracle_policy_id='${hubOraclePolicyId}' AND kind='${kind}' AND event_id='${eventId}')${payoutToken})`;
   return (await processes.compose(`settlement-${kind}-observation`, [
     "exec",
     "-T",

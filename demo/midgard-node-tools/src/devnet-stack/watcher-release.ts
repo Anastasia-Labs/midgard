@@ -15,7 +15,7 @@ import {
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   type DeploymentManifest,
-  makeDeploymentMarker,
+  deploymentManifestHubOraclePolicyId,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
@@ -158,12 +158,13 @@ export const ensureWatcherReleaseBundle = async (
       `${layout.blueprint} is not the blueprint the deployment was built from`,
     );
   const commitments = deploymentProgramCommitments(manifest);
+  const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(manifest);
   const fundingBundle = watcher.createWatcherWorkflowFundingProfileBundle({
     profiles: [],
   });
   const ruleBundle = watcher.makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
-      manifestId: manifest.manifestId,
+      hubOraclePolicyId,
       network: manifest.network,
       blueprintHash,
       programCommitments: commitments,
@@ -188,9 +189,9 @@ export const ensureWatcherReleaseBundle = async (
 
   if (existsSync(paths.authority)) {
     const verified = (await reopen()).deploymentIdentity;
-    if (verified.manifestId !== manifest.manifestId)
+    if (verified.hubOraclePolicyId !== hubOraclePolicyId)
       throw new Error(
-        `the watcher release under ${layout.watcherRelease} was signed for deployment ${verified.manifestId}, not ${manifest.manifestId}; it is never re-signed`,
+        `the watcher release under ${layout.watcherRelease} was signed for deployment ${verified.hubOraclePolicyId}, not ${hubOraclePolicyId}; it is never re-signed`,
       );
     if (
       verified.blueprintHash !== blueprintHash ||
@@ -230,7 +231,7 @@ export const ensureWatcherReleaseBundle = async (
       signature: sign(
         null,
         watcher.makeWatcherDeploymentIdentitySignaturePayload(
-          manifest.manifestId,
+          manifest,
           releaseBindings,
         ),
         key,
@@ -262,7 +263,6 @@ export const ensureWatcherReleaseBundle = async (
       signedIdentity,
       policy,
       trustRoots: [{ trustRootId, publicKeySpkiDerHex }],
-      durableMarker: makeDeploymentMarker(manifest.manifestId),
     }),
     0o644,
   );

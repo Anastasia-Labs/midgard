@@ -12,7 +12,7 @@ const tipSource = (answer: (method: string, call: number) => unknown) => {
     providerFailover: undefined,
     kupoUrl: "http://127.0.0.1:1442",
     ogmiosUrl: "http://127.0.0.1:1337",
-    manifestId: hash(4),
+    hubOraclePolicyId: hash(4).slice(-56),
     stateQueueAddress: "addr_test1qstatequeue",
     stateQueuePolicyId: "ab".repeat(28),
     reserveAddress: "addr_test1qreserve",

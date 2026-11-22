@@ -1,3 +1,4 @@
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE } from "midgard-node/transactions/operators/funding-preflight";
 import {
@@ -28,7 +29,7 @@ import {
 import { createWatcherProgress } from "./watcher-progress.js";
 
 type AttachedWatcherStatus = Readonly<{
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   liveness: string;
   readiness?: string;
   readinessReasons?: readonly string[];
@@ -42,15 +43,15 @@ type AttachedWatcherStatus = Readonly<{
  */
 export const assertAttachedWatcherStatus = (
   status: unknown,
-  deploymentFingerprint: string,
+  hubOraclePolicyId: string,
 ): AttachedWatcherStatus => {
   const value = status as Partial<AttachedWatcherStatus> | null | undefined;
   // A starting watcher serves `/v1/status` before it has bound a deployment.
-  if (value?.deploymentFingerprint === undefined)
+  if (value?.hubOraclePolicyId === undefined)
     throw new Error(
       `The stack watcher is still starting and not attached to a deployment (${JSON.stringify(value?.readinessReasons ?? [])})`,
     );
-  if (value.deploymentFingerprint !== deploymentFingerprint)
+  if (value.hubOraclePolicyId !== hubOraclePolicyId)
     throw new Error(
       "The stack watcher's operations endpoint serves another deployment",
     );
@@ -222,15 +223,17 @@ export const openAttachedJourneySession = async (
     // so operator-2 is started again whatever the ledger close does.
     const replayedLedger = await openStackJourneyReplayedLedger(context);
     onClose(replayedLedger.close);
-    const deploymentFingerprint = context.deployment.manifest.manifestId;
+    const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(
+      context.deployment.manifest,
+    );
     const deploymentIdentity = context.release.deploymentIdentity;
-    if (deploymentIdentity.manifestId !== deploymentFingerprint)
+    if (deploymentIdentity.hubOraclePolicyId !== hubOraclePolicyId)
       throw new Error(
         "The stack's watcher release belongs to another deployment",
       );
     const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
       deploymentIdentity,
-    ).verifyForWorkflow({ deploymentFingerprint });
+    ).verifyForWorkflow({ hubOraclePolicyId });
     const { operationsEndpoint, composeProject, processConfigPath } =
       context.watcher;
     const requireLive = () => {
@@ -243,14 +246,14 @@ export const openAttachedJourneySession = async (
     const evidence = createWatcherEvidenceReader({
       exec: options.exec ?? composeWatcherEvidenceExec(composeProject),
       hostProcessConfigPath: processConfigPath,
-      deploymentFingerprint,
+      hubOraclePolicyId,
       launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     });
     // A family it refuses fails, and the family's run closes the session.
     const assertHealthy = async () => {
       assertAttachedWatcherStatus(
         await operations("/v1/status"),
-        deploymentFingerprint,
+        hubOraclePolicyId,
       );
     };
     await stage("attached watcher status", assertHealthy);

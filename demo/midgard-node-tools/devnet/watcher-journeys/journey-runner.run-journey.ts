@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { expect } from "vitest";
 
 import { journeyFamilyDirectory, writeJourneyArtifact } from "./artifacts.js";
@@ -133,7 +134,9 @@ export const runJourney = async (
         status: "passed",
         executionPolicy: "committee-refusal",
         category: fixture.category,
-        deploymentFingerprint: deployment.manifest.manifestId,
+        hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+          deployment.manifest,
+        ),
         headerHash: staged.current.headerHash,
         refusal,
       });
@@ -247,7 +250,9 @@ export const runJourney = async (
     });
     await verifiedHeaders.retain();
     await verifiedHeaders.handOn({
-      deploymentFingerprint: deployment.manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+        deployment.manifest,
+      ),
       block: successor,
     });
     // Save the anchor request before the provisional verdict so restart cannot
@@ -255,7 +260,9 @@ export const runJourney = async (
     await writeJourneyArtifact(join(directory, "pending-evidence-stamp.json"), {
       category: fixture.category,
       headerHash: staged.current.headerHash,
-      deploymentFingerprint: deployment.manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+        deployment.manifest,
+      ),
       // When the removal landed: its block's slot.
       terminalObservedAt: new Date(
         deployment.operatorLucid.slotToUnixTime(completion.observedAt.slot),
@@ -276,7 +283,9 @@ export const runJourney = async (
         : "current-inclusion-policy",
       evidenceStatus: "terminal-included-awaiting-anchor",
       category: fixture.category,
-      deploymentFingerprint: deployment.manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+        deployment.manifest,
+      ),
       proverAddress: mode.proverAddress,
       completion,
       successor: successor.headerHash,
@@ -295,7 +304,9 @@ export const runJourney = async (
       finalizePendingJourneyEvidence({
         journeysDirectory: join(context.runDirectory, "work/journeys"),
         readCorrection: (request) => correctionChain(request).correction(),
-        deploymentFingerprint: deployment.manifest.manifestId,
+        hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+          deployment.manifest,
+        ),
         releaseFinalityPolicyDigest: releaseFinality.policyDigest,
         finalityDepth: releaseFinality.policy.confirmationDepth,
         nativeEvidencePath: mode.transactions.nativeEvidencePath,

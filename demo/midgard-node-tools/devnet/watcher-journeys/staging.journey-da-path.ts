@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import type {
@@ -118,7 +119,9 @@ export const journeyDaPath = async (
   task: Pick<FaultPreparation, "category" | "stackShiftCoverMs">,
 ): Promise<JourneyDaPath> => {
   const { context, directory, retain, onStage } = stage;
-  const fingerprint = context.deployment.manifest.manifestId;
+  const fingerprint = deploymentManifestHubOraclePolicyId(
+    context.deployment.manifest,
+  );
   if (isStackJourneyContext(context)) {
     const da = stackJourneyDa(context, {
       readConfirmedTransaction: stage.readConfirmedTransaction,
@@ -225,10 +228,10 @@ export const journeyDaPath = async (
     resolvePredecessor: async () => {
       if (existsSync(headPath)) {
         const head = await readJourneyArtifact<{
-          deploymentFingerprint: string;
+          hubOraclePolicyId: string;
           block: JourneySuccessor;
         }>(headPath);
-        if (head.deploymentFingerprint !== fingerprint)
+        if (head.hubOraclePolicyId !== fingerprint)
           throw new Error("Journey head belongs to a different deployment");
         // Preparation can already have appended journaled history before a
         // stop. Its checkpoint restores that tail; every new commit verifies

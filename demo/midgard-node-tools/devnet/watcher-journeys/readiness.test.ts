@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { expect, it } from "vitest";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
@@ -137,18 +138,20 @@ it.skipIf(retained === undefined)(
         {
           status: "passed",
           category: "zeroInput",
-          deploymentFingerprint: "another-deployment",
+          hubOraclePolicyId: "another-deployment",
         },
         {
           status: "passed",
           category: "zeroInput",
-          deploymentFingerprint: deployment.manifest.manifestId,
+          hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+            deployment.manifest,
+          ),
         },
       ]) {
         await writeJourneyArtifact(join(familyDirectory, "result.json"), claim);
         const report = await readJourneyReadiness(directory);
-        expect(report.deploymentFingerprint).toBe(
-          deployment.manifest.manifestId,
+        expect(report.hubOraclePolicyId).toBe(
+          deploymentManifestHubOraclePolicyId(deployment.manifest),
         );
         expect(report.counts.liveComplete).toBe(0);
         expect(

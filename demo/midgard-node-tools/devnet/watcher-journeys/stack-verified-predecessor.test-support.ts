@@ -58,7 +58,7 @@ export const envelopeSha256 = (block: JourneyBlock) =>
 /** The production watcher observability, as a fresh watcher process has it. */
 const watcherProcess = () =>
   createWatcherOperationsObservability({
-    deploymentFingerprint: "11".repeat(32),
+    hubOraclePolicyId: "11".repeat(28),
     supervisor: {
       status: () => ({
         phase: "accepting",

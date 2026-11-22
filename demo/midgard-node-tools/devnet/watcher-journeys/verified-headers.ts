@@ -203,15 +203,15 @@ export const createJourneyVerifiedHeaders = (
      * watcher verified it by, for the next family to build on.
      */
     handOn: async ({
-      deploymentFingerprint,
+      hubOraclePolicyId,
       block,
     }: Readonly<{
-      deploymentFingerprint: string;
+      hubOraclePolicyId: string;
       block: JourneySuccessor;
     }>) => {
       assert(healthy !== undefined, "Healthy blocks were not verified");
       await writeJourneyArtifact(headPath, {
-        deploymentFingerprint,
+        hubOraclePolicyId,
         block,
         verified: assertJourneyVerifiedHeader(healthy.at(-1), block),
       });

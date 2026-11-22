@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
@@ -32,7 +33,7 @@ export type EventMetadata = {
   validTo: number;
 };
 export type HistoryEventCheckpoint = {
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   request: string;
   signedCbor: string;
   txHash: string;
@@ -129,7 +130,8 @@ const confirmEvent = async (
   if (existsSync(path)) {
     checkpoint = await readJourneyArtifact<HistoryEventCheckpoint>(path);
     if (
-      checkpoint.deploymentFingerprint !== deployment.manifest.manifestId ||
+      checkpoint.hubOraclePolicyId !==
+        deploymentManifestHubOraclePolicyId(deployment.manifest) ||
       checkpoint.request !== request.identity
     )
       throw new Error(
@@ -163,7 +165,9 @@ const confirmEvent = async (
     ).finally(() => lucid.clearUTxOOverride());
     const signed = await built.tx.sign.withWallet().complete();
     checkpoint = {
-      deploymentFingerprint: deployment.manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+        deployment.manifest,
+      ),
       request: request.identity,
       signedCbor: signed.toCBOR(),
       txHash: signed.toHash(),

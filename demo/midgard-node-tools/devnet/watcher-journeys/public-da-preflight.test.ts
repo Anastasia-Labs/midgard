@@ -88,7 +88,7 @@ const current = {
 beforeEach(() => {
   vi.resetAllMocks();
   mocked.create.mockResolvedValue({
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     sources: [{ fetchPayloadByHeaderHash: mocked.fetch }],
     close: mocked.close,
   });
@@ -122,7 +122,7 @@ it("uses only the actual config and identity, fetches both headers, and records 
     ]);
     expect(receipt).toMatchObject({
       outcome: "passed",
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     });
     expect(receipt.receipts).toHaveLength(2);
     expect(
@@ -197,7 +197,7 @@ const servingAfter = (
   let closed = 0;
   let round = 0;
   const openRuntime = (async () => ({
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     sources: servingPeerIds.map((sourcePeerId) => ({
       fetchPayloadByHeaderHash: async (headerHash: string) => {
         asked.push(sourcePeerId);
@@ -286,7 +286,7 @@ it("proves an attached stack's public DA serves both staged payloads exactly, wa
     });
     expect(evidence).toMatchObject({
       outcome: "passed",
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       receipts: [
         { headerHash: predecessor.headerHash, sourcePeerId: peerId, bytes: 3 },
         { headerHash: current.headerHash, sourcePeerId: peerId, bytes: 3 },

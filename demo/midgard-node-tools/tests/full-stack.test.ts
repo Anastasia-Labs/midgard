@@ -261,20 +261,20 @@ describe("stack input and payout verification", () => {
 const committeeReady = (signerIndex: number) => ({
   ready: true,
   deployment: {
-    configuredFingerprint: "a".repeat(64),
+    hubOraclePolicyId: "a".repeat(56),
     storeMatchesConfigured: true,
   },
   peer: { signerIndex, localPeerId: `peer-${signerIndex}` },
 });
 describe("published stack readiness schemas", () => {
   const ready = {
-    manifestId: "a".repeat(64),
+    hubOraclePolicyId: "a".repeat(56),
     node: { ready: true, reasons: [], settlement: { state: "waiting" } },
     watcher: {
       liveness: "live",
       readiness: "ready",
       readinessReasons: [],
-      deploymentFingerprint: "a".repeat(64),
+      hubOraclePolicyId: "a".repeat(56),
       launchScope: { complete: true },
     },
     committees: [committeeReady(0)],
@@ -286,7 +286,7 @@ describe("published stack readiness schemas", () => {
     expect(
       stackIsReady({
         ...ready,
-        watcher: { ...ready.watcher, deploymentFingerprint: "d".repeat(64) },
+        watcher: { ...ready.watcher, hubOraclePolicyId: "d".repeat(56) },
       }),
     ).toBe(false);
     expect(

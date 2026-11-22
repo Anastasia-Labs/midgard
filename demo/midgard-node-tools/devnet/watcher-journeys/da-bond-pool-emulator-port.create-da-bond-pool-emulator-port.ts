@@ -83,7 +83,7 @@ export const createDaBondPoolEmulatorPort = async (
   const ctx: DaBondContext = {
     lucid,
     network: "Preprod",
-    manifestId: "emulator-da-bond-pool-journey",
+    hubOraclePolicyId: "e0".repeat(28),
     poolValidator: contracts.daBondPool,
     poolSpendingReference: f.poolReferences.daBondPoolSpending,
     parameters,

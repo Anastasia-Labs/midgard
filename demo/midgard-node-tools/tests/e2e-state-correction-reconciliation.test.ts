@@ -65,7 +65,7 @@ const makeFixture = async ({
 }> => {
   const root = await mkdtemp(join(tmpdir(), "midgard-q57-independent-"));
   const runId = "q57-independent-rehearsal";
-  const manifestId = hash(1);
+  const hubOraclePolicyId = hash(1).slice(-56);
   const catalogue = { root: hash(2), categories: {} };
   const parameters = { maxTxSize: 16_384, network: "Preprod" };
   const blueprintBytes = Buffer.from("independent-blueprint");
@@ -221,7 +221,7 @@ const makeFixture = async ({
   const nodeDatabaseExportSha256 = await writeJson(nodeDatabaseExportPath, {
     schemaVersion: "midgard-e2e-state-correction-node-db-export-v1",
     runId,
-    manifestId,
+    hubOraclePolicyId,
     stateQueue,
     jobs,
     watcher,
@@ -233,7 +233,7 @@ const makeFixture = async ({
     schemaVersion: E2E_STATE_CORRECTION_FINAL_SNAPSHOT_SCHEMA_VERSION,
     runId,
     network: "Preprod",
-    manifestId,
+    hubOraclePolicyId,
     observedAt: {
       slot: "123500",
       blockHash: hash(40),
@@ -268,7 +268,7 @@ const makeFixture = async ({
   const recovery = {
     schemaVersion: E2E_STATE_CORRECTION_RECOVERY_OBSERVATION_SCHEMA_VERSION,
     runId,
-    manifestId,
+    hubOraclePolicyId,
     id: "crash-before-detect",
     beforeJournalSha256: hash(50),
     afterJournalSha256: hash(51),
@@ -286,7 +286,7 @@ const makeFixture = async ({
     runId,
     network: "Preprod",
     deployment: {
-      manifestId,
+      hubOraclePolicyId,
       blueprintSha256,
       catalogueRoot: catalogue.root,
       parametersSha256,
@@ -321,8 +321,8 @@ const makeFixture = async ({
   const manifestPath = join(root, "manifest.json");
   await writeJson(manifestPath, {
     network: "Preprod",
-    manifestId,
     contracts: {
+      hubOracleMint: { scriptHash: hubOraclePolicyId },
       fraudProofCatalogueMint: { fraudProofCatalogue: catalogue },
     },
     cardanoProtocolParameters: {
@@ -416,7 +416,7 @@ const makeFixture = async ({
       schemaVersion: E2E_AUTHENTICATED_L1_TX_OBSERVATION_SCHEMA_VERSION,
       runId,
       network: "Preprod",
-      manifestId,
+      hubOraclePolicyId,
       txHash,
       includedAt: { slot: "123450", blockHash: inclusionBlockHash },
       observedAtTip:
@@ -447,7 +447,7 @@ const makeFixture = async ({
     authenticateFinalState: vi.fn(async (observed) => {
       if (
         rejectAtIndependentAuthority ||
-        observed.manifestId !== manifestId ||
+        observed.hubOraclePolicyId !== hubOraclePolicyId ||
         observed.stateQueueDepth !== 0 ||
         observed.pendingFinalizations !== 0
       ) {
@@ -506,6 +506,22 @@ describe("Q57 independent state-correction reconciliation", () => {
         expectedRunId: "different-finalizer-run",
       }),
     ).rejects.toThrow(/state-correction acceptance run mismatch/u);
+  });
+
+  it("rejects an acceptance claim for another deployment", async () => {
+    const fixture = await makeFixture();
+    await expect(
+      reconcileStateCorrectionIndependentEvidence({
+        ...fixture,
+        claim: {
+          ...fixture.claim,
+          deployment: {
+            ...fixture.claim.deployment,
+            hubOraclePolicyId: "ee".repeat(28),
+          },
+        },
+      }),
+    ).rejects.toThrow(/deployment hub-oracle policy id mismatch/u);
   });
 
   it("rejects a retained proof token that is not an output of the family's proof-token transaction", async () => {

@@ -15,9 +15,9 @@ import { parseJournal } from "../src/full-stack/journal.js";
 import {
   DEPOSIT_EVENT,
   honestRun,
+  HUB_ORACLE_POLICY_ID,
   INTENT_DIGEST,
   makeRunDirectory,
-  MANIFEST_ID,
   RUN_ID,
   WITHDRAWAL_EVENT,
 } from "./e2e-finalize-stack-run.fixture.js";
@@ -182,15 +182,15 @@ describe("e2e-finalize-summary stack database (storage.ts, payout-body.ts)", () 
   }
   const gates = (
     value: Awaited<ReturnType<typeof database>>,
-    marker: { runId: string; manifestId: string } | null = {
+    marker: { runId: string; hubOraclePolicyId: string } | null = {
       runId: RUN_ID,
-      manifestId: MANIFEST_ID,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
     },
   ) =>
     stackDatabaseGates({
       journal: value.journal,
       cycles: 1,
-      manifestId: MANIFEST_ID,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       observation: { marker, settlements: value.settlements },
     });
 
@@ -208,7 +208,10 @@ describe("e2e-finalize-summary stack database (storage.ts, payout-body.ts)", () 
   it("refuses a database that belongs to another run or has no stack identity", async () => {
     const value = await database();
     expect(
-      gates(value, { runId: "another-run", manifestId: MANIFEST_ID })[0],
+      gates(value, {
+        runId: "another-run",
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
+      })[0],
     ).toMatchObject({
       status: "failed",
       details: { reason: "Storage identity differs from this deployment" },

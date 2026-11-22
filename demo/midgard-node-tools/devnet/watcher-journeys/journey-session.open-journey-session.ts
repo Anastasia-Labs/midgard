@@ -4,6 +4,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { resolveProverSigner } from "@al-ft/midgard-fault-proofs/runtime";
 import {
   loadWatcherVerifiedDeploymentAuthority,
@@ -101,12 +102,16 @@ export const openJourneySession = async (runDirectory: string) => {
     const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
       authority.deploymentAuthority.deploymentIdentity,
     ).verifyForWorkflow({
-      deploymentFingerprint: deployment.manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+        deployment.manifest,
+      ),
     });
     const retainedDa = await startJourneyRetainedDa({
       runDirectory: context.runDirectory,
       runEnv,
-      deploymentFingerprint: deployment.manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+        deployment.manifest,
+      ),
     });
     onClose(retainedDa.close);
     const {

@@ -22,7 +22,7 @@ export const validatePhase4PhasRegistrationProof = (
       "registered",
       "cardanoImage",
       "networkMagic",
-      "manifestId",
+      "hubOraclePolicyId",
       "registrationTxHash",
       "rewardAddress",
       "rewardAddressBase16",
@@ -78,7 +78,7 @@ export const validatePhase4PhasRegistrationProof = (
   if (
     !Number.isSafeInteger(proof.networkMagic) ||
     (proof.networkMagic ?? 0) <= 0 ||
-    !/^[a-f0-9]{64}$/u.test(proof.manifestId ?? "") ||
+    !/^[a-f0-9]{56}$/u.test(proof.hubOraclePolicyId ?? "") ||
     !/^[a-f0-9]{64}$/u.test(proof.registrationTxHash ?? "") ||
     !/^stake_test1[0-9a-z]+$/u.test(proof.rewardAddress ?? "") ||
     proof.rewardAddressBase16 !== `f0${proof.scriptHash ?? ""}` ||

@@ -20,7 +20,7 @@ export const makeRunDirectory = createTrackedTempDirFactory(
 );
 
 export const INTENT_DIGEST = "a".repeat(64);
-export const MANIFEST_ID = "b".repeat(64);
+export const HUB_ORACLE_POLICY_ID = "b".repeat(56);
 export const RUN_ID = "stack-run-honest";
 export const DEPOSIT_EVENT = "de".repeat(32);
 export const WITHDRAWAL_EVENT = "ee".repeat(32);
@@ -154,7 +154,7 @@ export async function honestRun(): Promise<HonestRun> {
     peerId: "committee-peer",
     sha256: createHash("sha256").update(payload).digest("hex"),
     bytes: payload.length,
-    deploymentId: MANIFEST_ID,
+    hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
   };
   const assets = { lovelace: String(TRANSFER) };
   const records: Record<string, unknown> = {
@@ -266,7 +266,7 @@ export async function honestRun(): Promise<HonestRun> {
     expectation: {
       runDirectory,
       intentDigest: INTENT_DIGEST,
-      manifestId: MANIFEST_ID,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       stepIds: STEP_IDS,
       cycles: 1,
       depositLovelace: String(DEPOSIT),

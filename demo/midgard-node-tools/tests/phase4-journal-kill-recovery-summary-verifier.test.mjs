@@ -267,7 +267,7 @@ const validSummary = () => {
           id: `sha256:${h64("8")}`,
         },
         networkMagic: 424242,
-        manifestId: h64("9"),
+        hubOraclePolicyId: h64("9").slice(0, 56),
         registrationTxHash: phasRegistrationTxHash,
         rewardAddress: canonicalPhasIdentity.rewardAddress,
         rewardAddressBase16: `f0${canonicalPhasIdentity.scriptHash}`,

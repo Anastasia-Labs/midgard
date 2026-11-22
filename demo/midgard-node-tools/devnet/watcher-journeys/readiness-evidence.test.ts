@@ -54,7 +54,7 @@ vi.mock(
 );
 
 const CATEGORY = "invalidOneStepTransition" as JourneyCategory;
-const FINGERPRINT = "f0".repeat(32);
+const HUB_ORACLE_POLICY_ID = "f0".repeat(28);
 const DECISION_DIGEST = "d0".repeat(32);
 const sha256 = (bytes: Buffer) =>
   createHash("sha256").update(bytes).digest("hex");
@@ -83,7 +83,9 @@ const FAULT = {
 };
 const TERMINAL = { category: CATEGORY, headerHash: CURRENT.headerHash };
 const deployment = {
-  manifest: { manifestId: FINGERPRINT },
+  manifest: {
+    contracts: { hubOracleMint: { scriptHash: HUB_ORACLE_POLICY_ID } },
+  },
 } as unknown as JourneyEvidenceDeployment;
 
 const verified = (value: JourneyBlock) => ({
@@ -104,7 +106,7 @@ beforeEach(async () => {
   await artifact("result.json", {
     status: "passed",
     category: CATEGORY,
-    deploymentFingerprint: FINGERPRINT,
+    hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
     completion: TERMINAL,
     successor: SUCCESSOR.headerHash,
   });
@@ -171,7 +173,7 @@ describe("journey result evidence: release-depth anchor", () => {
   };
   const anchored = {
     manifest: {
-      manifestId: FINGERPRINT,
+      contracts: { hubOracleMint: { scriptHash: HUB_ORACLE_POLICY_ID } },
       l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
       steps: { initProtocol: { txHash: INIT_TX } },
     },
@@ -198,7 +200,7 @@ describe("journey result evidence: release-depth anchor", () => {
       status: "passed",
       executionPolicy: "authenticated-inclusion",
       category: CATEGORY,
-      deploymentFingerprint: FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       completion: included,
       successor: SUCCESSOR.headerHash,
     });
@@ -209,7 +211,7 @@ describe("journey result evidence: release-depth anchor", () => {
     await artifact("finalized-evidence-stamp.json", {
       category: CATEGORY,
       headerHash: CURRENT.headerHash,
-      deploymentFingerprint: FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       releaseFinalityPolicyDigest: computeFraudProofReleaseFinalityPolicyDigest(
         DEPLOYMENT_MANIFEST_L1_FINALITY,
       ),

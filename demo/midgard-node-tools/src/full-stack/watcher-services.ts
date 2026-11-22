@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  deploymentManifestHubOraclePolicyId,
+  verifyFinalizedDeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { parse } from "dotenv";
 import {
@@ -45,7 +48,10 @@ export async function generateWatcherServices(
   const manifest = verifyFinalizedDeploymentManifest(
     await readJsonIfPresent(stackPaths(processes).manifest),
   );
-  if (release.deploymentIdentity.manifestId !== manifest.manifestId)
+  if (
+    release.deploymentIdentity.hubOraclePolicyId !==
+    deploymentManifestHubOraclePolicyId(manifest)
+  )
     throw new Error(
       "Watcher release artifacts must be signed for this exact deployment",
     );

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { PUBLIC_NODE_SECRET_NAMES } from "midgard-node/commands/listen-public-http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -260,7 +261,9 @@ describe("public node containers", () => {
     await writeFile(
       join(services, "committee-0.json"),
       JSON.stringify({
-        deployment: { fingerprint: fixture.manifest.manifestId },
+        deployment: {
+          fingerprint: deploymentManifestHubOraclePolicyId(fixture.manifest),
+        },
         da_committee: { members: [{ signer_index: 0, peer_id: "peer-0" }] },
       }),
     );

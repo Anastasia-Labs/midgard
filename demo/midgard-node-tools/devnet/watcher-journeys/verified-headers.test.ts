@@ -34,7 +34,7 @@ const ADOPTED_HEAD = block("c3");
 /** The production observability served through its own HTTP handler. */
 const watcher = () => {
   const observability = createWatcherOperationsObservability({
-    deploymentFingerprint: "11".repeat(32),
+    hubOraclePolicyId: "11".repeat(28),
     supervisor: {
       status: () => ({
         phase: "accepting",
@@ -229,7 +229,7 @@ describe("journey verified-header evidence", () => {
     await first.collectHealthy(PREDECESSOR, SUCCESSOR);
     await first.retain();
     await first.handOn({
-      deploymentFingerprint: "11".repeat(32),
+      hubOraclePolicyId: "11".repeat(28),
       block: { ...SUCCESSOR, commitTxHash: "cd".repeat(32) },
     });
     // The next family builds on the head in a new session, whose watcher

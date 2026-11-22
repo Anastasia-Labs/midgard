@@ -73,7 +73,7 @@ const stackJourneyReplayIdentity = (
   context: StackJourneyContext,
   watcherConfig: WatcherConfig,
 ): JourneyReplayStoreIdentity => ({
-  deploymentManifestId: context.release.deploymentIdentity.manifestId,
+  hubOraclePolicyId: context.release.deploymentIdentity.hubOraclePolicyId,
   blueprintHash: context.release.deploymentIdentity.blueprintHash,
   origin: watcherConfig.l1.origin ?? null,
 });
@@ -112,7 +112,7 @@ export const openStackJourneyReplayedLedger = async (
 ): Promise<ReplayedLedger> => {
   const { deploymentIdentity } = context.release;
   await requireJourneyReplayStore(context.runDirectory, {
-    deploymentManifestId: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     blueprintHash: deploymentIdentity.blueprintHash,
   });
   return lazyReplayedLedger(async () => {

@@ -126,9 +126,9 @@ const setup = () => {
     }),
   );
   controls.manifest.mockReturnValue({
-    manifestId: "33".repeat(32),
     network: "Custom",
     contracts: {
+      hubOracleMint: { scriptHash: "33".repeat(28) },
       withdrawalMint: { scriptHash: fixture.config.withdrawalPolicyId },
       withdrawalSpend: { scriptHash: fixture.config.withdrawalPolicyId },
       payoutMint: { scriptHash: fixture.config.payoutPolicyId },
@@ -141,7 +141,7 @@ const setup = () => {
   controls.capture.mockImplementation(async (_options, use) => ({
     value: await use({ ...fixture.scope }),
     boundary: {
-      deploymentManifestId: "33".repeat(32),
+      hubOraclePolicyId: "33".repeat(28),
       point: fixture.scope.point,
       generation: "7",
     },
@@ -250,7 +250,7 @@ it("refuses mismatched final deployment authority and unfinished journey", async
   wire(fixture);
   controls.capture.mockImplementation(async (_options, use) => ({
     value: await use(fixture.scope),
-    boundary: { deploymentManifestId: "44".repeat(32) },
+    boundary: { hubOraclePolicyId: "44".repeat(28) },
   }));
   await expect(sampleAcceptancePayouts(layout, limits)).rejects.toThrow(
     /different deployment/,

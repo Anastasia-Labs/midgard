@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { resolveProverSigner } from "@al-ft/midgard-fault-proofs/runtime";
 import {
   captureTransitionTraceL1Events,
@@ -120,7 +121,9 @@ it.skipIf(runDirectory === undefined).each([false, true])(
             : "work/trace-event-acquisition-evidence.json",
         ),
         {
-          deploymentFingerprint: deployment.manifest.manifestId,
+          hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+            deployment.manifest,
+          ),
           observedAt: new Date().toISOString(),
           durationMs: performance.now() - started,
           outcome,

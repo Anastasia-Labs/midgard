@@ -54,8 +54,7 @@ export const bindJourneyEventAuthorities = async (
     withdrawal.resolvedContracts.contracts.fabricatedWithdrawal?.history;
   if (
     [deposit, withdrawal].some(
-      (binding) =>
-        binding.deploymentFingerprint !== transition.deploymentFingerprint,
+      (binding) => binding.hubOraclePolicyId !== transition.hubOraclePolicyId,
     ) ||
     depositHistory === undefined ||
     withdrawalHistory === undefined

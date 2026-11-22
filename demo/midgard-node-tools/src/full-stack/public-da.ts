@@ -25,7 +25,7 @@ export async function verifyPublicDa(
   const authority = await verifyStackRelease(processes);
   const path = join(processes.config.runDirectory, `da-${headerHash}`);
   const saved = (await readJsonIfPresent(`${path}.json`)) as
-    | { sha256: string; headerHash: string; deploymentId: string }
+    | { sha256: string; headerHash: string; hubOraclePolicyId: string }
     | undefined;
   if (saved) {
     const digest = createHash("sha256")
@@ -34,7 +34,7 @@ export async function verifyPublicDa(
     if (
       saved.sha256 !== digest ||
       saved.headerHash !== headerHash ||
-      saved.deploymentId !== authority.deploymentIdentity.manifestId
+      saved.hubOraclePolicyId !== authority.deploymentIdentity.hubOraclePolicyId
     )
       throw new Error("Saved public DA bytes changed");
     return saved;
@@ -66,7 +66,7 @@ export async function verifyPublicDa(
         .update(result.payloadEnvelopeCbor)
         .digest("hex"),
       bytes: result.payloadEnvelopeCbor.length,
-      deploymentId: authority.deploymentIdentity.manifestId,
+      hubOraclePolicyId: authority.deploymentIdentity.hubOraclePolicyId,
     };
     await writeDurableJson(`${path}.json`, receipt);
     return receipt;

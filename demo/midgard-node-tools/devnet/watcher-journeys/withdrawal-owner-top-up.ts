@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { midgardAddressFromText } from "@al-ft/midgard-core/codec";
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/users";
 import { credentialToAddress } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -41,7 +42,7 @@ import {
 import { stackWithdrawalOwnerFundingPorts } from "./withdrawal-owner-top-up.stack.js";
 
 type DevnetHead = Readonly<{
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   block: JourneySuccessor;
 }>;
 
@@ -155,7 +156,7 @@ const devnetTopUp = async (
     const records = await verified.collect([trace.predecessor, trace.current]);
     if (records !== undefined) {
       await writeJourneyArtifact(headPath, {
-        deploymentFingerprint: input.head.deploymentFingerprint,
+        hubOraclePolicyId: input.head.hubOraclePolicyId,
         block: { ...trace.current, commitTxHash: trace.commits[1]! },
         verified: records.at(-1),
       });
@@ -247,7 +248,10 @@ export const withdrawalOwnerTopUpBeforeFamily = async (
   const readHead = async () => {
     if (!existsSync(headPath)) return undefined;
     const head = await readJourneyArtifact<DevnetHead>(headPath);
-    if (head.deploymentFingerprint !== deployment.manifest.manifestId)
+    if (
+      head.hubOraclePolicyId !==
+      deploymentManifestHubOraclePolicyId(deployment.manifest)
+    )
       throw new Error("Journey head belongs to a different deployment");
     return head;
   };
