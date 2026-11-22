@@ -10,7 +10,11 @@ import { outRefFromByte } from "@al-ft/midgard-validation/tests/validation-fixtu
 import { Cause, Effect, Exit } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { isBlockReplayFault, replayBlockEvents } from "../src/block-replay.js";
+import {
+  isBlockReplayFault,
+  isReplayLocalFault,
+  replayBlockEvents,
+} from "../src/block-replay.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -261,4 +265,62 @@ describe("the block replay over a parent ledger", () => {
       expect(faultOf(exit)).toBe(fault);
     },
   );
+});
+
+/** Every failure and defect of `exit`, which must have failed. */
+const causesOf = (exit: Exit.Exit<unknown, unknown>) => {
+  if (Exit.isSuccess(exit)) throw new Error("the replay succeeded");
+  return [...Cause.defects(exit.cause), ...Cause.failures(exit.cause)];
+};
+
+/** Replays one deposit at `outRef` whose L1 material inserts `output`,
+ * over the parent ledger as `wrap` presents it. */
+const replayDeposit = async (
+  outRef: Buffer,
+  output: Buffer,
+  wrap: (ledger: Ledger) => Ledger = (ledger) => ledger,
+) => {
+  const block = await fixtureBlock(parent, [
+    { phase: "Deposit", outRef, output: fixtureOutput() },
+  ]);
+  return await Effect.runPromiseExit(
+    replayBlockEvents({
+      header: block.payload.block_body.header,
+      payload: block.payload,
+      parent: wrap(await admitted(parent, PARENT_ROOT)),
+      ...FIXTURE_REPLAY_SETTINGS,
+      ...block.material,
+      replayUserEvent: () => Effect.succeed([{ key: hex(outRef), output }]),
+    }),
+  );
+};
+
+describe("the block replay's ledger failures", () => {
+  it("refuses an inserted output with no ledger leaf as it did before, never as a local fault", async () => {
+    const exit = await replayDeposit(
+      outRefFromByte(0xd3),
+      Buffer.from("00", "hex"),
+    );
+    const causes = causesOf(exit);
+    expect(causes.length).toBeGreaterThan(0);
+    expect(causes.filter(isReplayLocalFault)).toEqual([]);
+    if (Exit.isFailure(exit))
+      expect(Cause.pretty(exit.cause)).toContain(
+        "not a canonical ledger entry",
+      );
+  });
+
+  it("names a failing ledger read a local fault", async () => {
+    const exit = await replayDeposit(
+      outRefFromByte(0xd3),
+      fixtureOutput(),
+      (ledger) => ({
+        root: ledger.root,
+        read: () => Promise.reject(new Error("storage unavailable")),
+        apply: (mutations) => ledger.apply(mutations),
+        entries: () => ledger.entries(),
+      }),
+    );
+    expect(causesOf(exit).filter(isReplayLocalFault)).toHaveLength(1);
+  });
 });

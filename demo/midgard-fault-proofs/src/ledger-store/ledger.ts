@@ -11,6 +11,7 @@ import {
   rootOf,
 } from "./engine.js";
 import {
+  LedgerEntryNotCanonical,
   LedgerMutationRefused,
   LedgerNodeMissing,
   LedgerOutputMissing,
@@ -41,7 +42,8 @@ export interface Ledger {
   /**
    * The ledger after `mutations`, in order. Refuses with
    * `LedgerMutationRefused` on a delete of an absent out-ref or an insert over
-   * a present one. Cost is proportional to the mutated keys.
+   * a present one, and with `LedgerEntryNotCanonical` on an insert of an
+   * entry with no trie leaf. Cost is proportional to the mutated keys.
    */
   apply(mutations: readonly LedgerMutation[]): Promise<Ledger>;
   /** Every entry, in trie path order (not out-ref order). */
@@ -86,6 +88,18 @@ export const overlayOutput = (
     if (output !== undefined) return output;
   }
   return undefined;
+};
+
+/** `entry` and its trie leaf; refused with `LedgerEntryNotCanonical` when it
+ * has none. */
+export const storedEntryLeaf = (
+  entry: LedgerEntry,
+): { entry: LedgerEntry; leaf: Buffer } => {
+  try {
+    return ledgerEntryLeaf(entry, "ledger store");
+  } catch (cause) {
+    throw new LedgerEntryNotCanonical(Buffer.from(entry.outRef), cause);
+  }
 };
 
 const ENTRY_BATCH = 256;
@@ -163,14 +177,11 @@ export class LedgerValue implements Ledger {
         continue;
       }
       if (present) throw new LedgerMutationRefused("present", key, index);
-      const { entry, leaf } = ledgerEntryLeaf(
-        {
-          outRef: key,
-          output: mutation.output,
-          descriptor: mutation.descriptor,
-        },
-        "ledger mutation",
-      );
+      const { entry, leaf } = storedEntryLeaf({
+        outRef: key,
+        output: mutation.output,
+        descriptor: mutation.descriptor,
+      });
       await trie.insert(key, leaf);
       outputs.set(key.toString("hex"), Buffer.from(entry.output));
     }

@@ -2,7 +2,8 @@
  * The block replay's reads and writes of its ledger: the outputs at named
  * out-refs, the out-refs a transaction can resolve, and an event's changes
  * applied as the ledger mutations they amount to. A failure of the ledger's
- * `read` or `apply` is this process's own fault (`ReplayLocalFault`).
+ * `read` or `apply` is this process's own fault (`ReplayLocalFault`), except
+ * `apply` refusing an inserted output with no ledger leaf, a typed failure.
  */
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import {
@@ -18,7 +19,11 @@ import {
   isReplayLocalFault,
   ReplayLocalFault,
 } from "./block-replay.faults.js";
-import type { Ledger, LedgerMutation } from "./ledger-store/index.js";
+import type {
+  Ledger,
+  LedgerEntryNotCanonical,
+  LedgerMutation,
+} from "./ledger-store/index.js";
 
 /** One change to the ledger: the out-ref CBOR hex and its new output, or
  * `null` for a removal. */
@@ -27,18 +32,47 @@ export type BlockReplayLedgerChange = {
   readonly output: Buffer | null;
 };
 
+const localFault = (what: string, cause: unknown) =>
+  isReplayLocalFault(cause)
+    ? cause
+    : new ReplayLocalFault({
+        message: `${what} failed locally: ${String(cause)}`,
+        cause,
+      });
+
 /** `run()` on the ledger, with any failure named a local fault of `what`. */
 const onLedger = <A>(what: string, run: () => Promise<A>) =>
   Effect.tryPromise({
     try: run,
-    catch: (cause) =>
-      isReplayLocalFault(cause)
-        ? cause
-        : new ReplayLocalFault({
-            message: `${what} failed locally: ${String(cause)}`,
-            cause,
-          }),
+    catch: (cause) => localFault(what, cause),
   }).pipe(Effect.orDie);
+
+/** Whether `error` is the store's `LedgerEntryNotCanonical`, matched by
+ * name: the package ships more than one entry bundle. */
+const isEntryNotCanonical = (
+  error: unknown,
+): error is LedgerEntryNotCanonical =>
+  error instanceof Error && error.name === "LedgerEntryNotCanonical";
+
+/**
+ * `ledger` after `mutations`. An inserted output with no ledger leaf is a
+ * typed failure (`LedgerEntryNotCanonical`), never a local fault: the block's
+ * events supplied it. Any other failure is a local fault.
+ */
+const applyMutations = (
+  ledger: Ledger,
+  mutations: readonly LedgerMutation[],
+): Effect.Effect<Ledger, LedgerEntryNotCanonical> =>
+  Effect.tryPromise({
+    try: () => ledger.apply(mutations),
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.catchAll((cause) =>
+      isEntryNotCanonical(cause)
+        ? Effect.fail(cause)
+        : Effect.die(localFault("ledger apply", cause)),
+    ),
+  );
 
 /** The outputs `ledger` holds at `outRefs`, keyed by out-ref hex; an
  * out-ref it does not hold maps to `undefined`. */
@@ -148,7 +182,7 @@ export const applyChanges = (
       ledger:
         mutations.length === 0
           ? ledger
-          : yield* onLedger("ledger apply", () => ledger.apply(mutations)),
+          : yield* applyMutations(ledger, mutations),
       applied: Object.freeze(applied),
     };
   });

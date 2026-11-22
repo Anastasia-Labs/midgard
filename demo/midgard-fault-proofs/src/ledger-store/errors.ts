@@ -31,6 +31,21 @@ export class LedgerMutationRefused extends Error {
   }
 }
 
+/** `apply` or `admit` refused an entry with no trie leaf: neither the
+ * canonical descriptor nor the undecodable-script fallback derives from its
+ * output. Never a fault of the store's records. */
+export class LedgerEntryNotCanonical extends Error {
+  constructor(
+    readonly outRef: Buffer,
+    cause: unknown,
+  ) {
+    super(`out-ref ${outRef.toString("hex")} is not a canonical ledger entry`, {
+      cause,
+    });
+    this.name = "LedgerEntryNotCanonical";
+  }
+}
+
 /** A trie node a ledger needs is not held: a storage fault, or a ledger read
  * from a witness that did not record it. */
 export class LedgerNodeMissing extends Error {
