@@ -357,6 +357,63 @@ describe("snapshot authority: refusals become named errors", () => {
   });
 });
 
+describe("snapshot authority: transactions the caller holds", () => {
+  const counting = (reads: FollowerRawReads, calls: string[]) => ({
+    ...reads,
+    rawTransaction: (async (txHash, point) => {
+      calls.push(txHash);
+      return await reads.rawTransaction(txHash, point);
+    }) satisfies FollowerRawReads["rawTransaction"],
+  });
+  const held = (snapshot: Captured) =>
+    new Map(snapshot.transactions.map((entry) => [entry.txHash, entry]));
+
+  it("a transaction held at its point is not read again; its depth follows the tip", async () => {
+    const { fx, forward, request } = await extended(1);
+    const calls: string[] = [];
+    const authority = sourceOver(
+      fx,
+      counting(fx.reads(), calls),
+    ).snapshotAuthority({
+      releaseFinality: RELEASE,
+      observationDepth: "release_finality",
+    });
+    const first = (await authority.capture(request)).snapshot as Captured;
+    expect(calls).toEqual([fx.hashes.commit]);
+    await forward();
+    const second = (await authority.capture(request, held(first)))
+      .snapshot as Captured;
+    expect(calls).toEqual([fx.hashes.commit]);
+    expect(second.transactions).toEqual([
+      { ...first.transactions[0]!, confirmationDepth: 3 },
+    ]);
+    expect(second).toEqual(
+      await capture(fx, fx.reads(), "release_finality", request),
+    );
+  });
+
+  it("a transaction held at another point is read again", async () => {
+    const { fx, request } = await extended(1);
+    const calls: string[] = [];
+    const authority = sourceOver(
+      fx,
+      counting(fx.reads(), calls),
+    ).snapshotAuthority({
+      releaseFinality: RELEASE,
+      observationDepth: "release_finality",
+    });
+    const first = (await authority.capture(request)).snapshot as Captured;
+    const moved = new Map(
+      first.transactions.map((entry) => [
+        entry.txHash,
+        { ...entry, bodyCbor: "00", inclusionPoint: fx.points.p4 },
+      ]),
+    );
+    expect((await authority.capture(request, moved)).snapshot).toEqual(first);
+    expect(calls).toEqual([fx.hashes.commit, fx.hashes.commit]);
+  });
+});
+
 describe("snapshot authority: admitted, provenance exact", () => {
   it("returns the admitted snapshot with the persisted provenance strings", async () => {
     const { fx, request } = await extended(1);

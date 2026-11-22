@@ -27,10 +27,11 @@ import {
 import {
   historyEntry,
   sameStringSet,
+} from "./raw-l1-snapshot.history-entry.js";
+import {
   unitsHeldBy,
   unitsTouchedBy,
-  withUnitKeys,
-} from "./raw-l1-snapshot.history-entry.js";
+} from "./raw-l1-snapshot.units-touched.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 
 /** The most out-refs one scope may name: a step reads a few, never a population. */
@@ -384,14 +385,13 @@ export const admitFraudProofRawL1Snapshot = ({
       "raw L1 snapshot omitted or duplicated unit history coverage",
     );
   }
-  const { touched, held } = withUnitKeys(historyUnits, (keys) => ({
-    touched: transactions.map((candidate) => unitsTouchedBy(candidate, keys)),
-    held: scopes.map((scope) =>
-      scope.utxos.map(
-        (candidate) => unitsHeldBy(candidate.outputCbor, keys).size > 0,
-      ),
-    ),
-  }));
+  const touched = transactions.map(unitsTouchedBy);
+  const held = scopes.map((scope) =>
+    scope.utxos.map((candidate) => {
+      const units = unitsHeldBy(candidate.outputCbor);
+      return historyUnits.some((unit) => units.has(unit));
+    }),
+  );
   for (const [index, entry] of history.entries()) {
     const actualHashes = transactions
       .filter((_candidate, position) => touched[position]!.has(entry.unit))

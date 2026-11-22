@@ -164,6 +164,7 @@ const captureOnce = async (
   request: FraudProofRawL1SnapshotRequest,
   releaseFinality: VerifiedFraudProofReleaseFinalityPolicy,
   observationDepth: FraudProofL1ObservationDepth,
+  held: ReadonlyMap<string, FraudProofRawL1Transaction> | undefined,
 ): Promise<FraudProofRawL1Capture> => {
   const { view, pending } = await pendingRead.atTip();
   const boundary = await blockAtDepth(
@@ -217,11 +218,17 @@ const captureOnce = async (
     // Lowercase hex: code-unit order.
     ([left], [right]) => (left < right ? -1 : left > right ? 1 : 0),
   )) {
-    const transaction = required(
-      requireResolvedInputs(
-        await rawReads.rawTransaction(txHash, inclusionPoint),
-      ),
-    );
+    // A transaction the caller holds at this point is the one stored here:
+    // its bytes are not read again. One a rollback moved is.
+    const known = held?.get(txHash);
+    const transaction =
+      known !== undefined && samePoint(known.inclusionPoint, inclusionPoint)
+        ? known
+        : required(
+            requireResolvedInputs(
+              await rawReads.rawTransaction(txHash, inclusionPoint),
+            ),
+          );
     // Depth against this capture's tip, as the snapshot cursor counts it.
     transactions.push({
       ...transaction,
@@ -277,6 +284,7 @@ const captureOnce = async (
       request,
       releaseFinality,
       observationDepth,
+      admitted: held,
     }),
     pending,
   };
@@ -326,13 +334,17 @@ export const createWatcherFaultProofL1Source = (
     }): FraudProofRawL1SnapshotAuthority =>
       Object.freeze({
         authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-        capture: (request: FraudProofRawL1SnapshotRequest) =>
+        capture: (
+          request: FraudProofRawL1SnapshotRequest,
+          held?: ReadonlyMap<string, FraudProofRawL1Transaction>,
+        ) =>
           withNodeTipRetries(() =>
             captureOnce(
               snapshotSource,
               request,
               releaseFinality,
               observationDepth,
+              held,
             ),
           ),
       }),

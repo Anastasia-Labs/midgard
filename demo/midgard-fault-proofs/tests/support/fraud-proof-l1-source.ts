@@ -21,7 +21,7 @@ export const fraudProofL1SourceForTest = ({
       get authorityVersion() {
         return current().authorityVersion;
       },
-      capture: (request) => current().capture(request),
+      capture: (request, held) => current().capture(request, held),
     };
   },
 });

@@ -204,11 +204,18 @@ export type FraudProofRawL1Capture = Readonly<{
 /**
  * Provider-specific implementations return untrusted bytes. Admission and all
  * stage/terminal derivation stay in this package.
+ *
+ * `held` is what the caller admitted from its previous capture, by
+ * transaction hash. A history only grows, so an authority may serve a
+ * transaction still included at the point `held` has it at from `held`,
+ * and read only the ones it lacks; after a rollback the point differs and
+ * the transaction is read again.
  */
 export interface FraudProofRawL1SnapshotAuthority {
   readonly authorityVersion: typeof FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY;
   capture(
     request: FraudProofRawL1SnapshotRequest,
+    held?: ReadonlyMap<string, FraudProofRawL1Transaction>,
   ): Promise<FraudProofRawL1Capture>;
 }
 

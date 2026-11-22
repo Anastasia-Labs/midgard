@@ -7,10 +7,7 @@
  * unit past the thread token is found in the histories of the units before
  * it, so a capture that finds a unit it did not name is taken again with
  * it, and every unit found stays named under the header for the process's
- * life: naming a unit in a capture is what holds its history. Each capture
- * admits and decodes only the transactions the header's previous capture
- * did not hold in the same bytes: the histories grow by a transaction or
- * two per move, and a long resolution makes hundreds of moves.
+ * life: naming a unit in a capture is what holds its history.
  *
  * Every read is of the next view (workflow/next-state.ts): the scopes with
  * our node's mempool applied, and each unit's history with the mempool
@@ -299,16 +296,10 @@ export const validationTraceDisputeCapture = ({
   /** The units found under each header so far, kept for the process. */
   readonly named: Map<string, Set<string>>;
 }) => {
-  /** What the latest capture of each header admitted, and the outputs its
-   * reads decoded, by transaction hash. Each capture replaces its header's
-   * entry, so it holds no more than that capture does. */
-  const latest = new Map<
-    string,
-    Readonly<{
-      admitted: ReadonlyMap<string, FraudProofRawL1Transaction>;
-      paid: ReadonlyMap<string, Paid>;
-    }>
-  >();
+  /** The outputs the reads of each header's latest capture decoded, by
+   * transaction hash. Each read replaces its header's entry, so it holds
+   * no more than that read does. */
+  const latest = new Map<string, ReadonlyMap<string, Paid>>();
   if (caseHistory.snapshot === undefined)
     throw new Error("validation-trace chain view needs the raw L1 capture");
   const capture = caseHistory.snapshot.bind(caseHistory);
@@ -385,7 +376,7 @@ export const validationTraceDisputeCapture = ({
     const outputsOf: ValidationTraceCapturedOutputs = (transaction) => {
       let entry = paid.get(transaction.txHash);
       if (entry?.bodyCbor !== transaction.bodyCbor) {
-        const known = prior?.paid.get(transaction.txHash);
+        const known = prior?.get(transaction.txHash);
         entry =
           known?.bodyCbor === transaction.bodyCbor
             ? known
@@ -394,21 +385,14 @@ export const validationTraceDisputeCapture = ({
       }
       return entry.outputs.map((output) => ({ ...output, transaction }));
     };
-    let admitted = prior?.admitted;
+    latest.set(headerHash, paid);
     let found: ValidationTraceDisputeCapture | undefined;
     for (let round = 0; round < ROUNDS; round += 1) {
       const { snapshot, pending } = await capture({
         headerHash,
         scopes,
         historyUnits: [...units],
-        admitted,
       });
-      admitted = new Map(
-        snapshot.transactions.map(
-          (transaction) => [transaction.txHash, transaction] as const,
-        ),
-      );
-      latest.set(headerHash, { admitted, paid });
       found = derive(snapshot, pending, outputsOf, artifact, prover);
       const wanted = [
         ...found.cases.values(),

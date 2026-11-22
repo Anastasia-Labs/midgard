@@ -14,6 +14,7 @@ import {
   OUT_REF,
   string,
 } from "./raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import { carryAdmittedFacts } from "./raw-l1-snapshot.units-touched.js";
 
 export const address = (value: unknown, label: string): string => {
   const parsed = string(value, label);
@@ -284,11 +285,13 @@ export const admitFraudProofRawL1Transaction = (
       label,
       minimumConfirmationDepth,
     );
-    return {
+    const again = {
       ...prior,
       inclusionPoint: point(parsed.inclusionPoint, `${label}.inclusionPoint`),
       confirmationDepth,
     };
+    carryAdmittedFacts(prior, again);
+    return again;
   }
   const bodyCbor = cbor(parsed.bodyCbor, `${label}.bodyCbor`);
   const witnessSetCbor = cbor(parsed.witnessSetCbor, `${label}.witnessSetCbor`);

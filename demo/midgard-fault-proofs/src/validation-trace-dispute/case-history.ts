@@ -27,6 +27,7 @@ import type {
   FraudProofRawL1Transaction,
 } from "../workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import type { FraudProofRawL1Snapshot } from "../workflow/raw-l1-snapshot.js";
+import { admittedFact } from "../workflow/raw-l1-snapshot.units-touched.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "../workflow/release-finality-policy.js";
 
 const blake2b256 = (hex: string): string =>
@@ -63,18 +64,14 @@ export type ValidationTraceCaseHistory = Readonly<{
    * One authenticated capture for the dispute over `headerHash`: the
    * outputs at `scopes` and the complete history of each of `historyUnits`,
    * which the observer then holds under the header. Absent where the
-   * history is served without the raw L1 view. `admitted` holds
-   * transactions an earlier capture admitted, by hash: one served again in
-   * exactly the same bytes is not decoded again. The snapshot comes with
+   * history is served without the raw L1 view. The snapshot comes with
    * our node's mempool at its tip, which never enters the snapshot.
    */
   snapshot?(
     input: Pick<
       FraudProofRawL1SnapshotRequest,
       "headerHash" | "scopes" | "historyUnits"
-    > & {
-      readonly admitted?: ReadonlyMap<string, FraudProofRawL1Transaction>;
-    },
+    >,
   ): Promise<ValidationTraceDisputeSnapshot>;
 }>;
 
@@ -93,27 +90,38 @@ export const createValidationTraceCaseHistory = ({
   readonly authority: FraudProofRawL1SnapshotAuthority;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
 }): ValidationTraceCaseHistory => {
-  const snapshot: NonNullable<ValidationTraceCaseHistory["snapshot"]> = async ({
-    admitted,
-    ...input
-  }) => {
+  /** The transactions admitted under each header, by hash. A history only
+   * grows, by a transaction or two per move over hundreds of moves, so each
+   * capture reads and decodes only the transactions the header's earlier
+   * ones did not hold in the same bytes at the same point. */
+  const held = new Map<string, Map<string, FraudProofRawL1Transaction>>();
+  const snapshot: NonNullable<ValidationTraceCaseHistory["snapshot"]> = async (
+    input,
+  ) => {
     const request: FraudProofRawL1SnapshotRequest = {
       deploymentIdentityDigest: releaseFinality.deploymentIdentityDigest,
       blueprintHash: releaseFinality.blueprintHash,
       finalityPolicyDigest: releaseFinality.policyDigest,
       ...input,
     };
-    const { snapshot: value, pending } = await authority.capture(request);
-    return {
-      snapshot: admitFraudProofRawL1Snapshot({
-        value,
-        request,
-        releaseFinality,
-        observationDepth: "inclusion",
-        admitted,
-      }),
-      pending,
-    };
+    const admitted =
+      held.get(input.headerHash) ??
+      new Map<string, FraudProofRawL1Transaction>();
+    held.set(input.headerHash, admitted);
+    const { snapshot: value, pending } = await authority.capture(
+      request,
+      admitted,
+    );
+    const captured = admitFraudProofRawL1Snapshot({
+      value,
+      request,
+      releaseFinality,
+      observationDepth: "inclusion",
+      admitted,
+    });
+    for (const transaction of captured.transactions)
+      admitted.set(transaction.txHash, transaction);
+    return { snapshot: captured, pending };
   };
   return Object.freeze({
     snapshot,
@@ -143,6 +151,24 @@ export type ValidationTraceRecordedThread = Readonly<{
   unit: string;
   defenderVkh: string;
 }>;
+
+/** The outputs a transaction of a history pays, decoded once per admitted
+ * transaction. */
+export const validationTraceCaseOutputs = admittedFact(
+  ({ bodyCbor }: ValidationTraceCaseTransaction): readonly TxOutput[] => {
+    const body = CML.TransactionBody.from_cbor_hex(bodyCbor);
+    const outputs = body.outputs();
+    const found = Array.from({ length: outputs.len() }, (_, index) => {
+      const output = outputs.get(index);
+      const decoded = coreToTxOutput(output);
+      output.free();
+      return decoded;
+    });
+    outputs.free();
+    body.free();
+    return found;
+  },
+);
 
 /** The defender named by `output`'s thread datum, if it has one. */
 const threadDefender = (output: TxOutput): string | undefined => {
@@ -181,9 +207,7 @@ const caseThreadTokens = ({
       net.set(unit, (net.get(unit) ?? 0n) + quantity);
       if (quantity > 0n) opened.add(unit);
     }
-    const outputs = body.outputs();
-    for (let index = 0; index < outputs.len(); index += 1) {
-      const output = coreToTxOutput(outputs.get(index));
+    for (const output of validationTraceCaseOutputs(transaction)) {
       const defenderVkh = threadDefender(output);
       if (defenderVkh === undefined) continue;
       const unit =

@@ -16,11 +16,14 @@
  * prepared resolution there. */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk/core";
-import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 
 import { deriveCekRedeemerItemPlan } from "../redeemer-item-plan.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import type { ValidationTraceCaseHistory } from "./case-history.js";
+import {
+  type ValidationTraceCaseHistory,
+  validationTraceCaseOutputs,
+} from "./case-history.js";
 import type { ValidationTraceHop } from "./one-step-builders.js";
 import type { ValidationTraceContextItem } from "./one-step-context-item.js";
 import {
@@ -115,13 +118,11 @@ export const redeemerItemCarried = async ({
   readonly entries: Readonly<Record<"cek" | "scriptSources", string>>;
 }): Promise<ValidationTraceRedeemerItemCarried> => {
   const carried: ValidationTraceRedeemerItemCarried[] = [];
-  for (const { bodyCbor } of await history.transactions({
+  for (const transaction of await history.transactions({
     headerHash,
     caseUnit: unit,
   })) {
-    const outputs = CML.TransactionBody.from_cbor_hex(bodyCbor).outputs();
-    for (let index = 0; index < outputs.len(); index += 1) {
-      const output = coreToTxOutput(outputs.get(index));
+    for (const output of validationTraceCaseOutputs(transaction)) {
       const carrier =
         output.address === entries.cek
           ? "cek"
