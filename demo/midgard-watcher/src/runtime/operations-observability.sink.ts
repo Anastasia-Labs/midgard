@@ -3,7 +3,11 @@ import {
   createWatcherAlertBook,
   WATCHER_DA_FETCH_ALERT_MAXIMUM_AGE_MS,
 } from "./operations-observability.alert-book.js";
-import { hash32, percentile } from "./operations-observability.percentile.js";
+import {
+  hash32,
+  percentile,
+  policyId,
+} from "./operations-observability.percentile.js";
 import {
   MAXIMUM_PAGE_SIZE,
   MAXIMUM_RETAINED_DIAGNOSTICS,
@@ -29,7 +33,7 @@ import {
 } from "./operations-observability.watcher-operations-metrics.js";
 
 export type WatcherOperationsSinkInput = Readonly<{
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   nowMs?: () => bigint;
   monotonicNowMs?: () => number;
   l1FreshnessMaximumAgeMs?: number;
@@ -47,7 +51,7 @@ export type WatcherAgeAnchor = Readonly<{
 
 /** What the sink recorded, read-only, as the operations view serves it. */
 export type WatcherOperationsRecord = Readonly<{
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   /** The wall clock in milliseconds; it throws rather than go negative. */
   nowMs: () => bigint;
   anchorAge: (origin: string) => WatcherAgeAnchor;
@@ -93,13 +97,13 @@ const DIAGNOSTIC_KINDS: readonly string[] = Object.freeze([
 /**
  * The sink every module reports to: the diagnostics ring, the alert book,
  * latency samples, L1 sources and the DA bond pool. It needs only the
- * deployment fingerprint, clocks and bounds, so startup creates it before
+ * hub-oracle policy id, clocks and bounds, so startup creates it before
  * any module that reports to it; the operations view reads its record.
  */
 export const createWatcherOperationsSink = (
   input: WatcherOperationsSinkInput,
 ): WatcherOperationsRecorder => {
-  hash32(input.deploymentFingerprint, "observability deployment fingerprint");
+  policyId(input.hubOraclePolicyId, "observability hub-oracle policy id");
   const wallMs = input.nowMs ?? (() => BigInt(Date.now()));
   const nowMs = (): bigint => {
     const value = wallMs();
@@ -391,7 +395,7 @@ export const createWatcherOperationsSink = (
   };
 
   const record: WatcherOperationsRecord = Object.freeze({
-    deploymentFingerprint: input.deploymentFingerprint,
+    hubOraclePolicyId: input.hubOraclePolicyId,
     nowMs,
     anchorAge,
     ageMs: (anchor: WatcherAgeAnchor) => ageAt(anchor, monotonicTime()),

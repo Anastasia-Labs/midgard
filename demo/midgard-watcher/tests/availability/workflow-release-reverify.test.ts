@@ -27,7 +27,7 @@ beforeEach(() => {
     lease,
     {
       id: "open",
-      deploymentIdentity: "other-deployment",
+      hubOraclePolicyId: "other-deployment",
       actor: "actor",
       headerHash: "header",
       action: "open",

@@ -7,7 +7,6 @@ import {
   type DeploymentManifestAvailabilityChallenge,
   type DeploymentManifestCardanoProtocolParameters,
   type DeploymentManifestEventHistoryRecipe,
-  type DeploymentMarker,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
@@ -211,7 +210,7 @@ export const verifyCanonicalManifest = (value: unknown): DeploymentManifest => {
 };
 
 export type VerifiedWatcherDeploymentIdentity = Readonly<{
-  manifestId: string;
+  hubOraclePolicyId: string;
   network: "Mainnet" | "Preprod" | "Preview" | "Custom";
   trustRootId: string;
   blueprintHash: string;
@@ -219,12 +218,10 @@ export type VerifiedWatcherDeploymentIdentity = Readonly<{
   releaseProvenanceDigest?: string;
   ruleBundleCommitment: string;
   programCommitments: Readonly<Record<string, string>>;
-  durableMarker: DeploymentMarker;
 }>;
 
 export type WatcherDeploymentProtocolScriptAuthority = Readonly<{
   schemaVersion: typeof WATCHER_DEPLOYMENT_PROTOCOL_SCRIPT_AUTHORITY_SCHEMA_VERSION;
-  deploymentFingerprint: string;
   network: "Mainnet" | "Preprod" | "Preview" | "Custom";
   hubOracleOneShotOutRef: string;
   /**
@@ -258,7 +255,7 @@ export type WatcherDeploymentProtocolScriptAuthority = Readonly<{
 
 export type WatcherDeploymentProtocolParameterAuthority = Readonly<{
   schemaVersion: typeof WATCHER_DEPLOYMENT_PROTOCOL_PARAMETER_AUTHORITY_SCHEMA_VERSION;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   snapshot: DeploymentManifestCardanoProtocolParameters;
   snapshotDigest: string;
   authorityDigest: string;
@@ -266,7 +263,7 @@ export type WatcherDeploymentProtocolParameterAuthority = Readonly<{
 
 export type WatcherDeploymentAvailabilityChallengeAuthority = Readonly<{
   schemaVersion: typeof WATCHER_DEPLOYMENT_AVAILABILITY_CHALLENGE_AUTHORITY_SCHEMA_VERSION;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   parameters: DeploymentManifestAvailabilityChallenge;
   parametersDigest: string;
   authorityDigest: string;

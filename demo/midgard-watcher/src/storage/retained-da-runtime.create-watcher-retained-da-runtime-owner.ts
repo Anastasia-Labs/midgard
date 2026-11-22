@@ -235,8 +235,8 @@ export const createWatcherWorkflowRuntimeLoader = (
   }
   return async ({ invocation }) => {
     if (
-      invocation.deploymentFingerprint !==
-      admittedRuntimeOptions.deploymentIdentity.manifestId
+      invocation.hubOraclePolicyId !==
+      admittedRuntimeOptions.deploymentIdentity.hubOraclePolicyId
     ) {
       throw new Error(
         "production workflow invocation deployment differs from verified watcher authority",

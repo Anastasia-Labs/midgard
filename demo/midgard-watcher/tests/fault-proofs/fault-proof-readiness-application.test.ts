@@ -101,7 +101,7 @@ describe("watcher fault-proof readiness application", () => {
       application
         .assertStartupReady({
           category,
-          deploymentFingerprint: manifest.manifestId,
+          hubOraclePolicyId: manifest.contracts.hubOracleMint.scriptHash,
           headerHash: HEADER,
           runtimeConfigPath: path,
         })
@@ -131,7 +131,7 @@ describe("watcher fault-proof readiness application", () => {
         ...options,
         fundingProfileOverlay: {
           ...options.fundingProfileOverlay,
-          deploymentFingerprint: "00".repeat(32),
+          hubOraclePolicyId: "00".repeat(28),
         },
       }),
     ).toThrow();

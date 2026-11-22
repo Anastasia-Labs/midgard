@@ -69,7 +69,7 @@ vi.mock("../../src/fault-proofs/fault-decision-journal.js", () => ({
       })),
   }),
 }));
-const deploymentFingerprint = "ab".repeat(32);
+const hubOraclePolicyId = "ab".repeat(28);
 const decisionOf = (headerHash: string) => ({
   decision: "fault_detected",
   category: "doubleSpend",
@@ -96,7 +96,7 @@ const journalOver = async (r: Removed) => {
 const authorityOver = (journalRoot: string, retention: WatcherProofRetention) =>
   createWatcherFaultProofProgressAuthority({
     journalRoot,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     categories: ["doubleSpend"],
     authenticationKey: TEST_JOURNAL_KEY,
     retention,
@@ -108,7 +108,7 @@ const admitOffChain = (
   revision = 1,
 ) =>
   authority.admit({
-    observation: progressObservation({ deploymentFingerprint, revision }),
+    observation: progressObservation({ hubOraclePolicyId, revision }),
     rollbackGeneration: "0",
   });
 
@@ -121,7 +121,7 @@ const admitAtTip = (
   const { slot, blockHash, blockNo } = r.h.tipPoint();
   return authority.admit({
     observation: progressObservation({
-      deploymentFingerprint,
+      hubOraclePolicyId,
       at: { slot, blockHash, blockNo },
     }),
     rollbackGeneration: "0",
@@ -137,7 +137,7 @@ const admitFaultAtTip = (
   reportAtTip(r);
   const { slot, blockHash, blockNo } = r.h.tipPoint();
   const observation = progressObservation({
-    deploymentFingerprint,
+    hubOraclePolicyId,
     at: { slot, blockHash, blockNo },
     header: { header: r.headerBody, headerHash: r.header },
   });
@@ -150,7 +150,7 @@ const admitFaultAtTip = (
       deadline: watcherFaultProofDeadline(observation.finalizedHeaders[0]!),
       actuationPermit: {
         authority: "submission",
-        deploymentFingerprint,
+        hubOraclePolicyId,
         headerHash: r.header,
         decisionDigest: decision.decisionDigest,
       } as unknown as WorkflowActuationPermit,

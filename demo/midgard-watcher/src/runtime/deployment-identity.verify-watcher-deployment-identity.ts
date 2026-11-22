@@ -1,9 +1,8 @@
 import { createPublicKey, verify as verifySignature } from "node:crypto";
 
 import {
-  assertDeploymentMarkerMatches,
   computeDeploymentManifestJsonDigest,
-  makeDeploymentMarker,
+  deploymentManifestHubOraclePolicyId,
   parseDeploymentManifestAvailabilityChallenge,
   parseDeploymentManifestCardanoProtocolParameters,
   parseDeploymentManifestEconomics,
@@ -75,7 +74,6 @@ export const verifyWatcherDeploymentIdentity = (input: {
   readonly signedIdentity: unknown;
   readonly policy: WatcherDeploymentIdentityPolicy;
   readonly trustRoots: readonly WatcherDeploymentTrustRoot[];
-  readonly durableMarker: unknown;
 }): VerifiedWatcherDeploymentIdentity => {
   const policy = parsePolicy(input.policy);
   const trustRoots = parseTrustRoots(input.trustRoots);
@@ -91,7 +89,7 @@ export const verifyWatcherDeploymentIdentity = (input: {
     fail("invalid_field", "$.schemaVersion");
   }
   const manifest = verifyCanonicalManifest(envelope.manifest);
-  const manifestId = manifest.manifestId;
+  const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(manifest);
   const bindings = parseReleaseBindings(
     envelope.releaseBindings,
     "$.releaseBindings",
@@ -120,7 +118,7 @@ export const verifyWatcherDeploymentIdentity = (input: {
   try {
     signatureValid = verifySignature(
       null,
-      signaturePayload(manifestId, bindings),
+      signaturePayload(manifest, bindings),
       createPublicKey({
         key: trustRoot.publicKeySpkiDer,
         format: "der",
@@ -136,22 +134,8 @@ export const verifyWatcherDeploymentIdentity = (input: {
   }
   assertPolicyBindings(manifest, bindings, policy);
 
-  const expectedMarker = makeDeploymentMarker(manifestId);
-  if (input.durableMarker === null || input.durableMarker === undefined) {
-    fail("missing_durable_marker", "$.durableMarker");
-  }
-  try {
-    assertDeploymentMarkerMatches(
-      expectedMarker,
-      input.durableMarker,
-      "watcher durable store",
-    );
-  } catch {
-    fail("durable_marker_mismatch", "$.durableMarker");
-  }
-
   const verified = Object.freeze({
-    manifestId,
+    hubOraclePolicyId,
     network: policy.network,
     trustRootId,
     blueprintHash: policy.blueprintHash,
@@ -163,7 +147,6 @@ export const verifyWatcherDeploymentIdentity = (input: {
         }),
     ruleBundleCommitment: policy.ruleBundleCommitment,
     programCommitments: policy.programCommitments,
-    durableMarker: expectedMarker,
   });
   const protocolScriptHashes = Object.freeze({
     hubOracleMint: policy.appliedScriptHashes.hubOracleMint!,
@@ -206,7 +189,6 @@ export const verifyWatcherDeploymentIdentity = (input: {
   );
   const authorityInput = Object.freeze({
     schemaVersion: WATCHER_DEPLOYMENT_PROTOCOL_SCRIPT_AUTHORITY_SCHEMA_VERSION,
-    deploymentFingerprint: manifestId,
     network: policy.network,
     hubOracleOneShotOutRef: policy.hubOracleOneShotOutRef,
     ...(manifest.l1Origin === undefined
@@ -229,7 +211,7 @@ export const verifyWatcherDeploymentIdentity = (input: {
   const protocolParameterAuthorityInput = Object.freeze({
     schemaVersion:
       WATCHER_DEPLOYMENT_PROTOCOL_PARAMETER_AUTHORITY_SCHEMA_VERSION,
-    deploymentFingerprint: manifestId,
+    hubOraclePolicyId,
     snapshot: protocolParameterSnapshot,
     snapshotDigest: protocolParameterSnapshotDigest,
   });
@@ -246,7 +228,7 @@ export const verifyWatcherDeploymentIdentity = (input: {
   const availabilityChallengeAuthorityInput = Object.freeze({
     schemaVersion:
       WATCHER_DEPLOYMENT_AVAILABILITY_CHALLENGE_AUTHORITY_SCHEMA_VERSION,
-    deploymentFingerprint: manifestId,
+    hubOraclePolicyId,
     parameters: availabilityChallengeParameters,
     parametersDigest: computeDeploymentManifestJsonDigest(
       availabilityChallengeParameters,
@@ -261,7 +243,7 @@ export const verifyWatcherDeploymentIdentity = (input: {
   const releaseFinalityPolicy = releaseL1FinalityPolicyOf(manifest.l1Finality);
   const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy({
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: manifestId,
+    hubOraclePolicyId,
     blueprintHash: manifest.artifacts.blueprintHash,
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
       releaseFinalityPolicy,
@@ -273,15 +255,15 @@ export const verifyWatcherDeploymentIdentity = (input: {
       authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
       async verifyForWorkflow(
         this: FraudProofReleaseFinalityAuthority,
-        input: { readonly deploymentFingerprint: string },
+        input: { readonly hubOraclePolicyId: string },
       ): Promise<VerifiedFraudProofReleaseFinalityPolicy> {
         if (!authenticatedWatcherReleaseFinalityAuthorities.has(this)) {
           fail("invalid_field", "$.releaseFinalityAuthority");
         }
-        if (input.deploymentFingerprint !== manifestId) {
+        if (input.hubOraclePolicyId !== hubOraclePolicyId) {
           fail(
             "mismatched_identity",
-            "$.releaseFinalityAuthority.deploymentFingerprint",
+            "$.releaseFinalityAuthority.hubOraclePolicyId",
           );
         }
         return releaseFinality;
@@ -304,7 +286,6 @@ export const verifyWatcherDeploymentIdentity = (input: {
   }) satisfies ReleaseFraudProofEconomicsPolicy;
   const releaseEconomics = validateVerifiedFraudProofReleaseEconomicsPolicy({
     schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: manifestId,
     blueprintHash: manifest.artifacts.blueprintHash,
     policyDigest: computeFraudProofReleaseEconomicsPolicyDigest(
       releaseEconomicsPolicy,
@@ -316,15 +297,15 @@ export const verifyWatcherDeploymentIdentity = (input: {
       authorityVersion: FRAUD_PROOF_RELEASE_ECONOMICS_AUTHORITY,
       async verifyForWorkflow(
         this: FraudProofReleaseEconomicsAuthority,
-        input: { readonly deploymentFingerprint: string },
+        input: { readonly hubOraclePolicyId: string },
       ): Promise<VerifiedFraudProofReleaseEconomicsPolicy> {
         if (!authenticatedWatcherReleaseEconomicsAuthorities.has(this)) {
           fail("invalid_field", "$.releaseEconomicsAuthority");
         }
-        if (input.deploymentFingerprint !== manifestId) {
+        if (input.hubOraclePolicyId !== hubOraclePolicyId) {
           fail(
             "mismatched_identity",
-            "$.releaseEconomicsAuthority.deploymentFingerprint",
+            "$.releaseEconomicsAuthority.hubOraclePolicyId",
           );
         }
         return releaseEconomics;

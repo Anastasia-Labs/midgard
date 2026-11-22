@@ -44,7 +44,7 @@ import { rawPointOf } from "./raw-reads.types.js";
  */
 
 export type WatcherUserEventIdentity = Readonly<{
-  deploymentManifestId: string;
+  hubOraclePolicyId: string;
   blueprintHash: string;
   network: WatcherUserEventNetwork;
 }>;
@@ -77,7 +77,7 @@ export type WatcherUserEventHeaderFence = Readonly<{
 }>;
 
 export type WatcherUserEvents = Readonly<{
-  deploymentManifestId: string;
+  hubOraclePolicyId: string;
   blueprintHash: string;
   /** The event `eventId` as of `throughHeader`'s cutoff, as a fenced capability. */
   eventAuthority(
@@ -372,7 +372,7 @@ export const createWatcherFollowerUserEvents = (
             cutoff,
           );
     return Object.freeze({
-      deploymentManifestId: identity.deploymentManifestId,
+      hubOraclePolicyId: identity.hubOraclePolicyId,
       blueprintHash: identity.blueprintHash,
       network: identity.network,
       event,
@@ -381,7 +381,7 @@ export const createWatcherFollowerUserEvents = (
   };
 
   return Object.freeze({
-    deploymentManifestId: identity.deploymentManifestId,
+    hubOraclePolicyId: identity.hubOraclePolicyId,
     blueprintHash: identity.blueprintHash,
     eventAuthority: async (request) => {
       const since = seq;

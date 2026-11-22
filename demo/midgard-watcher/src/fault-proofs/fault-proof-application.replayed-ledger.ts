@@ -7,7 +7,6 @@ import {
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 
 import type { WatcherConfig } from "../runtime/config.js";
-import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import { type WatcherRetainedDaRuntimeOwner } from "../storage/retained-da-runtime.js";
 import { isWatcherRetainedDaTransportUnavailable } from "../storage/retained-da-transport-unavailable.js";
 import {
@@ -18,7 +17,6 @@ import type { WatcherReplayedLedger } from "./replayed-ledger.js";
 
 type ReplayApplication = Readonly<{
   watcherConfig: WatcherConfig;
-  deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   retainedDaOwner: WatcherRetainedDaRuntimeOwner;
   replayedLedger: WatcherReplayedLedger | undefined;
 }>;
@@ -29,7 +27,7 @@ export const watcherReplayCheckpointAdvance = ({
   replayedLedger,
   retainedDaOwner,
   isAdmitted,
-}: Omit<ReplayApplication, "deploymentIdentity"> &
+}: ReplayApplication &
   Readonly<{
     isAdmitted(): boolean;
   }>): WatcherFaultProofApplication["advanceReplayedLedger"] => {
@@ -59,7 +57,6 @@ export const watcherReplayCheckpointAdvance = ({
 export const classifyWatcherReplayedHeader = async ({
   request: input,
   watcherConfig,
-  deploymentIdentity,
   retainedDaOwner,
   replayedLedger,
   loadClassifier,
@@ -72,11 +69,6 @@ export const classifyWatcherReplayedHeader = async ({
   }>) => {
   const retainedDa = await retainedDaOwner.createRuntime(watcherConfig);
   try {
-    if (retainedDa.deploymentFingerprint !== deploymentIdentity.manifestId) {
-      throw new Error(
-        "watcher retained-DA runtime changed deployment identity",
-      );
-    }
     const replaySource = retainedPayloadReplaySource({
       sources: retainedDa.sources,
       retries: input.retries,

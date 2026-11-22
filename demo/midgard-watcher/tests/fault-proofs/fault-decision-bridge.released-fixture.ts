@@ -22,7 +22,7 @@ export const REMOVAL_TX = "4f".repeat(32);
 
 export const operations = () =>
   createWatcherOperationsObservability({
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     supervisor: {
       status: () => ({
         phase: "accepting",

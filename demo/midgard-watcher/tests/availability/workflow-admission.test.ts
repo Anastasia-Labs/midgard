@@ -35,7 +35,7 @@ afterEach(() => {
 const admits = (headerHash: string, action: string) =>
   watcherAvailabilityWorkflowRefusal(journal, {
     actor: ACTOR,
-    deploymentIdentity: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     headerHash,
     action,
     nowMs: NOW,
@@ -47,7 +47,7 @@ const openChallenge = (header = LIVE, deployment = DEPLOYMENT) => {
     lease,
     {
       id: `open-${header}-${deployment}`,
-      deploymentIdentity: deployment,
+      hubOraclePolicyId: deployment,
       actor: ACTOR,
       headerHash: header,
       action: "open",

@@ -379,7 +379,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
           assertCurrent: () => assertCurrent(epoch),
           pin: input.pinJournalTransactions,
         })(() => ({
-          deploymentIdentity: input.identity.manifestId,
+          hubOraclePolicyId: input.identity.hubOraclePolicyId,
           actor,
           journal,
           stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
@@ -585,7 +585,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
             (headerHash, action) => {
               const detail = watcherAvailabilityWorkflowRefusal(journal, {
                 actor,
-                deploymentIdentity: input.identity.manifestId,
+                hubOraclePolicyId: input.identity.hubOraclePolicyId,
                 headerHash,
                 action,
                 nowMs: Date.now(),
@@ -731,7 +731,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
           closed ||
           epoch !== generation ||
           current === null ||
-          observation.deploymentIdentityDigest !== input.identity.manifestId ||
+          observation.hubOraclePolicyId !== input.identity.hubOraclePolicyId ||
           (current.observationDigest !== observation.observationDigest &&
             inclusion?.observationDigest !== observation.observationDigest)
         )

@@ -20,13 +20,13 @@ import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application
 
 export const parseDecision = (
   value: unknown,
-  deploymentFingerprint: string,
+  hubOraclePolicyId: string,
   launchScope: readonly WatcherInstalledWorkflowCategory[],
 ): HeaderDecision => {
   const common = [
     "schemaVersion",
     "classifierVersion",
-    "deploymentFingerprint",
+    "hubOraclePolicyId",
     "headerHash",
     "authenticatedObservationDigest",
     "payloadEnvelopeSha256",
@@ -64,7 +64,7 @@ export const parseDecision = (
     candidate.schemaVersion !== HEADER_DECISION ||
     candidate.classifierVersion !== HEADER_CLASSIFIER ||
     candidate.replayVersion !== COMPLETE_CANONICAL_REPLAY ||
-    candidate.deploymentFingerprint !== deploymentFingerprint
+    candidate.hubOraclePolicyId !== hubOraclePolicyId
   ) {
     throw new Error("persisted production decision identity is invalid");
   }
@@ -83,7 +83,7 @@ export const parseDecision = (
   const base = {
     schemaVersion: HEADER_DECISION,
     classifierVersion: HEADER_CLASSIFIER,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     headerHash: exactString(
       candidate.headerHash,
       HEADER_HASH,

@@ -84,8 +84,8 @@ describe("watcher deployment release authoring", () => {
       "replace funding-profiles.json",
       "create deployment-authority.json",
     ]);
-    expect(first.deploymentAuthority.deploymentIdentity.manifestId).toBe(
-      manifest.manifestId,
+    expect(first.deploymentAuthority.deploymentIdentity.hubOraclePolicyId).toBe(
+      manifest.contracts.hubOracleMint.scriptHash,
     );
     // The node's contract deployment info is the finalized manifest itself.
     expect(JSON.parse(await readFile(paths.deploymentInfo, "utf8"))).toEqual(

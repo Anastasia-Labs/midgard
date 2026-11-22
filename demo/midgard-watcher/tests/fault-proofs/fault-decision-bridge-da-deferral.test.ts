@@ -38,7 +38,7 @@ const unavailable = (headerHash: string) =>
 
 const operations = () =>
   createWatcherOperationsObservability({
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     supervisor: {
       status: () => ({
         phase: "accepting",

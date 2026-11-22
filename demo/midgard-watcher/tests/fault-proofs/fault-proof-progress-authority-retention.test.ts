@@ -34,7 +34,7 @@ vi.mock("../../src/fault-proofs/fault-decision-journal.js", () => ({
       })),
   }),
 }));
-const deploymentFingerprint = "ab".repeat(32);
+const hubOraclePolicyId = "ab".repeat(28);
 /** A verified completion of the objective at `confirmationDepth`. */
 const doneAt = (headerHash: string, confirmationDepth: number) => ({
   workflowId: `workflow-${headerHash}`,
@@ -99,13 +99,13 @@ const restartOver = async (count: number, marked: boolean, k = K) => {
   const recorded = recordingRetention(k);
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     categories: ["doubleSpend"],
     authenticationKey: TEST_JOURNAL_KEY,
     retention: recorded.retention,
   });
   await authority.admit({
-    observation: progressObservation({ deploymentFingerprint }),
+    observation: progressObservation({ hubOraclePolicyId }),
     rollbackGeneration: "0",
   });
   return { authority, targets: objectives, ...recorded };

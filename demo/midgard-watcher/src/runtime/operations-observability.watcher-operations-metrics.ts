@@ -212,7 +212,7 @@ export type WatcherOperationsL1Degradation = Readonly<{
 
 export type WatcherOperationsStatus = Readonly<{
   schemaVersion: typeof WATCHER_OPERATIONS_OBSERVABILITY;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   observedAtMs: string;
   liveness: "live" | "stopping" | "stopped" | "blocked";
   readiness: "ready" | "not_ready";

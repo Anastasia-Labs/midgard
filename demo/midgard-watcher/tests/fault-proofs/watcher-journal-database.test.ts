@@ -328,10 +328,10 @@ describe("watcher journal growth under retries", () => {
     const journalRoot = await journalDirectory("midgard-journal-growth", {
       memory: true,
     });
-    const deploymentFingerprint = "11".repeat(32);
+    const hubOraclePolicyId = "11".repeat(28);
     const input = {
       journalRoot,
-      deploymentFingerprint,
+      hubOraclePolicyId,
       authenticationKey: TEST_JOURNAL_KEY,
     };
     const journal = await openWatcherFaultProofQueueJournal(input);
@@ -362,7 +362,7 @@ describe("watcher journal growth under retries", () => {
     // generation, started, and finished without completing the objective.
     const cycle = async (generation: number) => {
       const digest = watcherFaultProofQueueIdentityDigest({
-        deploymentFingerprint,
+        hubOraclePolicyId,
         identity: identity(generation),
       });
       await journal.register(identity(generation), "1000");

@@ -54,7 +54,6 @@ const ONE_SHOT: SimUtxo = {
 
 const AUTHORITY: WatcherObservationAuthority = {
   authorityDigest: "a1".repeat(32),
-  deploymentFingerprint: "a2".repeat(32),
   protocolScriptHashes: {
     hubOracleMint: D.hubOracleMint,
     stateQueueSpend: D.stateQueueSpend,
@@ -341,7 +340,7 @@ describe("decision driver over the follower: rollbacks (W3/L3)", () => {
     const watcher = watcherOver(events);
     const proofSupervisor = supervisor();
     const observability = createWatcherOperationsObservability({
-      deploymentFingerprint: AUTHORITY.deploymentFingerprint,
+      hubOraclePolicyId: D.hubOracleMint,
       supervisor: proofSupervisor.runtime,
       launchScopeStatus: () => ({
         installedCategoryCount: 1,
@@ -426,7 +425,7 @@ describe("decision driver over the follower: rollbacks (W3/L3)", () => {
     });
     const watcher = watcherOver(events, []);
     const observability = createWatcherOperationsObservability({
-      deploymentFingerprint: AUTHORITY.deploymentFingerprint,
+      hubOraclePolicyId: D.hubOracleMint,
       supervisor: supervisor().runtime,
       launchScopeStatus: () => ({
         installedCategoryCount: 1,

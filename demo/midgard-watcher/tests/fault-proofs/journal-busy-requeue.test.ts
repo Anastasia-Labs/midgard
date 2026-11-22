@@ -140,7 +140,7 @@ const setup = async () => {
     const supervisor = createWatcherFaultProofSupervisor({
       proofRetention: storelessProofRetention,
       journalRoot: fixture.journalRoot,
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: TEST_JOURNAL_KEY,
@@ -155,7 +155,7 @@ const setup = async () => {
           ),
         },
         runtimeConfigPath: "/unused-journal-busy-test.json",
-        deploymentFingerprint: deploymentIdentity.manifestId,
+        hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
         operationsSink: { recordProofStep: vi.fn(), setAlert },
       }),
     });
@@ -174,7 +174,7 @@ const setup = async () => {
     rollbackGeneration: "1",
   });
   const observation = progressObservation({
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     header: fixture.fixture,
     revision: 1,
   });

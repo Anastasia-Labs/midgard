@@ -211,7 +211,8 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       );
     });
     const retainedDa = serveEmulatorRetainedDa({
-      deploymentFingerprint: deployment.manifest.manifestId,
+      deploymentFingerprint:
+        deployment.manifest.contracts.hubOracleMint.scriptHash,
       blocks: [staged.predecessor, staged.current],
     });
     const configuration = await stage("watcher configuration", () =>
@@ -441,7 +442,8 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       )
         ? readWatcherFaultDecisionEvidence({
             directory: config.decisionJournalDirectory,
-            deploymentFingerprint: deployment.manifest.manifestId,
+            hubOraclePolicyId:
+              deployment.manifest.contracts.hubOracleMint.scriptHash,
             launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
           }).map((decision) => ({ decision }))
         : [];

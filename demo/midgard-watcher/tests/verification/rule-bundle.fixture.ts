@@ -2,7 +2,8 @@ import { sign } from "node:crypto";
 
 import {
   computeDeploymentManifestJsonDigest,
-  makeDeploymentMarker,
+  type DeploymentManifest,
+  deploymentManifestHubOraclePolicyId,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION as WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
@@ -37,11 +38,10 @@ import {
   referenceScriptPolicy,
   type SignedAuthorityFixture,
   TARGET_PARAMETERS,
-  withManifestId,
 } from "./rule-bundle.canonical-manifest-identity.js";
 
 export const fixture = (network: "Preprod" | "Custom" = "Preprod") => {
-  const manifest = withManifestId({ ...canonicalManifestIdentity(), network });
+  const manifest: MutableRecord = { ...canonicalManifestIdentity(), network };
   const programCommitments = Object.freeze({
     "transition-order-v1": h32("8"),
     "validation-machine-v1": h32("9"),
@@ -49,7 +49,9 @@ export const fixture = (network: "Preprod" | "Custom" = "Preprod") => {
   const bundle = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-      manifestId: manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+        manifest as DeploymentManifest,
+      ),
       network,
       blueprintHash: BLUEPRINT_HASH,
       programCommitments,
@@ -98,7 +100,7 @@ export const fixture = (network: "Preprod" | "Custom" = "Preprod") => {
   signedIdentity.attestation.signature = sign(
     null,
     makeWatcherDeploymentIdentitySignaturePayload(
-      manifest.manifestId,
+      manifest as DeploymentManifest,
       releaseBindings,
     ),
     privateKey,
@@ -107,7 +109,6 @@ export const fixture = (network: "Preprod" | "Custom" = "Preprod") => {
     signedIdentity,
     policy,
     trustRoots: Object.freeze([trustRoot]),
-    durableMarker: makeDeploymentMarker(manifest.manifestId),
   });
   return {
     authority,

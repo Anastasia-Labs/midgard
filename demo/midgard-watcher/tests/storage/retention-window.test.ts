@@ -1,5 +1,4 @@
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   MIDGARD_RETENTION_WINDOW,
   RETENTION_MS_PER_DAY,
@@ -16,10 +15,6 @@ import {
   type WatcherRetentionWindowErrorCode,
 } from "../../src/storage/retention-window.js";
 
-const FINGERPRINT = "1a".repeat(32);
-
-const MARKER = makeDeploymentMarker(FINGERPRINT);
-
 const manifestWith = (retentionDays: unknown): unknown => ({
   da: { transportProfile: { retentionDays } },
 });
@@ -29,8 +24,6 @@ const windowFor = (
 ): WatcherCanonicalRetentionWindow =>
   watcherCanonicalRetentionWindowFromVerifiedManifest({
     manifest: manifestWith(retentionDays),
-    manifestId: FINGERPRINT,
-    deploymentMarker: MARKER,
   });
 
 const expectWindowError = (
@@ -95,8 +88,6 @@ describe("watcher retention window (Q54 binding)", () => {
         () =>
           watcherCanonicalRetentionWindowFromVerifiedManifest({
             manifest: manifestWith(value),
-            manifestId: FINGERPRINT,
-            deploymentMarker: MARKER,
           }),
         "retention_window_insufficient",
       );
@@ -105,8 +96,6 @@ describe("watcher retention window (Q54 binding)", () => {
       () =>
         watcherCanonicalRetentionWindowFromVerifiedManifest({
           manifest: { da: {} },
-          manifestId: FINGERPRINT,
-          deploymentMarker: MARKER,
         }),
       "invalid_field",
     );
@@ -123,7 +112,6 @@ describe("watcher retention window (Q54 binding)", () => {
         },
         policy: {} as never,
         trustRoots: [],
-        durableMarker: MARKER,
       }),
     ).toThrowError();
   });

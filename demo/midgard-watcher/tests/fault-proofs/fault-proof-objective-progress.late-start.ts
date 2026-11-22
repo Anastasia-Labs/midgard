@@ -37,7 +37,7 @@ export const registerLateStartTests = (setupScenario: typeof setup): void => {
     );
     const supervisor = test.createSupervisor();
     const operations = createWatcherOperationsObservability({
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       supervisor,
       launchScopeStatus: () => ({
         installedCategoryCount: 1,
@@ -128,7 +128,7 @@ export const registerLateStartTests = (setupScenario: typeof setup): void => {
     );
     const supervisor = test.createSupervisor();
     const operations = createWatcherOperationsObservability({
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       supervisor,
       launchScopeStatus: () => ({
         installedCategoryCount: 1,
@@ -184,7 +184,7 @@ export const registerLateStartTests = (setupScenario: typeof setup): void => {
       const start = () => {
         const supervisor = test.createSupervisor();
         const operations = createWatcherOperationsObservability({
-          deploymentFingerprint: deploymentIdentity.manifestId,
+          hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
           supervisor,
           launchScopeStatus: () => ({
             installedCategoryCount: 1,

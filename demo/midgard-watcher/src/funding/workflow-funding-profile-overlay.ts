@@ -25,7 +25,7 @@ export const WATCHER_WORKFLOW_FUNDING_PROFILE_OVERLAY =
 
 export type WatcherWorkflowFundingProfileOverlay = Readonly<{
   schemaVersion: typeof WATCHER_WORKFLOW_FUNDING_PROFILE_OVERLAY;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   blueprintHash: string;
   fundingProfileBundleDigest: string;
   bundlePath: string;
@@ -38,7 +38,7 @@ export type WatcherWorkflowFundingProfileOverlay = Readonly<{
 
 export type WatcherWorkflowFundingProfileBody = Omit<
   WorkflowFundingRequirementsInput,
-  "deploymentFingerprint"
+  "hubOraclePolicyId"
 >;
 
 export type WatcherWorkflowFundingProfileBundle = Readonly<{
@@ -82,7 +82,7 @@ const sha256 = (value: Uint8Array): string =>
 
 const profileBody = (
   value: unknown,
-  deploymentFingerprint: string,
+  hubOraclePolicyId: string,
 ): WorkflowFundingRequirements => {
   const record = exact(
     value,
@@ -100,15 +100,14 @@ const profileBody = (
   );
   return createWorkflowFundingRequirements({
     ...(record as unknown as WatcherWorkflowFundingProfileBody),
-    deploymentFingerprint,
+    hubOraclePolicyId,
   });
 };
 
 /**
- * Deployment builder seam. Profile bodies deliberately omit the future
- * manifest ID. The deployment signature binds the bundle digest alongside
- * the contract blueprint hash, then profiles hydrate with the
- * verified manifest ID.
+ * Deployment builder seam. Profile bodies omit the hub-oracle policy id. The
+ * deployment signature binds the bundle digest alongside the contract
+ * blueprint hash, then profiles hydrate with the verified policy id.
  */
 export const createWatcherWorkflowFundingProfileBundle = ({
   profiles,
@@ -120,7 +119,7 @@ export const createWatcherWorkflowFundingProfileBundle = ({
     WatcherWorkflowFundingProfileBody
   >();
   for (const profile of profiles) {
-    const hydrated = profileBody(profile, "00".repeat(32));
+    const hydrated = profileBody(profile, "00".repeat(28));
     if (hydrated.scope.kind !== "fraud_proof_category") {
       throw new Error(
         "production funding profile body requires a catalogue category",
@@ -134,7 +133,7 @@ export const createWatcherWorkflowFundingProfileBundle = ({
     }
     const {
       schemaVersion: _schemaVersion,
-      deploymentFingerprint: _deploymentFingerprint,
+      hubOraclePolicyId: _hubOraclePolicyId,
       profileDigest: _profileDigest,
       ...body
     } = hydrated;
@@ -191,8 +190,7 @@ export const workflowFundingProfileFromOverlay = ({
   }
   if (
     profile.scope.kind !== "fraud_proof_category" ||
-    profile.scope.category !== category ||
-    profile.deploymentFingerprint !== overlay.deploymentFingerprint
+    profile.scope.category !== category
   ) {
     throw new Error("production funding profile changed overlay identity");
   }
@@ -221,7 +219,7 @@ export const admitWatcherWorkflowFundingProfileOverlay = ({
   if (overlay !== undefined) {
     assertWatcherWorkflowFundingProfileOverlay(overlay);
     if (
-      overlay.deploymentFingerprint !== deploymentIdentity.manifestId ||
+      overlay.hubOraclePolicyId !== deploymentIdentity.hubOraclePolicyId ||
       overlay.blueprintHash !== deploymentIdentity.blueprintHash
     ) {
       throw new Error(
@@ -306,11 +304,11 @@ export const loadWatcherWorkflowFundingProfileOverlay = async ({
   const profiles = Object.freeze(
     Object.fromEntries(
       rawProfiles.map((rawProfile, index) => {
-        const profile = profileBody(rawProfile, deploymentIdentity.manifestId);
-        if (
-          profile.scope.kind !== "fraud_proof_category" ||
-          profile.deploymentFingerprint !== deploymentIdentity.manifestId
-        ) {
+        const profile = profileBody(
+          rawProfile,
+          deploymentIdentity.hubOraclePolicyId,
+        );
+        if (profile.scope.kind !== "fraud_proof_category") {
           throw new Error(
             `production funding profile bundle entry ${index.toString()} requires a catalogue category`,
           );
@@ -334,7 +332,7 @@ export const loadWatcherWorkflowFundingProfileOverlay = async ({
   >;
   const overlay = Object.freeze({
     schemaVersion: WATCHER_WORKFLOW_FUNDING_PROFILE_OVERLAY,
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     blueprintHash: deploymentIdentity.blueprintHash,
     fundingProfileBundleDigest,
     bundlePath: canonicalPath,

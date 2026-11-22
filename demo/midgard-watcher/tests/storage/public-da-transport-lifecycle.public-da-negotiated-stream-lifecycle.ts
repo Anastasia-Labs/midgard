@@ -23,7 +23,7 @@ import {
 describe("public DA negotiated stream lifecycle", () => {
   it("keeps a held DA response on the same connection through bidirectional heartbeats", async () => {
     const protocol = daRequestResponseProtocolId(
-      "11".repeat(32),
+      "11".repeat(28),
       DaRequestResponseProtocol.capabilities,
     );
     const heartbeats = { client: 0, server: 0 };
@@ -157,7 +157,7 @@ describe("public DA negotiated stream lifecycle", () => {
     "handles remote Yamux response resets with permanent=%s",
     async (permanent) => {
       const protocol = daRequestResponseProtocolId(
-        "11".repeat(32),
+        "11".repeat(28),
         DaRequestResponseProtocol.capabilities,
       );
       const server = await createLibp2p({
@@ -276,7 +276,7 @@ describe("public DA negotiated stream lifecycle", () => {
 
   it("recovers one closed negotiated stream with an identical authenticated read", async () => {
     const protocol = daRequestResponseProtocolId(
-      "11".repeat(32),
+      "11".repeat(28),
       DaRequestResponseProtocol.capabilities,
     );
     const server = await createLibp2p({

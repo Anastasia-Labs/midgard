@@ -185,7 +185,7 @@ export type WatcherFaultProofStartupReadiness = Readonly<{
   schemaVersion: typeof WATCHER_FAULT_PROOF_STARTUP_READINESS;
   ready: true;
   category: WatcherInstalledWorkflowCategory;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   headerHash: string;
   referenceScriptOutRefs: Readonly<Record<string, string>>;
 }>;
@@ -219,7 +219,7 @@ export type WatcherCompletedFaultProofVerification =
 
 export type WatcherFaultProofApplication = Readonly<{
   schemaVersion: typeof WATCHER_FAULT_PROOF_APPLICATION;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   installedCategories: readonly WatcherInstalledWorkflowCategory[];
   runners: Readonly<
     Record<WatcherInstalledWorkflowCategory, WorkflowAdapterRunner>

@@ -69,7 +69,7 @@ const fixture = async () => {
   const run = vi.fn(async () => "completed workflow");
   const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
     journalRoot,
-    deploymentFingerprint: "dd".repeat(32),
+    hubOraclePolicyId: "dd".repeat(28),
     run,
   });
   await supervisor.recoverExisting(null);

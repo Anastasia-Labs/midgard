@@ -87,7 +87,7 @@ vi.mock("../../src/availability/published-payload.js", () => ({
 const observation = (slot: number, blockHash = "11".repeat(32)) =>
   ({
     observationDigest: `${slot.toString()}:${blockHash}`,
-    deploymentIdentityDigest: "deployment",
+    hubOraclePolicyId: "deployment",
     nativePoint: {
       slot: String(slot),
       blockNo: String(slot),
@@ -112,7 +112,7 @@ const fixture = () =>
     } as unknown as WatcherProcessConfig,
     identity: {
       network: "Custom",
-      manifestId: "deployment",
+      hubOraclePolicyId: "deployment",
     } as VerifiedWatcherDeploymentIdentity,
     l1: {
       reads: {},

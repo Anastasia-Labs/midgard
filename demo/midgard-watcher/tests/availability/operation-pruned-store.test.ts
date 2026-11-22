@@ -61,7 +61,7 @@ const intentSpending = (
   );
   return {
     id: "open",
-    deploymentIdentity: MANIFEST,
+    hubOraclePolicyId: MANIFEST,
     actor: "actor",
     headerHash: "header",
     action: "open",
@@ -305,7 +305,7 @@ describe("availability journal transactions on a pruning follower", () => {
     expect(await pass(fx, journal)).toEqual([]);
     const { tx, intent } = recorded(fx, journal, "prepare");
     const submit = pinnedWatcherAvailabilitySubmit(
-      { journal, actor: ACTOR, deploymentIdentity: MANIFEST },
+      { journal, actor: ACTOR, hubOraclePolicyId: MANIFEST },
       watcherAvailabilityTransactionPins(fx.store),
       async () => {
         await fx.forward([tx]);
@@ -326,9 +326,9 @@ describe("availability journal transactions on a pruning follower", () => {
   it("holds an earlier deployment's confirmed anchor until this deployment's pass retires it", async () => {
     const fx = await harness();
     const journal = openJournal();
-    const earlier = "b2".repeat(32);
+    const earlier = "b2".repeat(28);
     const { tx, intent } = recorded(fx, journal, "prepare", {
-      deploymentIdentity: earlier,
+      hubOraclePolicyId: earlier,
     });
     await fx.forward([tx]);
     await fx.forward([]);

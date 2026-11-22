@@ -1,9 +1,11 @@
 import { createDaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
+import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { parseWatcherConfig } from "../../src/runtime/config.parse-watcher-config.js";
 import { createWatcherRetainedDaRuntime } from "../../src/storage/retained-da-runtime.create-watcher-retained-da-runtime-owner.js";
 import { withWatcherRetainedDaReadScope } from "../../src/storage/retained-da-runtime.read-scope.js";
+import { makeWatcherAuthorityContracts } from "../support/deployment-authority-fixture.build-watcher-authority-contracts.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import { rawConfig, transportFactory } from "./retained-da-runtime.fixtures.js";
 
@@ -70,9 +72,23 @@ describe("request-local retained DA deadline", () => {
 
   it("rejects a source from another signed deployment before transport", async () => {
     const identity = makeWatcherDeploymentAuthorityFixture().result;
-    const other = makeWatcherDeploymentAuthorityFixture({
-      hubOracleOneShotOutRef: `${"99".repeat(32)}#0`,
-    }).result;
+    // Another deployment's hub-oracle mint is another script.
+    const contractSet = makeWatcherAuthorityContracts();
+    const hubOracleScript = "4342ffff";
+    contractSet.contracts.hubOracleMint = {
+      ...contractSet.contracts.hubOracleMint!,
+      contract: { type: "PlutusV3", cborHex: hubOracleScript },
+      scriptHash: validatorToScriptHash({
+        type: "PlutusV3",
+        script: hubOracleScript,
+      }),
+    };
+    contractSet.referenceScripts["hub-oracle minting"] = {
+      ...contractSet.referenceScripts["hub-oracle minting"]!,
+      scriptHash: contractSet.contracts.hubOracleMint.scriptHash,
+    };
+    const other = makeWatcherDeploymentAuthorityFixture({ contractSet }).result;
+    expect(other.hubOraclePolicyId).not.toBe(identity.hubOraclePolicyId);
     const transport = transportFactory();
     const runtime = await createWatcherRetainedDaRuntime({
       watcherConfig: parseWatcherConfig(rawConfig()),

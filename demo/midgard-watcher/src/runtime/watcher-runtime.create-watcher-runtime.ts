@@ -152,7 +152,7 @@ export const startWatcherRuntime = async (
   try {
     // Every module below reports here; the view over it comes later.
     const recorder = createWatcherOperationsSink({
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     });
     const operationsSink = recorder.sink;
     retainedDaOperationsBinding = bindWatcherRetainedDaOperations({
@@ -192,7 +192,7 @@ export const startWatcherRuntime = async (
     await refusePermanently("journal_configuration", () =>
       validateWatcherFaultDecisionJournalConfiguration({
         directory: input.config.decisionJournalDirectory,
-        deploymentFingerprint: deploymentIdentity.manifestId,
+        hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
         launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
         authenticationKey: rollbackAuthenticationKey,
       }),
@@ -256,7 +256,7 @@ export const startWatcherRuntime = async (
     const execution = createWatcherFaultProofExecution({
       application: faultProofApplication,
       runtimeConfigPath: input.config.watcherRuntimeConfigPath,
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       operationsSink,
     });
     const ownThreads = createWatcherOwnThreadSweep({
@@ -268,7 +268,7 @@ export const startWatcherRuntime = async (
     });
     const activeSupervisor = createWatcherFaultProofSupervisor({
       journalRoot: input.config.decisionJournalDirectory,
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       deadlineAlertHeadroomMs: watcherDeadlineAlertHeadroomMs(
         watcherConfig.deadlines,
       ),
@@ -349,7 +349,7 @@ export const startWatcherRuntime = async (
       // the watcher not_ready.
       onDaBondPool: watcherDaBondPoolReporter(
         operationsSink,
-        deploymentIdentity.manifestId,
+        deploymentIdentity.hubOraclePolicyId,
       ),
       onDaBondPoolReadFailure:
         watcherDaBondPoolReadFailureReporter(operationsSink),
@@ -383,7 +383,7 @@ export const startWatcherRuntime = async (
         onFollowerChange: activeFollower.onChange,
         authority,
         sourceId: watcherObservationSourceId(
-          deploymentIdentity.manifestId,
+          deploymentIdentity.hubOraclePolicyId,
           localL1Source.authorityNodeId,
         ),
         releaseDepth,

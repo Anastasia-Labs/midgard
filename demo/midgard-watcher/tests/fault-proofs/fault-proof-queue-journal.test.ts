@@ -20,7 +20,7 @@ import {
   removeJournalDirectories,
 } from "../support/watcher-journal-fixture.js";
 
-const deploymentFingerprint = "11".repeat(32);
+const hubOraclePolicyId = "11".repeat(28);
 const authenticationKey = Uint8Array.from({ length: 32 }, () => 0x42);
 const identity = Object.freeze({
   category: "doubleSpend",
@@ -29,7 +29,7 @@ const identity = Object.freeze({
   rollbackGeneration: "7",
 });
 const digest = watcherFaultProofQueueIdentityDigest({
-  deploymentFingerprint,
+  hubOraclePolicyId,
   identity,
 });
 
@@ -37,7 +37,7 @@ afterEach(removeJournalDirectories);
 
 const opened = async () => {
   const journalRoot = await journalDirectory("midgard-proof-queue");
-  const input = { journalRoot, deploymentFingerprint, authenticationKey };
+  const input = { journalRoot, hubOraclePolicyId, authenticationKey };
   return {
     journalRoot,
     input,
@@ -48,7 +48,7 @@ const opened = async () => {
 /** A process exit and restart: the shared connection is closed first. */
 const restart = async (input: {
   journalRoot: string;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   authenticationKey: Uint8Array;
 }) => {
   closeWatcherJournalDatabase(input.journalRoot);
@@ -108,7 +108,7 @@ describe("production fault-proof queue journal", () => {
     await journal.markStarted(digest, "1001");
     const next = { ...identity, rollbackGeneration: "8" };
     const nextDigest = watcherFaultProofQueueIdentityDigest({
-      deploymentFingerprint,
+      hubOraclePolicyId,
       identity: next,
     });
     await expect(journal.register(next, "1002")).resolves.toEqual({
@@ -148,7 +148,7 @@ describe("production fault-proof queue journal", () => {
   it("rejects malformed times, unadmitted identities and illegal transitions without writing", async () => {
     const { journalRoot, journal } = await opened();
     const otherGeneration = watcherFaultProofQueueIdentityDigest({
-      deploymentFingerprint,
+      hubOraclePolicyId,
       identity: { ...identity, rollbackGeneration: "8" },
     });
     await journal.register(identity, "1000");
@@ -203,7 +203,7 @@ describe("production fault-proof queue journal", () => {
     closeWatcherJournalDatabase(input.journalRoot);
     const failure = await openWatcherFaultProofQueueJournal({
       ...input,
-      deploymentFingerprint: "12".repeat(32),
+      hubOraclePolicyId: "12".repeat(28),
     }).catch((error: unknown) => error);
     expect(isWatcherJournalIntegrityError(failure)).toBe(true);
     expect(String(failure)).toContain("differs from its job identity");

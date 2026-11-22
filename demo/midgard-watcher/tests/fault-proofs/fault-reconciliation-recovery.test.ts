@@ -17,13 +17,13 @@ import { describe, expect, it } from "vitest";
 
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 
-const DEPLOYMENT = "dd".repeat(32),
+const DEPLOYMENT = "dd".repeat(28),
   HEADER = "aa".repeat(28);
 const fixture = (): { decision: HeaderFaultDecision } => {
   const envelope = {
     schemaVersion: "midgard-production-header-decision-v1",
     classifierVersion: "midgard-production-header-classifier-v1",
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     headerHash: HEADER,
     authenticatedObservationDigest: "11".repeat(32),
     payloadEnvelopeSha256: "12".repeat(32),
@@ -53,7 +53,7 @@ describe("reconciliation workflow authority", () => {
     const { decision } = fixture();
     const controller = createWorkflowReconciliationPermitController({
       decision,
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       rollbackGeneration: "0",
     });
     const run = createWorkflowRun(
@@ -66,7 +66,7 @@ describe("reconciliation workflow authority", () => {
       run,
       permit: controller.permit,
       decisionDigest: decision.decisionDigest,
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       category: "transitionTrace",
       headerHash: HEADER,
     });
@@ -78,7 +78,7 @@ describe("reconciliation workflow authority", () => {
     ) =>
       assertWorkflowRunActuation({
         run,
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         category: "transitionTrace",
         headerHash: HEADER,
         checkpoint,
@@ -97,11 +97,11 @@ describe("reconciliation workflow authority", () => {
     ) =>
       createWorkflowReconciliationPermitController({
         decision,
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         rollbackGeneration: "0",
         ...changes,
       });
-    expect(() => mint({ deploymentFingerprint: "ff".repeat(32) })).toThrow(
+    expect(() => mint({ hubOraclePolicyId: "ff".repeat(28) })).toThrow(
       "exact classified fault",
     );
     expect(() =>

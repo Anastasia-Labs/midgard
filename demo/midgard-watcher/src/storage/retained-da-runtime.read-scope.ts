@@ -37,7 +37,7 @@ export const watcherRetainedDaReadScope = (deploymentFingerprint?: string) => {
     input.scope.assertCurrent();
     if (
       deploymentFingerprint !== undefined &&
-      deploymentFingerprint !== input.identity.manifestId
+      deploymentFingerprint !== input.identity.hubOraclePolicyId
     )
       throw new Error("Scoped DA read belongs to another deployment");
   }

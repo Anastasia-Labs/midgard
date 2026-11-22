@@ -19,7 +19,7 @@ const job = {
 };
 const identity = {
   schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  deploymentFingerprint: "33".repeat(32),
+  hubOraclePolicyId: "33".repeat(28),
   category: job.category,
   target: { kind: "state_queue_header" as const, headerHash: job.headerHash },
   decisionDigest: job.decisionDigest,

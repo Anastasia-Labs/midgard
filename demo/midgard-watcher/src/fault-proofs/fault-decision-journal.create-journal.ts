@@ -7,10 +7,10 @@ import {
 } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 
 import {
-  DIGEST,
   exactLaunchScope,
   exactString,
   MAX_RECORDS,
+  POLICY_ID,
   type UnsafeWatcherFaultDecisionJournalForTest,
   WATCHER_FAULT_DECISION_JOURNAL_SCHEMA_VERSION,
   WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION,
@@ -39,7 +39,7 @@ const JOURNAL = "fault_decisions" as const;
 type JournalInput = Readonly<{
   /** The workflow journal directory; the journals' database lives in it. */
   directory: string;
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   launchScope: readonly WatcherInstalledWorkflowCategory[];
   /** The 32-byte key the journal rows are authenticated with. */
   authenticationKey: Uint8Array;
@@ -57,12 +57,12 @@ const decisionScope = (decision: HeaderDecision): string =>
 const parseRow = (
   database: WatcherJournalDatabase,
   row: WatcherJournalRow,
-  deploymentFingerprint: string,
+  hubOraclePolicyId: string,
   launchScope: readonly WatcherInstalledWorkflowCategory[],
 ): WatcherPersistedFaultDecisionRecord => {
   let decision: HeaderDecision;
   try {
-    decision = parseDecision(row.body, deploymentFingerprint, launchScope);
+    decision = parseDecision(row.body, hubOraclePolicyId, launchScope);
   } catch (error) {
     return database.refuse(
       JOURNAL,
@@ -88,10 +88,10 @@ const createJournal = (
   input: JournalInput,
   exposeUnsafeAppendForTest: boolean,
 ): WatcherFaultDecisionJournal | UnsafeWatcherFaultDecisionJournalForTest => {
-  const deploymentFingerprint = exactString(
-    input.deploymentFingerprint,
-    DIGEST,
-    "watcher fault decision deployment fingerprint",
+  const hubOraclePolicyId = exactString(
+    input.hubOraclePolicyId,
+    POLICY_ID,
+    "watcher fault decision hub-oracle policy id",
   );
   const launchScope = exactLaunchScope(input.launchScope, input.launchScope);
   const database = openWatcherJournalDatabase({
@@ -109,7 +109,7 @@ const createJournal = (
     ))
       byDigest.set(
         row.key,
-        parseRow(database, row, deploymentFingerprint, launchScope),
+        parseRow(database, row, hubOraclePolicyId, launchScope),
       );
   };
   const refresh = (): void => {
@@ -128,7 +128,7 @@ const createJournal = (
   const appendEnvelope = async (
     value: unknown,
   ): Promise<WatcherPersistedFaultDecisionRecord> => {
-    const decision = parseDecision(value, deploymentFingerprint, launchScope);
+    const decision = parseDecision(value, hubOraclePolicyId, launchScope);
     refresh();
     const existing = byDigest.get(decision.decisionDigest);
     if (existing !== undefined) return existing;
@@ -194,9 +194,9 @@ export const validateWatcherFaultDecisionJournalConfiguration = (
 ): void => {
   try {
     exactString(
-      input.deploymentFingerprint,
-      DIGEST,
-      "watcher fault decision deployment fingerprint",
+      input.hubOraclePolicyId,
+      POLICY_ID,
+      "watcher fault decision hub-oracle policy id",
     );
     exactLaunchScope(input.launchScope, input.launchScope);
   } catch (error) {
@@ -238,7 +238,7 @@ export const unsafeOpenWatcherFaultDecisionJournalForTest = async (
  */
 export const readWatcherFaultDecisionEvidence = (input: {
   readonly directory: string;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
 }): readonly HeaderDecision[] => {
   const database = new DatabaseSync(
@@ -255,7 +255,7 @@ export const readWatcherFaultDecisionEvidence = (input: {
       rows.map(({ body }) =>
         parseDecision(
           JSON.parse(body) as unknown,
-          input.deploymentFingerprint,
+          input.hubOraclePolicyId,
           input.launchScope,
         ),
       ),

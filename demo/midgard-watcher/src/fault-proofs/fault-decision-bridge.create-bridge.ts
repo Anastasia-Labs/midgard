@@ -47,7 +47,7 @@ export const createBridge = (input: {
       "fault decision bridge classification concurrency is out of bounds",
     );
   }
-  const deploymentFingerprint = input.application.deploymentFingerprint;
+  const hubOraclePolicyId = input.application.hubOraclePolicyId;
   let classificationEpoch = 0;
   let rollbackGeneration = 0;
   let observation: WatcherAuthenticatedStateQueueObservation | null = null;
@@ -96,7 +96,7 @@ export const createBridge = (input: {
     }>
   > => {
     input.dependencies.assertObservation(candidate);
-    if (candidate.deploymentIdentityDigest !== deploymentFingerprint) {
+    if (candidate.hubOraclePolicyId !== hubOraclePolicyId) {
       throw new Error(
         "state-queue observation differs from the fault-proof deployment",
       );
@@ -170,7 +170,6 @@ export const createBridge = (input: {
       });
       if (
         identity.authority !== "submission" ||
-        identity.deploymentFingerprint !== deploymentFingerprint ||
         identity.headerHash !== target.headerHash ||
         identity.decisionDigest !== target.decisionDigest
       )
@@ -296,7 +295,6 @@ export const createBridge = (input: {
             );
           }
           if (
-            decision.deploymentFingerprint !== deploymentFingerprint ||
             decision.headerHash !== header.headerHash ||
             decision.authenticatedObservationDigest !==
               authenticatedObservationDigest ||

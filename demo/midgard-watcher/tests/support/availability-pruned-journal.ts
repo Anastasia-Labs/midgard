@@ -34,7 +34,7 @@ import {
  * from it but the manifest id.
  */
 
-export const MANIFEST = "a1".repeat(32);
+export const MANIFEST = "a1".repeat(28);
 export const RECOVERY =
   DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth;
 const KEY = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x5a));
@@ -52,10 +52,9 @@ export const tipObservation = (
   const tip = fx.tipPoint();
   const value = {
     schemaVersion: "midgard-watcher-production-state-queue-observation-v1",
-    deploymentIdentityDigest: MANIFEST,
+    hubOraclePolicyId: MANIFEST,
     protocolScriptAuthorityDigest: "45".repeat(32),
     stateQueuePolicyId,
-    hubOraclePolicyId: "47".repeat(28),
     nativePoint: {
       blockHash: tip.blockHash,
       parentBlockHash: null,
@@ -81,7 +80,7 @@ export const tipObservation = (
 export const intake = (fx: Chain) =>
   createWatcherAvailabilityObservation({
     identity: {
-      manifestId: MANIFEST,
+      hubOraclePolicyId: MANIFEST,
     } as unknown as VerifiedWatcherDeploymentIdentity,
     l1: { reads: fx.reads(), store: fx.store },
     confirmationDepth: 1,
@@ -116,7 +115,7 @@ export const signed = (
   fx: Chain,
   action: "prepare" | "open",
   options: Readonly<{
-    deploymentIdentity?: string;
+    hubOraclePolicyId?: string;
     headerHash?: string;
     inputs?: SimTx["inputs"];
     collaterals?: SimTx["inputs"];
@@ -140,7 +139,7 @@ export const signed = (
   const witnesses = CML.TransactionWitnessSet.new();
   witnesses.set_vkeywitnesses(vkeys);
   const intent = SDK.inspectDaAvailabilitySignedIntent({
-    deploymentIdentity: options.deploymentIdentity ?? MANIFEST,
+    hubOraclePolicyId: options.hubOraclePolicyId ?? MANIFEST,
     actor: ACTOR,
     headerHash: options.headerHash ?? HEADER,
     action,
@@ -180,7 +179,7 @@ export const recorded = (
 export const pass = (
   fx: Chain,
   journal: AvailabilityOperationJournal,
-  deploymentIdentity = MANIFEST,
+  hubOraclePolicyId = MANIFEST,
   pin: (
     txHashes: readonly string[],
   ) => Promise<void> = watcherAvailabilityTransactionPins(fx.store),
@@ -188,7 +187,7 @@ export const pass = (
 ) =>
   reconcileWatcherAvailabilityJournal(
     {
-      deploymentIdentity,
+      hubOraclePolicyId,
       actor: ACTOR,
       stateQueuePolicyId: "46".repeat(28),
       journal,

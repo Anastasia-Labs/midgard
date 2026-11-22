@@ -46,7 +46,7 @@ const newFaultWith = async (retention: WatcherProofRetention) => {
   const fixture = await setupClassifiedFaultFixture();
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot: fixture.journalRoot,
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     categories: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
     retention,
@@ -57,7 +57,7 @@ const newFaultWith = async (retention: WatcherProofRetention) => {
   };
   const admit = (revision: number) => {
     const observation = progressObservation({
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       revision,
       header,
     });

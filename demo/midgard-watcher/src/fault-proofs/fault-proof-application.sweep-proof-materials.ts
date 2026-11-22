@@ -30,7 +30,7 @@ export const sweepProofMaterialsFrom =
   }): WatcherFaultProofApplication["sweepProofMaterials"] =>
   async ({ terminal, actuationPermit, ...invocation }) => {
     if (!isExecutable()) return Object.freeze({ kind: "observing" });
-    const deploymentFingerprint = authority.deploymentIdentity.manifestId;
+    const hubOraclePolicyId = authority.deploymentIdentity.hubOraclePolicyId;
     const { category, headerHash, decisionDigest } = invocation;
     const objectiveWallet = createWorkflowObjectiveWallet({
       category,
@@ -39,21 +39,21 @@ export const sweepProofMaterialsFrom =
     // Installs the objective wallet's proof-materials view and sweep wallet.
     await buildCommonInfrastructure({
       ...authority,
-      invocation: { ...invocation, deploymentFingerprint, objectiveWallet },
+      invocation: { ...invocation, hubOraclePolicyId, objectiveWallet },
       replayContext: undefined,
     });
     const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
       authority.deploymentIdentity,
-    ).verifyForWorkflow({ deploymentFingerprint });
+    ).verifyForWorkflow({ hubOraclePolicyId });
     return await runProofMaterialsSweep({
-      deploymentFingerprint,
+      hubOraclePolicyId,
       category,
       headerHash,
       run: bindWorkflowRunActuation({
         run: createWorkflowRun(objectiveWallet),
         permit: actuationPermit,
         decisionDigest,
-        deploymentFingerprint,
+        hubOraclePolicyId,
         category,
         headerHash,
       }),

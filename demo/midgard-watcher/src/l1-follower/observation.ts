@@ -50,7 +50,7 @@ export type WatcherObservationRead =
 
 export type WatcherObservationAuthority = Pick<
   WatcherDeploymentProtocolScriptAuthority,
-  "authorityDigest" | "deploymentFingerprint" | "protocolScriptHashes"
+  "authorityDigest" | "protocolScriptHashes"
 >;
 
 type Block = Readonly<{
@@ -192,7 +192,7 @@ export const readWatcherObservation = async (
       blockPoint.slot,
     );
     const checkpoints = await readWatcherCheckpoints(tx, block, {
-      deploymentIdentityDigest: input.authority.deploymentFingerprint,
+      hubOraclePolicyId: hashes.hubOracleMint,
       stateQueuePolicyId: hashes.stateQueueMint,
       finalityDepth: input.depth,
       prunedThroughSlot: cursor.prunedThroughSlot,
@@ -213,7 +213,6 @@ export const readWatcherObservation = async (
     const canonical = {
       schemaVersion:
         WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION,
-      deploymentIdentityDigest: input.authority.deploymentFingerprint,
       protocolScriptAuthorityDigest: input.authority.authorityDigest,
       stateQueuePolicyId: hashes.stateQueueMint,
       hubOraclePolicyId: hashes.hubOracleMint,

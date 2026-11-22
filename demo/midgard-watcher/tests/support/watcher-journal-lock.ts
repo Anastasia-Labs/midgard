@@ -33,7 +33,7 @@ export const watcherSupervisorReadyz = (
   supervisor: WatcherFaultProofSupervisor,
 ) => {
   const operations = createWatcherOperationsObservability({
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     supervisor,
     launchScopeStatus: () => ({
       installedCategoryCount: 54,

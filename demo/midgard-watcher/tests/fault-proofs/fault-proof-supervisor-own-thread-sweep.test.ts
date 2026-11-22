@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 
-const DEPLOYMENT_FINGERPRINT = "dd".repeat(32);
+const HUB_ORACLE_POLICY_ID = "dd".repeat(28);
 const directories: string[] = [];
 
 const deferred = () => {
@@ -36,7 +36,7 @@ const supervisorWith = async (
   directories.push(journalRoot);
   const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
     journalRoot,
-    deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+    hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
     run: input.run ?? (async () => "completed workflow"),
     unsafeOwnThreadSweepForTest: input.sweep,
   });
@@ -46,7 +46,7 @@ const supervisorWith = async (
 
 const observe = (revision: number) => ({
   observation: progressObservation({
-    deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+    hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
     revision,
   }),
   rollbackGeneration: "0",

@@ -35,7 +35,7 @@ const construction = makeWatcherDeploymentAuthorityFixture();
 const ruleBundle = makeWatcherCanonicalRuleBundle({
   constructionIdentity: {
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-    manifestId: construction.result.manifestId,
+    hubOraclePolicyId: construction.result.hubOraclePolicyId,
     network: construction.result.network,
     blueprintHash: construction.result.blueprintHash,
     programCommitments: construction.result.programCommitments,
@@ -53,7 +53,6 @@ const writeReleaseFiles = async () => {
     signedIdentity: fixture.signedIdentity,
     policy: fixture.policy,
     trustRoots: fixture.trustRoots,
-    durableMarker: fixture.marker,
   });
   const paths = {
     path: join(directory, "deployment-authority.json"),
@@ -81,14 +80,14 @@ describe("signed deployment and release rule-bundle acquisition", () => {
     expect(() =>
       assertWatcherVerifiedDeploymentAuthority(loaded),
     ).not.toThrow();
-    expect(loaded.deploymentIdentity.manifestId).toBe(
-      fixture.result.manifestId,
+    expect(loaded.deploymentIdentity.hubOraclePolicyId).toBe(
+      fixture.result.hubOraclePolicyId,
     );
     expect(loaded.ruleBundle.ruleBundleCommitment).toBe(
       loaded.deploymentIdentity.ruleBundleCommitment,
     );
-    expect(loaded.ruleBundle.ruleBundle.deploymentManifestId).toBe(
-      loaded.deploymentIdentity.manifestId,
+    expect(loaded.ruleBundle.ruleBundle.hubOraclePolicyId).toBe(
+      loaded.deploymentIdentity.hubOraclePolicyId,
     );
     expect(loaded.ruleBundle.ruleBundle.programCommitments).toEqual(
       loaded.deploymentIdentity.programCommitments,
@@ -119,9 +118,7 @@ describe("signed deployment and release rule-bundle acquisition", () => {
       paths.ruleBundlePath,
       JSON.stringify({
         ...ruleBundle,
-        deploymentManifestId: computeDeploymentManifestJsonDigest({
-          deployment: "another-deployment",
-        }),
+        hubOraclePolicyId: "00".repeat(28),
       }),
     );
     await expect(
@@ -160,19 +157,6 @@ describe("signed deployment and release rule-bundle acquisition", () => {
       loadWatcherVerifiedDeploymentAuthority(paths),
     ).rejects.toMatchObject({
       code: "invalid_trust_root",
-    });
-  });
-
-  it("requires the durable deployment marker before admitting the bundle", async () => {
-    const { authority, paths } = await writeReleaseFiles();
-    await writeFile(
-      paths.path,
-      JSON.stringify({ ...authority, durableMarker: null }),
-    );
-    await expect(
-      loadWatcherVerifiedDeploymentAuthority(paths),
-    ).rejects.toMatchObject({
-      code: "missing_durable_marker",
     });
   });
 

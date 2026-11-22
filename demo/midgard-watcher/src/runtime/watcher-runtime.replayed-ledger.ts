@@ -53,7 +53,7 @@ export const createWatcherRuntimeReplayHost = (
     maturityMs: BigInt(MIDGARD_RETENTION_WINDOW.maturityMs),
   });
   const identity = {
-    deploymentManifestId: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     blueprintHash: deploymentIdentity.blueprintHash,
     network: deploymentIdentity.network,
   };
@@ -90,7 +90,7 @@ export const createWatcherRuntimeReplayHost = (
       const storage = openSqliteLedgerStorage(
         join(
           journalDirectory,
-          `replayed-ledger-${deploymentIdentity.manifestId}.sqlite`,
+          `replayed-ledger-${deploymentIdentity.hubOraclePolicyId}.sqlite`,
         ),
       );
       const keeper = createWatcherReplayedLedger({

@@ -28,7 +28,7 @@ import {
 } from "../../src/runtime/watcher-runtime.l1-readiness.js";
 import { supervisor } from "./operations-observability.supervisor.js";
 
-const MANIFEST = "11".repeat(32);
+const MANIFEST = "11".repeat(28);
 
 const watcher = (
   follower: Readonly<{
@@ -51,7 +51,7 @@ const watcher = (
     },
   });
   const observability = createWatcherOperationsObservability({
-    deploymentFingerprint: MANIFEST,
+    hubOraclePolicyId: MANIFEST,
     supervisor: supervisor().runtime,
     launchScopeStatus: () => ({
       installedCategoryCount: 32,

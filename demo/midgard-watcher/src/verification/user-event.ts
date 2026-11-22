@@ -58,7 +58,7 @@ export type WatcherUserEventHeaderCutoff = Readonly<{
 }>;
 
 export type WatcherUserEventAuthorityRead = Readonly<{
-  deploymentManifestId: string;
+  hubOraclePolicyId: string;
   blueprintHash: string;
   network: WatcherUserEventNetwork;
   event: WatcherUserEvent;

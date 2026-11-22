@@ -60,7 +60,7 @@ describe("replay admission retention", () => {
     const rules = makeWatcherCanonicalRuleBundle({
       constructionIdentity: {
         l1SlotConfig: slotConfig,
-        manifestId: construction.deploymentIdentity.manifestId,
+        hubOraclePolicyId: construction.deploymentIdentity.hubOraclePolicyId,
         network: construction.deploymentIdentity.network,
         blueprintHash: construction.deploymentIdentity.blueprintHash,
         programCommitments: construction.deploymentIdentity.programCommitments,
@@ -82,7 +82,6 @@ describe("replay admission retention", () => {
                   signedIdentity: deployment.deployment.signedIdentity,
                   policy: deployment.deployment.policy,
                   trustRoots: deployment.deployment.trustRoots,
-                  durableMarker: deployment.deployment.marker,
                 },
           ),
         ),

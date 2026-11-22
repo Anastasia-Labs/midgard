@@ -27,7 +27,7 @@ import {
   TEST_JOURNAL_KEY,
 } from "../support/watcher-journal-fixture.js";
 
-const DEPLOYMENT = "dd".repeat(32);
+const DEPLOYMENT = "dd".repeat(28);
 const HEADER = "aa".repeat(28);
 const DIGEST = "bb".repeat(32);
 
@@ -36,7 +36,7 @@ const directory = (): Promise<string> =>
 
 const journalInput = (root: string) => ({
   directory: root,
-  deploymentFingerprint: DEPLOYMENT,
+  hubOraclePolicyId: DEPLOYMENT,
   launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   authenticationKey: TEST_JOURNAL_KEY,
 });
@@ -48,7 +48,7 @@ const faultDecision = (
   const content = {
     schemaVersion: "midgard-production-header-decision-v1",
     classifierVersion: "midgard-production-header-classifier-v1",
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     headerHash: HEADER,
     authenticatedObservationDigest: "11".repeat(32),
     payloadEnvelopeSha256: "22".repeat(32),
@@ -121,10 +121,28 @@ describe("production fault decision journal", () => {
     expect(
       readWatcherFaultDecisionEvidence({
         directory: root,
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
       }),
     ).toEqual([first.decision]);
+  });
+
+  it("refuses on restart a row written for another hub-oracle policy id", async () => {
+    const root = await directory();
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(
+      journalInput(root),
+    );
+    const first =
+      await journal.unsafeAppendDecisionEnvelopeForTest(faultDecision());
+    closeWatcherJournalDatabase(root);
+    const failure = await openWatcherFaultDecisionJournal({
+      ...journalInput(root),
+      hubOraclePolicyId: "12".repeat(28),
+    }).catch((error: unknown) => error);
+    expect(isWatcherJournalIntegrityError(failure)).toBe(true);
+    expect(String(failure)).toContain(
+      `row ${String(first.decision.decisionDigest)} body is not a decision: persisted production decision identity is invalid`,
+    );
   });
 
   it("admits out-ref detection identifiers without relaxing violation identifiers", async () => {
@@ -174,7 +192,7 @@ describe("production fault decision journal", () => {
     let calls = 0;
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       run: async () => {
         calls += 1;
       },
@@ -182,7 +200,7 @@ describe("production fault decision journal", () => {
     await supervisor.recoverExisting(null);
     await expect(
       supervisor.requestProgress({
-        observation: progressObservation({ deploymentFingerprint: DEPLOYMENT }),
+        observation: progressObservation({ hubOraclePolicyId: DEPLOYMENT }),
         rollbackGeneration: "0",
         fault: {
           decision: persisted!.decision,

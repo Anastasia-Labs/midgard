@@ -34,7 +34,7 @@ export const testFaultProofL1 = (): WatcherFaultProofL1 => ({
   provider: {} as Provider,
 });
 
-export const DEPLOYMENT = AUTHORITY.result.manifestId;
+export const DEPLOYMENT = AUTHORITY.result.hubOraclePolicyId;
 
 export const HEADER = "ab".repeat(28);
 
@@ -158,7 +158,7 @@ export const invocation = (
   overrides: Partial<WatcherFaultProofStartupInvocation> = {},
 ): WatcherFaultProofStartupInvocation => ({
   category,
-  deploymentFingerprint: DEPLOYMENT,
+  hubOraclePolicyId: DEPLOYMENT,
   headerHash: HEADER,
   ...overrides,
 });

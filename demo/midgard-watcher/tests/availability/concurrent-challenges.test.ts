@@ -305,7 +305,7 @@ describe("concurrent availability challenges on one wallet (spec #685 E3, P9)", 
           lease,
           {
             id,
-            deploymentIdentity: "other-deployment",
+            hubOraclePolicyId: "other-deployment",
             actor: ACTOR,
             headerHash: OTHER,
             action: "close",
@@ -555,7 +555,7 @@ describe("a Timeout whose pool moved after it was built (P13(4)(b))", () => {
     >("@al-ft/midgard-sdk/da");
     io.run.mockImplementation(actual.runDaAvailabilityOperation);
     io.reconcile.mockImplementation(actual.reconcileDaAvailabilityOperations);
-    const deployment = "d0".repeat(32);
+    const deployment = "d0".repeat(28);
     const key = CML.PrivateKey.generate_ed25519();
     // The mocked wallet's payment credential is its address.
     io.walletAddress = key.to_public().hash().to_hex();
@@ -678,11 +678,11 @@ describe("the DA bond pool is read every reconciliation and never blocks (spec #
     Withdrawing: { unlock_at: 1_900_000_000_000n },
   };
   /** A 64-hex deployment id, as the operations sink requires. */
-  const MANIFEST = "ab".repeat(32);
+  const MANIFEST = "ab".repeat(28);
   /** The watcher's operations status with every other readiness input healthy. */
   const operationsFixture = () => {
     const operations = createWatcherOperationsObservability({
-      deploymentFingerprint: MANIFEST,
+      hubOraclePolicyId: MANIFEST,
       supervisor: {
         status: () => ({
           phase: "accepting",

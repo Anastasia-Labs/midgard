@@ -341,7 +341,7 @@ describe("production fault decision bridge", () => {
       let monotonic = 100;
       const originalError = new Error("original classifier failure");
       const observability = createWatcherOperationsObservability({
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         supervisor: {
           status: () => ({
             phase: "accepting",

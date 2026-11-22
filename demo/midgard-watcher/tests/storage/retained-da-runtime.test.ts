@@ -2,7 +2,6 @@ import {
   DaRequestResponseProtocol,
   encodeDaPayloadByHeaderResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   DaLibp2pRetainedDaSource,
   type RetainedDaFetchAttempt,
@@ -58,11 +57,11 @@ import {
 } from "./retained-da-runtime.fixtures.js";
 
 const AUTHORITY = makeWatcherDeploymentAuthorityFixture();
-const DEPLOYMENT = AUTHORITY.result.manifestId;
+const DEPLOYMENT = AUTHORITY.result.hubOraclePolicyId;
 
 type TestDoubleSpendWorkflow = Readonly<{
   binding: Readonly<{
-    deploymentFingerprint: string;
+    hubOraclePolicyId: string;
     definition: Readonly<{
       category: "doubleSpend";
       headerHash: string;
@@ -104,7 +103,7 @@ const invocation = (
   overrides: Partial<WorkflowAdapterRunnerInput> = {},
 ): WorkflowAdapterRunnerInput => ({
   category: "doubleSpend",
-  deploymentFingerprint: DEPLOYMENT,
+  hubOraclePolicyId: DEPLOYMENT,
   headerHash: "ab".repeat(28),
   decisionDigest: "cd".repeat(32),
   actuationPermit: Object.freeze({
@@ -307,7 +306,7 @@ describe("explicit Custom DA transport", () => {
       peerId,
       multiaddr: address,
       protocol: DaRequestResponseProtocol.payloadByHeader,
-      protocolId: `/midgard/${identity.manifestId}/da/payload-by-header/1`,
+      protocolId: `/midgard/${identity.hubOraclePolicyId}/da/payload-by-header/1`,
       requestCbor: Buffer.from([0xa0]),
       timeoutMs: 1000,
       signal: new AbortController().signal,
@@ -326,7 +325,7 @@ describe("explicit Custom DA transport", () => {
         { ...request, multiaddr: address.replace("4141", "4142") },
         {
           ...request,
-          protocolId: `/midgard/${"99".repeat(32)}/da/payload-by-header/1`,
+          protocolId: `/midgard/${"99".repeat(28)}/da/payload-by-header/1`,
         },
         {
           ...request,
@@ -452,7 +451,7 @@ describe("production retained-DA runtime V1", () => {
         return new Uint8Array([0xf6]);
       });
       const observability = createWatcherOperationsObservability({
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         supervisor: {
           status: () => ({
             phase: "accepting",
@@ -536,7 +535,6 @@ describe("production retained-DA runtime V1", () => {
       unsafeTransportFactoryForTest: fake.factory,
     });
     expect(runtime.schemaVersion).toBe(WATCHER_RETAINED_DA_RUNTIME);
-    expect(runtime.deploymentFingerprint).toBe(DEPLOYMENT);
     expect(runtime.sources).toHaveLength(1);
     expect(runtime.sources[0]?.sourceId).toBe("watcher-public-da/da-peer-a");
 
@@ -574,18 +572,15 @@ describe("production retained-DA runtime V1", () => {
     ).rejects.toThrow("network differs");
     expect(wrongNetwork.factory).not.toHaveBeenCalled();
 
-    const wrongMarker = transportFactory();
+    const forged = transportFactory();
     await expect(
       createWatcherRetainedDaRuntime({
         watcherConfig: admittedConfig(),
-        deploymentIdentity: {
-          ...deploymentIdentity(),
-          durableMarker: makeDeploymentMarker("ff".repeat(32)),
-        },
-        unsafeTransportFactoryForTest: wrongMarker.factory,
+        deploymentIdentity: { ...deploymentIdentity() },
+        unsafeTransportFactoryForTest: forged.factory,
       }),
     ).rejects.toThrow("invalid_field at $.verifiedDeploymentIdentity");
-    expect(wrongMarker.factory).not.toHaveBeenCalled();
+    expect(forged.factory).not.toHaveBeenCalled();
   });
 
   it("rejects development mode before transport startup", async () => {
@@ -691,7 +686,7 @@ describe("production retained-DA runtime V1", () => {
     await expect(
       loader({
         runtimeConfigPath: execution.runtimeConfigPath,
-        invocation: invocation({ deploymentFingerprint: "ff".repeat(32) }),
+        invocation: invocation({ hubOraclePolicyId: "ff".repeat(28) }),
       }),
     ).rejects.toThrow("invocation deployment differs");
     expect(substituted.factory).not.toHaveBeenCalled();
@@ -731,7 +726,7 @@ describe("production retained-DA runtime V1", () => {
         requires: [],
         bindConfig: ({ infrastructure }): TestDoubleSpendWorkflow => ({
           binding: {
-            deploymentFingerprint: DEPLOYMENT,
+            hubOraclePolicyId: DEPLOYMENT,
             definition: {
               category: "doubleSpend",
               headerHash: infrastructure.headerHash,

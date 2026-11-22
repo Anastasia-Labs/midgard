@@ -13,7 +13,6 @@ import {
   writeTextFileAtomic,
   writeTextFileAtomicNoReplace,
 } from "@al-ft/midgard-core/atomic-write";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import type { publishWorkflowDeploymentOnChain } from "midgard-node/tests/helpers/published-workflow-deployment";
 
@@ -128,7 +127,6 @@ export const createPublishedWatcherDeploymentAuthority = async ({
       policy: authority.policy,
       trustRoots: authority.trustRoots,
       result: deploymentAuthority.deploymentIdentity,
-      marker: makeDeploymentMarker(manifest.manifestId),
       contracts: manifest.contracts,
     },
     deploymentAuthority,

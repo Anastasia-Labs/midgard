@@ -12,7 +12,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { type WatcherAuthenticatedStateQueueObservation } from "../../src/indexers/authenticated-state-queue-observation.js";
 
-export const DEPLOYMENT = "dd".repeat(32);
+export const DEPLOYMENT = "dd".repeat(28);
 
 export const OBSERVATION_DIGEST = "11".repeat(32);
 
@@ -63,10 +63,9 @@ export const observation = (
   const encoded = headers.map(encodedHeader);
   return Object.freeze({
     schemaVersion: "midgard-watcher-production-state-queue-observation-v1",
-    deploymentIdentityDigest: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     protocolScriptAuthorityDigest: "10".repeat(32),
     stateQueuePolicyId: "11".repeat(28),
-    hubOraclePolicyId: "12".repeat(28),
     nativePoint: Object.freeze({
       blockHash: "13".repeat(32),
       parentBlockHash: "14".repeat(32),
@@ -137,7 +136,7 @@ export const decision = (
   Object.freeze({
     schemaVersion: "midgard-production-header-decision-v1" as const,
     classifierVersion: "midgard-production-header-classifier-v1" as const,
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     headerHash,
     authenticatedObservationDigest: OBSERVATION_DIGEST,
     payloadEnvelopeSha256: "26".repeat(32),

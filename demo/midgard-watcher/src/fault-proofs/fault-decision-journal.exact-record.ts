@@ -15,6 +15,8 @@ export const DIGEST = /^[0-9a-f]{64}$/u;
 
 export const HEADER_HASH = /^[0-9a-f]{56}$/u;
 
+export const POLICY_ID = /^[0-9a-f]{56}$/u;
+
 export const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 
 export const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,511}$/u;

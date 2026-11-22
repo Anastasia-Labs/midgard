@@ -4,7 +4,6 @@
  * else at T, and a store whose origin is after T is unready R3
  * (`origin_after_protocol_init`) while the follower keeps running.
  */
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
 import { afterEach, describe, expect, it } from "vitest";
@@ -12,10 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openWatcherDeploymentFollower } from "../../src/l1-follower/deployment-follower.js";
 import { verifyWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.verify-watcher-deployment-identity.js";
 import { watcherDeploymentProtocolScriptAuthority } from "../../src/runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
-import {
-  canonicalIdentity,
-  withManifestId,
-} from "../runtime/deployment-identity.canonical-identity.js";
+import { canonicalIdentity } from "../runtime/deployment-identity.canonical-identity.js";
 import { makeFixture } from "../runtime/deployment-identity.make-fixture.js";
 import { SIM_HUB_ORACLE_ONE_SHOT } from "../support/l1-follower-state-queue-traffic.js";
 import {
@@ -45,17 +41,15 @@ describe("the deployment's recorded origin in the watcher's verified identity", 
           signedIdentity: fixture.signedIdentity,
           policy: fixture.policy,
           trustRoots: [fixture.trustRoot],
-          durableMarker: makeDeploymentMarker(String(manifest.manifestId)),
         }),
       );
     };
     expect(
-      authorityOf(withManifestId({ ...canonicalIdentity(), l1Origin: T }))
-        .recordedL1Origin,
+      authorityOf({ ...canonicalIdentity(), l1Origin: T }).recordedL1Origin,
     ).toEqual(T);
-    expect(
-      Object.keys(authorityOf(withManifestId(canonicalIdentity()))),
-    ).not.toContain("recordedL1Origin");
+    expect(Object.keys(authorityOf(canonicalIdentity()))).not.toContain(
+      "recordedL1Origin",
+    );
   });
 });
 

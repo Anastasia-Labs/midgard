@@ -16,12 +16,12 @@ const watcherAvailabilityJournalTransactions = (
     "actorSnapshot" | "finalizedAnchors" | "unsettledReleases"
   >,
   actor: string,
-  deploymentIdentity: string,
+  hubOraclePolicyId: string,
 ): string[] =>
   [
     ...new Set([
       ...journal
-        .actorSnapshot(actor, deploymentIdentity)
+        .actorSnapshot(actor, hubOraclePolicyId)
         .retainedAttempts.filter(({ state }) => state !== "expired")
         .map(({ txHash }) => txHash),
       ...journal.finalizedAnchors(actor).map(({ intent }) => intent.txHash),
@@ -45,7 +45,7 @@ export const reconcileWatcherAvailabilityJournal = async (
     watcherAvailabilityJournalTransactions(
       context.journal,
       context.actor,
-      context.deploymentIdentity,
+      context.hubOraclePolicyId,
     ),
   );
   return await SDK.reconcileDaAvailabilityOperations(context);
@@ -59,7 +59,7 @@ export const pinWatcherAvailabilityJournal =
   (
     context: Pick<
       SDK.DaAvailabilityOperationContext,
-      "journal" | "actor" | "deploymentIdentity"
+      "journal" | "actor" | "hubOraclePolicyId"
     >,
     pin: (txHashes: readonly string[]) => Promise<void>,
   ) =>
@@ -70,7 +70,7 @@ export const pinWatcherAvailabilityJournal =
           ...watcherAvailabilityJournalTransactions(
             context.journal,
             context.actor,
-            context.deploymentIdentity,
+            context.hubOraclePolicyId,
           ),
           ...extra,
         ]),
@@ -90,7 +90,7 @@ export const pinnedWatcherAvailabilitySubmit =
   (
     context: Pick<
       SDK.DaAvailabilityOperationContext,
-      "journal" | "actor" | "deploymentIdentity"
+      "journal" | "actor" | "hubOraclePolicyId"
     >,
     pin: (txHashes: readonly string[]) => Promise<void>,
     submit: (signedCbor: string) => Promise<string>,

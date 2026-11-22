@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { WatcherDaBondPoolObservation } from "../availability/pool-observation.js";
 import {
   HEX_32,
@@ -8,6 +10,22 @@ export const hash32 = (value: string, label: string): string => {
   if (!HEX_32.test(value)) throw new Error(`${label} is invalid`);
   return value;
 };
+
+const POLICY_ID = /^[0-9a-f]{56}$/u;
+
+export const policyId = (value: string, label: string): string => {
+  if (!POLICY_ID.test(value)) throw new Error(`${label} is invalid`);
+  return value;
+};
+
+/** The DA bond pool alerts' subject: one per deployment. */
+export const watcherDaBondPoolAlertSubject = (
+  hubOraclePolicyId: string,
+): string =>
+  createHash("sha256")
+    .update("midgard-watcher-da-bond-pool-alert-v1\u0000")
+    .update(hubOraclePolicyId)
+    .digest("hex");
 
 export const percentile = (
   values: readonly bigint[],
@@ -33,11 +51,15 @@ export const percentile = (
 export const watcherDaBondPoolReporter =
   (
     sink: Pick<WatcherOperationsSink, "recordDaBondPool">,
-    deploymentIdentity: string,
+    hubOraclePolicyId: string,
     nowMs: () => number = Date.now,
   ) =>
   (pool: WatcherDaBondPoolObservation): void =>
-    sink.recordDaBondPool(pool, deploymentIdentity, BigInt(nowMs()).toString());
+    sink.recordDaBondPool(
+      pool,
+      watcherDaBondPoolAlertSubject(hubOraclePolicyId),
+      BigInt(nowMs()).toString(),
+    );
 
 /**
  * The availability runtime's `onDaBondPoolReadFailure` hook as the watcher

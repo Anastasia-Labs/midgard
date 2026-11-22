@@ -125,7 +125,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
   /** Forwarded to the shared workflow runner, whose contract carries it; the
    * watcher's loader runs on the configuration startup admitted. */
   readonly runtimeConfigPath: string;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly operationsSink: Pick<
     WatcherOperationsSink,
     "recordProofStep" | "setAlert"
@@ -176,8 +176,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
       });
       if (
         identity.headerHash !== job.headerHash ||
-        identity.decisionDigest !== job.decisionDigest ||
-        identity.deploymentFingerprint !== dependencies.deploymentFingerprint
+        identity.decisionDigest !== job.decisionDigest
       )
         throw new Error(
           "completed proof verification changed its admitted objective",
@@ -249,8 +248,6 @@ export const createWatcherFaultProofExecution = (dependencies: {
           rollbackGeneration: job.rollbackGeneration,
         });
         if (
-          authority.deploymentFingerprint !==
-            dependencies.deploymentFingerprint ||
           authority.headerHash !== headerHash ||
           authority.decisionDigest !== decisionDigest
         )
@@ -266,7 +263,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
         alerts.started(job, admission.startedLate);
         const result = await dependencies.application.runOrResume({
           category,
-          deploymentFingerprint: dependencies.deploymentFingerprint,
+          hubOraclePolicyId: dependencies.hubOraclePolicyId,
           headerHash,
           decisionDigest,
           actuationPermit,

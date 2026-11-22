@@ -125,7 +125,7 @@ export const createWatcherOperationsView = (
             : "live";
     return Object.freeze({
       schemaVersion: WATCHER_OPERATIONS_OBSERVABILITY,
-      deploymentFingerprint: record.deploymentFingerprint,
+      hubOraclePolicyId: record.hubOraclePolicyId,
       observedAtMs: observedAt.toString(),
       liveness,
       readiness: reasons.length === 0 ? "ready" : "not_ready",

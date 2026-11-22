@@ -166,7 +166,7 @@ export const releasePass = async (
       intake(fx).workflowRelease(observation, openIntent, headerHash, recorded),
     () => undefined,
     pinWatcherAvailabilityJournal(
-      { journal, actor: ACTOR, deploymentIdentity: MANIFEST },
+      { journal, actor: ACTOR, hubOraclePolicyId: MANIFEST },
       pin,
     ),
   );

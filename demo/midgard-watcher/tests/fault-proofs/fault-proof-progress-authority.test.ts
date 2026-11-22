@@ -28,12 +28,12 @@ const setup = async () => {
   const fixture = await setupClassifiedFaultFixture();
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot: fixture.journalRoot,
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     categories: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
   });
   const observation = progressObservation({
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     header: {
       header: fixture.fixture.header,
       headerHash: fixture.old.headerHash,
@@ -67,7 +67,7 @@ describe("supervisor progress authority", () => {
     const header = test.fixture.fixture.header;
     const blockTimeMs = header.endTime + 6n * 60n * 60_000n;
     const observation = progressObservation({
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       header: { header, headerHash: test.fixture.fresh.headerHash },
       blockTimeMs,
     });
@@ -99,7 +99,7 @@ describe("supervisor progress authority", () => {
         await test.authority.admit({
           ...test.request,
           observation: progressObservation({
-            deploymentFingerprint: deploymentIdentity.manifestId,
+            hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
             header: {
               header: test.fixture.fixture.header,
               headerHash: test.fixture.old.headerHash,
@@ -124,7 +124,7 @@ describe("supervisor progress authority", () => {
   it("admits a new fault even on the same observation without mutating an active older permit", async () => {
     const test = await setup();
     const observation = progressObservation({
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       header: {
         header: test.fixture.fixture.header,
         headerHash: test.fixture.fresh.headerHash,
@@ -177,7 +177,7 @@ describe("supervisor progress authority: proof retention", () => {
     const pinned: string[] = [];
     const authority = createWatcherFaultProofProgressAuthority({
       journalRoot: fixture.journalRoot,
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       categories: installedLaunchScope(fixture.old.launchScope),
       authenticationKey: TEST_JOURNAL_KEY,
       retention: {
@@ -189,7 +189,7 @@ describe("supervisor progress authority: proof retention", () => {
       },
     });
     const observation = progressObservation({
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       header: {
         header: fixture.fixture.header,
         headerHash: fixture.old.headerHash,

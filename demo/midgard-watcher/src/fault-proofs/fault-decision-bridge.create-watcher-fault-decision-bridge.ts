@@ -61,7 +61,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
   const decisions = async (): Promise<WatcherFaultDecisionJournal> =>
     (journal ??= await openWatcherFaultDecisionJournal({
       directory: input.journalDirectory,
-      deploymentFingerprint: input.application.deploymentFingerprint,
+      hubOraclePolicyId: input.application.hubOraclePolicyId,
       launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
       authenticationKey: input.authenticationKey,
     }));

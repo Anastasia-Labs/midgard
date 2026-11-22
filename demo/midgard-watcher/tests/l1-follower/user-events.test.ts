@@ -142,7 +142,7 @@ describe("watcher user events from follower facts", () => {
       const authority = await authorityFor(setup, kind, event);
       const read = await readWatcherUserEventAuthority(authority);
       expect(read).toMatchObject({
-        deploymentManifestId: deployment.deploymentIdentity.manifestId,
+        hubOraclePolicyId: deployment.deploymentIdentity.hubOraclePolicyId,
         blueprintHash: deployment.deploymentIdentity.blueprintHash,
         network: deployment.deploymentIdentity.network,
         event: {

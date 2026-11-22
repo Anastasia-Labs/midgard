@@ -10,7 +10,6 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
@@ -251,11 +250,6 @@ export const canonicalIdentity = (): MutableRecord => {
     },
   };
 };
-
-export const withManifestId = (identity: MutableRecord): MutableRecord => ({
-  ...identity,
-  manifestId: computeDeploymentManifestId(identity),
-});
 
 export const makeTrustRoot = () => {
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");

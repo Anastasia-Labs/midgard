@@ -1,4 +1,7 @@
-import { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
+  type DeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import {
   DeploymentReleaseBindingError,
@@ -203,16 +206,16 @@ export const parseReleaseBindings = (
 };
 
 export const signaturePayload = (
-  manifestId: string,
+  manifest: DeploymentManifest,
   bindings: ReleaseBindings,
-): Buffer => makeDeploymentReleaseSignaturePayload(manifestId, bindings);
+): Buffer => makeDeploymentReleaseSignaturePayload(manifest, bindings);
 
 export const makeWatcherDeploymentIdentitySignaturePayload = (
-  manifestId: string,
+  manifest: DeploymentManifest,
   releaseBindings: unknown,
 ): Buffer =>
   signaturePayload(
-    exactString(manifestId, "$.manifestId", HEX_32),
+    manifest,
     parseReleaseBindings(releaseBindings, "$.releaseBindings"),
   );
 

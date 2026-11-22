@@ -34,7 +34,9 @@ export const WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION =
 
 const HEADER_HASH = /^[0-9a-f]{56}$/u;
 
-export const DEPLOYMENT_FINGERPRINT = /^[0-9a-f]{64}$/u;
+const DIGEST = /^[0-9a-f]{64}$/u;
+
+export const POLICY_ID = /^[0-9a-f]{56}$/u;
 
 export const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 
@@ -272,7 +274,7 @@ export const validateJob = (
     (job.mode !== "run" && job.mode !== "resume") ||
     !categories.includes(job.category) ||
     !HEADER_HASH.test(job.headerHash) ||
-    !DEPLOYMENT_FINGERPRINT.test(job.decisionDigest) ||
+    !DIGEST.test(job.decisionDigest) ||
     !CANONICAL_NATURAL.test(job.rollbackGeneration) ||
     deadline.headerHash !== job.headerHash ||
     !CANONICAL_NATURAL.test(deadline.headerBlockTimeMs) ||

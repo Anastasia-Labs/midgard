@@ -51,7 +51,6 @@ export const ONE_SHOT: SimUtxo = {
 };
 export const AUTHORITY: WatcherObservationAuthority = {
   authorityDigest: "a1".repeat(32),
-  deploymentFingerprint: "a2".repeat(32),
   protocolScriptHashes: {
     hubOracleMint: D.hubOracleMint,
     stateQueueSpend: D.stateQueueSpend,

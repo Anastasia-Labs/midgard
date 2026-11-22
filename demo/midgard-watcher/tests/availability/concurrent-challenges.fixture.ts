@@ -285,7 +285,7 @@ export const withJournal = <T>(
 };
 export const openLanded = (
   headerHash: string,
-  deploymentIdentity = DEPLOYMENT,
+  hubOraclePolicyId = DEPLOYMENT,
 ) =>
   withJournal((journal) => {
     const lease = journal.acquire(ACTOR, "earlier", Date.now(), 60_000);
@@ -294,7 +294,7 @@ export const openLanded = (
       lease,
       {
         id,
-        deploymentIdentity,
+        hubOraclePolicyId,
         actor: ACTOR,
         headerHash,
         action: "open",
@@ -335,14 +335,14 @@ export const workflowRows = () =>
   withJournal((journal) =>
     journal
       .workflows(ACTOR)
-      .map(({ deploymentIdentity, headerHash }) => [
-        deploymentIdentity,
+      .map(({ hubOraclePolicyId, headerHash }) => [
+        hubOraclePolicyId,
         headerHash,
       ]),
   );
 
 export const runtime = (
-  manifestId = DEPLOYMENT,
+  hubOraclePolicyId = DEPLOYMENT,
   extra: Pick<
     Parameters<typeof createWatcherAvailabilityRuntime>[0],
     "onDaBondPool" | "onDaBondPoolReadFailure"
@@ -376,7 +376,7 @@ export const runtime = (
     } as unknown as WatcherProcessConfig,
     identity: {
       network: "Custom",
-      manifestId,
+      hubOraclePolicyId,
     } as VerifiedWatcherDeploymentIdentity,
     l1: {
       reads: {},
@@ -400,7 +400,7 @@ export const observation = (
   );
   return {
     observationDigest: "digest",
-    deploymentIdentityDigest: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     nativePoint: {
       slot: "1",
       blockNo: "1",

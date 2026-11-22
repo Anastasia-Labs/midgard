@@ -82,7 +82,7 @@ const signedCbor = tx.to_cbor_hex();
 const baseIntent: AvailabilityOperationIntent = {
   id: "open",
   actor: "actor",
-  deploymentIdentity: "deployment",
+  hubOraclePolicyId: "deployment",
   headerHash: "header",
   action: "open",
   signedCbor,
@@ -137,10 +137,9 @@ const setup = (after: number) => {
       parentBlockHash: null,
       chainPointId: "point",
     },
-    deploymentIdentityDigest: "deployment",
     protocolScriptAuthorityDigest: "scripts",
     stateQueuePolicyId: "statequeue",
-    hubOraclePolicyId: "oracle",
+    hubOraclePolicyId: "deployment",
     sourceId: "source",
     previousObservationDigest: null,
     checkpoints: [],
@@ -169,7 +168,7 @@ const setup = (after: number) => {
     blockHash: "bb".repeat(32),
   });
   const intake = createWatcherAvailabilityObservation({
-    identity: { manifestId: "deployment", blueprintHash: "blueprint" },
+    identity: { hubOraclePolicyId: "deployment", blueprintHash: "blueprint" },
     deployment: {},
     l1: availabilityFollowerL1(follower),
     confirmationDepth: 30,

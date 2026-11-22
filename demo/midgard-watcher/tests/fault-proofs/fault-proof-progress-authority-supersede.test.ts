@@ -31,18 +31,18 @@ afterEach(async () => {
 
 const setup = async () => {
   const fixture = await setupClassifiedFaultFixture();
-  const deploymentFingerprint = deploymentIdentity.manifestId;
+  const hubOraclePolicyId = deploymentIdentity.hubOraclePolicyId;
   const start = () =>
     createWatcherFaultProofProgressAuthority({
       journalRoot: fixture.journalRoot,
-      deploymentFingerprint,
+      hubOraclePolicyId,
       categories: installedLaunchScope(fixture.old.launchScope),
       authenticationKey: TEST_JOURNAL_KEY,
       retention: storelessProofRetention,
     });
   const authority = start();
   const observation = progressObservation({
-    deploymentFingerprint,
+    hubOraclePolicyId,
     header: {
       header: fixture.fixture.header,
       headerHash: fixture.old.headerHash,
@@ -57,7 +57,7 @@ const setup = async () => {
       await (
         await openWatcherFaultDecisionJournal({
           directory: fixture.journalRoot,
-          deploymentFingerprint,
+          hubOraclePolicyId,
           launchScope: installedLaunchScope(fixture.old.launchScope),
           authenticationKey: TEST_JOURNAL_KEY,
         })
@@ -81,7 +81,7 @@ const setup = async () => {
   });
   return {
     fixture,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     authority,
     start,
     observation,
@@ -151,10 +151,10 @@ describe("proof progress authority supersede", () => {
 
   it("holds while a job of the objective is queued or active, and supersedes once it finishes", async () => {
     const harness = await setup();
-    const { fixture, deploymentFingerprint } = harness;
+    const { fixture, hubOraclePolicyId } = harness;
     const queue = await openWatcherFaultProofQueueJournal({
       journalRoot: fixture.journalRoot,
-      deploymentFingerprint,
+      hubOraclePolicyId,
       authenticationKey: TEST_JOURNAL_KEY,
     });
     const identity = {
@@ -179,7 +179,7 @@ describe("proof progress authority supersede", () => {
       reason: "job_pending",
     });
     const digest = watcherFaultProofQueueIdentityDigest({
-      deploymentFingerprint,
+      hubOraclePolicyId,
       identity,
     });
     await queue.markStarted(digest, "2");

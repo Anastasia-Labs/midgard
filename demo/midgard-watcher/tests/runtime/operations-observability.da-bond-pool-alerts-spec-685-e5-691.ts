@@ -12,10 +12,11 @@ import {
 import { supervisor } from "./operations-observability.supervisor.js";
 
 describe("DA bond pool alerts (spec #685 E5, #691)", () => {
-  const MANIFEST = "11".repeat(32);
+  const SUBJECT = "11".repeat(32);
+  const POLICY = "12".repeat(28);
   const healthy = () => {
     const observability = createWatcherOperationsObservability({
-      deploymentFingerprint: MANIFEST,
+      hubOraclePolicyId: POLICY,
       supervisor: supervisor().runtime,
       launchScopeStatus: () => ({
         installedCategoryCount: 32,
@@ -83,7 +84,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
     expect(observability.api.status().daBondPool).toBeNull();
     observability.sink.recordDaBondPool(
       readout("bonded", true),
-      MANIFEST,
+      SUBJECT,
       "100000",
     );
     expect(observability.api.status()).toMatchObject({
@@ -92,7 +93,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
       activeAlerts: [
         {
           code: "da_bond_pool_under_backed",
-          subjectDigest: MANIFEST,
+          subjectDigest: SUBJECT,
           observedAtMs: "100000",
         },
       ],
@@ -106,7 +107,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
     expect(observability.api.metrics().activeAlertCount).toBe("1");
     observability.sink.recordDaBondPool(
       readout("bonded", false),
-      MANIFEST,
+      SUBJECT,
       "100001",
     );
     expect(observability.api.status()).toMatchObject({
@@ -121,7 +122,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
     const observability = healthy();
     observability.sink.recordDaBondPool(
       readout("withdrawing", false),
-      MANIFEST,
+      SUBJECT,
       "100000",
     );
     expect(observability.api.status()).toMatchObject({
@@ -134,7 +135,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
     ]);
     observability.sink.recordDaBondPool(
       readout("withdrawing", true),
-      MANIFEST,
+      SUBJECT,
       "100001",
     );
     expect(activeAlertCodes(observability.api.status())).toEqual([
@@ -144,7 +145,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
     expect(observability.api.status().readinessReasons).toEqual([]);
     observability.sink.recordDaBondPool(
       readout("bonded", false),
-      MANIFEST,
+      SUBJECT,
       "100002",
     );
     expect(observability.api.status()).toMatchObject({
@@ -161,7 +162,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
     const observability = healthy();
     observability.sink.recordDaBondPool(
       readout("missing", true),
-      MANIFEST,
+      SUBJECT,
       "100000",
     );
     expect(activeAlertCodes(observability.api.status())).toEqual([
@@ -170,7 +171,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
     expect(observability.api.status().readiness).toBe("ready");
     observability.sink.setAlert({
       code: "root_mismatch",
-      subjectDigest: MANIFEST,
+      subjectDigest: SUBJECT,
       active: true,
       observedAtMs: "100000",
     });
@@ -191,12 +192,12 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
     for (const observedAtMs of ["100000", "100001", "100002"])
       observability.sink.recordDaBondPool(
         readout("bonded", true),
-        MANIFEST,
+        SUBJECT,
         observedAtMs,
       );
     observability.sink.recordDaBondPool(
       readout("bonded", false),
-      MANIFEST,
+      SUBJECT,
       "100003",
     );
     expect(alertRecords()).toEqual([
@@ -207,12 +208,12 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
     // The active alert keeps the time it fired; the readout keeps the latest read.
     observability.sink.recordDaBondPool(
       readout("bonded", true),
-      MANIFEST,
+      SUBJECT,
       "100004",
     );
     observability.sink.recordDaBondPool(
       readout("bonded", true),
-      MANIFEST,
+      SUBJECT,
       "100005",
     );
     expect(observability.api.status()).toMatchObject({
@@ -237,7 +238,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
     const observability = healthy();
     observability.sink.recordDaBondPool(
       readout("withdrawing", true),
-      MANIFEST,
+      SUBJECT,
       "100000",
     );
     const response = await observability.handleHttpRequest(
@@ -264,7 +265,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
     expect(observability.api.status().daBondPoolReadFailure).toBeNull();
     observability.sink.recordDaBondPool(
       readout("withdrawing", true),
-      MANIFEST,
+      SUBJECT,
       "100000",
     );
     observability.sink.recordDaBondPoolReadFailure(
@@ -289,7 +290,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
     ]);
     observability.sink.recordDaBondPool(
       readout("bonded", false),
-      MANIFEST,
+      SUBJECT,
       "100008",
     );
     expect(observability.api.status()).toMatchObject({

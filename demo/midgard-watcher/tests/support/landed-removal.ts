@@ -35,15 +35,17 @@ export const landedRemoval = async (
   >,
 ) => {
   const verifiedFinality = await finality.verifyForWorkflow({
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
   });
   const verifiedEconomics = await watcherDeploymentReleaseEconomicsAuthority(
     deploymentIdentity,
-  ).verifyForWorkflow({ deploymentFingerprint: deploymentIdentity.manifestId });
+  ).verifyForWorkflow({
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
+  });
   const raw = await terminalFixture({
     proofCreation: true,
     header: classified.fixture.header,
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     blueprintHash: verifiedFinality.blueprintHash,
     verifiedFinality,
     verifiedEconomics,
@@ -70,7 +72,7 @@ export const landedRemoval = async (
         kind: "completed" as const,
         workflowId: computeFraudProofWorkflowId({
           schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-          deploymentFingerprint: deploymentIdentity.manifestId,
+          hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
           category: "doubleSpend",
           target: {
             kind: "state_queue_header",

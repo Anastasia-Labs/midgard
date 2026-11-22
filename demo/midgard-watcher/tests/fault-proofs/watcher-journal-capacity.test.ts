@@ -18,7 +18,7 @@ import {
 
 afterEach(removeJournalDirectories);
 
-const DEPLOYMENT = "dd".repeat(32);
+const DEPLOYMENT = "dd".repeat(28);
 const header = (index: number): string => index.toString(16).padStart(56, "0");
 const job = (headerHash: string) => ({
   mode: "run" as const,
@@ -54,7 +54,7 @@ const observe = (
   supervisor: ReturnType<typeof unsafeCreateWatcherFaultProofSupervisorForTest>,
 ) =>
   createWatcherOperationsObservability({
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     supervisor,
     launchScopeStatus: () => ({
       installedCategoryCount: 54,
@@ -73,7 +73,7 @@ describe("watcher journal capacity (L2)", () => {
     const run = vi.fn(async () => undefined);
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot,
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       run,
     });
     let failure: unknown;
@@ -111,7 +111,7 @@ describe("watcher journal capacity (L2)", () => {
     const run = vi.fn(async () => undefined);
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot,
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       run,
     });
     await supervisor.unsafeScheduleForTest(job(header(0)));

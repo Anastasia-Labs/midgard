@@ -141,7 +141,7 @@ export class WatcherPublicDaLibp2pTransport
     const fingerprint = protocolId.split("/")[2] ?? "";
     const retryRead =
       readProtocol !== undefined &&
-      /^[0-9a-f]{64}$/.test(fingerprint) &&
+      /^[0-9a-f]{56}$/.test(fingerprint) &&
       protocolId === daRequestResponseProtocolId(fingerprint, readProtocol);
     for (let attempt = 1; ; attempt += 1) {
       signal.throwIfAborted();
@@ -317,7 +317,7 @@ const parseExpectedPeer = (
       config.targetNetwork === deploymentIdentity.network &&
       request.protocolId ===
         daRequestResponseProtocolId(
-          deploymentIdentity.manifestId,
+          deploymentIdentity.hubOraclePolicyId,
           request.protocol,
         ) &&
       config.da.peers.some(

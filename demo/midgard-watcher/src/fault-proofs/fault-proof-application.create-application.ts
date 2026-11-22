@@ -164,11 +164,11 @@ export function createApplication({
     ) as Record<WatcherInstalledWorkflowCategory, WorkflowAdapterRunner>,
   );
   const applicationRegistry = installWorkflowApplicationRegistry({
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     requiredInstalledCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     installations: WATCHER_INSTALLED_WORKFLOW_CATEGORIES.map((category) => ({
       category,
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       runner: runners[category],
     })),
   });
@@ -198,22 +198,22 @@ export function createApplication({
         stepDatumSchemas: TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
       });
       if (
-        transitionBinding.deploymentFingerprint !==
-        deploymentIdentity.manifestId
+        transitionBinding.hubOraclePolicyId !==
+        deploymentIdentity.hubOraclePolicyId
       )
         throw new Error("transition trace classifier changed deployment");
       const transitionTraceEventAuthority = createTransitionTraceEventAuthority(
         {
           binding: transitionBinding,
           l1: l1.source(
-            `watcher-transition-events/${deploymentIdentity.manifestId}`,
+            `watcher-transition-events/${deploymentIdentity.hubOraclePolicyId}`,
           ),
         },
       );
       await watcherDeploymentReleaseFinalityAuthority(
         deploymentIdentity,
       ).verifyForWorkflow({
-        deploymentFingerprint: deploymentIdentity.manifestId,
+        hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       });
       const lucid = await dependencies.makeLucid({
         network: watcherConfig.targetNetwork,
@@ -248,7 +248,7 @@ export function createApplication({
       });
       return await createHeaderClassifier({
         transitionTraceEventAuthority,
-        deploymentFingerprint: deploymentIdentity.manifestId,
+        hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
         replayer,
         releaseFinalityAuthority:
           watcherDeploymentReleaseFinalityAuthority(deploymentIdentity),
@@ -281,7 +281,7 @@ export function createApplication({
       await retainedDaOwner.close();
     },
     schemaVersion: WATCHER_FAULT_PROOF_APPLICATION,
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     runners,
     applicationRegistry,
@@ -301,8 +301,8 @@ export function createApplication({
       assertWatcherStateQueueObservation(input.stateQueueObservation);
       assertWatcherStateQueueHeaderObservation(input.header);
       if (
-        input.stateQueueObservation.deploymentIdentityDigest !==
-          deploymentIdentity.manifestId ||
+        input.stateQueueObservation.hubOraclePolicyId !==
+          deploymentIdentity.hubOraclePolicyId ||
         !input.stateQueueObservation.finalizedHeaders.includes(input.header) ||
         input.observation.sourceMode !== "local_node" ||
         input.observation.provenance.sourceId !==
@@ -329,7 +329,6 @@ export function createApplication({
       const completedDecision = await classifyWatcherReplayedHeader({
         request: input,
         watcherConfig,
-        deploymentIdentity,
         retainedDaOwner,
         replayedLedger,
         loadClassifier,
@@ -357,11 +356,6 @@ export function createApplication({
         );
       }
       const category = invocation.category as WatcherInstalledWorkflowCategory;
-      if (invocation.deploymentFingerprint !== deploymentIdentity.manifestId) {
-        throw new Error(
-          "production workflow invocation deployment differs from verified watcher authority",
-        );
-      }
       // Readiness binds the deployment and resolves the family's whole roster,
       // then stops: it binds no config, constructs no workflow and reads no
       // secret, so it can neither act nor need the optional infrastructure an
@@ -382,7 +376,7 @@ export function createApplication({
         schemaVersion: WATCHER_FAULT_PROOF_STARTUP_READINESS,
         ready: true,
         category,
-        deploymentFingerprint: deploymentIdentity.manifestId,
+        hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
         headerHash: invocation.headerHash,
         referenceScriptOutRefs,
       });
@@ -425,10 +419,10 @@ export function createApplication({
       const finality = await watcherDeploymentReleaseFinalityAuthority(
         deploymentIdentity,
       ).verifyForWorkflow({
-        deploymentFingerprint: deploymentIdentity.manifestId,
+        hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       });
       if (
-        binding.deploymentFingerprint !== deploymentIdentity.manifestId ||
+        binding.hubOraclePolicyId !== deploymentIdentity.hubOraclePolicyId ||
         workflowJsonDigest(normalizeWorkflowJson(binding.releaseFinality)) !==
           workflowJsonDigest(normalizeWorkflowJson(finality))
       )
@@ -439,7 +433,7 @@ export function createApplication({
         .source(
           watcherFaultProofSourceId({
             category: input.category,
-            manifestId: deploymentIdentity.manifestId,
+            hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
             localL1Source: watcherConfig.l1.source,
           }),
         )

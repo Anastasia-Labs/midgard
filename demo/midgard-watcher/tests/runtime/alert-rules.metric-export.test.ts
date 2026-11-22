@@ -77,7 +77,7 @@ const NAMED: Readonly<
 /** The metric families a healthy watcher's `/metrics` declares. */
 const servedFamilies = async (): Promise<ReadonlySet<string>> => {
   const operations = createWatcherOperationsObservability({
-    deploymentFingerprint: "11".repeat(32),
+    hubOraclePolicyId: "11".repeat(28),
     supervisor: supervisor().runtime,
     launchScopeStatus: () => ({
       installedCategoryCount: 32,

@@ -57,7 +57,7 @@ export type WatcherFaultProofQueueJournal = Readonly<{
 }>;
 
 const identityDigest = (
-  deploymentFingerprint: string,
+  hubOraclePolicyId: string,
   identity: WatcherFaultProofQueueIdentity,
 ): string => {
   if (
@@ -70,13 +70,13 @@ const identityDigest = (
   ) {
     throw new Error("fault-proof queue identity is invalid");
   }
-  return watcherSha256CanonicalJson({ deploymentFingerprint, ...identity });
+  return watcherSha256CanonicalJson({ hubOraclePolicyId, ...identity });
 };
 
 /** A row that differs from its job identity refuses the journals. */
 const parseRow = (
   database: WatcherJournalDatabase,
-  deploymentFingerprint: string,
+  hubOraclePolicyId: string,
   row: WatcherJournalRow,
 ): QueueBody & Readonly<{ state: QueueState }> => {
   const body = row.body as QueueBody | null;
@@ -96,7 +96,7 @@ const parseRow = (
     fail();
   try {
     if (
-      identityDigest(deploymentFingerprint, body!.identity) !== row.key ||
+      identityDigest(hubOraclePolicyId, body!.identity) !== row.key ||
       watcherObjectiveScope(
         body!.identity.category,
         body!.identity.headerHash,
@@ -112,10 +112,10 @@ const parseRow = (
 
 export const openWatcherFaultProofQueueJournal = async (input: {
   readonly journalRoot: string;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly authenticationKey: Uint8Array;
 }): Promise<WatcherFaultProofQueueJournal> => {
-  if (!HEX_32.test(input.deploymentFingerprint)) {
+  if (!HEX_28.test(input.hubOraclePolicyId)) {
     throw new Error("fault-proof queue journal authority is invalid");
   }
   const database = openWatcherJournalDatabase({
@@ -124,7 +124,7 @@ export const openWatcherFaultProofQueueJournal = async (input: {
   });
   // Startup admits every row once; a foreign or altered row fails closed.
   for (const row of database.rows(JOURNAL))
-    parseRow(database, input.deploymentFingerprint, row);
+    parseRow(database, input.hubOraclePolicyId, row);
 
   // Authenticated revisions establish event order. Wall time can move backward
   // during clock synchronization, so observation times are recorded but never
@@ -149,7 +149,7 @@ export const openWatcherFaultProofQueueJournal = async (input: {
         throw new Error(
           `fault-proof queue transition has no admitted predecessor: ${jobIdentityDigest}`,
         );
-      const prior = parseRow(database, input.deploymentFingerprint, row);
+      const prior = parseRow(database, input.hubOraclePolicyId, row);
       if (prior.state !== from)
         throw new Error(
           `fault-proof queue transition requires ${from} predecessor, found ${prior.state}: ${jobIdentityDigest}`,
@@ -172,7 +172,7 @@ export const openWatcherFaultProofQueueJournal = async (input: {
       if (!NATURAL.test(observedAtMs)) {
         throw new Error("fault-proof queue enqueue time is invalid");
       }
-      const digest = identityDigest(input.deploymentFingerprint, identity);
+      const digest = identityDigest(input.hubOraclePolicyId, identity);
       const scope = watcherObjectiveScope(
         identity.category,
         identity.headerHash,
@@ -188,7 +188,7 @@ export const openWatcherFaultProofQueueJournal = async (input: {
             tx.delete(JOURNAL, row.key);
             continue;
           }
-          const prior = parseRow(database, input.deploymentFingerprint, row);
+          const prior = parseRow(database, input.hubOraclePolicyId, row);
           if (prior.state === "queued")
             return Object.freeze({ queuedAtMs: prior.queuedAtMs });
           queuedAtMs = prior.queuedAtMs;
@@ -231,6 +231,6 @@ export const openWatcherFaultProofQueueJournal = async (input: {
 };
 
 export const watcherFaultProofQueueIdentityDigest = (input: {
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly identity: WatcherFaultProofQueueIdentity;
-}): string => identityDigest(input.deploymentFingerprint, input.identity);
+}): string => identityDigest(input.hubOraclePolicyId, input.identity);
