@@ -6,7 +6,6 @@ import {
   array,
   computeFraudProofRawL1RollbackCursor,
   outputAddress,
-  outputContainsUnit,
   point,
   utxo,
 } from "./raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
@@ -28,7 +27,9 @@ import {
 import {
   historyEntry,
   sameStringSet,
-  transactionTouchesUnit,
+  unitsHeldBy,
+  unitsTouchedBy,
+  withUnitKeys,
 } from "./raw-l1-snapshot.history-entry.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 
@@ -383,9 +384,17 @@ export const admitFraudProofRawL1Snapshot = ({
       "raw L1 snapshot omitted or duplicated unit history coverage",
     );
   }
+  const { touched, held } = withUnitKeys(historyUnits, (keys) => ({
+    touched: transactions.map((candidate) => unitsTouchedBy(candidate, keys)),
+    held: scopes.map((scope) =>
+      scope.utxos.map(
+        (candidate) => unitsHeldBy(candidate.outputCbor, keys).size > 0,
+      ),
+    ),
+  }));
   for (const [index, entry] of history.entries()) {
     const actualHashes = transactions
-      .filter((candidate) => transactionTouchesUnit(candidate, entry.unit))
+      .filter((_candidate, position) => touched[position]!.has(entry.unit))
       .map((candidate) => candidate.txHash);
     if (
       entry.completeThroughPointId !== cursor.point.pointId ||
@@ -401,13 +410,7 @@ export const admitFraudProofRawL1Snapshot = ({
   }
   for (const [scopeIndex, scope] of scopes.entries()) {
     for (const [utxoIndex, candidate] of scope.utxos.entries()) {
-      const touchesRequestedHistoryUnit = historyUnits.some((unit) =>
-        outputContainsUnit(
-          CML.TransactionOutput.from_cbor_hex(candidate.outputCbor),
-          unit,
-        ),
-      );
-      if (!touchesRequestedHistoryUnit) continue;
+      if (!held[scopeIndex]![utxoIndex]) continue;
       const match = OUT_REF.exec(candidate.outRef);
       const creation =
         match === null ? undefined : transactionByHash.get(match[1]!);

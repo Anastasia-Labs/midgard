@@ -1,9 +1,6 @@
 import { CML } from "@lucid-evolution/lucid";
 
-import {
-  array,
-  outputContainsUnit,
-} from "./raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
+import { array } from "./raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
 import {
   assetUnit,
   digest,
@@ -12,49 +9,101 @@ import {
   type FraudProofRawL1UnitHistory,
 } from "./raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 
-export const transactionTouchesUnit = (
-  candidate: FraudProofRawL1Transaction,
-  unit: string,
-): boolean => {
-  // Each decoded object is freed here, not left to its finalizer: the
-  // outputs a history spends can carry datums of hundreds of kilobytes.
-  const contains = (output: CML.TransactionOutput): boolean => {
-    try {
-      return outputContainsUnit(output, unit);
-    } finally {
-      output.free();
+type UnitKey = Readonly<{
+  unit: string;
+  policy: CML.ScriptHash;
+  name: CML.AssetName;
+}>;
+
+/** `read` over the decoded policy and name of each of `units`. */
+export const withUnitKeys = <T>(
+  units: readonly string[],
+  read: (keys: readonly UnitKey[]) => T,
+): T => {
+  const keys = units.map((unit) => ({
+    unit,
+    policy: CML.ScriptHash.from_hex(unit.slice(0, 56)),
+    name: CML.AssetName.from_hex(unit.slice(56)),
+  }));
+  try {
+    return read(keys);
+  } finally {
+    for (const { policy, name } of keys) {
+      policy.free();
+      name.free();
     }
-  };
-  if (
-    candidate.resolvedInputs.some((input) =>
-      contains(CML.TransactionOutput.from_cbor_hex(input.outputCbor)),
-    )
-  ) {
-    return true;
+  }
+};
+
+/** Adds to `found` the units of `keys` that `output` holds, and frees it:
+ * the outputs a history spends can carry datums of hundreds of kilobytes. */
+const addUnitsHeld = (
+  output: CML.TransactionOutput,
+  keys: readonly UnitKey[],
+  found: Set<string>,
+): void => {
+  const value = output.amount();
+  const assets = value.multi_asset();
+  try {
+    for (const { unit, policy, name } of keys) {
+      if ((assets.get(policy, name) ?? 0n) !== 0n) found.add(unit);
+    }
+  } finally {
+    assets.free();
+    value.free();
+    output.free();
+  }
+};
+
+/** The units of `keys` the output `outputCbor` holds. */
+export const unitsHeldBy = (
+  outputCbor: string,
+  keys: readonly UnitKey[],
+): ReadonlySet<string> => {
+  const found = new Set<string>();
+  addUnitsHeld(CML.TransactionOutput.from_cbor_hex(outputCbor), keys, found);
+  return found;
+};
+
+/** The units of `keys` that `candidate` spends, creates or mints, from one
+ * decode of each of its outputs. */
+export const unitsTouchedBy = (
+  candidate: FraudProofRawL1Transaction,
+  keys: readonly UnitKey[],
+): ReadonlySet<string> => {
+  const found = new Set<string>();
+  for (const input of candidate.resolvedInputs) {
+    addUnitsHeld(
+      CML.TransactionOutput.from_cbor_hex(input.outputCbor),
+      keys,
+      found,
+    );
   }
   const body = CML.TransactionBody.from_cbor_hex(candidate.bodyCbor);
   try {
     const outputs = body.outputs();
     try {
       for (let index = 0; index < outputs.len(); index += 1) {
-        if (contains(outputs.get(index))) return true;
+        addUnitsHeld(outputs.get(index), keys, found);
       }
     } finally {
       outputs.free();
     }
     const mint = body.mint();
-    if (mint === undefined) return false;
-    const policy = CML.ScriptHash.from_hex(unit.slice(0, 56));
-    const name = CML.AssetName.from_hex(unit.slice(56));
-    const minted = mint.get_assets(policy);
+    if (mint === undefined) return found;
     try {
-      return (minted?.get(name) ?? 0n) !== 0n;
+      for (const { unit, policy, name } of keys) {
+        const minted = mint.get_assets(policy);
+        try {
+          if ((minted?.get(name) ?? 0n) !== 0n) found.add(unit);
+        } finally {
+          minted?.free();
+        }
+      }
     } finally {
-      minted?.free();
-      name.free();
-      policy.free();
       mint.free();
     }
+    return found;
   } finally {
     body.free();
   }

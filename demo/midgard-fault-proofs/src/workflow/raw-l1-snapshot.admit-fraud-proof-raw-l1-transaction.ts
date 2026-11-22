@@ -413,8 +413,3 @@ const admitDecoded = ({
     resolvedReferenceInputs,
   };
 };
-
-export const outputContainsUnit = (
-  output: CML.TransactionOutput,
-  unit: string,
-): boolean => (coreToTxOutput(output).assets[unit] ?? 0n) !== 0n;
