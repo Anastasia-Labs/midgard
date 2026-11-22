@@ -63,6 +63,12 @@ export type LedgerStorageChange = {
   readonly queueDead: readonly NodeHash[];
   /** Hashes that leave the dead queue; disjoint from `queueDead`. */
   readonly unqueueDead: readonly NodeHash[];
+  /**
+   * The root the storage's current-root marker moves to. An adapter that
+   * keeps such a marker moves it in the same atomic write; one that keeps
+   * none ignores it.
+   */
+  readonly currentRoot?: NodeHash;
 };
 
 export type LedgerStorageCounts = {

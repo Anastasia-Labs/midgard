@@ -7,7 +7,9 @@
  * A held node's reference count is its `__refs__/<hash>` key, as a decimal
  * string; a node key without one is not held. The dead queue is the
  * `__dead__/<hash>` keys, and retained roots are `__retained__/<root>` keys.
- * The adapter never writes or deletes the `__root__` marker.
+ * The `__root__` marker is the storage's current-root marker: a change's
+ * `currentRoot` is put there in the same batch as the rest of the change,
+ * and the adapter never deletes it.
  *
  * Outputs are not kept here: `readOutputs` is injected, every output counts
  * as held once (`outputRefs` answers 1), and output writes are no-ops.
@@ -23,6 +25,7 @@ import type {
 } from "@al-ft/midgard-fault-proofs/ledger-store";
 import type { Level } from "level";
 
+import { ROOT_KEY } from "./store-primitives.js";
 import type { MpfStoredValue } from "./types.js";
 
 export const RETAINED_ROOT_PREFIX = "__retained__/";
@@ -96,6 +99,9 @@ export const createLevelLedgerStorage = (input: {
         ...change.removeRoots.map((root) => del(RETAINED_ROOT_PREFIX + root)),
         ...change.queueDead.map((hash) => put(DEAD_NODE_PREFIX + hash, hash)),
         ...change.unqueueDead.map((hash) => del(DEAD_NODE_PREFIX + hash)),
+        ...(change.currentRoot === undefined
+          ? []
+          : [put(ROOT_KEY, change.currentRoot)]),
       ]);
     },
     // `nodes` counts every hash with a node key or a count key. Each node

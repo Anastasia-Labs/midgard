@@ -26,6 +26,8 @@ import {
   type LedgerStorage,
   type LedgerStorageCounts,
   type LedgerStore,
+  type NodeHash,
+  type StoredNode,
 } from "../../src/ledger-store/index.js";
 import {
   keyValuePhasResolutionProofs,
@@ -166,6 +168,32 @@ export const event = (
   ...deleted.map((n) => ({ type: "delete" as const, outRef: testOutRef(n) })),
   ...inserted.map((n) => ({ type: "insert" as const, ...testLedgerEntry(n) })),
 ];
+
+/**
+ * Every node reachable from `root` in `storage`, keyed by hash: the nodes a
+ * caller that already holds a ledger hands `adopt`.
+ */
+export const storedNodesOf = async (
+  storage: LedgerStorage,
+  root: string,
+): Promise<Map<NodeHash, StoredNode>> => {
+  const nodes = new Map<NodeHash, StoredNode>();
+  let level = [root];
+  while (level.length > 0) {
+    const unread = [...new Set(level)].filter((hash) => !nodes.has(hash));
+    const read = await storage.readNodes(unread);
+    level = [];
+    for (const [index, hash] of unread.entries()) {
+      const node = read[index];
+      if (node === undefined) throw new Error(`node ${hash} is not stored`);
+      nodes.set(hash, node);
+      if (node.__kind === "Branch")
+        for (const child of node.children)
+          if (child !== null) level.push(child);
+    }
+  }
+  return nodes;
+};
 
 /** Record counts of a fresh store over `open` holding only `ledgers`. */
 export const countsOfOnly = async (

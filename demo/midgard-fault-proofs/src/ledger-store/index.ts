@@ -27,7 +27,11 @@ export type {
   StoredLeaf,
   StoredNode,
 } from "./storage.js";
-export { createLedgerStore, type LedgerStore } from "./store.js";
+export {
+  createLedgerStore,
+  type LedgerAdoption,
+  type LedgerStore,
+} from "./store.js";
 export {
   ledgerFromWitness,
   type LedgerWitness,
