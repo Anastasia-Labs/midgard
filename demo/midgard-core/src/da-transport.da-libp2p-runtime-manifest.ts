@@ -5,7 +5,8 @@ import { SELECTED_DEPLOYMENT_PROFILE } from "./generated-deployment-profiles.js"
 
 export const DA_TRANSPORT_PROTOCOL_VERSION = 1 as const;
 
-export const DA_DEPLOYMENT_FINGERPRINT_LENGTH = 32;
+/** The deployment fingerprint is the hub-oracle policy id. */
+export const DA_DEPLOYMENT_FINGERPRINT_LENGTH = 28;
 
 export const DA_HEADER_HASH_LENGTH = 28;
 
@@ -19,7 +20,7 @@ export const DA_RUNTIME_MANIFEST_SCHEMA_VERSION =
   "midgard-da-libp2p-runtime-manifest-v1";
 
 export const DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE =
-  "contract_deployment_manifest_id";
+  "hub_oracle_policy_id";
 
 export const DA_PUBLIC_RETAINED_DA_PROFILE = "public-retained-da-v1" as const;
 
@@ -90,7 +91,6 @@ export type DaLibp2pRuntimeManifest = {
   readonly network: string;
   readonly deployment: {
     readonly fingerprint: string;
-    readonly contract_deployment_manifest_id: string;
     readonly contract_deployment_info_sha256: string;
     readonly identity_source: typeof DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE;
   };

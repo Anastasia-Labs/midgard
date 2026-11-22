@@ -2,6 +2,7 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 
 import {
   computeDeploymentManifestJsonDigest,
+  deploymentManifestHubOraclePolicyId,
   verifyFinalizedDeploymentManifest,
 } from "./deployment-manifest-identity.js";
 import {
@@ -98,7 +99,7 @@ export const verifySignedDeploymentRelease = (input: {
   if (
     !verify(
       null,
-      makeDeploymentReleaseSignaturePayload(manifest.manifestId, bindings),
+      makeDeploymentReleaseSignaturePayload(manifest, bindings),
       key,
       signature,
     )
@@ -123,7 +124,7 @@ export const verifyPublicDeploymentRelease = (input: {
   readonly finalizedManifest: unknown;
   readonly expected: Readonly<{
     sourceRevision: string;
-    manifestId: string;
+    hubOraclePolicyId: string;
     roleImages: Readonly<Record<string, string>>;
   }>;
 }) => {
@@ -137,9 +138,11 @@ export const verifyPublicDeploymentRelease = (input: {
     throw new Error(
       "Release provenance is absent or differs from signed authority",
     );
+  const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(manifest);
   if (
-    manifest.manifestId !== release.manifest.manifestId ||
-    manifest.manifestId !== input.expected.manifestId
+    computeDeploymentManifestJsonDigest(manifest) !==
+      computeDeploymentManifestJsonDigest(release.manifest) ||
+    hubOraclePolicyId !== input.expected.hubOraclePolicyId
   )
     throw new Error(
       "Configured manifest differs from signed deployment release",
@@ -163,7 +166,7 @@ export const verifyPublicDeploymentRelease = (input: {
       );
   }
   return Object.freeze({
-    manifestId: manifest.manifestId,
+    hubOraclePolicyId,
     trustRootId: release.trustRootId,
     provenance,
   });

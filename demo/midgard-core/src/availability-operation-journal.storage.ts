@@ -26,9 +26,9 @@ export const journalTransaction = <T>(db: DatabaseSync, run: () => T): T => {
 export const availabilityJournalStorage = (db: DatabaseSync) => {
   const actorSnapshot = (
     actor: string,
-    deploymentIdentity: string,
+    hubOraclePolicyId: string,
   ): AvailabilityOperationActorSnapshot => {
-    if (!actor || !deploymentIdentity)
+    if (!actor || !hubOraclePolicyId)
       throw new Error("Actor metadata identity is unavailable");
     const row = db
       .prepare(
@@ -58,14 +58,14 @@ export const availabilityJournalStorage = (db: DatabaseSync) => {
         actor,
         actor,
         actor,
-        deploymentIdentity,
+        hubOraclePolicyId,
         actor,
-        deploymentIdentity,
+        hubOraclePolicyId,
         actor,
-        deploymentIdentity,
+        hubOraclePolicyId,
         actor,
         actor,
-        deploymentIdentity,
+        hubOraclePolicyId,
       );
     if (!row) throw new Error("Actor metadata snapshot is unavailable");
     const scalar = (value: unknown): number => {
@@ -97,7 +97,7 @@ export const availabilityJournalStorage = (db: DatabaseSync) => {
       .update(
         JSON.stringify([
           actor,
-          deploymentIdentity,
+          hubOraclePolicyId,
           row.lease_state,
           row.intent_state,
           row.resource_state,
@@ -145,7 +145,7 @@ export const availabilityJournalStorage = (db: DatabaseSync) => {
     );
     return {
       actor,
-      deploymentIdentity,
+      hubOraclePolicyId,
       stateDigest,
       ...(lease === undefined ? {} : { lease }),
       retainedRecordCount: scalar(row.retained_count),
@@ -237,11 +237,11 @@ export const availabilityJournalStorage = (db: DatabaseSync) => {
       )
       .all(actor)
       .map((row) => ({
-        deploymentIdentity: String(row.deployment),
+        hubOraclePolicyId: String(row.deployment),
         headerHash: String(row.header_hash),
         confirmedOpens: opens.filter(
           ({ intent }) =>
-            intent.deploymentIdentity === row.deployment &&
+            intent.hubOraclePolicyId === row.deployment &&
             intent.headerHash === row.header_hash,
         ),
       }));
@@ -253,7 +253,7 @@ export const availabilityJournalStorage = (db: DatabaseSync) => {
       )
       .all(actor)
       .map((row) => ({
-        deploymentIdentity: String(row.deployment),
+        hubOraclePolicyId: String(row.deployment),
         headerHash: String(row.header_hash),
         open: JSON.parse(String(row.record)) as AvailabilityOperationRecord,
         release: JSON.parse(
@@ -265,7 +265,7 @@ export const availabilityJournalStorage = (db: DatabaseSync) => {
     db.prepare(
       `INSERT INTO availability_operation_workflows VALUES (?, ?, ?, NULL, NULL)
       ON CONFLICT(actor, deployment, header_hash) DO UPDATE SET retired_by = NULL, release = NULL`,
-    ).run(intent.actor, intent.deploymentIdentity, intent.headerHash);
+    ).run(intent.actor, intent.hubOraclePolicyId, intent.headerHash);
   };
   const assertRetirementEvidence = (
     evidence: AvailabilityOperationRetirement,

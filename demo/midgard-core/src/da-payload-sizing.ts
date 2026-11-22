@@ -1,4 +1,7 @@
-import { DA_TRANSPORT_LIMITS } from "./da-transport.js";
+import {
+  DA_DEPLOYMENT_FINGERPRINT_LENGTH,
+  DA_TRANSPORT_LIMITS,
+} from "./da-transport.js";
 
 export type DaPayloadEmissionMode = "identity" | "zstd";
 
@@ -67,7 +70,7 @@ export const daPayloadSubmitEncodedSize = ({
   }
   return (
     1 + // fixed array(7)
-    canonicalCborByteStringSize(32) + // deployment fingerprint
+    canonicalCborByteStringSize(DA_DEPLOYMENT_FINGERPRINT_LENGTH) + // deployment fingerprint
     canonicalCborByteStringSize(28) + // header hash
     canonicalCborByteStringSize(32) + // payload hash
     canonicalCborArgumentSize(payloadSchemaVersion) +

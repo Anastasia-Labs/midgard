@@ -10,7 +10,7 @@ export const h = (byte: string, count: number): string => byte.repeat(count);
 export const b = (byte: number, count: number): Buffer =>
   Buffer.alloc(count, byte);
 
-export const deployment = b(0x01, 32);
+export const deployment = b(0x01, 28);
 
 export const header = b(0x02, 28);
 
@@ -39,10 +39,9 @@ export const runtimeManifestFixture = (): Record<string, unknown> => ({
   schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
   network: "Preview",
   deployment: {
-    fingerprint: h("AB", 32),
-    contract_deployment_manifest_id: h("ab", 32),
+    fingerprint: h("AB", 28),
     contract_deployment_info_sha256: h("cd", 32),
-    identity_source: "contract_deployment_manifest_id",
+    identity_source: "hub_oracle_policy_id",
   },
   runtime_topology: {
     target: "producer",

@@ -29,7 +29,7 @@ const intent = (
 ): AvailabilityOperationIntent => ({
   id,
   actor: "actor",
-  deploymentIdentity: "deployment",
+  hubOraclePolicyId: "deployment",
   headerHash: "header",
   action: "open",
   signedCbor: `signed ${id}`,
@@ -88,7 +88,7 @@ describe("a foreign terminal's release stays reversible until it is final", () =
       live(journal, lease);
       expect(journal.unsettledReleases("actor")).toMatchObject([
         {
-          deploymentIdentity: "deployment",
+          hubOraclePolicyId: "deployment",
           headerHash: "header",
           open: { state: "confirmed", intent: { id: "open" } },
           release: {
@@ -342,7 +342,7 @@ describe("a redeploy", () => {
       const lease = journal.acquire("actor", "owner", 0, 1_000);
       journal.persist(
         lease,
-        intent("old", { action: "publish", deploymentIdentity: "old" }),
+        intent("old", { action: "publish", hubOraclePolicyId: "old" }),
         1,
       );
       journal.persist(lease, intent("new", { action: "publish" }), 2);

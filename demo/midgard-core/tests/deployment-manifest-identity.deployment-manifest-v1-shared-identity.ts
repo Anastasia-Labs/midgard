@@ -3,21 +3,16 @@ import "./deployment-manifest-identity.finalized-deployment-manifest.js";
 import { describe, expect, it } from "vitest";
 
 import {
-  assertDeploymentMarkerMatches,
-  computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
   type DeploymentManifestFraudProofCatalogueIdentity,
-  makeDeploymentMarker,
   MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES,
-  MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
   normalizeDeploymentManifestJsonValue,
   parseDeploymentManifestAvailabilityChallenge,
   parseDeploymentManifestEconomics,
-  parseDeploymentMarker,
   verifyDeploymentManifestFraudProofCatalogueIdentity,
   verifyDeploymentManifestIdentity,
   verifyFinalizedDeploymentManifest,
@@ -492,26 +487,18 @@ describe("DeploymentManifestV1 shared identity", () => {
     );
   });
 
-  it("recomputes the exact full-manifest identity", () => {
-    const identity = identityInput();
-    const manifest = {
-      ...identity,
-      manifestId: computeDeploymentManifestId(identity),
-    };
+  it("verifies a complete manifest", () => {
+    const manifest = identityInput();
     expect(verifyDeploymentManifestIdentity(manifest)).toEqual(manifest);
   });
 
-  it("rejects a rehashed manifest that overrides the profile confirmation or commit-event depth", () => {
-    const { manifestId: _manifestId, ...identity } = finalizedManifest();
+  it("rejects a manifest that overrides the profile confirmation or commit-event depth", () => {
+    const manifest = finalizedManifest();
     for (const key of ["confirmationDepth", "commitEventDepth"] as const) {
-      const l1Finality = { ...identity.l1Finality };
+      const l1Finality = { ...manifest.l1Finality };
       l1Finality[key] += 1;
-      const changed = { ...identity, l1Finality };
       expect(() =>
-        verifyFinalizedDeploymentManifest({
-          ...changed,
-          manifestId: computeDeploymentManifestId(changed),
-        }),
+        verifyFinalizedDeploymentManifest({ ...manifest, l1Finality }),
       ).toThrow(`l1Finality.${key} must equal`);
     }
   });
@@ -594,11 +581,7 @@ describe("DeploymentManifestV1 shared identity", () => {
       challengeRecordLovelace: 27_000_000,
       challengerBondLovelace: 10_000_000_000,
     });
-    const manifest = {
-      ...identity,
-      manifestId: computeDeploymentManifestId(identity),
-    };
-    expect(() => verifyDeploymentManifestIdentity(manifest)).not.toThrow();
+    expect(() => verifyDeploymentManifestIdentity(identity)).not.toThrow();
   });
 
   it("unequal bonds accepted", () => {
@@ -738,40 +721,8 @@ describe("DeploymentManifestV1 shared identity", () => {
     ).toThrow(/availabilityChallenge must contain exactly/u);
   });
 
-  it("owns the sole exact DeploymentMarkerV1 boundary", () => {
-    const manifestId = computeDeploymentManifestId(identityInput());
-    const marker = makeDeploymentMarker(manifestId);
-    expect(marker).toEqual({
-      schemaVersion: MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
-      manifestId,
-    });
-    expect(parseDeploymentMarker(marker)).toEqual(marker);
-    expect(assertDeploymentMarkerMatches(marker, marker, "Postgres")).toEqual(
-      marker,
-    );
-    expect(() =>
-      parseDeploymentMarker({ ...marker, historicalVersion: 9 }),
-    ).toThrow(/exactly schemaVersion and manifestId/u);
-    expect(() =>
-      parseDeploymentMarker({ manifestId: marker.manifestId }),
-    ).toThrow(/exactly schemaVersion and manifestId/u);
-    expect(() =>
-      assertDeploymentMarkerMatches(
-        marker,
-        makeDeploymentMarker("ff".repeat(32)),
-        "DA store",
-      ),
-    ).toThrow(
-      `DA store deployment marker mismatch: expected ${marker.manifestId}, found ${"ff".repeat(32)}`,
-    );
-  });
-
   it("rejects tampering, missing fields, and extra fields", () => {
-    const identity = identityInput();
-    const manifest = {
-      ...identity,
-      manifestId: computeDeploymentManifestId(identity),
-    };
+    const manifest = identityInput();
     expect(() =>
       verifyDeploymentManifestIdentity({
         ...manifest,

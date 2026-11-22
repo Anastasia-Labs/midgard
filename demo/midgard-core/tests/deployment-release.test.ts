@@ -2,7 +2,11 @@ import { createHash, generateKeyPairSync, sign } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { computeDeploymentManifestJsonDigest } from "../src/deployment-manifest-identity.js";
+import {
+  computeDeploymentManifestJsonDigest,
+  deploymentManifestHubOraclePolicyId,
+  verifyFinalizedDeploymentManifest,
+} from "../src/deployment-manifest-identity.js";
 import {
   DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
   DEPLOYMENT_RELEASE_SIGNATURE_DOMAIN,
@@ -38,7 +42,7 @@ const provenance = () => ({
   },
 });
 const fixture = () => {
-  const manifest = finalizedManifest();
+  const manifest = verifyFinalizedDeploymentManifest(finalizedManifest());
   const bindings = {
     schemaVersion: DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
     fundingProfileBundleDigest: "ab".repeat(32),
@@ -70,7 +74,7 @@ const fixture = () => {
       trustRootId,
       signature: sign(
         null,
-        makeDeploymentReleaseSignaturePayload(manifest.manifestId, bindings),
+        makeDeploymentReleaseSignaturePayload(manifest, bindings),
         keys.privateKey,
       ).toString("hex"),
     },
@@ -85,9 +89,7 @@ describe("shared persistent release authority", () => {
     expect(verified.bindings.artifacts.releaseProvenanceDigest).toBe(
       computeDeploymentManifestJsonDigest(provenance()),
     );
-    expect(verified.manifest.manifestId).toBe(
-      input.signedIdentity.manifest.manifestId,
-    );
+    expect(verified.manifest).toEqual(input.signedIdentity.manifest);
   });
   it("retains the existing payload bytes for explicitly nonpublic releases", () => {
     const { signedIdentity } = fixture();
@@ -96,12 +98,37 @@ describe("shared persistent release authority", () => {
     const bindings = { ...signedIdentity.releaseBindings, artifacts };
     expect(
       makeDeploymentReleaseSignaturePayload(
-        signedIdentity.manifest.manifestId,
+        signedIdentity.manifest,
         bindings,
       ).toString(),
     ).toBe(
-      `${DEPLOYMENT_RELEASE_SIGNATURE_DOMAIN}\0${computeDeploymentManifestJsonDigest({ manifestId: signedIdentity.manifest.manifestId, releaseBindings: bindings })}`,
+      `${DEPLOYMENT_RELEASE_SIGNATURE_DOMAIN}\0${computeDeploymentManifestJsonDigest({ manifest: signedIdentity.manifest, releaseBindings: bindings })}`,
     );
+  });
+  it("refuses the signature for a manifest differing in one field under the same hub-oracle policy id", () => {
+    const input = fixture();
+    const signed = input.signedIdentity.manifest;
+    const changed = { ...signed, updatedAt: "2026-07-25T00:00:00.000Z" };
+    expect(deploymentManifestHubOraclePolicyId(changed)).toBe(
+      deploymentManifestHubOraclePolicyId(signed),
+    );
+    expect(
+      makeDeploymentReleaseSignaturePayload(
+        changed,
+        input.signedIdentity.releaseBindings,
+      ),
+    ).not.toEqual(
+      makeDeploymentReleaseSignaturePayload(
+        signed,
+        input.signedIdentity.releaseBindings,
+      ),
+    );
+    expect(() =>
+      verifySignedDeploymentRelease({
+        ...input,
+        signedIdentity: { ...input.signedIdentity, manifest: changed },
+      }),
+    ).toThrow("Invalid deployment release signature");
   });
   it("refuses a substituted provenance digest under the original signature", () => {
     const input = fixture();

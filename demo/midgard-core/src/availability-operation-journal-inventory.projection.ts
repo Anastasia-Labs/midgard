@@ -141,7 +141,7 @@ export const projectInventoryRow = (
       const intent = object(record.intent);
       for (const [column, key] of [
         ["id", "id"],
-        ["deployment", "deploymentIdentity"],
+        ["deployment", "hubOraclePolicyId"],
         ["actor", "actor"],
         ["tx_hash", "txHash"],
       ])

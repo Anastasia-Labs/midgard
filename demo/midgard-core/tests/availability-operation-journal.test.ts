@@ -30,7 +30,7 @@ const intent = (
 ): AvailabilityOperationIntent => ({
   id,
   actor,
-  deploymentIdentity: "deployment",
+  hubOraclePolicyId: "deployment",
   headerHash: "header",
   action: "publish",
   signedCbor: "signed bytes",
@@ -115,7 +115,7 @@ describe("availability operation journal durability and fencing", () => {
           other,
           {
             ...intent("third", "other"),
-            deploymentIdentity: "other-deployment",
+            hubOraclePolicyId: "other-deployment",
           },
           107,
         ),
@@ -268,7 +268,7 @@ describe("availability operation journal durability and fencing", () => {
           lease,
           {
             ...intent("foreign-open"),
-            deploymentIdentity: "other-deployment",
+            hubOraclePolicyId: "other-deployment",
             action: "open",
           },
           3,
@@ -325,19 +325,19 @@ describe("availability operation journal durability and fencing", () => {
         expect(
           journal
             .workflows("actor")
-            .map(({ deploymentIdentity, headerHash, confirmedOpens }) => ({
-              deploymentIdentity,
+            .map(({ hubOraclePolicyId, headerHash, confirmedOpens }) => ({
+              hubOraclePolicyId,
               headerHash,
               opens: confirmedOpens.map(({ intent }) => intent.id),
             })),
         ).toEqual([
           {
-            deploymentIdentity: "deployment",
+            hubOraclePolicyId: "deployment",
             headerHash: "header",
             opens: ["open"],
           },
           {
-            deploymentIdentity: "deployment",
+            hubOraclePolicyId: "deployment",
             headerHash: "other-header",
             opens: ["other-open"],
           },

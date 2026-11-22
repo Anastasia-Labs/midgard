@@ -24,7 +24,7 @@ const submitRequestBytes = (
   payloadSchemaVersion: 1,
 ): number =>
   encodeDaPayloadSubmitRequestCbor({
-    deploymentFingerprint: Buffer.alloc(32),
+    deploymentFingerprint: Buffer.alloc(28),
     headerHash: Buffer.alloc(28),
     payloadHash: Buffer.alloc(32),
     payloadSchemaVersion,
@@ -98,8 +98,8 @@ describe("DA V1 payload sizing", () => {
   });
 
   it("computes exact mode ceilings beneath the unchanged V1 frame cap", () => {
-    expect(maxDaPayloadInnerBytes("identity")).toBe(67_108_710);
-    expect(maxDaPayloadInnerBytes("zstd")).toBe(66_847_587);
+    expect(maxDaPayloadInnerBytes("identity")).toBe(67_108_714);
+    expect(maxDaPayloadInnerBytes("zstd")).toBe(66_847_591);
     for (const mode of ["identity", "zstd"] as const) {
       const maximum = maxDaPayloadInnerBytes(mode);
       const pass = projectDaPayloadSizes(maximum, mode);

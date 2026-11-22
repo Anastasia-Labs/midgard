@@ -1,6 +1,7 @@
 export type AvailabilityOperationIntent = Readonly<{
   id: string;
-  deploymentIdentity: string;
+  /** The deployment the intent belongs to, named by its hub-oracle policy id. */
+  hubOraclePolicyId: string;
   actor: string;
   headerHash: string;
   action: string;
@@ -30,7 +31,7 @@ export type AvailabilityOperationLease = Readonly<{
 
 /** One live challenge workflow row of an actor (P9), as listed for release. */
 export type AvailabilityOperationWorkflow = Readonly<{
-  deploymentIdentity: string;
+  hubOraclePolicyId: string;
   headerHash: string;
   /** The actor's confirmed Opens for this header, oldest first. */
   confirmedOpens: readonly AvailabilityOperationRecord[];
@@ -58,7 +59,7 @@ export type AvailabilityWorkflowReleaseEvidence = Readonly<{
  * once that terminal is no longer canonical.
  */
 export type AvailabilityOperationUnsettledRelease = Readonly<{
-  deploymentIdentity: string;
+  hubOraclePolicyId: string;
   headerHash: string;
   open: AvailabilityOperationRecord;
   release: Pick<
@@ -87,7 +88,7 @@ export type AvailabilityOperationRetirement = Readonly<{
  * Expired-but-unreleased lease rows remain busy until audited ownership release. */
 export type AvailabilityOperationActorSnapshot = Readonly<{
   actor: string;
-  deploymentIdentity: string;
+  hubOraclePolicyId: string;
   /** Exact lease, intent state, resource and workflow identities in this SQL snapshot. */
   stateDigest: string;
   lease?: Readonly<{ owner: string; generation: number; expiresAtMs: number }>;
@@ -115,7 +116,7 @@ export type AvailabilityOperationActorSnapshot = Readonly<{
 export interface AvailabilityOperationJournal {
   actorSnapshot(
     actor: string,
-    deploymentIdentity: string,
+    hubOraclePolicyId: string,
   ): AvailabilityOperationActorSnapshot;
   /** All retained intent rows across actors, deployments and states; read-only. */
   retainedRecordCount(): number;
@@ -128,11 +129,11 @@ export interface AvailabilityOperationJournal {
   assertLease(lease: AvailabilityOperationLease, nowMs: number): void;
   release(lease: AvailabilityOperationLease): void;
   pending(
-    deploymentIdentity: string,
+    hubOraclePolicyId: string,
     actor: string,
   ): readonly AvailabilityOperationRecord[];
   unfinalized(
-    deploymentIdentity: string,
+    hubOraclePolicyId: string,
     actor: string,
   ): readonly AvailabilityOperationRecord[];
   /**
@@ -149,7 +150,7 @@ export interface AvailabilityOperationJournal {
    */
   assertWorkflow(
     lease: AvailabilityOperationLease,
-    deploymentIdentity: string,
+    hubOraclePolicyId: string,
     headerHash: string,
     action: string,
     nowMs: number,
@@ -167,7 +168,7 @@ export interface AvailabilityOperationJournal {
    */
   releaseWorkflow(
     lease: AvailabilityOperationLease,
-    deploymentIdentity: string,
+    hubOraclePolicyId: string,
     headerHash: string,
     evidence: AvailabilityWorkflowReleaseEvidence,
     nowMs: number,
@@ -182,7 +183,7 @@ export interface AvailabilityOperationJournal {
    */
   reviveWorkflow(
     lease: AvailabilityOperationLease,
-    deploymentIdentity: string,
+    hubOraclePolicyId: string,
     headerHash: string,
     nowMs: number,
   ): void;

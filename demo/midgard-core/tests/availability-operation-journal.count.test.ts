@@ -12,11 +12,11 @@ import {
 const intent = (
   id: string,
   actor: string,
-  deploymentIdentity: string,
+  hubOraclePolicyId: string,
 ): AvailabilityOperationIntent => ({
   id,
   actor,
-  deploymentIdentity,
+  hubOraclePolicyId,
   headerHash: id,
   action: "publish",
   signedCbor: `exact signed ${id}`,

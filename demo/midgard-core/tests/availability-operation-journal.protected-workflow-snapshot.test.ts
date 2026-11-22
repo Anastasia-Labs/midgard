@@ -13,7 +13,7 @@ const fixture = () => {
   const open = {
     id: "open",
     actor: "wallet",
-    deploymentIdentity: "old",
+    hubOraclePolicyId: "old",
     headerHash: "header",
     action: "open",
     signedCbor: "immutable-open",

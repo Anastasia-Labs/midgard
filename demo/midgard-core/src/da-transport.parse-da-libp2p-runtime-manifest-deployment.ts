@@ -57,10 +57,13 @@ export const normalizeDaDeploymentFingerprintHex = (
     return ensureDaDeploymentFingerprint(value).toString("hex");
   }
   const normalized = value.toLowerCase();
-  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+  if (
+    normalized.length !== DA_DEPLOYMENT_FINGERPRINT_LENGTH * 2 ||
+    !/^[0-9a-f]*$/u.test(normalized)
+  ) {
     fail(
       MidgardTxCodecErrorCodes.InvalidFieldType,
-      "deployment_fingerprint must be 32-byte hex",
+      `deployment_fingerprint must be ${DA_DEPLOYMENT_FINGERPRINT_LENGTH.toString()}-byte hex`,
       value,
     );
   }
@@ -169,12 +172,7 @@ export const parseDaLibp2pRuntimeManifestDeployment = (
   const deployment = recordValue(value, fieldName);
   exactRecordKeys(
     deployment,
-    [
-      "fingerprint",
-      "contract_deployment_manifest_id",
-      "contract_deployment_info_sha256",
-      "identity_source",
-    ],
+    ["fingerprint", "contract_deployment_info_sha256", "identity_source"],
     fieldName,
   );
   if (
@@ -186,31 +184,22 @@ export const parseDaLibp2pRuntimeManifestDeployment = (
       String(deployment.identity_source),
     );
   }
-  const fingerprint = normalizeDaDeploymentFingerprintHex(
-    nonEmptyStringValue(deployment.fingerprint, `${fieldName}.fingerprint`),
-  );
-  const contractDeploymentManifestId = normalizeDaDeploymentFingerprintHex(
-    nonEmptyStringValue(
-      deployment.contract_deployment_manifest_id,
-      `${fieldName}.contract_deployment_manifest_id`,
-    ),
-  );
-  if (fingerprint !== contractDeploymentManifestId) {
+  const contractDeploymentInfoSha256 = nonEmptyStringValue(
+    deployment.contract_deployment_info_sha256,
+    `${fieldName}.contract_deployment_info_sha256`,
+  ).toLowerCase();
+  if (!/^[0-9a-f]{64}$/u.test(contractDeploymentInfoSha256)) {
     fail(
       MidgardTxCodecErrorCodes.InvalidFieldType,
-      `${fieldName}.fingerprint must equal deployment.contract_deployment_manifest_id`,
-      `fingerprint=${fingerprint},contract_deployment_manifest_id=${contractDeploymentManifestId}`,
+      `${fieldName}.contract_deployment_info_sha256 must be 32-byte hex`,
+      contractDeploymentInfoSha256,
     );
   }
   return {
-    fingerprint,
-    contract_deployment_manifest_id: contractDeploymentManifestId,
-    contract_deployment_info_sha256: normalizeDaDeploymentFingerprintHex(
-      nonEmptyStringValue(
-        deployment.contract_deployment_info_sha256,
-        `${fieldName}.contract_deployment_info_sha256`,
-      ),
+    fingerprint: normalizeDaDeploymentFingerprintHex(
+      nonEmptyStringValue(deployment.fingerprint, `${fieldName}.fingerprint`),
     ),
+    contract_deployment_info_sha256: contractDeploymentInfoSha256,
     identity_source: DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE,
   };
 };
