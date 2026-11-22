@@ -7,6 +7,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "../src/ledger-store/index.js";
+import {
   createReplayedLedger,
   type ReplayedLedgerRefusal,
 } from "../src/replayed-ledger.js";
@@ -24,79 +28,81 @@ afterEach(() => {
   transport.raw = undefined;
 });
 
+/**
+ * The retained fixture block with its header claiming `claimedRoot` (given
+ * the predecessor's), a replayed ledger whose store holds the predecessor's
+ * ledger, and the classifier's input over it. The challenged block is
+ * replayed from retained bytes, never read from a UTxO section.
+ */
+const scene = async (claimedRoot: (predecessorRoot: string) => string) => {
+  const fixture = await buildRetainedPlutusIdentityFixture({
+    verdict: "accepted",
+  });
+  const predecessor = await reconstructDaPayload({
+    payloadEnvelopeCbor: fixture.predecessor.payloadEnvelopeCbor,
+  });
+  const header = {
+    ...fixture.block.header,
+    utxosRoot: claimedRoot(predecessor.header.utxosRoot),
+  };
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const original = await reconstructDaPayload({
+    payloadEnvelopeCbor: fixture.block.payloadEnvelopeCbor,
+  });
+  const payload = {
+    ...original.payload,
+    block_body: {
+      ...original.payload.block_body,
+      header,
+      header_hash: headerHash,
+    },
+  };
+  fixture.block = {
+    ...fixture.block,
+    header,
+    headerHash,
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
+      mode: "identity",
+    }),
+  };
+  const { classifyInput } = await setup(fixture, "normal");
+  const store = createLedgerStore(createMemoryLedgerStorage());
+  await store.persist(
+    await store.admit(
+      ledgerEntriesAfter(predecessor),
+      predecessor.header.utxosRoot,
+    ),
+  );
+  const refusals: ReplayedLedgerRefusal[] = [];
+  const ledger = createReplayedLedger({
+    store,
+    onRefusal: (refusal) => refusals.push(refusal),
+  });
+  const headers = new Map([
+    [predecessor.headerHash, predecessor.header],
+    [headerHash, header],
+  ]);
+  const ledgerAt = ledger.ledgerAt({
+    headerAt: async (hash) => headers.get(hash),
+    payloadAt: async (hash) => (hash === headerHash ? payload : undefined),
+    materialFor: async (served) => ({
+      blockTimeMs: Number(served.block_body.header.endTime),
+      replayUserEvent: () => Effect.die("fixture has no user event"),
+      verifyForcedSource: () => Effect.die("fixture has no forced order"),
+    }),
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+  });
+  return { fixture, predecessor, classifyInput, refusals, ledgerAt };
+};
+
 describe(
   "classification over the watcher's replayed ledger",
   replayBudget,
   () => {
     it("detects a block whose transition does not open its committed roots", async () => {
-      const fixture = await buildRetainedPlutusIdentityFixture({
-        verdict: "accepted",
-      });
-      const header = { ...fixture.block.header, utxosRoot: "99".repeat(32) };
-      const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-      const original = await reconstructDaPayload({
-        payloadEnvelopeCbor: fixture.block.payloadEnvelopeCbor,
-      });
-      const payload = {
-        ...original.payload,
-        block_body: {
-          ...original.payload.block_body,
-          header,
-          header_hash: headerHash,
-        },
-      };
-      fixture.block = {
-        ...fixture.block,
-        header,
-        headerHash,
-        payloadEnvelopeCbor: await wrapDaPayload(
-          SDKDa.encodeDaPayload(payload),
-          {
-            mode: "identity",
-          },
-        ),
-      };
-      const { classifyInput } = await setup(fixture, "normal");
-      // The watcher's checkpoint holds the predecessor's ledger; the challenged
-      // block is replayed from retained bytes, never read from a UTxO section.
-      const predecessor = await reconstructDaPayload({
-        payloadEnvelopeCbor: fixture.predecessor.payloadEnvelopeCbor,
-      });
-      const refusals: ReplayedLedgerRefusal[] = [];
-      const ledger = createReplayedLedger({
-        checkpoints: {
-          read: async () => ({
-            headerHash: predecessor.headerHash,
-            entries: ledgerEntriesAfter(predecessor),
-          }),
-          write: async () => {
-            throw new Error("the checkpoint does not move in this case");
-          },
-        },
-        onRefusal: (refusal) => refusals.push(refusal),
-      });
-      expect(
-        await ledger.restore({
-          headerHash: predecessor.headerHash,
-          utxosRoot: predecessor.header.utxosRoot,
-        }),
-      ).toBe("restored");
-      const ledgerAt = ledger.ledgerAt({
-        payloadAt: async (headerHash) =>
-          headerHash === fixture.block.headerHash
-            ? (
-                await reconstructDaPayload({
-                  payloadEnvelopeCbor: fixture.block.payloadEnvelopeCbor,
-                })
-              ).payload
-            : undefined,
-        materialFor: async (payload) => ({
-          blockTimeMs: Number(payload.block_body.header.endTime),
-          replayUserEvent: () => Effect.die("fixture has no user event"),
-          verifyForcedSource: () => Effect.die("fixture has no forced order"),
-        }),
-        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-      });
+      const { fixture, classifyInput, refusals, ledgerAt } = await scene(() =>
+        "99".repeat(32),
+      );
       const derived = await ledgerAt(fixture.block.headerHash);
       if (derived === undefined)
         throw new Error("the valid fixture replay was refused");
@@ -121,6 +127,29 @@ describe(
       expect(refusals).toMatchObject([
         { headerHash: fixture.block.headerHash, kind: "root-mismatch" },
       ]);
+    });
+
+    it("detects a block claiming a root the store already holds while its events produce another", async () => {
+      // The block claims its predecessor's root, which the store holds: the
+      // lookup by root answers the block without replaying it, so only the
+      // classifier's own replay can see the fault.
+      const { fixture, predecessor, classifyInput, ledgerAt } = await scene(
+        (predecessorRoot) => predecessorRoot,
+      );
+      const served = await ledgerAt(fixture.block.headerHash);
+      if (served === undefined) throw new Error("the held root was not served");
+      expect(await ledgerEntriesRoot(served)).toBe(
+        predecessor.header.utxosRoot,
+      );
+      const decision = await classifyHeader({
+        ...classifyInput,
+        predecessorLedgerAt: ledgerAt,
+      });
+      expect(decision).toMatchObject({
+        decision: "fault_detected",
+        category: "transitionTrace",
+        headerHash: fixture.block.headerHash,
+      });
     });
   },
 );

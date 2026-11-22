@@ -2,8 +2,11 @@ import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile"
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { ledgerEntriesRoot } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
+import {
   createReplayedLedger,
-  type LedgerCheckpoint,
   type ReplayedLedgerRefusal,
   type ReplayedLedgerSource,
 } from "@al-ft/midgard-fault-proofs/replayed-ledger";
@@ -330,32 +333,22 @@ const emptyChild = (parent: SDKDa.DaPayload) => {
 
 const watcherLedger = async (block: SDKDa.DaPayload) => {
   const header = block.block_body.header;
-  let checkpoint: LedgerCheckpoint | undefined = {
-    headerHash: header.prevHeaderHash,
-    entries: parentEntries(),
-  };
+  // The store holds the parent's ledger.
+  const store = createLedgerStore(createMemoryLedgerStorage());
+  await store.persist(await store.admit(parentEntries(), header.prevUtxosRoot));
   const refusals: ReplayedLedgerRefusal[] = [];
   const ledger = createReplayedLedger({
-    checkpoints: {
-      read: async () => checkpoint,
-      write: async (next) => {
-        checkpoint = next;
-      },
-    },
+    store,
     onRefusal: (refusal) => refusals.push(refusal),
   });
-  expect(
-    await ledger.restore({
-      headerHash: header.prevHeaderHash,
-      utxosRoot: header.prevUtxosRoot,
-    }),
-  ).toBe("restored");
   const child = await emptyChild(block);
+  const payloadOf = (headerHash: string) =>
+    [block, child].find(
+      (payload) => payload.block_body.header_hash === headerHash,
+    );
   const source: ReplayedLedgerSource = {
-    payloadAt: async (headerHash) =>
-      [block, child].find(
-        (payload) => payload.block_body.header_hash === headerHash,
-      ),
+    headerAt: async (headerHash) => payloadOf(headerHash)?.block_body.header,
+    payloadAt: async (headerHash) => payloadOf(headerHash),
     materialFor: async (payload) => ({
       blockTimeMs: Number(payload.block_body.header.endTime),
       replayUserEvent: () => Effect.die("fixture has no user event"),
