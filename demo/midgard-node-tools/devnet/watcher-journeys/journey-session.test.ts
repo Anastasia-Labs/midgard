@@ -22,7 +22,7 @@ beforeEach(async () => {
   state.failBinding = false;
   state.failNativeClose = false;
   state.sessionSources = [];
-  state.replayCheckpointDirectories = [];
+  state.replayLedgerStoreDirectories = [];
   state.watcherState = { state: "running", exitCode: null };
   await mkdir(join(state.runDirectory, "secrets"));
   for (const name of [
@@ -288,14 +288,14 @@ it("keeps concurrent sessions' replayed-ledger stores in separately owned direct
     openJourneySession(state.runDirectory),
   ]);
   try {
-    expect(new Set(state.replayCheckpointDirectories).size).toBe(2);
+    expect(new Set(state.replayLedgerStoreDirectories).size).toBe(2);
     const hashes = ["91".repeat(28), "92".repeat(28)];
     await Promise.all(
       sessions.map((session, i) => session.ledgerAt(hashes[i])),
     );
     // Each session holds its own ledger store open; a second opener of
     // either is refused.
-    for (const directory of state.replayCheckpointDirectories)
+    for (const directory of state.replayLedgerStoreDirectories)
       expect(() =>
         openSqliteLedgerStorage(
           join(directory, `replayed-ledger-${"ab".repeat(32)}.sqlite`),
