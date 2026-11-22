@@ -817,18 +817,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-fault-proofs run typecheck
 
-  # Six shards keep each job near 40 minutes. The suite is ~21,900
-  # fork-seconds on two forks (the three-run median per file in the package's
+  # Seven shards keep each job near 23 minutes. The suite is ~15,600
+  # fork-seconds on two forks (per file in the package's
   # tests/support/ci-file-durations.json), each job adds a few minutes of setup
-  # and Vitest overhead, and shard 1 also runs the ~2,000 s traced-refusal
-  # step, which that table reserves. At the median each shard projects
-  # ~2,110 s; the longest single file (the writeBits loop dispute) is ~1,260 s,
-  # so a file that runs longer is split by case rather than holding one shard
-  # past the job's time limit. The matrix is the one count this
-  # workflow reads (the jobs and test-durations take it from the matrix);
-  # change it together with tests/duration-shards.test.ts and rekey the table's
-  # reserve. On a pull request that skips the traced-refusal step, shard 1
-  # finishes that much earlier.
+  # and Vitest overhead, and shard 1 also runs the ~1,200 s traced-refusal
+  # step, which that table reserves. Each shard projects ~1,285 s; the longest
+  # single file (the writeBits loop dispute) is ~880 s. More shards would not
+  # shorten shard 1, which that step alone holds near 1,200 s. The matrix is
+  # the one count this workflow reads (the jobs and test-durations take it from
+  # the matrix); change it together with tests/duration-shards.test.ts and
+  # rekey the table's reserve. On a pull request that skips the traced-refusal
+  # step, shard 1 finishes that much earlier.
   midgard-fault-proofs:
     name: midgard-fault-proofs (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [aiken-fork, blueprint, test-blueprints]
@@ -837,7 +836,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7]
     # Bound evaluator parallelism on the standard hosted runner.
     env:
       MIDGARD_FAULT_PROOF_FORKS: "2"
