@@ -24,7 +24,7 @@ CREATE TABLE node_follower_write_gate (
 );
 INSERT INTO node_follower_write_gate (singleton) VALUES (true);
 
--- The deployment (its manifest id) whose settlement jobs this node enqueues,
+-- The deployment (its hub-oracle policy id) whose settlement jobs this node enqueues,
 -- recorded by the startup preparation before the driver's first view, so
 -- before any write that consumes a deposit or finalizes a withdrawal. It
 -- replaces the history authority's deployment identity as the enqueue
@@ -32,13 +32,13 @@ INSERT INTO node_follower_write_gate (singleton) VALUES (true);
 -- (a one-time carry-over, not a seed row).
 CREATE TABLE node_deployment (
   singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
-  deployment_id text NOT NULL CHECK (deployment_id ~ '^[0-9a-f]{64}$'),
+  hub_oracle_policy_id text NOT NULL CHECK (hub_oracle_policy_id ~ '^[0-9a-f]{56}$'),
   updated_at timestamptz NOT NULL DEFAULT NOW()
 );
 DO $carry$
 BEGIN
-  INSERT INTO node_deployment (deployment_id)
-    SELECT encode(deployment_identity, 'hex') FROM event_history_authority
+  INSERT INTO node_deployment (hub_oracle_policy_id)
+    SELECT encode(hub_oracle_policy_id, 'hex') FROM event_history_authority
     WHERE singleton;
 END;
 $carry$;
@@ -52,8 +52,8 @@ BEGIN
     IF NEW.status <> 'finalized' OR NEW.validity IS DISTINCT FROM 'WithdrawalIsValid' THEN RETURN NEW; END IF;
     event_kind := 'withdrawal'; initial_phase := 'initialize';
   END IF;
-  INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-    SELECT deployment_id, event_kind, encode(NEW.event_id, 'hex'), initial_phase
+  INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase)
+    SELECT hub_oracle_policy_id, event_kind, encode(NEW.event_id, 'hex'), initial_phase
     FROM node_deployment WHERE singleton
     ON CONFLICT DO NOTHING;
   RETURN NEW;

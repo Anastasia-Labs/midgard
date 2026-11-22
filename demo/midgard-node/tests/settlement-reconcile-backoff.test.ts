@@ -48,7 +48,7 @@ vi.mock("../src/l1-provider-view.js", async (original) => {
 const run = <A, E>(
   effect: Effect.Effect<A, E, SqlClient.SqlClient | NodeConfig>,
 ) => Effect.runPromise(provideDatabaseLayers(effect));
-const deploymentId = "a3".repeat(32);
+const hubOraclePolicyId = "a3".repeat(28);
 
 beforeEach(() =>
   run(
@@ -73,20 +73,20 @@ describe("settlement reconcile backoff", () => {
             L1_SETTLEMENT_SEED_PHRASE: seed,
           };
           const owner = {
-            deploymentId,
+            hubOraclePolicyId,
             walletAddress: settlementWalletAddress(config),
             token: randomUUID(),
           };
           // Past its validity bound at the indexer tip (slot 10): every
           // reconcile reads the body's status first.
           const attempt = pendingSettlementAttempt({
-            deploymentId,
+            hubOraclePolicyId,
             eventId: "cc".repeat(34),
             ttl: 5n,
           });
           const sql = yield* SqlClient.SqlClient;
-          yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-            VALUES (${deploymentId}, ${attempt.kind}, ${attempt.event_id}, ${attempt.phase})`;
+          yield* sql`INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase)
+            VALUES (${hubOraclePolicyId}, ${attempt.kind}, ${attempt.event_id}, ${attempt.phase})`;
           yield* Journal.renew(owner);
           yield* Journal.saveAttempt(owner, attempt, Effect.void);
           const backoff = settlementReconcileBackoff();
@@ -104,7 +104,7 @@ describe("settlement reconcile backoff", () => {
             Effect.provideService(Lucid, new Lucid({} as unknown as Lucid)),
             Effect.provideService(ContractDeploymentIdentity, {
               kind: "manifest",
-              manifestId: deploymentId,
+              hubOraclePolicyId,
               l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
             } as unknown as ContractDeploymentIdentity),
             Effect.provideService(

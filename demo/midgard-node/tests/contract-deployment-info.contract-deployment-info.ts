@@ -3,10 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { type CborInput, CborTag, encodeCbor } from "@al-ft/l1-node-transport";
 import { MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION } from "@al-ft/midgard-core/consensus-profile";
-import {
-  computeDeploymentManifestId,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { referenceScriptAuthTokenName } from "@al-ft/midgard-sdk/state-queue";
 import { it } from "@effect/vitest";
 import {
@@ -498,7 +495,7 @@ describe("contract deployment info", () => {
   });
 
   it.effect(
-    "authenticates every canonical V1 manifest field in its identity",
+    "rebuilds an identical canonical V1 manifest from the same deployment",
     () =>
       Effect.gen(function* () {
         const contracts = withRealEventHistoryForTest(
@@ -527,7 +524,7 @@ describe("contract deployment info", () => {
         expect(first.schemaVersion).toEqual(
           MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
         );
-        expect(first.manifestId).toEqual(second.manifestId);
+        expect(second).toEqual(first);
         expect(second.createdAt).toEqual(first.createdAt);
         expect(second.updatedAt).toEqual(first.updatedAt);
         expect(second.hubOracleOneShot).toMatchObject({
@@ -543,9 +540,7 @@ describe("contract deployment info", () => {
         expect(
           second.referenceScripts["state-queue minting"]?.roleUnit,
         ).toContain(authPolicy.policyId);
-        expect(parseDeploymentManifest(second).manifestId).toEqual(
-          second.manifestId,
-        );
+        expect(parseDeploymentManifest(second)).toEqual(second);
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
@@ -576,9 +571,7 @@ describe("contract deployment info", () => {
         expect(manifest.contracts.validationTraceDispute.scriptHash).toMatch(
           /^[0-9a-f]{56}$/u,
         );
-        expect(parseDeploymentManifest(manifest).manifestId).toEqual(
-          manifest.manifestId,
-        );
+        expect(parseDeploymentManifest(manifest)).toEqual(manifest);
 
         const {
           validationTraceDispute: _validationTraceDispute,
@@ -635,7 +628,7 @@ describe("contract deployment info", () => {
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
-  it.effect("rejects manifests with a tampered identity hash or profile", () =>
+  it.effect("rejects manifests with a tampered consensus profile", () =>
     Effect.gen(function* () {
       const contracts = withRealEventHistoryForTest(
         yield* AlwaysSucceedsContract,
@@ -652,26 +645,6 @@ describe("contract deployment info", () => {
         },
       );
 
-      expect(() =>
-        parseDeploymentManifest({
-          ...manifest,
-          hubOracleOneShot: {
-            ...manifest.hubOracleOneShot,
-            outputIndex: 1,
-            outRef: `${ONE_SHOT_TX_HASH}#1`,
-          },
-        }),
-      ).toThrow(/Deployment manifest id mismatch/);
-      expect(() =>
-        parseRuntimeDeploymentManifest({
-          ...manifest,
-          hubOracleOneShot: {
-            ...manifest.hubOracleOneShot,
-            outputIndex: 1,
-            outRef: `${ONE_SHOT_TX_HASH}#1`,
-          },
-        }),
-      ).toThrow(/Deployment manifest id mismatch/);
       expect(() =>
         parseDeploymentManifest({
           ...manifest,
@@ -710,13 +683,8 @@ describe("contract deployment info", () => {
         },
       );
 
-      const { manifestId: _manifestId, ...identityInput } = manifest;
-      const invalidNetwork = { ...identityInput, network: "Bogus" };
       expect(() =>
-        parseDeploymentManifest({
-          ...invalidNetwork,
-          manifestId: computeDeploymentManifestId(invalidNetwork),
-        }),
+        parseDeploymentManifest({ ...manifest, network: "Bogus" }),
       ).toThrow(
         "Deployment profile, digest, and network must match the compiled profile",
       );

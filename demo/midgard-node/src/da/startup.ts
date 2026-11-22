@@ -1,8 +1,4 @@
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
-import {
-  assertDeploymentMarkerMatches,
-  makeDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import { DatabaseInitializationError } from "../services/database.js";
@@ -41,13 +37,12 @@ export const assertDaThresholdCompatible = (
 };
 
 export const assertDaDeploymentIdentityCompatible = (
-  daManifestId: string,
+  daDeploymentFingerprint: string,
   contractIdentity: ContractDeploymentIdentityValue,
 ): void => {
   if (
     contractIdentity.kind !== "manifest" ||
-    contractIdentity.manifestId === undefined ||
-    contractIdentity.deploymentMarker === undefined
+    contractIdentity.hubOraclePolicyId === undefined
   ) {
     throw new DatabaseInitializationError({
       message:
@@ -55,16 +50,10 @@ export const assertDaDeploymentIdentityCompatible = (
       cause: "selected contract source has no deployment manifest identity",
     });
   }
-  try {
-    assertDeploymentMarkerMatches(
-      contractIdentity.deploymentMarker,
-      makeDeploymentMarker(daManifestId),
-      "DA runtime manifest",
-    );
-  } catch {
+  if (daDeploymentFingerprint !== contractIdentity.hubOraclePolicyId) {
     throw new DatabaseInitializationError({
       message: "DA and contract deployment manifest identities do not match",
-      cause: `da_manifest_id=${daManifestId},contract_manifest_id=${contractIdentity.manifestId}`,
+      cause: `da_deployment_fingerprint=${daDeploymentFingerprint},contract_hub_oracle_policy_id=${contractIdentity.hubOraclePolicyId}`,
     });
   }
 };
@@ -117,7 +106,7 @@ export const prepareDaHardeningStartup = Effect.gen(function* () {
   yield* Effect.try({
     try: () =>
       assertDaDeploymentIdentityCompatible(
-        manifest.contractDeploymentManifestId,
+        manifest.deploymentFingerprint,
         contractIdentity,
       ),
     catch: (cause) => cause as DatabaseInitializationError,

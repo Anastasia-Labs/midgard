@@ -16,7 +16,6 @@ import {
   DaPayloadsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { deploymentIdentityDigestOf } from "../l1-queue-terminals/reads.js";
 import { NodeConfig } from "../services/config.js";
 import type { Database } from "../services/database.js";
 import { Globals } from "../services/globals.globals.js";
@@ -145,14 +144,14 @@ export type DaPublicationReconcileSummary = {
 export const reconcileDaPublicationsOnce = ({
   limit = 100,
   leaseOwner = `${hostname()}:${process.pid.toString()}`,
-  deploymentIdentityDigest,
+  hubOraclePolicyId,
   seed = {},
 }: {
   readonly limit?: number;
   readonly leaseOwner?: string;
-  /** Verified manifest ID; absent for a derived contract bundle, which
+  /** The deployment's hub-oracle policy id; absent for a derived contract bundle, which
    * consults no removal (see `owedPayload` in `l1-queue-terminals`). */
-  readonly deploymentIdentityDigest?: Buffer;
+  readonly hubOraclePolicyId?: string;
   /** Seeding progress carried across passes; without one, every pass
    * seeds the whole retention window. */
   readonly seed?: DaPublicationSeedState;
@@ -217,7 +216,7 @@ export const reconcileDaPublicationsOnce = ({
       leaseOwner,
       leaseToken: peerLeaseToken,
       leaseMs: Math.max(30_000, manifest.requestTimeoutMs * 2),
-      deploymentIdentityDigest,
+      hubOraclePolicyId,
     });
     let attempted = 0;
     let conflicts = 0;
@@ -285,7 +284,7 @@ export const reconcileDaPublicationsOnce = ({
       leaseOwner,
       leaseToken: announcementLeaseToken,
       leaseMs: Math.max(30_000, manifest.requestTimeoutMs * 2),
-      deploymentIdentityDigest,
+      hubOraclePolicyId,
     });
     yield* Effect.forEach(
       announcementClaims,
@@ -366,14 +365,8 @@ export const reconcileDaPublicationsOnce = ({
     );
     const [peerBacklog, announcementBacklog] = yield* Effect.all(
       [
-        DaPayloadPublicationsDB.backlogCount(
-          retentionDays,
-          deploymentIdentityDigest,
-        ),
-        DaPayloadAnnouncementsDB.backlogCount(
-          retentionDays,
-          deploymentIdentityDigest,
-        ),
+        DaPayloadPublicationsDB.backlogCount(retentionDays, hubOraclePolicyId),
+        DaPayloadAnnouncementsDB.backlogCount(retentionDays, hubOraclePolicyId),
       ],
       { concurrency: 2 },
     );
@@ -397,12 +390,10 @@ export const daPublicationReconcilerFiber = (
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🟢 DA publication reconciler fiber started.");
-    const deploymentIdentityDigest = deploymentIdentityDigestOf(
-      yield* ContractDeploymentIdentity,
-    );
+    const { hubOraclePolicyId } = yield* ContractDeploymentIdentity;
     const seed: DaPublicationSeedState = {};
     yield* Effect.repeat(
-      reconcileDaPublicationsOnce({ deploymentIdentityDigest, seed }).pipe(
+      reconcileDaPublicationsOnce({ hubOraclePolicyId, seed }).pipe(
         Effect.catchAllCause((cause) =>
           Effect.logWarning(
             `DA publication reconciler iteration failed; continuing: ${String(cause)}`,

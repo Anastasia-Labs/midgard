@@ -292,7 +292,7 @@ describe("retention L1 view exemption sets", () => {
             ContractDeploymentIdentity,
             ContractDeploymentIdentity.make({
               kind: "manifest",
-              manifestId: "cd".repeat(32),
+              hubOraclePolicyId: "cd".repeat(28),
               consensusProfile: MIDGARD_CONSENSUS_PROFILE,
             }),
           ),

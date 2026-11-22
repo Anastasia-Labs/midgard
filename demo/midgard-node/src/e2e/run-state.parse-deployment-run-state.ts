@@ -4,10 +4,6 @@ import { type FileHandle, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 
 import { writeJsonFileAtomic } from "@al-ft/midgard-core/atomic-write";
-import {
-  type DeploymentMarker,
-  parseDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import {
   assertIsoString,
@@ -30,32 +26,25 @@ import {
   parseEvents,
 } from "./run-state.parse-deployment-run-identity.js";
 
-export const bindDeploymentRunStateToMarker = (
+export const bindDeploymentRunStateToManifest = (
   state: DeploymentRunState,
   {
-    marker,
+    hubOraclePolicyId,
     manifestPath,
     manifestSha256,
     now = new Date(),
   }: {
-    readonly marker: DeploymentMarker;
+    readonly hubOraclePolicyId: string;
     readonly manifestPath: string;
     readonly manifestSha256: string;
     readonly now?: Date;
   },
 ): DeploymentRunState => {
-  const canonicalMarker = (() => {
-    try {
-      return parseDeploymentMarker(marker);
-    } catch (cause) {
-      throw new RunStateError(
-        `Cannot bind invalid deployment marker: ${
-          cause instanceof Error ? cause.message : String(cause)
-        }`,
-        { cause },
-      );
-    }
-  })();
+  const canonicalHubOraclePolicyId = assertLowerHex(
+    hubOraclePolicyId,
+    "identity.hubOraclePolicyId",
+    28,
+  );
   const canonicalManifestPath = assertString(
     manifestPath,
     "identity.manifestPath",
@@ -66,11 +55,11 @@ export const bindDeploymentRunStateToMarker = (
     32,
   );
   if (
-    state.identity.deploymentMarker !== undefined &&
-    state.identity.deploymentMarker.manifestId !== canonicalMarker.manifestId
+    state.identity.hubOraclePolicyId !== undefined &&
+    state.identity.hubOraclePolicyId !== canonicalHubOraclePolicyId
   ) {
     throw new RunStateError(
-      `Deployment run state marker mismatch: existing=${state.identity.deploymentMarker.manifestId}, current=${canonicalMarker.manifestId}. A different final deployment requires an explicit fresh run state.`,
+      `Deployment run state hub-oracle policy id mismatch: existing=${state.identity.hubOraclePolicyId}, current=${canonicalHubOraclePolicyId}. A different final deployment requires an explicit fresh run state.`,
     );
   }
   const timestamp = now.toISOString();
@@ -81,15 +70,15 @@ export const bindDeploymentRunStateToMarker = (
       ...state.identity,
       manifestPath: canonicalManifestPath,
       manifestSha256: canonicalManifestSha256,
-      deploymentMarker: canonicalMarker,
+      hubOraclePolicyId: canonicalHubOraclePolicyId,
     },
     steps: {
       ...state.steps,
-      deploymentMarker: {
+      deploymentManifest: {
         status: "complete",
         updatedAt: timestamp,
         evidence: [
-          `manifestId=${canonicalMarker.manifestId}`,
+          `hubOraclePolicyId=${canonicalHubOraclePolicyId}`,
           `manifestSha256=${canonicalManifestSha256}`,
         ],
       },
@@ -99,8 +88,8 @@ export const bindDeploymentRunStateToMarker = (
       {
         at: timestamp,
         kind: "step_transition",
-        stepId: "deploymentMarker",
-        message: "deploymentMarker -> complete",
+        stepId: "deploymentManifest",
+        message: "deploymentManifest -> complete",
       },
     ],
   });

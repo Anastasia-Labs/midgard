@@ -22,11 +22,11 @@ import {
 const prune = (
   args: Omit<
     Parameters<typeof pruneFoldedBeyondChallengeability>[0],
-    "deploymentIdentityDigest"
+    "hubOraclePolicyId"
   >,
 ) =>
   pruneFoldedBeyondChallengeability({
-    deploymentIdentityDigest: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     ...args,
   });
 

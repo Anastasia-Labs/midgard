@@ -19,6 +19,7 @@ import { ContractDeploymentIdentity } from "../services/midgard-contracts.make-m
 
 export const initializeNodeDatabase = Effect.gen(function* () {
   yield* InitDB.program;
-  const { manifestId } = yield* ContractDeploymentIdentity;
-  if (manifestId !== undefined) yield* NodeDeployment.record(manifestId);
+  const { hubOraclePolicyId } = yield* ContractDeploymentIdentity;
+  if (hubOraclePolicyId !== undefined)
+    yield* NodeDeployment.record(hubOraclePolicyId);
 });

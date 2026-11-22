@@ -30,7 +30,7 @@ export const getProtocolInfoHandler = Effect.gen(function* () {
       ProtocolInfoCommand.encodeProtocolInfo({
         nodeConfig,
         currentSlot: lucid.api.currentSlot(),
-        deploymentMarker: deploymentIdentity.deploymentMarker,
+        hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
         consensusProfile: deploymentIdentity.consensusProfile,
       }),
     catch: (error) => error,

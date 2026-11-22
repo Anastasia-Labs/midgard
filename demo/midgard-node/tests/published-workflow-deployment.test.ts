@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { inspect } from "node:util";
 
 import {
-  computeDeploymentManifestId,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  deploymentManifestHubOraclePolicyId,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
@@ -74,7 +74,9 @@ it("publishes every role, initializes genesis and reopens the finalized deployme
   expect(() =>
     verifyFinalizedDeploymentManifest(restored.manifest),
   ).not.toThrow();
-  expect(restored.manifestId).toBe(installed.manifest.manifestId);
+  expect(restored.hubOraclePolicyId).toBe(
+    deploymentManifestHubOraclePolicyId(installed.manifest),
+  );
   expect(installed.receipts).toHaveLength(expectedCount);
   expect(
     installed.publicationMetrics.peakUnconfirmedTransactions,
@@ -143,7 +145,7 @@ it("publishes every role, initializes genesis and reopens the finalized deployme
           scope:
             "emulator deployment, persisted finalized identity reload and reference authentication; no proof journey",
           blueprintSha256: installed.manifest.artifacts.blueprintHash,
-          manifestId: installed.manifest.manifestId,
+          hubOraclePolicyId: restored.hubOraclePolicyId,
           manifestFileSha256: restored.contractDeploymentInfoSha256,
           sourceHashes,
           roleCount: expectedCount,
@@ -167,17 +169,11 @@ it("publishes every role, initializes genesis and reopens the finalized deployme
 });
 
 it("rejects a workflow blueprint that differs from the deployment manifest", async () => {
-  const identityInput = Object.fromEntries(
-    Object.entries({
-      ...installed.manifest,
-      artifacts: { blueprintHash: "00".repeat(32) },
-    }).filter(([key]) => key !== "manifestId"),
-  );
-  const unsealed = {
-    ...identityInput,
-    manifestId: computeDeploymentManifestId(identityInput),
+  const otherBlueprint = {
+    ...installed.manifest,
+    artifacts: { blueprintHash: "00".repeat(32) },
   };
-  await expect(bind(unsealed, installed.blueprintJson)).rejects.toThrow(
+  await expect(bind(otherBlueprint, installed.blueprintJson)).rejects.toThrow(
     /blueprint SHA-256 does not match/u,
   );
 });
@@ -190,7 +186,7 @@ it("binds the installed workflow and resumes its identity from persisted files",
     JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
     await readFile(blueprintPath, "utf8"),
   );
-  expect(restored.deploymentFingerprint).toBe(original.deploymentFingerprint);
+  expect(restored.hubOraclePolicyId).toBe(original.hubOraclePolicyId);
   expect(restored.blueprintHash).toBe(original.blueprintHash);
   expect(restored.definition).toEqual(original.definition);
   expect(Object.keys(restored.referenceScriptsByContract)).toHaveLength(

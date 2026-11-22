@@ -119,7 +119,7 @@ const prune = (liveQueue: readonly string[] = []) =>
       confirmedHeadHash: bytes(header("not-journaled")),
       liveQueueHeaderHashes: liveQueue.map(bytes),
     },
-    deploymentIdentityDigest: Buffer.alloc(32, 7),
+    hubOraclePolicyId: "07".repeat(28),
   });
 
 describe("a signed own journal whose intent row is gone", () => {

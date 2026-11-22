@@ -1,6 +1,7 @@
 import { isAbsolute, normalize } from "node:path";
 
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
@@ -108,12 +109,13 @@ const runAvailabilityOnAccess = async (
   if (actor.type !== "Key")
     throw new Error("Availability actuation requires a payment-key wallet");
   const deployment = await availabilityDeploymentFromManifest(lucid, manifest);
+  const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(manifest);
   const source = await availabilityCommandCanonicalSource({ lucid, access });
   const journal = openAvailabilityOperationJournal(options.journal);
   try {
     const canonicalAnchor = await source.readBoundary();
     const context: SDKDa.DaAvailabilityOperationContext = {
-      deploymentIdentity: manifest.manifestId,
+      hubOraclePolicyId,
       actor: actor.hash,
       journal,
       stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
@@ -181,7 +183,7 @@ const runAvailabilityOnAccess = async (
       const record = snapshot.recordDatum;
       return {
         action,
-        deploymentIdentity: manifest.manifestId,
+        hubOraclePolicyId,
         actor: actor.hash,
         headerHash: options.headerHash,
         canonicalPoint: after.pointId,
@@ -230,7 +232,7 @@ const runAvailabilityOnAccess = async (
           };
         }),
         unfinalized: journal
-          .unfinalized(manifest.manifestId, actor.hash)
+          .unfinalized(hubOraclePolicyId, actor.hash)
           .map(({ intent, state, inclusionPoint, detail }) => ({
             txHash: intent.txHash,
             action: intent.action,

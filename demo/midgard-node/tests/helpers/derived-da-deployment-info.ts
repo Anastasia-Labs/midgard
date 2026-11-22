@@ -25,7 +25,6 @@ import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 export type DaDeploymentInfo = {
   readonly schemaVersion: string;
   readonly fixtureKind: string;
-  readonly manifestId: string;
   readonly consensusProfile: unknown;
   readonly artifacts: { readonly blueprintHash: string };
   readonly contracts: Readonly<Record<string, unknown>>;
@@ -78,7 +77,6 @@ const produceDaDeploymentInfo = async (): Promise<DaDeploymentInfo> => {
     JSON.stringify({
       schemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
       fixtureKind: "codec fixture with synthetic reference outpoints",
-      manifestId: "ab".repeat(32),
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       artifacts: {
         blueprintHash: await Effect.runPromise(loadRealBlueprintSha256()),

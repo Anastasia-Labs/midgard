@@ -32,7 +32,7 @@ export {
   parseDeploymentStepState,
 } from "./run-state.parse-deployment-run-identity.js";
 export {
-  bindDeploymentRunStateToMarker,
+  bindDeploymentRunStateToManifest,
   createDeploymentRunState,
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,

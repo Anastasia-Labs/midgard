@@ -75,7 +75,7 @@ describe("stored Flat migration", () => {
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
             if (table === "node_deployment") {
-              yield* sql`INSERT INTO node_deployment (deployment_id) VALUES (${"31".repeat(32)})`;
+              yield* sql`INSERT INTO node_deployment (hub_oracle_policy_id) VALUES (${"31".repeat(28)})`;
             } else if (table === "tx_admissions") {
               yield* sql`INSERT INTO tx_admissions (tx_id, status, terminal_at, submit_source)
                 VALUES (${txId}, 'accepted', now(), 'native')`;

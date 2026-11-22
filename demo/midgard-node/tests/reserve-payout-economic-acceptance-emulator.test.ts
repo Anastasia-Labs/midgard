@@ -567,7 +567,6 @@ it("enforces reserve sibling/accounting and exact payout economics on a real set
             {
               scope:
                 "Real owner-backed Deposit/Withdrawal settlement and honest signed reserve funding/terminal payout. Mutated contexts are phase-two evaluator probes, not submitted or ledger-valid transactions. Synthetic observation ancestry; no global watcher authority.",
-              manifestId: h.deployment.manifest.manifestId,
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               deploymentInfoSha256: h.deploymentInfoSha256,
               protocolParameters:

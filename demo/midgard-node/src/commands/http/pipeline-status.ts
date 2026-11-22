@@ -88,7 +88,7 @@ export const encodePipelineStatusCounts = (
 export const getPipelineStatusHandler = Effect.gen(function* () {
   const globals = yield* Globals;
   const sql = yield* SqlClient;
-  const { manifestId } = yield* ContractDeploymentIdentity;
+  const { hubOraclePolicyId } = yield* ContractDeploymentIdentity;
   const now = new Date();
   const dead = PendingBlockFinalizationsDB.deadHeadersOf(
     yield* PendingBlockFinalizationsDB.deadJournals,
@@ -133,10 +133,10 @@ export const getPipelineStatusHandler = Effect.gen(function* () {
       sql<PipelineStatusCountOnlyRow>`SELECT COUNT(*)::bigint AS count FROM mempool WHERE included_by IS NULL`,
       sql<PipelineStatusCountOnlyRow>`SELECT COUNT(*)::bigint AS count FROM processed_mempool WHERE included_by IS NULL`,
       StateQueueMutationLeasesDB.inspect({ recentLimit: 5 }),
-      manifestId === undefined
+      hubOraclePolicyId === undefined
         ? Effect.succeed({ unfinishedJobs: 0n, failingJobs: [] })
         : SettlementJournal.inspectBacklog(
-            manifestId,
+            hubOraclePolicyId,
             PIPELINE_STATUS_FAILING_SETTLEMENT_JOB_LIMIT,
           ),
     ],

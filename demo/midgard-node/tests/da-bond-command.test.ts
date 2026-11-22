@@ -78,11 +78,11 @@ vi.mock("../src/commands/contract-deployment-info.js", async (original) => {
       custom.active
         ? {
             network: "Custom",
-            manifestId: "custom-manifest",
             ...(custom.completeLoad === undefined
               ? {}
               : {
                   contracts: {
+                    hubOracleMint: { scriptHash: "cc".repeat(28) },
                     daParamsGovernorSpend: { scriptHash: "aa".repeat(28) },
                     daParamsGovernorMint: { scriptHash: "bb".repeat(28) },
                   },
@@ -274,7 +274,7 @@ beforeAll(async () => {
   ctx = {
     lucid: f.lucid,
     network: "Preprod",
-    manifestId: "emulator-da-bond-cli",
+    hubOraclePolicyId: "ef".repeat(28),
     poolValidator: f.contracts.daBondPool,
     poolSpendingReference: f.poolReferences.daBondPoolSpending,
     parameters: f.parameters,

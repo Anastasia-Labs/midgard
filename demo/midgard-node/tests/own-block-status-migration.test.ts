@@ -222,7 +222,7 @@ describe("migration 0037 on a populated node database", () => {
         confirmedHeadHash: bytes(header(0xf1)),
         liveQueueHeaderHashes: [],
       },
-      deploymentIdentityDigest: Buffer.alloc(32, 7),
+      hubOraclePolicyId: "07".repeat(28),
     });
     expect(
       await migrateCommitted(

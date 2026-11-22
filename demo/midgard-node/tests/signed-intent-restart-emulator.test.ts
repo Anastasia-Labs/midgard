@@ -357,7 +357,6 @@ it("recreates production services after accepted response loss, preserves the in
             {
               scope:
                 "Actual emulator acceptance followed by one lost provider response, disposal and recreation of the follower-change driver/Globals/cache/runtime/native child using unchanged SQL/Level/deployment state, whose first synchronization applies the landed header. Synthetic transport ancestry; no OS-process kill, queue continuation, or production failure-to-lease classification coverage.",
-              manifestId: h.deployment.manifest.manifestId,
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               deploymentInfoSha256: h.deploymentInfoSha256,
               protocolParameters:

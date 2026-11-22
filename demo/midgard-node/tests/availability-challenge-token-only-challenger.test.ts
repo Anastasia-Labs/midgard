@@ -61,7 +61,7 @@ describe("token-only DA challenger", () => {
       const unit = await makeTokenOnly(f, [30_000_000_000n, 5_000_000n]);
       const before = await f.lucid.wallet().getUtxos();
       const context: SDK.DaAvailabilityOperationContext = {
-        deploymentIdentity: "ab".repeat(32),
+        hubOraclePolicyId: "ab".repeat(28),
         actor: f.challengerKey,
         journal,
         stateQueuePolicyId: d.contracts.stateQueue.policyId,

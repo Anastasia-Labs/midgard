@@ -298,7 +298,7 @@ reconcile
           typeof options.contractDeploymentInfo === "string"
             ? ContractDeploymentInfo.readFinalizedDeploymentIdentity(
                 options.contractDeploymentInfo,
-              ).manifestId
+              ).hubOraclePolicyId
             : undefined;
       } catch (error) {
         failCli("reconcile da-attested", error);

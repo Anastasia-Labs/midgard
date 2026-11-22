@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SqlClient } from "@effect/sql";
 import { generateSeedPhrase, Lucid as makeLucid } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -43,7 +44,9 @@ export const openAutomaticSettlement = async (h: ProductionLifecycle) => {
   operator.clearUTxOOverride();
   await h.synchronize();
   const owner: Journal.SettlementOwner = {
-    deploymentId: h.deployment.manifest.manifestId,
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+      h.deployment.manifest,
+    ),
     walletAddress,
     token: randomUUID(),
   };
@@ -97,7 +100,7 @@ export const openAutomaticSettlement = async (h: ProductionLifecycle) => {
       await h.runWithoutSynchronizing(withoutFollowerJournal(tick));
       const pending = (
         await h.runWithoutSynchronizing(
-          Journal.openAttempts(owner.deploymentId),
+          Journal.openAttempts(owner.hubOraclePolicyId),
         )
       )
         // Settled attempts stay pending until k deep, so pick this phase's.
@@ -129,8 +132,8 @@ export const openAutomaticSettlement = async (h: ProductionLifecycle) => {
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           const rows = yield* sql<Journal.SettlementAttempt>`SELECT a.*
-          FROM settlement_attempts a JOIN settlement_jobs j USING (deployment_id, kind, event_id)
-          WHERE a.deployment_id = ${owner.deploymentId} AND a.event_id = ${eventId}
+          FROM settlement_attempts a JOIN settlement_jobs j USING (hub_oracle_policy_id, kind, event_id)
+          WHERE a.hub_oracle_policy_id = ${owner.hubOraclePolicyId} AND a.event_id = ${eventId}
             AND a.phase = ${phase} AND a.status <> 'expired'
           ORDER BY a.created_at DESC LIMIT 1`;
           const attempt = rows[0];

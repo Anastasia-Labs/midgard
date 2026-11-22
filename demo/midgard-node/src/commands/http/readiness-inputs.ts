@@ -28,8 +28,7 @@ import { SETTLEMENT_JOB_FAILURE_CAP } from "../../services/settlement-retry.js";
  * readiness reports as `db_unhealthy`, never as a server error.
  */
 export const readReadinessDatabaseState = (
-  deploymentIdentityDigest: Buffer | undefined,
-  settlementDeploymentId: string | undefined,
+  hubOraclePolicyId: string | undefined,
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient;
@@ -39,7 +38,7 @@ export const readReadinessDatabaseState = (
       durableAdmissionOldestAgeMs: yield* TxAdmissionsDB.oldestQueuedAgeMs,
       daPublicationConflicts: yield* DaPayloadPublicationsDB.conflictCount(
         15,
-        deploymentIdentityDigest,
+        hubOraclePolicyId,
       ),
       mempoolTxCount: yield* MempoolDB.retrieveTxCount,
       leaseInspection: yield* StateQueueMutationLeasesDB.inspect({
@@ -48,10 +47,10 @@ export const readReadinessDatabaseState = (
       journalAges: yield* retrieveLiveJournalAges,
       ownLandedForcedOrphans: (yield* readOwnLandedForcedOrphans).length,
       stuckSettlementJobs:
-        settlementDeploymentId === undefined
+        hubOraclePolicyId === undefined
           ? { count: 0, first: undefined }
           : yield* SettlementJournal.stuckJobs(
-              settlementDeploymentId,
+              hubOraclePolicyId,
               SETTLEMENT_JOB_FAILURE_CAP,
             ),
     };

@@ -41,13 +41,14 @@ const tableContents = Effect.gen(function* () {
 
 it("refuses a restart under another deployment before it writes anything", async () => {
   const h = await openProductionLifecycle();
-  const bound = h.fixture.runtimeOverrides!.deploymentIdentity.manifestId;
-  expect(bound).toMatch(/^[0-9a-f]{64}$/u);
+  const bound =
+    h.fixture.runtimeOverrides!.deploymentIdentity.hubOraclePolicyId;
+  expect(bound).toMatch(/^[0-9a-f]{56}$/u);
   const other = bound!.replace(/^./u, (digit) => (digit === "0" ? "1" : "0"));
   let before: Record<string, string> | undefined;
   await expect(
     h.restartRuntime({
-      manifestId: other,
+      hubOraclePolicyId: other,
       afterStop: async () => {
         before = await run(tableContents);
       },

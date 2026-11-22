@@ -302,11 +302,11 @@ export type RetentionL1View = {
  */
 export const finalityHeldPayload = (
   sql: SqlClient.SqlClient,
-  deploymentIdentityDigest: Buffer | undefined,
+  hubOraclePolicyId: string | undefined,
   headerColumn: string = `${tableName}.${Columns.HEADER_HASH}`,
   finalThroughHeight?: number,
 ) =>
-  deploymentIdentityDigest === undefined
+  hubOraclePolicyId === undefined
     ? sql`FALSE`
     : sql`(${liveQueueNodeHeader(sql, headerColumn)}
       OR ${nonFinalTerminalHeader(sql, headerColumn, finalThroughHeight)}
@@ -326,7 +326,7 @@ export const pruneBeyondRetention = (args: {
   readonly challengeableCutoff: Date;
   readonly retentionCutoff: Date;
   readonly view: RetentionL1View;
-  readonly deploymentIdentityDigest: Buffer | undefined;
+  readonly hubOraclePolicyId: string | undefined;
 }): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -335,7 +335,7 @@ export const pruneBeyondRetention = (args: {
       ...args.view.liveQueueHeaderHashes,
     ];
     const removed =
-      args.deploymentIdentityDigest === undefined
+      args.hubOraclePolicyId === undefined
         ? sql`FALSE`
         : removedHeader(sql, `${tableName}.${Columns.HEADER_HASH}`);
     return yield* sql.withTransaction(
@@ -345,8 +345,8 @@ export const pruneBeyondRetention = (args: {
       WHERE ((${sql(Columns.BLOCK_TIME)} < ${args.challengeableCutoff}
           AND ${sql(Columns.BLOCK_TIME)} < ${args.retentionCutoff}) OR ${removed})
         AND NOT ${sql.in(Columns.HEADER_HASH, exempt)}
-        AND NOT ${finalityHeldPayload(sql, args.deploymentIdentityDigest, `${tableName}.${Columns.HEADER_HASH}`, args.view.finalThroughHeight)}
-        AND NOT ${args.deploymentIdentityDigest === undefined ? sql`FALSE` : recoveryRelevantJournal(sql, Columns.HEADER_HASH)}
+        AND NOT ${finalityHeldPayload(sql, args.hubOraclePolicyId, `${tableName}.${Columns.HEADER_HASH}`, args.view.finalThroughHeight)}
+        AND NOT ${args.hubOraclePolicyId === undefined ? sql`FALSE` : recoveryRelevantJournal(sql, Columns.HEADER_HASH)}
       RETURNING ${sql(Columns.HEADER_HASH)}`;
         return rows.length;
       }),

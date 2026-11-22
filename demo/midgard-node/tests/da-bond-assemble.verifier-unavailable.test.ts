@@ -28,7 +28,10 @@ vi.mock(
   },
 );
 
-const CONTEXT = { network: "Preprod", manifestId: "manifest" } as const;
+const CONTEXT = {
+  network: "Preprod",
+  hubOraclePolicyId: "ab".repeat(28),
+} as const;
 
 vi.mock("../src/commands/da-bond-files.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),

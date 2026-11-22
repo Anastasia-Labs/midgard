@@ -3,10 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import {
-  assertDeploymentMarkerMatches,
-  makeDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { Effect, Layer } from "effect";
@@ -153,14 +150,6 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
     if (runState !== null) {
       yield* Effect.try({
         try: () => {
-          const marker = makeDeploymentMarker(
-            configuredManifest.manifest.manifestId,
-          );
-          assertDeploymentMarkerMatches(
-            marker,
-            runState.identity.deploymentMarker,
-            "node deployment run state",
-          );
           const expectedManifestSha256 = createHash("sha256")
             .update(readFileSync(configuredManifest.path))
             .digest("hex");
@@ -183,19 +172,17 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
           ),
       });
     }
+    const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(
+      configuredManifest.manifest,
+    );
     yield* Effect.logInfo(
-      `🔐 Contract source selected: deployment-manifest path=${configuredManifest.path},manifestId=${String(
-        configuredManifest.manifest.manifestId ?? "unknown",
-      )}`,
+      `🔐 Contract source selected: deployment-manifest path=${configuredManifest.path},hubOraclePolicyId=${hubOraclePolicyId}`,
     );
     const runtime: MidgardContractRuntimeValue = {
       contracts: manifestContracts,
       identity: {
         kind: "manifest",
-        manifestId: configuredManifest.manifest.manifestId,
-        deploymentMarker: makeDeploymentMarker(
-          configuredManifest.manifest.manifestId,
-        ),
+        hubOraclePolicyId,
         path: configuredManifest.path,
         consensusProfile: configuredManifest.manifest.consensusProfile,
         l1Finality: configuredManifest.manifest.l1Finality,

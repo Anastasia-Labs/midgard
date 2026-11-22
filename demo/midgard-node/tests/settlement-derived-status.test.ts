@@ -54,7 +54,7 @@ import { ChainDriver, testDatabases } from "./helpers/l1-events-store.js";
 const K = 6;
 const CD = 3;
 const depths = { confirmationDepth: CD, securityParameter: K };
-const deploymentId = "a7".repeat(32);
+const hubOraclePolicyId = "a7".repeat(28);
 const databases = testDatabases();
 const closers: (() => Promise<void>)[] = [];
 
@@ -176,7 +176,7 @@ const followerOver = async (connectionString: string) => {
 };
 
 const owner: Journal.SettlementOwner = {
-  deploymentId,
+  hubOraclePolicyId,
   walletAddress: "settlement-wallet",
   token: randomUUID(),
 };
@@ -192,7 +192,7 @@ const attemptOf = (
   body: SimTx,
   eventId: string,
 ): Journal.SettlementAttempt => ({
-  deployment_id: deploymentId,
+  hub_oracle_policy_id: hubOraclePolicyId,
   kind: "deposit",
   event_id: eventId,
   phase: "absorb",
@@ -206,15 +206,15 @@ const attemptOf = (
 const insertJob = (eventId: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-      VALUES (${deploymentId}, 'deposit', ${eventId}, 'absorb')`;
+    yield* sql`INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase)
+      VALUES (${hubOraclePolicyId}, 'deposit', ${eventId}, 'absorb')`;
   });
 
 const jobPhase = (eventId: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{ phase: string }>`SELECT phase FROM settlement_jobs
-      WHERE deployment_id = ${deploymentId} AND event_id = ${eventId}`;
+      WHERE hub_oracle_policy_id = ${hubOraclePolicyId} AND event_id = ${eventId}`;
     return rows[0]?.phase;
   });
 
@@ -293,7 +293,7 @@ describe("settlement confirmation from the intent journal", () => {
     expect(await run(storedStatus(attempt.tx_hash))).toBe("final");
     expect(await tick()).toBeUndefined();
     expect(await run(jobPhase("01"))).toBe("complete");
-    expect(await run(Journal.openAttempts(deploymentId))).toEqual([]);
+    expect(await run(Journal.openAttempts(hubOraclePolicyId))).toEqual([]);
   });
 });
 
@@ -305,14 +305,14 @@ describe("migration 0015 on a database holding the old columns", () => {
       const sql = yield* SqlClient.SqlClient;
       for (const { hash, event, status } of rows) {
         yield* sql`INSERT INTO settlement_jobs
-          (deployment_id, kind, event_id, phase, verified_generation)
-          VALUES (${deploymentId}, 'deposit', ${event},
+          (hub_oracle_policy_id, kind, event_id, phase, verified_generation)
+          VALUES (${hubOraclePolicyId}, 'deposit', ${event},
             ${status === "confirmed" ? "complete" : "absorb"},
             ${status === "confirmed" ? 0 : -1})`;
         yield* sql`INSERT INTO settlement_attempts
-          (deployment_id, kind, event_id, phase, tx_hash, signed_cbor,
+          (hub_oracle_policy_id, kind, event_id, phase, tx_hash, signed_cbor,
            required_outputs, fee_inputs, status, hold_slot, recovery)
-          VALUES (${deploymentId}, 'deposit', ${event}, 'absorb', ${hash},
+          VALUES (${hubOraclePolicyId}, 'deposit', ${event}, 'absorb', ${hash},
             'legacy-body', ARRAY[0], ARRAY[${`${hash}#9`}], ${status}, 10,
             false)`;
       }

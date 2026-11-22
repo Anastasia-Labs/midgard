@@ -32,7 +32,7 @@ const run = <A, E>(
 ) => Effect.runPromise(provideDatabaseLayers(effect));
 /** The stub L1 client's selected wallet (one object, as Lucid keeps it). */
 const stubWallet = {};
-const deploymentId = "a1".repeat(32);
+const hubOraclePolicyId = "a1".repeat(28);
 const REFUSAL =
   "Settlement wallet identity changed or another node owns settlement";
 
@@ -58,7 +58,7 @@ const worker = (token: string, seed: string) =>
         Effect.provideService(NodeConfig, config),
         Effect.provideService(ContractDeploymentIdentity, {
           kind: "manifest",
-          manifestId: deploymentId,
+          hubOraclePolicyId,
         } as unknown as ContractDeploymentIdentity),
         // Only the payout commands of a job read the contracts.
         Effect.provideService(
@@ -97,7 +97,7 @@ describe("settlement ownership handoff", () => {
           const seed = generateSeedPhrase();
           const handedOver = randomUUID();
           const foreign = {
-            deploymentId,
+            hubOraclePolicyId,
             walletAddress: settlementWalletAddress({
               ...(yield* NodeConfig),
               L1_SETTLEMENT_SEED_PHRASE: seed,
@@ -146,7 +146,7 @@ describe("settlement ownership handoff", () => {
         Effect.gen(function* () {
           // An expired lease: only the changed wallet refuses this renew.
           yield* Journal.renew({
-            deploymentId,
+            hubOraclePolicyId,
             walletAddress: "previous-settlement-wallet",
             token: randomUUID(),
           });

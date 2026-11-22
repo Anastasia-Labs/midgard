@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
@@ -461,7 +460,6 @@ export const registerAvailabilityTests = () => {
               28,
             );
             const baseTime = new Date("2026-06-12T00:00:00.000Z");
-            const deploymentMarker = makeDeploymentMarker("de".repeat(32));
             const row = (headerHash: Buffer) => ({
               [PendingBlockFinalizationsDB.Columns.HEADER_HASH]: headerHash,
               [PendingBlockFinalizationsDB.Columns.HEADER_CBOR]: Buffer.from(
@@ -473,11 +471,8 @@ export const registerAvailabilityTests = () => {
               [PendingBlockFinalizationsDB.Columns.REPLAY_KIND]:
                 PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKind
                   .LedgerDelta,
-              [PendingBlockFinalizationsDB.Columns
-                .DEPLOYMENT_MARKER_SCHEMA_VERSION]:
-                deploymentMarker.schemaVersion,
-              [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MANIFEST_ID]:
-                deploymentMarker.manifestId,
+              [PendingBlockFinalizationsDB.Columns.HUB_ORACLE_POLICY_ID]:
+                "de".repeat(28),
               [PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID]:
                 MIDGARD_CONSENSUS_PROFILE_ID,
               [PendingBlockFinalizationsDB.Columns.STATE_QUEUE_LEASE_TOKEN]:

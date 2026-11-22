@@ -77,7 +77,7 @@ const PRIVATE_PROVIDER = "untrusted-provider/opaque-base64-password==";
 const PRIVATE_NATIVE = "native diagnostic opaque/SECRET/==";
 const PRIVATE_LEASE = "private-lease-token:token/SECRET/==";
 const PRIVATE_JOB = "upstream payout error password=opaque/base64==";
-const DEPLOYMENT = "a1".repeat(32);
+const DEPLOYMENT = "a1".repeat(28);
 const PENDING_BLOCK_TX_HASH = "b2".repeat(32);
 const EVENT_ID = `d8799f5820${"a2".repeat(32)}00ff`;
 
@@ -285,7 +285,7 @@ describe("public status HTTP presentation", () => {
             Date.now() - 1_000,
           );
           const sql = yield* SqlClient.SqlClient;
-          yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase, last_error, failures)
+          yield* sql`INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase, last_error, failures)
         VALUES (${DEPLOYMENT}, 'withdrawal', ${EVENT_ID}, 'fund', ${PRIVATE_JOB}, 3)`;
           const handler = yield* NodeHttpServer.makeHandler(
             HttpRouter.empty.pipe(
@@ -357,7 +357,7 @@ describe("public status HTTP presentation", () => {
             ContractDeploymentIdentity,
             ContractDeploymentIdentity.make({
               kind: "manifest",
-              manifestId: DEPLOYMENT,
+              hubOraclePolicyId: DEPLOYMENT,
               consensusProfile: MIDGARD_CONSENSUS_PROFILE,
             }),
           ),

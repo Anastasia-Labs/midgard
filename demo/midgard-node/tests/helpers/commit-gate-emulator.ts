@@ -5,7 +5,6 @@
  * `submitWithDurableIntent`, and what the gate left behind.
  */
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   Data,
@@ -101,7 +100,7 @@ export const preparePendingBlock = async (
         headerCbor: Buffer.from(Data.to(header, SDK.Header), "hex"),
         preparedTxHash,
         metadata: {
-          deploymentMarker: makeDeploymentMarker(digest(0x11)),
+          hubOraclePolicyId: "de".repeat(28),
           consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
           stateQueueLeaseToken: MODELED_LEASE_TOKEN,
           baseSnapshotId: "modeled-pending-base",

@@ -472,7 +472,6 @@ it("fails the parent operation lease after accepted response loss while a later 
             {
               scope:
                 "Actual emulator acceptance and lost response; real in-process parent classifier/lease/SQL composition under the follower-change driver; later operation, landed-block application and mature merge. Synthetic ancestry. No actual Worker IPC, full listen scheduling, native parent failure catcher, merge contention or restart acceptance.",
-              manifestId: h.deployment.manifest.manifestId,
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               deploymentInfoSha256: h.deploymentInfoSha256,
               protocolParameters:

@@ -123,7 +123,7 @@ describe("automatic settlement recovery", () => {
     body.set_ttl(120n);
     const tx = CML.Transaction.new(body, CML.TransactionWitnessSet.new(), true);
     const attempt: SettlementAttempt = {
-      deployment_id: "cd".repeat(32),
+      hub_oracle_policy_id: "cd".repeat(28),
       kind: "deposit",
       event_id: "01",
       phase: "absorb",

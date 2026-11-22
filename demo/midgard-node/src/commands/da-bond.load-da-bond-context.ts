@@ -1,3 +1,4 @@
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CML,
@@ -162,7 +163,7 @@ const daBondContextFrom = async (
   return {
     lucid,
     network,
-    manifestId: manifest.manifestId,
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
     poolValidator: {
       ...spendingValidatorOf(network, spending.scriptRef),
       ...mintingValidatorOf(minting.scriptRef),

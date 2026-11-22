@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { inspect } from "node:util";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SqlClient } from "@effect/sql";
 import type { TxSignBuilder, UTxO } from "@lucid-evolution/lucid";
 import { Effect, Ref } from "effect";
@@ -358,7 +359,9 @@ it("restarts the production native initializer after withdrawal empties an unmer
             {
               scope:
                 "Actual public deposit/withdrawal and native promotion to empty; production initializer restarts under same source owner and real unmerged/merged queue. Nonempty reload genesis is explicitly a sentinel, not the deployment genesis. Synthetic network transport ancestry.",
-              manifestId: h.deployment.manifest.manifestId,
+              hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+                h.deployment.manifest,
+              ),
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               protocolParameters:
                 h.deployment.manifest.cardanoProtocolParameters,

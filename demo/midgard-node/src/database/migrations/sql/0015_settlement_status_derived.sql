@@ -33,4 +33,4 @@ ALTER TABLE settlement_attempts ADD CONSTRAINT settlement_attempts_status_check
   CHECK (status IN ('pending', 'final', 'expired'));
 ALTER TABLE settlement_attempts DROP COLUMN recovery;
 ALTER TABLE settlement_jobs DROP COLUMN verified_generation;
-CREATE INDEX settlement_attempts_open ON settlement_attempts (deployment_id, created_at, tx_hash) WHERE status = 'pending';
+CREATE INDEX settlement_attempts_open ON settlement_attempts (hub_oracle_policy_id, created_at, tx_hash) WHERE status = 'pending';

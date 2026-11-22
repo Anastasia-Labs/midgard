@@ -20,7 +20,7 @@ describe("retained-payload server start retries", () => {
         });
       return {
         configured: true as const,
-        deploymentFingerprint: "ab".repeat(32),
+        deploymentFingerprint: "ab".repeat(28),
         localPeerId: "peer",
         listenMultiaddrs: ["/ip4/0.0.0.0/tcp/4001"],
         announceMultiaddrs: [],

@@ -1,5 +1,4 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it } from "vitest";
 
 import { encodeProtocolInfo } from "../src/commands/protocol-info.js";
@@ -14,15 +13,14 @@ const nodeConfig = {
   MAX_SUBMIT_TX_CBOR_BYTES: CONFIGURED_SUBMIT_CAP_BYTES,
   VALIDATION_STRICTNESS_PROFILE: "phase1_midgard",
 } as const;
-const MANIFEST_ID = "ab".repeat(32);
-const deploymentMarker = makeDeploymentMarker(MANIFEST_ID);
+const HUB_ORACLE_POLICY_ID = "ab".repeat(28);
 
 describe("encodeProtocolInfo", () => {
-  it("advertises the configured network, fees, cap, marker, and V1 wire identity", () => {
+  it("advertises the configured network, fees, cap, deployment, and V1 wire identity", () => {
     const { consensusProfile, ...advertised } = encodeProtocolInfo({
       nodeConfig,
       currentSlot: 123456,
-      deploymentMarker,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
     });
 
     // The published shape is the /protocol-info wire contract: decimal
@@ -32,10 +30,7 @@ describe("encodeProtocolInfo", () => {
     expect(advertised).toStrictEqual({
       apiVersion: 1,
       midgardNativeTxVersion: 1,
-      deploymentMarker: {
-        schemaVersion: "midgard-deployment-marker-v1",
-        manifestId: MANIFEST_ID,
-      },
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       network: "Preview",
       currentSlot: "123456",
       protocolFeeParameters: {
@@ -68,7 +63,7 @@ describe("encodeProtocolInfo", () => {
       encodeProtocolInfo({
         nodeConfig,
         currentSlot: 9_007_199_254_740_993n,
-        deploymentMarker,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       }).currentSlot,
     ).toBe("9007199254740993");
   });
@@ -78,7 +73,7 @@ describe("encodeProtocolInfo", () => {
       encodeProtocolInfo({
         nodeConfig,
         currentSlot: 123456,
-        deploymentMarker,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }).consensusProfile,
     ).toBe(MIDGARD_CONSENSUS_PROFILE);
@@ -89,7 +84,7 @@ describe("encodeProtocolInfo", () => {
       encodeProtocolInfo({
         nodeConfig,
         currentSlot: Number.MAX_SAFE_INTEGER + 1,
-        deploymentMarker,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       }),
     ).toThrow("currentSlot must be a non-negative safe integer");
   });
@@ -102,7 +97,7 @@ describe("encodeProtocolInfo", () => {
           MIN_FEE_A: -1n,
         },
         currentSlot: 1,
-        deploymentMarker,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       }),
     ).toThrow("MIN_FEE_A must be non-negative");
   });
@@ -115,7 +110,7 @@ describe("encodeProtocolInfo", () => {
           MAX_SUBMIT_TX_CBOR_BYTES: 0,
         },
         currentSlot: 1,
-        deploymentMarker,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       }),
     ).toThrow("MAX_SUBMIT_TX_CBOR_BYTES must be a positive safe integer");
   });
@@ -130,7 +125,7 @@ describe("encodeProtocolInfo", () => {
           MAX_SUBMIT_TX_CBOR_BYTES: bound,
         },
         currentSlot: 1,
-        deploymentMarker,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       }).submissionLimits.maxSubmitTxCborBytes,
     ).toBe(bound);
   });
@@ -144,23 +139,20 @@ describe("encodeProtocolInfo", () => {
             MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes + 1,
         },
         currentSlot: 1,
-        deploymentMarker,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       }),
     ).toThrow(
       "MAX_SUBMIT_TX_CBOR_BYTES must not exceed the canonical V1 transaction bound",
     );
   });
 
-  it("rejects a non-exact SDK deployment marker before advertising V1", () => {
+  it("refuses to advertise without the deployment's hub-oracle policy id", () => {
     expect(() =>
       encodeProtocolInfo({
         nodeConfig,
         currentSlot: 1,
-        deploymentMarker: {
-          ...deploymentMarker,
-          legacyFingerprint: deploymentMarker.manifestId,
-        },
+        hubOraclePolicyId: undefined,
       }),
-    ).toThrow(/exactly schemaVersion and manifestId/u);
+    ).toThrow(/hub-oracle policy id/u);
   });
 });

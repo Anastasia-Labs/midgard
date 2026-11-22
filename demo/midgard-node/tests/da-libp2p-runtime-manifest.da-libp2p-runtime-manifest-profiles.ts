@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -53,17 +52,15 @@ describe("DA libp2p runtime manifest profiles", () => {
       "midgard-da-libp2p-runtime-manifest-v1",
     );
     expect(manifest.deployment).toEqual({
-      fingerprint: deploymentInfo.manifestId,
-      contract_deployment_manifest_id: deploymentInfo.manifestId,
+      fingerprint: deploymentInfo.hubOraclePolicyId,
       contract_deployment_info_sha256: deploymentInfo.sha256,
-      identity_source: "contract_deployment_manifest_id",
+      identity_source: "hub_oracle_policy_id",
     });
     const parsed = parseDaProducerPublicationManifest(manifest, {
       DA_LIBP2P_PRIVATE_KEY_SOURCE: PRODUCER_KEY,
     });
     expect(parsed).toMatchObject({
-      deploymentFingerprint: deploymentInfo.manifestId,
-      contractDeploymentManifestId: deploymentInfo.manifestId,
+      deploymentFingerprint: deploymentInfo.hubOraclePolicyId,
       threshold: 1,
       committeePeers: [
         expect.objectContaining({
@@ -175,8 +172,7 @@ describe("DA libp2p runtime manifest profiles", () => {
             ContractDeploymentIdentity,
             new ContractDeploymentIdentity({
               kind: "manifest",
-              manifestId: identity.manifestId,
-              deploymentMarker: makeDeploymentMarker(identity.manifestId),
+              hubOraclePolicyId: identity.hubOraclePolicyId,
               manifest: identity.manifest,
               consensusProfile: MIDGARD_CONSENSUS_PROFILE,
             }),
@@ -208,8 +204,7 @@ describe("DA libp2p runtime manifest profiles", () => {
               ContractDeploymentIdentity,
               new ContractDeploymentIdentity({
                 kind: "manifest",
-                manifestId: identity.manifestId,
-                deploymentMarker: makeDeploymentMarker(identity.manifestId),
+                hubOraclePolicyId: identity.hubOraclePolicyId,
                 manifest: identity.manifest,
                 consensusProfile: MIDGARD_CONSENSUS_PROFILE,
               }),
@@ -427,19 +422,6 @@ describe("DA libp2p runtime manifest profiles", () => {
         { DA_LIBP2P_PRIVATE_KEY_SOURCE: PRODUCER_KEY },
       ),
     ).toThrow(/schemaVersion/);
-
-    expect(() =>
-      parseDaProducerPublicationManifest(
-        {
-          ...manifest,
-          deployment: {
-            ...(manifest.deployment as Record<string, unknown>),
-            contract_deployment_manifest_id: "cd".repeat(32),
-          },
-        },
-        { DA_LIBP2P_PRIVATE_KEY_SOURCE: PRODUCER_KEY },
-      ),
-    ).toThrow(/fingerprint must equal/);
 
     const deploymentWithoutAuditSha = {
       ...(manifest.deployment as Record<string, unknown>),

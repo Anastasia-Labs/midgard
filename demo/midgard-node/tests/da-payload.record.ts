@@ -1,8 +1,4 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import {
-  makeDeploymentMarker,
-  MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -197,10 +193,7 @@ export const record = ({
     [PendingBlockFinalizationsDB.Columns.REPLAY_KIND]:
       PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKind
         .LedgerDelta,
-    [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]:
-      MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
-    [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MANIFEST_ID]:
-      makeDeploymentMarker("de".repeat(32)).manifestId,
+    [PendingBlockFinalizationsDB.Columns.HUB_ORACLE_POLICY_ID]: "de".repeat(28),
     [PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID]:
       consensusProfileId,
     [PendingBlockFinalizationsDB.Columns.STATE_QUEUE_LEASE_TOKEN]: "lease",

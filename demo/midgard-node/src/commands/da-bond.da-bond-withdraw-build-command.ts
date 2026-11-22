@@ -123,7 +123,7 @@ export const daBondWithdrawBuildCommand = async (
   const unsigned: DaBondUnsignedFile = {
     format: DA_BOND_UNSIGNED_FORMAT,
     network: ctx.network,
-    manifestId: ctx.manifestId,
+    hubOraclePolicyId: ctx.hubOraclePolicyId,
     action,
     txCbor,
     txBodyHash: SDKDa.daBondPoolTxBodyHash(txCbor),
@@ -224,9 +224,9 @@ export const daBondAssembleCommand = async (
       `Refusing to assemble: the file is for network ${unsigned.network}, the deployment is on ${ctx.network}`,
     );
   }
-  if (unsigned.manifestId !== ctx.manifestId) {
+  if (unsigned.hubOraclePolicyId !== ctx.hubOraclePolicyId) {
     throw new Error(
-      `Refusing to assemble: the file is for deployment ${unsigned.manifestId}, not ${ctx.manifestId}`,
+      `Refusing to assemble: the file is for deployment ${unsigned.hubOraclePolicyId}, not ${ctx.hubOraclePolicyId}`,
     );
   }
   // The witness checks run the ledger's Ed25519 check.

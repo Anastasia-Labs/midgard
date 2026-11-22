@@ -57,10 +57,10 @@ describe("stored Flat migration snapshot", () => {
                   ),
               }),
             );
-            const deploymentId = "51".repeat(32);
+            const hubOraclePolicyId = "51".repeat(28);
             yield* writer.execute(
-              "INSERT INTO node_deployment (deployment_id) VALUES ($1)",
-              [deploymentId],
+              "INSERT INTO node_deployment (hub_oracle_policy_id) VALUES ($1)",
+              [hubOraclePolicyId],
               undefined,
             );
             yield* writer.execute("COMMIT", [], undefined);
@@ -74,8 +74,8 @@ describe("stored Flat migration snapshot", () => {
               },
             });
             expect(
-              yield* sql`SELECT deployment_id FROM node_deployment`,
-            ).toEqual([{ deployment_id: deploymentId }]);
+              yield* sql`SELECT hub_oracle_policy_id FROM node_deployment`,
+            ).toEqual([{ hub_oracle_policy_id: hubOraclePolicyId }]);
             expect(
               yield* sql`SELECT * FROM schema_migrations ORDER BY version`,
             ).toEqual(ledger);

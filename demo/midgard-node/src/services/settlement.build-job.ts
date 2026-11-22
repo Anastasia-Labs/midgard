@@ -132,7 +132,7 @@ const buildJob = (
                 `${bodyInputs.get(i).transaction_id().to_hex()}#${bodyInputs.get(i).index()}`,
             );
             const attempt: Journal.SettlementAttempt = {
-              deployment_id: owner.deploymentId,
+              hub_oracle_policy_id: owner.hubOraclePolicyId,
               kind: job.kind,
               event_id: job.event_id,
               phase: selectedPhase,
@@ -323,7 +323,7 @@ const acquireOwnership = (
         });
         const boundWallet =
           error instanceof Journal.SettlementOwnershipRefused
-            ? yield* Journal.boundWalletAddress(owner.deploymentId).pipe(
+            ? yield* Journal.boundWalletAddress(owner.hubOraclePolicyId).pipe(
                 Effect.mapError((cause) => failure(false, cause)),
               )
             : undefined;
@@ -363,7 +363,10 @@ export const settlementProgram = (
       );
     };
     const identity = yield* ContractDeploymentIdentity;
-    if (identity.kind !== "manifest" || identity.manifestId === undefined)
+    if (
+      identity.kind !== "manifest" ||
+      identity.hubOraclePolicyId === undefined
+    )
       return yield* Effect.fail(
         new Error(
           "Automatic settlement requires a canonical deployment manifest",
@@ -382,7 +385,7 @@ export const settlementProgram = (
       switchToOperatorsMainWallet: Effect.void,
     });
     const owner: Journal.SettlementOwner = {
-      deploymentId: identity.manifestId,
+      hubOraclePolicyId: identity.hubOraclePolicyId,
       walletAddress,
       token: ownerToken,
     };

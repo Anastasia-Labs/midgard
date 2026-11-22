@@ -1,7 +1,7 @@
 import { writeJsonFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import {
   type DeploymentManifest,
-  makeDeploymentMarker,
+  deploymentManifestHubOraclePolicyId,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
@@ -9,7 +9,7 @@ import { manifestDeployableScripts } from "../deployable-scripts.js";
 import { publicDeploymentBlueprintRegistry } from "../deployment-blueprint-registry.js";
 import { mutateDeploymentRunState } from "../e2e/run-state.mutate-deployment-run-state.js";
 import {
-  bindDeploymentRunStateToMarker,
+  bindDeploymentRunStateToManifest,
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
   sha256File,
@@ -179,7 +179,8 @@ export const writeLiveContractDeploymentInfoProgram = (
       outputPath,
       options,
     );
-    const marker = makeDeploymentMarker(deploymentManifest.manifestId);
+    const hubOraclePolicyId =
+      deploymentManifestHubOraclePolicyId(deploymentManifest);
     const runStatePath =
       options.runStatePath ?? defaultDeploymentRunStatePath();
     const runState = yield* Effect.tryPromise({
@@ -190,12 +191,12 @@ export const writeLiveContractDeploymentInfoProgram = (
         }),
     });
     if (
-      runState?.identity.deploymentMarker !== undefined &&
-      runState.identity.deploymentMarker.manifestId !== marker.manifestId
+      runState?.identity.hubOraclePolicyId !== undefined &&
+      runState.identity.hubOraclePolicyId !== hubOraclePolicyId
     ) {
       return yield* Effect.fail(
         new Error(
-          `Refusing to replace final deployment manifest ${runState.identity.deploymentMarker.manifestId} with ${marker.manifestId}; start an explicit fresh deployment run instead`,
+          `Refusing to replace the final deployment with hub-oracle policy id ${runState.identity.hubOraclePolicyId} with ${hubOraclePolicyId}; start an explicit fresh deployment run instead`,
         ),
       );
     }
@@ -208,7 +209,7 @@ export const writeLiveContractDeploymentInfoProgram = (
         try: () =>
           writeJsonFileAtomic(`${outputPath}.blueprint-registry.json`, {
             schemaVersion: "midgard-deployment-parameter-registry-v1",
-            manifestId: deploymentManifest.manifestId,
+            hubOraclePolicyId,
             blueprintHash: deploymentManifest.artifacts.blueprintHash,
             deployment: registry,
             referenceScripts: deploymentManifest.referenceScripts,
@@ -235,12 +236,12 @@ export const writeLiveContractDeploymentInfoProgram = (
             runStatePath,
             () => {
               throw new Error(
-                "Deployment run state disappeared before final marker binding",
+                "Deployment run state disappeared before final manifest binding",
               );
             },
             (current) =>
-              bindDeploymentRunStateToMarker(current, {
-                marker,
+              bindDeploymentRunStateToManifest(current, {
+                hubOraclePolicyId,
                 manifestPath,
                 manifestSha256,
               }),
@@ -264,7 +265,7 @@ export type ReconcileInitializedDeploymentManifestOptions = {
 export type ReconcileInitializedDeploymentManifestSummary = {
   readonly status: "complete";
   readonly path: string;
-  readonly manifestId: string;
+  readonly hubOraclePolicyId: string;
   readonly initTxHash: string;
   readonly hubOracleOutRef: string;
   readonly referenceScriptsConfirmed: number;
@@ -330,7 +331,7 @@ export const reconcileInitializedDeploymentManifestProgram = ({
     return {
       status: "complete" as const,
       path,
-      manifestId: manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
       initTxHash: normalizedInitTxHash,
       hubOracleOutRef: `${hubOracleWitness.txHash}#${hubOracleWitness.outputIndex.toString()}`,
       referenceScriptsConfirmed: Object.values(

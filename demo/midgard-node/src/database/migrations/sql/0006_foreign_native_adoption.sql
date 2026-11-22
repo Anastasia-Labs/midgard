@@ -4,7 +4,7 @@ CREATE TABLE foreign_native_adoptions (
   sequence BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   adoption_id BYTEA NOT NULL UNIQUE CHECK (octet_length(adoption_id) = 32),
   binding_digest BYTEA NOT NULL CHECK (octet_length(binding_digest) = 32),
-  manifest_id BYTEA NOT NULL CHECK (octet_length(manifest_id) = 32),
+  hub_oracle_policy_id BYTEA NOT NULL CHECK (octet_length(hub_oracle_policy_id) = 28),
   source_hash BYTEA NOT NULL CHECK (octet_length(source_hash) = 32),
   source_slot BIGINT NOT NULL CHECK (source_slot >= 0),
   source_height BIGINT NOT NULL CHECK (source_height >= 0),
@@ -34,7 +34,7 @@ CREATE INDEX idx_foreign_native_adoption_source
 -- bridge ConfirmedLedger to the freshly observed confirmed header.
 CREATE TABLE foreign_verified_segments (
   binding_digest BYTEA NOT NULL CHECK (octet_length(binding_digest) = 32),
-  manifest_id BYTEA NOT NULL CHECK (octet_length(manifest_id) = 32),
+  hub_oracle_policy_id BYTEA NOT NULL CHECK (octet_length(hub_oracle_policy_id) = 28),
   header_hash BYTEA NOT NULL CHECK (octet_length(header_hash) = 28),
   parent_header_hash BYTEA NOT NULL CHECK (octet_length(parent_header_hash) = 28),
   parent_root TEXT NOT NULL CHECK (parent_root ~ '^[0-9a-f]{64}$'),
@@ -51,7 +51,7 @@ CREATE TABLE foreign_verified_segments (
 CREATE INDEX idx_foreign_verified_segment_parent ON foreign_verified_segments (binding_digest,parent_header_hash);
 CREATE TABLE foreign_confirmed_frontier (
   binding_digest BYTEA PRIMARY KEY CHECK (octet_length(binding_digest) = 32),
-  manifest_id BYTEA NOT NULL CHECK (octet_length(manifest_id) = 32),
+  hub_oracle_policy_id BYTEA NOT NULL CHECK (octet_length(hub_oracle_policy_id) = 28),
   header_hash BYTEA NOT NULL CHECK (octet_length(header_hash) = 28),
   utxos_root TEXT NOT NULL CHECK (utxos_root ~ '^[0-9a-f]{64}$')
 );

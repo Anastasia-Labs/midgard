@@ -105,7 +105,7 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
         message:
           "Startup deployment manifest verification failed; refusing to attach without a finalized contract deployment manifest (the node never deploys: run the deployment commands first)",
         cause:
-          "manifest_id=unknown,path=unknown,recommendation=fresh_redeploy_required,mismatches=[contract deployment manifest file not found]",
+          "hub_oracle_policy_id=unknown,path=unknown,recommendation=fresh_redeploy_required,mismatches=[contract deployment manifest file not found]",
       }),
     );
   }
@@ -115,7 +115,7 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
       new SDK.StateQueueError({
         message:
           "Startup deployment manifest verification failed; refusing to attach to a mismatched deployment",
-        cause: `manifest_id=${manifestReport.manifestId ?? "unknown"},path=${manifestReport.path ?? "unknown"},recommendation=${manifestReport.recommendation},mismatches=[${manifestReport.mismatches.join(";")}]`,
+        cause: `hub_oracle_policy_id=${manifestReport.hubOraclePolicyId ?? "unknown"},path=${manifestReport.path ?? "unknown"},recommendation=${manifestReport.recommendation},mismatches=[${manifestReport.mismatches.join(";")}]`,
       }),
     );
   }
@@ -130,7 +130,7 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
     },
   );
   yield* Effect.logInfo(
-    `Startup contract deployment manifest verified: manifest_id=${manifestReport.manifestId ?? "unknown"},path=${manifestReport.path ?? "unknown"}`,
+    `Startup contract deployment manifest verified: hub_oracle_policy_id=${manifestReport.hubOraclePolicyId ?? "unknown"},path=${manifestReport.path ?? "unknown"}`,
   );
 }).pipe(
   Effect.tapError((error) =>

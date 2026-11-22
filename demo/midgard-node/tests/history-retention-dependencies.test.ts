@@ -20,7 +20,7 @@ const prune = () =>
       confirmedHeadHash: header("foreign-head"),
       liveQueueHeaderHashes: [],
     },
-    deploymentIdentityDigest: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     batchLimit: 1,
   });
 

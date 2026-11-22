@@ -17,8 +17,8 @@
  * - `restartRuntime` stops every service of the running generation and
  *   starts the next on the same database and emulator, as a node restart
  *   does: a fresh driver's first view runs the recompute and the startup
- *   preparation again. With `manifestId`, the next generation starts under
- *   that deployment manifest id instead.
+ *   preparation again. With `hubOraclePolicyId`, the next generation starts
+ *   under that deployment's hub-oracle policy id instead.
  *
  * Each generation first runs the node's database initialization
  * (`initializeNodeDatabase`), before it follows the chain or starts the
@@ -162,10 +162,12 @@ export const openProductionLifecycle = async (
   const startRuntime = async (
     globals: Globals,
     generation: number,
-    manifestId?: string,
+    hubOraclePolicyId?: string,
   ) => {
     const generationIdentity =
-      manifestId === undefined ? identity : { ...identity, manifestId };
+      hubOraclePolicyId === undefined
+        ? identity
+        : { ...identity, hubOraclePolicyId };
     const services = Layer.mergeAll(
       Layer.succeed(NodeConfig, nodeConfig),
       Layer.succeed(Globals, globals),
@@ -461,12 +463,12 @@ export const openProductionLifecycle = async (
     },
     restartRuntime: async ({
       afterStop,
-      manifestId,
+      hubOraclePolicyId,
     }: {
       /** Observe retained storage only after every old service has closed. */
       readonly afterStop?: () => Promise<void>;
-      /** The deployment manifest id the next generation starts under. */
-      readonly manifestId?: string;
+      /** The hub-oracle policy id the next generation starts under. */
+      readonly hubOraclePolicyId?: string;
     } = {}) => {
       if (restarting)
         throw new Error("Fixture runtime restart was already requested");
@@ -479,7 +481,7 @@ export const openProductionLifecycle = async (
         current = await startRuntime(
           await makeGlobalsService(),
           stoppedGenerations.length,
-          manifestId,
+          hubOraclePolicyId,
         );
         restarting = false;
         return current.handle;

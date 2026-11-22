@@ -199,7 +199,7 @@ const run = <A, E>(
           Effect.provideService(Lucid, { api: lucid } as never),
           Effect.provideService(MidgardContracts, contracts as never),
           Effect.provideService(ContractDeploymentIdentity, {
-            manifestId: undefined,
+            hubOraclePolicyId: undefined,
           } as never),
         ),
       );

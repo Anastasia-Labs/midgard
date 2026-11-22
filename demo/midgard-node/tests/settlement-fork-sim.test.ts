@@ -62,7 +62,7 @@ const SIM_K = 6;
 const CD = 2;
 const depths = { confirmationDepth: CD, securityParameter: SIM_K };
 const RUNS = Number(process.env.SETTLEMENT_FORK_SIM_RUNS ?? "6");
-const deploymentId = "a8".repeat(32);
+const hubOraclePolicyId = "a8".repeat(28);
 const databases = testDatabases();
 
 afterAll(async () => {
@@ -147,7 +147,7 @@ const settlementSimulation = (stats: Stats, node: () => Run) => {
   const lastLevel = new Map<string, SettlementLevel>();
   const finals = new Set<string>();
   const owner: Journal.SettlementOwner = {
-    deploymentId,
+    hubOraclePolicyId,
     walletAddress: "settlement-wallet",
     token: randomUUID(),
   };
@@ -211,12 +211,12 @@ const settlementSimulation = (stats: Stats, node: () => Run) => {
         await run(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
-            yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-              VALUES (${deploymentId}, 'deposit', ${p.eventId}, 'absorb')`;
+            yield* sql`INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase)
+              VALUES (${hubOraclePolicyId}, 'deposit', ${p.eventId}, 'absorb')`;
             yield* Journal.saveAttempt(
               owner,
               {
-                deployment_id: deploymentId,
+                hub_oracle_policy_id: hubOraclePolicyId,
                 kind: "deposit",
                 event_id: p.eventId,
                 phase: "absorb",
@@ -244,8 +244,8 @@ const settlementSimulation = (stats: Stats, node: () => Run) => {
           status: string;
           job_phase: string;
         }>`SELECT a.tx_hash, a.status, j.phase AS job_phase
-          FROM settlement_attempts a JOIN settlement_jobs j USING (deployment_id, kind, event_id)
-          WHERE a.deployment_id = ${deploymentId}`;
+          FROM settlement_attempts a JOIN settlement_jobs j USING (hub_oracle_policy_id, kind, event_id)
+          WHERE a.hub_oracle_policy_id = ${hubOraclePolicyId}`;
       }),
     );
     for (const row of rows) {

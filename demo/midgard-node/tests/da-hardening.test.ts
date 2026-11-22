@@ -1,6 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { ConfigProvider, Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -34,27 +33,25 @@ describe("DA hardening startup and configuration", () => {
   });
 
   it("binds DA startup to the exact selected deployment manifest", () => {
-    const manifestId = "ab".repeat(32);
+    const hubOraclePolicyId = "ab".repeat(28);
     expect(() =>
-      assertDaDeploymentIdentityCompatible(manifestId, {
+      assertDaDeploymentIdentityCompatible(hubOraclePolicyId, {
         kind: "manifest",
-        manifestId,
-        deploymentMarker: makeDeploymentMarker(manifestId),
+        hubOraclePolicyId,
         path: "/deployment.json",
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }),
     ).not.toThrow();
     expect(() =>
-      assertDaDeploymentIdentityCompatible("cd".repeat(32), {
+      assertDaDeploymentIdentityCompatible("cd".repeat(28), {
         kind: "manifest",
-        manifestId,
-        deploymentMarker: makeDeploymentMarker(manifestId),
+        hubOraclePolicyId,
         path: "/deployment.json",
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }),
     ).toThrow(/identities do not match/);
     expect(() =>
-      assertDaDeploymentIdentityCompatible(manifestId, {
+      assertDaDeploymentIdentityCompatible(hubOraclePolicyId, {
         kind: "derived",
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }),
@@ -63,12 +60,11 @@ describe("DA hardening startup and configuration", () => {
 
   it("rejects deployment mismatch before any later startup effect", async () => {
     const calls: string[] = [];
-    const manifestId = "ab".repeat(32);
+    const hubOraclePolicyId = "ab".repeat(28);
     const localPreflight = Effect.sync(() => {
-      assertDaDeploymentIdentityCompatible("cd".repeat(32), {
+      assertDaDeploymentIdentityCompatible("cd".repeat(28), {
         kind: "manifest",
-        manifestId,
-        deploymentMarker: makeDeploymentMarker(manifestId),
+        hubOraclePolicyId,
         path: "/deployment.json",
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       });

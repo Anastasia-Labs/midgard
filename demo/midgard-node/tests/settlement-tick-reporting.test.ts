@@ -63,7 +63,7 @@ const run = <A, E>(
 ) => Effect.runPromise(provideDatabaseLayers(effect));
 /** The stub L1 client's selected wallet (one object, as Lucid keeps it). */
 const stubWallet = {};
-const deploymentId = "a2".repeat(32);
+const hubOraclePolicyId = "a2".repeat(28);
 const UNKNOWN = "An unknown error occurred";
 /** A withdrawal event id as the journal keys it: the event's bytes in hex. */
 const EVENT_ID = "cc".repeat(34);
@@ -79,7 +79,7 @@ beforeEach(() =>
 
 /** A signed-looking withdrawal initialize body, valid until slot `ttl`. */
 const pendingAttempt = (ttl = 120n): Journal.SettlementAttempt =>
-  pendingSettlementAttempt({ deploymentId, eventId: EVENT_ID, ttl });
+  pendingSettlementAttempt({ hubOraclePolicyId, eventId: EVENT_ID, ttl });
 
 type L1 = {
   readonly transactionStatus?: (hash: string) => Promise<unknown>;
@@ -103,15 +103,15 @@ const firstTick = (l1: (attempt: Journal.SettlementAttempt) => L1) =>
     const config = { ...(yield* NodeConfig), L1_SETTLEMENT_SEED_PHRASE: seed };
     const token = randomUUID();
     const owner = {
-      deploymentId,
+      hubOraclePolicyId,
       walletAddress: settlementWalletAddress(config),
       token,
     };
     const probe = l1(pendingAttempt());
     const attempt = pendingAttempt(probe.ttl);
     const sql = yield* SqlClient.SqlClient;
-    yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-      VALUES (${deploymentId}, ${attempt.kind}, ${attempt.event_id}, ${attempt.phase})`;
+    yield* sql`INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase)
+      VALUES (${hubOraclePolicyId}, ${attempt.kind}, ${attempt.event_id}, ${attempt.phase})`;
     const {
       transactionStatus,
       submitTx,
@@ -134,7 +134,7 @@ const firstTick = (l1: (attempt: Journal.SettlementAttempt) => L1) =>
         Effect.provideService(NodeConfig, config),
         Effect.provideService(ContractDeploymentIdentity, {
           kind: "manifest",
-          manifestId: deploymentId,
+          hubOraclePolicyId,
           l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
         } as unknown as ContractDeploymentIdentity),
         Effect.provideService(
@@ -266,7 +266,9 @@ describe("settlement tick reporting", () => {
     expect(early.dueInMs).toBeGreaterThan(15_000);
     expect(early.dueInMs).toBeLessThanOrEqual(20_000);
     expect(
-      await run(Journal.stuckJobs(deploymentId, SETTLEMENT_JOB_FAILURE_CAP)),
+      await run(
+        Journal.stuckJobs(hubOraclePolicyId, SETTLEMENT_JOB_FAILURE_CAP),
+      ),
     ).toEqual({ count: 0, first: undefined });
 
     // The failure that reaches the cap: stuck, retried only hourly, and
@@ -282,7 +284,7 @@ describe("settlement tick reporting", () => {
     expect(capped.dueInMs).toBeGreaterThan(SETTLEMENT_STUCK_RETRY_MS - 60_000);
     expect(capped.dueInMs).toBeLessThanOrEqual(SETTLEMENT_STUCK_RETRY_MS);
     const stuck = await run(
-      Journal.stuckJobs(deploymentId, SETTLEMENT_JOB_FAILURE_CAP),
+      Journal.stuckJobs(hubOraclePolicyId, SETTLEMENT_JOB_FAILURE_CAP),
     );
     expect(stuck.count).toBe(1);
     expect(settlementStuckDetail(stuck)).toBe(
@@ -293,8 +295,8 @@ describe("settlement tick reporting", () => {
     const next = await run(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-          VALUES (${deploymentId}, 'deposit', ${"dd".repeat(34)}, 'absorb')`;
+        yield* sql`INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase)
+          VALUES (${hubOraclePolicyId}, 'deposit', ${"dd".repeat(34)}, 'absorb')`;
         return yield* Journal.nextJob(capped.owner);
       }),
     );
@@ -404,7 +406,7 @@ describe("settlement tick reporting", () => {
           Effect.provideService(NodeConfig, config),
           Effect.provideService(ContractDeploymentIdentity, {
             kind: "manifest",
-            manifestId: deploymentId,
+            hubOraclePolicyId,
           } as unknown as ContractDeploymentIdentity),
           Effect.provideService(
             MidgardContracts,

@@ -99,7 +99,10 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import { type DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  type DeploymentManifest,
+  deploymentManifestHubOraclePolicyId,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
 import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
@@ -333,7 +336,7 @@ export const TEST_DA_PRODUCER_PEER_ID =
 export const TEST_DA_COMMITTEE_PEER_ID =
   "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
 
-export const TEST_DA_DEPLOYMENT_ID = "ab".repeat(32);
+export const TEST_DA_DEPLOYMENT_ID = "ab".repeat(28);
 
 export const DA_PUBLIC_RETAINED_PEER_ID =
   "12D3KooWQYV9dGMFoRzNStwpXztXaBUjtPqi6aU76ZgUriHhKust";
@@ -399,9 +402,8 @@ beforeAll(async () => {
       network: "Preprod",
       deployment: {
         fingerprint: TEST_DA_DEPLOYMENT_ID,
-        contract_deployment_manifest_id: TEST_DA_DEPLOYMENT_ID,
         contract_deployment_info_sha256: "cd".repeat(32),
-        identity_source: "contract_deployment_manifest_id",
+        identity_source: "hub_oracle_policy_id",
       },
       runtime_topology: producerTopology,
       da_transport: {
@@ -1316,16 +1318,17 @@ export const configureEmulatorDaRuntimeManifest = async (published?: {
   );
   const manifestPath = join(activeDaManifestDirectory, "runtime-manifest.json");
   const deploymentFingerprint =
-    published?.manifest.manifestId ?? "de".repeat(32);
+    published === undefined
+      ? "de".repeat(28)
+      : deploymentManifestHubOraclePolicyId(published.manifest);
   const manifest = {
     schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
     network: published?.manifest.network ?? "Preview",
     deployment: {
       fingerprint: deploymentFingerprint,
-      contract_deployment_manifest_id: deploymentFingerprint,
       contract_deployment_info_sha256:
         published?.deploymentInfoSha256 ?? "cd".repeat(32),
-      identity_source: "contract_deployment_manifest_id",
+      identity_source: "hub_oracle_policy_id",
     },
     runtime_topology: {
       target: "producer",

@@ -137,15 +137,15 @@ export const buildOnVerifiedCommitBaseProgram = (
     const workerStartedAtMs = Date.now();
     const nodeConfig = yield* NodeConfig;
     const deploymentIdentity = yield* ContractDeploymentIdentity;
-    if (deploymentIdentity.deploymentMarker === undefined) {
+    const { hubOraclePolicyId } = deploymentIdentity;
+    if (hubOraclePolicyId === undefined) {
       return yield* Effect.fail(
         new CommitWorkerInvariantError({
           message:
-            "V1 commit production requires a verified final deployment marker",
+            "V1 commit production requires a verified final deployment manifest",
         }),
       );
     }
-    const deploymentMarker = deploymentIdentity.deploymentMarker;
     yield* configureCommitMpfRuntime(nodeConfig);
     if (nativeMpfClient === undefined || workerInput.nativeMpf === undefined) {
       return yield* Effect.fail(
@@ -771,7 +771,7 @@ export const buildOnVerifiedCommitBaseProgram = (
         const output = yield* submitDepositOnlyCommit({
           contracts: submissionContracts,
           consensusProfile: deploymentIdentity.consensusProfile,
-          deploymentMarker,
+          hubOraclePolicyId,
           latestBlock,
           endTime: fixedHistoryEndTime,
           blockTimeMs,
@@ -812,7 +812,7 @@ export const buildOnVerifiedCommitBaseProgram = (
         const output = yield* submitTxBackedCommit({
           contracts: submissionContracts,
           consensusProfile: deploymentIdentity.consensusProfile,
-          deploymentMarker,
+          hubOraclePolicyId,
           latestBlock,
           endTime,
           blockTimeMs,

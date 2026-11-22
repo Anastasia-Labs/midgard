@@ -27,7 +27,7 @@ export const notifyCommitPlanningSelection = (input: {
     if (
       input.workerInput.history === undefined ||
       input.parent === undefined ||
-      input.identity.manifestId === undefined
+      input.identity.hubOraclePolicyId === undefined
     )
       return yield* input.notify({
         type: "CommitPlanningNotice",
@@ -56,7 +56,6 @@ export const notifyCommitPlanningSelection = (input: {
         epoch: input.workerInput.history.epoch,
         baseHeaderHash,
         baseUtxosRoot: input.baseRoot,
-        deploymentFingerprint: input.identity.manifestId,
       },
       coverageStartTimeMs: input.startTimeMs,
       selectedEndTimeMs: input.plan.window.endTimeMs,

@@ -40,7 +40,6 @@ const selected: CommitPlanningSelection = {
     epoch: "1",
     baseHeaderHash: "bb".repeat(28),
     baseUtxosRoot: "cc".repeat(32),
-    deploymentFingerprint: "dd".repeat(32),
   },
   coverageStartTimeMs: 100,
   selectedEndTimeMs: 200,
@@ -71,7 +70,6 @@ const project = (
     gate,
     localEpoch: gate.epoch,
     recomputing: false,
-    deploymentFingerprint: selected.authority.deploymentFingerprint!,
     nowMs: 5_050,
     maxAgeMs: 100,
     ...overrides,
@@ -161,7 +159,7 @@ it("real driver epochs cross the compiled planning notifier and dispatcher lossl
           },
           identity: {
             kind: "derived",
-            manifestId: selected.authority.deploymentFingerprint!,
+            hubOraclePolicyId: "dd".repeat(28),
             consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           },
           baseRoot: selected.authority.baseUtxosRoot,
@@ -260,7 +258,6 @@ it("real driver epochs cross the compiled planning notifier and dispatcher lossl
             gate,
             localEpoch,
             recomputing: false,
-            deploymentFingerprint: selected.authority.deploymentFingerprint!,
             nowMs: Date.now(),
             maxAgeMs: 10_000,
           });
@@ -372,7 +369,7 @@ describe("planning authority and freshness", () => {
     ).toMatchObject({ status: "stale", reason: "follower_authority_changed" });
   });
 
-  it("marks a prior plan stale after a rewind, forward view, new epoch, recompute or deployment change", () => {
+  it("marks a prior plan stale after a rewind, forward view, new epoch or recompute", () => {
     const snapshot = { selection: selected, receivedAtMs: 5_010 };
     expect(project(snapshot)).toMatchObject({
       status: "current",
@@ -383,7 +380,6 @@ describe("planning authority and freshness", () => {
       { gate: { ...gate, applied: { ...gate.applied!, slot: 102 } } },
       { localEpoch: "2" },
       { recomputing: true },
-      { deploymentFingerprint: "ee".repeat(32) },
       { nowMs: 5_101 },
       { nowMs: 4_999 },
     ])

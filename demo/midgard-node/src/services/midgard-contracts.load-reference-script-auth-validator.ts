@@ -7,7 +7,6 @@ import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-prof
 import {
   type DeploymentManifest,
   type DeploymentManifestL1Finality,
-  type DeploymentMarker,
   parseDeploymentManifestAvailabilityChallenge,
   parseDeploymentManifestEventHistoryBounds,
   verifyFinalizedDeploymentManifest,
@@ -58,8 +57,11 @@ type Blueprint = SDK.FaultProofBlueprint;
 
 export type ContractDeploymentIdentityValue = {
   readonly kind: "manifest" | "derived";
-  readonly manifestId?: string;
-  readonly deploymentMarker?: DeploymentMarker;
+  /**
+   * The deployment's hub-oracle policy id (56 lowercase hex), from the
+   * manifest; absent for derived/dev contract bundles.
+   */
+  readonly hubOraclePolicyId?: string;
   readonly path?: string;
   readonly consensusProfile: MidgardConsensusProfile;
   readonly l1Finality?: DeploymentManifestL1Finality;

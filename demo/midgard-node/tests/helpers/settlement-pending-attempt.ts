@@ -8,11 +8,11 @@ import type * as Journal from "../../src/database/settlement.js";
 
 /** A signed-looking withdrawal initialize body, valid until slot `ttl`. */
 export const pendingSettlementAttempt = ({
-  deploymentId,
+  hubOraclePolicyId,
   eventId,
   ttl = 120n,
 }: {
-  readonly deploymentId: string;
+  readonly hubOraclePolicyId: string;
   readonly eventId: string;
   readonly ttl?: bigint;
 }): Journal.SettlementAttempt => {
@@ -33,7 +33,7 @@ export const pendingSettlementAttempt = ({
   body.set_ttl(ttl);
   const tx = CML.Transaction.new(body, CML.TransactionWitnessSet.new(), true);
   return {
-    deployment_id: deploymentId,
+    hub_oracle_policy_id: hubOraclePolicyId,
     kind: "withdrawal",
     event_id: eventId,
     phase: "initialize",

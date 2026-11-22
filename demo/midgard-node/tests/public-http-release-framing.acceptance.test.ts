@@ -117,7 +117,7 @@ describe("genuine public constructor mounted framing", () => {
     );
     const identity = Schema.decodeUnknownSync(
       Schema.Struct({
-        manifestId: Schema.String,
+        hubOraclePolicyId: Schema.String,
         blueprintHash: Schema.String,
       }),
     )(parameters);

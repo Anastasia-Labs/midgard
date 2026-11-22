@@ -33,7 +33,7 @@ const WITHDRAW_ACTIONS: readonly DaBondWithdrawAction[] = [
 export type DaBondUnsignedFile = Readonly<{
   format: typeof DA_BOND_UNSIGNED_FORMAT;
   network: string;
-  manifestId: string;
+  hubOraclePolicyId: string;
   action: DaBondWithdrawAction;
   txCbor: string;
   txBodyHash: string;
@@ -217,12 +217,14 @@ export const parseDaBondUnsignedFile = (
     throw new Error(`${label}: field action is missing or malformed`);
   }
   const network = value.network;
-  const manifestId = value.manifestId;
+  const hubOraclePolicyId = value.hubOraclePolicyId;
   if (typeof network !== "string" || network.length === 0) {
     throw new Error(`${label}: field network is missing or malformed`);
   }
-  if (typeof manifestId !== "string" || manifestId.length === 0) {
-    throw new Error(`${label}: field manifestId is missing or malformed`);
+  if (typeof hubOraclePolicyId !== "string" || hubOraclePolicyId.length === 0) {
+    throw new Error(
+      `${label}: field hubOraclePolicyId is missing or malformed`,
+    );
   }
   const txCbor = requireString(value, "txCbor", HEX, label);
   const txBodyHash = requireString(value, "txBodyHash", TX_HASH, label);
@@ -273,7 +275,7 @@ export const parseDaBondUnsignedFile = (
   return {
     format: DA_BOND_UNSIGNED_FORMAT,
     network,
-    manifestId,
+    hubOraclePolicyId,
     action: action as DaBondWithdrawAction,
     txCbor,
     txBodyHash,

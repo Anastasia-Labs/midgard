@@ -105,7 +105,7 @@ const getPipelineStatus = Effect.gen(function* () {
  */
 const runAgainstShard = <A, E, R>(
   program: Effect.Effect<A, E, R>,
-  manifestId?: string,
+  hubOraclePolicyId?: string,
 ) =>
   Effect.runPromise(
     provideDatabaseLayers(
@@ -121,8 +121,8 @@ const runAgainstShard = <A, E, R>(
         Effect.provideService(
           ContractDeploymentIdentity,
           ContractDeploymentIdentity.make({
-            kind: manifestId === undefined ? "derived" : "manifest",
-            ...(manifestId === undefined ? {} : { manifestId }),
+            kind: hubOraclePolicyId === undefined ? "derived" : "manifest",
+            ...(hubOraclePolicyId === undefined ? {} : { hubOraclePolicyId }),
             consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           }),
         ),
@@ -236,7 +236,7 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
   });
 
   it("counts the deployment's unfinished settlement jobs and names the failing ones with their last error", async () => {
-    const deploymentId = "a1".repeat(32);
+    const hubOraclePolicyId = "a1".repeat(28);
     const unpayable =
       "No spendable reserve UTxO can fund the payout of withdrawal 02";
     const result = await runAgainstShard(
@@ -249,17 +249,17 @@ describe("GET /pipeline-status pending-finalization reporting", () => {
           phase: string,
           lastError: string | null,
         ) => sql`INSERT INTO settlement_jobs
-          (deployment_id, kind, event_id, phase, last_error, failures)
+          (hub_oracle_policy_id, kind, event_id, phase, last_error, failures)
           VALUES (${deployment}, ${kind}, ${eventId}, ${phase}, ${lastError},
             ${lastError === null ? 0 : 3})`;
-        yield* job(deploymentId, "deposit", "01", "absorb", null);
-        yield* job(deploymentId, "withdrawal", "02", "fund", unpayable);
-        yield* job(deploymentId, "withdrawal", "03", "complete", null);
+        yield* job(hubOraclePolicyId, "deposit", "01", "absorb", null);
+        yield* job(hubOraclePolicyId, "withdrawal", "02", "fund", unpayable);
+        yield* job(hubOraclePolicyId, "withdrawal", "03", "complete", null);
         // Another deployment's leftovers are not this node's backlog.
-        yield* job("b2".repeat(32), "withdrawal", "04", "fund", "stale");
+        yield* job("b2".repeat(28), "withdrawal", "04", "fund", "stale");
         return yield* getPipelineStatus;
       }),
-      deploymentId,
+      hubOraclePolicyId,
     );
 
     expect(result.status).toBe(200);

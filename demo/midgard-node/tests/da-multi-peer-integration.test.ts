@@ -40,7 +40,7 @@ import { publishDaPayloadInsert } from "../src/da/libp2p-producer.publish-da-pay
 import { DaPayloadsDB } from "../src/database/index.js";
 import { TEST_DATABASE_PREFIX } from "./test-env.js";
 
-const DEPLOYMENT = "a5".repeat(32);
+const DEPLOYMENT = "a5".repeat(28);
 
 describe("real multi-peer DA publication", () => {
   it("publishes a zstd V1 envelope to threshold, returns before a dead peer timeout, and recovers after peer restart", async () => {
@@ -168,7 +168,6 @@ describe("real multi-peer DA publication", () => {
     });
     const manifest: DaProducerPublicationManifest = {
       deploymentFingerprint: DEPLOYMENT,
-      contractDeploymentManifestId: DEPLOYMENT,
       localPrivateKeySource: producerSeed,
       threshold: 2,
       requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,

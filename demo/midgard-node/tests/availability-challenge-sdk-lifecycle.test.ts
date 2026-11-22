@@ -57,7 +57,7 @@ describe("production SDK availability builders", () => {
       let action = "open";
       let ambiguousPublication: { txHash: string; cbor: string } | undefined;
       const context = (): SDK.DaAvailabilityOperationContext => ({
-        deploymentIdentity: "ab".repeat(32),
+        hubOraclePolicyId: "ab".repeat(28),
         actor: f.challengerKey,
         stateQueuePolicyId: d.contracts.stateQueue.policyId,
         journal,
@@ -223,7 +223,7 @@ describe("production SDK availability builders", () => {
       expect(submissions).toHaveLength(submittedBeforeRestart);
       expect(replacement).not.toHaveBeenCalled();
       const persisted = journal
-        .unfinalized(context().deploymentIdentity, context().actor)
+        .unfinalized(context().hubOraclePolicyId, context().actor)
         .find((record) => record.intent.txHash === recovered.txHash);
       expect(persisted?.intent.signedCbor).toBe(ambiguousPublication!.cbor);
       const resumed = await SDK.fetchDaAvailabilityChallengeSnapshot(

@@ -174,7 +174,7 @@ export const buildPendingJournalMetadata = ({
   expectedRoots,
   expectedCounts,
   consensusProfile,
-  deploymentMarker,
+  hubOraclePolicyId,
 }: {
   readonly latestBlock: SDKStateQueue.StateQueueUTxO;
   readonly workerInput: WorkerInput;
@@ -182,9 +182,7 @@ export const buildPendingJournalMetadata = ({
   readonly expectedRoots: PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata["expectedRoots"];
   readonly expectedCounts: PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata["expectedCounts"];
   readonly consensusProfile: ContractDeploymentIdentityValue["consensusProfile"];
-  readonly deploymentMarker: NonNullable<
-    ContractDeploymentIdentityValue["deploymentMarker"]
-  >;
+  readonly hubOraclePolicyId: string;
 }): Effect.Effect<
   PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata,
   | SDK.CmlUnexpectedError
@@ -205,7 +203,7 @@ export const buildPendingJournalMetadata = ({
       consensusProfile,
     );
     return {
-      deploymentMarker,
+      hubOraclePolicyId,
       consensusProfileId: consensusProfile.profileId,
       stateQueueLeaseToken,
       baseSnapshotId:

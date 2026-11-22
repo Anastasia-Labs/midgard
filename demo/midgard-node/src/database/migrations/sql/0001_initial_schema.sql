@@ -320,8 +320,7 @@ CREATE TABLE public.forced_transaction_utxos (
 CREATE TABLE public.foreign_tip_reconciliations (
     foreign_header_hash bytea NOT NULL,
     format_version smallint NOT NULL,
-    deployment_marker_schema_version text NOT NULL,
-    deployment_manifest_id text NOT NULL,
+    hub_oracle_policy_id text NOT NULL,
     replaced_base_header_hash bytea NOT NULL,
     foreign_header_cbor bytea NOT NULL,
     block_start_time timestamp with time zone NOT NULL,
@@ -347,8 +346,7 @@ CREATE TABLE public.foreign_tip_reconciliations (
     CONSTRAINT foreign_tip_reconciliations_check2 CHECK ((((status = 'resolved'::text) AND (resolved_at IS NOT NULL) AND (blocking_reason IS NULL)) OR ((status = 'awaiting'::text) AND (resolved_at IS NULL) AND (blocking_reason IS NOT NULL)))),
     CONSTRAINT foreign_tip_reconciliations_resolved_evidence_check CHECK (((status <> 'resolved'::text) OR (evidence_kind <> 'pending_v1'::text))),
     CONSTRAINT foreign_tip_reconciliations_format_version_check CHECK ((format_version = 1)),
-    CONSTRAINT foreign_tip_reconciliations_deployment_marker_schema_check CHECK ((deployment_marker_schema_version = 'midgard-deployment-marker-v1'::text)),
-    CONSTRAINT foreign_tip_reconciliations_deployment_manifest_id_check CHECK ((deployment_manifest_id ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT foreign_tip_reconciliations_hub_oracle_policy_id_check CHECK ((hub_oracle_policy_id ~ '^[0-9a-f]{56}$'::text)),
     CONSTRAINT foreign_tip_reconciliations_evidence_kind_check CHECK ((evidence_kind = ANY (ARRAY['pending_v1'::text, 'verified_empty_v1'::text, 'verified_da_v1'::text]))),
     CONSTRAINT foreign_tip_reconciliations_verified_empty_check CHECK (((evidence_kind <> 'verified_empty_v1'::text) OR ((deposits_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) AND (forced_transactions_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) AND (withdrawals_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) AND (deposit_count = 0) AND (forced_transaction_count = 0) AND (withdrawal_count = 0)))),
     CONSTRAINT foreign_tip_reconciliations_verified_da_nonempty_check CHECK (((evidence_kind <> 'verified_da_v1'::text) OR (deposits_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) OR (forced_transactions_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) OR (withdrawals_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text) OR (deposit_count <> 0) OR (forced_transaction_count <> 0) OR (withdrawal_count <> 0))),
@@ -614,8 +612,7 @@ CREATE TABLE public.pending_block_finalizations (
     header_cbor bytea NOT NULL,
     format_version smallint NOT NULL,
     replay_kind text NOT NULL,
-    deployment_marker_schema_version text NOT NULL,
-    deployment_manifest_id text NOT NULL,
+    hub_oracle_policy_id text NOT NULL,
     expected_transition_trace_root text NOT NULL,
     expected_event_to_step_root text NOT NULL,
     expected_withdrawal_count bigint NOT NULL,
@@ -653,8 +650,7 @@ CREATE TABLE public.pending_block_finalizations (
     CONSTRAINT pending_block_finalizations_header_cbor_check CHECK ((octet_length(header_cbor) > 0)),
     CONSTRAINT pending_block_finalizations_format_version_check CHECK ((format_version = 1)),
     CONSTRAINT pending_block_finalizations_replay_kind_check CHECK ((replay_kind = ANY (ARRAY['ledger_delta_v1'::text, 'ledger_delta_native_mpf_v1'::text]))),
-    CONSTRAINT pending_block_finalizations_deployment_marker_schema_check CHECK ((deployment_marker_schema_version = 'midgard-deployment-marker-v1'::text)),
-    CONSTRAINT pending_block_finalizations_deployment_manifest_id_check CHECK ((deployment_manifest_id ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT pending_block_finalizations_hub_oracle_policy_id_check CHECK ((hub_oracle_policy_id ~ '^[0-9a-f]{56}$'::text)),
     CONSTRAINT pending_block_finalizations_consensus_profile_id_check CHECK ((consensus_profile_id = 'midgard-consensus-v1'::text)),
     CONSTRAINT pending_block_finalizations_mpf_replay_all_or_none_check CHECK ((((replay_kind = 'ledger_delta_v1'::text) AND (mpf_owner_schema IS NULL) AND (mpf_owner_binary_sha256 IS NULL) AND (mpf_replay_base_root IS NULL) AND (mpf_replay_candidate_root IS NULL) AND (mpf_replay_event_log IS NULL) AND (mpf_replay_event_log_digest IS NULL) AND (mpf_replay_event_roots IS NULL) AND (mpf_replay_event_count IS NULL)) OR ((replay_kind = 'ledger_delta_native_mpf_v1'::text) AND (mpf_owner_schema = 1) AND (octet_length(mpf_owner_binary_sha256) = 32) AND (octet_length(mpf_replay_base_root) = 32) AND (encode(mpf_replay_base_root, 'hex'::text) = base_utxos_root) AND (octet_length(mpf_replay_candidate_root) = 32) AND (encode(mpf_replay_candidate_root, 'hex'::text) = expected_utxos_root) AND (octet_length(mpf_replay_event_log) >= 92) AND (octet_length(mpf_replay_event_log_digest) = 32) AND (mpf_replay_event_count >= 0) AND (octet_length(mpf_replay_event_roots) = (mpf_replay_event_count * 32))))),
     CONSTRAINT pending_block_finalizations_profile_validation_check CHECK (((expected_validation_trace_count = (expected_forced_transaction_count + expected_l2_transaction_count)) AND (((expected_validation_trace_count = 0) AND (expected_validation_traces_root = '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text)) OR ((expected_validation_trace_count > 0) AND (expected_validation_traces_root <> '0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8'::text))))),
@@ -1634,7 +1630,7 @@ CREATE TABLE public.event_history_submission_inputs (
 -- never permission for a new process to resume without revalidation.
 CREATE TABLE public.event_history_authority (
     singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
-    deployment_identity bytea NOT NULL CHECK (octet_length(deployment_identity) = 32),
+    hub_oracle_policy_id bytea NOT NULL CHECK (octet_length(hub_oracle_policy_id) = 28),
     owner_token uuid NOT NULL,
     generation bigint NOT NULL CHECK (generation >= 0),
     state text NOT NULL CHECK (state IN ('recovering', 'ready', 'suspended')),
@@ -1657,7 +1653,7 @@ CREATE TABLE public.event_history_authority (
 -- recovery writer deletes them in bounded batches, successors first.
 CREATE TABLE public.event_history_replay_receipts (
     binding_digest bytea NOT NULL CHECK (octet_length(binding_digest) = 32),
-    manifest_id bytea NOT NULL CHECK (octet_length(manifest_id) = 32),
+    hub_oracle_policy_id bytea NOT NULL CHECK (octet_length(hub_oracle_policy_id) = 28),
     block_hash bytea NOT NULL CHECK (octet_length(block_hash) = 32),
     block_slot bigint NOT NULL CHECK (block_slot >= 0),
     block_height bigint NOT NULL CHECK (block_height >= 0),
@@ -1682,7 +1678,7 @@ CREATE TABLE public.event_history_replay_receipts (
 -- source authority; startup must acquire a new owner and re-admit its ancestry.
 CREATE TABLE public.event_history_cursor (
     binding_digest bytea PRIMARY KEY CHECK (octet_length(binding_digest) = 32),
-    manifest_id bytea NOT NULL CHECK (octet_length(manifest_id) = 32),
+    hub_oracle_policy_id bytea NOT NULL CHECK (octet_length(hub_oracle_policy_id) = 28),
     origin_receipt text NOT NULL CHECK (length(origin_receipt) > 0),
     origin_receipt_digest bytea NOT NULL CHECK (octet_length(origin_receipt_digest) = 32),
     anchor_hash bytea NOT NULL CHECK (octet_length(anchor_hash) = 32),
@@ -1859,7 +1855,7 @@ CREATE INDEX event_history_l2_ledger_receipts_unreversed
 CREATE TABLE public.event_history_recovery_plans (
     recovery_id bytea PRIMARY KEY CHECK (octet_length(recovery_id) = 32),
     binding_digest bytea NOT NULL CHECK (octet_length(binding_digest) = 32),
-    manifest_id bytea NOT NULL CHECK (octet_length(manifest_id) = 32),
+    hub_oracle_policy_id bytea NOT NULL CHECK (octet_length(hub_oracle_policy_id) = 28),
     header_hash bytea NOT NULL CHECK (octet_length(header_hash) = 28),
     intent text NOT NULL,
     evidence_digest bytea NOT NULL CHECK (octet_length(evidence_digest) = 32),

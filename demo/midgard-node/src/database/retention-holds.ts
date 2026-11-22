@@ -7,12 +7,12 @@ import { notAppliedOrFolded } from "./pendingBlockFinalizations.status-sql.js";
 
 /**
  * What a housekeeping prune reads to keep challenge-relevant rows: the
- * L1 view and the verified deployment's identity digest. A history prune
+ * L1 view and the verified deployment's hub-oracle policy id. A history prune
  * never runs without both.
  */
 export type HousekeepingHolds = Readonly<{
   view: RetentionL1View;
-  deploymentIdentityDigest: Buffer;
+  hubOraclePolicyId: string;
 }>;
 
 /**
@@ -32,7 +32,7 @@ export const challengeRelevantHeader = (
   holds.view.confirmedHeadHash,
   ...holds.view.liveQueueHeaderHashes,
 ])}
-  OR ${finalityHeldPayload(sql, holds.deploymentIdentityDigest, headerColumn, holds.view.finalThroughHeight)})`;
+  OR ${finalityHeldPayload(sql, holds.hubOraclePolicyId, headerColumn, holds.view.finalThroughHeight)})`;
 
 /**
  * Journals recovery still reads, irrespective of age. Journals neither

@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { Effect, Layer } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
@@ -104,7 +105,7 @@ describe("a deployment whose initialization publishes every reference script", (
     );
     expect(identity).toMatchObject({
       kind: "manifest",
-      manifestId: manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
       path: manifestPath,
     });
     expect(started.stateQueue.policyId).toBe(contracts.stateQueue.policyId);

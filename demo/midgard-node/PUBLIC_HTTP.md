@@ -29,7 +29,7 @@ The public listener also requires these inputs:
 - `MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE` for retained deployment parameters
   bound by the signed provenance, and `MIDGARD_BLUEPRINT_CLASSIFICATION_FILE`
   matching its exact explicit unused-validator classifications.
-- `MIDGARD_PUBLIC_MANIFEST_ID`, full forty-character
+- `MIDGARD_PUBLIC_HUB_ORACLE_POLICY_ID`, full forty-character
   `MIDGARD_PUBLIC_RELEASE_REVISION` and digest-pinned
   `MIDGARD_PUBLIC_NODE_IMAGE`, `MIDGARD_PUBLIC_POSTGRES_IMAGE`,
   `MIDGARD_PUBLIC_INGRESS_IMAGE` agreeing with the signed release.

@@ -47,7 +47,7 @@ const fixture = async () => {
     }),
   );
   const context: DaAvailabilityOperationContext = {
-    deploymentIdentity: "aa".repeat(32),
+    hubOraclePolicyId: "aa".repeat(28),
     actor: paymentCredentialOf(account.address).hash,
     journal,
     stateQueuePolicyId: "cc".repeat(28),
@@ -63,7 +63,7 @@ const fixture = async () => {
     observe: async () => ({ status: "unspent", currentSlot: 0 }),
     submit: async (bytes) =>
       inspectDaAvailabilitySignedIntent({
-        deploymentIdentity: "aa".repeat(32),
+        hubOraclePolicyId: "aa".repeat(28),
         actor: paymentCredentialOf(account.address).hash,
         headerHash: "bb".repeat(28),
         action: "prepare",
@@ -125,7 +125,7 @@ describe("availability operation signed recovery", () => {
       });
       expect(confirmed?.status).toBe("confirmed");
       expect(
-        restarted.pending(f.context.deploymentIdentity, f.context.actor),
+        restarted.pending(f.context.hubOraclePolicyId, f.context.actor),
       ).toHaveLength(0);
     } finally {
       restarted.close();
@@ -147,14 +147,11 @@ describe("availability operation signed recovery", () => {
       });
       expect(included[0]?.status).toBe("included");
       expect(
-        f.context.journal.pending(
-          f.context.deploymentIdentity,
-          f.context.actor,
-        ),
+        f.context.journal.pending(f.context.hubOraclePolicyId, f.context.actor),
       ).toHaveLength(0);
       expect(
         f.context.journal.unfinalized(
-          f.context.deploymentIdentity,
+          f.context.hubOraclePolicyId,
           f.context.actor,
         ),
       ).toHaveLength(1);
@@ -191,10 +188,7 @@ describe("availability operation signed recovery", () => {
         ),
       ).rejects.toThrow(/rollback generation/);
       expect(
-        f.context.journal.pending(
-          f.context.deploymentIdentity,
-          f.context.actor,
-        ),
+        f.context.journal.pending(f.context.hubOraclePolicyId, f.context.actor),
       ).toHaveLength(0);
       await runDaAvailabilityOperation(f.context, f.operation);
       expect(
@@ -220,10 +214,7 @@ describe("availability operation signed recovery", () => {
         )[0]?.status,
       ).toBe("expired");
       expect(
-        f.context.journal.pending(
-          f.context.deploymentIdentity,
-          f.context.actor,
-        ),
+        f.context.journal.pending(f.context.hubOraclePolicyId, f.context.actor),
       ).toHaveLength(0);
     } finally {
       f.context.journal.close();
@@ -235,7 +226,7 @@ describe("availability operation signed recovery", () => {
     try {
       const parent = await runDaAvailabilityOperation(f.context, f.operation);
       const parentIntent = f.context.journal.pending(
-        f.context.deploymentIdentity,
+        f.context.hubOraclePolicyId,
         f.context.actor,
       )[0]!.intent;
       await f.lucid.config().provider!.submitTx(parentIntent.signedCbor);
@@ -280,14 +271,11 @@ describe("availability operation signed recovery", () => {
         "expired",
       ]);
       expect(
-        f.context.journal.pending(
-          f.context.deploymentIdentity,
-          f.context.actor,
-        ),
+        f.context.journal.pending(f.context.hubOraclePolicyId, f.context.actor),
       ).toHaveLength(0);
       expect(
         f.context.journal.unfinalized(
-          f.context.deploymentIdentity,
+          f.context.hubOraclePolicyId,
           f.context.actor,
         ),
       ).toHaveLength(0);
@@ -326,7 +314,7 @@ describe("availability operation signed recovery", () => {
             .complete({ coinSelection: false }),
       });
       const intent = f.context.journal.pending(
-        f.context.deploymentIdentity,
+        f.context.hubOraclePolicyId,
         f.context.actor,
       )[0]!.intent;
       expect(intent.spentOutRefs).toHaveLength(2);
@@ -353,10 +341,7 @@ describe("availability operation signed recovery", () => {
       );
       expect(await reconcileWith([intent.spentOutRefs[0]!], 0)).toBe("expired");
       expect(
-        f.context.journal.pending(
-          f.context.deploymentIdentity,
-          f.context.actor,
-        ),
+        f.context.journal.pending(f.context.hubOraclePolicyId, f.context.actor),
       ).toHaveLength(0);
     } finally {
       f.context.journal.close();
@@ -412,7 +397,7 @@ describe("availability operation signed recovery", () => {
         },
       });
       const intent = f.context.journal.pending(
-        f.context.deploymentIdentity,
+        f.context.hubOraclePolicyId,
         f.context.actor,
       )[0]!.intent;
       const [normal] = intent.spentOutRefs;
@@ -517,15 +502,12 @@ describe("availability operation signed recovery", () => {
         ),
       ).rejects.toThrow(/size or execution reserve/);
       expect(
-        f.context.journal.pending(
-          f.context.deploymentIdentity,
-          f.context.actor,
-        ),
+        f.context.journal.pending(f.context.hubOraclePolicyId, f.context.actor),
       ).toHaveLength(0);
       const signed = await (await f.build()).sign.withWallet().complete();
       expect(() =>
         inspectDaAvailabilitySignedIntent({
-          deploymentIdentity: f.context.deploymentIdentity,
+          hubOraclePolicyId: f.context.hubOraclePolicyId,
           actor: "ff".repeat(28),
           headerHash: f.operation.headerHash,
           action: "prepare",

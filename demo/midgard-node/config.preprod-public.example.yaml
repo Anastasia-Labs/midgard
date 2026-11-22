@@ -11,7 +11,7 @@
 #
 # Under the full-stack command (e2e-stack), the stack's public.nodeConfigFile
 # holds only the six secrets below; every other setting here goes in the node
-# .env, except the file paths, the manifest id and HTTP_SOCKET_PATH, which
+# .env, except the file paths, the hub-oracle policy id and HTTP_SOCKET_PATH, which
 # the stack sets. See the docs-site page operators/node/preprod-public-deploy.
 #
 # The node reads and submits L1 only through the local Cardano node. Remote L1
@@ -80,9 +80,9 @@ MIDGARD_PUBLIC_FINALIZED_MANIFEST_FILE: "/run/public/deployment-manifest.json"
 # unused-validator classification that must match them.
 MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE: "/run/public/deployment-parameters.json"
 MIDGARD_BLUEPRINT_CLASSIFICATION_FILE: "/run/public/blueprint-classification.json"
-# The finalized manifest id (64 hex) and the full 40-hex source revision the
-# release was built from.
-MIDGARD_PUBLIC_MANIFEST_ID: "<64 hex characters>"
+# The deployment's hub-oracle policy id (56 hex) and the full 40-hex source
+# revision the release was built from.
+MIDGARD_PUBLIC_HUB_ORACLE_POLICY_ID: "<56 hex characters>"
 MIDGARD_PUBLIC_RELEASE_REVISION: "<40 hex characters>"
 # Digest-pinned role images, as signed in the release.
 MIDGARD_PUBLIC_NODE_IMAGE: "<registry>/midgard-node@sha256:<64 hex>"

@@ -6,7 +6,6 @@ import { attestationTimeoutCorrectionReadinessBounds } from "../../fibers/attest
 import { livenessReadiness } from "../../fibers/block-commitment.worker-readiness.js";
 import { READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS } from "../../l1-provider-readiness-probe.js";
 import { submitSlotEvidence } from "../../l1-provider-view.js";
-import { deploymentIdentityDigestOf } from "../../l1-queue-terminals/reads.js";
 import { readFollowerWriteGate } from "../../services/follower-write-gate.js";
 import { followerWriteGateReasons } from "../../services/follower-write-gate.local.js";
 import { commitBuildAlarmReadiness } from "../../services/globals.commit-build-alarms.js";
@@ -74,10 +73,7 @@ export const getReadinessHandler = Effect.gen(function* () {
 
   const deploymentIdentity = yield* ContractDeploymentIdentity;
   const databaseState = yield* Effect.either(
-    readReadinessDatabaseState(
-      deploymentIdentityDigestOf(deploymentIdentity),
-      deploymentIdentity.manifestId,
-    ),
+    readReadinessDatabaseState(deploymentIdentity.hubOraclePolicyId),
   );
   if (databaseState._tag === "Left") {
     return yield* HttpServerResponse.json(
@@ -460,7 +456,6 @@ export const getReadinessHandler = Effect.gen(function* () {
       ),
       localEpoch: gateLocal.epoch,
       recomputing: gateLocal.recomputing,
-      deploymentFingerprint: deploymentIdentity.manifestId,
       nowMs: nowMillis,
       maxAgeMs: nodeConfig.READINESS_MAX_HEARTBEAT_AGE_MS,
     }),

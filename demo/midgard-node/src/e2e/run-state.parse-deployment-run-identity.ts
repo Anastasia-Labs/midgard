@@ -1,4 +1,3 @@
-import { parseDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { parseL1OriginRecord } from "@al-ft/midgard-core/l1-origin";
 
 import {
@@ -29,7 +28,7 @@ export const parseDeploymentRunIdentity = (
       "referenceScriptAuthPolicy",
       "manifestPath",
       "manifestSha256",
-      "deploymentMarker",
+      "hubOraclePolicyId",
       "l1Origin",
     ],
   );
@@ -186,21 +185,14 @@ export const parseDeploymentRunIdentity = (
             32,
           ),
         }),
-    ...(input.deploymentMarker === undefined
+    ...(input.hubOraclePolicyId === undefined
       ? {}
       : {
-          deploymentMarker: (() => {
-            try {
-              return parseDeploymentMarker(input.deploymentMarker);
-            } catch (cause) {
-              throw new RunStateError(
-                `identity.deploymentMarker is invalid: ${
-                  cause instanceof Error ? cause.message : String(cause)
-                }`,
-                { cause },
-              );
-            }
-          })(),
+          hubOraclePolicyId: assertLowerHex(
+            input.hubOraclePolicyId,
+            "identity.hubOraclePolicyId",
+            28,
+          ),
         }),
     ...(input.l1Origin === undefined
       ? {}

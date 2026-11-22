@@ -1,7 +1,7 @@
 import { RETENTION_MS_PER_DAY } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
-  computeDeploymentManifestId,
+  deploymentManifestHubOraclePolicyId,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SqlClient } from "@effect/sql";
@@ -92,14 +92,7 @@ describe.skipIf(!dbEnabled)(
           },
         },
       };
-      const manifest = verifyFinalizedDeploymentManifest({
-        ...changed,
-        manifestId: computeDeploymentManifestId(
-          Object.fromEntries(
-            Object.entries(changed).filter(([key]) => key !== "manifestId"),
-          ),
-        ),
-      });
+      const manifest = verifyFinalizedDeploymentManifest(changed);
       const outcome = await run(
         Effect.gen(function* () {
           const expired = yield* seedPublished(
@@ -202,7 +195,7 @@ describe.skipIf(!dbEnabled)(
           const merged = yield* seedPayload("merged", old, old);
           yield* seedQueueTerminal(merged, "merged", 1);
           yield* seedPayload("unobserved", old, old);
-          const deleted = yield* prune({ digest: undefined });
+          const deleted = yield* prune({ hubOraclePolicyId: undefined });
           return { deleted, remaining: yield* countRows };
         }),
       );
@@ -231,7 +224,7 @@ describe.skipIf(!dbEnabled)(
           yield* seedQueueTerminal(removed, "removed", 1);
           const recent = yield* seedPayload("removed-recent", young, young);
           yield* seedQueueTerminal(recent, "removed", 2, NOT_FINAL);
-          const withoutDigest = yield* prune({ digest: undefined });
+          const withoutDigest = yield* prune({ hubOraclePolicyId: undefined });
           const deleted = yield* prune();
           return {
             withoutDigest,
@@ -330,7 +323,8 @@ describe.skipIf(!dbEnabled)(
           );
           const identity = ContractDeploymentIdentity.make({
             kind: "manifest",
-            manifestId: deploymentManifest.manifestId,
+            hubOraclePolicyId:
+              deploymentManifestHubOraclePolicyId(deploymentManifest),
             consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           });
           const check = yield* queue

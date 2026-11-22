@@ -67,7 +67,7 @@ describe("committee availability responder through the durable production path",
       expect(beforeResponse.record).toBeDefined();
       expect(beforeResponse.pool).toBeDefined();
       f.lucid.selectWallet.fromPrivateKey(responderWallet.privateKey);
-      const deploymentFingerprint = "ab".repeat(32);
+      const deploymentFingerprint = "ab".repeat(28);
       const actor = paymentCredentialOf(responderWallet.address).hash;
       expect(actor).not.toBe(f.responderKey);
       const submitted: string[] = [];
@@ -78,7 +78,7 @@ describe("committee availability responder through the durable production path",
         slot: f.emulator.slot,
       });
       const context = (): SDK.DaAvailabilityOperationContext => ({
-        deploymentIdentity: deploymentFingerprint,
+        hubOraclePolicyId: deploymentFingerprint,
         actor,
         journal,
         stateQueuePolicyId: deployment.contracts.stateQueue.policyId,

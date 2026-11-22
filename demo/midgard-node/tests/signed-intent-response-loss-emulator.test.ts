@@ -318,7 +318,6 @@ it("retains the exact durable signed commitment after an accepted submission los
             {
               scope:
                 "Actual emulator acceptance followed by one lost provider response; independent durable pre-provider SQL read and production landed-block application/mature merge. Synthetic transport ancestry. No restart or state-queue continuation coverage.",
-              manifestId: h.deployment.manifest.manifestId,
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               deploymentInfoSha256: h.deploymentInfoSha256,
               protocolParameters:

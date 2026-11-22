@@ -10,7 +10,6 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import {
   computeDeploymentManifestDaCommitteeSignersHash,
-  computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
@@ -98,7 +97,7 @@ export const CARDANO_PARAMETERS = {
   },
 } as const;
 
-export const canonicalIdentity = (): Omit<DeploymentManifest, "manifestId"> => {
+export const canonicalManifest = (): DeploymentManifest => {
   const referenceOutRefByContract = new Map<
     string,
     { readonly txHash: string; readonly outputIndex: number }
@@ -298,13 +297,3 @@ export const canonicalIdentity = (): Omit<DeploymentManifest, "manifestId"> => {
     steps,
   };
 };
-
-export const withId = (
-  identity: Omit<DeploymentManifest, "manifestId">,
-): DeploymentManifest => ({
-  ...identity,
-  manifestId: computeDeploymentManifestId(identity),
-});
-
-export const canonicalManifest = (): DeploymentManifest =>
-  withId(canonicalIdentity());

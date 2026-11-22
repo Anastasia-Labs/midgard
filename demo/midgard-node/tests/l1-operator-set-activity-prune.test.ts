@@ -186,7 +186,7 @@ describe("the node database's activity record in the follower prune step (postgr
     );
     const record = databaseActivityRecord({
       run,
-      manifestId: "ab".repeat(32),
+      hubOraclePolicyId: "ab".repeat(28),
       ownKey: OWN,
     });
     const store = openPostgresFactStore({

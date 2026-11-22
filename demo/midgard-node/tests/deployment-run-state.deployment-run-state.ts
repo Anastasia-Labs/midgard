@@ -1,7 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it } from "vitest";
 
 import { loadPendingHubOracleNonceAttempt } from "../src/commands/deployment-run-state.assert-deployment-identity-matches.js";
@@ -23,7 +22,7 @@ import {
   parseDeploymentStepState,
 } from "../src/e2e/run-state.parse-deployment-run-identity.js";
 import {
-  bindDeploymentRunStateToMarker,
+  bindDeploymentRunStateToManifest,
   createDeploymentRunState,
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
@@ -200,41 +199,32 @@ describe("deployment run state", () => {
     ]);
   });
 
-  it("binds the run state exactly once to the final deployment marker", () => {
+  it("binds the run state exactly once to the final deployment's hub-oracle policy id", () => {
     const initial = createDeploymentRunState({
       mode: "fresh",
       runId: "run-marker",
       now: new Date("2026-01-01T00:00:00.000Z"),
       identity: { network: "Preprod" },
     });
-    const marker = makeDeploymentMarker("ab".repeat(32));
-    const bound = bindDeploymentRunStateToMarker(initial, {
-      marker,
+    const hubOraclePolicyId = "ab".repeat(28);
+    const bound = bindDeploymentRunStateToManifest(initial, {
+      hubOraclePolicyId,
       manifestPath: "/deployment/contract-deployment-info.json",
       manifestSha256: "cd".repeat(32),
       now: new Date("2026-01-01T00:00:01.000Z"),
     });
     expect(parseDeploymentRunState(bound).identity).toMatchObject({
-      deploymentMarker: marker,
+      hubOraclePolicyId,
       manifestSha256: "cd".repeat(32),
     });
     expect(() =>
-      bindDeploymentRunStateToMarker(bound, {
-        marker: makeDeploymentMarker("ef".repeat(32)),
+      bindDeploymentRunStateToManifest(bound, {
+        hubOraclePolicyId: "ef".repeat(28),
         manifestPath: "/deployment/contract-deployment-info.json",
         manifestSha256: "01".repeat(32),
         now: new Date("2026-01-01T00:00:02.000Z"),
       }),
-    ).toThrow("Deployment run state marker mismatch");
-    expect(() =>
-      parseDeploymentRunIdentity({
-        deploymentMarker: {
-          schemaVersion: "midgard-deployment-marker-v1",
-          manifestId: "ab".repeat(32),
-          legacyFingerprint: "ab".repeat(32),
-        },
-      }),
-    ).toThrow("must contain exactly schemaVersion and manifestId");
+    ).toThrow("Deployment run state hub-oracle policy id mismatch");
   });
 
   it("writes and reads state atomically", async () => {
