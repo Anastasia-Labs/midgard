@@ -45,7 +45,7 @@ export const runDaAvailabilityOperation = (
 ): Promise<DaAvailabilityOperationResult> =>
   withLease(context, async (lease, assertCurrent, observationScope) => {
     const pending = context.journal.pending(
-      context.deploymentIdentity,
+      context.hubOraclePolicyId,
       context.actor,
     );
     if (pending.length > 0)
@@ -59,8 +59,7 @@ export const runDaAvailabilityOperation = (
     for (const anchor of context.journal
       .finalizedAnchors(context.actor)
       .filter(
-        ({ intent }) =>
-          intent.deploymentIdentity === context.deploymentIdentity,
+        ({ intent }) => intent.hubOraclePolicyId === context.hubOraclePolicyId,
       )) {
       const audit = await reconcile(
         context,
@@ -96,7 +95,7 @@ export const runDaAvailabilityOperation = (
         await assertCurrent(scope);
         context.journal.assertWorkflow(
           lease,
-          context.deploymentIdentity,
+          context.hubOraclePolicyId,
           operation.headerHash,
           operation.action,
           now(),
@@ -126,7 +125,7 @@ export const runDaAvailabilityOperation = (
       const signed = await tx.sign.withWallet().complete();
       await assertCurrent();
       const intent = inspectDaAvailabilitySignedIntent({
-        deploymentIdentity: context.deploymentIdentity,
+        hubOraclePolicyId: context.hubOraclePolicyId,
         actor: context.actor,
         headerHash: operation.headerHash,
         action: operation.action,

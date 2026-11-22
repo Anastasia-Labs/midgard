@@ -25,7 +25,7 @@ export const parseStateQueueAuthenticatedReplayCheckpoint = (
 ): StateQueueAuthenticatedReplayCheckpoint | null => {
   const record = exactRecord(input, [
     "schemaVersion",
-    "deploymentIdentityDigest",
+    "hubOraclePolicyId",
     "stateQueuePolicyId",
     "transactionHash",
     "blockHash",
@@ -66,7 +66,7 @@ export const parseStateQueueAuthenticatedReplayCheckpoint = (
     record === null ||
     record.schemaVersion !==
       STATE_QUEUE_AUTHENTICATED_REPLAY_CHECKPOINT_SCHEMA_VERSION ||
-    typeof record.deploymentIdentityDigest !== "string" ||
+    typeof record.hubOraclePolicyId !== "string" ||
     typeof record.stateQueuePolicyId !== "string" ||
     typeof record.transactionHash !== "string" ||
     typeof record.blockHash !== "string" ||
@@ -94,7 +94,7 @@ export const parseStateQueueAuthenticatedReplayCheckpoint = (
     return null;
   }
   const derived = deriveStateQueueAuthenticatedReplayCheckpoint({
-    deploymentIdentityDigest: record.deploymentIdentityDigest,
+    hubOraclePolicyId: record.hubOraclePolicyId,
     stateQueuePolicyId: record.stateQueuePolicyId,
     transactionHash: record.transactionHash,
     blockHash: record.blockHash,
@@ -130,13 +130,13 @@ export const parseStateQueueAuthenticatedReplayCheckpoint = (
 };
 
 export const replayStateQueueAuthenticatedCheckpoints = ({
-  deploymentIdentityDigest,
+  hubOraclePolicyId,
   stateQueuePolicyId,
   minimumFinalityDepth,
   anchor,
   checkpoints: checkpointInputs,
 }: {
-  readonly deploymentIdentityDigest: string;
+  readonly hubOraclePolicyId: string;
   readonly stateQueuePolicyId: string;
   readonly minimumFinalityDepth: bigint;
   readonly anchor: Readonly<{
@@ -152,7 +152,7 @@ export const replayStateQueueAuthenticatedCheckpoints = ({
   terminals: readonly StateQueueAuthenticatedTransition[];
 }> | null => {
   if (
-    !HEX_32.test(deploymentIdentityDigest) ||
+    !HEX_28.test(hubOraclePolicyId) ||
     !HEX_28.test(stateQueuePolicyId) ||
     minimumFinalityDepth <= 0n ||
     !canonicalQueue(anchor.queue, true) ||
@@ -175,7 +175,7 @@ export const replayStateQueueAuthenticatedCheckpoints = ({
     if (
       checkpoint === null ||
       !ordered ||
-      checkpoint.deploymentIdentityDigest !== deploymentIdentityDigest ||
+      checkpoint.hubOraclePolicyId !== hubOraclePolicyId ||
       checkpoint.stateQueuePolicyId !== stateQueuePolicyId ||
       BigInt(checkpoint.finalityDepth) < minimumFinalityDepth ||
       stableJson(checkpoint.previousQueue as unknown as Json) !==

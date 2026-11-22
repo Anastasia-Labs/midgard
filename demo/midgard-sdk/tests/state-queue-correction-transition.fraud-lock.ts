@@ -44,7 +44,7 @@ export const timeoutRedeemer = (
 ];
 
 export const common = {
-  deploymentIdentityDigest: h32(0xaa),
+  hubOraclePolicyId: h28(0xaa),
   stateQueuePolicyId: h28(0xbb),
   transactionHash: h32(0xcc),
   blockHash: h32(0xdd),

@@ -29,7 +29,7 @@ export const deriveStateQueueAuthenticatedTransition = (
   input: DeriveStateQueueAuthenticatedTransitionInput,
 ): StateQueueAuthenticatedTransition | null => {
   if (
-    !HEX_32.test(input.deploymentIdentityDigest) ||
+    !HEX_28.test(input.hubOraclePolicyId) ||
     !HEX_28.test(input.stateQueuePolicyId) ||
     !HEX_32.test(input.transactionHash) ||
     !HEX_32.test(input.blockHash) ||
@@ -186,7 +186,7 @@ export const deriveStateQueueAuthenticatedTransition = (
 
   const canonical = {
     schemaVersion: STATE_QUEUE_AUTHENTICATED_TRANSITION_SCHEMA_VERSION,
-    deploymentIdentityDigest: input.deploymentIdentityDigest,
+    hubOraclePolicyId: input.hubOraclePolicyId,
     stateQueuePolicyId: input.stateQueuePolicyId,
     transactionHash: input.transactionHash,
     blockHash: input.blockHash,
@@ -216,7 +216,7 @@ export const parseStateQueueCorrectionTransition = (
 ): StateQueueCorrectionTransition | null => {
   const record = exactRecord(value, [
     "schemaVersion",
-    "deploymentIdentityDigest",
+    "hubOraclePolicyId",
     "stateQueuePolicyId",
     "transactionHash",
     "blockHash",
@@ -239,7 +239,7 @@ export const parseStateQueueCorrectionTransition = (
   if (
     record === null ||
     record.schemaVersion !== STATE_QUEUE_CORRECTION_TRANSITION_SCHEMA_VERSION ||
-    !HEX_32.test(record.deploymentIdentityDigest as string) ||
+    !HEX_28.test(record.hubOraclePolicyId as string) ||
     !HEX_28.test(record.stateQueuePolicyId as string) ||
     !HEX_32.test(record.transactionHash as string) ||
     !HEX_32.test(record.blockHash as string) ||
@@ -280,7 +280,7 @@ export const parseStateQueueCorrectionTransition = (
   }));
   const canonical = {
     schemaVersion: record.schemaVersion,
-    deploymentIdentityDigest: record.deploymentIdentityDigest as string,
+    hubOraclePolicyId: record.hubOraclePolicyId as string,
     stateQueuePolicyId: record.stateQueuePolicyId as string,
     transactionHash: record.transactionHash as string,
     blockHash: record.blockHash as string,

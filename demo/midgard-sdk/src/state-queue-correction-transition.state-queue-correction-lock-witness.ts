@@ -69,7 +69,7 @@ export type StateQueueCorrectionLockWitness =
 
 export type StateQueueCorrectionTransition = Readonly<{
   schemaVersion: typeof STATE_QUEUE_CORRECTION_TRANSITION_SCHEMA_VERSION;
-  deploymentIdentityDigest: string;
+  hubOraclePolicyId: string;
   stateQueuePolicyId: string;
   transactionHash: string;
   blockHash: string;
@@ -94,7 +94,7 @@ export type StateQueueCorrectionTransition = Readonly<{
 }>;
 
 export type DeriveStateQueueCorrectionTransitionInput = Readonly<{
-  deploymentIdentityDigest: string;
+  hubOraclePolicyId: string;
   stateQueuePolicyId: string;
   transactionHash: string;
   blockHash: string;
@@ -123,7 +123,7 @@ export type StateQueueAuthenticatedTransitionKind =
  */
 export type StateQueueAuthenticatedTransition = Readonly<{
   schemaVersion: typeof STATE_QUEUE_AUTHENTICATED_TRANSITION_SCHEMA_VERSION;
-  deploymentIdentityDigest: string;
+  hubOraclePolicyId: string;
   stateQueuePolicyId: string;
   transactionHash: string;
   blockHash: string;

@@ -69,7 +69,7 @@ export const withStateQueueCorrectionTransitionFinalityDepth = (
   }
   const canonical = {
     schemaVersion: transition.schemaVersion,
-    deploymentIdentityDigest: transition.deploymentIdentityDigest,
+    hubOraclePolicyId: transition.hubOraclePolicyId,
     stateQueuePolicyId: transition.stateQueuePolicyId,
     transactionHash: transition.transactionHash,
     blockHash: transition.blockHash,

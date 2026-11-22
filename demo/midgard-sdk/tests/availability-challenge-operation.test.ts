@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertDaAvailabilitySignedLimits,
   type DaAvailabilityOperationLimits,
+  inspectDaAvailabilitySignedIntent,
 } from "../src/availability-challenge-operation.js";
 
 const PENALTY = 100_000_000n;
@@ -141,5 +142,27 @@ describe("signed timeout fee limits cap c = fee - feePart only", () => {
         0n,
       ),
     ).toThrow(EXCEEDS);
+  });
+});
+
+describe("signed intent deployment identity", () => {
+  const inspect = (hubOraclePolicyId: string) => () =>
+    inspectDaAvailabilitySignedIntent({
+      hubOraclePolicyId,
+      actor: "11".repeat(28),
+      headerHash: "22".repeat(28),
+      action: "open",
+      signedCbor: intent("open", 200_000n).signedCbor,
+    });
+
+  it("takes a 28-byte hub-oracle policy id and refuses a 32-byte value", () => {
+    // The fixture has no validity interval, so an accepted identity reaches
+    // the transaction check.
+    expect(inspect("ab".repeat(28))).toThrow(
+      /requires valid signed transaction/u,
+    );
+    expect(inspect("ab".repeat(32))).toThrow(
+      "Invalid availability operation identity",
+    );
   });
 });

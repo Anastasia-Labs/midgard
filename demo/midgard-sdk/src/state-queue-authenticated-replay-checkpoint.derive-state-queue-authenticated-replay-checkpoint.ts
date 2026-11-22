@@ -25,7 +25,7 @@ export const deriveStateQueueAuthenticatedReplayCheckpoint = (
   input: DeriveStateQueueAuthenticatedReplayCheckpointInput,
 ): StateQueueAuthenticatedReplayCheckpoint | null => {
   if (
-    !HEX_32.test(input.deploymentIdentityDigest) ||
+    !HEX_28.test(input.hubOraclePolicyId) ||
     !HEX_28.test(input.stateQueuePolicyId) ||
     !HEX_32.test(input.transactionHash) ||
     !HEX_32.test(input.blockHash) ||
@@ -180,7 +180,7 @@ export const deriveStateQueueAuthenticatedReplayCheckpoint = (
   if (!lockTopologyIsExact) return null;
   const canonical = {
     schemaVersion: STATE_QUEUE_AUTHENTICATED_REPLAY_CHECKPOINT_SCHEMA_VERSION,
-    deploymentIdentityDigest: input.deploymentIdentityDigest,
+    hubOraclePolicyId: input.hubOraclePolicyId,
     stateQueuePolicyId: input.stateQueuePolicyId,
     transactionHash: input.transactionHash,
     blockHash: input.blockHash,

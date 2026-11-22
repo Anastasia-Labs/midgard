@@ -35,7 +35,7 @@ export type StateQueueAuthenticatedReplayCheckpointKind =
 
 export type StateQueueAuthenticatedReplayCheckpoint = Readonly<{
   schemaVersion: typeof STATE_QUEUE_AUTHENTICATED_REPLAY_CHECKPOINT_SCHEMA_VERSION;
-  deploymentIdentityDigest: string;
+  hubOraclePolicyId: string;
   stateQueuePolicyId: string;
   transactionHash: string;
   blockHash: string;
@@ -57,7 +57,7 @@ export type StateQueueAuthenticatedReplayCheckpoint = Readonly<{
 }>;
 
 export type DeriveStateQueueAuthenticatedReplayCheckpointInput = Readonly<{
-  deploymentIdentityDigest: string;
+  hubOraclePolicyId: string;
   stateQueuePolicyId: string;
   transactionHash: string;
   blockHash: string;

@@ -187,7 +187,7 @@ export const reconcile = async (
   const checked = inspectDaAvailabilitySignedIntent(intent);
   if (
     JSON.stringify(checked) !== JSON.stringify(intent) ||
-    intent.deploymentIdentity !== context.deploymentIdentity ||
+    intent.hubOraclePolicyId !== context.hubOraclePolicyId ||
     intent.actor !== context.actor
   ) {
     throw new Error(

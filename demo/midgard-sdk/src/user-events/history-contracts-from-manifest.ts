@@ -5,7 +5,10 @@
  * contract bundle and the user CLI both build them here, so there is one copy.
  */
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { parseDeploymentManifestEventHistoryRecipe } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  deploymentManifestHubOraclePolicyId,
+  parseDeploymentManifestEventHistoryRecipe,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   credentialToAddress,
@@ -36,7 +39,7 @@ export const eventHistoryContractsFromManifest = (
     const kind = name === "deposit" ? "Deposit" : "Withdrawal";
     if (
       metadata.kind !== kind ||
-      metadata.hubPolicyId !== manifest.contracts.hubOracleMint.scriptHash ||
+      metadata.hubPolicyId !== deploymentManifestHubOraclePolicyId(manifest) ||
       metadata.initializationNonce.txHash !==
         manifest.hubOracleOneShot.txHash ||
       metadata.initializationNonce.outputIndex !==
@@ -165,7 +168,9 @@ export const userHistoryContractsFromDeploymentManifest = (
   contracts: UserHistoryContracts;
   referenceScripts: UserHistoryReferenceScripts;
 }> => {
-  const sourcePath = options.sourcePath ?? `manifest ${manifest.manifestId}`;
+  const sourcePath =
+    options.sourcePath ??
+    `manifest ${deploymentManifestHubOraclePolicyId(manifest)}`;
   return {
     contracts: userHistoryValidatorsFromManifest(
       manifest.network,
