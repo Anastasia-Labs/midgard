@@ -19,6 +19,7 @@ import {
   createMemoryLedgerStorage,
   EMPTY_LEDGER_ROOT,
   type Ledger,
+  LedgerEntryNotCanonical,
   type LedgerMutation,
   LedgerMutationRefused,
   LedgerNotRetained,
@@ -290,6 +291,27 @@ export const describeLedgerStoreConformance = (
         );
         await expectLedgerMatches(ledger, BASE);
         await expectLedgerMatches(await store.at(ledger.root), BASE);
+      });
+    });
+
+    it("refuses an entry with no trie leaf as a typed value, inserted or admitted", async () => {
+      await withStore(async (store) => {
+        const ledger = await store.admit(BASE, await ledgerEntriesRoot(BASE));
+        const leafless = {
+          outRef: testOutRef(600),
+          output: Buffer.from("00", "hex"),
+        };
+        const inserted = await ledger
+          .apply([...event([0], []), { type: "insert", ...leafless }])
+          .catch((error: unknown) => error);
+        expect(inserted).toBeInstanceOf(LedgerEntryNotCanonical);
+        expect((inserted as LedgerEntryNotCanonical).outRef).toEqual(
+          leafless.outRef,
+        );
+        await expectLedgerMatches(ledger, BASE);
+        await expect(
+          store.admit([...BASE, leafless], ledger.root),
+        ).rejects.toBeInstanceOf(LedgerEntryNotCanonical);
       });
     });
 

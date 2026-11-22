@@ -6,11 +6,7 @@
  * parent is, since each parent's reference is in the child's count. So
  * `persist` never looks below a held node.
  */
-import {
-  type LedgerEntry,
-  ledgerEntryLeaf,
-  LedgerRootMismatchError,
-} from "../ledger-at.js";
+import { type LedgerEntry, LedgerRootMismatchError } from "../ledger-at.js";
 import { buildTrie, EMPTY_LEDGER_ROOT, LedgerTrieStore } from "./engine.js";
 import {
   LedgerNodeMissing,
@@ -23,6 +19,7 @@ import {
   LedgerValue,
   overlayNode,
   overlayOutput,
+  storedEntryLeaf,
 } from "./ledger.js";
 import type {
   LedgerStorage,
@@ -40,8 +37,8 @@ export interface LedgerStore {
   at(root: string): Promise<Ledger>;
   /**
    * The ledger of a snapshot, checked against `expectedRoot`
-   * (`LedgerRootMismatchError` otherwise). It is held in memory until
-   * `persist`.
+   * (`LedgerRootMismatchError` otherwise; `LedgerEntryNotCanonical` for an
+   * entry with no trie leaf). It is held in memory until `persist`.
    */
   admit(
     entries: Iterable<LedgerEntry> | AsyncIterable<LedgerEntry>,
@@ -344,7 +341,7 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
       const pairs: { key: Buffer; value: Buffer }[] = [];
       const outputs = new Map<OutRefHex, Buffer>();
       for await (const candidate of allEntries(entries)) {
-        const { entry, leaf } = ledgerEntryLeaf(candidate, "ledger snapshot");
+        const { entry, leaf } = storedEntryLeaf(candidate);
         const outRef = entry.outRef.toString("hex");
         if (outputs.has(outRef))
           throw new Error(`ledger snapshot: duplicate out-ref ${outRef}`);

@@ -18,8 +18,9 @@
  * Faults of the payload are thrown as `BlockReplayFault` defects; the
  * callbacks' failures pass through, and a callback names a local fault of its
  * own with `ReplayLocalFault`. A failure of the ledger's `read` or `apply` is
- * a `ReplayLocalFault`. A defect of the event replay is a `ReplayLocalFault`
- * marked `held`.
+ * a `ReplayLocalFault`, except an inserted output with no ledger leaf, a
+ * typed `LedgerEntryNotCanonical` failure. A defect of the event replay is a
+ * `ReplayLocalFault` marked `held`.
  */
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";

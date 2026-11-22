@@ -7,6 +7,7 @@
  */
 export { EMPTY_LEDGER_ROOT } from "./engine.js";
 export {
+  LedgerEntryNotCanonical,
   type LedgerMutationRefusalReason,
   LedgerMutationRefused,
   LedgerNodeMissing,
