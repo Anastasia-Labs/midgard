@@ -24,7 +24,6 @@ import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import { fetchUtxoByOutRef, outRefLabel, parseOutRef } from "../runtime.js";
 import { requireComputationThreadToken } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import { NETWORK_ID_CATEGORY_LABEL } from "./contracts.js";
 import {
   encodeNetworkIdForcedScanGrammarCheckpoint,
@@ -65,7 +64,7 @@ export const buildNetworkIdForcedScanAction = async ({
   carriageUtxos,
   certificateUtxos,
   network,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: SubmitNetworkIdForcedScanParams & {
   readonly step: NetworkIdForcedScanStep;
 }): Promise<NetworkIdForcedScanBuild> => {
@@ -149,7 +148,7 @@ export const buildNetworkIdForcedScanAction = async ({
     (outputsOpeningPlan.plan.publications.length === 0
       ? []
       : await resolveFaultProofFieldCarriagePublications({
-          ownOutputs,
+          materials,
           lucid,
           publisherAddress: signer.proofMaterialsAddress,
           planned: outputsOpeningPlan,
@@ -171,7 +170,6 @@ export const buildNetworkIdForcedScanAction = async ({
             );
           }
           const certificate = await resolveFaultProofFieldPreimageCertificate({
-            ownOutputs,
             lucid,
             network: resolvedNetwork,
             planned: outputsOpeningPlan,

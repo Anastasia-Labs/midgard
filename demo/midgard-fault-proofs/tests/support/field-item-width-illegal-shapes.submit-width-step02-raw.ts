@@ -39,7 +39,6 @@ import { buildLinearFaultContinue } from "../../src/linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   buildAndSubmitTransactionUnjournaled,
   buildAndSubmitUnjournaled,
@@ -92,7 +91,6 @@ export const submitWidthStep02Raw = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
 }) => {
-  const ownOutputs = createOwnOutputJournal();
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
@@ -145,7 +143,6 @@ export const submitWidthStep02Raw = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishCarriageUnjournaled({
-      ownOutputs,
       lucid,
       signer,
       planned,
@@ -157,7 +154,6 @@ export const submitWidthStep02Raw = async ({
     (planned.plan.tier === "Certified"
       ? (
           await certifyCarriageUnjournaled({
-            ownOutputs,
             lucid,
             network: lucid.config().network!,
             signer,

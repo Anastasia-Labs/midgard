@@ -18,7 +18,7 @@ import type { StateQueueMutationLease } from "../remove-fraudulent-block.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { buildInit } from "../submit-init.js";
 import { WorkflowActionChangedError } from "./action-changed.js";
-import { firstUnclaimedFieldPublication } from "./bespoke-adapter-field-carriage.js";
+import { firstMissingFieldPublication } from "./bespoke-adapter-field-carriage.js";
 import { admitSnapshot } from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
 import {
   createDoubleSpendFieldOpeningPlan,
@@ -77,7 +77,8 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
   };
 
   const fieldPlan = createDoubleSpendFieldOpeningPlan(config);
-  const { proofChunks, fieldCarriage } = createDoubleSpendOwnMaterials(config);
+  const { proofChunks, materials: materialsFor } =
+    createDoubleSpendOwnMaterials(config);
 
   const authenticatePublications = async ({
     headerHash,
@@ -195,11 +196,12 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
     }
     if (stage.kind === "step_03" || stage.kind === "step_04") {
       const plan = fieldPlan(stage.kind, artifact);
-      const ownOutputs = await fieldCarriage(plan, holder);
-      const missing = firstUnclaimedFieldPublication({
+      const materials = materialsFor(holder);
+      const missing = await firstMissingFieldPublication({
+        lucid: config.lucid,
         publisherAddress: config.signer.proofMaterialsAddress,
         planned: plan,
-        ownOutputs,
+        materials,
       });
       if (missing !== undefined) {
         const base = `${stage.kind}:publish-field:${missing.digest}`;
@@ -215,7 +217,6 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       }
       if (plan.plan.tier === "Certified") {
         const certificate = await resolveFaultProofFieldPreimageCertificate({
-          ownOutputs,
           lucid: config.lucid,
           network: config.network,
           planned: plan,
@@ -224,7 +225,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         if (certificate === undefined) {
           const publications = await resolveFaultProofFieldCarriagePublications(
             {
-              ownOutputs,
+              materials,
               lucid: config.lucid,
               publisherAddress: config.signer.proofMaterialsAddress,
               planned: plan,
@@ -396,12 +397,12 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           "field certification action does not match the tier-3 plan",
         );
       }
-      const ownOutputs = await fieldCarriage(plan, holder);
+      const materials = materialsFor(holder);
       const publications = await resolveFaultProofFieldCarriagePublications({
         lucid: config.lucid,
         publisherAddress: config.signer.proofMaterialsAddress,
         planned: plan,
-        ownOutputs,
+        materials,
       });
       if (publications === undefined) {
         // Observation scheduled this action only once every chunk was on L1,
@@ -427,7 +428,6 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       }
       return (
         await certifyFaultProofFieldCarriage({
-          ownOutputs,
           lucid: config.lucid,
           network: config.network,
           signer: config.signer,
@@ -456,12 +456,13 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       }
       const tx = proofStage === "step_03" ? artifact.tx1 : artifact.tx2;
       const plan = fieldPlan(proofStage, artifact);
-      const ownOutputs = await fieldCarriage(plan, holder);
+      const materials = materialsFor(holder);
       if (stage === "publish-field") {
-        const expectedMissing = firstUnclaimedFieldPublication({
+        const expectedMissing = await firstMissingFieldPublication({
+          lucid: config.lucid,
           publisherAddress: config.signer.proofMaterialsAddress,
           planned: plan,
-          ownOutputs,
+          materials,
         });
         if (
           expectedMissing === undefined ||
@@ -476,7 +477,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         stage === "publish-field"
           ? undefined
           : await resolveFaultProofFieldCarriagePublications({
-              ownOutputs,
+              materials,
               lucid: config.lucid,
               publisherAddress: config.signer.proofMaterialsAddress,
               planned: plan,
@@ -487,7 +488,6 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       const certificate =
         stage !== "publish-field" && plan.plan.tier === "Certified"
           ? await resolveFaultProofFieldPreimageCertificate({
-              ownOutputs,
               lucid: config.lucid,
               network: config.network,
               planned: plan,
@@ -517,7 +517,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           await (async () => {
             if (proofStage === "step_03") {
               return await buildStep03({
-                ownOutputs,
+                materials,
                 lucid: config.lucid,
                 blueprint: config.blueprint,
                 deploymentInfo: config.deploymentInfo,
@@ -546,7 +546,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
               });
             } else {
               return await buildStep04({
-                ownOutputs,
+                materials,
                 lucid: config.lucid,
                 blueprint: config.blueprint,
                 deploymentInfo: config.deploymentInfo,

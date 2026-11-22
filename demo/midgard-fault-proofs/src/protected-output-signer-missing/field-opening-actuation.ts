@@ -16,10 +16,7 @@ import {
   publishFaultProofFieldCarriage,
 } from "../field-opening.publish-fault-proof-field-carriage.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
 
 /**
@@ -38,7 +35,7 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   label,
   publishedCarriageUtxos,
   suppliedCertificateUtxo,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ProtectedOutputSignerMissingContracts;
@@ -51,8 +48,8 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   readonly label: string;
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly suppliedCertificateUtxo?: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<
   FaultProofTurn<{
     readonly openingFor: (ctx: RedeemerContext) => FieldOpening;
@@ -65,7 +62,7 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   const carriage =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
-      ownOutputs,
+      materials,
       lucid,
       signer,
       planned,
@@ -77,7 +74,6 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
     suppliedCertificateUtxo ??
     (planned.plan.tier === "Certified"
       ? await reuseOrCertifyFaultProofFieldCarriage({
-          ownOutputs,
           lucid,
           network: lucid.config().network!,
           signer,

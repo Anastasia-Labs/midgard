@@ -45,10 +45,7 @@ import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { createStructuredDataPreimageRequirement } from "../workflow/raw-datum-preimage.js";
 import {
   structuredDataPublicationPlan,
@@ -103,8 +100,8 @@ export type BuildMintAuthorizationStep02Args = {
   readonly evidenceReferences?: readonly UTxO[];
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 };
 
 /** The thread out-ref, carriage and evidence a mint scan continues with. */
@@ -135,7 +132,7 @@ export const buildMintAuthorizationStep02 = async ({
   claimEvidence,
   evidenceReferences,
   referenceScriptUtxo,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: BuildMintAuthorizationStep02Args): Promise<
   FaultProofTurn<
     | ContinuationTurn<MintAuthorizationStep02ScanContinuation>
@@ -285,7 +282,7 @@ export const buildMintAuthorizationStep02 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
-      ownOutputs,
+      materials,
       lucid,
       signer,
       planned,

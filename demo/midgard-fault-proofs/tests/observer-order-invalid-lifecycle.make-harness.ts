@@ -28,7 +28,6 @@ import { buildObserverOrderInvalidStep03 } from "../src/observer-order-invalid/s
 import { buildObserverOrderInvalidStep04 } from "../src/observer-order-invalid/submit-step-04.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   CANCELLABLE_STEPS,
   CATEGORY_ID,
@@ -85,7 +84,6 @@ export const makeHarness = async () => {
     },
   });
   // The carriage this harness publishes, read back by its steps.
-  const ownOutputs = createOwnOutputJournal();
   const addressData = await Effect.runPromise(
     addressDataFromBech32(
       harness.contracts.fraudProof.spendingScriptAddress,
@@ -182,7 +180,6 @@ export const makeHarness = async () => {
     });
     if (planned.plan.tier !== "Certified") {
       await publishCarriageUnjournaled({
-        ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -193,7 +190,6 @@ export const makeHarness = async () => {
     }
     const carriage = await captureEmulatorSubmission(harness.emulator, () =>
       publishCarriageUnjournaled({
-        ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -203,7 +199,6 @@ export const makeHarness = async () => {
     );
     const certificate = await captureEmulatorSubmission(harness.emulator, () =>
       certifyCarriageUnjournaled({
-        ownOutputs,
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,
@@ -344,7 +339,6 @@ export const makeHarness = async () => {
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
       buildAndSubmitUnjournaled(buildObserverOrderInvalidStep02, {
-        ownOutputs,
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -370,7 +364,6 @@ export const makeHarness = async () => {
     >[0]["mutateOpening"],
   ) =>
     submitObserverOrderInvalidStep02Raw({
-      ownOutputs,
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,
@@ -394,7 +387,6 @@ export const makeHarness = async () => {
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
       buildAndSubmitUnjournaled(buildObserverOrderInvalidStep03, {
-        ownOutputs,
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -412,7 +404,6 @@ export const makeHarness = async () => {
     );
   type Step03Exposed = Omit<
     Parameters<typeof submitObserverOrderInvalidStep03Raw>[0],
-    | "ownOutputs"
     | "lucid"
     | "contracts"
     | "categoryId"
@@ -433,7 +424,6 @@ export const makeHarness = async () => {
     exposed: Step03Exposed = {},
   ) =>
     submitObserverOrderInvalidStep03Raw({
-      ownOutputs,
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,
@@ -552,7 +542,6 @@ export const makeHarness = async () => {
     publishReferences,
     requireCertificateReference,
     stepReferences,
-    ownOutputs,
     publishField,
     recordCarriage,
     init,

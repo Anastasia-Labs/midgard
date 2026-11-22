@@ -25,10 +25,7 @@ import {
 import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
   type NativeScriptInvalidContracts,
@@ -68,7 +65,7 @@ export const buildNativeScriptInvalidStep03 = async ({
   certificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptInvalidContracts;
@@ -86,8 +83,8 @@ export const buildNativeScriptInvalidStep03 = async ({
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   assertNativeScriptInvalidDirectRoute(addressWitnessItems.length);
   const stepIndex = 2;
@@ -151,7 +148,7 @@ export const buildNativeScriptInvalidStep03 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
-      ownOutputs,
+      materials,
       lucid,
       signer,
       planned,

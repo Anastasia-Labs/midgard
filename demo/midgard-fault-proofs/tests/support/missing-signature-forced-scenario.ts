@@ -25,10 +25,6 @@ import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.s
 import { requireComputationThreadToken } from "../../src/step-support.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { forcedTransactionSubject } from "../../src/workflow/detection-subject.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../../src/workflow/own-outputs.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { expectProofFit } from "./emulator/proof-fit.js";
@@ -131,7 +127,6 @@ export const setupMissingSignatureForcedScenario = async (
   shape: Parameters<typeof transactionFor>[0] = {},
   signerIndex = 0n,
 ) => {
-  const ownOutputs = createOwnOutputJournal();
   const harness = await makeMissingSignatureEmulatorHarness();
   const transaction = transactionFor(shape);
   const reason = { RequiredSignerUnsigned: { signer_index: signerIndex } };
@@ -237,15 +232,9 @@ export const setupMissingSignatureForcedScenario = async (
       )
     ).nextThreadOutRef;
   const certificates = new Map<number, UTxO>();
-  const action = (
-    threadOutRef: string,
-    index: number,
-    evidence = prepared,
-    carriage: OwnOutputJournal = ownOutputs,
-  ) =>
+  const action = (threadOutRef: string, index: number, evidence = prepared) =>
     record(`step-${index}`, () =>
       submitTurnsUnjournaled(buildMissingSignatureForcedAction, {
-        ownOutputs: carriage,
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,
@@ -261,9 +250,8 @@ export const setupMissingSignatureForcedScenario = async (
     thread: string,
     index: number,
     evidence = prepared,
-    carriage: OwnOutputJournal = ownOutputs,
   ) => {
-    const result = await action(thread, index, evidence, carriage);
+    const result = await action(thread, index, evidence);
     if (result.kind !== "advanced") throw new Error("expected advance");
     return result.nextThreadOutRef;
   };
@@ -314,7 +302,6 @@ export const setupMissingSignatureForcedScenario = async (
           });
     const chunks = await record("field-publication", () =>
       publishCarriageUnjournaled({
-        ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -332,7 +319,6 @@ export const setupMissingSignatureForcedScenario = async (
     );
     const certificate = await record("certify", () =>
       certifyCarriageUnjournaled({
-        ownOutputs,
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,

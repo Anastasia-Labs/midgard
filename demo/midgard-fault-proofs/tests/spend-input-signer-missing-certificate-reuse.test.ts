@@ -16,7 +16,6 @@ import { describe, expect, it } from "vitest";
 
 import { buildSignerWitnessScan } from "../src/signer-witness-scan/index.js";
 import { buildSpendInputSignerMissingStep02 } from "../src/spend-input-signer-missing/submit-step-02.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   commitAcceptedBlock,
   publishReferences,
@@ -102,7 +101,6 @@ describe("spendInputSignerMissing step 02 and the scan built turn by turn", () =
       certificateReferenceScriptUtxo: certificateReference,
       // The claims each turn's carriage is read back by, as a CLI run keeps
       // them in memory.
-      ownOutputs: createOwnOutputJournal(),
     };
     const certificates = () =>
       fieldPreimageCertificateCount({

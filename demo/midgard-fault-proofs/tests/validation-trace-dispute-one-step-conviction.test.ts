@@ -9,6 +9,7 @@
  * runner resolves and closes its thread, closes the case Convicted with our
  * bond back, and, once the L1 view has seen the record, removes the block;
  * only then does it slash the successor by its lost-defense receipt. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CML,
@@ -26,7 +27,6 @@ import {
 } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import type { ConfirmedValidationTraceStage } from "./support/validation-trace-confirmed-stages.js";
@@ -204,7 +204,7 @@ describe("validation-trace dispute runner: conviction after both defenders lose 
     expect(outRefOf(caseUtxo)).not.toBe(close.action.consumes);
     const lucid = scene.h.proverLucid;
     expect(
-      await lucid.utxosByOutRef([parseOwnOutRef(dispute.bondOutRef)]),
+      await lucid.utxosByOutRef([parseOutRefLabel(dispute.bondOutRef)]),
     ).toStrictEqual([]);
     const [refund] = await lucid.utxosByOutRef([
       { txHash: close.txHash, outputIndex: 0 },

@@ -25,7 +25,6 @@ import { deriveTransitionTraceReplayEvidence } from "../src/transition-trace/rep
 import { buildValidDepositTransitionWitness } from "../src/transition-trace/witnesses.build-omitted-due-l1-event-fault.js";
 import { buildTransitionFaultProof } from "../src/transition-trace/witnesses.build-out-of-window-source-event-fault.js";
 import { transitionTraceYieldData } from "../src/transition-trace/yield-data.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { network, realBlueprintPath } from "./support/emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -336,7 +335,6 @@ it.each(RAW_HISTORY_ROWS)(
       witnessReferenceScripts: h.witnessReferenceScripts,
     };
     // Our chunk publications, claimed as we make them.
-    const ownOutputs = createOwnOutputJournal();
     const init = await submitInit({
       ...common,
       fraudCategory: "transitionTrace",
@@ -346,7 +344,6 @@ it.each(RAW_HISTORY_ROWS)(
       ...common,
       threadOutRef: `${init.txHash}#${init.firstStepOutputIndex}`,
       proof,
-      ownOutputs,
     });
     const outputCbors = transitionTraceYieldData({
       proof,
@@ -365,7 +362,6 @@ it.each(RAW_HISTORY_ROWS)(
       await publishTransitionTraceBytes({
         ...h.proverCarriage,
         chunks: transitionTraceByteChunks(outputCbor),
-        ownOutputs,
       });
     const [routeHash, routeIndex] = route.routeOutRef.split("#");
     let checkpoint = (
@@ -391,7 +387,6 @@ it.each(RAW_HISTORY_ROWS)(
         threadOutRef: outRefLabel(checkpoint),
         proof,
         depositOpening: opening,
-        ownOutputs,
       });
       await h.proverLucid.awaitTx(await tx.signed.submit());
       checkpoint = await expectSingleUtxoWithUnit(
@@ -434,7 +429,6 @@ it.each(RAW_HISTORY_ROWS)(
         threadOutRef: outRefLabel(checkpoint),
         proof,
         depositOpening: opening,
-        ownOutputs,
       });
     if (honest) {
       const queueBefore = await h.proverLucid.utxosByOutRef([

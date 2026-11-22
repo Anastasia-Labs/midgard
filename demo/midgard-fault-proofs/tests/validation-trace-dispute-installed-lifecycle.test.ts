@@ -10,6 +10,7 @@
  * defender's window is open; an honest block whose script passes is never
  * attacked.
  */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
@@ -54,7 +55,6 @@ import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adap
 import { validationTraceFraudProofUnit } from "../src/validation-trace-dispute/close.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
@@ -191,7 +191,7 @@ describe("validation-trace dispute through the installed watcher application", (
         new RegExp(`^${VALIDATION_TRACE_CASE_OPEN}: `, "u"),
       );
       const [caseUtxo] = await lucid.utxosByOutRef([
-        parseOwnOutRef(opened.outRef),
+        parseOutRefLabel(opened.outRef),
       ]);
       expect(opened.responseDeadline).toBe(
         validationTraceDefenseDeadlineMs(Data.from(caseUtxo!.datum!, SDK.Case)),
@@ -251,7 +251,7 @@ describe("validation-trace dispute through the installed watcher application", (
       );
       const close = confirmed.at(-1)!;
       const record = close.outputs[0]!.outRef;
-      const [recorded] = await lucid.utxosByOutRef([parseOwnOutRef(record)]);
+      const [recorded] = await lucid.utxosByOutRef([parseOutRefLabel(record)]);
       const proofUnit = validationTraceFraudProofUnit(
         deployment,
         scene.failing.evidence.headerHash,
@@ -289,10 +289,10 @@ describe("validation-trace dispute through the installed watcher application", (
         bond!.assets.lovelace!.toString(),
       );
       expect(
-        await lucid.utxosByOutRef([parseOwnOutRef(outRefOf(bond!))]),
+        await lucid.utxosByOutRef([parseOutRefLabel(outRefOf(bond!))]),
       ).toStrictEqual([]);
       const [reward] = await lucid.utxosByOutRef([
-        parseOwnOutRef(economics.proverRewardOutputOutRef!),
+        parseOutRefLabel(economics.proverRewardOutputOutRef!),
       ]);
       expect(reward!.address).toBe(
         credentialToAddress(installed.scene.h.proverLucid.config().network!, {

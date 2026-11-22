@@ -57,10 +57,7 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type LocallyEvaluatedTransaction,
   type OutsideWorkflowSubmission,
@@ -165,7 +162,7 @@ export const buildValueNotPreservedStep03 = async ({
   mintItems,
   referenceScriptUtxo,
   unsafeSpendFieldRawUtxoForTest,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ValueNotPreservedContracts;
@@ -193,8 +190,8 @@ export const buildValueNotPreservedStep03 = async ({
    * publication whose bytes differ from the committed field hash.
    */
   readonly unsafeSpendFieldRawUtxoForTest?: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<FaultProofTurn<ValueNotPreservedStep03Build>> => {
   const { threadUtxo, threadToken } = await requireValueNotPreservedThreadUtxo({
     lucid,
@@ -270,7 +267,7 @@ export const buildValueNotPreservedStep03 = async ({
   const outputsCarriageUtxos =
     unsafeSpendFieldRawUtxoForTest === undefined
       ? await publishFaultProofFieldCarriage({
-          ownOutputs,
+          materials,
           lucid,
           signer,
           planned: outputsPlan,
@@ -283,7 +280,7 @@ export const buildValueNotPreservedStep03 = async ({
     mintPlan === null
       ? []
       : await publishFaultProofFieldCarriage({
-          ownOutputs,
+          materials,
           lucid,
           signer,
           planned: mintPlan,

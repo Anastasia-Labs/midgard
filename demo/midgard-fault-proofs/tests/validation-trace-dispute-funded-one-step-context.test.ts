@@ -18,13 +18,13 @@
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE } from "../src/validation-trace-dispute/move-fee.js";
 import { CEK_CONTEXT_STAGE_HOLDERS } from "../src/validation-trace-dispute/one-step-holders.js";
 import type { ValidationTraceOneStepReferences } from "../src/validation-trace-dispute/transactions.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { drainProver, topUpProver } from "./support/installed-prover-wallet.js";
 import { sceneOperator } from "./support/validation-trace-dispute-defend.js";
 import {
@@ -121,7 +121,7 @@ describe("validation-trace dispute one-step resolution through a CEK context ste
       trace,
     );
     const [thread] = await scene.h.emulator.getUtxosByOutRef([
-      parseOwnOutRef(threadOutRef),
+      parseOutRefLabel(threadOutRef),
     ]);
     side = { defender, trace, unit: threadUnitOf(scene, thread!) };
   }, 1_800_000);

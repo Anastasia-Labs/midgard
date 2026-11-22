@@ -6,8 +6,8 @@
  * builder that finds some of it missing builds and signs the next
  * transaction that creates it, a {@link PrerequisiteTurn}, and stops there;
  * otherwise it builds the step itself. Each call builds and signs at most one
- * transaction. Once that transaction is confirmed, the next call with the
- * same own-output journal finds its output live and moves on.
+ * transaction. Once the provider shows that transaction's output, the next
+ * call finds it by content and moves on.
  */
 import type { LocallyEvaluatedTransaction } from "./workflow/transaction-boundary.js";
 
@@ -17,8 +17,6 @@ export type PrerequisiteTurn = Readonly<{
   transaction: LocallyEvaluatedTransaction;
   /** Names the transaction in a submission refusal. */
   label: string;
-  /** The output the step reads, claimed from the signed body, and its name. */
-  output: Readonly<{ outRef: string; label: string }>;
   /**
    * The carriage plan the transaction belongs to, by a key unique to that
    * plan, and how many transactions the plan needs in all.
@@ -38,7 +36,6 @@ export const isPrerequisiteTurn = <Other>(
   !Array.isArray(value) &&
   "kind" in value &&
   (value.kind === "publication" || value.kind === "certificate") &&
-  "output" in value &&
   "plan" in value;
 
 /**

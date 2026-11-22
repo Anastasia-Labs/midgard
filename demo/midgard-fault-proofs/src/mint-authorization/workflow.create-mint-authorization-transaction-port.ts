@@ -24,7 +24,6 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import type { ManifestBoundFamilyWorkflow } from "../workflow/family-definition.js";
 import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
-import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { workflowStepTransaction } from "../workflow/step-transaction.js";
@@ -70,13 +69,10 @@ export const createMintAuthorizationTransactionPort = (
       replayContext: config.replayContext,
     }),
   capture: async ({ action, artifact, holder }) => {
-    const ownOutputs = workflowFieldCarriageOwnOutputs({
-      category: "mintAuthorization",
-      materials: proofMaterialsAccess({
-        signer: config.signer,
-        lucid: config.lucid,
-        holder,
-      }),
+    const materials = proofMaterialsAccess({
+      signer: config.signer,
+      lucid: config.lucid,
+      holder,
     });
     const admitted = await admitMintAuthorizationWorkflowArtifact(artifact);
     if (admitted.current.headerHash !== config.binding.definition.headerHash)
@@ -111,7 +107,7 @@ export const createMintAuthorizationTransactionPort = (
     const carriage =
       planned === null
         ? null
-        : await resolveField({ ownOutputs, config, plan: planned });
+        : await resolveField({ materials, config, plan: planned });
     const rawPreimageUtxos =
       (await mintAuthorizationWorkflowRawRequirement(admitted, stage)) !== null
         ? (
@@ -124,7 +120,7 @@ export const createMintAuthorizationTransactionPort = (
           ).publications
         : undefined;
     const common = {
-      ownOutputs,
+      materials,
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId,

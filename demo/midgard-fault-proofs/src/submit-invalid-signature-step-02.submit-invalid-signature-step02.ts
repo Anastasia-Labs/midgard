@@ -45,10 +45,7 @@ import {
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "./workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "./workflow/proof-materials-view.js";
 
 export const buildInvalidSignatureStep02 = async ({
   lucid,
@@ -67,7 +64,7 @@ export const buildInvalidSignatureStep02 = async ({
   certificateUtxos = [],
   existingPublicationUtxos = [],
   publishMissingCarriage = true,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -97,8 +94,8 @@ export const buildInvalidSignatureStep02 = async ({
    * false and journal every publication/certificate before this proof step.
    */
   readonly publishMissingCarriage?: boolean;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<FaultProofTurn<InvalidSignatureStep02Build>> => {
   const { invalidSignatureCategory, contracts } =
     await resolveInvalidSignatureDeploymentContracts({
@@ -153,7 +150,7 @@ export const buildInvalidSignatureStep02 = async ({
   // fee inputs or resolves indices into the complete reference-input set.
   const publishedHere = publishMissingCarriage
     ? await publishFaultProofFieldCarriage({
-        ownOutputs,
+        materials,
         lucid,
         signer,
         planned,

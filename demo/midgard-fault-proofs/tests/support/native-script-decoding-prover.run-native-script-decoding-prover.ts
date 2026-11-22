@@ -20,7 +20,6 @@ import {
 } from "../../src/native-script-decoding/scan-plan.native-script-decoding-plan-costs.js";
 import { nativeScriptDecodingSubmitError } from "../../src/native-script-decoding/submit-common.js";
 import { outRefLabel } from "../../src/runtime.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   type DriveState,
   locateNativeScriptDecodingThread,
@@ -320,7 +319,6 @@ export const runNativeScriptDecodingProver = async (
   //    unexpected abort stalls loudly with the thread's position.
   const txHashes: string[] = [];
   // The carriage this run publishes, reused across its steps.
-  const ownOutputs = createOwnOutputJournal();
   const submittedThisRun = () => txHashes.length;
   let currentOutRef: string | null =
     cursor.at === "init" ? null : cursor.threadOutRef;
@@ -442,7 +440,6 @@ export const runNativeScriptDecodingProver = async (
             ? await deps.evidence.subjectTx(finding)
             : null;
           const result = await submitNativeScriptDecodingStep03OpenSubject({
-            ownOutputs,
             lucid,
             contracts,
             categoryId: deps.category.categoryId,

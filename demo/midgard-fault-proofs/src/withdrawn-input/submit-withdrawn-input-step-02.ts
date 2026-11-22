@@ -32,10 +32,7 @@ import {
 import type { ResolvedProverSigner } from "../runtime.js";
 import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type LocallyEvaluatedTransaction,
   type OutsideWorkflowSubmission,
@@ -82,7 +79,7 @@ export const buildWithdrawnInputStep02 = async ({
   publishedCarriageUtxos,
   certificateUtxo,
   publishMissingCarriage = true,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: WithdrawnInputContracts;
@@ -98,8 +95,8 @@ export const buildWithdrawnInputStep02 = async ({
   readonly certificateUtxo?: UTxO;
   /** Diagnostic/emulator fallback only. Production workflows set false. */
   readonly publishMissingCarriage?: boolean;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<FaultProofTurn<WithdrawnInputStep02Build>> => {
   const { threadUtxo, threadToken } = await requireWithdrawnInputThreadUtxo({
     lucid,
@@ -141,7 +138,7 @@ export const buildWithdrawnInputStep02 = async ({
       ? []
       : publishMissingCarriage
         ? await publishFaultProofFieldCarriage({
-            ownOutputs,
+            materials,
             lucid,
             signer,
             planned,

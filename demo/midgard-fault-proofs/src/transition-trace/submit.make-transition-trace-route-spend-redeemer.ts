@@ -20,7 +20,7 @@ import {
 } from "../runtime.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import { type FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import { type OwnOutputJournal } from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type LocallyEvaluatedTransaction,
   type OutsideWorkflowSubmission,
@@ -57,8 +57,8 @@ export type SubmitTransitionTraceProofConfig = {
    * actions of their own, so missing carriage is an error there.
    */
   readonly publishCarriage?: boolean;
-  /** Our field-carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 };
 
 export type SubmitTransitionTraceProofFromFilesConfig = SubmitProviderConfig & {

@@ -8,10 +8,7 @@ import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { WITNESS_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts.js";
 import { buildWitnessScriptDecodingCancel } from "./submit-cancel.js";
 import { buildWitnessScriptDecodingInit } from "./submit-init.js";
@@ -38,7 +35,7 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
   observe,
   resolveStage,
   stateQueueMutationLeaseCoordinator,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly config: ManifestBoundWitnessScriptDecodingConfig;
   readonly observe: (
@@ -51,8 +48,8 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
   >;
   readonly resolveStage: WitnessScriptDecodingRuntimeLoader["resolveStage"];
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => ({
   observe,
   submit: async (
@@ -143,7 +140,7 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
         label: WITNESS_SCRIPT_DECODING_CATEGORY_LABEL,
       });
       const result = await buildWitnessScriptDecodingStep02({
-        ownOutputs,
+        materials,
         lucid: config.lucid,
         network: config.binding.network,
         contracts: config.contracts,

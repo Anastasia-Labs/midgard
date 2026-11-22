@@ -19,6 +19,7 @@
  * closes it Convicted with our bond back. */
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import { MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES } from "@al-ft/midgard-validation/cek-constant";
 import { credentialToAddress, Data } from "@lucid-evolution/lucid";
@@ -34,7 +35,6 @@ import {
   planValidationTraceThread,
 } from "../../src/validation-trace-dispute/one-step-plan.js";
 import { validationTraceDefenseDeadlineMs } from "../../src/validation-trace-dispute/waiting.js";
-import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { network } from "./emulator/blueprints.js";
 import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
 import {
@@ -355,7 +355,7 @@ export const convictsOurCase = async (journey: DataScalarJourney) => {
   expect(close.action.stage).toBe("close");
   const lucid = scene.h.proverLucid;
   expect(
-    await lucid.utxosByOutRef([parseOwnOutRef(dispute.bondOutRef)]),
+    await lucid.utxosByOutRef([parseOutRefLabel(dispute.bondOutRef)]),
   ).toStrictEqual([]);
   const [refund] = await lucid.utxosByOutRef([
     { txHash: close.txHash, outputIndex: 0 },

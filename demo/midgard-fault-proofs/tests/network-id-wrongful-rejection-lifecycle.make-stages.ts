@@ -18,7 +18,6 @@ import { buildNetworkIdInit } from "../src/network-id/submit-network-id-init.js"
 import { buildNetworkIdStep02 } from "../src/network-id/submit-network-id-step-02.submit-network-id-step02.js";
 import type { PreparedNetworkIdWrongfulRejection } from "../src/network-id/wrongful-rejection.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
-import type { OwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   commitForcedBlock,
   type Harness,
@@ -164,8 +163,6 @@ export const makeStages = (
       readonly publish?: boolean;
       readonly certificateUtxos?: readonly UTxO[];
       readonly referenceScriptUtxo?: UTxO;
-      /** The carriage claims the published field is read back by. */
-      readonly ownOutputs?: OwnOutputJournal;
     } = {},
   ) => {
     const label = `scan-${step.kind}${
@@ -194,9 +191,6 @@ export const makeStages = (
           ...(options.certificateUtxos === undefined
             ? {}
             : { certificateUtxos: options.certificateUtxos }),
-          ...(options.ownOutputs === undefined
-            ? {}
-            : { ownOutputs: options.ownOutputs }),
         }),
       ),
     );
@@ -209,7 +203,6 @@ export const makeStages = (
     options: {
       readonly publish?: boolean;
       readonly certificateUtxos?: readonly UTxO[];
-      readonly ownOutputs?: OwnOutputJournal;
     } = {},
   ) => {
     let cursor = threadOutRef;

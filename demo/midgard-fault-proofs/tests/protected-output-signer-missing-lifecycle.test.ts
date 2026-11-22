@@ -85,7 +85,6 @@ import {
 } from "../src/signer-witness-scan/index.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { makeProtectedOutputSignerIsolatedEvaluator } from "./protected-output-signer-missing-isolated-evaluator.js";
 import { makeScenario } from "./protected-output-signer-missing-lifecycle.make-scenario.js";
 import {
@@ -748,7 +747,6 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
   }, 900_000);
 
   it("refuses an honest accepted block, every substituted accepted seam, the adjacent over-bound field, and cancels every step", async () => {
-    const ownOutputs = createOwnOutputJournal();
     // Honest: the protected output's signer is present behind one decoy, so
     // the accepted block is correct and no acceptance thread may close.
     const honestTx = nativeTxWith({
@@ -1063,7 +1061,6 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       witnessSetHash: overBoundEvidence.witnessSetHashHex,
     };
     const overBoundChunks = await publishCarriageUnjournaled({
-      ownOutputs,
       lucid: s.harness.proverLucid,
       signer: s.harness.proverSigner,
       planned: overBoundPlanned,
@@ -1073,7 +1070,6 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     expect(overBoundChunks).toHaveLength(3);
     await expectOnchainRefusal(() =>
       certifyCarriageUnjournaled({
-        ownOutputs,
         lucid: s.harness.proverLucid,
         network,
         signer: s.harness.proverSigner,

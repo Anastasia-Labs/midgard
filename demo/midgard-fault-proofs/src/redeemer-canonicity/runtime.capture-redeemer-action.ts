@@ -35,7 +35,6 @@ import {
   cursorStepContractNames,
   defineFamily,
 } from "../workflow/family-definition.family-definition.js";
-import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
   journalJsonDigest,
   type JournalJsonObject,
@@ -220,13 +219,10 @@ const captureRedeemerAction = async (
   artifact: JournalJsonObject,
   holder: ProofMaterialsHolder,
 ): Promise<CursorFamilyCapturedAction> => {
-  const ownOutputs = workflowFieldCarriageOwnOutputs({
-    category: "redeemerCanonicity",
-    materials: proofMaterialsAccess({
-      signer: workflow.signer,
-      lucid: workflow.lucid,
-      holder,
-    }),
+  const materials = proofMaterialsAccess({
+    signer: workflow.signer,
+    lucid: workflow.lucid,
+    holder,
   });
   const admitted = admitRedeemerWorkflowArtifact(artifact);
   const input = action.input;
@@ -312,7 +308,7 @@ const captureRedeemerAction = async (
         const { planned } = redeemerField(workflow, artifact);
         const publishedCarriageUtxos =
           await resolveFaultProofFieldCarriagePublications({
-            ownOutputs,
+            materials,
             lucid: workflow.lucid,
             publisherAddress: workflow.signer.proofMaterialsAddress,
             planned,
@@ -321,7 +317,6 @@ const captureRedeemerAction = async (
           throw new Error("redeemerCanonicity field publications disappeared");
         const certificateUtxo = await resolveFaultProofFieldPreimageCertificate(
           {
-            ownOutputs,
             lucid: workflow.lucid,
             network: workflow.binding.network,
             planned,
@@ -333,7 +328,7 @@ const captureRedeemerAction = async (
           throw new Error("redeemerCanonicity certificate disappeared");
         return await buildRedeemerCanonicityStep02({
           ...common,
-          ownOutputs,
+          materials,
           threadOutRef: cursorStringField(input, "threadOutRef"),
           evidence: admitted.evidence,
           nativeTxCompactCbor: admitted.nativeTxCompactCbor,

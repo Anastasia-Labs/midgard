@@ -91,13 +91,13 @@ export type ProofMaterialsView = Readonly<{
   /**
    * For each requested datum, in request order, a live plain output with
    * exactly those bytes, or undefined: the first copy for its first
-   * occurrence in `datums`, the second for its second, and so on. The
-   * datums are registered as needs of `holder` before the read, so no sweep
-   * takes what a step found.
+   * occurrence in `datums`, the second for its second, and so on. With
+   * `holder`, the datums are registered as its needs before the read, so no
+   * sweep takes what a step found.
    */
   find: (
     datums: readonly string[],
-    holder: ProofMaterialsHolder,
+    holder?: ProofMaterialsHolder,
   ) => Promise<readonly (UTxO | undefined)[]>;
   /** Adds to what `holder` needs until it is released. */
   need: (
@@ -293,7 +293,7 @@ export const createProofMaterialsView = ({
     address,
     find: async (datums, holder) => {
       const keys = datums.map(datumKey);
-      register(holder, keys, []);
+      if (holder !== undefined) register(holder, keys, []);
       if (keys.length === 0) return [];
       const counts = new Map<string, number>();
       for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1);

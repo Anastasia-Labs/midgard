@@ -13,6 +13,7 @@
  * back until it is final: once it rolls back after the ending, the next
  * runs send it again, the same signed bytes, sign nothing new for the
  * publication, and end resolved by that record again. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   Data,
@@ -29,7 +30,6 @@ import { VALIDATION_TRACE_SCRIPT_SOURCES_REDEEMER_INLINE_MAX_PREIMAGE_BYTES } fr
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { network } from "./support/emulator/blueprints.js";
 import {
   copiesOf,
@@ -137,7 +137,7 @@ const anotherProver = async (): Promise<Runner> => {
 const removeByTheirs = async (): Promise<string> => {
   const { h, failing } = dispute.scene;
   const [their] = await h.proverLucid.utxosByOutRef([
-    parseOwnOutRef(theirCase),
+    parseOutRefLabel(theirCase),
   ]);
   const ours = await liveCase(dispute).catch(() => undefined);
   const deadline = Math.max(
@@ -204,7 +204,7 @@ describe("validation-trace dispute runner: a publication two threads read, once 
     expect(readersOf(scene, copy)).toHaveLength(2);
     expect(spenderOf(scene, copy)).toBeUndefined();
     const [output] = await scene.h.proverLucid.utxosByOutRef([
-      parseOwnOutRef(copy),
+      parseOutRefLabel(copy),
     ]);
     expect(output).toBeDefined();
     copyOutput = output!;

@@ -50,7 +50,6 @@ import {
   ConservationTerminalArgs,
   ConservationUpdateArgs,
 } from "../../src/value-not-preserved/union-schemas.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
 import { network } from "./emulator/blueprints.js";
 import {
@@ -852,7 +851,6 @@ export const registerValueConservationCases = (
         ).utxo
       : undefined;
     // The direct path's own carriage, read back by its later steps.
-    const ownOutputs = createOwnOutputJournal();
     for (const fieldIndex of [0, 2, 5] as const) {
       if (maximum) {
         if (certificateReference === undefined)
@@ -962,7 +960,6 @@ export const registerValueConservationCases = (
           ? []
           : await record(`field:${fieldIndex}:publish`, async () =>
               publishCarriageUnjournaled({
-                ownOutputs,
                 lucid: harness.proverLucid,
                 signer: harness.proverSigner,
                 planned,
@@ -975,7 +972,6 @@ export const registerValueConservationCases = (
           ? (
               await record(`field:${fieldIndex}:certify`, async () =>
                 certifyCarriageUnjournaled({
-                  ownOutputs,
                   lucid: harness.proverLucid,
                   network,
                   signer: harness.proverSigner,

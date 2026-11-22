@@ -13,6 +13,7 @@
  * stands in for that install so the production classifier mints the
  * objective's actuation permit.
  */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   CML,
   Constr,
@@ -29,7 +30,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { isWorkflowFundingPauseReason } from "../src/workflow/funding-pause-reason.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/workflow-funding-shortfall.js";
 import {
   drainProver,
@@ -197,7 +197,7 @@ describe("validation-trace dispute funding under the prover funding", () => {
           `${token.txHash}#${token.outputIndex.toString()}`,
         ];
         expect(
-          await h.emulator.getUtxosByOutRef(shaped.map(parseOwnOutRef)),
+          await h.emulator.getUtxosByOutRef(shaped.map(parseOutRefLabel)),
         ).toHaveLength(2);
 
         recorded = recordSubmitted(h.emulator);
@@ -257,7 +257,7 @@ describe("validation-trace dispute funding under the prover funding", () => {
           ),
         ).toBe(true);
         expect(
-          await h.emulator.getUtxosByOutRef(shaped.map(parseOwnOutRef)),
+          await h.emulator.getUtxosByOutRef(shaped.map(parseOutRefLabel)),
         ).toHaveLength(2);
       } finally {
         recorded?.restore();

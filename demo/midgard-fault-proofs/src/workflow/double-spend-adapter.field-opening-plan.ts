@@ -2,7 +2,6 @@ import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import { resolvePublishedProofChunks } from "../publish-proof-chunks.js";
-import { addressFieldCarriageOwnOutputs } from "./bespoke-adapter-field-carriage.js";
 import type {
   DoubleSpendArtifact,
   DoubleSpendConstrainedWorkflowAdapterConfig,
@@ -36,9 +35,8 @@ export const createDoubleSpendFieldOpeningPlan = (
 
 /**
  * The double-spend proof chunks of a workflow, found by content at the
- * proof-materials address, and its field carriage: publications found by
- * content there too, and the certificate found by its token and datum at
- * the certificate address.
+ * proof-materials address, and the workflow's view of that address its
+ * field publications are found through.
  */
 export const createDoubleSpendOwnMaterials = (
   config: DoubleSpendConstrainedWorkflowAdapterConfig,
@@ -51,20 +49,10 @@ export const createDoubleSpendOwnMaterials = (
       view: config.signer.proofMaterials,
       holder,
     }),
-  fieldCarriage: async (
-    planned: ReturnType<ReturnType<typeof createDoubleSpendFieldOpeningPlan>>,
-    holder: ProofMaterialsHolder,
-  ) =>
-    await addressFieldCarriageOwnOutputs({
+  materials: (holder: ProofMaterialsHolder) =>
+    proofMaterialsAccess({
+      signer: config.signer,
       lucid: config.lucid,
-      network: config.network,
-      publisherAddress: config.signer.proofMaterialsAddress,
-      planned,
-      certificatePolicyId: config.fieldPreimageCertificate.policyId,
-      materials: proofMaterialsAccess({
-        signer: config.signer,
-        lucid: config.lucid,
-        holder,
-      }),
+      holder,
     }),
 });

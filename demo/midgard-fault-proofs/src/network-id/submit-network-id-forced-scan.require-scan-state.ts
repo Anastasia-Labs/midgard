@@ -10,7 +10,7 @@ import {
 
 import { type FaultProofFieldOpeningPlan } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import type { OwnOutputJournal } from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type LocallyEvaluatedTransaction,
   type OutsideWorkflowSubmission,
@@ -44,14 +44,14 @@ export type SubmitNetworkIdForcedScanParams = {
   readonly scan: NetworkIdForcedScanPlan;
   /** Published `fraudProofNetworkIdForcedScan` reference script; mandatory. */
   readonly referenceScriptUtxo: UTxO;
-  /** Published tier-2/3 carriage; read through `ownOutputs` when omitted. */
+  /** Published tier-2/3 carriage; found on chain when omitted. */
   readonly carriageUtxos?: readonly UTxO[];
   /** Existing §8.6 certificate UTxO, required only for tier 3. */
   readonly certificateUtxos?: readonly UTxO[];
   /** Required only when the certificate has to be resolved from chain. */
   readonly network?: Network;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 };
 
 export type NetworkIdForcedScanBuild = {

@@ -35,7 +35,6 @@ import {
   requireInitialStepDatum,
 } from "../step-support.js";
 import { witnessMintingPolicyCarriage } from "../witness-reference-scripts.js";
-import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import { transitionTraceError } from "./errors.js";
 import type { TransitionDepositOpening } from "./history-opening.js";
 import {
@@ -87,7 +86,7 @@ export const buildTransitionTraceProof = async ({
   witnessReferenceScripts,
   fieldCertificateReferenceScript,
   publishCarriage = false,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
   routeOutRef,
   checkpointOutRef,
 }: SubmitTransitionTraceProofConfig & {
@@ -148,7 +147,7 @@ export const buildTransitionTraceProof = async ({
           lucid,
           address: signer.proofMaterialsAddress,
           proof: proofInput,
-          ownOutputs,
+          materials,
           publish: publishCarriage,
         })
       : [];
@@ -283,7 +282,7 @@ export const buildTransitionTraceProof = async ({
       witnessReferenceScripts,
       fieldCertificateReferenceScript,
       publishCarriage,
-      ownOutputs,
+      materials,
     });
     if (isPrerequisiteTurn(result)) return result;
     if (isContinuationTurn(result))

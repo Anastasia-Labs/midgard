@@ -16,7 +16,6 @@ import type {
   ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
 import type { FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
-import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
@@ -36,15 +35,17 @@ import {
   record,
   witnessSetCore,
 } from "./min-fee.parse-artifact.js";
-import type { OwnOutputJournal } from "./own-outputs.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
-import { proofMaterialsAccess } from "./proof-materials-view.js";
+import {
+  type ProofMaterialsAccess,
+  proofMaterialsAccess,
+} from "./proof-materials-view.js";
 import { workflowStepTransaction } from "./step-transaction.js";
 
 const resolveFieldCarriages = async (
   config: BoundConfig,
   admitted: Pick<AdmittedMinFeeArtifact, "fieldPlans">,
-  ownOutputs: OwnOutputJournal,
+  materials: ProofMaterialsAccess,
 ): Promise<
   Readonly<{ publications: readonly UTxO[]; certificates: readonly UTxO[] }>
 > => {
@@ -53,7 +54,7 @@ const resolveFieldCarriages = async (
   for (const plan of admitted.fieldPlans) {
     const resolvedPublications =
       await resolveFaultProofFieldCarriagePublications({
-        ownOutputs,
+        materials,
         lucid: config.lucid,
         publisherAddress: config.signer.proofMaterialsAddress,
         planned: plan,
@@ -65,7 +66,6 @@ const resolveFieldCarriages = async (
     }
     publications.push(...resolvedPublications);
     const certificate = await resolveFaultProofFieldPreimageCertificate({
-      ownOutputs,
       lucid: config.lucid,
       network: config.network,
       planned: plan,
@@ -112,13 +112,10 @@ export const createTransactionPort = (
     });
   },
   capture: async ({ action, artifact, holder }) => {
-    const ownOutputs = workflowFieldCarriageOwnOutputs({
-      category: "minFee",
-      materials: proofMaterialsAccess({
-        signer: config.signer,
-        lucid: config.lucid,
-        holder,
-      }),
+    const materials = proofMaterialsAccess({
+      signer: config.signer,
+      lucid: config.lucid,
+      holder,
     });
     const admitted = await admitWorkflowArtifact(
       artifact,
@@ -205,13 +202,13 @@ export const createTransactionPort = (
       const carriages = await resolveFieldCarriages(
         config,
         admitted,
-        ownOutputs,
+        materials,
       );
       return Object.freeze({
         transaction: (
           await workflowStepTransaction(
             await buildMinFeeStep02({
-              ownOutputs,
+              materials,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,

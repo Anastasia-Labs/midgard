@@ -14,6 +14,7 @@
 import { validationTraceDepthForStepCount } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { plutusV3ScriptWitness } from "@al-ft/midgard-validation/tests/validation-fixtures";
@@ -37,7 +38,6 @@ import type {
 } from "../../src/validation-trace-dispute/one-step-core-chains.js";
 import { validationTraceOneStepHolder } from "../../src/validation-trace-dispute/one-step-holders.js";
 import { validationTraceDefenseDeadlineMs } from "../../src/validation-trace-dispute/waiting.js";
-import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { ADMITTED_TX_EX_UNITS } from "../helpers/plutus-execution-block-fixture.js";
 import { network } from "./emulator/blueprints.js";
 import {
@@ -328,7 +328,7 @@ export const deepestCase = ({
         expect(close.action.stage).toBe("close");
         const lucid = scene.h.proverLucid;
         expect(
-          await lucid.utxosByOutRef([parseOwnOutRef(dispute.bondOutRef)]),
+          await lucid.utxosByOutRef([parseOutRefLabel(dispute.bondOutRef)]),
         ).toStrictEqual([]);
         const [refund] = await lucid.utxosByOutRef([
           { txHash: close.txHash, outputIndex: 0 },

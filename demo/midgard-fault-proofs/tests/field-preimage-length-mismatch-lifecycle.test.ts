@@ -31,7 +31,6 @@ import {
 import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   forcedPrepared,
   forcedSetup,
@@ -127,7 +126,6 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
   );
 
   it("executes certified maximum evidence, refuses a substituted chunk order, and refuses the adjacent actual length", async () => {
-    const ownOutputs = createOwnOutputJournal();
     const fixture = await setup({ acceptedPreimageBytes: 32_768 });
     const plan = planMidgardFieldCarriage({
       owner: Buffer.from(fixture.harness.proverSigner.paymentKeyHash, "hex"),
@@ -159,7 +157,6 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
       fixture.harness.emulator,
       () =>
         publishCarriageUnjournaled({
-          ownOutputs,
           lucid: fixture.harness.proverLucid,
           signer: fixture.harness.proverSigner,
           planned: {
@@ -178,7 +175,6 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
       fixture.harness.emulator,
       () =>
         publishCarriageUnjournaled({
-          ownOutputs,
           lucid: fixture.harness.proverLucid,
           signer: fixture.harness.proverSigner,
           planned,
@@ -204,7 +200,6 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
       fixture.harness.emulator,
       () =>
         certifyCarriageUnjournaled({
-          ownOutputs,
           lucid: fixture.harness.proverLucid,
           network,
           signer: fixture.harness.proverSigner,

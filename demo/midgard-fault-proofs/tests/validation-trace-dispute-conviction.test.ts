@@ -9,6 +9,7 @@
  * through the shared removal, keeping the record, and completes on the
  * authenticated terminal. A close whose lower bound is not yet past the
  * deadline is refused by the case validator. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
@@ -34,7 +35,6 @@ import {
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
@@ -67,7 +67,7 @@ const outRefOf = (utxo: UTxO) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
 const liveAt = async (outRef: string): Promise<UTxO | undefined> =>
-  (await scene.h.proverLucid.utxosByOutRef([parseOwnOutRef(outRef)]))[0];
+  (await scene.h.proverLucid.utxosByOutRef([parseOutRefLabel(outRef)]))[0];
 
 /** Each block an L1 view was taken for, in order: one per removal adapter
  * built, and one per read of our threads ahead of a completion. */
@@ -198,7 +198,7 @@ describe("validation-trace dispute runner: conviction of an undefended case", ()
     expect(result.reason).toContain(`${proofUnit} at ${record.outRef}`);
 
     const [recorded] = await h.proverLucid.utxosByOutRef([
-      parseOwnOutRef(record.outRef),
+      parseOutRefLabel(record.outRef),
     ]);
     expect(recorded!.address).toBe(
       h.contracts.fraudProof.spendingScriptAddress,

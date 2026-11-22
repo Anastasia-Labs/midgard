@@ -19,7 +19,6 @@ import {
   type ManifestBoundLinearFamilyWorkflow,
 } from "./family-definition.family-definition.js";
 import type { FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
-import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   actionInput,
   admitInputNoIdxArtifact,
@@ -92,13 +91,10 @@ const createTransactionPort = (
   prepare: async ({ evidence, classification }) =>
     await prepareInputNoIdxArtifact({ evidence, classification }),
   capture: async ({ action, artifact, holder }) => {
-    const ownOutputs = workflowFieldCarriageOwnOutputs({
-      category: "nonExistentInputNoIndex",
-      materials: proofMaterialsAccess({
-        signer: config.signer,
-        lucid: config.lucid,
-        holder,
-      }),
+    const materials = proofMaterialsAccess({
+      signer: config.signer,
+      lucid: config.lucid,
+      holder,
     });
     const admitted = admitInputNoIdxArtifact(
       artifact,
@@ -183,7 +179,7 @@ const createTransactionPort = (
         input.stage === "step_02"
           ? admitted.inputFieldPlan
           : admitted.outputFieldPlan;
-      const carriage = await resolveField(config, plan, ownOutputs);
+      const carriage = await resolveField(config, plan, materials);
       return Object.freeze({
         transaction: (
           await workflowStepTransaction(
@@ -203,7 +199,7 @@ const createTransactionPort = (
               } as const;
               if (input.stage === "step_02") {
                 return await buildInputNoIdxStep02({
-                  ownOutputs,
+                  materials,
                   ...common,
                   inputsPreimage: admitted.inputs,
                   nativeTxCompactCbor:
@@ -211,7 +207,7 @@ const createTransactionPort = (
                 });
               } else {
                 return await buildInputNoIdxStep04({
-                  ownOutputs,
+                  materials,
                   ...common,
                   outputsPreimage: admitted.outputs,
                   nativeTxCompactCbor:

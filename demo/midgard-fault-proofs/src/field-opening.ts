@@ -58,10 +58,6 @@ export {
   reuseOrCertifyFaultProofFieldCarriage,
 } from "./field-opening.certify-fault-proof-field-carriage.js";
 export {
-  fieldCertificateClaimKey,
-  fieldPublicationClaimKey,
-} from "./field-opening.own-field-carriage.js";
-export {
   type FaultProofFieldOpeningPlan,
   parseNativeTxCompactCbor,
   parseNativeTxWitnessSetCompactCbor,

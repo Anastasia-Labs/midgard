@@ -42,10 +42,7 @@ import {
 } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { MissingSignatureContracts } from "./contracts.js";
 import {
   planMissingSignatureAddressWitnessesOpening,
@@ -67,8 +64,8 @@ export type SubmitMissingSignatureForcedParams = Readonly<{
   certificateUtxo?: UTxO;
   publishCarriage?: boolean;
   witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  materials?: ProofMaterialsAccess;
 }>;
 
 export const buildMissingSignatureForcedAction = async (
@@ -83,7 +80,7 @@ export const buildMissingSignatureForcedAction = async (
     prepared,
     referenceScriptUtxo,
   } = params;
-  const ownOutputs = params.ownOutputs ?? createOwnOutputJournal();
+  const materials = params.materials;
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "thread"),
@@ -190,7 +187,7 @@ export const buildMissingSignatureForcedAction = async (
     planned === undefined
       ? []
       : await publishFaultProofFieldCarriage({
-          ownOutputs,
+          materials,
           lucid,
           signer,
           planned,
@@ -203,7 +200,6 @@ export const buildMissingSignatureForcedAction = async (
     (planned === undefined
       ? undefined
       : await resolveFaultProofFieldPreimageCertificate({
-          ownOutputs,
           lucid,
           network: lucid.config().network!,
           planned,

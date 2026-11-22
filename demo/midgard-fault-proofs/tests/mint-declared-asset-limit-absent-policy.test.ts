@@ -35,7 +35,6 @@ import {
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   network,
   publishCarriage,
@@ -103,7 +102,6 @@ const boundForcedThread = async ({
   });
   const registered = await registeredContracts(harness);
   const { contracts, category } = registered;
-  const ownOutputs = createOwnOutputJournal();
   const credential = getAddressDetails(
     await harness.funderLucid.wallet().address(),
   ).paymentCredential;
@@ -176,14 +174,12 @@ const boundForcedThread = async ({
     policies.map((item) => Buffer.from(item)),
     "mint declared absent policy",
     1n,
-    ownOutputs,
   );
   const step = {
     lucid: harness.proverLucid,
     contracts,
     categoryId: category.categoryId,
     signer: harness.proverSigner,
-    ownOutputs,
   };
   const initialized = await buildAndSubmitUnjournaled(
     buildCommittedFieldShapeInit,

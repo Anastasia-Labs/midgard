@@ -21,7 +21,6 @@ import {
 } from "../workflow/family-definition.family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import type { FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
-import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import { journalJsonDigest } from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
@@ -198,13 +197,10 @@ const createTransactionPort = (
       await actuator.capture({
         action: action.input as unknown as ObserversForbiddenActuatorAction,
         artifact,
-        ownOutputs: workflowFieldCarriageOwnOutputs({
-          category: CATEGORY,
-          materials: proofMaterialsAccess({
-            signer: context.signer,
-            lucid: context.lucid,
-            holder,
-          }),
+        materials: proofMaterialsAccess({
+          signer: context.signer,
+          lucid: context.lucid,
+          holder,
         }),
       }),
   };

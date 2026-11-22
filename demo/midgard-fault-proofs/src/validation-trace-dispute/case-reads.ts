@@ -2,12 +2,12 @@
  * policy-unique tokens: once our pending claim is spent, the case its
  * out-ref names is ours whoever verified it, and the record a close of our
  * case minted is ours whoever closed it. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import { selectOwnFraudProofRecord } from "../fraud-proof-record-selection.js";
 import { outRefLabel, type ResolvedProverSigner } from "../runtime.js";
-import { parseOwnOutRef } from "../workflow/own-outputs.js";
 import type { ValidationTraceCaseHistory } from "./case-history.js";
 import { validationTraceFraudProofUnit } from "./close.js";
 import type { ValidationTraceOwnView } from "./own-view.js";
@@ -76,7 +76,7 @@ export const validationTraceCaseReads = ({
         SDKDa.validationCaseId(
           artifact.headerHash,
           artifact.claim.claimWitness.event_to_step_membership.key,
-          parseOwnOutRef(openerOutRef),
+          parseOutRefLabel(openerOutRef),
         );
       const found = await view.caseAt(caseUnit);
       if (found === undefined || typeof found.datum !== "string") continue;
@@ -108,7 +108,7 @@ export const validationTraceCaseReads = ({
     if (consumes === undefined || cases.length < 2) return cases[0];
     const direct = cases.find(({ outRef }) => outRef === consumes);
     if (direct !== undefined) return direct;
-    const [spent] = await lucid.utxosByOutRef([parseOwnOutRef(consumes)]);
+    const [spent] = await lucid.utxosByOutRef([parseOutRefLabel(consumes)]);
     if (spent === undefined) return undefined;
     const { headerHash } = view.artifact();
     for (const found of cases) {

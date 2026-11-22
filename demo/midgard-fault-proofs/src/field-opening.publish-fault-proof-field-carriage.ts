@@ -13,21 +13,12 @@ import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { type PrerequisiteTurn } from "./fault-proof-turn.js";
-import {
-  fieldPublicationSlotClaims,
-  fieldPublicationSlots,
-  lucidOwnOutputReader,
-} from "./field-opening.own-field-carriage.js";
+import { fieldPublicationDatums } from "./field-opening.own-field-carriage.js";
 import { type FaultProofFieldOpeningPlan } from "./field-opening.plan-fault-proof-field-opening.js";
 import { type ResolvedProverSigner } from "./runtime.js";
 import { finishStep } from "./step-completion.js";
-import {
-  claimOwnOutputs,
-  type OwnOutputJournal,
-  readOwnOutputs,
-  resolveOwnOutputs,
-} from "./workflow/own-outputs.js";
-import { withContentFoundCarriage } from "./workflow/proof-materials-view.carriage-claims.js";
+import { findCarriage } from "./workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "./workflow/proof-materials-view.js";
 
 /**
  * The key and transaction count of a carriage plan's prerequisites: its
@@ -179,12 +170,9 @@ export const faultProofFieldOpening = ({
  * it needs the certificate minting policy from the deployment and a fault-proof
  * step builder holds no such role.
  *
- * Each publication is a slot of `ownOutputs`: an output with the slot's
- * content found through the workflow's proof-materials view, or one of our
- * earlier outputs for the slot, that is still live is reused; otherwise the
- * slot's publication is built, and its out-ref, taken from our signed body,
- * is claimed before it is returned. Two chunks with the same bytes are two
- * slots and take two outputs.
+ * Each publication is found by content at `publisherAddress`
+ * (`workflow/own-outputs.ts`); the first one missing is built. Two chunks
+ * with the same bytes take two outputs.
  */
 export const publishFaultProofFieldCarriage = async ({
   lucid,
@@ -192,7 +180,7 @@ export const publishFaultProofFieldCarriage = async ({
   planned,
   publisherAddress,
   label,
-  ownOutputs,
+  materials,
   beforePublication,
   publicationConfirmed,
 }: {
@@ -201,8 +189,8 @@ export const publishFaultProofFieldCarriage = async ({
   readonly planned: FaultProofFieldOpeningPlan;
   readonly publisherAddress: string;
   readonly label: string;
-  /** Our claims on the carriage slots; a new publication is claimed here. */
-  readonly ownOutputs: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
   /** Refresh reserved inputs before each new publication is built. */
   readonly beforePublication?: () => Promise<void>;
   /** Authenticate inclusion of each reused publication. */
@@ -213,29 +201,16 @@ export const publishFaultProofFieldCarriage = async ({
     return [];
   }
   signer.selectWallet(lucid);
-  const slots = fieldPublicationSlots({
-    plan: planned.plan,
-    publisherAddress,
+  const datums = fieldPublicationDatums(planned.plan);
+  const found = await findCarriage({
+    lucid,
+    address: publisherAddress,
+    datums,
+    materials,
   });
-  const claimed = await withContentFoundCarriage(
-    ownOutputs,
-    slots.map(({ key, datumCbor }) => ({
-      key,
-      address: publisherAddress,
-      datumCbor,
-    })),
-  );
-  const live = await readOwnOutputs(
-    lucidOwnOutputReader(lucid),
-    slots.flatMap(({ key }) => claimed.claims(key).map(({ outRef }) => outRef)),
-  );
   const published: UTxO[] = [];
   for (const [index, publication] of publications.entries()) {
-    const { key, slot, datumCbor } = slots[index]!;
-    const existing = [...claimed.claims(key)]
-      .reverse()
-      .map(({ outRef }) => live.get(outRef))
-      .find((utxo) => utxo !== undefined && slot.matches(utxo));
+    const existing = found[index];
     if (existing !== undefined) {
       await publicationConfirmed?.(existing.txHash);
       published.push(existing);
@@ -246,7 +221,7 @@ export const publishFaultProofFieldCarriage = async ({
       buildUnsignedFieldPreimagePublicationProgram(lucid, {
         publication: {
           chunkIndex: publication.chunkIndex,
-          datumCbor,
+          datumCbor: datums[index]!,
           byteLength: publication.bytes.length,
           digestHex: publication.digest.toString("hex"),
         },
@@ -254,16 +229,10 @@ export const publishFaultProofFieldCarriage = async ({
       }),
     );
     const signed = await unsigned.sign.withWallet().complete();
-    const [claim] = claimOwnOutputs({ signed, slots: [slot] });
-    ownOutputs.claim(key, claim!.outRef);
     return {
       kind: "publication",
       transaction: finishStep(signed, { referenceScripts: [] }),
       label: `${label} §8 carriage publication`,
-      output: {
-        outRef: claim!.outRef,
-        label: `${label} §8 carriage publication`,
-      },
       plan: fieldCarriagePlanTransactions(planned.plan),
     };
   }
@@ -271,34 +240,28 @@ export const publishFaultProofFieldCarriage = async ({
 };
 
 /**
- * Our live publications of a plan, in plan order: found by content through
- * the workflow's proof-materials view, or read by their claimed out-refs;
- * undefined when any slot has none.
+ * The live publications of a plan, in plan order, found by content at
+ * `publisherAddress`; undefined when any is missing.
  */
 export const resolveFaultProofFieldCarriagePublications = async ({
   lucid,
   publisherAddress,
   planned,
-  ownOutputs,
+  materials,
 }: {
-  readonly lucid: Pick<LucidEvolution, "utxosByOutRef">;
+  readonly lucid: Pick<LucidEvolution, "utxosAt">;
   readonly publisherAddress: string;
   readonly planned: Pick<FaultProofFieldOpeningPlan, "plan">;
-  readonly ownOutputs: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<readonly UTxO[] | undefined> => {
-  const claimed = await withContentFoundCarriage(
-    ownOutputs,
-    fieldPublicationSlots({ plan: planned.plan, publisherAddress }).map(
-      ({ key, datumCbor }) => ({ key, address: publisherAddress, datumCbor }),
-    ),
-  );
-  const resolution = await resolveOwnOutputs({
-    slots: fieldPublicationSlotClaims({
-      plan: planned.plan,
-      publisherAddress,
-      ownOutputs: claimed,
-    }),
-    read: lucidOwnOutputReader(lucid),
+  const found = await findCarriage({
+    lucid,
+    address: publisherAddress,
+    datums: fieldPublicationDatums(planned.plan),
+    materials,
   });
-  return resolution.kind === "ready" ? resolution.utxos : undefined;
+  return found.every((utxo) => utxo !== undefined)
+    ? (found as readonly UTxO[])
+    : undefined;
 };

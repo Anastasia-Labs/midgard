@@ -35,7 +35,6 @@ import {
   selectFeeInput,
 } from "../../src/step-support.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { network } from "./emulator/blueprints.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { type ReferenceInputNoIdxHarness } from "./reference-input-no-idx-emulator.build-reference-input-no-idx-block-fixture.js";
@@ -127,7 +126,6 @@ export const submitRawReferenceInputNoIdxStep02 = async ({
   readonly forwardedReferenceInput: MidgardTxInput;
   readonly nativeTxCompactCbor: string;
 }): Promise<string> => {
-  const ownOutputs = createOwnOutputJournal();
   const { referenceInputNoIdxCategory, contracts } =
     await resolveReferenceInputNoIdxDeploymentContracts({
       blueprint,
@@ -169,7 +167,6 @@ export const submitRawReferenceInputNoIdxStep02 = async ({
   });
   signer.selectWallet(lucid);
   const published = await publishCarriageUnjournaled({
-    ownOutputs,
     lucid,
     signer,
     planned,

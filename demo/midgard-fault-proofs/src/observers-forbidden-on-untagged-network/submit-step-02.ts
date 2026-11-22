@@ -14,10 +14,7 @@ import {
 import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { ObserversForbiddenContracts } from "./contracts.js";
 import {
   type ObserversForbiddenEvidence,
@@ -38,7 +35,7 @@ export const buildObserversForbiddenStep02 = async ({
   nativeTxCompactCbor,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ObserversForbiddenContracts;
@@ -49,8 +46,8 @@ export const buildObserversForbiddenStep02 = async ({
   readonly nativeTxCompactCbor: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   if (!observersForbiddenEvidenceCloses(evidence))
     throw new Error("observersForbidden: terminal evidence is honest");
@@ -88,7 +85,7 @@ export const buildObserversForbiddenStep02 = async ({
     label: "observers forbidden field 3",
   });
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
-    ownOutputs,
+    materials,
     lucid,
     publisherAddress: signer.proofMaterialsAddress,
     planned,
@@ -100,7 +97,6 @@ export const buildObserversForbiddenStep02 = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? await resolveFaultProofFieldPreimageCertificate({
-          ownOutputs,
           lucid,
           network: lucid.config().network!,
           planned,

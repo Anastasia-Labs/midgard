@@ -15,7 +15,6 @@ import type {
   ManifestBoundLinearFamilyWorkflow,
   ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
-import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
@@ -51,13 +50,10 @@ export const createTransactionPort = <
       classification,
     }),
   capture: async ({ action, artifact, holder }) => {
-    const ownOutputs = workflowFieldCarriageOwnOutputs({
-      category: config.category,
-      materials: proofMaterialsAccess({
-        signer: config.signer,
-        lucid: config.lucid,
-        holder,
-      }),
+    const materials = proofMaterialsAccess({
+      signer: config.signer,
+      lucid: config.lucid,
+      holder,
     });
     const admitted = admitNativeInclusionTwoStepArtifact(artifact);
     if (
@@ -249,7 +245,7 @@ export const createTransactionPort = <
                     "zeroInput workflow omitted terminal authority",
                   );
                 return await buildZeroInputStep02V1({
-                  ownOutputs,
+                  materials,
                   lucid: config.lucid,
                   contracts: config.zeroInputContracts,
                   categoryId: config.categoryId,

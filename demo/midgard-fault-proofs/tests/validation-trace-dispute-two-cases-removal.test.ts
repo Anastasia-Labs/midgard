@@ -6,6 +6,7 @@
  * from the chain in the fresh process. The block's authenticated L1 view
  * reads the case as the block's live thread while it stands. Once the block
  * is gone, the completed-workflow check reads the same terminal from L1. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
@@ -14,7 +15,6 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowTerminal } from "../src/workflow/journal.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import { confirmedValidationTraceStages } from "./support/validation-trace-confirmed-stages.js";
 import { completedTerminal } from "./support/validation-trace-dispute-completed-terminal.js";
@@ -48,7 +48,7 @@ const liveAt = async (
   scene: Scene,
   outRef: string,
 ): Promise<UTxO | undefined> =>
-  (await scene.h.proverLucid.utxosByOutRef([parseOwnOutRef(outRef)]))[0];
+  (await scene.h.proverLucid.utxosByOutRef([parseOutRefLabel(outRef)]))[0];
 
 /** Waits out our case's defense deadline, then runs ours until it
  * completes, restarting once in a fresh process after the first peel;
@@ -121,7 +121,7 @@ const expectRemovedAgainstOurRecord = async (
   expect(close.action.consumes).toBe(ourCase.outputs[0]!.outRef);
   const record = close.outputs[0]!.outRef;
   const [recorded] = await scene.h.proverLucid.utxosByOutRef([
-    parseOwnOutRef(record),
+    parseOutRefLabel(record),
   ]);
   expect(
     Data.from(recorded!.datum!, SDKFraudProof.FraudProofTokenDatum)

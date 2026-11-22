@@ -8,10 +8,7 @@ import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type ManifestBoundOutputReferenceScriptDecodingConfig,
   type OutputReferenceScriptDecodingRuntimeLoader,
@@ -34,7 +31,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
   observe,
   resolveStage,
   stateQueueMutationLeaseCoordinator,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly config: ManifestBoundOutputReferenceScriptDecodingConfig;
   readonly observe: (
@@ -42,8 +39,8 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
   ) => Promise<OutputReferenceScriptDecodingStage>;
   readonly resolveStage: OutputReferenceScriptDecodingRuntimeLoader["resolveStage"];
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => ({
   observe,
   submit: async (
@@ -135,7 +132,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
     }
     if (action === "submitStep02") {
       const result = await buildOutputReferenceScriptDecodingStep02({
-        ownOutputs,
+        materials,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -191,7 +188,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         label: OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL,
       });
       const result = await buildOutputReferenceScriptDecodingStep04({
-        ownOutputs,
+        materials,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,

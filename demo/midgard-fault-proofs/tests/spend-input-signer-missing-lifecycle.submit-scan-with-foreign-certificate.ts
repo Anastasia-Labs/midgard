@@ -28,7 +28,6 @@ import {
 import { SIGNER_WITNESS_SCAN_BATCH } from "../src/signer-witness-scan/signer-witness-scan.js";
 import { type SpendInputSignerMissingEvidence } from "../src/spend-input-signer-missing/index.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   FAMILY,
   type Family,
@@ -73,7 +72,6 @@ export const submitScanWithForeignCertificate = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly certificateReference: UTxO;
 }) => {
-  const ownOutputs = createOwnOutputJournal();
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
   const { contracts, category } = family;
@@ -102,7 +100,6 @@ export const submitScanWithForeignCertificate = async ({
   expect(planned.plan.tier).toBe("Certified");
   signer.selectWallet(lucid);
   const carriageUtxos = await publishCarriageUnjournaled({
-    ownOutputs,
     lucid,
     signer,
     planned,
@@ -110,7 +107,6 @@ export const submitScanWithForeignCertificate = async ({
     label: "foreign address witnesses",
   });
   const { certificateUtxo } = await certifyCarriageUnjournaled({
-    ownOutputs,
     lucid,
     network,
     signer,

@@ -17,7 +17,6 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { transitionDepositOpening } from "../src/transition-trace/history-opening.js";
 import { transitionTraceByteChunks } from "../src/transition-trace/proof-carriage.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { network } from "./support/emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -244,7 +243,6 @@ describe("applied transition history", () => {
         witnessReferenceScripts: h.witnessReferenceScripts,
       };
       // Our chunk publications, claimed as we make them.
-      const ownOutputs = createOwnOutputJournal();
       const init = await submitInit({
         ...common,
         fraudCategory: "transitionTrace",
@@ -254,12 +252,10 @@ describe("applied transition history", () => {
         ...common,
         threadOutRef: `${init.txHash}#${init.firstStepOutputIndex}`,
         proof: fixture.proof,
-        ownOutputs,
       });
       await publishTransitionTraceBytes({
         ...h.proverCarriage,
         chunks: transitionTraceByteChunks(outputCbor.toString("hex")),
-        ownOutputs,
       });
       let checkpoint = (
         await h.proverLucid.utxosByOutRef([
@@ -284,7 +280,6 @@ describe("applied transition history", () => {
           threadOutRef: outRefLabel(checkpoint),
           proof: fixture.proof,
           depositOpening: persisted,
-          ownOutputs,
         });
         await h.proverLucid.awaitTx(await transaction.signed.submit());
         checkpoint = await expectSingleUtxoWithUnit(
@@ -345,7 +340,6 @@ describe("applied transition history", () => {
           threadOutRef: outRefLabel(checkpoint),
           proof: fixture.proof,
           depositOpening: persisted,
-          ownOutputs,
         });
       if (honest) {
         await expect(finish()).rejects.toThrow(/failed script execution/u);

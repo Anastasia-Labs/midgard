@@ -14,6 +14,7 @@
  * that Init and stops short of its Open stands in for it), so a thread on
  * our key stands at the opener when the block is removed: our run, its case
  * open, opens no second case from it. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CML,
@@ -39,7 +40,6 @@ import {
 import { validationTraceDefenseDeadlineMs } from "../../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.js";
-import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { RELEASE_FINALITY_POLICY } from "../workflow.make-adapter.js";
 import { network } from "./emulator/blueprints.js";
 import type { ConfirmedValidationTraceStage } from "./validation-trace-confirmed-stages.js";
@@ -205,7 +205,7 @@ export const stagedOtherRecord = ({
     );
     if (index === undefined) throw new Error("the Init minted no thread");
     siblingThread = `${initHash}#${index.toString()}`;
-    expect(onLedger(scene(), parseOwnOutRef(siblingThread))).toBe(true);
+    expect(onLedger(scene(), parseOutRefLabel(siblingThread))).toBe(true);
   };
 
   /** Plays both threads of our case to their award and close, our spend
@@ -221,9 +221,9 @@ export const stagedOtherRecord = ({
     const stagings = (await drive.stagedOnL1()).map(({ outRef }) => outRef);
     expect(stagings.length).toBeGreaterThan(1);
     for (const outRef of stagings)
-      expect(onLedger(scene(), parseOwnOutRef(outRef)), outRef).toBe(true);
+      expect(onLedger(scene(), parseOutRefLabel(outRef)), outRef).toBe(true);
     stagedOutputs = await scene().h.proverLucid.utxosByOutRef(
-      stagings.map(parseOwnOutRef),
+      stagings.map(parseOutRefLabel),
     );
     expect(stagedOutputs).toHaveLength(stagings.length);
     return stagings;
@@ -249,7 +249,7 @@ export const stagedOtherRecord = ({
   const removeByTheirs = async (): Promise<string> => {
     const { h, failing } = scene();
     const [theirs_] = await h.proverLucid.utxosByOutRef([
-      parseOwnOutRef(theirCase),
+      parseOutRefLabel(theirCase),
     ]);
     const deadline = Math.max(
       ...[(await liveCase(drive.dispute())).datum!, theirs_!.datum!].map(
@@ -297,10 +297,10 @@ export const stagedOtherRecord = ({
       if (
         !jumped &&
         siblingThread !== undefined &&
-        !onLedger(scene(), parseOwnOutRef(siblingThread)) &&
+        !onLedger(scene(), parseOutRefLabel(siblingThread)) &&
         ((sinceCancel += 1) > AFTER_CANCEL ||
           stagings.every(
-            (outRef) => !onLedger(scene(), parseOwnOutRef(outRef)),
+            (outRef) => !onLedger(scene(), parseOutRefLabel(outRef)),
           ))
       ) {
         jumped = true;

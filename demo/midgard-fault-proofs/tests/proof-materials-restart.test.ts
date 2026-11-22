@@ -16,7 +16,6 @@ import {
   createAuthenticatedFieldCarriagePrerequisitePort,
   withFieldCarriagePrerequisite,
 } from "../src/workflow/field-carriage-prerequisite.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   createProofMaterialsView,
   lucidProofMaterialsReader,
@@ -143,10 +142,7 @@ describe("proof materials found by content after a restart", () => {
       lucid,
       address: ADDRESS,
       datums,
-      ownOutputs: {
-        ...createOwnOutputJournal(),
-        materials: proofMaterialsAccess({ signer, lucid, holder: HOLDER }),
-      },
+      materials: proofMaterialsAccess({ signer, lucid, holder: HOLDER }),
       publish: true,
     });
     if (!Array.isArray(resolved)) throw new Error("published again");

@@ -52,10 +52,7 @@ import {
 } from "./submit-reference-input-no-idx-step-02.parse-submit-reference-input-no-idx-reference-inputs-preimage.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "./witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "./workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "./workflow/proof-materials-view.js";
 
 export const buildReferenceInputNoIdxStep02 = async ({
   lucid,
@@ -69,7 +66,7 @@ export const buildReferenceInputNoIdxStep02 = async ({
   publishedCarriageUtxos,
   certificateUtxo,
   referenceScriptUtxo,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -84,8 +81,8 @@ export const buildReferenceInputNoIdxStep02 = async ({
   readonly certificateUtxo?: UTxO;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<FaultProofTurn<ReferenceInputNoIdxStep02Build>> => {
   const { referenceInputNoIdxCategory, contracts } =
     await resolveReferenceInputNoIdxDeploymentContracts({
@@ -135,7 +132,7 @@ export const buildReferenceInputNoIdxStep02 = async ({
   const published =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
-      ownOutputs,
+      materials,
       lucid,
       signer,
       planned,

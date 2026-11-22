@@ -48,10 +48,7 @@ import {
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { InputSetUniquenessContracts } from "./contracts.js";
 import type { InputSetUniquenessClaim } from "./scan.js";
 import {
@@ -86,7 +83,7 @@ export const buildInputSetUniquenessStep02 = async ({
   referenceScriptUtxo,
   witnessReferenceScripts,
   unsafeSpendFieldRawUtxoForTest,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: InputSetUniquenessContracts;
@@ -122,8 +119,8 @@ export const buildInputSetUniquenessStep02 = async ({
    * is what refuses the transaction on-chain. Never set outside tests.
    */
   readonly unsafeSpendFieldRawUtxoForTest?: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<FaultProofTurn<InputSetUniquenessStep02Build>> => {
   const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
     {
@@ -205,7 +202,7 @@ export const buildInputSetUniquenessStep02 = async ({
         ? []
         : publishMissingCarriage
           ? await publishFaultProofFieldCarriage({
-              ownOutputs,
+              materials,
               lucid,
               signer,
               planned,

@@ -6,6 +6,7 @@
  * (the thread's lovelace less the cancel's fee), and once the cancel has
  * landed ends resolved by their record: never as our conviction, with no
  * removal of ours. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CML,
@@ -19,7 +20,6 @@ import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { network } from "./support/emulator/blueprints.js";
 import {
@@ -119,7 +119,7 @@ describe("validation-trace dispute runner: another prover removes the block whil
   it("cancels our opener thread to our wallet past rollback recovery, then resolves by their record", async () => {
     const { h, chain } = scene;
     const lucid = h.proverLucid;
-    const [liveCase] = await lucid.utxosByOutRef([parseOwnOutRef(theirCase)]);
+    const [liveCase] = await lucid.utxosByOutRef([parseOutRefLabel(theirCase)]);
     const deadline = validationTraceDefenseDeadlineMs(
       Data.from(liveCase!.datum!, SDK.Case),
     );
@@ -152,7 +152,7 @@ describe("validation-trace dispute runner: another prover removes the block whil
       const theirRecord = (await stageOf(theirs, "close"))!.outputs[0]!.outRef;
 
       // Our thread still stands at the opener, and our run is let on.
-      const [thread] = await lucid.utxosByOutRef([parseOwnOutRef(ourThread)]);
+      const [thread] = await lucid.utxosByOutRef([parseOutRefLabel(ourThread)]);
       expect(thread?.address).toBe(chain.opener.spendingScriptAddress);
       const threadLovelace = thread!.assets.lovelace!;
       hold.open = false;
@@ -188,7 +188,7 @@ describe("validation-trace dispute runner: another prover removes the block whil
       expect(await walletLovelace(lucid)).toBe(
         before + threadLovelace - reclaim.body().fee(),
       );
-      expect(await lucid.utxosByOutRef([parseOwnOutRef(ourThread)])).toEqual(
+      expect(await lucid.utxosByOutRef([parseOutRefLabel(ourThread)])).toEqual(
         [],
       );
       expectResolvedWithReclaim(result, ourThread, reclaimTxHash);

@@ -26,7 +26,6 @@ import {
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
 import { buildInputNoIdxStep04 } from "../src/submit-input-no-idx-step-04.submit-input-no-idx-step04.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   buildInputNoIdxBlockFixture,
   makeEmulatorHarness,
@@ -74,7 +73,6 @@ const buildTier3Scenario = async () => {
   );
 
   // Tier 3: the chunks and their §8.6 certificate exist before step 04.
-  const ownOutputs = createOwnOutputJournal();
   const planned = planFaultProofFieldOpening({
     anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
@@ -86,7 +84,6 @@ const buildTier3Scenario = async () => {
   });
   expect(planned.plan.tier).toBe("Certified");
   const chunkUtxos = await publishCarriageUnjournaled({
-    ownOutputs,
     lucid: harness.proverLucid,
     signer: harness.proverSigner,
     planned,
@@ -101,7 +98,6 @@ const buildTier3Scenario = async () => {
       label: "field preimage certificate",
     });
   const { certificateUtxo } = await certifyCarriageUnjournaled({
-    ownOutputs,
     lucid: harness.proverLucid,
     network,
     signer: harness.proverSigner,
@@ -122,7 +118,6 @@ const buildTier3Scenario = async () => {
 
   const step04 = (fieldGrammar: typeof grammar.fieldGrammar | undefined) =>
     submitTurnsUnjournaled(buildInputNoIdxStep04, {
-      ownOutputs,
       lucid: harness.proverLucid,
       referenceScriptUtxo:
         harness.faultProofReferenceScripts

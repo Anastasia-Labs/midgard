@@ -47,11 +47,7 @@ const outsideWorkflowSubmissionRestrictions = [
 // The turn submitters send a builder's prerequisite and continuation turns
 // outside any workflow; workflow code takes each turn through
 // workflowStepTransaction instead, and only the diagnostic CLI submits them.
-const turnSubmissionNames = [
-  "submitPrerequisiteTurn",
-  "settleFaultProofTurns",
-  "submitFaultProofTurns",
-];
+const turnSubmissionNames = ["settleFaultProofTurns", "submitFaultProofTurns"];
 const turnSubmissionRestrictions = turnSubmissionNames.flatMap((name) =>
   [
     `ImportSpecifier[imported.name='${name}']`,

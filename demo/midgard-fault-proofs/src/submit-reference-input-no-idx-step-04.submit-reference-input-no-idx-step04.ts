@@ -46,10 +46,7 @@ import {
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "./workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "./workflow/proof-materials-view.js";
 
 export const buildReferenceInputNoIdxStep04 = async ({
   lucid,
@@ -66,7 +63,7 @@ export const buildReferenceInputNoIdxStep04 = async ({
   referenceScriptUtxo,
   witnessReferenceScripts,
   fieldGrammar,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -95,8 +92,8 @@ export const buildReferenceInputNoIdxStep04 = async ({
    * chunked field.
    */
   readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<FaultProofTurn<ReferenceInputNoIdxStep04Build>> => {
   const { referenceInputNoIdxCategory, contracts } =
     await resolveReferenceInputNoIdxDeploymentContracts({
@@ -146,7 +143,7 @@ export const buildReferenceInputNoIdxStep04 = async ({
   const published =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
-      ownOutputs,
+      materials,
       lucid,
       signer,
       planned,

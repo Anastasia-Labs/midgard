@@ -27,10 +27,7 @@ import {
 import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { SignerWitnessScanEvidence } from "./evidence.js";
 import { planSignerWitnessOpening } from "./field-plans.js";
 import {
@@ -77,7 +74,7 @@ export const buildSignerWitnessScan = async ({
   publishCarriage = false,
   publishedCarriageUtxos,
   certificateUtxo: suppliedCertificateUtxo,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   /** The family name used in labels and errors. */
@@ -96,8 +93,8 @@ export const buildSignerWitnessScan = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   /** A certificate an earlier turn already minted, reused instead. */
   readonly certificateUtxo?: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   const stepIndex = SIGNER_WITNESS_SCAN_STEP_INDEX;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -141,7 +138,7 @@ export const buildSignerWitnessScan = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
-      ownOutputs,
+      materials,
       lucid,
       signer,
       planned,
@@ -153,7 +150,6 @@ export const buildSignerWitnessScan = async ({
     suppliedCertificateUtxo ??
     (planned.plan.tier === "Certified"
       ? await reuseOrCertifyFaultProofFieldCarriage({
-          ownOutputs,
           lucid,
           network: lucid.config().network!,
           signer,

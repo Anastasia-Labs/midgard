@@ -7,7 +7,6 @@
 import { describe, expect, it } from "vitest";
 
 import { buildResolvedOutputNonCanonicalStep02 } from "../src/resolved-output-non-canonical/submit-step-02.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   driveCapturedStep,
   fieldPreimageCertificateCount,
@@ -49,14 +48,12 @@ describe("resolvedOutputNonCanonical step 02 built turn by turn", () => {
     const bound = await stages.step01Accepted(await stages.init(), evidence);
     const threadOutRef = bound.result.nextThreadOutRef;
     const { harness, contracts, category } = context;
-    const ownOutputs = createOwnOutputJournal();
     const drive = await driveCapturedStep({
       emulator: harness.emulator,
       threadOutRef,
       maxTurns: 6,
       invoke: async () =>
         await buildResolvedOutputNonCanonicalStep02({
-          ownOutputs,
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,

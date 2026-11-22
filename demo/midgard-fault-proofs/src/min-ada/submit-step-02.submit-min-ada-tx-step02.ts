@@ -39,10 +39,7 @@ import {
 import { type ResolvedProverSigner } from "../runtime.js";
 import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   MIN_ADA_CATEGORY_LABEL as FAMILY,
@@ -95,7 +92,7 @@ export const buildMinAdaTxStep02 = async ({
   referenceScriptUtxo,
   yieldReferenceScriptUtxo,
   unsafeSkipLocalViolationCheckForTest = false,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MinAdaContracts;
@@ -111,8 +108,8 @@ export const buildMinAdaTxStep02 = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly yieldReferenceScriptUtxo: UTxO;
   readonly unsafeSkipLocalViolationCheckForTest?: boolean;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<
   FaultProofTurn<
     | ContinuationTurn<MinAdaStep02ScanContinuation>
@@ -182,7 +179,7 @@ export const buildMinAdaTxStep02 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
-      ownOutputs,
+      materials,
       lucid,
       signer,
       planned,

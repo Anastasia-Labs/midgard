@@ -50,7 +50,6 @@ import { finishStep } from "../step-completion.js";
 import { requireComputationThreadToken } from "../step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../witness-reference-scripts.js";
-import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import { governedUserEventAddress } from "../workflow/user-event-address.js";
 import { transitionTraceError } from "./errors.js";
 import {
@@ -118,7 +117,7 @@ export const buildTransitionTraceFinal = async ({
   witnessReferenceScripts,
   fieldCertificateReferenceScript,
   publishCarriage = false,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: SubmitTransitionTraceFinalConfig): Promise<
   FaultProofTurn<
     | ContinuationTurn<TransitionTraceCheckpointContinuation>
@@ -209,7 +208,7 @@ export const buildTransitionTraceFinal = async ({
           lucid,
           address: signer.proofMaterialsAddress,
           proof: proofInput,
-          ownOutputs,
+          materials,
           publish: false,
         })
       : [];
@@ -400,7 +399,7 @@ export const buildTransitionTraceFinal = async ({
           lucid,
           address: signer.proofMaterialsAddress,
           chunks: transitionTraceByteChunks(selectedOutput),
-          ownOutputs,
+          materials,
           publish: publishCarriage,
         });
   if (isPrerequisiteTurn(outputReferences)) return outputReferences;
@@ -447,7 +446,7 @@ export const buildTransitionTraceFinal = async ({
       outputCbors,
       publish: publishCarriage,
       fieldCertificateReferenceScript,
-      ...(ownOutputs === undefined ? {} : { ownOutputs }),
+      ...(materials === undefined ? {} : { materials }),
       baseReferences: [
         hubOracleUtxo,
         finalReferenceScript,

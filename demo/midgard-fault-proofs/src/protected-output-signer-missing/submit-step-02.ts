@@ -19,10 +19,7 @@ import {
   SIGNER_WITNESS_SCAN_STEP_INDEX,
   SIGNER_WITNESS_TERMINAL_STEP_INDEX,
 } from "../signer-witness-scan/submit-scan.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
 import { actuateProtectedOutputSignerFieldOpening } from "./field-opening-actuation.js";
 import { planProtectedOutputSignerOutputOpening } from "./field-plans.js";
@@ -48,7 +45,7 @@ export const buildProtectedOutputSignerMissingStep02 = async ({
   referenceScriptUtxo,
   certificateReferenceScriptUtxo,
   fieldGrammar,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ProtectedOutputSignerMissingContracts;
@@ -62,8 +59,8 @@ export const buildProtectedOutputSignerMissingStep02 = async ({
   readonly certificateReferenceScriptUtxo: UTxO;
   /** The field grammar certificate, for an outputs field the walk cannot read. */
   readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   const current = await requireLinearFaultThreadUtxo({
     lucid,
@@ -102,7 +99,7 @@ export const buildProtectedOutputSignerMissingStep02 = async ({
     stepIndex: 1,
   });
   const actuated = await actuateProtectedOutputSignerFieldOpening({
-    ownOutputs,
+    materials,
     lucid,
     contracts,
     signer,

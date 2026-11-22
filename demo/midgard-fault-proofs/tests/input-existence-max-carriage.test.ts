@@ -24,7 +24,6 @@ import { buildInputExistenceStep } from "../src/input-existence/submit.js";
 import type { PublishedProofChunk } from "../src/publish-proof-chunks.js";
 import { buildInit } from "../src/submit-init.submit-init.js";
 import { commitCountedRoot } from "../src/transition-trace/phas.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { verifiedMaximumForkPrefixes } from "./support/canonical-decodability-emulator.long-fork-proof.js";
 import { network } from "./support/emulator/blueprints.js";
@@ -91,7 +90,6 @@ describe("registered maximum event/transition counted membership", () => {
     it.each(profiles)(
       `runs field ${field} with $shape and partial=$partial`,
       async ({ shape, partial }) => {
-        const ownOutputs = createOwnOutputJournal();
         const h = await makeFaultProofEmulatorHarness({
           contractOptions: {
             realNonExistentInput: field === 0,
@@ -298,7 +296,6 @@ describe("registered maximum event/transition counted membership", () => {
         ).utxo;
         const tag = `field${field}-${shape}-${partial ? "eight-partial" : "packed"}`;
         const fieldChunks = await publishCarriageUnjournaled({
-          ownOutputs,
           lucid: h.proverLucid,
           signer: h.proverSigner,
           planned: prepared.fieldPlan,
@@ -308,7 +305,6 @@ describe("registered maximum event/transition counted membership", () => {
             captureSigned(tag + "-field-publication", signed.toCBOR()),
         });
         const certificate = await certifyCarriageUnjournaled({
-          ownOutputs,
           lucid: h.proverLucid,
           network,
           signer: h.proverSigner,

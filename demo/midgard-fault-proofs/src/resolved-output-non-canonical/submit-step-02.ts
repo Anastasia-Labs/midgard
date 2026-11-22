@@ -31,10 +31,7 @@ import {
 import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
 import {
   type ResolvedOutputAbsentInputEvidence,
@@ -62,7 +59,7 @@ export const buildResolvedOutputNonCanonicalStep02 = async ({
   certificateUtxo: suppliedCertificateUtxo,
   certificateReferenceScriptUtxo,
   referenceScriptUtxo,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ResolvedOutputNonCanonicalContracts;
@@ -81,8 +78,8 @@ export const buildResolvedOutputNonCanonicalStep02 = async ({
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -145,7 +142,7 @@ export const buildResolvedOutputNonCanonicalStep02 = async ({
       ? []
       : (publishedCarriageUtxos ??
         (await publishFaultProofFieldCarriage({
-          ownOutputs,
+          materials,
           lucid,
           signer,
           planned,
@@ -157,7 +154,6 @@ export const buildResolvedOutputNonCanonicalStep02 = async ({
     suppliedCertificateUtxo ??
     (planned?.plan.tier === "Certified"
       ? await reuseOrCertifyFaultProofFieldCarriage({
-          ownOutputs,
           lucid,
           network: lucid.config().network!,
           signer,

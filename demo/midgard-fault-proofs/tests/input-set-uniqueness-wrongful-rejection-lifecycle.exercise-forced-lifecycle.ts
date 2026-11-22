@@ -12,7 +12,6 @@ import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proo
 import { type BoundDuplicateInput } from "../src/input-set-uniqueness/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { network } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import {
@@ -73,7 +72,6 @@ export const exerciseForcedLifecycle = async ({
     finalize: () => Promise<unknown>,
   ) => Promise<unknown>;
 }) => {
-  const ownOutputs = createOwnOutputJournal();
   const harness = await makeInputSetUniquenessEmulatorHarness();
   // Field 1 reaches the 32,768-byte aggregate-field bound at 819 items
   // (32,763 bytes, all three certified chunk positions). The one spend item
@@ -172,7 +170,6 @@ export const exerciseForcedLifecycle = async ({
     harness.emulator,
     () =>
       publishCarriageUnjournaled({
-        ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned: referencePlan,
@@ -201,7 +198,6 @@ export const exerciseForcedLifecycle = async ({
   ) =>
     await captureEmulatorSubmission(harness.emulator, () =>
       certifyCarriageUnjournaled({
-        ownOutputs,
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,
@@ -264,7 +260,6 @@ export const exerciseForcedLifecycle = async ({
   const seed = async (threadOutRef: string) => {
     const captured = await captureEmulatorSubmission(harness.emulator, () =>
       submitInputSetUniquenessStep03({
-        ownOutputs,
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -286,7 +281,6 @@ export const exerciseForcedLifecycle = async ({
     const readingSpend = cursor < fixture.spendInputItemCbors.length;
     const captured = await captureEmulatorSubmission(harness.emulator, () =>
       submitInputSetUniquenessStep04Advance({
-        ownOutputs,
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -329,7 +323,6 @@ export const exerciseForcedLifecycle = async ({
     const substitutionThread = await bind(await initialize());
     await expect(
       submitInputSetUniquenessStep03({
-        ownOutputs,
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,

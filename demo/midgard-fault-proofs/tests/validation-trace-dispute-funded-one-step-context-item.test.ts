@@ -17,6 +17,7 @@
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -28,7 +29,6 @@ import type {
 import { VALIDATION_TRACE_ITEM_PENDING_HOLD } from "../src/validation-trace-dispute/threads.js";
 import type { ValidationTraceOneStepReferences } from "../src/validation-trace-dispute/transactions.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { drainProver } from "./support/installed-prover-wallet.js";
 import { sceneOperator } from "./support/validation-trace-dispute-defend.js";
 import {
@@ -159,7 +159,7 @@ describe("validation-trace dispute one-step resolution through the redeemer item
       trace,
     );
     const [thread] = await scene.h.emulator.getUtxosByOutRef([
-      parseOwnOutRef(threadOutRef),
+      parseOutRefLabel(threadOutRef),
     ]);
     side = { defender, trace, unit: threadUnitOf(scene, thread!) };
   }, 1_800_000);

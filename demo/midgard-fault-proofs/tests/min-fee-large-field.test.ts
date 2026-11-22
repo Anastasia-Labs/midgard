@@ -19,7 +19,6 @@ import {
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
 import { buildMinFeeStep02 } from "../src/submit-min-fee-step-02.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   advanceStep01,
   initThread,
@@ -74,7 +73,6 @@ describe("min-fee step 02 at a large field", () => {
 
     // Tier 3: field 2's chunks and their §8.6 certificate exist first.
     const { witnessSet } = scenario.prepared.tx;
-    const ownOutputs = createOwnOutputJournal();
     const planned = planFaultProofFieldOpening({
       anchorSourceKind: 0n,
       fieldIndex: 2,
@@ -86,7 +84,6 @@ describe("min-fee step 02 at a large field", () => {
     });
     expect(planned.plan.tier).toBe("Certified");
     const chunkUtxos = await publishCarriageUnjournaled({
-      ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -101,7 +98,6 @@ describe("min-fee step 02 at a large field", () => {
         label: "field preimage certificate",
       });
     const { certificateUtxo } = await certifyCarriageUnjournaled({
-      ownOutputs,
       lucid: harness.proverLucid,
       network,
       signer: harness.proverSigner,
@@ -123,7 +119,6 @@ describe("min-fee step 02 at a large field", () => {
 
     const convicted = await captureEmulatorSubmission(harness.emulator, () =>
       submitTurnsUnjournaled(buildMinFeeStep02, {
-        ownOutputs,
         lucid: harness.proverLucid,
         contracts: harness.minFee,
         categoryId: harness.category.categoryId,

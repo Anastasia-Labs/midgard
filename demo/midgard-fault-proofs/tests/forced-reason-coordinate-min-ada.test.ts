@@ -9,7 +9,6 @@ import { buildMinAdaStep03 } from "../src/min-ada/submit-step-03.js";
 import { buildMinAdaStep04 } from "../src/min-ada/submit-step-04.js";
 import { admitMinAdaWorkflowArtifact } from "../src/min-ada/workflow-artifact.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { setup } from "./min-ada-wrongful-rejection-lifecycle.setup.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
@@ -79,7 +78,6 @@ const setupScenario = async (offset: number) => {
 
 describe("forced OutputBelowMinAda coordinate the node writes", () => {
   it("convicts a coordinate one position early, where the output is funded", async () => {
-    const ownOutputs = createOwnOutputJournal();
     const f = await setupScenario(-1);
     const workflowArtifact = await f.prepareArtifact();
     await admitMinAdaWorkflowArtifact(
@@ -110,7 +108,6 @@ describe("forced OutputBelowMinAda coordinate the node writes", () => {
     // Two small outputs open without a certificate.
     expect(planned.plan.tier).not.toBe("Certified");
     const carriage = await publishCarriageUnjournaled({
-      ownOutputs,
       lucid: f.h.proverLucid,
       signer: f.h.proverSigner,
       planned,
@@ -118,7 +115,6 @@ describe("forced OutputBelowMinAda coordinate the node writes", () => {
       label: "min-ada outputs",
     });
     const opened = await submitTurnsUnjournaled(buildMinAdaTxStep02, {
-      ownOutputs,
       ...f.common,
       threadOutRef: bound.nextThreadOutRef,
       prepared: f.prepared,

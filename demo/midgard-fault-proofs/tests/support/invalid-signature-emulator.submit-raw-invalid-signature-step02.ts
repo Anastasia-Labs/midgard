@@ -19,7 +19,6 @@ import {
 } from "../../src/step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { network } from "./emulator/blueprints.js";
 import {
   type InvalidSignatureEmulatorHarness,
@@ -55,7 +54,6 @@ export const submitRawInvalidSignatureStep02 = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly badAddrTxWitIndex?: bigint;
 }): Promise<string> => {
-  const ownOutputs = createOwnOutputJournal();
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
   const { invalidSignatureCategory, contracts } =
@@ -106,7 +104,6 @@ export const submitRawInvalidSignatureStep02 = async ({
   });
   signer.selectWallet(lucid);
   const published = await publishCarriageUnjournaled({
-    ownOutputs,
     lucid,
     signer,
     planned,

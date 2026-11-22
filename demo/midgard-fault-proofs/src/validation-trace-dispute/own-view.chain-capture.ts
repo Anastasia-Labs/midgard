@@ -16,6 +16,7 @@
  * our node's mempool applied, and each unit's history with the mempool
  * transactions touching the unit after the ledger's, in mempool order. A
  * mempool transaction has no inclusion point; it is never evidence. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   bodyRawOutputs,
   type PendingTransaction,
@@ -25,7 +26,6 @@ import { CML, coreToTxOutput, type TxOutput } from "@lucid-evolution/lucid";
 
 import { datumProver } from "../fraud-proof-record-selection.js";
 import { type FraudProofNextView, nextViewOf } from "../workflow/next-state.js";
-import { parseOwnOutRef } from "../workflow/own-outputs.js";
 import { historicalTransactions } from "../workflow/raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
 import { rawToUtxo } from "../workflow/raw-l1-family-derivation.state-queue-topology.js";
 import type {
@@ -350,7 +350,7 @@ export const validationTraceDisputeCapture = ({
               SDK.validationCaseId(
                 artifact.headerHash,
                 eventKey,
-                parseOwnOutRef(outRef),
+                parseOutRefLabel(outRef),
               ),
           ] as const,
       ),

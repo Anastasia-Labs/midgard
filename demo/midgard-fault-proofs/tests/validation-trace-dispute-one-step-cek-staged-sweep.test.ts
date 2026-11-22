@@ -20,6 +20,7 @@
  * it, it is taken back. Once those spend backs roll back after the ending,
  * the next runs spend each output back once more, by its first spend back
  * or one new one, and complete again. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -35,7 +36,6 @@ import {
 import { VALIDATION_TRACE_STAGING_OUTSTANDING } from "../src/validation-trace-dispute/one-step-staging-sweep.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import { WorkflowActionUnbuiltError } from "../src/workflow/orchestrator.unbuilt-actions.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import {
   awaitLastSlotAtOrBefore,
   liveCase,
@@ -83,7 +83,7 @@ let rest: Side;
 let holdAtCore = false;
 
 const ledgerHas = (label: string) =>
-  onLedger(drive.dispute().scene, parseOwnOutRef(label));
+  onLedger(drive.dispute().scene, parseOutRefLabel(label));
 
 /** The moves the runner landed whose thread output pays to `holder`. */
 const movesTo = (holder: ValidationTraceOneStepHolder) => {
@@ -161,7 +161,7 @@ describe("validation-trace dispute runner: spending back a staged step's staging
                 consumes === null
                   ? []
                   : await scene.h.proverLucid.utxosByOutRef([
-                      parseOwnOutRef(consumes),
+                      parseOutRefLabel(consumes),
                     ]);
               if (
                 thread?.assets[b.unit] === 1n &&
@@ -299,7 +299,7 @@ describe("validation-trace dispute runner: spending back a staged step's staging
               consumes === null
                 ? []
                 : await scene.h.proverLucid.utxosByOutRef([
-                    parseOwnOutRef(consumes),
+                    parseOutRefLabel(consumes),
                   ]);
             if (thread?.address === settle)
               throw new WorkflowActionUnbuiltError(
@@ -334,7 +334,7 @@ describe("validation-trace dispute runner: spending back a staged step's staging
     const { scene, a, b } = drive.dispute();
     const [kept, ...others] = read;
     const outputs: readonly UTxO[] = await scene.h.proverLucid.utxosByOutRef(
-      read.map(parseOwnOutRef),
+      read.map(parseOutRefLabel),
     );
     expect(outputs).toHaveLength(read.length);
     // The thread stands at the settle while the provider does not show an

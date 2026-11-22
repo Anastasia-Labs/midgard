@@ -26,7 +26,6 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { workflowStepTransaction } from "../workflow/step-transaction.js";
@@ -120,13 +119,10 @@ export const createNativeScriptDecodingTransactionPort = (
       replayContext: config.replayContext,
     }),
   capture: async ({ action, artifact, holder }) => {
-    const ownOutputs = workflowFieldCarriageOwnOutputs({
-      category: "nativeScriptDecoding",
-      materials: proofMaterialsAccess({
-        signer: config.signer,
-        lucid: config.lucid,
-        holder,
-      }),
+    const materials = proofMaterialsAccess({
+      signer: config.signer,
+      lucid: config.lucid,
+      holder,
     });
     const a = await admitNativeScriptDecodingWorkflowArtifact(artifact);
     if (a.current.headerHash !== config.binding.definition.headerHash)
@@ -233,7 +229,7 @@ export const createNativeScriptDecodingTransactionPort = (
                   planned === null
                     ? []
                     : await resolveFaultProofFieldCarriagePublications({
-                        ownOutputs,
+                        materials,
                         lucid: config.lucid,
                         planned,
                         publisherAddress: config.signer.proofMaterialsAddress,
@@ -242,7 +238,6 @@ export const createNativeScriptDecodingTransactionPort = (
                   planned === null
                     ? undefined
                     : await resolveFaultProofFieldPreimageCertificate({
-                        ownOutputs,
                         lucid: config.lucid,
                         planned,
                         certificatePolicyId:
@@ -250,7 +245,7 @@ export const createNativeScriptDecodingTransactionPort = (
                         network: config.binding.network,
                       });
                 return await buildNativeScriptDecodingStep03OpenSubject({
-                  ownOutputs,
+                  materials,
                   ...common,
                   nativeTxCompactCbor:
                     a.material.proofSource.compactCbor.toString("hex"),

@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 
 import { buildMintItemNonCanonicalStep01Accepted } from "../src/mint-item-non-canonical/submit-step-01-accepted.js";
 import { buildMintItemNonCanonicalStep02 } from "../src/mint-item-non-canonical/submit-step-02.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { fieldPreimageCertificateCount } from "./support/captured-step-turns.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
@@ -98,7 +97,6 @@ describe("mintItemNonCanonical step 02 over a Certified mint field", () => {
         certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
       });
 
-    const ownOutputs = createOwnOutputJournal();
     let threadOutRef = bound.nextThreadOutRef;
     const counts: bigint[] = [];
     for (let turn = 0; turn < MAXIMUM_TURNS; turn += 1) {
@@ -106,7 +104,6 @@ describe("mintItemNonCanonical step 02 over a Certified mint field", () => {
         buildMintItemNonCanonicalStep02,
         {
           ...common(threadOutRef, 1),
-          ownOutputs,
           evidence,
           nativeTxCompactCbor: inclusion.nativeTxCompactCbor,
           witnessSetCompactCbor: witnessSetCborOf(tx),

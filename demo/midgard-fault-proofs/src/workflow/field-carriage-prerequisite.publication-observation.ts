@@ -1,14 +1,6 @@
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import { outRefLabel } from "@al-ft/midgard-core/out-ref";
+import type { UTxO } from "@lucid-evolution/lucid";
 
-import {
-  fieldCertificateSlot,
-  lucidOwnOutputReader,
-} from "../field-opening.own-field-carriage.js";
-import {
-  inlineDatumCarriageSlot,
-  type OwnOutputClaimed,
-  readOwnOutputs,
-} from "./own-outputs.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "./raw-l1-publication-observation.js";
 
 export type OwnCarriageObservation =
@@ -16,53 +8,37 @@ export type OwnCarriageObservation =
   | Readonly<{ kind: "pending" | "absent" }>;
 
 /**
- * Where one carriage slot stands, from our own claims on it alone, the newest
- * first: confirmed when a claim is both authenticated on the current chain
- * and visible to the provider the step is built with; pending when it is only
- * one of the two (one source lags the other); absent when no claim is either.
+ * Where one carriage slot stands from the output its content finds: absent
+ * when none; confirmed when that output is authenticated on the current
+ * chain; pending when the provider shows it but the chain does not yet.
  */
 export const observeOwnCarriage = async ({
   publications,
-  lucid,
   headerHash,
   kind,
   address,
   datumCbor,
   unit,
-  claims,
+  utxo,
 }: {
   readonly publications: FraudProofAuthenticatedPublicationObserver;
-  readonly lucid: Pick<LucidEvolution, "utxosByOutRef">;
   readonly headerHash: string;
   readonly kind: "field_publication" | "field_certificate";
   readonly address: string;
   readonly datumCbor: string;
   readonly unit: string | null;
-  readonly claims: readonly OwnOutputClaimed[];
+  readonly utxo: UTxO | undefined;
 }): Promise<OwnCarriageObservation> => {
-  const slot =
-    unit === null
-      ? inlineDatumCarriageSlot(address, datumCbor)
-      : fieldCertificateSlot(address, datumCbor, unit);
-  const live = await readOwnOutputs(
-    lucidOwnOutputReader(lucid),
-    claims.map(({ outRef }) => outRef),
-  );
-  for (const { outRef } of [...claims].reverse()) {
-    const utxo = live.get(outRef);
-    const visible = utxo !== undefined && slot.matches(utxo);
-    const observed = await publications.observeExact({
-      headerHash,
-      kind,
-      address,
-      expectedOutRef: outRef,
-      expectedDatumCbor: datumCbor,
-      ...(unit === null ? {} : { expectedUnit: unit }),
-    });
-    if (visible && observed.kind === "confirmed")
-      return Object.freeze({ kind: "confirmed", utxo: utxo! });
-    if (visible || observed.kind === "confirmed")
-      return Object.freeze({ kind: "pending" });
-  }
-  return Object.freeze({ kind: "absent" });
+  if (utxo === undefined) return Object.freeze({ kind: "absent" });
+  const observed = await publications.observeExact({
+    headerHash,
+    kind,
+    address,
+    expectedOutRef: outRefLabel(utxo),
+    expectedDatumCbor: datumCbor,
+    ...(unit === null ? {} : { expectedUnit: unit }),
+  });
+  return observed.kind === "confirmed"
+    ? Object.freeze({ kind: "confirmed", utxo })
+    : Object.freeze({ kind: "pending" });
 };

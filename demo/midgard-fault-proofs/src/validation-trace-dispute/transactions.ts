@@ -2,6 +2,7 @@
  * signed from the prover wallet, and returned unsubmitted; and what the
  * close (close.ts) shares with them. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import { outRefLabel, parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -25,7 +26,6 @@ import type {
 import { buildResolvedInit } from "../submit-init.submit-resolved-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { ownOutRefLabel, parseOwnOutRef } from "../workflow/own-outputs.js";
 import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import {
   type LocallyEvaluatedTransaction,
@@ -240,8 +240,8 @@ export const ours = async (
   outRef: string,
   label: string,
 ): Promise<UTxO> => {
-  const [utxo] = await lucid.utxosByOutRef([parseOwnOutRef(outRef)]);
-  if (utxo === undefined || ownOutRefLabel(utxo) !== outRef)
+  const [utxo] = await lucid.utxosByOutRef([parseOutRefLabel(outRef)]);
+  if (utxo === undefined || outRefLabel(utxo) !== outRef)
     throw new WorkflowActionChangedError(
       `validation-trace ${label} ${outRef} is no longer on chain`,
     );
@@ -322,7 +322,7 @@ export const captureValidationTraceInit = async ({
       category: deployment.init.category,
       catalogue: deployment.init.catalogue,
       signer,
-      fraudulentBlockOutRef: ownOutRefLabel(block),
+      fraudulentBlockOutRef: outRefLabel(block),
       ...(deployment.init.witnessReferenceScripts === undefined
         ? {}
         : {

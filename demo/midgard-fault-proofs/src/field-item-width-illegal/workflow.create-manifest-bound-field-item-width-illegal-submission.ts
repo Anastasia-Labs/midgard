@@ -7,10 +7,7 @@ import { buildCommittedFieldShapeInit } from "../committed-field-shape/submit-co
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type FieldItemWidthEvidence,
   type FieldItemWidthStage,
@@ -31,14 +28,14 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
   observe,
   resolveStage,
   stateQueueMutationLeaseCoordinator,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly config: ManifestBoundFieldItemWidthIllegalConfig;
   readonly observe: (identity: string) => Promise<FieldItemWidthStage>;
   readonly resolveStage: FieldItemWidthIllegalRuntimeLoader["resolveStage"];
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => ({
   observe,
   submit: async (
@@ -127,7 +124,7 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
     }
     if (action === "submitStep02") {
       const result = await buildFieldItemWidthIllegalStep02({
-        ownOutputs,
+        materials,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,

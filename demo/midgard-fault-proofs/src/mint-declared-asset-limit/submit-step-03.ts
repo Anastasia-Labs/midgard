@@ -26,10 +26,7 @@ import {
 import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
 import type {
   MintDeclaredAssetLimitEvidence,
@@ -77,7 +74,7 @@ export const buildMintDeclaredAssetLimitStep03Raw = async ({
   nextStepIndex = next.kind === "decision" ? 3 : 2,
   referenceScriptUtxo,
   stepRole,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintDeclaredAssetLimitContracts;
@@ -97,8 +94,8 @@ export const buildMintDeclaredAssetLimitStep03Raw = async ({
   readonly nextStepIndex?: 0 | 1 | 2 | 3;
   readonly referenceScriptUtxo: UTxO;
   readonly stepRole: string;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   const stepIndex = 2;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -133,7 +130,7 @@ export const buildMintDeclaredAssetLimitStep03Raw = async ({
     label: "mintDeclaredAssetLimit fold field 5",
   });
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
-    ownOutputs,
+    materials,
     lucid,
     publisherAddress: signer.proofMaterialsAddress,
     planned,
@@ -141,7 +138,6 @@ export const buildMintDeclaredAssetLimitStep03Raw = async ({
   if (carriageUtxos === undefined)
     throw new Error("mintDeclaredAssetLimit: field carriage disappeared");
   const certificateUtxo = await resolveFaultProofFieldPreimageCertificate({
-    ownOutputs,
     lucid,
     network: lucid.config().network!,
     planned,
@@ -260,7 +256,7 @@ export const buildMintDeclaredAssetLimitStep03 = async ({
   staged,
   walkOrdinal,
   referenceScriptUtxo,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintDeclaredAssetLimitContracts;
@@ -272,8 +268,8 @@ export const buildMintDeclaredAssetLimitStep03 = async ({
   readonly staged: MintDeclaredAssetLimitStagedPlan;
   readonly walkOrdinal: number;
   readonly referenceScriptUtxo: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   const nextSnapshot = staged.walk[walkOrdinal];
   if (nextSnapshot === undefined)
@@ -291,7 +287,7 @@ export const buildMintDeclaredAssetLimitStep03 = async ({
   const terminal =
     nextSnapshot.cursor.outcome !== MINT_DECLARED_OUTCOME_SCANNING;
   return await buildMintDeclaredAssetLimitStep03Raw({
-    ownOutputs,
+    materials,
     lucid,
     contracts,
     categoryId,

@@ -8,6 +8,7 @@ import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
 } from "@al-ft/midgard-core";
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -15,7 +16,6 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { validationTraceThreadTokenName } from "../src/validation-trace-dispute/case-history.js";
 import { awaitingValidationTraceCounterparty } from "../src/validation-trace-dispute/waiting.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { defendAsOperator } from "./support/validation-trace-dispute-defend.js";
 import {
   type Scene,
@@ -37,7 +37,7 @@ const DECOYS = ["d1".repeat(28), "d2".repeat(28)];
 
 const liveCase = async (): Promise<UTxO> => {
   const [found] = await scene.h.proverLucid.utxosByOutRef([
-    parseOwnOutRef(caseOutRef),
+    parseOutRefLabel(caseOutRef),
   ]);
   if (found === undefined) throw new Error("the case is not live");
   return found;
@@ -81,7 +81,7 @@ describe("validation-trace dispute runner: waiting on the counterparty", () => {
       await runner.runOnce(scene.failing),
     );
     const [thread] = await scene.h.proverLucid.utxosByOutRef([
-      parseOwnOutRef(`${defense}#1`),
+      parseOutRefLabel(`${defense}#1`),
     ]);
     const datum = Data.from(thread!.datum!, SDK.CaseThreadDatum).data!;
     expect(result).toMatchObject({
@@ -93,12 +93,12 @@ describe("validation-trace dispute runner: waiting on the counterparty", () => {
 
   it("reads no thread for the Defend's outputs that only look like threads", async () => {
     const [thread] = await scene.h.proverLucid.utxosByOutRef([
-      parseOwnOutRef(`${defense}#1`),
+      parseOutRefLabel(`${defense}#1`),
     ]);
     const { case_id } = Data.from(thread!.datum!, SDK.CaseThreadDatum).data!;
     // The Defend landed its thread-shaped outputs, of our case, tokenless.
     const decoys = await scene.h.proverLucid.utxosByOutRef(
-      [3, 4].map((index) => parseOwnOutRef(`${defense}#${index.toString()}`)),
+      [3, 4].map((index) => parseOutRefLabel(`${defense}#${index.toString()}`)),
     );
     expect(
       decoys.map(({ datum, assets }) => {

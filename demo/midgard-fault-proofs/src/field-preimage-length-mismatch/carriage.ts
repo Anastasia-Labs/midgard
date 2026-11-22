@@ -14,7 +14,7 @@ import {
 } from "../field-opening.publish-fault-proof-field-carriage.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import { createRawCommittedFieldCarriagePlan } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import type { OwnOutputJournal } from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { ManifestBoundFieldPreimageLengthWorkflow } from "./authenticated-workflow.js";
 import type { AuthenticatedFieldPreimageLengthEvidence } from "./evidence.js";
 import { fieldPreimageLengthCommittedClaim } from "./prepare-accepted.js";
@@ -83,16 +83,16 @@ export const planFieldPreimageLengthCarriage = ({
 export const resolveFieldPreimageLengthCarriage = async ({
   workflow,
   evidence,
-  ownOutputs,
+  materials,
 }: {
   readonly workflow: Pick<ManifestBoundFieldPreimageLengthWorkflow, "config">;
   readonly evidence: AuthenticatedFieldPreimageLengthEvidence;
-  /** Our carriage claims, which the carriage is read by. */
-  readonly ownOutputs: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   const planned = planFieldPreimageLengthCarriage({ workflow, evidence });
   const publications = await resolveFaultProofFieldCarriagePublications({
-    ownOutputs,
+    materials,
     lucid: workflow.config.lucid,
     publisherAddress: workflow.config.signer.proofMaterialsAddress,
     planned,
@@ -103,7 +103,6 @@ export const resolveFieldPreimageLengthCarriage = async ({
     );
   }
   const certificate = await resolveFaultProofFieldPreimageCertificate({
-    ownOutputs,
     lucid: workflow.config.lucid,
     network: workflow.config.binding.network,
     planned,

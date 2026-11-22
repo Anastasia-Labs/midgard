@@ -11,7 +11,6 @@ import { expect } from "vitest";
 
 import { type FaultProofFieldOpeningPlan } from "../../src/field-opening.js";
 import { resolveProverSigner } from "../../src/runtime.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { network } from "./emulator/blueprints.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
@@ -100,10 +99,8 @@ const publishAsProverSigner = async ({
   readonly witnessSetCompactCbor: string;
   readonly walletAddressType: "Base" | "Enterprise";
 }): Promise<UTxO[]> => {
-  const ownOutputs = createOwnOutputJournal();
   const publication = await captureEmulatorSubmission(emulator, () =>
     publishCarriageUnjournaled({
-      ownOutputs,
       lucid,
       signer,
       planned: plan,
@@ -161,7 +158,6 @@ const publishAsProverSigner = async ({
   ).utxo;
   const certified = await captureEmulatorSubmission(emulator, () =>
     certifyCarriageUnjournaled({
-      ownOutputs,
       lucid,
       network,
       signer,

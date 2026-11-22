@@ -11,6 +11,7 @@
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -18,7 +19,6 @@ import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adap
 import { validationTraceCaseOrigin } from "../src/validation-trace-dispute/case-origin.js";
 import { VALIDATION_TRACE_CASE_CONVICTED } from "../src/validation-trace-dispute/removal.js";
 import { VALIDATION_TRACE_THREAD_AWAITING } from "../src/validation-trace-dispute/threads.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { drainProver } from "./support/installed-prover-wallet.js";
 import { sceneOperator } from "./support/validation-trace-dispute-defend.js";
@@ -94,7 +94,7 @@ describe("validation-trace dispute case of ours verified by another party", () =
           trace,
         );
         const [thread] = await h.emulator.getUtxosByOutRef([
-          parseOwnOutRef(threadOutRef),
+          parseOutRefLabel(threadOutRef),
         ]);
         const unit = threadUnitOf(scene, thread!);
         await revealAsDefender(scene, defender, thread!, trace);
@@ -161,7 +161,7 @@ describe("validation-trace dispute case of ours verified by another party", () =
         });
         // The case's close spent that bond.
         expect(
-          await h.emulator.getUtxosByOutRef([parseOwnOutRef(outRefOf(bond))]),
+          await h.emulator.getUtxosByOutRef([parseOutRefLabel(outRefOf(bond))]),
         ).toStrictEqual([]);
         for (const stage of ["reveal", "timeout", "close-thread"] as const) {
           const landed = moveSends(dispute, stage).filter(({ txHash }) =>

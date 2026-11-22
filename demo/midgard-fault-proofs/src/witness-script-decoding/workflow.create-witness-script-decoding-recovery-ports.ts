@@ -25,7 +25,6 @@ import {
 } from "../workflow/family-definition.family-adapter-arm.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
-import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
@@ -196,13 +195,10 @@ export const createWitnessScriptDecodingRecoveryPorts = (
           `${category} cursor action is outside its exact topology`,
         );
       const submission = createManifestBoundWitnessScriptDecodingSubmission({
-        ownOutputs: workflowFieldCarriageOwnOutputs({
-          category,
-          materials: proofMaterialsAccess({
-            signer: config.signer,
-            lucid: config.lucid,
-            holder,
-          }),
+        materials: proofMaterialsAccess({
+          signer: config.signer,
+          lucid: config.lucid,
+          holder,
         }),
         config,
         observe: async () =>

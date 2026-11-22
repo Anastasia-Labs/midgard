@@ -191,7 +191,6 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
       h.harness.emulator,
       async () => {
         const captured = await proofActuator.capture({
-          ownOutputs: h.ownOutputs,
           action: {
             stage: "step_01",
             threadOutRef: h.threadOf(restarted.result),
@@ -220,7 +219,6 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
       h.harness.emulator,
       async () => {
         const captured = await proofActuator.capture({
-          ownOutputs: h.ownOutputs,
           action: {
             stage: "step_02",
             threadOutRef: step01.result.nextThreadOutRef,
@@ -370,7 +368,6 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
       h.harness.emulator,
       async () => {
         const captured = await removalActuator.capture({
-          ownOutputs: h.ownOutputs,
           action: {
             stage: "remove",
             stateQueueBlockOutRef: setup.fraudulentBlockOutRef,

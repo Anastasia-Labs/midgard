@@ -10,7 +10,6 @@ import {
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
-import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   type BoundConfig,
   inputExistenceRemoval,
@@ -52,13 +51,10 @@ export const inputExistenceTransactionPort = <
         owner: config.signer.paymentKeyHash,
       }),
     capture: async ({ action, artifact, holder }) => {
-      const ownOutputs = workflowFieldCarriageOwnOutputs({
-        category,
-        materials: proofMaterialsAccess({
-          signer: config.signer,
-          lucid: config.lucid,
-          holder,
-        }),
+      const materials = proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
       });
       const admitted = admitLedgerAbsenceArtifact(
         artifact,
@@ -114,7 +110,7 @@ export const inputExistenceTransactionPort = <
           ? await resolveInputExistenceFieldCarriage({
               prepared,
               resolveField: (planned) =>
-                resolveField(config, planned, ownOutputs),
+                resolveField(config, planned, materials),
             })
           : [];
       const proof = inputExistenceProofForStage(

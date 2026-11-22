@@ -1,7 +1,7 @@
 /**
  * Which outputs at the prover's proof-materials address the transition-trace
- * carriage lookup takes as a chunk's carriage: only the outputs of ours its
- * claims name, never another workflow's output holding the same bytes.
+ * carriage lookup takes as a chunk's carriage: the plain output holding the
+ * chunk's bytes, found by content.
  */
 import {
   Data,
@@ -15,13 +15,11 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { isPrerequisiteTurn } from "../src/fault-proof-turn.js";
-import { fieldPublicationClaimKey } from "../src/field-opening.own-field-carriage.js";
 import {
   proofMaterialsAddress,
   spendProofMaterials,
 } from "../src/funding/proof-materials-address.js";
 import { resolveTransitionTraceDataCarriage } from "../src/transition-trace/proof-carriage.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 import { settleTurnsUnjournaled } from "./support/submit-unjournaled.js";
 
@@ -67,15 +65,13 @@ const materials = async (lucid: LucidEvolution, address: string) =>
   (await lucid.utxosAt(address)).map(outRef).sort();
 
 describe("transition-trace carriage lookup", () => {
-  it("returns a missing chunk as a claimed publication turn and submits nothing", async () => {
+  it("returns a missing chunk as a publication turn and submits nothing", async () => {
     const { lucid, address } = await prover();
-    const ownOutputs = createOwnOutputJournal();
 
     const turn = await resolveTransitionTraceDataCarriage({
       lucid,
       address,
       datums: DATUMS,
-      ownOutputs,
       publish: true,
     });
     if (!isPrerequisiteTurn(turn))
@@ -83,30 +79,22 @@ describe("transition-trace carriage lookup", () => {
 
     expect(turn.kind).toBe("publication");
     expect(turn.plan.transactions).toBe(DATUMS.length);
-    expect(
-      ownOutputs
-        .claims(fieldPublicationClaimKey(0, DATUMS[0]!))
-        .map((claim) => claim.outRef),
-    ).toEqual([turn.output.outRef]);
     expect(await materials(lucid, address)).toEqual([]);
   }, 120_000);
 
-  it("publishes each chunk once, claims it, and reads it back by its claim", async () => {
+  it("publishes each chunk once and reads it back by its content", async () => {
     const { lucid, address } = await prover();
-    const ownOutputs = createOwnOutputJournal();
 
     const published = await publishing({
       lucid,
       address,
       datums: DATUMS,
-      ownOutputs,
     });
     const before = await materials(lucid, address);
     const read = await reading({
       lucid,
       address,
       datums: DATUMS,
-      ownOutputs,
     });
 
     expect(published.map((utxo) => utxo.datum)).toEqual(DATUMS);
@@ -115,45 +103,12 @@ describe("transition-trace carriage lookup", () => {
     expect(before).toHaveLength(2);
   }, 120_000);
 
-  it("never takes another workflow's chunk with the same bytes", async () => {
-    const { lucid, address } = await prover();
-    const ours = await publishing({
-      lucid,
-      address,
-      datums: DATUMS,
-      ownOutputs: createOwnOutputJournal(),
-    });
-
-    // A second workflow of the same prover holds no claim on them.
-    const theirs = createOwnOutputJournal();
-    await expect(
-      resolveTransitionTraceDataCarriage({
-        lucid,
-        address,
-        datums: DATUMS,
-        ownOutputs: theirs,
-      }),
-    ).rejects.toThrow("requires a claimed chunk publication");
-    const own = await publishing({
-      lucid,
-      address,
-      datums: DATUMS,
-      ownOutputs: theirs,
-    });
-
-    expect(own.map((utxo) => utxo.datum)).toEqual(DATUMS);
-    for (const utxo of own)
-      expect(ours.map(outRef)).not.toContain(outRef(utxo));
-  }, 120_000);
-
-  it("publishes a chunk again once the output its claim names is spent", async () => {
+  it("publishes a chunk again once its output is spent", async () => {
     const { lucid, keyHash, address } = await prover();
-    const ownOutputs = createOwnOutputJournal();
     const [first, second] = await publishing({
       lucid,
       address,
       datums: DATUMS,
-      ownOutputs,
     });
     const spend = await (
       await spendProofMaterials(
@@ -170,14 +125,12 @@ describe("transition-trace carriage lookup", () => {
         lucid,
         address,
         datums: DATUMS,
-        ownOutputs,
       }),
-    ).rejects.toThrow("requires a claimed chunk publication");
+    ).rejects.toThrow("requires a published chunk");
     const again = await publishing({
       lucid,
       address,
       datums: DATUMS,
-      ownOutputs,
     });
 
     expect(again[0]!.datum).toBe(DATUMS[0]);

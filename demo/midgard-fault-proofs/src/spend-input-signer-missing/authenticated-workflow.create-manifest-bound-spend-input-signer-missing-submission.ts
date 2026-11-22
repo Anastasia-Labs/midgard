@@ -9,10 +9,7 @@ import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-rem
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { buildSignerWitnessScan } from "../signer-witness-scan/submit-scan.js";
 import { buildSignerWitnessTerminal } from "../signer-witness-scan/submit-terminal.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type ManifestBoundSpendInputSignerMissingConfig,
   required,
@@ -30,14 +27,14 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
   observe,
   resolveStage,
   stateQueueMutationLeaseCoordinator,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly config: ManifestBoundSpendInputSignerMissingConfig;
   readonly observe: (identity: string) => Promise<SpendInputSignerStage>;
   readonly resolveStage: SpendInputSignerMissingRuntimeLoader["resolveStage"];
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => ({
   observe,
   submit: async (
@@ -127,7 +124,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
     }
     if (action === "submitStep02") {
       const result = await buildSpendInputSignerMissingStep02({
-        ownOutputs,
+        materials,
         lucid: config.lucid,
         network: config.binding.network,
         contracts: config.contracts,
@@ -159,7 +156,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
     }
     if (action === "submitScan") {
       const result = await buildSignerWitnessScan({
-        ownOutputs,
+        materials,
         lucid: config.lucid,
         family: "spend-input-signer-missing",
         contracts: config.contracts,

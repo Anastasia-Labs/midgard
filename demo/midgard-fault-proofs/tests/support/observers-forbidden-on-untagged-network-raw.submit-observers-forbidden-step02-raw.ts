@@ -22,7 +22,6 @@ import {
 } from "../../src/observers-forbidden-on-untagged-network/schemas.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
-import type { OwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { FAMILY } from "./observers-forbidden-on-untagged-network-raw.submit-observers-forbidden-step01-forced-raw.js";
 import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 
@@ -45,7 +44,6 @@ export const submitObserversForbiddenStep02Raw = async ({
   referenceScriptUtxo,
   witnessReferenceScripts,
   mutateOpening = (opening) => opening,
-  ownOutputs,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ObserversForbiddenContracts;
@@ -60,8 +58,6 @@ export const submitObserversForbiddenStep02Raw = async ({
     opening: FieldOpening,
     referenceInputs: readonly UTxO[],
   ) => FieldOpening;
-  /** Our carriage claims, which the carriage is read by. */
-  readonly ownOutputs: OwnOutputJournal;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -92,7 +88,6 @@ export const submitObserversForbiddenStep02Raw = async ({
     label: `${FAMILY} raw field 3`,
   });
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
-    ownOutputs,
     lucid,
     publisherAddress: signer.proofMaterialsAddress,
     planned,
@@ -102,7 +97,6 @@ export const submitObserversForbiddenStep02Raw = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? await resolveFaultProofFieldPreimageCertificate({
-          ownOutputs,
           lucid,
           network: lucid.config().network!,
           planned,

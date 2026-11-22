@@ -6,6 +6,7 @@
  * thread (and case) it spends while they are still live, so a test can
  * read the exact signed bytes and what they spent.
  */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   CML,
   coreToTxOutput,
@@ -31,7 +32,6 @@ import {
   validationTraceDefenderDeadlineMs,
 } from "../../src/validation-trace-dispute/threads.js";
 import type { FraudProofWorkflowAction } from "../../src/workflow/orchestrator.js";
-import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { drainProver } from "./installed-prover-wallet.js";
@@ -110,7 +110,7 @@ const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
 
 /** The output at `outRef` as the scene's raw L1 recorded it, spent or not. */
 export const recordedOutput = (scene: Scene, outRef: string): UTxO => {
-  const { txHash, outputIndex } = parseOwnOutRef(outRef);
+  const { txHash, outputIndex } = parseOutRefLabel(outRef);
   const row = scene.l1.rows.find((recorded) => recorded.txHash === txHash);
   if (row === undefined) throw new Error(`${outRef} was not recorded`);
   return {
@@ -153,7 +153,7 @@ export const captureMoves =
       if (!isValidationTraceMove(stage) || stage === "slash_lost_defense")
         return preflight;
       const spent = await scene.h.emulator.getUtxosByOutRef(
-        spentOutRefs(signed).map(parseOwnOutRef),
+        spentOutRefs(signed).map(parseOutRefLabel),
       );
       const thread = spent.find((utxo) => outRefOf(utxo) === consumes);
       if (thread === undefined)
@@ -262,7 +262,7 @@ const openFundedCase = async (
   const defender = sceneOperator(scene);
   const threadOutRef = await defendScripted(scene, caseOutput, defender, trace);
   const [thread] = await scene.h.emulator.getUtxosByOutRef([
-    parseOwnOutRef(threadOutRef),
+    parseOutRefLabel(threadOutRef),
   ]);
   const moves: CapturedMove[] = [];
   const capture = captureMoves(scene, moves);
@@ -290,7 +290,7 @@ const openFundedCase = async (
     Math.floor(Number(material.stepCount) / 2),
   );
   const [defendedCase] = await scene.h.emulator.getUtxosByOutRef([
-    { ...parseOwnOutRef(threadOutRef), outputIndex: 0 },
+    { ...parseOutRefLabel(threadOutRef), outputIndex: 0 },
   ]);
   const secondThreadOutRef = await defendScripted(
     scene,
@@ -300,7 +300,7 @@ const openFundedCase = async (
     [defender.vkey],
   );
   const [secondThread] = await scene.h.emulator.getUtxosByOutRef([
-    parseOwnOutRef(secondThreadOutRef),
+    parseOutRefLabel(secondThreadOutRef),
   ]);
   return {
     journey,

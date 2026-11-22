@@ -11,7 +11,6 @@ import {
 import * as family from "../src/missing-signature/index.js";
 import { buildMissingSignatureForcedCancel } from "../src/missing-signature/submit-forced.js";
 import { buildRemoveFraudulentBlock } from "../src/remove-fraudulent-block.build-remove-fraudulent-block.js";
-import { workflowFieldCarriageOwnOutputs } from "../src/workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import { unsafeCreateMissingSignatureTransactionPortForTest } from "../src/workflow/missing-signature.create-manifest-bound-missing-signature-workflow.js";
 import { createMissingSignatureFieldPrerequisite } from "../src/workflow/missing-signature.create-missing-signature-field-prerequisite.js";
 import { missingSignatureObservation } from "../src/workflow/missing-signature-state.js";
@@ -28,10 +27,7 @@ import {
   setupMissingSignatureForcedScenario,
 } from "./support/missing-signature-forced-scenario.js";
 import { buildMissingSignatureForcedTransaction as transactionFor } from "./support/missing-signature-forced-shapes.js";
-import {
-  TEST_PROOF_MATERIALS_HOLDER,
-  testProofMaterials,
-} from "./support/proof-materials-holder.js";
+import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 // The ledger's Ed25519 check is libsodium's, which initialises
@@ -323,19 +319,8 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
         if (resolved.requirement?.planned.plan.tier === "Certified")
           expect(resolved.certificate).toBeDefined();
         // The step reads the carriage the prerequisite published.
-        const carriage = workflowFieldCarriageOwnOutputs({
-          category: "missingSignature",
-          materials: testProofMaterials(
-            s.harness.proverSigner,
-            s.harness.proverLucid,
-          ),
-        });
-        if (ordinal === 6)
-          thread = await s.advance(thread, 2, undefined, carriage);
-        else
-          expect((await s.action(thread, 3, undefined, carriage)).kind).toBe(
-            "proven",
-          );
+        if (ordinal === 6) thread = await s.advance(thread, 2);
+        else expect((await s.action(thread, 3)).kind).toBe("proven");
       }
       // The forced steps' builders asked for exactly the carriage slots the
       // prerequisite required, from the prover's proof-materials address,

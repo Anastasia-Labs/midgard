@@ -12,8 +12,6 @@ import { Effect } from "effect";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { type FaultProofFieldOpeningPlan } from "../src/field-opening.js";
-import { fieldPublicationClaimKey } from "../src/field-opening.own-field-carriage.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { publishCarriageUnjournaled } from "./support/submit-unjournaled.js";
 
 const address = credentialToAddress("Custom", {
@@ -61,12 +59,11 @@ const wallet: Wallet = {
 };
 afterEach(() => vi.restoreAllMocks());
 
-it.each(["none", "ours", "unrelated"] as const)(
+it.each(["none", "copy"] as const)(
   "confirms each publication before the next build, with a first-chunk output already at the address: %s",
   async (present) => {
     const events: string[] = [];
     const outputs: UTxO[] = [];
-    const ownOutputs = createOwnOutputJournal();
     const firstDatum = sdk.fieldPreimagePublicationDatumCbor(
       publications[0]!.bytes,
     );
@@ -78,13 +75,8 @@ it.each(["none", "ours", "unrelated"] as const)(
         assets: { lovelace: 2_000_000n },
         datum: firstDatum,
       });
-    // Only an output of our own earlier publication is ours to reuse.
-    const retained = present === "ours";
-    if (retained)
-      ownOutputs.claim(
-        fieldPublicationClaimKey(0, firstDatum),
-        `${"34".repeat(32)}#0`,
-      );
+    // An exact copy of the first chunk is reused, whoever paid it.
+    const retained = present === "copy";
     const build = vi
       .spyOn(sdk, "buildUnsignedFieldPreimagePublicationProgram")
       .mockImplementation((_lucid, { publication }) =>
@@ -151,7 +143,6 @@ it.each(["none", "ours", "unrelated"] as const)(
       return true;
     });
     const result = await publishCarriageUnjournaled({
-      ownOutputs,
       lucid,
       signer: {
         source: "test",
@@ -178,9 +169,6 @@ it.each(["none", "ours", "unrelated"] as const)(
     });
     expect(build).toHaveBeenCalledTimes(retained ? 1 : 2);
     expect(result).toHaveLength(2);
-    // The unrelated output is neither reused nor referenced: ours land after it.
-    const at = (position: number) =>
-      (present === "unrelated" ? position + 1 : position).toString();
     expect(result.map((utxo) => utxo.txHash === "34".repeat(32))).toEqual([
       retained,
       false,
@@ -191,20 +179,20 @@ it.each(["none", "ours", "unrelated"] as const)(
         : [
             "begin",
             "build:0",
-            `persist:${at(0)}`,
+            "persist:0",
             "submit:0",
-            `included:${at(0)}`,
-            `confirm:${at(0)}`,
+            "included:0",
+            "confirm:0",
           ]),
       "begin",
       "build:1",
-      `persist:${at(1)}`,
+      "persist:1",
       "submit:1",
-      `included:${at(1)}`,
+      "included:1",
       // Each call after a publication reads every live chunk again, so the
       // last one confirms the first chunk once more before the second.
-      `confirm:${at(0)}`,
-      `confirm:${at(1)}`,
+      "confirm:0",
+      "confirm:1",
     ]);
   },
 );

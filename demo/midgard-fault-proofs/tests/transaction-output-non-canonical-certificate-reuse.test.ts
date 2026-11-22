@@ -15,11 +15,6 @@ import { buildTransactionOutputNonCanonicalStep01Forced } from "../src/transacti
 import { buildTransactionOutputNonCanonicalStep02 } from "../src/transaction-output-non-canonical/submit-step-02.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { createAuthenticatedFieldCarriagePrerequisitePort } from "../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
-import { workflowFieldCarriageOwnOutputs } from "../src/workflow/field-carriage-prerequisite.own-carriage-claims.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../src/workflow/own-outputs.js";
 import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
   type FraudProofAuthenticatedPublicationObserver,
@@ -33,10 +28,7 @@ import {
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
-import {
-  TEST_PROOF_MATERIALS_HOLDER,
-  testProofMaterials,
-} from "./support/proof-materials-holder.js";
+import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import { buildForcedOutputFixture } from "./support/transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
 import { canonicalOutputOfLength } from "./support/transaction-output-non-canonical-emulator.continue-raw.js";
@@ -118,12 +110,8 @@ const stepTwoReady = async () => {
   };
 };
 
-const submitStepTwo = (
-  ready: Awaited<ReturnType<typeof stepTwoReady>>,
-  ownOutputs: OwnOutputJournal,
-) =>
+const submitStepTwo = (ready: Awaited<ReturnType<typeof stepTwoReady>>) =>
   buildTransactionOutputNonCanonicalStep02({
-    ownOutputs,
     lucid: ready.harness.proverLucid,
     contracts: ready.contracts,
     categoryId: ready.category.categoryId,
@@ -143,12 +131,11 @@ describe("transactionOutputNonCanonical step 02 built turn by turn", () => {
     const ready = await stepTwoReady();
     // One run of the step: the carriage it publishes on one turn is what it
     // reads back on the next.
-    const ownOutputs = createOwnOutputJournal();
     const drive = await driveCapturedStep({
       emulator: ready.harness.emulator,
       threadOutRef: ready.threadOutRef,
       maxTurns: 6,
-      invoke: async () => await submitStepTwo(ready, ownOutputs),
+      invoke: async () => await submitStepTwo(ready),
     });
     expect(drive.prerequisites.length).toBeGreaterThan(1);
     expect(
@@ -245,17 +232,7 @@ describe("transactionOutputNonCanonical step 02 built turn by turn", () => {
       emulator: ready.harness.emulator,
       threadOutRef: ready.threadOutRef,
       maxTurns: 1,
-      invoke: async () =>
-        await submitStepTwo(
-          ready,
-          workflowFieldCarriageOwnOutputs({
-            category: "transactionOutputNonCanonical",
-            materials: testProofMaterials(
-              ready.harness.proverSigner,
-              ready.harness.proverLucid,
-            ),
-          }),
-        ),
+      invoke: async () => await submitStepTwo(ready),
     });
     expect(drive.prerequisites).toEqual([]);
     const referenceInputs = drive.step.signed

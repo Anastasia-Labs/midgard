@@ -45,10 +45,7 @@ import {
 import type { ResolvedProverSigner } from "../runtime.js";
 import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type LocallyEvaluatedTransaction,
   type OutsideWorkflowSubmission,
@@ -97,7 +94,7 @@ export const buildMissingSignatureStep02 = async ({
   publishCarriage = false,
   certificateUtxo,
   referenceScriptUtxo,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MissingSignatureContracts;
@@ -113,13 +110,13 @@ export const buildMissingSignatureStep02 = async ({
   readonly publishCarriage?: boolean;
   /**
    * Pre-minted §8.6 certificate when the planner selects tier 3; otherwise
-   * the one `ownOutputs` claims.
+   * the one found on chain for this opening.
    */
   readonly certificateUtxo?: UTxO;
   /** §2.3: the published step-02 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<FaultProofTurn<MissingSignatureStep02Build>> => {
   const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxo({
     lucid,
@@ -155,7 +152,7 @@ export const buildMissingSignatureStep02 = async ({
     publish: publishCarriage,
   });
   const carriageUtxos = await publishFaultProofFieldCarriage({
-    ownOutputs,
+    materials,
     lucid,
     signer,
     planned,
@@ -163,11 +160,10 @@ export const buildMissingSignatureStep02 = async ({
     label: `${STEP_LABEL} required-signers`,
   });
   if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
-  // A configured certificate, or the one this workflow's own journal claims.
+  // A configured certificate, or the one found on chain for this opening.
   const certificate =
     certificateUtxo ??
     (await resolveFaultProofFieldPreimageCertificate({
-      ownOutputs,
       lucid,
       network: lucid.config().network!,
       planned,

@@ -14,6 +14,7 @@
  * cap is paid by its thread, one over it by our wallet alone, its successor
  * keeping all the thread's lovelace; game-v1 refuses one keeping less. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CML,
@@ -46,7 +47,6 @@ import {
   awaitingValidationTraceCounterparty,
   validationTraceRunState,
 } from "../src/validation-trace-dispute/waiting.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
@@ -109,7 +109,7 @@ let revealedB: UTxO;
 const prepared: { stage: string; cbor: string }[] = [];
 
 const at = async (outRef: string): Promise<UTxO | undefined> =>
-  (await scene.h.proverLucid.utxosByOutRef([parseOwnOutRef(outRef)]))[0];
+  (await scene.h.proverLucid.utxosByOutRef([parseOutRefLabel(outRef)]))[0];
 
 const live = async (unit: string): Promise<UTxO> => {
   const utxo = await liveThread(scene, unit);

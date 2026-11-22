@@ -35,7 +35,6 @@ import {
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
-import type { OwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   FAMILY,
   type OpeningMutation,
@@ -68,7 +67,6 @@ export const submitObserverOrderInvalidStep03Raw = async ({
   successor,
   nextStepIndex,
   mutateOpening = (opening) => opening,
-  ownOutputs,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ObserverOrderInvalidContracts;
@@ -85,8 +83,6 @@ export const submitObserverOrderInvalidStep03Raw = async ({
   readonly successor?: ObserverOrderScanSuccessor;
   readonly nextStepIndex?: 2 | 3;
   readonly mutateOpening?: OpeningMutation;
-  /** Our carriage claims, which the carriage is read by. */
-  readonly ownOutputs: OwnOutputJournal;
 }) => {
   const nextCheckpoint = staged.walk[walkOrdinal];
   if (nextCheckpoint === undefined)
@@ -117,7 +113,6 @@ export const submitObserverOrderInvalidStep03Raw = async ({
   });
   const { opening, carriageUtxos, extraReferenceInputs } =
     await resolveObserverOpening({
-      ownOutputs,
       lucid,
       contracts,
       signer,

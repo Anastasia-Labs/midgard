@@ -25,7 +25,7 @@ import { type ResolvedProverSigner } from "../runtime.js";
 import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
-import type { OwnOutputJournal } from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type LocallyEvaluatedTransaction,
   type OutsideWorkflowSubmission,
@@ -74,8 +74,8 @@ export type Step03Shared = {
   readonly publishedCarriageUtxos?: readonly UTxO[];
   /** The mandatory published step-03 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 };
 
 export const prepareThread = async ({

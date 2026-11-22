@@ -12,11 +12,11 @@
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { parseValidationTraceAction } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { drainProver } from "./support/installed-prover-wallet.js";
 import { sceneOperator } from "./support/validation-trace-dispute-defend.js";
@@ -145,7 +145,7 @@ describe("validation-trace dispute one-step resolution across a watcher process 
       trace,
     );
     const [thread] = await scene.h.emulator.getUtxosByOutRef([
-      parseOwnOutRef(threadOutRef),
+      parseOutRefLabel(threadOutRef),
     ]);
     side = { defender, trace, unit: threadUnitOf(scene, thread!) };
   }, 1_800_000);

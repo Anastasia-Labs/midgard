@@ -339,20 +339,22 @@ export const forcedHarness = ({
   });
   const scanUtxos = forcedScanDatum === undefined ? [] : [scanUtxo];
   const lucid = {
-    utxosAtWithUnit: async (address: string) =>
-      address === FORCED_STEP_ADDRESS
-        ? forcedUtxos
-        : address === FORCED_SCAN_ADDRESS
-          ? scanUtxos
-          : address === STATE_QUEUE_ADDRESS
-            ? (holders.stateQueue ?? [
-                utxo({ txHash: h32(0x73), address: STATE_QUEUE_ADDRESS }),
-              ])
-            : address === STEP_01_ADDRESS
-              ? (holders.step01 ?? [])
-              : address === PROOF_ADDRESS
-                ? (holders.proof ?? [])
-                : [],
+    utxosAtWithUnit: async (address: string, held: string) =>
+      address === CERTIFICATE_ADDRESS
+        ? (certificateUtxos ?? []).filter(({ assets }) => assets[held])
+        : address === FORCED_STEP_ADDRESS
+          ? forcedUtxos
+          : address === FORCED_SCAN_ADDRESS
+            ? scanUtxos
+            : address === STATE_QUEUE_ADDRESS
+              ? (holders.stateQueue ?? [
+                  utxo({ txHash: h32(0x73), address: STATE_QUEUE_ADDRESS }),
+                ])
+              : address === STEP_01_ADDRESS
+                ? (holders.step01 ?? [])
+                : address === PROOF_ADDRESS
+                  ? (holders.proof ?? [])
+                  : [],
     utxosAt: async (address: string) =>
       address === SIGNER.proofMaterialsAddress
         ? walletUtxos.filter((utxo) => utxo.address === address)

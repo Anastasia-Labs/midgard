@@ -3,8 +3,8 @@
  * step that needs field carriage: each turn calls the builder once and takes
  * the one transaction it returns, a chunk publication, a certificate or the
  * step itself. A carriage transaction is submitted, as the workflow's
- * prerequisite actions do, and the next turn builds again over the same
- * own-output journal. The turn whose transaction spends the thread input is
+ * prerequisite actions do, and the next turn builds again, finding it on
+ * chain. The turn whose transaction spends the thread input is
  * the step; it is submitted and the drive ends.
  */
 import {

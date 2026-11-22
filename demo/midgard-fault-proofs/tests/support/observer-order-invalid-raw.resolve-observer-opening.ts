@@ -37,7 +37,6 @@ import {
   type SubmitStep01TxInclusion,
 } from "../../src/step-support.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
-import type { OwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { l2TransactionSourceCbor, makeNativeTx } from "./emulator/native-tx.js";
 
 export const FAMILY = "observer-order-invalid";
@@ -238,7 +237,6 @@ export const resolveObserverOpening = async ({
   extraReferenceInputs,
   mutateOpening,
   label,
-  ownOutputs,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ObserverOrderInvalidContracts;
@@ -249,8 +247,6 @@ export const resolveObserverOpening = async ({
   readonly extraReferenceInputs: readonly UTxO[];
   readonly mutateOpening: OpeningMutation;
   readonly label: string;
-  /** Our carriage claims, which the carriage is read by. */
-  readonly ownOutputs: OwnOutputJournal;
 }) => {
   const planned = planFaultProofFieldOpening({
     anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
@@ -265,7 +261,6 @@ export const resolveObserverOpening = async ({
     label,
   });
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
-    ownOutputs,
     lucid,
     publisherAddress: signer.proofMaterialsAddress,
     planned,
@@ -275,7 +270,6 @@ export const resolveObserverOpening = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? await resolveFaultProofFieldPreimageCertificate({
-          ownOutputs,
           lucid,
           network: lucid.config().network!,
           planned,

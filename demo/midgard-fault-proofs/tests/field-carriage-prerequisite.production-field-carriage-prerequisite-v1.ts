@@ -46,16 +46,6 @@ describe("production field-carriage prerequisite V1", () => {
         assets: { lovelace: 2_000_000n },
       }),
     );
-    const utxosByOutRef = vi.fn(
-      async (refs: readonly { txHash: string; outputIndex: number }[]) =>
-        candidates.filter((candidate) =>
-          refs.some(
-            (ref) =>
-              ref.txHash === candidate.txHash &&
-              ref.outputIndex === candidate.outputIndex,
-          ),
-        ),
-    );
     let landed = 0;
     const observeExact = vi.fn(
       async ({ expectedOutRef }: { expectedOutRef: string }) => ({
@@ -69,7 +59,6 @@ describe("production field-carriage prerequisite V1", () => {
         // The address shows each chunk once its publication has landed.
         utxosAt: async (at: string) =>
           candidates.slice(0, landed).filter(({ address }) => address === at),
-        utxosByOutRef,
       } as unknown as LucidEvolution,
       network: "Preview",
       signer,
@@ -95,16 +84,12 @@ describe("production field-carriage prerequisite V1", () => {
       publicationActions.push(required.action);
       landed = index + 1;
     }
-    const published = candidates.map(
-      ({ txHash: hash, outputIndex }) => `${hash}#${outputIndex.toString()}`,
-    );
     const input = {
       headerHash,
       holder: TEST_PROOF_MATERIALS_HOLDER,
       artifact: context.artifact,
       baseAction,
     };
-    utxosByOutRef.mockClear();
     observeExact.mockClear();
     await expect(port.inspect(input)).resolves.toEqual({ kind: "satisfied" });
     expect(observeExact).toHaveBeenCalledTimes(3);
@@ -112,14 +97,6 @@ describe("production field-carriage prerequisite V1", () => {
       port.resolveAuthenticated({ ...input, action: baseAction }),
     ).resolves.toMatchObject({ publications: candidates });
     expect(observeExact).toHaveBeenCalledTimes(6);
-    expect(
-      utxosByOutRef.mock.calls.flatMap(([refs]) =>
-        refs.map(
-          ({ txHash: hash, outputIndex }) =>
-            `${hash}#${outputIndex.toString()}`,
-        ),
-      ),
-    ).toEqual([...published, ...published]);
     // The last chunk leaves the provider's view; an output elsewhere with the
     // same datum does not stand in for it: its publication is required again.
     const last = candidates[2]!;

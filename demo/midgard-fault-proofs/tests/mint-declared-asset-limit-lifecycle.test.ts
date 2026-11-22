@@ -93,7 +93,6 @@ import {
 import { mintDeclaredFoldSnapshotData } from "../src/mint-declared-asset-limit/submit-step-03.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
 import { expectPositiveMargins } from "./mint-declared-asset-limit-lifecycle.expect-positive-margins.js";
 import {
@@ -166,7 +165,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
     });
     const registered = await registeredContracts(harness);
     // The carriage this run publishes, read back by its steps.
-    const ownOutputs = createOwnOutputJournal();
     const { applied, contracts, catalogue, category } = registered;
     const rows: (readonly [string, Measurement])[] = [];
     const measured = measureSubmissions(harness.emulator, rows);
@@ -275,7 +273,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       xStaged.items,
       "mint declared maximum",
       0n,
-      ownOutputs,
     );
     expect(xCarriage.carriage.measurements).toHaveLength(3);
     for (const [
@@ -294,7 +291,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       yStaged.items,
       "mint declared honest",
       0n,
-      ownOutputs,
     );
     rows.push(["raw-carriage-honest", yCarriage.carriage.measurement]);
     const zCarriage = await publishCarriage(
@@ -304,7 +300,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       zItems,
       "mint declared boundary",
       0n,
-      ownOutputs,
     );
     rows.push(["raw-carriage-boundary", zCarriage.carriage.measurement]);
 
@@ -366,7 +361,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       contracts,
       categoryId: category.categoryId,
       signer: harness.proverSigner,
-      ownOutputs,
     };
     const step02Raw = async (
       threadOutRef: string,
@@ -493,7 +487,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         const captured = await actuator.capture({
           action,
           artifact,
-          ownOutputs,
         });
         const txHash = await submitCapturedTransaction(captured.transaction);
         expect(txHash).toBe(captured.transaction.txHash);
@@ -652,7 +645,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
     }
     const xProof = await measured("permanent-proof-mint", async () => {
       const captured = await actuator.capture({
-        ownOutputs,
         action: { stage: "step_04", threadOutRef: xOutRef },
         artifact,
       });
@@ -937,7 +929,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
     vi.setSystemTime(harness.emulator.now());
     await measured("mutation-leased-removal", async () => {
       const captured = await removalActuator.capture({
-        ownOutputs,
         action: {
           stage: "remove",
           stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
@@ -972,7 +963,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
     });
     const registered = await registeredContracts(harness);
     // The carriage this run publishes, read back by its steps.
-    const ownOutputs = createOwnOutputJournal();
     const { contracts, catalogue, category } = registered;
     const rows: (readonly [string, Measurement])[] = [];
     const measured = measureSubmissions(harness.emulator, rows);
@@ -1126,7 +1116,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       aStaged.items,
       "mint declared forced",
       1n,
-      ownOutputs,
     );
     rows.push(["raw-carriage-publication", aCarriage.carriage.measurement]);
     const bCarriage = await publishCarriage(
@@ -1136,7 +1125,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       bStaged.items,
       "mint declared honest rejection",
       1n,
-      ownOutputs,
     );
     rows.push([
       "raw-carriage-honest-rejection",
@@ -1148,7 +1136,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       contracts,
       categoryId: category.categoryId,
       signer: harness.proverSigner,
-      ownOutputs,
     };
     const initialize = async () => {
       const initialized = await submitCommittedFieldShapeInit({

@@ -18,6 +18,7 @@ import {
 import {
   certifyFaultProofFieldCarriage,
   publishFaultProofFieldCarriage,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../../src/field-opening.js";
 import {
   buildProofChunkPublication,
@@ -27,9 +28,7 @@ import {
 import {
   settleFaultProofTurns,
   submitFaultProofTurns,
-  submitPrerequisiteTurn,
 } from "../../src/submit-fault-proof-turns.js";
-import type { OwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   type LocallyEvaluatedTransaction,
   type OutsideWorkflowSubmission,
@@ -164,13 +163,12 @@ export const unjournaledTransaction =
 /**
  * Drives a builder that returns turns to its step: every prerequisite and
  * continuation it returns is submitted and confirmed, and the builder called
- * again with the same own-output journal, until it returns the step, which
+ * again with the same arguments, until it returns the step, which
  * is submitted last (see {@link submitFaultProofTurns}).
  */
 export const submitTurnsUnjournaled = async <
   Args extends {
     readonly lucid: LucidEvolution;
-    readonly ownOutputs?: OwnOutputJournal;
   },
   Step extends { readonly transaction: LocallyEvaluatedTransaction },
 >(
@@ -221,7 +219,6 @@ export const unjournaledTurns =
   <
     Args extends {
       readonly lucid: LucidEvolution;
-      readonly ownOutputs?: OwnOutputJournal;
     },
     Step extends { readonly transaction: LocallyEvaluatedTransaction },
   >(
@@ -263,13 +260,10 @@ export const submitBoundUnjournaled = async <
 /**
  * Drives a carriage function to its result, such as the live chunks of a
  * plan: every prerequisite it returns is submitted and confirmed and the
- * function called again with the same own-output journal (see
+ * function called again with the same arguments (see
  * {@link settleFaultProofTurns}).
  */
 export const settleTurnsUnjournaled = settleFaultProofTurns;
-
-/** Submits one prerequisite, such as a certification, and returns its output. */
-export const submitPrerequisiteUnjournaled = submitPrerequisiteTurn;
 
 /** A hook that sees each signed transaction before it is submitted. */
 type BeforeSubmit = (
@@ -305,8 +299,14 @@ export const certifyCarriageUnjournaled = async ({
 }): Promise<{ readonly txHash: string; readonly certificateUtxo: UTxO }> => {
   const turn = await certifyFaultProofFieldCarriage(args);
   await beforeSubmit?.(turn.transaction);
-  const certificateUtxo = await submitPrerequisiteTurn(args.lucid, turn);
-  return { txHash: turn.transaction.txHash, certificateUtxo };
+  const txHash = await submitOutsideWorkflow(args.lucid, turn.transaction, {
+    label: turn.label,
+    awaitConfirmation: true,
+  });
+  const certificateUtxo = await resolveFaultProofFieldPreimageCertificate(args);
+  if (certificateUtxo === undefined)
+    throw new Error(`${turn.label} left no certificate on chain`);
+  return { txHash, certificateUtxo };
 };
 
 /**
@@ -336,7 +336,6 @@ export const publishProofChunks = async ({
 export const buildPastPrerequisitesUnjournaled = async <
   Args extends {
     readonly lucid: LucidEvolution;
-    readonly ownOutputs?: OwnOutputJournal;
   },
   Built,
 >(

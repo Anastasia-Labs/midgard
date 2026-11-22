@@ -42,10 +42,7 @@ import {
 import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessWithdrawalValidatorCarriage } from "../witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import type { SpendInputSignerMissingContracts } from "./contracts.js";
 import { planSpendInputSignerInputOpening } from "./field-plans.js";
@@ -81,7 +78,7 @@ export const buildSpendInputSignerMissingStep02 = async ({
   certificateReferenceScriptUtxo,
   membershipReferenceScriptUtxo,
   publishCarriage = false,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -96,8 +93,8 @@ export const buildSpendInputSignerMissingStep02 = async ({
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly membershipReferenceScriptUtxo: UTxO;
   readonly publishCarriage?: boolean;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -143,7 +140,7 @@ export const buildSpendInputSignerMissingStep02 = async ({
     publish: publishCarriage,
   });
   const carriageUtxos = await publishFaultProofFieldCarriage({
-    ownOutputs,
+    materials,
     lucid,
     signer,
     planned,
@@ -154,7 +151,6 @@ export const buildSpendInputSignerMissingStep02 = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? await reuseOrCertifyFaultProofFieldCarriage({
-          ownOutputs,
           lucid,
           network,
           signer,

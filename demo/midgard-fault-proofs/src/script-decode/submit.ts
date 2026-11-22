@@ -27,6 +27,7 @@ import type { ScriptDecodeChainedWalk } from "@al-ft/midgard-validation/script-d
 import {
   type BuildTxWithRedeemer,
   CML,
+  coreToTxOutput,
   type LucidEvolution,
   type OutRef,
   type TxBuilder,
@@ -39,11 +40,6 @@ import {
 
 import { plainWalletInputs } from "../funding/plain-funding-output.js";
 import { DEFAULT_CONFIRMATION_POLL_MS } from "../runtime.js";
-import {
-  claimOwnOutputs,
-  inlineDatumCarriageSlot,
-  readOwnOutputs,
-} from "../workflow/own-outputs.js";
 import {
   SCRIPT_DECODE_CLOSE_REDEEMER,
   scriptDecodeBindRedeemer,
@@ -201,17 +197,22 @@ const until = (tx: TxBuilder, validTo: number | undefined): TxBuilder =>
  */
 export const submitScriptDecodeTx = async (
   lucid: LucidEvolution,
-  { signed, address, matches, label }: ScriptDecodeSignedTx,
+  { signed, matches, label }: ScriptDecodeSignedTx,
 ): Promise<UTxO> => {
-  const [claim] = claimOwnOutputs({ signed, slots: [{ address, matches }] });
+  const outputs = signed.toTransaction().body().outputs();
+  const outputIndex = requireOutputIndex(
+    Array.from({ length: outputs.len() }, (_, index) =>
+      coreToTxOutput(outputs.get(index)),
+    ),
+    matches,
+    label,
+  );
   const txHash = await signed.submit();
   await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  const found = await readOwnOutputs(
-    (outRefs) => lucid.utxosByOutRef([...outRefs]),
-    [claim!.outRef],
-  );
-  const output = found.get(claim!.outRef);
-  if (output === undefined || !matches(output)) {
+  const [output] = await lucid.utxosByOutRef([
+    { txHash, outputIndex: Number(outputIndex) },
+  ]);
+  if (output === undefined) {
     throw new Error(`script decode: ${label} output not found`);
   }
   return output;
@@ -257,7 +258,8 @@ export const buildScriptDecodeStageTx = async ({
   return {
     signed: await unsigned.sign.withWallet().complete(),
     address,
-    matches: inlineDatumCarriageSlot(address, datum).matches,
+    matches: (output: TxOutput) =>
+      output.address === address && output.datum === datum,
     label: "staging",
   };
 };

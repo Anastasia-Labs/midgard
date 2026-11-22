@@ -21,7 +21,6 @@ import {
   defineFamily,
 } from "../workflow/family-definition.family-definition.js";
 import type { FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
-import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { SCRIPT_DECODE_REFERENCE_SCRIPTS } from "../workflow/script-decode-prerequisite.deployment.js";
@@ -163,13 +162,10 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
             );
           const submission =
             createManifestBoundOutputReferenceScriptDecodingSubmission({
-              ownOutputs: workflowFieldCarriageOwnOutputs({
-                category,
-                materials: proofMaterialsAccess({
-                  signer: config.signer,
-                  lucid: config.lucid,
-                  holder,
-                }),
+              materials: proofMaterialsAccess({
+                signer: config.signer,
+                lucid: config.lucid,
+                holder,
               }),
               config,
               observe: async () =>

@@ -42,10 +42,7 @@ import {
 import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   WITNESS_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
   type WitnessScriptDecodingContracts,
@@ -74,7 +71,7 @@ export const buildWitnessScriptDecodingStep02 = async ({
   referenceScriptUtxo,
   scriptDecodeRecordUtxo,
   fieldGrammar,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -99,8 +96,8 @@ export const buildWitnessScriptDecodingStep02 = async ({
   readonly scriptDecodeRecordUtxo?: UTxO;
   /** The field grammar certificate, for a field past the walked limit. */
   readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -148,7 +145,7 @@ export const buildWitnessScriptDecodingStep02 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
-      ownOutputs,
+      materials,
       lucid,
       signer,
       planned,
@@ -162,7 +159,6 @@ export const buildWitnessScriptDecodingStep02 = async ({
     certificateUtxo ??
     (planned.plan.tier === "Certified"
       ? await reuseOrCertifyFaultProofFieldCarriage({
-          ownOutputs,
           lucid,
           network,
           signer,

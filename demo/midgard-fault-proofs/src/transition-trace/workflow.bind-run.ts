@@ -13,7 +13,6 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
@@ -250,13 +249,10 @@ const bindRun = (context: TransitionContext) => {
           if (input.stage === "step_01")
             return await buildTransitionTraceRoute({
               ...common,
-              ownOutputs: workflowFieldCarriageOwnOutputs({
-                category: "transitionTrace",
-                materials: proofMaterialsAccess({
-                  signer: config.signer,
-                  lucid: config.lucid,
-                  holder,
-                }),
+              materials: proofMaterialsAccess({
+                signer: config.signer,
+                lucid: config.lucid,
+                holder,
               }),
               threadOutRef,
               proof: prepared.proof,
@@ -268,13 +264,10 @@ const bindRun = (context: TransitionContext) => {
             );
           return await buildTransitionTraceFinal({
             ...common,
-            ownOutputs: workflowFieldCarriageOwnOutputs({
-              category: "transitionTrace",
-              materials: proofMaterialsAccess({
-                signer: config.signer,
-                lucid: config.lucid,
-                holder,
-              }),
+            materials: proofMaterialsAccess({
+              signer: config.signer,
+              lucid: config.lucid,
+              holder,
             }),
             threadOutRef,
             proof: prepared.proof,

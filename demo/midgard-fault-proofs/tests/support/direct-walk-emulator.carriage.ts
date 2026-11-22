@@ -5,7 +5,6 @@ import type { UTxO } from "@lucid-evolution/lucid";
 
 import type { DirectPurposeFieldPlan } from "../../src/direct-purpose-family/index.js";
 import type { DirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { network } from "./emulator/blueprints.js";
 import type { FaultProofEmulatorHarness } from "./emulator/harness.js";
 import {
@@ -39,7 +38,6 @@ export const publishDirectWalkCarriage = async ({
     tier: string;
     measurement: CompleteSignedTransactionMeasurement;
   }[] = [];
-  const ownOutputs = createOwnOutputJournal();
   let certificateReference: UTxO | undefined;
   for (const field of fields) {
     const planned = plan(field).openingPlan;
@@ -47,7 +45,6 @@ export const publishDirectWalkCarriage = async ({
     if (tier === "Inline") continue;
     const published = await captureEmulatorSubmission(harness.emulator, () =>
       publishCarriageUnjournaled({
-        ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -68,7 +65,6 @@ export const publishDirectWalkCarriage = async ({
       ).utxo;
       const certified = await captureEmulatorSubmission(harness.emulator, () =>
         certifyCarriageUnjournaled({
-          ownOutputs,
           lucid: harness.proverLucid,
           network,
           signer: harness.proverSigner,

@@ -4,11 +4,11 @@
  * VerifySource transactions they sent, the case and bond left live on the
  * ledger, and a watcher process stopped at VerifySource's submit.
  */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import { expect } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
-import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
 import {
   type AdapterWrap,
@@ -47,8 +47,8 @@ export const caseAndBond = async (scene: Scene, dispute: FundedDispute) => {
   const verify = stages[2]!;
   const [caseClaim, bondClaim] = verify.outputs;
   const [caseOutput, bond] = await scene.h.emulator.getUtxosByOutRef([
-    parseOwnOutRef(caseClaim!.outRef),
-    parseOwnOutRef(bondClaim!.outRef),
+    parseOutRefLabel(caseClaim!.outRef),
+    parseOutRefLabel(bondClaim!.outRef),
   ]);
   return {
     verify,

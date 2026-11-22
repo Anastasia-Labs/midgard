@@ -11,7 +11,6 @@ import { describe, expect, it } from "vitest";
 import { PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES } from "../src/protected-output-signer-missing/protected-output-signer-missing.js";
 import { buildProtectedOutputSignerMissingStep02 } from "../src/protected-output-signer-missing/submit-step-02.js";
 import { buildSignerWitnessScan } from "../src/signer-witness-scan/index.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { makeScenario } from "./protected-output-signer-missing-lifecycle.make-scenario.js";
 import {
   compactHex,
@@ -64,7 +63,6 @@ describe("protectedOutputSignerMissing step 02 and the scan built turn by turn",
       certificateReferenceScriptUtxo: s.certificateRef,
       // The claims each turn's carriage is read back by, as a CLI run keeps
       // them in memory.
-      ownOutputs: createOwnOutputJournal(),
     };
     const certificates = () =>
       fieldPreimageCertificateCount({

@@ -6,10 +6,6 @@ import { expect, it, vi } from "vitest";
 import { fetchFraudProofEvidence } from "../src/evidence/fraud-proof-evidence.js";
 import { fieldPreimageCertificateAddress } from "../src/field-opening.certify-fault-proof-field-carriage.js";
 import {
-  fieldCertificateClaimKey,
-  fieldPublicationClaimKey,
-} from "../src/field-opening.own-field-carriage.js";
-import {
   planFieldPreimageLengthCarriage,
   resolveFieldPreimageLengthCarriage,
 } from "../src/field-preimage-length-mismatch/carriage.js";
@@ -20,7 +16,6 @@ import {
   fieldPreimageLengthEvidenceFromVerifiedPayload,
 } from "../src/field-preimage-length-mismatch/evidence.js";
 import { forcedFieldPreimageLengthRawFinding } from "../src/field-preimage-length-mismatch/evidence-forced.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   fieldLengthForcedFixture,
   forcedLengthMismatchFixture,
@@ -240,34 +235,17 @@ it.each([
             },
           ]
         : [];
-    // Our journaled carriage, read back by out-ref.
-    const ownOutputs = createOwnOutputJournal();
-    publications.forEach((utxo, index) =>
-      ownOutputs.claim(
-        fieldPublicationClaimKey(index, utxo.datum!),
-        `${utxo.txHash}#${utxo.outputIndex.toString()}`,
-      ),
+    // The carriage is found at its addresses by content.
+    vi.spyOn(workflow.config.lucid, "utxosAt").mockImplementation(
+      async (address) =>
+        publications.filter((utxo) => utxo.address === address),
     );
-    certificate.forEach((utxo) =>
-      ownOutputs.claim(
-        fieldCertificateClaimKey(utxo.datum!),
-        `${utxo.txHash}#${utxo.outputIndex.toString()}`,
-      ),
-    );
-    vi.spyOn(workflow.config.lucid, "utxosByOutRef").mockImplementation(
-      async (outRefs) =>
-        [...publications, ...certificate].filter((utxo) =>
-          outRefs.some(
-            (outRef) =>
-              outRef.txHash === utxo.txHash &&
-              outRef.outputIndex === utxo.outputIndex,
-          ),
-        ),
+    vi.spyOn(workflow.config.lucid, "utxosAtWithUnit").mockImplementation(
+      async (address) => certificate.filter((utxo) => utxo.address === address),
     );
     const resolved = await resolveFieldPreimageLengthCarriage({
       workflow,
       evidence,
-      ownOutputs,
     });
     expect(resolved.carriageReferences).toHaveLength(
       publications.length + certificate.length,

@@ -10,6 +10,7 @@
  * from then on. Evaluator failures are injected at the validation package,
  * per transaction. */
 import { MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS } from "@al-ft/midgard-core";
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { ScriptEvaluationIndeterminateError } from "@al-ft/midgard-validation/phase-b";
@@ -26,7 +27,6 @@ import {
   ValidationTraceReplayHeldError,
 } from "../src/validation-trace-dispute/replay-hold.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import {
   failingMaterial,
   type Scene,
@@ -211,7 +211,7 @@ describe("validation-trace dispute runner: an evaluator failure holds, then the 
     ]);
     const [caseClaim] = stages[2]!.outputs;
     const [caseOutput] = await h.proverLucid.utxosByOutRef([
-      parseOwnOutRef(caseClaim!.outRef),
+      parseOutRefLabel(caseClaim!.outRef),
     ]);
     expect(caseOutput?.address).toBe(chain.case.spendingScriptAddress);
     const material = await failingMaterial(scene);

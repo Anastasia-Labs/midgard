@@ -20,7 +20,6 @@ import {
   cursorStepContractNames,
   defineFamily,
 } from "../workflow/family-definition.family-definition.js";
-import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
@@ -127,13 +126,10 @@ export const FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION = defineFamily<
             );
           const submission = createManifestBoundFieldItemWidthIllegalSubmission(
             {
-              ownOutputs: workflowFieldCarriageOwnOutputs({
-                category,
-                materials: proofMaterialsAccess({
-                  signer: config.signer,
-                  lucid: config.lucid,
-                  holder,
-                }),
+              materials: proofMaterialsAccess({
+                signer: config.signer,
+                lucid: config.lucid,
+                holder,
               }),
               config,
               observe: async () =>

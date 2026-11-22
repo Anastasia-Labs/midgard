@@ -26,10 +26,7 @@ import {
 import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { ObserverOrderInvalidContracts } from "./contracts.js";
 import type { ObserverOrderInvalidEvidence } from "./family.js";
 import {
@@ -57,7 +54,7 @@ export const buildObserverOrderInvalidStep02 = async ({
   staged,
   action,
   referenceScriptUtxo,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ObserverOrderInvalidContracts;
@@ -69,8 +66,8 @@ export const buildObserverOrderInvalidStep02 = async ({
   readonly staged: ObserverOrderInvalidStagedPlan;
   readonly action: ObserverOrderInvalidStep02Action;
   readonly referenceScriptUtxo: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -111,7 +108,7 @@ export const buildObserverOrderInvalidStep02 = async ({
     label: "observerOrderInvalid field 3",
   });
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
-    ownOutputs,
+    materials,
     lucid,
     publisherAddress: signer.proofMaterialsAddress,
     planned,
@@ -121,7 +118,6 @@ export const buildObserverOrderInvalidStep02 = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? await resolveFaultProofFieldPreimageCertificate({
-          ownOutputs,
           lucid,
           network: lucid.config().network!,
           planned,

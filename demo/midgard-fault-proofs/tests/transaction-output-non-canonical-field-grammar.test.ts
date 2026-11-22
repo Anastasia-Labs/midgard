@@ -27,7 +27,6 @@ import {
   type TransactionOutputNonCanonicalStage,
 } from "../src/transaction-output-non-canonical/workflow.transaction-output-non-canonical-config-from-binding.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../src/workflow/deployment-manifest-binding.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
@@ -162,13 +161,11 @@ const buildScenario = async () => {
   let stage: TransactionOutputNonCanonicalStage = {
     fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
   };
-  const ownOutputs = createOwnOutputJournal();
   const submission = createManifestBoundTransactionOutputNonCanonicalSubmission(
     {
       config,
       observe: () => Promise.resolve("step01"),
       resolveStage: () => Promise.resolve(stage as never),
-      ownOutputs,
     },
   );
   stage = {
@@ -201,7 +198,6 @@ const buildScenario = async () => {
     config,
     grammar,
     evidence,
-    ownOutputs,
     submission,
     step02Stage: stage,
     /** The next step's thread and step material, on the same block. */
@@ -218,13 +214,12 @@ const scenarioOf = () => (scenario ??= buildScenario());
 
 describe("transactionOutputNonCanonical step 02 through the field grammar certificate", () => {
   it("fails on chain when step 02 walks a 761-output field without the certificate", async () => {
-    const { config, evidence, ownOutputs, step02Stage } = await scenarioOf();
+    const { config, evidence, step02Stage } = await scenarioOf();
     // The submitter's walked route, reached only by a direct call that passes
     // no certificate deployment: at this size the walk runs the step over its
     // execution budget.
     await expect(
       submitTurnsUnjournaled(buildTransactionOutputNonCanonicalStep02, {
-        ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,

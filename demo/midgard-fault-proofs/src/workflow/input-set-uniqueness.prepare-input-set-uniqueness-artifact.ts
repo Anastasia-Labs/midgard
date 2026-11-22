@@ -46,7 +46,7 @@ import {
 import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
 import { exactJournalRecord } from "./native-index-artifact.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
-import type { OwnOutputJournal } from "./own-outputs.js";
+import type { ProofMaterialsAccess } from "./proof-materials-view.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
 import {
   workflowTransactionInputOutRefs,
@@ -224,12 +224,12 @@ export const stringField = (
 export const resolveField = async (
   config: BoundConfig,
   plan: FaultProofFieldOpeningPlan | null,
-  ownOutputs: OwnOutputJournal,
+  materials: ProofMaterialsAccess,
 ) => {
   if (plan === null)
     return Object.freeze({ publications: [], certificate: undefined });
   const publications = await resolveFaultProofFieldCarriagePublications({
-    ownOutputs,
+    materials,
     lucid: config.lucid,
     publisherAddress: config.signer.proofMaterialsAddress,
     planned: plan,
@@ -238,7 +238,6 @@ export const resolveField = async (
     throw new Error("input-set-uniqueness field publications disappeared");
   }
   const certificate = await resolveFaultProofFieldPreimageCertificate({
-    ownOutputs,
     lucid: config.lucid,
     network: config.network,
     planned: plan,

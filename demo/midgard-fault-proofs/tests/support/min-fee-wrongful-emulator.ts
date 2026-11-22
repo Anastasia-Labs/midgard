@@ -43,7 +43,6 @@ import {
   commitCountedRoot,
 } from "../../src/transition-trace/phas.js";
 import { eventKeyFingerprint } from "../../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { network } from "./emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
@@ -72,7 +71,6 @@ export const makeMinFeeWrongfulRejectionScenario = async (
     ForcedTxInvalid: { reason: "FeeBelowMinimum" },
   },
 ) => {
-  const ownOutputs = createOwnOutputJournal();
   const h = await makeFaultProofEmulatorHarness({
     contractOptions: { realMinFee: true },
   });
@@ -298,7 +296,6 @@ export const makeMinFeeWrongfulRejectionScenario = async (
         label: "min-fee maximum field",
       });
       const published = await publishCarriageUnjournaled({
-        ownOutputs,
         lucid: h.proverLucid,
         signer: h.proverSigner,
         planned,
@@ -313,7 +310,6 @@ export const makeMinFeeWrongfulRejectionScenario = async (
           label: "min-fee field certificate",
         });
         const certificate = await certifyCarriageUnjournaled({
-          ownOutputs,
           lucid: h.proverLucid,
           network,
           signer: h.proverSigner,
@@ -336,7 +332,6 @@ export const makeMinFeeWrongfulRejectionScenario = async (
     unsafeSkipLocalViolationCheckForTest = false,
   ) =>
     submitTurnsUnjournaled(buildMinFeeStep02, {
-      ownOutputs,
       lucid: h.proverLucid,
       contracts,
       categoryId: category.categoryId,

@@ -9,7 +9,6 @@ import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import type { ResolvedProverSigner } from "../runtime.js";
 import { type FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import { type FraudProofFamilyL1ObservationPort } from "./family-l1-observation.js";
-import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "./l1-source.js";
 import {
   admitMissingSignatureArtifact,
@@ -72,13 +71,10 @@ export const createBoundTransactionPort = ({
       }
       const input = requiredAction(action);
       // Every step reads the field carriage its prerequisite published.
-      const ownOutputs = workflowFieldCarriageOwnOutputs({
-        category: "missingSignature",
-        materials: proofMaterialsAccess({
-          signer: config.signer,
-          lucid: config.lucid,
-          holder,
-        }),
+      const materials = proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
       });
       if (input.stage === "init") {
         const transaction = (
@@ -126,7 +122,7 @@ export const createBoundTransactionPort = ({
         const transaction = (
           await workflowStepTransaction(
             await buildMissingSignatureForcedAction({
-              ownOutputs,
+              materials,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,
@@ -177,7 +173,7 @@ export const createBoundTransactionPort = ({
         const transaction = (
           await workflowStepTransaction(
             await builders.step02({
-              ownOutputs,
+              materials,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,
@@ -220,7 +216,7 @@ export const createBoundTransactionPort = ({
         const transaction = (
           await workflowStepTransaction(
             await builders.step04({
-              ownOutputs,
+              materials,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,

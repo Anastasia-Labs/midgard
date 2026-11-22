@@ -44,8 +44,8 @@ export const buildTransitionTraceFinalHop = async (args: FinalArgs) =>
   await buildPastPrerequisitesUnjournaled(buildTransitionTraceFinal, args);
 
 /**
- * Publishes every chunk of `chunks` that `ownOutputs` holds no live output
- * for at `address`, the prover's proof-materials address, one confirmed
+ * Publishes every chunk of `chunks` with no live output holding it at
+ * `address`, the prover's proof-materials address, one confirmed
  * transaction at a time, and returns the live chunks in order.
  */
 export const publishTransitionTraceBytes = async (

@@ -27,7 +27,6 @@ import {
 } from "../src/mint-declared-asset-limit/contracts.js";
 import { prepareMintDeclaredAssetLimitEvidence } from "../src/mint-declared-asset-limit/family.advance-mint-declared-fold.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
-import type { OwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
@@ -271,7 +270,6 @@ export const publishCarriage = async (
   items: readonly Buffer[],
   label: string,
   sourceKind: 0n | 1n,
-  ownOutputs: OwnOutputJournal,
 ) => {
   const planned = planFaultProofFieldOpening({
     anchorSourceKind: sourceKind,
@@ -285,7 +283,6 @@ export const publishCarriage = async (
   });
   const carriage = await captureEmulatorSubmission(harness.emulator, () =>
     publishCarriageUnjournaled({
-      ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -297,7 +294,6 @@ export const publishCarriage = async (
     planned.plan.tier === "Certified"
       ? await captureEmulatorSubmission(harness.emulator, () =>
           certifyCarriageUnjournaled({
-            ownOutputs,
             lucid: harness.proverLucid,
             network,
             signer: harness.proverSigner,

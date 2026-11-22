@@ -39,10 +39,7 @@ import {
   requireDeploymentReferenceScript,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   nextTransitionTracePhase,
   type TransitionTraceField,
@@ -82,7 +79,7 @@ export const prepareTransitionFieldCarriage = async ({
   certificateMintingScript,
   certificateReferenceScript,
   publish,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -93,8 +90,8 @@ export const prepareTransitionFieldCarriage = async ({
   readonly certificateMintingScript: Script;
   readonly certificateReferenceScript: () => Promise<UTxO>;
   readonly publish: boolean;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<FaultProofTurn<TransitionFieldCarriage>> => {
   const proof = readTransitionProof(proofInput);
   const replay = transitionL2Replay(proofInput);
@@ -128,7 +125,7 @@ export const prepareTransitionFieldCarriage = async ({
   });
   const chunks = publish
     ? await publishFaultProofFieldCarriage({
-        ownOutputs,
+        materials,
         lucid,
         signer,
         planned,
@@ -136,7 +133,7 @@ export const prepareTransitionFieldCarriage = async ({
         label,
       })
     : await resolveFaultProofFieldCarriagePublications({
-        ownOutputs,
+        materials,
         lucid,
         publisherAddress: signer.proofMaterialsAddress,
         planned,
@@ -147,7 +144,6 @@ export const prepareTransitionFieldCarriage = async ({
   signer.selectWallet(lucid);
   if (planned.plan.tier !== "Certified") return { planned, references: chunks };
   const certificate = await resolveFaultProofFieldPreimageCertificate({
-    ownOutputs,
     lucid,
     network,
     planned,
@@ -159,7 +155,6 @@ export const prepareTransitionFieldCarriage = async ({
       lucid,
       network,
       signer,
-      ownOutputs,
       planned,
       certificatePolicyId,
       certificateMintingScript,
@@ -218,7 +213,7 @@ export const prepareTransitionFieldStep = async ({
   publish,
   fieldCertificateReferenceScript,
   baseReferences,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -233,8 +228,8 @@ export const prepareTransitionFieldStep = async ({
   readonly fieldCertificateReferenceScript?: UTxO;
   /** The reference inputs the step reads besides its carriage and verifiers. */
   readonly baseReferences: readonly UTxO[];
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<FaultProofTurn<TransitionFieldStep>> => {
   const field = transitionTracePhaseField(state);
   const certificatePolicyId = contracts.fieldPreimageCertificate.policyId;
@@ -258,7 +253,7 @@ export const prepareTransitionFieldStep = async ({
               name: "fieldPreimageCertificateMint",
             })),
           publish,
-          ownOutputs,
+          materials,
         });
   if (isPrerequisiteTurn(carriage)) return carriage;
   const verifiers: readonly TransitionOutputVerifier[] =

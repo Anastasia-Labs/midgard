@@ -5,6 +5,7 @@
  * another party, holding a bond's worth and fees, then runs VerifySource
  * over our pending claim, so the case our Open opened is its.
  */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   CML,
   generateEmulatorAccount,
@@ -14,7 +15,6 @@ import {
 import { expect } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
-import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
 import { recordedOutput } from "./validation-trace-dispute-funded-moves.js";
 import {
@@ -132,8 +132,8 @@ export const verifiedByAnotherParty = async (
   ).submit();
   await lucid.awaitTx(foreignHash);
   const [caseOutput, bond] = await h.emulator.getUtxosByOutRef([
-    parseOwnOutRef(`${foreignHash}#0`),
-    parseOwnOutRef(`${foreignHash}#1`),
+    parseOutRefLabel(`${foreignHash}#0`),
+    parseOutRefLabel(`${foreignHash}#1`),
   ]);
   expect(caseOutput!.address).toBe(chain.case.spendingScriptAddress);
   expect(bond!.address).toBe(chain.disputeBond.spendingScriptAddress);

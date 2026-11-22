@@ -205,7 +205,6 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
         const captured = await proofActuator.capture({
           action,
           artifact,
-          ownOutputs: h.ownOutputs,
         });
         const txHash = await submitCapturedTransaction(captured.transaction);
         expect(txHash).toBe(captured.transaction.txHash);
@@ -484,7 +483,6 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
       h.harness.emulator,
       async () => {
         const captured = await removalActuator.capture({
-          ownOutputs: h.ownOutputs,
           action: {
             stage: "remove",
             stateQueueBlockOutRef: setup.fraudulentBlockOutRef,

@@ -15,7 +15,6 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import type { ManifestBoundFamilyWorkflow } from "../workflow/family-definition.js";
-import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { workflowStepTransaction } from "../workflow/step-transaction.js";
@@ -56,13 +55,10 @@ export const transactionPort = (
       classification,
     }),
   capture: async ({ action, artifact, holder }) => {
-    const ownOutputs = workflowFieldCarriageOwnOutputs({
-      category: "nativeScriptInvalid",
-      materials: proofMaterialsAccess({
-        signer: config.signer,
-        lucid: config.lucid,
-        holder,
-      }),
+    const materials = proofMaterialsAccess({
+      signer: config.signer,
+      lucid: config.lucid,
+      holder,
     });
     const admitted = await admitNativeScriptInvalidWorkflowArtifact(artifact);
     if (admitted.artifact.headerHash !== config.binding.definition.headerHash) {
@@ -165,7 +161,7 @@ export const transactionPort = (
     }
     if (stage === "step_02") {
       const carriage = await resolveField({
-        ownOutputs,
+        materials,
         config,
         plan: scriptFieldPlan(admitted, config.signer.paymentKeyHash),
       });
@@ -173,7 +169,7 @@ export const transactionPort = (
         transaction: (
           await workflowStepTransaction(
             await buildNativeScriptInvalidStep02({
-              ownOutputs,
+              materials,
               ...common,
               threadOutRef: threadOutRef(),
               scriptWitnessItems: buffers(
@@ -212,7 +208,7 @@ export const transactionPort = (
       });
     if (stage === "step_03") {
       const carriage = await resolveField({
-        ownOutputs,
+        materials,
         config,
         plan: signerFieldPlan(admitted, config.signer.paymentKeyHash),
       });
@@ -236,7 +232,7 @@ export const transactionPort = (
                   ? {}
                   : { certificateUtxo: carriage.certificate }),
                 referenceScriptUtxo: config.references.steps[2],
-                ownOutputs,
+                materials,
               } as const;
               if (direct) {
                 return await buildNativeScriptInvalidStep03({
@@ -263,7 +259,7 @@ export const transactionPort = (
     }
     if (stage === "step_04") {
       const carriage = await resolveField({
-        ownOutputs,
+        materials,
         config,
         plan: signerFieldPlan(admitted, config.signer.paymentKeyHash),
       });
@@ -271,7 +267,7 @@ export const transactionPort = (
         transaction: (
           await workflowStepTransaction(
             await buildNativeScriptInvalidStep04({
-              ownOutputs,
+              materials,
               ...common,
               threadOutRef: threadOutRef(),
               addressWitnessItems: buffers(

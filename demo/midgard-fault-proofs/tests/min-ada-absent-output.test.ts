@@ -24,7 +24,6 @@ import {
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { setup } from "./min-ada-wrongful-rejection-lifecycle.setup.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
@@ -46,7 +45,6 @@ type Options = NonNullable<Parameters<typeof setup>[0]>;
 /** A thread bound through step 01 with field 2's carriage published. */
 const boundThread = async (options: Options) => {
   const f = await setup(options);
-  const ownOutputs = createOwnOutputJournal();
   const bound = await buildAndSubmitUnjournaled(buildMinAdaStep01Forced, {
     ...f.common,
     threadOutRef: f.threadOutRef,
@@ -67,7 +65,6 @@ const boundThread = async (options: Options) => {
     label: "min-ada absent outputs",
   });
   const carriage = await publishCarriageUnjournaled({
-    ownOutputs,
     lucid: f.h.proverLucid,
     signer: f.h.proverSigner,
     planned,
@@ -79,7 +76,6 @@ const boundThread = async (options: Options) => {
     planned.plan.tier === "Certified"
       ? (
           await certifyCarriageUnjournaled({
-            ownOutputs,
             lucid: f.h.proverLucid,
             network,
             signer: f.h.proverSigner,
@@ -105,7 +101,6 @@ const boundThread = async (options: Options) => {
       : undefined;
   return {
     f,
-    ownOutputs,
     carriage,
     certificateUtxo,
     threadOutRef: bound.nextThreadOutRef,
@@ -118,14 +113,12 @@ const boundThread = async (options: Options) => {
  */
 const convict = async ({
   f,
-  ownOutputs,
   carriage,
   certificateUtxo,
   threadOutRef,
 }: Awaited<ReturnType<typeof boundThread>>) => {
   const closed = await captureEmulatorSubmission(f.h.emulator, () =>
     submitTurnsUnjournaled(buildMinAdaTxStep02, {
-      ownOutputs,
       ...f.common,
       threadOutRef,
       prepared: f.prepared,
@@ -230,7 +223,6 @@ describe("minAda forced rejection of an absent output", () => {
     const grammar = await buildPastPrerequisitesUnjournaled(
       buildMinAdaTxStep02,
       {
-        ownOutputs: thread.ownOutputs,
         ...f.common,
         threadOutRef: thread.threadOutRef,
         prepared: f.prepared,

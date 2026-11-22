@@ -58,7 +58,6 @@ import {
   networkIdWrongfulRejectionCloses,
 } from "../src/network-id/index.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   commitForcedBlock,
   forcedTransactionAt,
@@ -268,7 +267,6 @@ describe("networkId wrongful-rejection real lifecycle", () => {
   ])(
     "refuses the honest rejection with %s at the exact on-chain predicate",
     async (_label, shape) => {
-      const ownOutputs = createOwnOutputJournal();
       const { harness, refs } = await makeHarness();
       const transaction = forcedTransactionAt(shape);
       const block = await commitForcedBlock(harness, [
@@ -329,7 +327,6 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         2,
       );
       await publishCarriageUnjournaled({
-        ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned: opening,
@@ -342,14 +339,12 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         cursor = (
           await stages.scanStep(cursor, lying, plan, step, {
             publish: true,
-            ownOutputs,
           })
         ).nextThreadOutRef;
       }
       await expect(
         stages.scanStep(cursor, lying, plan, plan.steps.at(-1)!, {
           publish: true,
-          ownOutputs,
         }),
       ).rejects.toThrow(/script|evaluat/iu);
       await stages.cancel(cursor, "forcedScan");
@@ -515,7 +510,6 @@ describe("networkId wrongful-rejection real lifecycle", () => {
   };
 
   it("scans the maximum raw-carriage outputs field in batches, mints, and removes", async () => {
-    const ownOutputs = createOwnOutputJournal();
     const { harness, refs } = await makeHarness();
     // The scan folds the field in `scan_batch` batches, so the supported shape
     // is no longer bounded by what one transaction can decode: it is the
@@ -568,7 +562,6 @@ describe("networkId wrongful-rejection real lifecycle", () => {
     );
     const publication = await captureEmulatorSubmission(harness.emulator, () =>
       publishCarriageUnjournaled({
-        ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned: opening,
@@ -579,7 +572,6 @@ describe("networkId wrongful-rejection real lifecycle", () => {
     const final = await stages.finalize(
       await stages.scan(bound.nextThreadOutRef, prepared, plan, {
         publish: true,
-        ownOutputs,
       }),
       prepared,
     );
@@ -597,7 +589,6 @@ describe("networkId wrongful-rejection real lifecycle", () => {
   }, 1_800_000);
 
   it("convicts the adjacent certified outputs field by certifying its envelope grammar first", async () => {
-    const ownOutputs = createOwnOutputJournal();
     const { harness, refs } = await makeHarness();
     // One output above the raw-carriage bound the planner switches to tier-3
     // certified carriage, whose §5.1 item count is provisional. Before the
@@ -661,7 +652,6 @@ describe("networkId wrongful-rejection real lifecycle", () => {
       prepared,
     );
     const chunks = await publishCarriageUnjournaled({
-      ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned: opening,
@@ -674,7 +664,6 @@ describe("networkId wrongful-rejection real lifecycle", () => {
       label: "network-id field certificate mint",
     });
     const certificate = await certifyCarriageUnjournaled({
-      ownOutputs,
       lucid: harness.proverLucid,
       network,
       signer: harness.proverSigner,
@@ -696,14 +685,13 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         prepared,
         plan,
         { kind: "open" },
-        { publish: true, certificateUtxos, ownOutputs },
+        { publish: true, certificateUtxos },
       ),
     ).rejects.toThrow(/certified carriage cannot be opened directly/u);
     const final = await stages.finalize(
       await stages.scan(bound.nextThreadOutRef, prepared, plan, {
         publish: true,
         certificateUtxos,
-        ownOutputs,
       }),
       prepared,
     );
@@ -713,7 +701,6 @@ describe("networkId wrongful-rejection real lifecycle", () => {
   }, 1_800_000);
 
   it("refuses every scan mutation at the exact check that owns it", async () => {
-    const ownOutputs = createOwnOutputJournal();
     const { harness, refs } = await makeHarness();
     // 70 outputs is the smallest shape with more than one `Advance`, so the
     // budget, checkpoint and successor mutations all have a real predecessor
@@ -741,14 +728,13 @@ describe("networkId wrongful-rejection real lifecycle", () => {
     const stages = makeStages(harness, refs, block.setup);
     const { opening, plan } = stages.scanPlanFor(prepared, true);
     await publishCarriageUnjournaled({
-      ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned: opening,
       publisherAddress: harness.proverSigner.proofMaterialsAddress,
       label: "network-id scan-mutation outputs",
     });
-    const options = { publish: true, ownOutputs } as const;
+    const options = { publish: true } as const;
     const bound = await stages.bind(
       await stages.dispatch(await stages.initialize(), prepared),
       prepared,

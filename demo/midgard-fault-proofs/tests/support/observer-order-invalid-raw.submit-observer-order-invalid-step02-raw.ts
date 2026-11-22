@@ -37,7 +37,6 @@ import {
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import { requireInitialStepDatum } from "../../src/step-support.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
-import type { OwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   FAMILY,
   type OpeningMutation,
@@ -172,7 +171,6 @@ export const submitObserverOrderInvalidStep02Raw = async ({
   staged,
   referenceScriptUtxo,
   mutateOpening = (opening) => opening,
-  ownOutputs,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ObserverOrderInvalidContracts;
@@ -184,8 +182,6 @@ export const submitObserverOrderInvalidStep02Raw = async ({
   readonly staged: ObserverOrderInvalidStagedPlan;
   readonly referenceScriptUtxo: UTxO;
   readonly mutateOpening?: OpeningMutation;
-  /** Our carriage claims, which the carriage is read by. */
-  readonly ownOutputs: OwnOutputJournal;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -211,7 +207,6 @@ export const submitObserverOrderInvalidStep02Raw = async ({
   });
   const { opening, carriageUtxos, extraReferenceInputs } =
     await resolveObserverOpening({
-      ownOutputs,
       lucid,
       contracts,
       signer,

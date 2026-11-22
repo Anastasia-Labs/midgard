@@ -35,7 +35,6 @@ import { transitionTraceByteChunks } from "../../src/transition-trace/proof-carr
 import { type TransitionProofInput } from "../../src/transition-trace/proof-material.js";
 import { buildTransitionTraceFinal } from "../../src/transition-trace/submit.submit-transition-trace-final.js";
 import * as yieldDataModule from "../../src/transition-trace/yield-data.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   alwaysSucceedsBlueprintPath,
   network,
@@ -158,7 +157,6 @@ export const transitionTraceFinalCaseRunner = (
     ledgerDepth = 0,
     forced,
   }: TransitionTraceFinalCase) => {
-    const ownOutputs = createOwnOutputJournal();
     const realBlueprint = readBlueprint(realBlueprintPath);
     const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
     const names = new Map<string, bigint>();
@@ -608,7 +606,6 @@ export const transitionTraceFinalCaseRunner = (
       depositOpening,
       witnessReferenceScripts,
       fieldCertificateReferenceScript,
-      ownOutputs,
     });
     const finalFrom = (threadOutRef: string) =>
       submitTransitionTraceFinal(finalArgs(threadOutRef));
@@ -630,14 +627,12 @@ export const transitionTraceFinalCaseRunner = (
         signer: proverSigner,
         threadOutRef: outRefLabel(firstStepUtxo),
         proof: traceFixture.proof,
-        ownOutputs,
       });
       for (const bytes of outputCbors)
         await publishTransitionTraceBytes({
           lucid: proverLucid,
           address: proverSigner.proofMaterialsAddress,
           chunks: transitionTraceByteChunks(bytes.toString("hex")),
-          ownOutputs,
         });
       await publishTransitionFieldCarriages({
         lucid: proverLucid,
@@ -646,7 +641,6 @@ export const transitionTraceFinalCaseRunner = (
         proof: traceFixture.proof,
         certificate: contracts.fieldPreimageCertificate,
         certificateReference: fieldCertificateReferenceScript,
-        ownOutputs,
       });
       const [routeHash, routeIndex] = route.routeOutRef.split("#");
       let checkpoint = (
@@ -734,7 +728,6 @@ export const transitionTraceFinalCaseRunner = (
         witnessReferenceScripts,
         fieldCertificateReferenceScript,
         awaitConfirmation: true,
-        ownOutputs,
       });
     const forged = {
       lucid: proverLucid,

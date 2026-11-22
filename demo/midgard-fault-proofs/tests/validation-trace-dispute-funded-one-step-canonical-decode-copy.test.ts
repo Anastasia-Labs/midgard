@@ -18,13 +18,13 @@
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES } from "../src/validation-trace-dispute/one-step-canonical-decode.js";
 import { VALIDATION_TRACE_CASE_CONVICTED } from "../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceOneStepReferences } from "../src/validation-trace-dispute/transactions.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { drainProver } from "./support/installed-prover-wallet.js";
 import { sceneOperator } from "./support/validation-trace-dispute-defend.js";
@@ -135,7 +135,7 @@ describe("validation-trace dispute one-step resolution through a canonical-decod
       trace,
     );
     const [thread] = await scene.h.emulator.getUtxosByOutRef([
-      parseOwnOutRef(threadOutRef),
+      parseOutRefLabel(threadOutRef),
     ]);
     side = { defender, trace, unit: threadUnitOf(scene, thread!) };
   }, 1_800_000);
@@ -152,7 +152,7 @@ describe("validation-trace dispute one-step resolution through a canonical-decod
       // No script runs, and only our wallet's coins are spent.
       expect(publish.tx.witness_set().redeemers()).toBeUndefined();
       const spent = await scene.h.emulator.getUtxosByOutRef(
-        outRefsOf(publish.tx.body().inputs()).map(parseOwnOutRef),
+        outRefsOf(publish.tx.body().inputs()).map(parseOutRefLabel),
       );
       expect(spent).toStrictEqual([]);
       expect(readersOf(scene, copy!)).toStrictEqual([]);

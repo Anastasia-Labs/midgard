@@ -1,14 +1,13 @@
 /**
  * Where a script's staged chunks stand for the script-decode port: each
- * chunk is the plain output with its bytes that the workflow's
- * proof-materials view finds at the staging address (the k-th copy for the
- * k-th chunk holding them, whoever paid it, since only the prover spends
- * there), read back by its out-ref with the strict carriage shape.
+ * chunk is the plain output with its bytes found at the staging address
+ * (the k-th copy for the k-th chunk holding them, whoever paid it, since
+ * only the prover spends there), through the workflow's proof-materials view.
  */
-import type { LucidEvolution } from "@lucid-evolution/lucid";
+import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import { scriptDecodeStagingDatums } from "../script-decode/submit.js";
-import { inlineDatumCarriageSlot, resolveOwnOutputs } from "./own-outputs.js";
+import { findCarriage } from "./own-outputs.js";
 import type { ProofMaterialsAccess } from "./proof-materials-view.js";
 
 /**
@@ -27,23 +26,18 @@ export const scriptDecodeStagedChunks = async ({
   readonly scriptBytes: Uint8Array;
   /** The workflow's view of the staging address and the workflow itself. */
   readonly materials: ProofMaterialsAccess;
-}) => {
-  const datums = scriptDecodeStagingDatums(scriptBytes);
-  const found =
-    address === materials.view.address
-      ? await materials.view.find(datums, materials.holder)
-      : [];
-  return await resolveOwnOutputs({
-    slots: datums.map((datum, chunkIndex) => {
-      const own = found[chunkIndex];
-      return {
-        slot: inlineDatumCarriageSlot(address, datum),
-        claims:
-          own === undefined
-            ? []
-            : [{ outRef: `${own.txHash}#${own.outputIndex.toString()}` }],
-      };
-    }),
-    read: (outRefs) => lucid.utxosByOutRef([...outRefs]),
+}): Promise<
+  | Readonly<{ kind: "ready"; utxos: readonly UTxO[] }>
+  | Readonly<{ kind: "publish"; ordinal: number }>
+> => {
+  const found = await findCarriage({
+    lucid,
+    address,
+    datums: scriptDecodeStagingDatums(scriptBytes),
+    materials,
   });
+  const ordinal = found.findIndex((utxo) => utxo === undefined);
+  return ordinal < 0
+    ? { kind: "ready", utxos: found as readonly UTxO[] }
+    : { kind: "publish", ordinal };
 };

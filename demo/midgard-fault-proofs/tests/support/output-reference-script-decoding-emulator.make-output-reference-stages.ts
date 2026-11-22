@@ -28,7 +28,6 @@ import {
 } from "../../src/output-reference-script-decoding/submit-step-06.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { type SubmitStep01TxInclusion } from "../../src/step-support.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
@@ -59,7 +58,6 @@ export const makeOutputReferenceStages = ({
   readonly references: readonly UTxO[];
   readonly certificateReference: UTxO;
 }) => {
-  const ownOutputs = createOwnOutputJournal();
   const { harness, contracts, catalogue, category } = context;
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
@@ -186,7 +184,6 @@ export const makeOutputReferenceStages = ({
   ) =>
     await captured(() =>
       submitTurnsUnjournaled(buildOutputReferenceScriptDecodingStep02, {
-        ownOutputs,
         lucid,
         contracts,
         categoryId,
@@ -261,7 +258,6 @@ export const makeOutputReferenceStages = ({
         : (record ?? undefined);
     return await captured(() =>
       submitTurnsUnjournaled(buildOutputReferenceScriptDecodingStep04, {
-        ownOutputs,
         lucid,
         contracts,
         categoryId,
@@ -431,7 +427,6 @@ export const makeOutputReferenceStages = ({
     });
     signer.selectWallet(lucid);
     const carriageUtxos = await publishCarriageUnjournaled({
-      ownOutputs,
       lucid,
       signer,
       planned,
@@ -441,7 +436,6 @@ export const makeOutputReferenceStages = ({
     if (planned.plan.tier !== "Certified")
       throw new Error("foreign field is not certified");
     const { certificateUtxo } = await certifyCarriageUnjournaled({
-      ownOutputs,
       lucid,
       network,
       signer,

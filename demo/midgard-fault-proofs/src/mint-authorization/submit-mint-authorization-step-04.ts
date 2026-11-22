@@ -54,10 +54,6 @@ import { type ResolvedProverSigner } from "../runtime.js";
 import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
 import {
   buildMintAuthorizationLedgerMembership,
@@ -81,6 +77,7 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 
 const STEP_LABEL = mintAuthorizationStepLabel(3);
 
@@ -106,8 +103,8 @@ type Step04Shared = {
   readonly publishedCarriageUtxos?: readonly UTxO[];
   /** The mandatory published step-04 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 };
 
 const prepareStep04 = async (shared: Step04Shared) => {
@@ -144,7 +141,7 @@ const prepareStep04 = async (shared: Step04Shared) => {
   const carriageUtxos =
     shared.publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
-      ownOutputs: shared.ownOutputs ?? createOwnOutputJournal(),
+      materials: shared.materials,
       lucid: shared.lucid,
       signer: shared.signer,
       planned,

@@ -13,6 +13,7 @@
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
@@ -28,7 +29,6 @@ import {
   validationTraceFraudProofUnit,
 } from "../src/validation-trace-dispute/close.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
@@ -48,7 +48,7 @@ let journey: ForeignClose;
 
 const liveAt = async (outRef: string): Promise<UTxO | undefined> =>
   (
-    await journey.scene.h.emulator.getUtxosByOutRef([parseOwnOutRef(outRef)])
+    await journey.scene.h.emulator.getUtxosByOutRef([parseOutRefLabel(outRef)])
   )[0];
 
 const deadlineOf = (caseOutput: UTxO) =>

@@ -21,7 +21,6 @@ import {
   requireInitialStepDatum,
 } from "../step-support.js";
 import { submitFaultProofTurns } from "../submit-fault-proof-turns.js";
-import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import { transitionTraceError } from "./errors.js";
 import {
   resolveTransitionTraceProofCarriage,
@@ -54,7 +53,7 @@ export const buildTransitionTraceRoute = async ({
   threadOutRef,
   proof: proofInput,
   publishCarriage = false,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: Omit<
   SubmitTransitionTraceProofConfig,
   "additionalReferenceInputs" | "witnessReferenceScripts"
@@ -124,7 +123,7 @@ export const buildTransitionTraceRoute = async ({
           lucid,
           address: signer.proofMaterialsAddress,
           proof: proofInput,
-          ownOutputs,
+          materials,
           publish: publishCarriage,
         })
       : [];

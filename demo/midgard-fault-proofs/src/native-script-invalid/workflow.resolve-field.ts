@@ -14,7 +14,7 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import { type ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import type { OwnOutputJournal } from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { NativeScriptInvalidContracts } from "./contracts.js";
 import { nativeScriptInvalidUsesDirectRoute } from "./evidence-machine.native-script-invalid-signer-set.js";
 import { admitNativeScriptInvalidWorkflowArtifact } from "./workflow-artifact.js";
@@ -111,15 +111,15 @@ export const isDirect = (
 export const resolveField = async ({
   config,
   plan,
-  ownOutputs,
+  materials,
 }: {
   readonly config: BoundConfig;
   readonly plan: ReturnType<typeof scriptFieldPlan>;
-  /** Our carriage claims, which the carriage is read by. */
-  readonly ownOutputs: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials: ProofMaterialsAccess;
 }) => {
   const publications = await resolveFaultProofFieldCarriagePublications({
-    ownOutputs,
+    materials,
     lucid: config.lucid,
     publisherAddress: config.signer.proofMaterialsAddress,
     planned: plan,
@@ -128,7 +128,6 @@ export const resolveField = async ({
     throw new Error("native-script-invalid field publications disappeared");
   }
   const certificate = await resolveFaultProofFieldPreimageCertificate({
-    ownOutputs,
     lucid: config.lucid,
     network: config.binding.network,
     planned: plan,

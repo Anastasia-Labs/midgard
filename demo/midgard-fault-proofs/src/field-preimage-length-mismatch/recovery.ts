@@ -14,7 +14,6 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import type { LinearFamilyPrerequisiteInput } from "../workflow/family-definition.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
-import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
   journalJsonDigest,
   type JournalJsonObject,
@@ -196,13 +195,10 @@ export const createFieldPreimageLengthRecoveryPorts = (
             ? await resolveFieldPreimageLengthCarriage({
                 workflow,
                 evidence: carried,
-                ownOutputs: workflowFieldCarriageOwnOutputs({
-                  category: CATEGORY,
-                  materials: proofMaterialsAccess({
-                    signer: config.signer,
-                    lucid: config.lucid,
-                    holder,
-                  }),
+                materials: proofMaterialsAccess({
+                  signer: config.signer,
+                  lucid: config.lucid,
+                  holder,
                 }),
               })
             : undefined;

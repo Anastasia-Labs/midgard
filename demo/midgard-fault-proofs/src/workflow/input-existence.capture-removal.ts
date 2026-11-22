@@ -12,8 +12,8 @@ import {
   MEMBERSHIP_WITNESS_ROLES,
 } from "./family-definition.family-adapter-arm.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
-import type { OwnOutputJournal } from "./own-outputs.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
+import type { ProofMaterialsAccess } from "./proof-materials-view.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
 import {
   workflowTransactionInputOutRefs,
@@ -101,10 +101,10 @@ export const inputExistenceRemoval = <Category extends InputExistenceCategory>({
   const resolveField = async (
     config: BoundConfig<Category>,
     planned: FaultProofFieldOpeningPlan,
-    ownOutputs: OwnOutputJournal,
+    materials: ProofMaterialsAccess,
   ) => {
     const publications = await resolveFaultProofFieldCarriagePublications({
-      ownOutputs,
+      materials,
       lucid: config.lucid,
       publisherAddress: config.signer.proofMaterialsAddress,
       planned,
@@ -113,7 +113,6 @@ export const inputExistenceRemoval = <Category extends InputExistenceCategory>({
       throw new Error(`${name} field publications disappeared`);
     }
     const certificate = await resolveFaultProofFieldPreimageCertificate({
-      ownOutputs,
       lucid: config.lucid,
       network: config.binding.network,
       planned,

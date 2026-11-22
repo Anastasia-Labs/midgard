@@ -19,7 +19,6 @@ import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   publishNativeScriptFieldCarriage,
   removeBlockKeepingProof,
@@ -36,18 +35,12 @@ import {
 /** A thread bound through step 01 with field 6's carriage published. */
 const boundThread = async (options: Parameters<typeof setup>[0]) => {
   const f = await setup(options);
-  const ownOutputs = createOwnOutputJournal();
   const initial = await f.init();
   const bound = await f.bind(
     `${initial.txHash}#${initial.firstStepOutputIndex.toString()}`,
   );
-  const carriage = await publishNativeScriptFieldCarriage(
-    f,
-    ownOutputs,
-    6,
-    f.scripts,
-  );
-  return { f, ownOutputs, carriage, threadOutRef: bound.nextThreadOutRef };
+  const carriage = await publishNativeScriptFieldCarriage(f, 6, f.scripts);
+  return { f, carriage, threadOutRef: bound.nextThreadOutRef };
 };
 
 /**
@@ -57,7 +50,6 @@ const boundThread = async (options: Parameters<typeof setup>[0]) => {
  */
 const convict = async ({
   f,
-  ownOutputs,
   carriage,
   threadOutRef: boundOutRef,
 }: Awaited<ReturnType<typeof boundThread>>) => {
@@ -67,7 +59,6 @@ const convict = async ({
   while (step02Measurements.length < 1000 && closed === undefined) {
     const step = await captureEmulatorSubmission(f.h.emulator, () =>
       submitTurnsUnjournaled(buildNativeScriptInvalidStep02, {
-        ownOutputs,
         ...f.common,
         ...carriage,
         threadOutRef,

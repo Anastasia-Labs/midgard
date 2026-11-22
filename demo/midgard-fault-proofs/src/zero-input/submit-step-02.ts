@@ -14,10 +14,7 @@ import {
 import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { ZeroInputContracts } from "./contracts.js";
 import { type ZeroInputEvidence, zeroInputEvidenceCloses } from "./family.js";
 import {
@@ -35,7 +32,7 @@ export const buildZeroInputStep02V1 = async ({
   nativeTxCompactCbor,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ZeroInputContracts;
@@ -46,8 +43,8 @@ export const buildZeroInputStep02V1 = async ({
   readonly nativeTxCompactCbor: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   if (!zeroInputEvidenceCloses(evidence))
     throw new Error("zeroInput: terminal evidence is honest");
@@ -86,7 +83,7 @@ export const buildZeroInputStep02V1 = async ({
     label: "zero input field 0",
   });
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
-    ownOutputs,
+    materials,
     lucid,
     publisherAddress: signer.proofMaterialsAddress,
     planned,
@@ -98,7 +95,6 @@ export const buildZeroInputStep02V1 = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? await resolveFaultProofFieldPreimageCertificate({
-          ownOutputs,
           lucid,
           network: lucid.config().network!,
           planned,

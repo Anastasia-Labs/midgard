@@ -28,7 +28,6 @@ import type {
   FamilyStepTuple,
   FieldPreimageCertificateBinding,
 } from "../workflow/family-definition.js";
-import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import {
@@ -202,13 +201,10 @@ export const createDirectWalkTransactionPort = <
         replayContext: config.replayContext,
       }),
     capture: async ({ action, artifact, holder }) => {
-      const ownOutputs = workflowFieldCarriageOwnOutputs({
-        category,
-        materials: proofMaterialsAccess({
-          signer: config.signer,
-          lucid: config.lucid,
-          holder,
-        }),
+      const materials = proofMaterialsAccess({
+        signer: config.signer,
+        lucid: config.lucid,
+        holder,
       });
       const plan = await planDirectPurposeArtifact(artifactFamily, {
         artifact,
@@ -322,7 +318,7 @@ export const createDirectWalkTransactionPort = <
           const opening = fieldPlan(field).openingPlan;
           if (opening.plan.tier === "Inline") continue;
           const published = await resolveFaultProofFieldCarriagePublications({
-            ownOutputs,
+            materials,
             lucid: config.lucid,
             planned: opening,
             publisherAddress: config.signer.proofMaterialsAddress,
@@ -330,7 +326,6 @@ export const createDirectWalkTransactionPort = <
           const certificate =
             opening.plan.tier === "Certified"
               ? await resolveFaultProofFieldPreimageCertificate({
-                  ownOutputs,
                   lucid: config.lucid,
                   planned: opening,
                   certificatePolicyId:

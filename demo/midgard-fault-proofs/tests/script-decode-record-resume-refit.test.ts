@@ -26,7 +26,6 @@ import {
   scriptDecodeStagingDatums,
   transactionExUnits,
 } from "../src/script-decode/submit.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 import { injectScriptDecodeDeployment } from "./support/script-decode-emulator.js";
 import { delayChainScript } from "./support/script-decode-plutus-max-shape.js";
@@ -94,7 +93,6 @@ describe("script-decode record resume and refit", () => {
   it("resumes the open run after a stop part-way, without a second Bind", async () => {
     const { deployment, lucid } = await setup();
     // The chunks a run stages, kept by the out-refs it published.
-    const ownOutputs = createOwnOutputJournal();
     await expect(
       recordScriptDecode({
         lucid,
@@ -102,7 +100,6 @@ describe("script-decode record resume and refit", () => {
         language: PLUTUS_V3,
         scriptBytes: script,
         maxWalks: 2,
-        ownOutputs,
       }),
     ).rejects.toThrow(/needs more than 2 Walks/u);
     const [open, ...others] = await openRuns(lucid, deployment);
@@ -114,7 +111,6 @@ describe("script-decode record resume and refit", () => {
       deployment,
       language: PLUTUS_V3,
       scriptBytes: script,
-      ownOutputs,
     });
     expect(rerun.record).toEqual(scriptDecodeRecordOfScript(PLUTUS_V3, script));
     expect(rerun.walks.length).toBeGreaterThan(0);

@@ -17,7 +17,6 @@ import { buildMissingSignatureStep03 } from "../../src/missing-signature/submit-
 import { buildMissingSignatureStep04 } from "../../src/missing-signature/submit-missing-signature-step-04.submit-missing-signature-step04.js";
 import { outRefLabel } from "../../src/runtime.js";
 import type { SubmitStep01TxInclusion } from "../../src/step-support.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   assertEvidenceCoherent,
   locateMissingSignatureThread,
@@ -181,7 +180,6 @@ export const runMissingSignatureProver = async (
     position.step === "none" ? null : outRefLabel(position.threadUtxo);
   const txHashes: string[] = [];
   // The carriage this run publishes, reused across its batches.
-  const ownOutputs = createOwnOutputJournal();
   let step04Transactions = 0;
   const maximumStep04Transactions =
     Math.floor(
@@ -251,7 +249,6 @@ export const runMissingSignatureProver = async (
           const result = await submitTurnsUnjournaled(
             buildMissingSignatureStep02,
             {
-              ownOutputs,
               lucid,
               contracts,
               categoryId: deps.category.categoryId,
@@ -310,7 +307,6 @@ export const runMissingSignatureProver = async (
           const result = await submitTurnsUnjournaled(
             buildMissingSignatureStep04,
             {
-              ownOutputs,
               lucid,
               contracts,
               categoryId: deps.category.categoryId,

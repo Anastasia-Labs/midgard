@@ -18,6 +18,7 @@
  * the case's defense deadline, closes it Convicted with our bond back; every
  * move of ours lands within the transaction limits. */
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import { MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES } from "@al-ft/midgard-validation/cek-constant";
 import { plutusV3ScriptWitness } from "@al-ft/midgard-validation/tests/validation-fixtures";
@@ -35,7 +36,6 @@ import {
 } from "../src/validation-trace-dispute/one-step-holders.js";
 import { planValidationTraceThread } from "../src/validation-trace-dispute/one-step-plan.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
@@ -256,7 +256,7 @@ describe("validation-trace dispute: one-step resolution of a CEK step computing 
       expect(close.action.stage).toBe("close");
       const lucid = scene.h.proverLucid;
       expect(
-        await lucid.utxosByOutRef([parseOwnOutRef(dispute.bondOutRef)]),
+        await lucid.utxosByOutRef([parseOutRefLabel(dispute.bondOutRef)]),
       ).toStrictEqual([]);
       const [refund] = await lucid.utxosByOutRef([
         { txHash: close.txHash, outputIndex: 0 },

@@ -21,7 +21,6 @@ import { buildFieldItemWidthIllegalStep02 } from "../src/field-item-width-illega
 import { buildFieldItemWidthIllegalStep03 } from "../src/field-item-width-illegal/submit-step-03.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
-import type { OwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   CANCELLABLE_STEPS,
   CATEGORY_ID,
@@ -256,10 +255,8 @@ export const makeHarness = async () => {
     threadOutRef: string,
     evidence: FieldItemWidthEvidence,
     shape: WidthShape,
-    ownOutputs: OwnOutputJournal,
   ) =>
     buildFieldItemWidthIllegalStep02({
-      ownOutputs,
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,

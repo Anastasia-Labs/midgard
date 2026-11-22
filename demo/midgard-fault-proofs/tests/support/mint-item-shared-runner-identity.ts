@@ -21,7 +21,6 @@ import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,
 } from "../../src/workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
 import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
@@ -368,9 +367,8 @@ export const mintItemSharedRunnerIdentity = async () => {
       },
     } as never,
   );
-  // The bespoke claims persist across its builds, as its own journal did, so
-  // its later steps reuse the carriage the runner published.
-  const ownOutputs = createOwnOutputJournal();
+  // Its later steps find the carriage the runner published on chain and
+  // reuse it.
   const bespoke = async (stage: unknown) => {
     const built = await createManifestBoundMintItemNonCanonicalSubmission({
       config,
@@ -381,7 +379,6 @@ export const mintItemSharedRunnerIdentity = async () => {
         source,
       }),
       stateQueueMutationLeaseCoordinator,
-      ownOutputs,
     }).submit(bespokeAction(stage), evidence);
     // The bespoke build is compared, never submitted, so its removal lease
     // ends here.

@@ -16,7 +16,6 @@ import {
   type ManifestBoundLinearFamilyWorkflow,
 } from "./family-definition.family-definition.js";
 import type { FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
-import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
@@ -53,13 +52,10 @@ const createTransactionPort = (
       classification,
     }),
   capture: async ({ action, artifact, holder }) => {
-    const ownOutputs = workflowFieldCarriageOwnOutputs({
-      category: "withdrawnInput",
-      materials: proofMaterialsAccess({
-        signer: config.signer,
-        lucid: config.lucid,
-        holder,
-      }),
+    const materials = proofMaterialsAccess({
+      signer: config.signer,
+      lucid: config.lucid,
+      holder,
     });
     const admitted = await admitWithdrawnInputArtifact(
       artifact,
@@ -125,12 +121,12 @@ const createTransactionPort = (
       });
     }
     if (input.stage === "step_02") {
-      const field = await resolveField(config, admitted.spendPlan, ownOutputs);
+      const field = await resolveField(config, admitted.spendPlan, materials);
       return Object.freeze({
         transaction: (
           await workflowStepTransaction(
             await buildWithdrawnInputStep02({
-              ownOutputs,
+              materials,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,

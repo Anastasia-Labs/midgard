@@ -41,10 +41,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import { isAcceptedForcedPrepared } from "./accepted-forced.js";
 import type { NetworkIdContracts } from "./contracts.js";
@@ -79,7 +76,7 @@ export const buildNetworkIdStep02 = async ({
   fieldGrammar,
   witnessSetCompactCbor = "",
   unsafeSkipLocalViolationCheckForTest = false,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NetworkIdContracts;
@@ -104,8 +101,8 @@ export const buildNetworkIdStep02 = async ({
   readonly witnessSetCompactCbor?: string;
   /** Test-only: make an honest body-network claim reach the validator. */
   readonly unsafeSkipLocalViolationCheckForTest?: boolean;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<FaultProofTurn<NetworkIdStep02Build>> => {
   const { threadUtxo, threadToken } = await requireNetworkIdThreadUtxo({
     lucid,
@@ -217,7 +214,7 @@ export const buildNetworkIdStep02 = async ({
     planned === undefined
       ? []
       : await publishFaultProofFieldCarriage({
-          ownOutputs,
+          materials,
           lucid,
           signer,
           planned,

@@ -17,7 +17,6 @@ import {
   type FamilyAssemblyContext,
   type ManifestBoundFamilyWorkflow,
 } from "../workflow/family-definition.js";
-import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { workflowStepTransaction } from "../workflow/step-transaction.js";
@@ -46,13 +45,10 @@ export const transactionPort = (
   prepare: async ({ evidence, classification }) =>
     await prepareMinAdaArtifact({ evidence, classification }),
   capture: async ({ action, artifact, holder }) => {
-    const ownOutputs = workflowFieldCarriageOwnOutputs({
-      category: "minAda",
-      materials: proofMaterialsAccess({
-        signer: config.signer,
-        lucid: config.lucid,
-        holder,
-      }),
+    const materials = proofMaterialsAccess({
+      signer: config.signer,
+      lucid: config.lucid,
+      holder,
     });
     const admitted = await admitMinAdaArtifact(artifact);
     if (admitted.artifact.headerHash !== config.binding.definition.headerHash) {
@@ -139,12 +135,12 @@ export const transactionPort = (
       });
     }
     if (input.stage === "step_02") {
-      const carriage = await resolveField({ ownOutputs, config, admitted });
+      const carriage = await resolveField({ materials, config, admitted });
       return Object.freeze({
         transaction: (
           await workflowStepTransaction(
             await buildMinAdaTxStep02({
-              ownOutputs,
+              materials,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId,

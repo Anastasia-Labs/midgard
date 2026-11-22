@@ -16,7 +16,7 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
-import type { OwnOutputJournal } from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { workflowStepTransaction } from "../workflow/step-transaction.js";
 import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
@@ -151,12 +151,12 @@ export const createMintDeclaredAssetLimitActuator = (
     capture: async ({
       action,
       artifact,
-      ownOutputs,
+      materials,
     }: {
       readonly action: MintDeclaredAssetLimitActuatorAction;
       readonly artifact: unknown;
-      /** The workflow's field-carriage claims, which the steps read carriage by. */
-      readonly ownOutputs: OwnOutputJournal;
+      /** The workflow's view of its proof-materials address, on a workflow. */
+      readonly materials?: ProofMaterialsAccess;
     }): Promise<MintDeclaredAssetLimitCapturedAction> => {
       const admitted = admitMintDeclaredAssetLimitArtifact(artifact);
       if (admitted.artifact.headerHash !== config.binding.definition.headerHash)
@@ -220,7 +220,7 @@ export const createMintDeclaredAssetLimitActuator = (
       if (action.stage === "step_02")
         return await capture(
           await buildMintDeclaredAssetLimitStep02({
-            ownOutputs,
+            materials,
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -242,7 +242,7 @@ export const createMintDeclaredAssetLimitActuator = (
           );
         return await capture(
           await buildMintDeclaredAssetLimitStep03({
-            ownOutputs,
+            materials,
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,

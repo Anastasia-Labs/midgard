@@ -9,6 +9,7 @@
  * actuation permit. */
 import { createHash } from "node:crypto";
 
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
@@ -16,7 +17,6 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
 import { validationTraceCaseExpiryMs } from "../../src/validation-trace-dispute/threads.js";
 import type { ValidationTraceOneStepReferences } from "../../src/validation-trace-dispute/transactions.js";
-import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { drainProver } from "./installed-prover-wallet.js";
 import { sceneOperator } from "./validation-trace-dispute-defend.js";
 import type { CapturedMove } from "./validation-trace-dispute-funded-moves.js";
@@ -131,7 +131,7 @@ export const fundedStagingScene = ({
       trace,
     );
     const [thread] = await scene.h.emulator.getUtxosByOutRef([
-      parseOwnOutRef(threadOutRef),
+      parseOutRefLabel(threadOutRef),
     ]);
     at.side = { defender, trace, unit: threadUnitOf(scene, thread!) };
     await playTo("prepare");

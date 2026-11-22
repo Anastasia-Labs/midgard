@@ -4,12 +4,12 @@
  * and VerifySources it, and the case and its bond are live at the out-refs
  * its own signed bodies pay them at. A block with no detection
  * starts no workflow. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import {
   BOND_LOVELACE,
   failingMaterial,
@@ -56,8 +56,8 @@ describe("validation-trace dispute runner: open step", () => {
 
     const [caseClaim, bondClaim] = verify!.outputs;
     const [caseOutput, bond] = await h.proverLucid.utxosByOutRef([
-      parseOwnOutRef(caseClaim!.outRef),
-      parseOwnOutRef(bondClaim!.outRef),
+      parseOutRefLabel(caseClaim!.outRef),
+      parseOutRefLabel(bondClaim!.outRef),
     ]);
     expect(caseOutput?.address).toBe(chain.case.spendingScriptAddress);
     expect(caseOutput!.assets[caseClaim!.unit]).toBe(1n);
@@ -81,7 +81,7 @@ describe("validation-trace dispute runner: open step", () => {
         SDK.validationCaseId(
           scene.failing.evidence.headerHash,
           scene.failing.eventKey,
-          parseOwnOutRef(open!.outputs[0]!.outRef),
+          parseOutRefLabel(open!.outputs[0]!.outRef),
         ),
     );
 

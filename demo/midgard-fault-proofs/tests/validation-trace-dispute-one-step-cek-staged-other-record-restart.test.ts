@@ -15,9 +15,9 @@
  * back rolls back, our next runs spend each output back again by its
  * original spend back, the same signed bytes, sign nothing new for the
  * outputs, and end resolved by their record again. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import {
   type OurRun,
   RELEASE_DEPTH,
@@ -39,7 +39,8 @@ describe("validation-trace dispute runner: a staged step's staging and a thread 
     const theirRecord = await other.removeByTheirs();
     const runs: OurRun[] = [];
     const { scene } = drive.dispute();
-    const spent = (outRef: string) => !onLedger(scene, parseOwnOutRef(outRef));
+    const spent = (outRef: string) =>
+      !onLedger(scene, parseOutRefLabel(outRef));
     let restartedAt: number | undefined;
     const resolved = await other.runToResolution(stagings, runs, async () => {
       if (

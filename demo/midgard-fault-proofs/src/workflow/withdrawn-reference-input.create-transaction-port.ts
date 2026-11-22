@@ -19,15 +19,16 @@ import {
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
-import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
 import { exactJournalRecord } from "./native-index-artifact.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
-import type { OwnOutputJournal } from "./own-outputs.js";
-import { proofMaterialsAccess } from "./proof-materials-view.js";
+import {
+  type ProofMaterialsAccess,
+  proofMaterialsAccess,
+} from "./proof-materials-view.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
 import { workflowStepTransaction } from "./step-transaction.js";
 import {
@@ -99,10 +100,10 @@ const stringField = (
 const resolveField = async (
   config: BoundConfig,
   plan: FaultProofFieldOpeningPlan,
-  ownOutputs: OwnOutputJournal,
+  materials: ProofMaterialsAccess,
 ) => {
   const publications = await resolveFaultProofFieldCarriagePublications({
-    ownOutputs,
+    materials,
     lucid: config.lucid,
     publisherAddress: config.signer.proofMaterialsAddress,
     planned: plan,
@@ -111,7 +112,6 @@ const resolveField = async (
     throw new Error("withdrawn-reference-input publications disappeared");
   }
   const certificate = await resolveFaultProofFieldPreimageCertificate({
-    ownOutputs,
     lucid: config.lucid,
     network: config.network,
     planned: plan,
@@ -172,13 +172,10 @@ export const createTransactionPort = (
       classification,
     }),
   capture: async ({ action, artifact, holder }) => {
-    const ownOutputs = workflowFieldCarriageOwnOutputs({
-      category: "withdrawnReferenceInput",
-      materials: proofMaterialsAccess({
-        signer: config.signer,
-        lucid: config.lucid,
-        holder,
-      }),
+    const materials = proofMaterialsAccess({
+      signer: config.signer,
+      lucid: config.lucid,
+      holder,
     });
     const admitted = await admitWithdrawnReferenceInputArtifact(
       artifact,
@@ -241,13 +238,13 @@ export const createTransactionPort = (
       const field = await resolveField(
         config,
         admitted.referencePlan,
-        ownOutputs,
+        materials,
       );
       return Object.freeze({
         transaction: (
           await workflowStepTransaction(
             await buildWithdrawnReferenceInputStep02({
-              ownOutputs,
+              materials,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,

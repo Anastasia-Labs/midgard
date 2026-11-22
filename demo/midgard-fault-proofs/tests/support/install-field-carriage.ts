@@ -18,16 +18,12 @@ import { resolveFaultProofFieldCarriagePublications } from "../../src/field-open
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import { createAuthenticatedFieldCarriagePrerequisitePort } from "../../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
 import type { FieldCarriageRequirement } from "../../src/workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import { workflowFieldCarriageOwnOutputs } from "../../src/workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
   type FraudProofAuthenticatedPublicationObserver,
 } from "../../src/workflow/raw-l1-publication-observation.js";
 import { submitCapturedTransaction } from "../../src/workflow/transaction-boundary.js";
-import {
-  TEST_PROOF_MATERIALS_HOLDER,
-  testProofMaterials,
-} from "./proof-materials-holder.js";
+import { TEST_PROOF_MATERIALS_HOLDER } from "./proof-materials-holder.js";
 
 /** Bounds the prerequisite's turns: one per publication batch and certificate. */
 const MAX_TURNS = 256;
@@ -108,12 +104,7 @@ export const installFieldCarriage = async ({
     await submitCapturedTransaction(transaction);
     emulator.awaitBlock(1);
   }
-  const ownOutputs = workflowFieldCarriageOwnOutputs({
-    category,
-    materials: testProofMaterials(signer, lucid),
-  });
   const chunks = await resolveFaultProofFieldCarriagePublications({
-    ownOutputs,
     lucid,
     planned: requirement.planned,
     publisherAddress: signer.proofMaterialsAddress,
@@ -121,7 +112,6 @@ export const installFieldCarriage = async ({
   if (chunks === undefined)
     throw new Error("the installed field carriage is not readable");
   const certificate = await resolveFaultProofFieldPreimageCertificate({
-    ownOutputs,
     lucid,
     network,
     planned: requirement.planned,

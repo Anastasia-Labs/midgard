@@ -12,6 +12,7 @@
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { CML } from "@lucid-evolution/lucid";
 import {
   holdWatcherFaultProofOnFunding,
@@ -21,7 +22,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { isWorkflowFundingPauseReason } from "../src/workflow/funding-pause-reason.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/workflow-funding-shortfall.js";
 import {
   drainProver,
@@ -229,7 +229,7 @@ describe("validation-trace dispute VerifySource under the prover funding", () =>
         for (const transaction of watch.ours())
           expect(transaction.inputs).not.toContain(tokenCoin);
         expect(
-          await h.emulator.getUtxosByOutRef([parseOwnOutRef(tokenCoin!)]),
+          await h.emulator.getUtxosByOutRef([parseOutRefLabel(tokenCoin!)]),
         ).toHaveLength(1);
       } finally {
         watch.restore();

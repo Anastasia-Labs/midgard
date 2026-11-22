@@ -2,7 +2,7 @@
  * Records the field carriage a journaled workflow's prerequisite requires and
  * the carriage its step builders plan, so a test can show the two are the same
  * slots: every publication a builder reads is one the prerequisite published
- * and journaled before the step, and no builder builds one of its own.
+ * before the step, and no builder builds one of its own.
  *
  * A test installs the recorders with `vi.mock` on `src/field-opening.js` and
  * `src/workflow/field-carriage-prerequisite.js`; both pass every call through
@@ -12,7 +12,7 @@ import { type MidgardFieldCarriagePlan } from "@al-ft/midgard-core";
 
 import { isPrerequisiteTurn } from "../../src/fault-proof-turn.js";
 import type * as FieldOpening from "../../src/field-opening.js";
-import { fieldPublicationSlots } from "../../src/field-opening.own-field-carriage.js";
+import { fieldPublicationDatums } from "../../src/field-opening.own-field-carriage.js";
 import { fieldCarriagePlanTransactions } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import type * as FieldCarriagePrerequisite from "../../src/workflow/field-carriage-prerequisite.js";
 
@@ -95,10 +95,10 @@ export const recordingFieldCarriagePrerequisite = (
 
 /**
  * What a carriage plan needs on chain before its step: the plan's identity,
- * its tier, how many transactions it takes, and the claim key of each
- * publication slot, in plan order. Empty for a plan that rides inline.
+ * its tier, how many transactions it takes, and the datum of each
+ * publication, in plan order. Empty for a plan that rides inline.
  */
-export const carriageNeed = ({ plan, publisherAddress }: RecordedPlan) => {
+export const carriageNeed = ({ plan }: RecordedPlan) => {
   const { key, transactions } = fieldCarriagePlanTransactions(plan);
   return transactions === 0
     ? null
@@ -107,9 +107,7 @@ export const carriageNeed = ({ plan, publisherAddress }: RecordedPlan) => {
         key,
         tier: plan.tier,
         transactions,
-        slots: fieldPublicationSlots({ plan, publisherAddress }).map(
-          (slot) => slot.key,
-        ),
+        slots: fieldPublicationDatums(plan),
       };
 };
 

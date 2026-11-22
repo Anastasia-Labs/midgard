@@ -12,7 +12,6 @@ import { expect } from "vitest";
 
 import { type FaultProofFieldOpeningPlan } from "../../src/field-opening.js";
 import { type ResolvedProverSigner } from "../../src/runtime.js";
-import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { network } from "./emulator/blueprints.js";
 import {
   captureEmulatorSubmission,
@@ -103,7 +102,6 @@ export const publishCertifiedCommittedField = async ({
   readonly witnessSetCompactCbor: string;
   readonly label: string;
 }): Promise<CertifiedCommittedField> => {
-  const ownOutputs = createOwnOutputJournal();
   const plan = planMidgardFieldCarriage({
     owner: Buffer.from(signer.paymentKeyHash, "hex"),
     txId: Buffer.from(nativeTxId, "hex"),
@@ -127,7 +125,6 @@ export const publishCertifiedCommittedField = async ({
   };
   const publication = await captureEmulatorSubmission(emulator, () =>
     publishCarriageUnjournaled({
-      ownOutputs,
       lucid,
       signer,
       planned,
@@ -147,7 +144,6 @@ export const publishCertifiedCommittedField = async ({
   ).utxo;
   const minted = await captureEmulatorSubmission(emulator, () =>
     certifyCarriageUnjournaled({
-      ownOutputs,
       lucid,
       network,
       signer,

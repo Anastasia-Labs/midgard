@@ -34,10 +34,7 @@ import {
 import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { RedeemerCanonicityContracts } from "./contracts.js";
 import { redeemerDataScanState } from "./data-plan.js";
 import {
@@ -66,7 +63,7 @@ export const buildRedeemerCanonicityStep02 = async ({
   certificateReferenceScriptUtxo,
   referenceScriptUtxo,
   fieldGrammar,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: RedeemerCanonicityContracts;
@@ -83,8 +80,8 @@ export const buildRedeemerCanonicityStep02 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** The field grammar certificate, for a field past the walked limit. */
   readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -140,7 +137,7 @@ export const buildRedeemerCanonicityStep02 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
-      ownOutputs,
+      materials,
       lucid,
       signer,
       planned,
@@ -152,7 +149,6 @@ export const buildRedeemerCanonicityStep02 = async ({
     suppliedCertificateUtxo ??
     (planned.plan.tier === "Certified"
       ? await reuseOrCertifyFaultProofFieldCarriage({
-          ownOutputs,
           lucid,
           network: lucid.config().network!,
           signer,

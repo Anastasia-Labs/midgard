@@ -8,10 +8,7 @@ import { buildCommittedFieldShapeInit } from "../committed-field-shape/submit-co
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { buildTransactionOutputNonCanonicalCancel } from "./submit-cancel.js";
 import { buildTransactionOutputNonCanonicalStep01Accepted } from "./submit-step-01-accepted.js";
 import { buildTransactionOutputNonCanonicalStep01Forced } from "./submit-step-01-forced.js";
@@ -34,14 +31,14 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
   observe,
   resolveStage,
   stateQueueMutationLeaseCoordinator,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly config: ManifestBoundTransactionOutputNonCanonicalConfig;
   readonly observe: (identity: string) => Promise<TransactionOutputStage>;
   readonly resolveStage: TransactionOutputNonCanonicalRuntimeLoader["resolveStage"];
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => ({
   observe,
   submit: async (
@@ -132,7 +129,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
     }
     if (action === "submitStep02") {
       const result = await buildTransactionOutputNonCanonicalStep02({
-        ownOutputs,
+        materials,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,

@@ -35,10 +35,7 @@ import {
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import {
   makeComputationThreadSuccessRedeemer,
@@ -67,7 +64,7 @@ export const buildStep04 = async ({
   certificatePolicyId,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -95,8 +92,8 @@ export const buildStep04 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<FaultProofTurn<Step04Build>> => {
   const { doubleSpendCategory, contracts } =
     await resolveDoubleSpendDeploymentContracts({
@@ -167,7 +164,7 @@ export const buildStep04 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
-      ownOutputs,
+      materials,
       lucid,
       signer,
       planned,

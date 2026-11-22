@@ -16,10 +16,10 @@
  * the process has seen it land, it follows none of them: once they roll
  * back, our next runs spend each output back once more, by its first spend
  * back or one new one, and end resolved by their record again. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_STAGING_OUTSTANDING } from "../src/validation-trace-dispute/one-step-staging-sweep.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { threadPlace } from "./support/validation-trace-dispute-one-step-play.js";
 import {
   type OurRun,
@@ -106,13 +106,13 @@ describe("validation-trace dispute runner: a staged step's staging, once another
     const after: string[] = [];
     for (
       let run = 0;
-      run < 12 && onLedger(scene, parseOwnOutRef(unseen));
+      run < 12 && onLedger(scene, parseOutRefLabel(unseen));
       run += 1
     )
       after.push(
         other.describeRun(await drive.dispute().runner.runOnce(scene.failing)),
       );
-    expect(onLedger(scene, parseOwnOutRef(unseen)), after.join("\n")).toBe(
+    expect(onLedger(scene, parseOutRefLabel(unseen)), after.join("\n")).toBe(
       false,
     );
   }, 1_800_000);

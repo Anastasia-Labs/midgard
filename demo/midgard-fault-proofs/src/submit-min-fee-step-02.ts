@@ -56,10 +56,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "./witness-reference-scripts.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "./workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "./workflow/proof-materials-view.js";
 import {
   type LocallyEvaluatedTransaction,
   type OutsideWorkflowSubmission,
@@ -164,7 +161,7 @@ export const buildMinFeeStep02 = async ({
   publishMissingCarriages = true,
   publishCarriages = false,
   unsafeSkipLocalViolationCheckForTest = false,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MinFeeContracts;
@@ -191,8 +188,8 @@ export const buildMinFeeStep02 = async ({
   readonly publishCarriages?: boolean;
   /** Emulator negative only: submit an honest boundary to the real validator. */
   readonly unsafeSkipLocalViolationCheckForTest?: boolean;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<FaultProofTurn<MinFeeStep02Build>> => {
   if (fieldItemCbors.length !== FIELD_COUNT) {
     throw minFeeSubmitError("step-02 requires exactly nine field preimages.");
@@ -259,7 +256,7 @@ export const buildMinFeeStep02 = async ({
     // durable, authenticated action before this proof step is built.
     for (const [fieldIndex, planned] of plans.entries()) {
       const carriage = await publishFaultProofFieldCarriage({
-        ownOutputs,
+        materials,
         lucid,
         signer,
         planned,

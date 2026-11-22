@@ -8,11 +8,11 @@
  * running again over the open case submits nothing. A token-bearing coin at
  * the prover's address is the restricted wallet's to keep out of coin
  * selection; validation-trace-dispute-funded.test.ts runs it there. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { parseValidationTraceAction } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import {
   type LedgerWatch,
   type OwnOutputRole,
@@ -36,7 +36,7 @@ let watch: LedgerWatch;
  * exact copies of its inline datum, at its own address. */
 const plantLookalikes = async (role: OwnOutputRole["role"], outRef: string) => {
   const [output] = await scene.h.emulator.getUtxosByOutRef([
-    parseOwnOutRef(outRef),
+    parseOutRefLabel(outRef),
   ]);
   if (typeof output?.datum !== "string")
     throw new Error(`no inline datum at ${outRef}`);
@@ -59,7 +59,7 @@ const expectPlantsUntouched = async () => {
       ),
     ).toStrictEqual([]);
   const live = await scene.h.emulator.getUtxosByOutRef(
-    [...planted].map(parseOwnOutRef),
+    [...planted].map(parseOutRefLabel),
   );
   // The other party's own change is its to spend in later plants.
   const spentByOthers = new Set(

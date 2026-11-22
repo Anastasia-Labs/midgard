@@ -10,6 +10,7 @@
  * the retired operator's retired-directory node: the prover receives the
  * reward, the fee is the slashing penalty, and the retired directory's
  * anchor continues with what the node held beyond both, here nothing. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
@@ -24,7 +25,6 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { network } from "./support/emulator/blueprints.js";
 import {
@@ -249,7 +249,9 @@ describe("validation-trace dispute runner: removal of a block whose operator ret
     schedulerBefore = await liveSchedulerOf(operations)();
 
     // Nobody defends: the case's defense deadline passes.
-    const [live] = await h.proverLucid.utxosByOutRef([parseOwnOutRef(opened)]);
+    const [live] = await h.proverLucid.utxosByOutRef([
+      parseOutRefLabel(opened),
+    ]);
     const deadline = validationTraceDefenseDeadlineMs(
       Data.from(live!.datum!, SDKDa.Case),
     );

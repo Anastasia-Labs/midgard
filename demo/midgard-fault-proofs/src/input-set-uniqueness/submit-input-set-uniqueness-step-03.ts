@@ -26,10 +26,7 @@ import {
 import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { InputSetUniquenessContracts } from "./contracts.js";
 import {
   requireInputSetUniquenessReferenceScript,
@@ -65,7 +62,7 @@ export const buildInputSetUniquenessStep03 = async ({
   spendCertificateUtxo,
   referenceCertificateUtxo,
   referenceScriptUtxo,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: InputSetUniquenessContracts;
@@ -80,8 +77,8 @@ export const buildInputSetUniquenessStep03 = async ({
   readonly spendCertificateUtxo?: UTxO;
   readonly referenceCertificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   const stepIndex = 2 as const;
   const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
@@ -123,7 +120,7 @@ export const buildInputSetUniquenessStep03 = async ({
     const publications =
       supplied ??
       (await publishFaultProofFieldCarriage({
-        ownOutputs,
+        materials,
         lucid,
         signer,
         planned,

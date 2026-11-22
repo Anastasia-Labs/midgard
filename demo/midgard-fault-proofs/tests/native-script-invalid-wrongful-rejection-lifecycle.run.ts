@@ -8,10 +8,6 @@ import { buildNativeScriptInvalidStep03StartSignerScan } from "../src/native-scr
 import { buildNativeScriptInvalidStep04 } from "../src/native-script-invalid/submit-step-04.js";
 import { buildNativeScriptInvalidStep05 } from "../src/native-script-invalid/submit-step-05.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../src/workflow/own-outputs.js";
 import { setup } from "./native-script-invalid-wrongful-rejection-lifecycle.setup.js";
 import { network } from "./support/emulator/blueprints.js";
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
@@ -31,7 +27,6 @@ import {
  */
 export const publishNativeScriptFieldCarriage = async (
   f: Awaited<ReturnType<typeof setup>>,
-  ownOutputs: OwnOutputJournal,
   fieldIndex: number,
   items: readonly Uint8Array[],
 ) => {
@@ -48,7 +43,6 @@ export const publishNativeScriptFieldCarriage = async (
     label: "native-script maximum field",
   });
   const chunks = await publishCarriageUnjournaled({
-    ownOutputs,
     lucid: f.h.proverLucid,
     signer: f.h.proverSigner,
     planned,
@@ -63,7 +57,6 @@ export const publishNativeScriptFieldCarriage = async (
     label: "native-script field certificate",
   });
   const certified = await certifyCarriageUnjournaled({
-    ownOutputs,
     lucid: f.h.proverLucid,
     network,
     signer: f.h.proverSigner,
@@ -122,7 +115,6 @@ export const run = async (
   unsafeSkipLocalViolationCheckForTest = false,
   cancelAt?: "grammar" | "signer",
 ): Promise<void> => {
-  const ownOutputs = createOwnOutputJournal();
   const initial = await f.init();
   const reopened = unsafeSkipLocalViolationCheckForTest
     ? undefined
@@ -151,19 +143,16 @@ export const run = async (
   let threadOutRef = bound.nextThreadOutRef;
   const scriptCarriage = await publishNativeScriptFieldCarriage(
     f,
-    ownOutputs,
     6,
     f.scripts,
   );
   const signerCarriage = await publishNativeScriptFieldCarriage(
     f,
-    ownOutputs,
     7,
     f.witnesses.map((w) => w.item),
   );
   for (let i = 0; i < 1000; i++) {
     const next = await submitTurnsUnjournaled(buildNativeScriptInvalidStep02, {
-      ownOutputs,
       ...f.common,
       ...scriptCarriage,
       threadOutRef,
@@ -182,7 +171,6 @@ export const run = async (
   let proof;
   if (f.witnesses.length <= 28) {
     proof = await submitTurnsUnjournaled(buildNativeScriptInvalidStep03, {
-      ownOutputs,
       ...f.common,
       ...signerCarriage,
       unsafeSkipLocalViolationCheckForTest,
@@ -199,7 +187,6 @@ export const run = async (
     const started = await submitTurnsUnjournaled(
       buildNativeScriptInvalidStep03StartSignerScan,
       {
-        ownOutputs,
         ...f.common,
         ...signerCarriage,
         threadOutRef,
@@ -218,7 +205,6 @@ export const run = async (
       const advanced = await submitTurnsUnjournaled(
         buildNativeScriptInvalidStep04,
         {
-          ownOutputs,
           ...f.common,
           ...signerCarriage,
           threadOutRef,

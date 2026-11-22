@@ -4,6 +4,7 @@
  * its record minted. It then reads the block as removed against another
  * record and, past rollback recovery, ends resolved by that record: never
  * as our conviction, with no removal of ours and no terminal. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, generateEmulatorAccount, Lucid } from "@lucid-evolution/lucid";
@@ -13,7 +14,6 @@ import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
@@ -45,7 +45,7 @@ const removals = (runner: Runner) =>
 
 const defenseDeadline = async (scene: Scene, outRef: string) => {
   const [live] = await scene.h.proverLucid.utxosByOutRef([
-    parseOwnOutRef(outRef),
+    parseOutRefLabel(outRef),
   ]);
   return validationTraceDefenseDeadlineMs(Data.from(live!.datum!, SDK.Case));
 };
@@ -154,7 +154,7 @@ describe("validation-trace dispute runner: another prover convicts the block and
       const close = (await stageOf(ours, "close"))!;
       expect(close.action.consumes).toBe(opened[0]);
       const [ourRecord] = await lucid.utxosByOutRef([
-        parseOwnOutRef(close.outputs[0]!.outRef),
+        parseOutRefLabel(close.outputs[0]!.outRef),
       ]);
       expect(
         Data.from(ourRecord!.datum!, SDKFraudProof.FraudProofTokenDatum)

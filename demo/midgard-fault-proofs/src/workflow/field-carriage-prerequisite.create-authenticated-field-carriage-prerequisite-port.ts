@@ -17,7 +17,10 @@ import {
   type Requirement,
   sameJson,
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import { fieldCarriageOwnCarriage } from "./field-carriage-prerequisite.own-carriage.js";
+import {
+  fieldCarriageOwnCarriage,
+  type FoundFieldCarriage,
+} from "./field-carriage-prerequisite.own-carriage.js";
 import {
   carriageActionInputKeys,
   certificateAction,
@@ -28,7 +31,6 @@ import {
 } from "./field-carriage-prerequisite.requirement-identity.js";
 import type { JournalJsonObject } from "./journal.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
-import type { OwnOutputJournal } from "./own-outputs.js";
 import type { ProofMaterialsHolder } from "./proof-materials-view.js";
 import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
@@ -40,7 +42,7 @@ import type { LocallyEvaluatedTransaction } from "./transaction-boundary.js";
  * Carriage actions require distinct raw-L1-authenticated chunk out-refs, and
  * find a publication or certificate by content. A publication copy another
  * party paid for counts when its bytes are exact and its output plain (no
- * token, reference script or datum hash), as `inlineDatumCarriageSlot`
+ * token, reference script or datum hash), as the proof-materials view
  * checks; a certificate counts by its token beside its exact datum.
  */
 export const createAuthenticatedFieldCarriagePrerequisitePort = <
@@ -86,12 +88,11 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       certificatePolicyId: certifiedRequirement(required).certificate.policyId,
     });
   const {
-    claimsOf,
+    carriageOf,
     observePublication,
     observeCertificate,
     resolvePublications,
   } = fieldCarriageOwnCarriage({
-    category,
     lucid,
     signer,
     publications,
@@ -113,13 +114,13 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     if (required === null || required.planned.plan.tier === "Inline") {
       return { kind: "not_required" as const };
     }
-    const ownOutputs = await claimsOf(holder, required);
+    const found = await carriageOf(holder, required);
     for (const index of required.publicationDatums.keys()) {
       const observed = await observePublication(
         headerHash,
         required,
         index,
-        ownOutputs,
+        found,
       );
       if (observed.kind === "absent") {
         return {
@@ -142,11 +143,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     if (required.planned.plan.tier !== "Certified") {
       return { kind: "satisfied" as const };
     }
-    const certificate = await observeCertificate(
-      headerHash,
-      required,
-      ownOutputs,
-    );
+    const certificate = await observeCertificate(headerHash, required, found);
     if (certificate.kind === "absent")
       return {
         kind: "required" as const,
@@ -177,7 +174,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       kind: "publication" | "certificate";
       baseAction: FraudProofWorkflowAction;
       requirement: Requirement;
-      ownOutputs: OwnOutputJournal;
+      found: FoundFieldCarriage;
       publicationIndex?: number;
     }>
   > => {
@@ -203,7 +200,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     if (required === null) {
       throw new Error(`${category} field action is no longer required`);
     }
-    const ownOutputs = await claimsOf(holder, required);
+    const found = await carriageOf(holder, required);
     if (input.stage === "publish_field_carriage") {
       if (
         typeof input.publicationIndex !== "number" ||
@@ -231,7 +228,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
         kind: "publication",
         baseAction,
         requirement: required,
-        ownOutputs,
+        found,
         publicationIndex,
       };
     }
@@ -252,7 +249,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       kind: "certificate",
       baseAction,
       requirement: required,
-      ownOutputs,
+      found,
     };
   };
   const port: FieldCarriagePrerequisitePort<Category> = {
@@ -266,11 +263,11 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           requirement: required,
         });
       }
-      const ownOutputs = await claimsOf(holder, required);
+      const found = await carriageOf(holder, required);
       const resolved = await resolvePublications(
         headerHash,
         required,
-        ownOutputs,
+        found,
         `${category} proof step cannot use an unauthenticated field publication`,
       );
       if (required.planned.plan.tier !== "Certified") {
@@ -279,11 +276,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           requirement: required,
         });
       }
-      const observed = await observeCertificate(
-        headerHash,
-        required,
-        ownOutputs,
-      );
+      const observed = await observeCertificate(headerHash, required, found);
       if (observed.kind !== "confirmed") {
         throw new Error(
           `${category} proof step cannot use an unauthenticated field certificate`,
@@ -331,7 +324,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       const chunkUtxos = await resolvePublications(
         headerHash,
         parsed.requirement,
-        parsed.ownOutputs,
+        parsed.found,
         `${category} field certificate cannot bypass authenticated chunk publication`,
       );
       const transaction = (

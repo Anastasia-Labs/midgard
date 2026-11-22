@@ -12,12 +12,12 @@
  * the staged chain to the award, and each staging output is spent back to
  * our wallet; a spend back the ledger drops after its confirmation is sent
  * again, its exact signed bytes. */
+import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { CML, coreToTxOutput, type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/validation-trace-dispute/wallet-move-unfunded-alarm.js";
-import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import {
   COLLATERAL_LINE,
   drainProverToOneCoin,
@@ -173,7 +173,7 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
       expect(new Set(consumed).size).toBe(consumed.length);
       expect(
         await at.scene.h.emulator.getUtxosByOutRef(
-          consumed.map(parseOwnOutRef),
+          consumed.map(parseOutRefLabel),
         ),
       ).toStrictEqual([]);
     },

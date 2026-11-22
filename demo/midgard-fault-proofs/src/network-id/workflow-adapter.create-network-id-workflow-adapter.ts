@@ -19,10 +19,7 @@ import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-rem
 import type { StateQueueMutationLease } from "../remove-fraudulent-block.js";
 import { NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import {
-  addressFieldCarriageOwnOutputs,
-  firstUnclaimedFieldPublication,
-} from "../workflow/bespoke-adapter-field-carriage.js";
+import { firstMissingFieldPublication } from "../workflow/bespoke-adapter-field-carriage.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import type {
   FraudProofWorkflowIdentity,
@@ -35,7 +32,6 @@ import {
   type FraudProofWorkflowObservation,
   type FraudProofWorkflowPreflight,
 } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
-import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import { workflowProofMaterialsHolder } from "../workflow/proof-materials-view.holder.js";
 import { proofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import { admitRemovalTransaction } from "../workflow/removal-admission.js";
@@ -161,27 +157,17 @@ export const createNetworkIdWorkflowAdapter = (
       ? undefined
       : outputsOpeningPlanFor(admitted);
 
-  /** The carriage of `opening`: publications found by content at the
-   * proof-materials address for the workflow of `context`, the certificate
-   * by its token and datum at the certificate address. */
-  const fieldCarriage = async (
-    opening: FaultProofFieldOpeningPlan,
+  /** The workflow's view of its proof-materials address for `context`. */
+  const materialsFor = (
     context: Readonly<{
       workflowId: string;
       identity: FraudProofWorkflowIdentity;
     }>,
   ) =>
-    await addressFieldCarriageOwnOutputs({
-      materials: proofMaterialsAccess({
-        signer: config.signer,
-        lucid: config.lucid,
-        holder: workflowProofMaterialsHolder(context),
-      }),
+    proofMaterialsAccess({
+      signer: config.signer,
       lucid: config.lucid,
-      network: config.network,
-      publisherAddress: config.signer.proofMaterialsAddress,
-      planned: opening,
-      certificatePolicyId: config.contracts.fieldPreimageCertificatePolicyId,
+      holder: workflowProofMaterialsHolder(context),
     });
 
   /** The planned §10 batch schedule for an admitted forced artifact. */
@@ -424,11 +410,12 @@ export const createNetworkIdWorkflowAdapter = (
     if (step02OutRef !== undefined) {
       const opening = finalStepOutputsOpeningPlanFor(admitted);
       if (opening !== undefined) {
-        const ownOutputs = await fieldCarriage(opening, context);
-        const missing = firstUnclaimedFieldPublication({
+        const materials = materialsFor(context);
+        const missing = await firstMissingFieldPublication({
+          lucid: config.lucid,
           publisherAddress: config.signer.proofMaterialsAddress,
           planned: opening,
-          ownOutputs,
+          materials,
         });
         if (missing !== undefined) {
           const base = `network-id:publish-field:${opening.commitment}:${missing.digest}`;
@@ -447,7 +434,6 @@ export const createNetworkIdWorkflowAdapter = (
         }
         if (opening.plan.tier === "Certified") {
           const certificate = await resolveFaultProofFieldPreimageCertificate({
-            ownOutputs,
             lucid: config.lucid,
             network: config.network,
             planned: opening,
@@ -457,7 +443,7 @@ export const createNetworkIdWorkflowAdapter = (
           if (certificate === undefined) {
             const publications =
               await resolveFaultProofFieldCarriagePublications({
-                ownOutputs,
+                materials,
                 lucid: config.lucid,
                 publisherAddress: config.signer.proofMaterialsAddress,
                 planned: opening,
@@ -505,11 +491,12 @@ export const createNetworkIdWorkflowAdapter = (
       if (scanUtxo !== undefined) {
         const scanOutRef = outRefLabel(scanUtxo);
         const { opening, plan } = forcedScanPlanFor(admitted);
-        const ownOutputs = await fieldCarriage(opening, context);
-        const missing = firstUnclaimedFieldPublication({
+        const materials = materialsFor(context);
+        const missing = await firstMissingFieldPublication({
+          lucid: config.lucid,
           publisherAddress: config.signer.proofMaterialsAddress,
           planned: opening,
-          ownOutputs,
+          materials,
         });
         if (missing !== undefined) {
           const base = `network-id:publish-field:${opening.commitment}:${missing.digest}`;
@@ -529,7 +516,6 @@ export const createNetworkIdWorkflowAdapter = (
         let certificateOutRef: string | undefined;
         if (opening.plan.tier === "Certified") {
           const certificate = await resolveFaultProofFieldPreimageCertificate({
-            ownOutputs,
             lucid: config.lucid,
             network: config.network,
             planned: opening,
@@ -539,7 +525,7 @@ export const createNetworkIdWorkflowAdapter = (
           if (certificate === undefined) {
             const publications =
               await resolveFaultProofFieldCarriagePublications({
-                ownOutputs,
+                materials,
                 lucid: config.lucid,
                 publisherAddress: config.signer.proofMaterialsAddress,
                 planned: opening,
@@ -756,7 +742,7 @@ export const createNetworkIdWorkflowAdapter = (
             "forced-scan thread out-ref",
           );
           const { opening, plan } = forcedScanPlanFor(admitted);
-          const ownOutputs = await fieldCarriage(opening, context);
+          const materials = materialsFor(context);
           const scanUtxo = await forcedScanThread(prepared.headerHash);
           if (
             scanUtxo === undefined ||
@@ -779,7 +765,7 @@ export const createNetworkIdWorkflowAdapter = (
           }
           const publications = await resolveFaultProofFieldCarriagePublications(
             {
-              ownOutputs,
+              materials,
               lucid: config.lucid,
               publisherAddress: config.signer.proofMaterialsAddress,
               planned: opening,
@@ -793,7 +779,6 @@ export const createNetworkIdWorkflowAdapter = (
           const certificate =
             opening.plan.tier === "Certified"
               ? await resolveFaultProofFieldPreimageCertificate({
-                  ownOutputs,
                   lucid: config.lucid,
                   network: config.network,
                   planned: opening,
@@ -819,7 +804,7 @@ export const createNetworkIdWorkflowAdapter = (
           return (
             await workflowStepTransaction(
               await buildNetworkIdForcedScanAction({
-                ownOutputs,
+                materials,
                 lucid: config.lucid,
                 contracts: config.contracts,
                 categoryId: config.category.categoryId,
@@ -851,12 +836,13 @@ export const createNetworkIdWorkflowAdapter = (
               "network-id field action does not match the prepared opening",
             );
           }
-          const ownOutputs = await fieldCarriage(opening, context);
+          const materials = materialsFor(context);
           if (kind === "publish_field") {
-            const missing = firstUnclaimedFieldPublication({
+            const missing = await firstMissingFieldPublication({
+              lucid: config.lucid,
               publisherAddress: config.signer.proofMaterialsAddress,
               planned: opening,
-              ownOutputs,
+              materials,
             });
             if (
               missing === undefined ||
@@ -867,7 +853,7 @@ export const createNetworkIdWorkflowAdapter = (
               );
             }
             const publication = await publishFaultProofFieldCarriage({
-              ownOutputs,
+              materials,
               lucid: config.lucid,
               signer: config.signer,
               planned: opening,
@@ -888,7 +874,7 @@ export const createNetworkIdWorkflowAdapter = (
           }
           const publications = await resolveFaultProofFieldCarriagePublications(
             {
-              ownOutputs,
+              materials,
               lucid: config.lucid,
               publisherAddress: config.signer.proofMaterialsAddress,
               planned: opening,
@@ -909,7 +895,6 @@ export const createNetworkIdWorkflowAdapter = (
             );
           }
           const certification = await certifyFaultProofFieldCarriage({
-            ownOutputs,
             lucid: config.lucid,
             network: config.network,
             signer: config.signer,
@@ -927,15 +912,12 @@ export const createNetworkIdWorkflowAdapter = (
         }
         if (kind === "step02") {
           const opening = finalStepOutputsOpeningPlanFor(admitted);
-          const ownOutputs =
-            opening === undefined
-              ? createOwnOutputJournal()
-              : await fieldCarriage(opening, context);
+          const materials = materialsFor(context);
           const publications =
             opening === undefined
               ? []
               : await resolveFaultProofFieldCarriagePublications({
-                  ownOutputs,
+                  materials,
                   lucid: config.lucid,
                   publisherAddress: config.signer.proofMaterialsAddress,
                   planned: opening,
@@ -948,7 +930,6 @@ export const createNetworkIdWorkflowAdapter = (
           const certificate =
             opening?.plan.tier === "Certified"
               ? await resolveFaultProofFieldPreimageCertificate({
-                  ownOutputs,
                   lucid: config.lucid,
                   network: config.network,
                   planned: opening,
@@ -974,7 +955,7 @@ export const createNetworkIdWorkflowAdapter = (
           return (
             await workflowStepTransaction(
               await buildNetworkIdStep02({
-                ownOutputs,
+                materials,
                 lucid: config.lucid,
                 contracts: config.contracts,
                 categoryId: config.category.categoryId,

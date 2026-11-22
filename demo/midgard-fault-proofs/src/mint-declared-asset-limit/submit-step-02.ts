@@ -27,10 +27,7 @@ import {
 import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  createOwnOutputJournal,
-  type OwnOutputJournal,
-} from "../workflow/own-outputs.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
 import type { MintDeclaredAssetLimitEvidence } from "./family.advance-mint-declared-fold.js";
 import { initialMintDeclaredFoldCursor } from "./family.begin-mint-declared-policy.js";
@@ -87,20 +84,20 @@ export const resolveMintDeclaredFieldCarriage = async ({
   contracts,
   signer,
   planned,
-  ownOutputs,
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintDeclaredAssetLimitContracts;
   readonly signer: ResolvedProverSigner;
   readonly planned: PlannedMintDeclaredFieldOpening;
-  /** Our carriage claims, which the carriage is read by. */
-  readonly ownOutputs: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }): Promise<{
   readonly carriageUtxos: readonly UTxO[];
   readonly certificateUtxo: UTxO | undefined;
 }> => {
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
-    ownOutputs,
+    materials,
     lucid,
     publisherAddress: signer.proofMaterialsAddress,
     planned,
@@ -110,7 +107,6 @@ export const resolveMintDeclaredFieldCarriage = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? await resolveFaultProofFieldPreimageCertificate({
-          ownOutputs,
           lucid,
           network: lucid.config().network!,
           planned,
@@ -408,7 +404,7 @@ export const buildMintDeclaredAssetLimitStep02 = async ({
   staged,
   action,
   referenceScriptUtxo,
-  ownOutputs = createOwnOutputJournal(),
+  materials,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintDeclaredAssetLimitContracts;
@@ -424,8 +420,8 @@ export const buildMintDeclaredAssetLimitStep02 = async ({
   >;
   readonly action: MintDeclaredAssetLimitStep02Action;
   readonly referenceScriptUtxo: UTxO;
-  /** Our carriage claims; a fresh in-memory journal by default. */
-  readonly ownOutputs?: OwnOutputJournal;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
 }) => {
   const planned = planMintDeclaredFieldOpening({
     evidence,
@@ -454,7 +450,7 @@ export const buildMintDeclaredAssetLimitStep02 = async ({
       "mintDeclaredAssetLimit: step-02 action does not fit the evidence",
     );
   const carriage = await resolveMintDeclaredFieldCarriage({
-    ownOutputs,
+    materials,
     lucid,
     contracts,
     signer,

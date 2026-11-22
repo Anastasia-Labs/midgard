@@ -6,7 +6,6 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   acceptedBlock,
   acceptedEvidence,
@@ -33,13 +32,11 @@ describe("fieldItemWidthIllegal step 02 built turn by turn", () => {
       setup.fraudulentBlockOutRef,
     );
     const threadOutRef = bound.result.nextThreadOutRef;
-    const ownOutputs = createOwnOutputJournal();
     const drive = await driveCapturedStep({
       emulator: h.harness.emulator,
       threadOutRef,
       maxTurns: 6,
-      invoke: async () =>
-        await h.step02Turn(threadOutRef, evidence, maximum, ownOutputs),
+      invoke: async () => await h.step02Turn(threadOutRef, evidence, maximum),
     });
     expect(drive.prerequisites.length).toBeGreaterThan(0);
     expect(

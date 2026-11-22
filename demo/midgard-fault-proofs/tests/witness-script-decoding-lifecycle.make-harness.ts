@@ -34,7 +34,6 @@ import {
 } from "../src/witness-script-decoding/submit-step-03.js";
 import { buildWitnessScriptDecodingStep04 } from "../src/witness-script-decoding/submit-step-04.js";
 import type { WitnessScriptDecodingEvidence } from "../src/witness-script-decoding/witness-script-decoding.js";
-import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { network } from "./support/emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -94,7 +93,6 @@ export let publicationsRecorded = false;
 export const makeHarness = async ({
   referenceScriptAuthTimelockMs,
 }: { readonly referenceScriptAuthTimelockMs?: number } = {}) => {
-  const ownOutputs = createOwnOutputJournal();
   const harness = await makeFaultProofEmulatorHarness({
     referenceScriptAuthTimelockMs,
     contractOptions: {
@@ -410,7 +408,6 @@ export const makeHarness = async ({
     return (
       await measured(name, () =>
         submitTurnsUnjournaled(buildWitnessScriptDecodingStep02, {
-          ownOutputs,
           lucid,
           network,
           contracts,
@@ -462,7 +459,6 @@ export const makeHarness = async ({
     });
     const carriage = await captureEmulatorSubmission(harness.emulator, () =>
       publishCarriageUnjournaled({
-        ownOutputs,
         lucid,
         signer,
         planned,
@@ -483,7 +479,6 @@ export const makeHarness = async ({
     }
     const certificate = await captureEmulatorSubmission(harness.emulator, () =>
       certifyCarriageUnjournaled({
-        ownOutputs,
         lucid,
         network,
         signer,
@@ -534,7 +529,6 @@ export const makeHarness = async ({
       witnessSetHash: shape.carriage.witnessSetHash,
     };
     const chunkUtxos = await publishCarriageUnjournaled({
-      ownOutputs,
       lucid,
       signer,
       planned,
@@ -544,7 +538,6 @@ export const makeHarness = async ({
     expect(chunkUtxos).toHaveLength(3);
     await expectOnchainRefusal(() =>
       certifyCarriageUnjournaled({
-        ownOutputs,
         lucid,
         network,
         signer,

@@ -17,7 +17,6 @@ import {
 } from "@al-ft/midgard-validation/script-decode.step-walk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import type { OwnOutputJournal } from "../workflow/own-outputs.js";
 import { plutusItemScript } from "./item-record.js";
 import {
   resumeScriptDecodeRun,
@@ -224,9 +223,8 @@ export const fitScriptDecodeWalk = async (
 /**
  * The record UTxO of `scriptBytes` in `language`, minting it if there is none
  * yet. An open run of the script (an interrupted earlier record) is resumed
- * from its on-chain cursor. The bytes are staged afresh unless `ownOutputs`
- * holds chunks an earlier call staged and claimed there, still live; they
- * are found by their out-refs, never by a search of an address.
+ * from its on-chain cursor. Staged bytes already at the prover's address
+ * are reused (`stageScriptDecodeBytes`).
  * Each Walk takes the most ticks that build within the ledger's limits
  * (`fitScriptDecodeWalk`). A Walk the ledger rejects is refitted after
  * `refreshLedgerParameters` (by default, re-reading them from the provider),
@@ -243,7 +241,6 @@ export const recordScriptDecode = async ({
   maxWalks = Number.POSITIVE_INFINITY,
   maxSubmitAttempts = SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS,
   refreshLedgerParameters = refreshScriptDecodeLedgerParameters(lucid),
-  ownOutputs,
 }: {
   readonly lucid: LucidEvolution;
   readonly deployment: ScriptDecodeDeployment;
@@ -253,8 +250,6 @@ export const recordScriptDecode = async ({
   readonly maxWalks?: number;
   readonly maxSubmitAttempts?: number;
   readonly refreshLedgerParameters?: () => Promise<void>;
-  /** Where the staged chunks are claimed, for a later call to reuse. */
-  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<{
   readonly recordUtxo: UTxO;
   readonly record: ScriptDecodeRecord | undefined;
@@ -278,11 +273,7 @@ export const recordScriptDecode = async ({
       scriptHashHex,
     });
   let limits = scriptDecodeLedgerLimits(lucid);
-  const staging = await stageScriptDecodeBytes({
-    lucid,
-    scriptBytes,
-    ...(ownOutputs === undefined ? {} : { ownOutputs }),
-  });
+  const staging = await stageScriptDecodeBytes({ lucid, scriptBytes });
   const bind = async (): Promise<ScriptDecodeRunPosition> => {
     const cursor = startScriptDecodeWalk(language, scriptBytes);
     const runUtxo = await bindScriptDecodeRun({

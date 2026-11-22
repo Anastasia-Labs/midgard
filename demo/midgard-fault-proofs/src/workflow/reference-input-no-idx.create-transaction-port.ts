@@ -18,16 +18,17 @@ import type {
   ManifestBoundLinearFamilyWorkflow,
   ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
-import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
 import { exactJournalRecord } from "./native-index-artifact.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
-import type { OwnOutputJournal } from "./own-outputs.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
-import { proofMaterialsAccess } from "./proof-materials-view.js";
+import {
+  type ProofMaterialsAccess,
+  proofMaterialsAccess,
+} from "./proof-materials-view.js";
 import {
   admitReferenceInputNoIdxArtifact,
   type AssemblyContext,
@@ -89,10 +90,10 @@ const stringField = (
 const resolveField = async (
   config: BoundConfig,
   planned: FaultProofFieldOpeningPlan,
-  ownOutputs: OwnOutputJournal,
+  materials: ProofMaterialsAccess,
 ) => {
   const publications = await resolveFaultProofFieldCarriagePublications({
-    ownOutputs,
+    materials,
     lucid: config.lucid,
     publisherAddress: config.signer.proofMaterialsAddress,
     planned,
@@ -101,7 +102,6 @@ const resolveField = async (
     throw new Error("reference-input-no-idx publications disappeared");
   }
   const certificate = await resolveFaultProofFieldPreimageCertificate({
-    ownOutputs,
     lucid: config.lucid,
     network: config.network,
     planned,
@@ -162,13 +162,10 @@ export const createTransactionPort = (
       classification,
     }),
   capture: async ({ action, artifact, holder }) => {
-    const ownOutputs = workflowFieldCarriageOwnOutputs({
-      category: "referenceInputNoIdx",
-      materials: proofMaterialsAccess({
-        signer: config.signer,
-        lucid: config.lucid,
-        holder,
-      }),
+    const materials = proofMaterialsAccess({
+      signer: config.signer,
+      lucid: config.lucid,
+      holder,
     });
     const admitted = admitReferenceInputNoIdxArtifact(
       artifact,
@@ -255,7 +252,7 @@ export const createTransactionPort = (
         input.stage === "step_02"
           ? admitted.referenceInputFieldPlan
           : admitted.outputFieldPlan;
-      const carriage = await resolveField(config, plan, ownOutputs);
+      const carriage = await resolveField(config, plan, materials);
       return Object.freeze({
         transaction: (
           await workflowStepTransaction(
@@ -275,7 +272,7 @@ export const createTransactionPort = (
               } as const;
               if (input.stage === "step_02") {
                 return await buildReferenceInputNoIdxStep02({
-                  ownOutputs,
+                  materials,
                   ...common,
                   referenceInputsPreimage: admitted.referenceInputs,
                   nativeTxCompactCbor:
@@ -283,7 +280,7 @@ export const createTransactionPort = (
                 });
               } else {
                 return await buildReferenceInputNoIdxStep04({
-                  ownOutputs,
+                  materials,
                   ...common,
                   outputsPreimage: admitted.outputs,
                   nativeTxCompactCbor:
