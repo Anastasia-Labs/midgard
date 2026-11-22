@@ -238,15 +238,19 @@ export const seed = (
   entries: readonly Ledger.MinimalEntry[],
   frontier: Readonly<{ headerHash: string; utxosRoot: string }>,
 ) =>
+  // Reset before taking the gate, as `fixture` does.
   run(
-    withFollowerWrite(
-      Effect.gen(function* () {
-        yield* resetApplicationTables;
-        yield* ConfirmedLedgerDB.insertMultiple([
-          ...(yield* ledgerRows(entries, new Map())),
-        ]);
-        yield* Frontier.upsert(frontier);
-      }),
+    resetApplicationTables.pipe(
+      Effect.zipRight(
+        withFollowerWrite(
+          Effect.gen(function* () {
+            yield* ConfirmedLedgerDB.insertMultiple([
+              ...(yield* ledgerRows(entries, new Map())),
+            ]);
+            yield* Frontier.upsert(frontier);
+          }),
+        ),
+      ),
     ),
   );
 
