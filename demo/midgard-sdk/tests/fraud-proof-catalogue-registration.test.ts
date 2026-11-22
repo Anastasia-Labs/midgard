@@ -31,6 +31,12 @@ const UNREGISTERED_CATEGORY_ID_USES: readonly {
   readonly reason: string;
 }[] = [
   {
+    path: "demo/midgard-fault-proofs/tests/own-thread-cancel-plan.test.ts",
+    categoryId: "ffffffff",
+    reason:
+      "deliberately unregistered; the test proves no cancel is planned for a thread whose catalogue id names no family",
+  },
+  {
     path: "demo/midgard-node/tests/inspect-contracts.test.ts",
     categoryId: "ffffffff",
     reason:
