@@ -378,9 +378,10 @@ queue, including when an L1 rollback drops the header: each decision pass
 clears every one of them for each header that is no longer queued. For
 `da_fetch_failure`, a header still counts as queued while any DA fetcher of
 the watcher may still fetch it: availability while it holds the header
-pending at release depth, and the replayed ledger until its checkpoint passes
-the header (a merged one) or moves twice with no replay asking for it again
-(one removed or rolled back). The same holds for every other clear of
+pending at release depth, and the replayed ledger, once a replay asked for
+the header's payload, until its ledger store is found to hold the header's
+ledger or the L1 follower no longer shows the header (one removed or rolled
+back, or one pruned after it left the ledger window). The same holds for every other clear of
 `da_fetch_failure`: the header's own outcome, and a later header deferring on
 the header's missing payload, whose own `pending_da` record keeps the wait
 visible without holding readiness. Either clears the alert at once when no
@@ -418,11 +419,34 @@ and the L1 source status: a follower still catching up or a rollback in
 progress resolves by itself.
 
 **Action.** Keep the watcher running and preserve its state directory. Do not
-delete or edit the replay checkpoint.
+delete or edit the replayed-ledger store
+(`replayed-ledger-<manifest id>.sqlite` in the journal directory).
 
 **Escalate** at once when the alert lasts past the next confirmed-state
 advance: the watcher's replay and the confirmed state disagree, and the
 watcher cannot classify later blocks until they agree.
+
+### MidgardWatcherReplayedLedgerRootLost
+
+**Meaning.** The watcher's replayed-ledger store
+(`replayed-ledger-<manifest id>.sqlite` in the journal directory) no longer
+holds a ledger that the retention window keeps and that this process had
+held. The `replayed_ledger_root_lost` alert is active, and the watcher logs
+one `replayed_ledger_root_lost` error per lost root. The watcher derives a lost
+ledger again from its retained DA payloads on the next lookup that needs it;
+the alert clears once the store holds every lost root again, or once the
+window no longer keeps it. It never holds readiness.
+
+**First checks.** The `replayed_ledger_root_lost` errors in the watcher log
+name each root. Check that nothing else writes to the journal directory and
+that the disk is healthy.
+
+**Action.** None while the alert clears by itself. A lost ledger whose
+blocks' payloads are no longer retained cannot be derived again; such a
+lookup then waits as `replayed_ledger_source_pending`.
+
+**Escalate** when the alert recurs on a watcher whose journal directory
+nothing else touches: the store is losing ledgers it was asked to keep.
 
 ### MidgardWatcherConfirmedReplayRefused
 

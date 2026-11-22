@@ -1,10 +1,17 @@
 /**
  * The DA fetchers of the per-header alert suites: a retained-DA runtime whose
- * public DA peers fail every fetch, the watcher's replayed ledger over empty
- * blocks, and a source serving some of them.
+ * public DA peers fail every fetch, the watcher's replayed ledger over a
+ * chain of blocks, and a source serving some of them.
  */
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
+import {
+  replayedLedgerChain,
+  type ReplayedLedgerChainBlock,
+} from "@al-ft/midgard-fault-proofs/test-support/replayed-ledger-chain";
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
@@ -32,20 +39,31 @@ export const active = (
     .activeAlerts.filter((alert) => alert.code === code)
     .map(({ subjectDigest }) => subjectDigest);
 
-export type Block = Awaited<ReturnType<typeof buildCanonicalBlockFixture>>;
+export type Block = ReplayedLedgerChainBlock;
 
-export const emptyBlock = async (prevHeaderHash: string) =>
-  await buildCanonicalBlockFixture({
-    transactions: [],
-    utxos: [],
-    prevHeaderHash,
-  });
+/** `length` blocks, each with its own ledger, and `forks`
+ * (`replayedLedgerChain`). */
+export const chainOf = (length: number, forks: readonly number[] = []) =>
+  replayedLedgerChain(length, forks);
 
-/** The watcher's replayed ledger, its checkpoint moving to `confirmed`. */
-export const replayKeeper = (confirmed: () => Block) =>
-  createWatcherReplayedLedger({
+/**
+ * The watcher's replayed ledger, its checkpoint moving to `confirmed`, over a
+ * store holding the ledger below `chain`'s first block. The follower shows
+ * the headers of `shown()` and keeps no block inside the ledger window.
+ */
+export const replayKeeper = async (
+  chain: Awaited<ReturnType<typeof chainOf>>,
+  confirmed: () => Block,
+  shown: () => readonly Block[] = () => [...chain.blocks, ...chain.forks],
+) => {
+  const store = createLedgerStore(createMemoryLedgerStorage());
+  await store.persist(await store.admit(chain.base, chain.baseRoot));
+  return createWatcherReplayedLedger({
     follower: {
       epoch: () => 0,
+      headerAt: async (headerHash) =>
+        shown().find((block) => block.headerHash === headerHash)?.header,
+      ledgerWindow: async () => ({ blocks: [], newestRoot: undefined }),
       confirmed: async () => ({
         state: {
           ...SDK.makeGenesisConfirmedState(1000n),
@@ -54,6 +72,7 @@ export const replayKeeper = (confirmed: () => Block) =>
         },
         current: () => true,
       }),
+      // The blocks carry only an L2 transaction.
       materialFor: async (payload) => ({
         blockTimeMs: Number(payload.block_body.header.endTime),
         replayUserEvent: () => Effect.die("the block has no user event"),
@@ -64,6 +83,7 @@ export const replayKeeper = (confirmed: () => Block) =>
       close: () => undefined,
     },
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+    store,
     availabilityAuthority: () => ({
       deploymentIdentity: "c7".repeat(28),
       responseGeometry: SDKDa.availabilityResponseGeometry({
@@ -72,12 +92,8 @@ export const replayKeeper = (confirmed: () => Block) =>
         maxTrancheCount: 1024,
       }),
     }),
-    checkpointPath: "unused",
-    unsafeCheckpointStoreForTest: {
-      read: async () => undefined,
-      write: async () => undefined,
-    },
   });
+};
 
 /** A source serving the payloads of `blocks` and no other. */
 export const serving = (blocks: readonly Block[]): RetainedDaPayloadSource => ({

@@ -7,7 +7,6 @@
  * until it is decided, and a `da_fetch_failure` stands while some DA fetcher
  * may still fetch its header.
  */
-import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import type { PerHeaderAlert } from "../../src/fault-proofs/per-header-alert.js";
@@ -28,7 +27,7 @@ import {
 import {
   active,
   AUTHORITY,
-  emptyBlock,
+  chainOf,
   failingFetches,
   replayKeeper,
   serving,
@@ -217,87 +216,116 @@ describe("fault decision bridge on the per-header alerts raised outside it", () 
     }
   });
 
-  it("keeps the failed DA fetch alert of a merged header the replayed ledger still fetches, and clears it once the checkpoint passes it", async () => {
-    const observability = operations();
-    const { binding, runtime, close } = await failingFetches(observability);
-    // Two merged blocks, in no observed queue: the checkpoint moves to the
-    // later one, whose replay starts from the earlier one's ledger.
-    const parent = await emptyBlock(SDK.GENESIS_HEADER_HASH);
-    const head = await emptyBlock(parent.headerHash);
-    const keeper = replayKeeper(() => head);
-    const unregister = registerWatcherDaFetcher(
-      AUTHORITY.result,
-      keeper.mayStillFetch,
-    );
-    try {
-      const { after, failure, h } = rolledBackQueue(observability, binding);
-      // Each pass the checkpoint advance asks for the earlier block again,
-      // and every public DA peer fails it.
-      for (let pass = 0; pass < 2; pass += 1) {
+  it(
+    "keeps the failed DA fetch alert of a merged header the replayed ledger still fetches, and clears it once the checkpoint passes it",
+    { timeout: 120_000 },
+    async () => {
+      const observability = operations();
+      const { binding, runtime, close } = await failingFetches(observability);
+      // Two merged blocks, in no observed queue: the checkpoint moves to the
+      // later one, whose replay starts from the earlier one's ledger.
+      const chain = await chainOf(2);
+      const [parent, head] = chain.blocks as [
+        (typeof chain.blocks)[number],
+        (typeof chain.blocks)[number],
+      ];
+      const keeper = await replayKeeper(chain, () => head);
+      const unregister = registerWatcherDaFetcher(
+        AUTHORITY.result,
+        keeper.mayStillFetch,
+      );
+      try {
+        const { after, failure, h } = rolledBackQueue(observability, binding);
+        // Each pass the checkpoint advance asks for the earlier block again,
+        // and every public DA peer fails it.
+        for (let pass = 0; pass < 2; pass += 1) {
+          expect(
+            await keeper.advance(observation([]), [
+              serving([head]),
+              ...runtime.sources,
+            ]),
+          ).toMatchObject([{ reason: "replayed_ledger_source_pending" }]);
+          await expect(h.bridge.reconcileAndDispatch(after)).rejects.toBe(
+            failure,
+          );
+          expect(active(observability, "da_fetch_failure")).toEqual([
+            watcherDaFetchAlertSubject(parent.headerHash),
+          ]);
+        }
+
+        // Another source serves it: the checkpoint passes both blocks.
         expect(
-          await keeper.advance(observation([]), [
-            serving([head]),
-            ...runtime.sources,
-          ]),
-        ).toMatchObject([{ reason: "replayed_ledger_source_pending" }]);
+          await keeper.advance(observation([]), [serving([head, parent])]),
+        ).toEqual([]);
         await expect(h.bridge.reconcileAndDispatch(after)).rejects.toBe(
           failure,
         );
-        expect(active(observability, "da_fetch_failure")).toEqual([
-          watcherDaFetchAlertSubject(parent.headerHash),
-        ]);
+        expect(active(observability, "da_fetch_failure")).toEqual([]);
+      } finally {
+        unregister();
+        await close();
       }
+    },
+  );
 
-      // Another source serves it: the checkpoint passes both blocks.
-      expect(
-        await keeper.advance(observation([]), [serving([head, parent])]),
-      ).toEqual([]);
-      await expect(h.bridge.reconcileAndDispatch(after)).rejects.toBe(failure);
-      expect(active(observability, "da_fetch_failure")).toEqual([]);
-    } finally {
-      unregister();
-      await close();
-    }
-  });
+  it(
+    "keeps the failed DA fetch alert of a header the follower still shows while the checkpoint moves, and drops it once the follower no longer shows it",
+    { timeout: 120_000 },
+    async () => {
+      const observability = operations();
+      const { binding, runtime, close } = await failingFetches(observability);
+      // first <- second, and a block above the same ledger as first that a
+      // rollback later removes from the chain.
+      const chain = await chainOf(2, [0]);
+      const [first, second] = chain.blocks as [
+        (typeof chain.blocks)[number],
+        (typeof chain.blocks)[number],
+      ];
+      const removed = chain.forks[0]!;
+      let confirmed = first;
+      let shown = [first, second, removed];
+      const keeper = await replayKeeper(
+        chain,
+        () => confirmed,
+        () => shown,
+      );
+      const unregister = registerWatcherDaFetcher(
+        AUTHORITY.result,
+        keeper.mayStillFetch,
+      );
+      try {
+        const { after, failure, h } = rolledBackQueue(observability, binding);
+        // A classification's ledger walk asks for the removed block's payload,
+        // and every public DA peer fails it.
+        await expect(
+          keeper.ledgerAt(runtime.sources)(removed.headerHash),
+        ).rejects.toThrow();
+        const sources = [serving([first, second])];
 
-  it("drops the failed DA fetch alert of a header no replay asks for again once the checkpoint moved twice", async () => {
-    const observability = operations();
-    const { binding, runtime, close } = await failingFetches(observability);
-    const first = await emptyBlock(SDK.GENESIS_HEADER_HASH);
-    const second = await emptyBlock(first.headerHash);
-    let confirmed = first;
-    const keeper = replayKeeper(() => confirmed);
-    const unregister = registerWatcherDaFetcher(
-      AUTHORITY.result,
-      keeper.mayStillFetch,
-    );
-    // A classification's ledger walk asked for a header that later left
-    // the chain: it is never merged, and no replay asks for it again.
-    const removed = "0d".repeat(28);
-    try {
-      const { after, failure, h } = rolledBackQueue(observability, binding);
-      await expect(keeper.ledgerAt(runtime.sources)(removed)).rejects.toThrow();
-      const sources = [serving([first, second])];
+        // The checkpoint moves to first, then to second; the follower still
+        // shows the removed block, so a replay may still ask for it.
+        for (const head of [first, first, second]) {
+          confirmed = head;
+          expect(await keeper.advance(observation([]), sources)).toEqual([]);
+          await expect(h.bridge.reconcileAndDispatch(after)).rejects.toBe(
+            failure,
+          );
+          expect(active(observability, "da_fetch_failure")).toEqual([
+            watcherDaFetchAlertSubject(removed.headerHash),
+          ]);
+        }
 
-      // The first advance moves the checkpoint to the confirmed head, and
-      // the second finds it there; neither asks for the removed header.
-      for (let pass = 0; pass < 2; pass += 1) {
+        // The rollback reaches the follower: no replay asks for it again.
+        shown = [first, second];
         expect(await keeper.advance(observation([]), sources)).toEqual([]);
         await expect(h.bridge.reconcileAndDispatch(after)).rejects.toBe(
           failure,
         );
-        expect(active(observability, "da_fetch_failure")).toEqual([
-          watcherDaFetchAlertSubject(removed),
-        ]);
+        expect(active(observability, "da_fetch_failure")).toEqual([]);
+      } finally {
+        unregister();
+        await close();
       }
-
-      confirmed = second;
-      expect(await keeper.advance(observation([]), sources)).toEqual([]);
-      await expect(h.bridge.reconcileAndDispatch(after)).rejects.toBe(failure);
-      expect(active(observability, "da_fetch_failure")).toEqual([]);
-    } finally {
-      unregister();
-      await close();
-    }
-  });
+    },
+  );
 });

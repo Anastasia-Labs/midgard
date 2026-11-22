@@ -18,6 +18,17 @@ groups:
           summary: "Watcher {{ $labels.instance }} cannot replay the confirmed state's root"
           runbook: "docs/operations/alerts.md#midgardwatcherreplayrootmismatch"
 
+      - alert: MidgardWatcherReplayedLedgerRootLost
+        # The ledger store stopped holding a ledger the retention window
+        # keeps and this process had held. The watcher derives it again;
+        # the alert never holds readiness.
+        expr: midgard_watcher_active_alerts{code="replayed_ledger_root_lost"} > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watcher {{ $labels.instance }} lost a replayed ledger it was keeping"
+          runbook: "docs/operations/alerts.md#midgardwatcherreplayedledgerrootlost"
+
       - alert: MidgardWatcherConfirmedReplayRefused
         expr: >-
           increase(midgard_watcher_replay_refusals_total{phase="confirmed",kind="replay-refused"}[30m]) > 0

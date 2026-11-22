@@ -748,10 +748,6 @@
       "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.create-live-da-bond-pool-journey-port.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
-    "midgard-node-tools/devnet/watcher-journeys/journey-mocks.ts": {
-      "reason": "A literal dynamic import inside a journey mock's body; narrowing it is a test-body change, which the narrowing change made none of.",
-      "sites": ["\"@al-ft/midgard-fault-proofs\""]
-    },
     "midgard-node-tools/devnet/watcher-journeys/journey-runner.ts": {
       "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/readiness-evidence.verify-journey-result-evidence.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]

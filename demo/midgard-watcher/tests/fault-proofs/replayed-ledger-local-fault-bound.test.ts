@@ -7,15 +7,14 @@
  * retried. It never ends the watcher: the decision driver keeps running its
  * passes past the bound. An advance that completes releases the hold.
  */
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { ReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
-import type { LedgerCheckpoint } from "@al-ft/midgard-fault-proofs/replayed-ledger";
-import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { replayedLedgerChain } from "@al-ft/midgard-fault-proofs/test-support/replayed-ledger-chain";
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk/core";
@@ -54,30 +53,29 @@ const availabilityAuthority = () => ({
 
 const FAULT = "the script evaluator failed locally";
 
-const directories: string[] = [];
 const closers: (() => Promise<void>)[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
   for (const close of closers.splice(0).reverse()) await close();
-  for (const directory of directories.splice(0))
-    await rm(directory, { recursive: true, force: true });
 });
 
 /**
- * A keeper whose confirmed head is one block on genesis, whose replay fails
- * locally while `faulting` holds, on the clock `state.nowMs`. Its checkpoint
- * store never restores, so a new follower generation replays the head again.
+ * A keeper whose confirmed head is one block above a ledger its store holds,
+ * whose replay fails locally while `faulting` holds, on the clock
+ * `state.nowMs`.
  */
 const scene = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "watcher-local-fault-"));
-  directories.push(directory);
-  const block = await buildCanonicalBlockFixture({
-    transactions: [],
-    utxos: [],
-    prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-  });
-  const state = { faulting: true, epoch: 0, nowMs: 0, replays: 0 };
-  const written: LedgerCheckpoint[] = [];
+  const chain = await replayedLedgerChain(1);
+  const block = chain.blocks[0]!;
+  const store = createLedgerStore(createMemoryLedgerStorage());
+  await store.persist(await store.admit(chain.base, chain.baseRoot));
+  const state = { faulting: true, nowMs: 0, replays: 0 };
+  /** Whether the store holds the head's ledger. */
+  const persisted = () =>
+    store.at(block.header.utxosRoot).then(
+      () => true,
+      () => false,
+    );
   const sources: RetainedDaPayloadSource[] = [
     {
       sourceId: "local-fault",
@@ -97,7 +95,14 @@ const scene = async () => {
   ];
   const keeper = createWatcherReplayedLedger({
     follower: {
-      epoch: () => state.epoch,
+      epoch: () => 0,
+      headerAt: async (hash) =>
+        hash === block.headerHash ? block.header : undefined,
+      // The head's block is inside the window: its predecessor is kept.
+      ledgerWindow: async () => ({
+        blocks: [block.header],
+        newestRoot: block.header.utxosRoot,
+      }),
       confirmed: async () => ({
         state: {
           ...SDK.makeGenesisConfirmedState(1000n),
@@ -122,13 +127,7 @@ const scene = async () => {
     },
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     availabilityAuthority,
-    checkpointPath: join(directory, "ledger.json"),
-    unsafeCheckpointStoreForTest: {
-      read: async () => undefined,
-      write: async (checkpoint) => {
-        written.push(checkpoint);
-      },
-    },
+    store,
     nowMs: () => state.nowMs,
   });
   const advance = () => keeper.advance(observation([]), sources);
@@ -147,7 +146,17 @@ const scene = async () => {
     }
     return reasons;
   };
-  return { block, state, written, advance, held, keeper, sources };
+  return {
+    block,
+    chain,
+    store,
+    state,
+    persisted,
+    advance,
+    held,
+    keeper,
+    sources,
+  };
 };
 
 const stderrLines = () => {
@@ -182,14 +191,12 @@ describe("the replayed ledger's local-fault hold", () => {
         detail: `${s.block.headerHash}: ${FAULT}`,
       }),
     ]);
-    expect(s.written).toEqual([]);
+    expect(await s.persisted()).toBe(false);
     // Still retried: the head advances once the fault clears.
     s.state.faulting = false;
     s.state.nowMs += 60_000;
     expect(await s.advance()).toEqual([]);
-    expect(s.written.map(({ headerHash }) => headerHash)).toEqual([
-      s.block.headerHash,
-    ]);
+    expect(await s.persisted()).toBe(true);
   });
 
   it("waits out the backoff, doubling from 1 s to 60 s, before replaying the head again", async () => {
@@ -221,8 +228,9 @@ describe("the replayed ledger's local-fault hold", () => {
     s.state.faulting = false;
     s.state.nowMs += 60_000;
     expect(await s.advance()).toEqual([]);
-    // A new follower generation replays the head again, at once.
-    s.state.epoch += 1;
+    // The store loses the head's ledger: the next advance replays the head
+    // again, at once.
+    await s.store.retain(new Set([s.chain.baseRoot]));
     s.state.faulting = true;
     const replays = s.state.replays;
     expect(await s.advance()).toEqual([
@@ -281,8 +289,6 @@ describe("the replayed ledger's local-fault hold", () => {
     driver.wake();
     await driver.idle();
     expect(driver.readiness()).toEqual([]);
-    expect(s.written.map(({ headerHash }) => headerHash)).toEqual([
-      s.block.headerHash,
-    ]);
+    expect(await s.persisted()).toBe(true);
   });
 });

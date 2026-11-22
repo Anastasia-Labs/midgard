@@ -161,21 +161,19 @@ vi.mock("./replayed-ledger.js", () => ({
     authority: { deploymentIdentity: { manifestId: string } };
   }) => {
     state.replayCheckpointDirectories.push(input.checkpointDirectory);
-    const { fileLedgerCheckpointStore } = await import(
-      "@al-ft/midgard-fault-proofs"
+    // The real store the keeper keeps there, holding its writer lease.
+    const { openSqliteLedgerStorage } = await import(
+      "@al-ft/midgard-fault-proofs/ledger-store/sqlite"
     );
-    const checkpoints = fileLedgerCheckpointStore(
+    const storage = openSqliteLedgerStorage(
       join(
         input.checkpointDirectory,
-        `replayed-ledger-${input.authority.deploymentIdentity.manifestId}.json`,
+        `replayed-ledger-${input.authority.deploymentIdentity.manifestId}.sqlite`,
       ),
     );
     return {
-      ledgerAt: async (headerHash: string) => {
-        await checkpoints.write({ headerHash, entries: [] });
-        return [];
-      },
-      close: async () => {},
+      ledgerAt: async () => [],
+      close: async () => storage.close(),
     };
   },
 }));

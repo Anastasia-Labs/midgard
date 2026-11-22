@@ -35,6 +35,7 @@ export const WATCHER_ALERT_CODES = Object.freeze([
   "prover_funding_unavailable",
   "unproven_fault_merged",
   "fault_detector_failed",
+  "replayed_ledger_root_lost",
 ] as const);
 
 export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
@@ -52,7 +53,8 @@ export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
  * stays listed across restarts but must not hold readiness forever. A
  * fault detector whose result a decision pass withheld left the header to
  * the other families, and a header none of them decides still fails its
- * pass: the alert names the family for the operator.
+ * pass: the alert names the family for the operator. A replayed ledger the
+ * store lost is derived again on its next lookup.
  */
 export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
   new Set<WatcherAlertCode>([
@@ -62,6 +64,7 @@ export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
     "validation_trace_replay_stuck",
     "unproven_fault_merged",
     "fault_detector_failed",
+    "replayed_ledger_root_lost",
   ]);
 
 /** The last pooled DA bond readout, as `/v1/status` serves it. */

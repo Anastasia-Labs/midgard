@@ -1,12 +1,15 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { ReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
-import type { LedgerCheckpoint } from "@al-ft/midgard-fault-proofs/replayed-ledger";
-import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  type LedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
+import {
+  replayedLedgerChain,
+  type ReplayedLedgerChainBlock,
+} from "@al-ft/midgard-fault-proofs/test-support/replayed-ledger-chain";
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import {
   FraudProofL1CheckpointChangedError,
@@ -15,7 +18,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createWatcherReplayedLedger } from "../../src/fault-proofs/replayed-ledger.js";
 import type { WatcherFollowerReplaySource } from "../../src/l1-follower/replay-source.js";
@@ -29,49 +32,120 @@ const availabilityAuthority = () => ({
     maxTrancheCount: 1024,
   }),
 });
-const directories: string[] = [];
-afterEach(async () => {
-  for (const directory of directories.splice(0))
-    await rm(directory, { recursive: true, force: true });
+
+/** A memory ledger store whose writes fail while `failing` is set. */
+const ledgerStore = () => {
+  const memory = createMemoryLedgerStorage();
+  const control = { failing: false };
+  const storage: LedgerStorage = {
+    ...memory,
+    write: async (change) => {
+      if (control.failing) throw new Error("ledger store fsync failed");
+      await memory.write(change);
+    },
+  };
+  return { store: createLedgerStore(storage), control };
+};
+
+/** A retained-DA source serving `served` by header hash; each request
+ * records the source's id in `requests`. */
+const retainedSource = (
+  sourceId: string,
+  served: ReadonlyMap<string, Uint8Array>,
+  requests: string[] = [],
+): RetainedDaPayloadSource => ({
+  sourceId,
+  fetchPayloadByHeaderHash: async (headerHash) => {
+    requests.push(sourceId);
+    const bytes = served.get(headerHash);
+    if (bytes === undefined) throw new Error(`${sourceId} has no payload`);
+    return {
+      ok: true,
+      sourceId,
+      sourcePeerId: "peer",
+      payloadEnvelopeCbor: Buffer.from(bytes),
+      provenance: {
+        trustClass: "public_or_permissionless_da",
+        sourceId: `${sourceId}/peer`,
+        grade: "security",
+      },
+      attempts: [],
+    };
+  },
 });
-const setup = async (input: { failWrite?: boolean } = {}) => {
-  const directory = await mkdtemp(join(tmpdir(), "watcher-replay-checkpoint-"));
-  directories.push(directory);
+
+const chainSource = (
+  blocks: readonly ReplayedLedgerChainBlock[],
+  requests?: string[],
+) =>
+  retainedSource(
+    "chain",
+    new Map(
+      blocks.map((block) => [block.headerHash, block.payloadEnvelopeCbor]),
+    ),
+    requests,
+  );
+
+/** A follower over `blocks` whose ConfirmedState is genesis. */
+const followerOver = (
+  blocks: readonly ReplayedLedgerChainBlock[] = [],
+): WatcherFollowerReplaySource => ({
+  epoch: () => 0,
+  headerAt: async (headerHash) =>
+    blocks.find((block) => block.headerHash === headerHash)?.header,
+  ledgerWindow: async () => ({ blocks: [], newestRoot: undefined }),
+  confirmed: async () => ({
+    state: SDK.makeGenesisConfirmedState(1000n),
+    current: () => true,
+  }),
+  materialFor: async (payload) => ({
+    blockTimeMs: Number(payload.block_body.header.endTime),
+    replayUserEvent: () => Effect.die("the block has no user event"),
+    verifyForcedSource: () => Effect.die("the block has no forced order"),
+  }),
+  availabilityStatus: async () => "Unattested",
+  checkpointDurable: () => undefined,
+  close: () => undefined,
+});
+
+/** One chain block above a ledger the store holds. */
+const storedChain = async (length = 1) => {
+  const chain = await replayedLedgerChain(length);
+  const { store, control } = ledgerStore();
+  await store.persist(await store.admit(chain.base, chain.baseRoot));
+  const held = (root: string) =>
+    store.at(root).then(
+      () => true,
+      () => false,
+    );
+  return { chain, store, control, held };
+};
+
+const setup = () => {
   let state = SDK.makeGenesisConfirmedState(1000n);
   let current = true;
-  let stored: LedgerCheckpoint | undefined;
   const durable: bigint[] = [];
-  let writes = 0;
+  const { store } = ledgerStore();
   const follower: WatcherFollowerReplaySource = {
-    epoch: () => 0,
+    ...followerOver(),
     confirmed: async () => ({ state, current: () => current }),
     materialFor: async () => {
       throw new Error("genesis never needs replay material");
     },
-    availabilityStatus: async () => "Unattested",
     checkpointDurable: (end) => durable.push(end),
-    close: () => undefined,
   };
   const keeper = () =>
     createWatcherReplayedLedger({
       follower,
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       availabilityAuthority,
-      checkpointPath: join(directory, "ledger.json"),
-      unsafeCheckpointStoreForTest: {
-        read: async () => stored,
-        write: async (checkpoint) => {
-          if (input.failWrite) throw new Error("checkpoint fsync failed");
-          writes += 1;
-          stored = checkpoint;
-        },
-      },
+      store,
     });
   return {
     keeper,
     follower,
+    store,
     durable,
-    writes: () => writes,
     changeRoot: () => {
       state = { ...state, utxoRoot: "00".repeat(32) };
     },
@@ -81,15 +155,13 @@ const setup = async (input: { failWrite?: boolean } = {}) => {
   };
 };
 
-describe("the production replay keeper", () => {
-  it("persists a checked genesis head, restores it at restart, and refuses a changed root under the same hash", async () => {
-    const h = await setup();
+describe("the production replay keeper", { timeout: 120_000 }, () => {
+  it("holds a checked genesis head, holds it again at restart, and refuses a changed root under the same hash", async () => {
+    const h = setup();
     const keeper = h.keeper();
     expect(await keeper.advance(observation([]), [])).toEqual([]);
-    expect(h.writes()).toBe(1);
     expect(h.durable).toEqual([1000n]);
     expect(await h.keeper().advance(observation([]), [])).toEqual([]);
-    expect(h.writes()).toBe(1);
     h.changeRoot();
     expect(await keeper.advance(observation([]), [])).toMatchObject([
       { reason: "replayed_ledger_checkpoint_pending" },
@@ -97,21 +169,44 @@ describe("the production replay keeper", () => {
     expect(h.durable).toEqual([1000n, 1000n]);
   });
   it("does not release admission history when persistence fails", async () => {
-    const h = await setup({ failWrite: true });
-    await expect(h.keeper().advance(observation([]), [])).rejects.toThrow(
-      "checkpoint fsync failed",
-    );
-    expect(h.durable).toEqual([]);
+    const { chain, store, control } = await storedChain();
+    const block = chain.blocks[0]!;
+    const durable: bigint[] = [];
+    const keeper = createWatcherReplayedLedger({
+      follower: {
+        ...followerOver(chain.blocks),
+        confirmed: async () => ({
+          state: {
+            ...SDK.makeGenesisConfirmedState(1000n),
+            headerHash: block.headerHash,
+            utxoRoot: block.header.utxosRoot,
+          },
+          current: () => true,
+        }),
+        checkpointDurable: (end) => durable.push(end),
+      },
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+      availabilityAuthority,
+      store,
+    });
+    control.failing = true;
+    expect(
+      await keeper.advance(observation([]), [chainSource(chain.blocks)]),
+    ).toMatchObject([
+      {
+        reason: "replayed_ledger_local_fault",
+        detail: expect.stringContaining("ledger store fsync failed"),
+      },
+    ]);
+    expect(durable).toEqual([]);
   });
   it("names unavailable L1 and a reset during restore instead of trusting missing material", async () => {
-    const h = await setup();
+    const h = setup();
     h.retire();
     expect(await h.keeper().advance(observation([]), [])).toMatchObject([
       { reason: "replayed_ledger_source_pending" },
     ]);
     expect(h.durable).toEqual([]);
-    expect(h.writes()).toBe(0);
-    const directory = directories[0]!;
     const keeper = createWatcherReplayedLedger({
       follower: {
         ...h.follower,
@@ -123,7 +218,7 @@ describe("the production replay keeper", () => {
       },
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       availabilityAuthority,
-      checkpointPath: join(directory, "unavailable.json"),
+      store: h.store,
     });
     expect(await keeper.advance(observation([]), [])).toMatchObject([
       {
@@ -133,7 +228,7 @@ describe("the production replay keeper", () => {
     ]);
   });
   it("holds a local replay fault under its own reason, and advances once it clears", async () => {
-    const h = await setup();
+    const h = setup();
     let faulted = true;
     const keeper = createWatcherReplayedLedger({
       follower: {
@@ -151,7 +246,7 @@ describe("the production replay keeper", () => {
       },
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       availabilityAuthority,
-      checkpointPath: join(directories[0]!, "local-fault.json"),
+      store: h.store,
     });
     expect(await keeper.advance(observation([]), [])).toEqual([
       {
@@ -165,126 +260,87 @@ describe("the production replay keeper", () => {
   });
 });
 
-it("re-reads authenticated replay material after a follower generation changes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "watcher-replay-epoch-"));
-  directories.push(directory);
-  const block = await buildCanonicalBlockFixture({
-    transactions: [],
-    utxos: [],
-    prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-  });
-  let epoch = 0;
-  let materialReads = 0;
-  const follower: WatcherFollowerReplaySource = {
-    epoch: () => epoch,
-    confirmed: async () => ({
-      state: SDK.makeGenesisConfirmedState(1000n),
-      current: () => true,
-    }),
-    materialFor: async () => {
-      materialReads += 1;
-      if (epoch !== 0)
-        throw new FraudProofL1UnavailableError(
-          "admission belongs to the prior generation",
-        );
-      return {
-        blockTimeMs: 2,
-        replayUserEvent: () => Effect.die("empty block has no user events"),
-        verifyForcedSource: () => Effect.die("empty block has no forced order"),
-      };
-    },
-    availabilityStatus: async () => "Unattested",
-    checkpointDurable: () => undefined,
-    close: () => undefined,
-  };
-  const keeper = createWatcherReplayedLedger({
-    follower,
-    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-    availabilityAuthority,
-    checkpointPath: join(directory, "ledger.json"),
-  });
-  const ledgerAt = keeper.ledgerAt([
-    {
-      sourceId: "epoch-fixture",
-      fetchPayloadByHeaderHash: async () => ({
-        ok: true,
-        sourceId: "epoch-fixture",
-        sourcePeerId: "peer",
-        payloadEnvelopeCbor: block.payloadEnvelopeCbor,
-        provenance: {
-          trustClass: "public_or_permissionless_da",
-          sourceId: "epoch-fixture/peer",
-          grade: "security",
+describe(
+  "the production replay keeper across follower generations",
+  { timeout: 120_000 },
+  () => {
+    it("keeps a stored ledger across a generation change and reads a new block's material from the current generation", async () => {
+      const { chain, store } = await storedChain(2);
+      const [first, second] = chain.blocks as [
+        ReplayedLedgerChainBlock,
+        ReplayedLedgerChainBlock,
+      ];
+      let epoch = 0;
+      let materialReads = 0;
+      const requests: string[] = [];
+      const base = followerOver(chain.blocks);
+      const keeper = createWatcherReplayedLedger({
+        follower: {
+          ...base,
+          epoch: () => epoch,
+          materialFor: async (payload) => {
+            materialReads += 1;
+            if (epoch !== 0)
+              throw new FraudProofL1UnavailableError(
+                "admission belongs to the prior generation",
+              );
+            return base.materialFor(payload);
+          },
         },
-        attempts: [],
-      }),
-    },
-  ]);
-  expect(await ledgerAt(block.headerHash)).toEqual([]);
-  expect(materialReads).toBe(1);
-  epoch += 1;
-  await expect(ledgerAt(block.headerHash)).rejects.toThrow(
-    "admission belongs to the prior generation",
-  );
-  expect(materialReads).toBe(2);
-});
-
-it("refuses a ledger lookup when its follower generation changes during replay", async () => {
-  const directory = await mkdtemp(
-    join(tmpdir(), "watcher-replay-during-epoch-"),
-  );
-  directories.push(directory);
-  const block = await buildCanonicalBlockFixture({
-    transactions: [],
-    utxos: [],
-    prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-  });
-  let epoch = 0;
-  const follower: WatcherFollowerReplaySource = {
-    epoch: () => epoch,
-    confirmed: async () => ({
-      state: SDK.makeGenesisConfirmedState(1000n),
-      current: () => true,
-    }),
-    materialFor: async () => {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        availabilityAuthority,
+        store,
+      });
+      const ledgerAt = keeper.ledgerAt([chainSource(chain.blocks, requests)]);
+      const entries = await ledgerAt(first.headerHash);
+      expect(entries).toBeDefined();
+      expect(materialReads).toBe(1);
       epoch += 1;
-      return {
-        blockTimeMs: 2,
-        replayUserEvent: () => Effect.die("no events"),
-        verifyForcedSource: () => Effect.die("no forced order"),
-      };
-    },
-    availabilityStatus: async () => "Unattested",
-    checkpointDurable: () => undefined,
-    close: () => undefined,
-  };
-  const keeper = createWatcherReplayedLedger({
-    follower,
-    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-    availabilityAuthority,
-    checkpointPath: join(directory, "ledger.json"),
-  });
-  const ledgerAt = keeper.ledgerAt([
-    {
-      sourceId: "during-epoch-fixture",
-      fetchPayloadByHeaderHash: async () => ({
-        ok: true,
-        sourceId: "during-epoch-fixture",
-        sourcePeerId: "peer",
-        payloadEnvelopeCbor: block.payloadEnvelopeCbor,
-        provenance: {
-          trustClass: "public_or_permissionless_da",
-          sourceId: "during-epoch-fixture/peer",
-          grade: "security",
+      // The ledger stored before the change still answers, with no payload
+      // or material read.
+      requests.length = 0;
+      expect(await ledgerAt(first.headerHash)).toEqual(entries);
+      expect(requests).toEqual([]);
+      expect(materialReads).toBe(1);
+      // A block not stored yet reads its admission from the new generation.
+      await expect(ledgerAt(second.headerHash)).rejects.toThrow(
+        "admission belongs to the prior generation",
+      );
+      expect(materialReads).toBe(2);
+    });
+
+    it("refuses a ledger lookup when its follower generation changes during replay, and keeps the ledger it stored", async () => {
+      const { chain, store, held } = await storedChain();
+      const block = chain.blocks[0]!;
+      let epoch = 0;
+      const base = followerOver(chain.blocks);
+      const keeper = createWatcherReplayedLedger({
+        follower: {
+          ...base,
+          epoch: () => epoch,
+          materialFor: async (payload) => {
+            epoch += 1;
+            return base.materialFor(payload);
+          },
         },
-        attempts: [],
-      }),
-    },
-  ]);
-  await expect(ledgerAt(block.headerHash)).rejects.toBeInstanceOf(
-    FraudProofL1CheckpointChangedError,
-  );
-});
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        availabilityAuthority,
+        store,
+      });
+      const requests: string[] = [];
+      const ledgerAt = keeper.ledgerAt([chainSource(chain.blocks, requests)]);
+      await expect(ledgerAt(block.headerHash)).rejects.toBeInstanceOf(
+        FraudProofL1CheckpointChangedError,
+      );
+      // The replayed ledger opened its header's root before it was stored, so
+      // the rewind cannot have made it wrong: the next lookup answers from it.
+      expect(await held(block.header.utxosRoot)).toBe(true);
+      requests.length = 0;
+      expect(await ledgerAt(block.headerHash)).toBeDefined();
+      expect(requests).toEqual([]);
+    });
+  },
+);
 
 /**
  * The keeper checks each retained copy against the availability commitment
@@ -293,133 +349,103 @@ it("refuses a ledger lookup when its follower generation changes during replay",
  * that does not replay only makes the advance wait, and the next advance asks
  * past it.
  */
-describe("the production replay keeper's availability binding", () => {
-  const setupBound = async () => {
-    const directory = await mkdtemp(join(tmpdir(), "watcher-replay-bound-"));
-    directories.push(directory);
-    const block = await buildCanonicalBlockFixture({
-      transactions: [],
-      utxos: [],
-      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-    });
-    // The block's header over preimages of no transaction: the header does
-    // not commit that section.
-    const stray = await wrapDaPayload(
-      SDKDa.encodeDaPayload({
-        ...block.payload,
-        block_body: {
-          ...block.payload.block_body,
-          transaction_preimages: [["ab".repeat(32), "00"]],
-        },
-      }),
-      { mode: "identity" },
-    );
-    const node: { status: SDK.DaAvailabilityStateQueueStatus } = {
-      status: "Unattested",
-    };
-    const requests: string[] = [];
-    const served: readonly (readonly [string, Uint8Array])[] = [
-      ["s0", stray],
-      ["s1", block.payloadEnvelopeCbor],
-    ];
-    const sources: RetainedDaPayloadSource[] = served.map(([id, bytes]) => ({
-      sourceId: id,
-      fetchPayloadByHeaderHash: async () => {
-        requests.push(id);
-        return {
-          ok: true,
-          sourceId: id,
-          sourcePeerId: "peer",
-          payloadEnvelopeCbor: Buffer.from(bytes),
-          provenance: {
-            trustClass: "public_or_permissionless_da",
-            sourceId: `${id}/peer`,
-            grade: "security",
+describe(
+  "the production replay keeper's availability binding",
+  { timeout: 120_000 },
+  () => {
+    const setupBound = async () => {
+      const { chain, store, held } = await storedChain();
+      const block = chain.blocks[0]!;
+      // The block's header over a transaction preimage section it does not
+      // commit.
+      const stray = await wrapDaPayload(
+        SDKDa.encodeDaPayload({
+          ...block.payload,
+          block_body: {
+            ...block.payload.block_body,
+            transaction_preimages: [["ab".repeat(32), "00"]],
           },
-          attempts: [],
-        };
-      },
-    }));
-    const statuses: string[] = [];
-    let stored: LedgerCheckpoint | undefined;
-    const keeper = createWatcherReplayedLedger({
-      follower: {
-        epoch: () => 0,
-        confirmed: async () => ({
-          state: {
-            ...SDK.makeGenesisConfirmedState(1000n),
-            headerHash: block.headerHash,
-            utxoRoot: block.header.utxosRoot,
-          },
-          current: () => true,
         }),
-        materialFor: async (payload) => ({
-          blockTimeMs: Number(payload.block_body.header.endTime),
-          replayUserEvent: () => Effect.die("the block has no user event"),
-          verifyForcedSource: () => Effect.die("the block has no forced order"),
-        }),
-        availabilityStatus: async (headerHash) => {
-          statuses.push(headerHash);
-          return node.status;
-        },
-        checkpointDurable: () => undefined,
-        close: () => undefined,
-      },
-      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-      availabilityAuthority,
-      checkpointPath: join(directory, "ledger.json"),
-      unsafeCheckpointStoreForTest: {
-        read: async () => stored,
-        write: async (checkpoint) => {
-          stored = checkpoint;
-        },
-      },
-    });
-    const commitment = SDKDa.buildDaAvailabilityCommitment({
-      ...availabilityAuthority(),
-      headerHash: block.headerHash,
-      payload: block.payloadEnvelopeCbor,
-    });
-    return {
-      block,
-      node,
-      requests,
-      statuses,
-      sources,
-      keeper,
-      stored: () => stored,
-      attest: () => {
-        node.status = {
-          Attested: {
-            commitment_hash: SDKDa.daAvailabilityCommitmentHash(commitment),
+        { mode: "identity" },
+      );
+      const node: { status: SDK.DaAvailabilityStateQueueStatus } = {
+        status: "Unattested",
+      };
+      const requests: string[] = [];
+      const served: readonly (readonly [string, Uint8Array])[] = [
+        ["s0", stray],
+        ["s1", block.payloadEnvelopeCbor],
+      ];
+      const sources = served.map(([id, bytes]) =>
+        retainedSource(id, new Map([[block.headerHash, bytes]]), requests),
+      );
+      const statuses: string[] = [];
+      const keeper = createWatcherReplayedLedger({
+        follower: {
+          ...followerOver(chain.blocks),
+          confirmed: async () => ({
+            state: {
+              ...SDK.makeGenesisConfirmedState(1000n),
+              headerHash: block.headerHash,
+              utxoRoot: block.header.utxosRoot,
+            },
+            current: () => true,
+          }),
+          availabilityStatus: async (headerHash) => {
+            statuses.push(headerHash);
+            return node.status;
           },
-        };
-      },
+        },
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        availabilityAuthority,
+        store,
+      });
+      const commitment = SDKDa.buildDaAvailabilityCommitment({
+        ...availabilityAuthority(),
+        headerHash: block.headerHash,
+        payload: block.payloadEnvelopeCbor,
+      });
+      return {
+        block,
+        node,
+        requests,
+        statuses,
+        sources,
+        keeper,
+        stored: () => held(block.header.utxosRoot),
+        attest: () => {
+          node.status = {
+            Attested: {
+              commitment_hash: SDKDa.daAvailabilityCommitmentHash(commitment),
+            },
+          };
+        },
+      };
     };
-  };
 
-  it("passes over a copy the Attested commitment does not bind within one advance", async () => {
-    const h = await setupBound();
-    h.attest();
-    expect(await h.keeper.advance(observation([]), h.sources)).toEqual([]);
-    expect(h.requests).toEqual(["s0", "s1"]);
-    expect(h.statuses).toEqual([h.block.headerHash]);
-    expect(h.stored()?.headerHash).toBe(h.block.headerHash);
-  });
+    it("passes over a copy the Attested commitment does not bind within one advance", async () => {
+      const h = await setupBound();
+      h.attest();
+      expect(await h.keeper.advance(observation([]), h.sources)).toEqual([]);
+      expect(h.requests).toEqual(["s0", "s1"]);
+      expect(h.statuses).toEqual([h.block.headerHash]);
+      expect(await h.stored()).toBe(true);
+    });
 
-  it("waits on an Unattested copy that does not replay, then asks past it", async () => {
-    const h = await setupBound();
-    expect(await h.keeper.advance(observation([]), h.sources)).toMatchObject([
-      {
-        reason: "replayed_ledger_source_pending",
-        detail: expect.stringContaining(
-          "is not bound to an attested commitment yet",
-        ),
-      },
-    ]);
-    expect(h.stored()).toBeUndefined();
-    expect(await h.keeper.advance(observation([]), h.sources)).toEqual([]);
-    expect(h.requests).toEqual(["s0", "s0", "s1"]);
-    expect(h.stored()?.headerHash).toBe(h.block.headerHash);
-  });
-});
+    it("waits on an Unattested copy that does not replay, then asks past it", async () => {
+      const h = await setupBound();
+      expect(await h.keeper.advance(observation([]), h.sources)).toMatchObject([
+        {
+          reason: "replayed_ledger_source_pending",
+          detail: expect.stringContaining(
+            "is not bound to an attested commitment yet",
+          ),
+        },
+      ]);
+      expect(await h.stored()).toBe(false);
+      expect(await h.keeper.advance(observation([]), h.sources)).toEqual([]);
+      expect(h.requests).toEqual(["s0", "s0", "s1"]);
+      expect(await h.stored()).toBe(true);
+    });
+  },
+);
