@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { WORKFLOW_CONTINUATION_QUIET_BOUND_MS } from "@al-ft/midgard-fault-proofs/workflow/pending-continuation";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,8 +8,9 @@ import {
   holding,
   pollChainCorrection,
 } from "./correction.chain-progress.test-support.js";
+import { JOURNEY_PAUSE_BOUND_MS } from "./correction.verify-journey-correction.js";
 
-const quietBoundMs = WORKFLOW_CONTINUATION_QUIET_BOUND_MS;
+const pauseBoundMs = JOURNEY_PAUSE_BOUND_MS;
 const startAt = 1_800_000_000_000;
 const stepMs = 60_000;
 const tx = (name: string) => createHash("sha256").update(name).digest("hex");
@@ -20,7 +20,7 @@ const tx = (name: string) => createHash("sha256").update(name).digest("hex");
  * verdicts from its `/v1/status`: the watcher keeps no record of its
  * workflow. A family may land any number of transactions; the wait ends at
  * the correction's action depth, at a hold by which the watcher gave up on
- * the objective, or at a pausing hold that outlasts the watcher's quiet bound
+ * the objective, or at a pausing hold that outlasts `JOURNEY_PAUSE_BOUND_MS`
  * with nothing of ours landing.
  */
 describe("the correction wait's progress rule", () => {
@@ -66,10 +66,8 @@ describe("the correction wait's progress rule", () => {
     expect(alreadyCorrected).toBe(true);
   });
 
-  it.each([
-    "fault_proof_continuation_stalled",
-    "fault_proof_counterparty_deadline_passed",
-  ])("fails at once, naming it, when the watcher holds %s", async (reason) => {
+  it("fails at once, naming it, when the watcher holds fault_proof_counterparty_deadline_passed", async () => {
+    const reason = "fault_proof_counterparty_deadline_passed";
     await expect(
       pollChainCorrection([
         { at: startAt, landed: [tx("step-0")] },
@@ -93,25 +91,25 @@ describe("the correction wait's progress rule", () => {
     "fault_proof_objective_quarantined",
     "fault_proof_l1_refused:provider_unavailable",
   ])(
-    "fails a %s hold that outlasts the quiet bound with nothing of ours landing",
+    "fails a %s hold that outlasts the pause bound with nothing of ours landing",
     async (reason) => {
       const landed = [tx("step-0")];
       const watcher = holding({ reason });
       await expect(
         pollChainCorrection([
           { at: startAt, landed, watcher },
-          { at: startAt + quietBoundMs, landed, watcher },
-          { at: startAt + quietBoundMs + 1, landed, watcher },
+          { at: startAt + pauseBoundMs, landed, watcher },
+          { at: startAt + pauseBoundMs + 1, landed, watcher },
         ]),
       ).rejects.toThrow(
-        `at observation 3 of 3: The watcher held validationTraceDispute/${"34".repeat(28)} under ${reason} for over ${quietBoundMs.toString()} ms with nothing of ours landing`,
+        `at observation 3 of 3: The watcher held validationTraceDispute/${"34".repeat(28)} under ${reason} for over ${pauseBoundMs.toString()} ms with nothing of ours landing`,
       );
     },
   );
 
   it("restarts the pause's clock when one of ours lands or the hold clears", async () => {
     const watcher = holding({ reason: "prover_funding_unavailable" });
-    const half = quietBoundMs / 2 + stepMs;
+    const half = pauseBoundMs / 2 + stepMs;
     await expect(
       pollChainCorrection([
         { at: startAt, landed: [], watcher },
@@ -134,7 +132,7 @@ describe("the correction wait's progress rule", () => {
     const watcher = holding(
       { reason: "fault_proof_started_late" },
       {
-        reason: "fault_proof_continuation_stalled",
+        reason: "fault_proof_counterparty_deadline_passed",
         headerHash: "9a".repeat(28),
       },
       { reason: "prover_funding_unavailable", headerHash: "9a".repeat(28) },
@@ -142,7 +140,7 @@ describe("the correction wait's progress rule", () => {
     await expect(
       pollChainCorrection([
         { at: startAt, landed, watcher },
-        { at: startAt + 2 * quietBoundMs, landed, watcher },
+        { at: startAt + 2 * pauseBoundMs, landed, watcher },
       ]),
     ).rejects.toThrow("at observation 2 of 2: observations ended");
   });
@@ -153,9 +151,9 @@ describe("the correction wait's progress rule", () => {
     await expect(
       pollChainCorrection([
         { at: startAt, landed },
-        { at: startAt + 4 * quietBoundMs, landed },
+        { at: startAt + 4 * pauseBoundMs, landed },
         {
-          at: startAt + 4 * quietBoundMs + stepMs,
+          at: startAt + 4 * pauseBoundMs + stepMs,
           landed,
           correction: chainCorrection(1),
         },

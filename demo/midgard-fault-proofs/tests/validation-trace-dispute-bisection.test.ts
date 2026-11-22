@@ -34,7 +34,6 @@ import {
 } from "../src/validation-trace-dispute/move-fee.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { enrollSuccessor } from "./support/rotated-successor-operator.js";
@@ -65,7 +64,6 @@ import {
   threadOf,
   threadUnitOf,
 } from "./support/validation-trace-dispute-scripted-defender.js";
-import { DEPLOYMENT_FINGERPRINT } from "./workflow.make-adapter.js";
 
 type Side = Readonly<{
   defender: Defender;
@@ -418,25 +416,8 @@ describe("validation-trace dispute runner: bisecting defended threads", () => {
     expect(prepared).toHaveLength(count);
   }, 300_000);
 
-  // A session that kept polling would run to the 30-minute quiet bound.
-  it("hands the session back at once at the one-step-required state, under its own readiness state, an operator alarm, without a continuation stall", async () => {
-    let runs = 0;
-    const result = await continuePendingWorkflow({
-      invocation: {
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        category: "validationTraceDispute",
-        headerHash: scene.failing.evidence.headerHash,
-      },
-      run: runner.process.run({
-        category: "validationTraceDispute",
-        headerHash: scene.failing.evidence.headerHash,
-      }),
-      execute: async () => {
-        runs += 1;
-        return validationTraceRunState(await runner.runOnce(scene.failing));
-      },
-    });
-    expect(runs).toBe(1);
+  it("holds the one-step-required state under its own readiness state, an operator alarm", async () => {
+    const result = validationTraceRunState(await runner.runOnce(scene.failing));
     expect(result).toMatchObject({
       kind: "pending",
       resumeOnObservation: true,

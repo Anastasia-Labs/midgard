@@ -850,16 +850,6 @@ follower's reasons `[review]`.
 - `fault_proof_l1_refused:store_inconsistent`: the follower's stored facts
   contradict one another (two unit histories place one transaction at
   different points). The objective is held; report it with the detail.
-- `fault_proof_continuation_stalled`: an objective's proof session made
-  no progress (no confirmation and no new action) for 30 min, or for 1,800
-  polls if the clock stands still. A transaction the submit endpoint accepts
-  but that never lands, resubmitted each validity window, is the usual cause.
-  The session hands its turn back so other objectives run, logs the hold at
-  error level and resumes on the next observation; it is never a refusal. It
-  clears at the first progress of a later run of the objective. Check the
-  `last pending:` reason in the detail, then the L1 submit endpoint and
-  provider. On the testing profiles (15 min maturity) the bound is longer
-  than maturity, so there it is an alarm only.
 - `fault_proof_objective_quarantined`: one objective's run stalled outside
   preflight, or its funding or run met an integrity failure of its own, or its family
   re-classified the admitted fault (`no_fault_detected`, `unprovable_gap`) or

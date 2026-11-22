@@ -1,8 +1,7 @@
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import {
-  assertWorkflowActuationPermitIdentity,
-  type WorkflowActuationPermit,
-  type WorkflowActuationRevokedError,
+import type {
+  WorkflowActuationPermit,
+  WorkflowActuationRevokedError,
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/journal";
@@ -259,31 +258,7 @@ export const validateJob = (
   job: WatcherFaultProofJob | UnsafeWatcherFaultProofJobForTest,
   categories: readonly WatcherInstalledWorkflowCategory[],
   requireAdmittedDeadline: boolean,
-  actuationPermit: WorkflowActuationPermit | null,
 ): WatcherFaultProofJob => {
-  // A queued job carries its admitted deadline, except the job of an
-  // objective whose header left the queue: no deadline binds it, and only
-  // its reconciliation permit drives it.
-  if (job.deadline === null) {
-    if (
-      actuationPermit === null ||
-      job.mode !== "resume" ||
-      !categories.includes(job.category)
-    )
-      throw new Error("reconciliation job omitted its admitted authority");
-    const authority = assertWorkflowActuationPermitIdentity({
-      permit: actuationPermit,
-      category: job.category,
-      rollbackGeneration: job.rollbackGeneration,
-    });
-    if (
-      authority.authority !== "reconciliation" ||
-      authority.headerHash !== job.headerHash ||
-      authority.decisionDigest !== job.decisionDigest
-    )
-      throw new Error("reconciliation job changed its objective identity");
-    return Object.freeze({ ...job, deadline: null });
-  }
   const deadline =
     job.deadline ??
     Object.freeze({

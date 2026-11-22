@@ -1,6 +1,6 @@
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
-import { nextViewOf, pendingBodyCbor } from "./next-state.js";
+import { nextViewOf } from "./next-state.js";
 import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
@@ -125,7 +125,7 @@ export const createFraudProofAuthenticatedPublicationObserver = ({
         pendingCreation === undefined
           ? snapshot.transactions.find((entry) => entry.txHash === txHash)
               ?.bodyCbor
-          : pendingBodyCbor(pendingCreation);
+          : pendingCreation.bodyCbor;
       if (input.expectedUnit !== undefined) {
         const history = snapshot.history[0];
         if (

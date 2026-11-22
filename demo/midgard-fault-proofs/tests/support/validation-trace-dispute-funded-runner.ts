@@ -30,10 +30,7 @@ import {
 } from "../../src/validation-trace-dispute/case-history.js";
 import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceOneStepReferences } from "../../src/validation-trace-dispute/transactions.js";
-import {
-  createWorkflowActuationPermitController,
-  createWorkflowReconciliationPermitController,
-} from "../../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import { bindWorkflowRunActuation } from "../../src/workflow/actuation-permit.js";
 import { createValidationTraceDisputeCompleteCanonicalReplay } from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { authenticatedStateQueueObservationDigest } from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
@@ -175,7 +172,7 @@ export const openFundedDispute = async (
     releaseFinality,
   });
   const caseHistory = options.caseHistory?.(authentic) ?? authentic;
-  let actuationPermit = createWorkflowActuationPermitController({
+  const actuationPermit = createWorkflowActuationPermitController({
     decision,
     rollbackGeneration: "0",
   }).permit;
@@ -284,15 +281,6 @@ export const openFundedDispute = async (
     restart: () => {
       process = createTestWorkflowProcess();
       processes.push(process);
-    },
-    /** The header rolls back: every later turn runs under the
-     * reconciliation-only permit the watcher derives from the decision. */
-    rollBackHeader: () => {
-      actuationPermit = createWorkflowReconciliationPermitController({
-        decision,
-        deploymentFingerprint: fingerprint,
-        rollbackGeneration: "0",
-      }).permit;
     },
     /** What a funding-adequacy check keeps for a move our wallet pays, at
      * the emulator's fees now. */

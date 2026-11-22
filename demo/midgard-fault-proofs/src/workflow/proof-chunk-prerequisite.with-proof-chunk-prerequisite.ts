@@ -107,12 +107,6 @@ export const withProofChunkPrerequisite = <
         baseAction: observed.action,
         artifact: context.artifact,
       };
-      // A workflow under reconciliation-only authority builds nothing, but
-      // what its step needs stays out of every sweep.
-      if (context.reconciliationOnly === true) {
-        await prerequisite.need(step);
-        return observed;
-      }
       const inspection = await prerequisite.inspect(step);
       if (inspection.kind === "required") {
         return { kind: "action_required", action: inspection.action };

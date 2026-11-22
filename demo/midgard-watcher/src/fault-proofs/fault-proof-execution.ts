@@ -17,7 +17,6 @@ import type {
   WatcherCompletedFaultProofVerification,
   WatcherFaultProofApplication,
 } from "./fault-proof-application.js";
-import * as stall from "./fault-proof-continuation-stall.js";
 import {
   holdWatcherFaultProofOnReplay,
   l1RefusalOf,
@@ -25,6 +24,7 @@ import {
 } from "./fault-proof-execution-holds.js";
 import { createWatcherFaultProofObjectiveAlerts } from "./fault-proof-objective-alerts.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
+import * as pendingHold from "./fault-proof-pending-hold.js";
 import type { WatcherFaultProofDepartureStep } from "./fault-proof-progress-authority.types.js";
 import {
   holdsReadiness,
@@ -37,14 +37,12 @@ import type {
   WatcherFaultProofDeadline,
   WatcherFaultProofJob,
 } from "./fault-proof-supervisor.js";
-import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
 import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
 
 /** Chosen by the supervisor for one run. */
 export type WatcherFaultProofExecutionAdmission = Readonly<{
-  mode: "run" | "resume";
-  /** The deadline whose latest safe start the run is past, before or after
-   * maturity (a resumed job carries none). */
+  /** The deadline whose latest safe start the run is past, before maturity;
+   * none for a run on time. */
   startedLate?: WatcherFaultProofDeadline;
 }>;
 
@@ -54,7 +52,7 @@ export type WatcherFaultProofExecutionOutcome =
    * create, with every transaction the run sent settled: the objective is
    * done, but not as our conviction. */
   | Readonly<{ kind: "resolved_by_another_record"; result: unknown }>
-  | stall.WatcherFaultProofPendingOutcome
+  | pendingHold.WatcherFaultProofPendingOutcome
   | Readonly<{
       kind: "authority_revoked";
       error: WorkflowActuationRevokedError;
@@ -84,13 +82,11 @@ export type WatcherFaultProofExecution = Readonly<{
     readonly admission: WatcherFaultProofExecutionAdmission;
   }): Promise<WatcherFaultProofExecutionOutcome>;
   /**
-   * Objectives held on a refused L1 read, a stalled session, unfunded prover
-   * wallet, quarantined run or held script re-execution
-   * (`fault_proof_l1_refused:<reason>`, `fault_proof_continuation_stalled`,
-   * `prover_funding_unavailable`, `fault_proof_objective_quarantined`,
-   * `validation_trace_replay_held`), until a run or completion check
-   * meets something else, a stalled one's later run makes progress, or it
-   * is settled.
+   * Objectives held on a refused L1 read, unfunded prover wallet,
+   * quarantined run or held script re-execution
+   * (`fault_proof_l1_refused:<reason>`, `prover_funding_unavailable`,
+   * `fault_proof_objective_quarantined`, `validation_trace_replay_held`),
+   * until a run or completion check meets something else, or it is settled.
    */
   readiness(): readonly Readonly<{ reason: string; detail: string }>[];
   /**
@@ -256,10 +252,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           authority.deploymentFingerprint !==
             dependencies.deploymentFingerprint ||
           authority.headerHash !== headerHash ||
-          authority.decisionDigest !== decisionDigest ||
-          admission.mode !== job.mode ||
-          (authority.authority === "reconciliation" &&
-            admission.mode !== "resume")
+          authority.decisionDigest !== decisionDigest
         )
           throw new Error(
             "fault-proof execution admission changed its objective or authority",
@@ -282,7 +275,6 @@ export const createWatcherFaultProofExecution = (dependencies: {
             headerHash,
           }),
           runtimeConfigPath: dependencies.runtimeConfigPath,
-          onProgress: stall.releaseWatcherFaultProofStallOnProgress(holds, job),
         });
         if (typeof result === "object" && result !== null && "kind" in result) {
           if (
@@ -307,11 +299,11 @@ export const createWatcherFaultProofExecution = (dependencies: {
             typeof result.reason === "string" &&
             (result.kind === "pending" ||
               result.kind === "awaiting_counterparty" ||
-              isWatcherPreflightStalledResult(result))
+              pendingHold.isWatcherPreflightStalledResult(result))
           ) {
-            held = stall.holdWatcherFaultProofPending(holds, job, result);
+            held = pendingHold.holdWatcherFaultProofPending(holds, job, result);
             record("reconciling");
-            return stall.watcherFaultProofPendingOutcome(result);
+            return pendingHold.watcherFaultProofPendingOutcome(result);
           }
           if (
             result.kind === "stalled" &&

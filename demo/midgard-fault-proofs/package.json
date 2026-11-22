@@ -388,10 +388,6 @@
       "midgard-source": "./src/workflow/own-thread-reclaim.ts",
       "import": "./dist/workflow/own-thread-reclaim.js"
     },
-    "./workflow/pending-continuation": {
-      "midgard-source": "./src/workflow/pending-continuation.ts",
-      "import": "./dist/workflow/pending-continuation.js"
-    },
     "./workflow/proof-chunk-prerequisite": {
       "midgard-source": "./src/workflow/proof-chunk-prerequisite.ts",
       "import": "./dist/workflow/proof-chunk-prerequisite.js"
@@ -729,7 +725,6 @@
             "src/workflow/missing-signature-state.ts",
             "src/workflow/orchestrator.ts",
             "src/workflow/own-thread-reclaim.ts",
-            "src/workflow/pending-continuation.ts",
             "src/workflow/proof-chunk-prerequisite.ts",
             "src/workflow/proof-materials-sweep-run.ts",
             "src/workflow/proof-materials-view.follower-reader.ts",

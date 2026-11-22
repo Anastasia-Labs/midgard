@@ -417,18 +417,17 @@ func (s *session) runSizes(h monitorSizesHeader) {
 // runTxs lists the mempool. The transactions travel in the payload, a CBOR
 // array of their bytes, since the header is bounded far below a mempool.
 func (s *session) runTxs(h monitorTxsHeader) {
-	var slot uint64
 	var txs [][]byte
 	if !s.monitorCall(h.ID, func() error {
 		var err error
-		slot, txs, err = s.monitor.txs()
+		txs, err = s.monitor.txs()
 		return err
 	}) {
 		return
 	}
 	payload, err := headerEncMode.Marshal(txs)
 	if err == nil {
-		err = s.out.write(monitorTxsResultHeader{Type: "monitor_txs_result", ID: h.ID, Slot: slot}, payload)
+		err = s.out.write(monitorTxsResultHeader{Type: "monitor_txs_result", ID: h.ID}, payload)
 	}
 	if errors.Is(err, errFrameBounds) {
 		s.answerError(h.ID, refuse("result_too_large", "the mempool listing exceeds the frame bound"))

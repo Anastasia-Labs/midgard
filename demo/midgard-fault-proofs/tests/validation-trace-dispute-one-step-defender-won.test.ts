@@ -6,8 +6,8 @@
  * timeout validator and closes it into the case as its win, from its own
  * wallet. With the case settled for us, the runner then slashes the
  * operator, who lost the thread we closed, by its lost-defense receipt, and
- * stops under its own named state, raising no alarm, hands the session back
- * at once, and moves nothing more. */
+ * stops under its own named state, raising no alarm, and moves nothing
+ * more. */
 import * as SDK from "@al-ft/midgard-sdk/da";
 import { credentialToAddress, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -15,7 +15,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { VALIDATION_TRACE_DEFENDER_WON } from "../src/validation-trace-dispute/adapter.js";
 import { validationTraceChallengerDeadlineMs } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
-import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
 import { network } from "./support/emulator/blueprints.js";
 import {
   awaitLastSlotAtOrBefore,
@@ -33,7 +32,6 @@ import {
   revealAsDefender,
   threadOf,
 } from "./support/validation-trace-dispute-scripted-defender.js";
-import { DEPLOYMENT_FINGERPRINT } from "./workflow.make-adapter.js";
 
 let dispute: TwoThreadCase;
 /** The successor's close of its won thread. */
@@ -141,26 +139,10 @@ describe("validation-trace dispute runner: a defender wins a thread of our case"
     expect(await nodes()).toStrictEqual([]);
   }, 300_000);
 
-  it("stops under its own named state with no alarm, handing the session back at once, and moves nothing more", async () => {
+  it("stops under its own named state with no alarm and moves nothing more", async () => {
     const { scene, runner, prepared } = dispute;
     const before = prepared.length;
-    let runs = 0;
-    const result = await continuePendingWorkflow({
-      invocation: {
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        category: "validationTraceDispute",
-        headerHash: scene.failing.evidence.headerHash,
-      },
-      run: runner.process.run({
-        category: "validationTraceDispute",
-        headerHash: scene.failing.evidence.headerHash,
-      }),
-      execute: async () => {
-        runs += 1;
-        return validationTraceRunState(await runner.runOnce(scene.failing));
-      },
-    });
-    expect(runs).toBe(1);
+    const result = validationTraceRunState(await runner.runOnce(scene.failing));
     expect(result).toMatchObject({
       kind: "pending",
       namedState: { name: VALIDATION_TRACE_DEFENDER_WON, alarm: false },

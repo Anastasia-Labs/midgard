@@ -205,10 +205,9 @@ const scriptDecodeReferences = (): Readonly<Record<string, UTxO>> => {
 };
 
 /**
- * Runs a recovery fixture as a restarted watcher does under reconciliation
- * authority: the family's registered runner, under the fixture's
- * reconciliation-only permit and over a fresh process's in-flight set,
- * binds the family's config from the loaded infrastructure and builds its
+ * Runs a recovery fixture through the family's registered runner, under the
+ * fixture's reconciliation permit and over a fresh process's in-flight set:
+ * it binds the family's config from the loaded infrastructure and builds its
  * workflow with the family's own constructor. Only the manifest binding,
  * the reference-script UTxOs and the L1 observation port are stood in for.
  */

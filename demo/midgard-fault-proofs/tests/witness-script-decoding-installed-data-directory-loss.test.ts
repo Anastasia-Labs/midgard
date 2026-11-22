@@ -50,8 +50,6 @@ const SCENARIO = {
   ...INSTALLED_WITNESS,
   nativeTx: () => witnessSubject([ITEM]).nativeTx,
 };
-/** Confirmation polls one process may take before it counts as spinning. */
-const POLL_CAP = 200;
 /** Turns the run may take: a recovered run convicts well inside this. */
 const TURN_CAP = 12;
 
@@ -67,7 +65,6 @@ const runWithLostDataDirectory = async (kind: "stage" | "step") => {
   let stops = 0;
   let stoppedAfter: readonly string[] = [];
   const run = await runInstalled(SCENARIO, hooks, {
-    maxPolls: POLL_CAP,
     maxTurns: TURN_CAP,
     beforeTurns: ({ harness, clock }) => {
       const watch = watchLedger(harness.emulator);
@@ -76,27 +73,26 @@ const runWithLostDataDirectory = async (kind: "stage" | "step") => {
         materialsAddress: harness.proverSigner.proofMaterialsAddress,
         item: ITEM,
       });
-      clock.state.onPoll = async () => {
+      clock.state.onObservation = async () => {
         if (stoppedAfter.length !== 0) return;
         const kinds = watch
           .ours()
           .map((transaction) => kindOf(transaction, roles.staging, roles.run));
         if (!kinds.includes(kind)) return;
         stoppedAfter = kinds;
-        clock.state.crashAfterPolls = clock.state.polls;
+        clock.state.stopAtNextObservation = true;
       };
       return () => {
-        clock.state.onPoll = undefined;
+        clock.state.onObservation = undefined;
         watch.restore();
       };
     },
-    onStopped: async (error, { application, clock, harness }) => {
+    onStopped: async (error, { application, harness }) => {
       expect(String(error)).toContain("installed application process stopped");
       stops += 1;
       expect(stops, "only the stop the row engineered").toBe(1);
       harness.emulator.awaitBlock();
       application.restart();
-      clock.state.crashAfterPolls = clock.state.polls + POLL_CAP;
     },
   });
   expect(stoppedAfter.filter((value) => value === kind)).toHaveLength(1);

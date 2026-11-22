@@ -89,13 +89,8 @@ export type FakeSidecarHandler = Readonly<{
   sizes?: () =>
     | Readonly<{ capacity: number; size: number; txCount: number }>
     | Promise<Readonly<{ capacity: number; size: number; txCount: number }>>;
-  /** The mempool, in order, and the slot its snapshot was acquired at. */
-  txs?: () => FakeMempool | Promise<FakeMempool>;
-}>;
-
-export type FakeMempool = Readonly<{
-  acquiredSlot: number | bigint;
-  txs: readonly Uint8Array[];
+  /** The mempool, in order. */
+  txs?: () => readonly Uint8Array[] | Promise<readonly Uint8Array[]>;
 }>;
 
 export type FakeSessionControls = Readonly<{

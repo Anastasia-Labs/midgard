@@ -1,8 +1,6 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import type { UTxO } from "@lucid-evolution/lucid";
 
-import { workflowActuationPermitIsReconciliationOnly } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
-import type { WorkflowActuationPermit } from "./actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import {
   assertManifestBoundWorkflowIdentity,
   FAMILY_APPLICATION_RECORD,
@@ -17,19 +15,6 @@ export type FamilyApplicationInvocation = Readonly<{
   deploymentFingerprint: string;
   category: FraudProofCatalogueCategoryName;
   headerHash: string;
-  /**
-   * Proof that this invocation only reads back an already-submitted chain.
-   * Omitted by every invocation that may build, and a family's optional
-   * requirements are then in force. Supplying it exempts them, because a
-   * reconciliation-only resume reconciles through the recovered adapter and
-   * never reaches the evidence pipeline — exactly as it does today.
-   *
-   * It is a permit rather than a flag because the exemption is the unsafe
-   * state: the permit is module-private authority, so a caller that has not
-   * been restricted to reconciliation cannot claim it, and a structural
-   * lookalike is refused outright.
-   */
-  reconciliationAuthority?: WorkflowActuationPermit;
 }>;
 
 /** How the host resolves one roster entry to its published reference UTxO. */
@@ -149,22 +134,12 @@ export const applyFamilyApplicationRecord = async <
       `family application refuses category ${invocation.category}; expected ${record.category}`,
     );
   }
-  if (invocation.reconciliationAuthority === undefined) {
-    for (const requirement of record.requires) {
-      if (infrastructure[requirement] === undefined) {
-        throw new Error(
-          `${record.category} application requires ${requirement}, which the host did not supply`,
-        );
-      }
+  for (const requirement of record.requires) {
+    if (infrastructure[requirement] === undefined) {
+      throw new Error(
+        `${record.category} application requires ${requirement}, which the host did not supply`,
+      );
     }
-  } else if (
-    !workflowActuationPermitIsReconciliationOnly(
-      invocation.reconciliationAuthority,
-    )
-  ) {
-    throw new Error(
-      `${record.category} application claimed the reconciliation exemption under a permit that still admits actuation`,
-    );
   }
   const { references, referenceScriptOutRefs } =
     await resolveFamilyApplicationReferences({

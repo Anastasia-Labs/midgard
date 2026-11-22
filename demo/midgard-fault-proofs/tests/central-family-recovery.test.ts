@@ -45,7 +45,7 @@ const specs = [
   SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
 ] as const;
 for (const spec of specs) {
-  it(`${spec.category}: rollback revokes readonly recovery before observation`, async () => {
+  it(`${spec.category}: rollback revokes recovery before observation`, async () => {
     const f = await fixture(spec);
     f.advance();
     // The invocation is ready before the rollback lands, so the runner is

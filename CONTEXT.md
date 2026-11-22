@@ -183,8 +183,7 @@ to deployment-manifest contract name, the optional parts the family requires
 (replay context, validation challenge, historical native-script authority),
 the callbacks that bind its config, construct its workflow and execute it,
 and whether the constructed workflow must carry the invocation's decision
-digest. Applying a record refuses when a required part is missing unless the
-caller holds a reconciliation-only permit. Linear rows are derived from the
+digest. Applying a record refuses when a required part is missing. Linear rows are derived from the
 family definition and the linear family spec; a family that is not derivable
 is hand-written with explicit type arguments.
 _Avoid_: family entry, registry record (unqualified)

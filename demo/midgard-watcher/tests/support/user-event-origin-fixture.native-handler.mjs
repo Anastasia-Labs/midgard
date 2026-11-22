@@ -233,7 +233,7 @@ export default (options) => {
               : undefined,
     // The node's mempool: empty, since a submission lands in a block
     // before it resolves.
-    txs: () => ({ acquiredSlot: 0, txs: [] }),
+    txs: () => [],
     openStream: async ({ points, window }, stream) => {
       const exact = window === 1;
       let closed = false;

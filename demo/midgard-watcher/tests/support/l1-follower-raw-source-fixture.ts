@@ -84,7 +84,7 @@ export const mempoolDouble = (store: FactStore) => {
     node: {
       mempoolTxs: async () => {
         state.calls.push("mempoolTxs");
-        return { acquiredSlot: 0n, txs: [...state.txs] };
+        return [...state.txs];
       },
     },
     nodeTip: async () => {

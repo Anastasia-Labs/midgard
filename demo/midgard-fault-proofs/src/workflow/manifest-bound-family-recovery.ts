@@ -76,9 +76,8 @@ export const createCanonicalFamilyArtifactPort = <Material>(
 
 /**
  * A constructed family workflow: the installation it was bound from, with its
- * recovery surface assembled over it once. A fresh run and a
- * reconciliation-only resume read the same adapter, terminal verifier and
- * release finality authority.
+ * recovery surface assembled over it once: the adapter, terminal verifier
+ * and release finality authority every run reads.
  */
 export type ManifestBoundFamilyWorkflowWithRecovery<
   Installation extends object,
@@ -104,7 +103,7 @@ export const withManifestBoundFamilyRecovery = <
 
 /**
  * Fresh public-DA replay through the family adapter. Nothing is stored, so a
- * workflow resumed under reconciliation-only authority replays here too.
+ * resumed workflow replays here too.
  */
 export const executeManifestBoundFamilyRecovery = async <
   Category extends FraudProofCatalogueCategoryName,

@@ -9,7 +9,6 @@ export {
   bindWorkflowRunActuation,
   workflowActuationAuthorizingDecisionDigest,
   workflowActuationDecisionDigest,
-  workflowActuationPermitIsReconciliationOnly,
   workflowRunIsReconciliationOnly,
 } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 export {

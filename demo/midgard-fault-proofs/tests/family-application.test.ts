@@ -5,7 +5,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { WORKFLOW_ACTUATION_PERMIT } from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import {
   applyFamilyApplicationRecord,
   type FamilyApplicationInvocation,
@@ -199,24 +198,6 @@ describe("shared family application loop", () => {
       );
     },
   );
-
-  it("refuses a reconciliation exemption that cannot prove itself", async () => {
-    const f = fixture({ requires: ["replayContext"] });
-    await expect(
-      applyFamilyApplicationRecord({
-        record: f.record,
-        infrastructure: f.infrastructure,
-        resolveReferenceScript: f.resolveReferenceScript,
-        invocation: {
-          ...f.invocation,
-          reconciliationAuthority: {
-            permitVersion: WORKFLOW_ACTUATION_PERMIT,
-          },
-        },
-      }),
-    ).rejects.toThrow("production workflow actuation permit was not admitted");
-    expect(f.resolveReferenceScript).not.toHaveBeenCalled();
-  });
 
   it("resolves a roster for readiness without binding or requiring anything", async () => {
     const f = fixture({ requires: ["replayContext"] });

@@ -134,13 +134,7 @@ describe("supervisor execution adapter quarantining one objective", () => {
       .mockImplementation(() => true);
     try {
       // Not a transport backoff: the objective is quarantined under it.
-      expect(
-        await test.execution.execute({
-          ...test.input,
-          job: { ...test.input.job, mode: "run" },
-          admission: test.runAdmission,
-        }),
-      ).toMatchObject({
+      expect(await test.execution.execute(test.input)).toMatchObject({
         reason: `${WATCHER_FAULT_PROOF_QUARANTINED}: provider says ECONNRESET`,
       });
     } finally {

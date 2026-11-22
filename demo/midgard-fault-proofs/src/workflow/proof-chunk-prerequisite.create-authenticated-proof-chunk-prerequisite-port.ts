@@ -217,18 +217,6 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
         errorSha256: sha256(message),
       });
     },
-    need: async ({ headerHash, workflowId, baseAction, artifact }) => {
-      const required = await requirement({
-        headerHash,
-        action: baseAction,
-        artifact,
-      });
-      if (required !== null && required.chunkDatums.length > 0)
-        materials().need(
-          { workflowId, objective: { category, headerHash } },
-          required.chunkDatums,
-        );
-    },
     inspect: async ({ headerHash, workflowId, baseAction, artifact }) => {
       const required = await requirement({
         headerHash,

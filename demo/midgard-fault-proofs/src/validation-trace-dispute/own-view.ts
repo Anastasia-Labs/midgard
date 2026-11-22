@@ -49,9 +49,6 @@ export interface ValidationTraceOwnView {
   /** The fraud-proof record our close of our case minted, while it is live
    * as that close left it. */
   readonly record: () => Promise<ValidationTraceOutputClaim | undefined>;
-  /** A transaction of ours whose outputs the provider may not show yet, by
-   * its hash. */
-  readonly unseen: () => Promise<string | undefined>;
   /** The receipt of each thread we closed, oldest close first, that is live
    * as our close left it and that no slash of ours has spent. */
   readonly receipts: () => Promise<readonly ValidationTraceOwnReceipt[]>;

@@ -1,4 +1,3 @@
-import { WORKFLOW_CONTINUATION_QUIET_BOUND_MS } from "@al-ft/midgard-fault-proofs/workflow/pending-continuation";
 import { isSafe } from "@al-ft/midgard-l1-follower/heads";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
@@ -28,6 +27,10 @@ import {
 } from "./correction.watcher-start-deadline.js";
 import type { loadJourneyContext } from "./live-context.js";
 import { onQueueOrMerged } from "./state-queue-root-anchor.js";
+
+/** How long a pausing hold may last with nothing of ours landing before the
+ * correction wait fails. */
+export const JOURNEY_PAUSE_BOUND_MS = 30 * 60_000;
 
 type JourneyContext = Awaited<ReturnType<typeof loadJourneyContext>>;
 
@@ -207,12 +210,9 @@ export const verifyJourneyCorrection = async ({
         if (reasons === "") paused = undefined;
         else if (landedNew || paused?.reasons !== reasons)
           paused = { reasons, since: Date.now() };
-        else if (
-          Date.now() - paused.since >
-          WORKFLOW_CONTINUATION_QUIET_BOUND_MS
-        )
+        else if (Date.now() - paused.since > JOURNEY_PAUSE_BOUND_MS)
           throw new Error(
-            `The watcher held ${category}/${headerHash} under ${reasons} for over ${WORKFLOW_CONTINUATION_QUIET_BOUND_MS.toString()} ms with nothing of ours landing`,
+            `The watcher held ${category}/${headerHash} under ${reasons} for over ${JOURNEY_PAUSE_BOUND_MS.toString()} ms with nothing of ours landing`,
           );
       }
       const completion = await chain.correction();

@@ -52,13 +52,6 @@ export type MempoolSizes = Readonly<{
   txCount: bigint;
 }>;
 
-/** One mempool snapshot: the slot the node acquired it at, and every
- * transaction in it, in mempool order, as the node holds its bytes. */
-export type MempoolTransactions = Readonly<{
-  acquiredSlot: bigint;
-  txs: Uint8Array[];
-}>;
-
 /**
  * Per-request options. `deadline: "none"` takes the request out of the
  * request deadline on both sides: neither the client nor the sidecar abandons

@@ -69,10 +69,7 @@ export const assertWorkflowActuationPermitIdentity = ({
     launchScope: state.decision.launchScope,
     deploymentFingerprint: state.deploymentFingerprint,
     headerHash: state.headerHash,
-    authority:
-      state.reconciliationReason === undefined
-        ? "submission"
-        : "reconciliation",
+    authority: state.reconciliation ? "reconciliation" : "submission",
   });
 };
 
@@ -174,31 +171,12 @@ export const workflowActuationAuthorizingDecisionDigest = (
   return runPermits.get(run)?.decisionDigest;
 };
 
-export const workflowActuationPermitIsReconciliationOnly = (
-  permit: WorkflowActuationPermit,
-): boolean => {
-  const state = admittedPermits.get(permit);
-  if (state === undefined)
-    throw new Error("production workflow actuation permit was not admitted");
-  assertPermit({
-    permit,
-    decisionDigest: state.decisionDigest,
-    deploymentFingerprint: state.deploymentFingerprint,
-    category: state.category,
-    headerHash: state.headerHash,
-    checkpoint: "runner_start",
-  });
-  return state.reconciliationReason !== undefined;
-};
-
-/** Reconciliation-only authority follows transactions already sent and
- * never becomes permission to build or broadcast. */
+/** Whether the run is bound to a permit over a fault that is no longer
+ * live (`createWorkflowReconciliationPermitController`). */
 export const workflowRunIsReconciliationOnly = (run: WorkflowRun): boolean => {
   const binding = runPermits.get(run);
   if (binding === undefined) return false;
-  return (
-    admittedPermits.get(binding.permit)!.reconciliationReason !== undefined
-  );
+  return admittedPermits.get(binding.permit)!.reconciliation;
 };
 
 /**

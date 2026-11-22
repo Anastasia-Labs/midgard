@@ -1,16 +1,6 @@
-import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
-
 import { WATCHER_PACKAGE_NAME } from "../runtime/package-name.js";
 import { holdWatcherFaultProofOnFunding } from "./fault-proof-funding-hold.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
-
-/**
- * An objective whose runner session made no progress within its
- * continuation bound. It resumes on the next observation; the hold is the
- * operator's alarm until a later run makes progress.
- */
-export const WATCHER_FAULT_PROOF_CONTINUATION_STALLED =
-  "fault_proof_continuation_stalled";
 
 /**
  * An objective awaiting its counterparty past the response deadline its run
@@ -27,18 +17,6 @@ export const WATCHER_FAULT_PROOF_COUNTERPARTY_DEADLINE_PASSED =
  * lag, arrive within this.
  */
 export const WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS = 10 * 60_000;
-
-/** Whether a result or outcome is a pending run handed back by its bound. */
-export const isWatcherFaultProofContinuationStall = (
-  result: unknown,
-): result is Readonly<{ kind: "pending"; reason: string }> =>
-  typeof result === "object" &&
-  result !== null &&
-  "kind" in result &&
-  result.kind === "pending" &&
-  "reason" in result &&
-  typeof result.reason === "string" &&
-  result.reason.startsWith(FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED);
 
 /** The alarm detail of an objective awaiting its counterparty, if due. */
 const counterpartyOverdue = (
@@ -72,6 +50,28 @@ const namedStateOf = (
     ? { name: state.name, alarm: state.alarm }
     : undefined;
 };
+
+/**
+ * A run the orchestrator stalled at preflight: the stage it acts on comes from
+ * release-final observation while preflight builds against the live tip, so
+ * the stage can lag the tip. It is held as pending and runs again on a later
+ * observation.
+ */
+export const isWatcherPreflightStalledResult = (
+  result: unknown,
+): result is Readonly<{
+  kind: "stalled";
+  phase: "preflight";
+  reason: string;
+}> =>
+  typeof result === "object" &&
+  result !== null &&
+  "kind" in result &&
+  result.kind === "stalled" &&
+  "phase" in result &&
+  result.phase === "preflight" &&
+  "reason" in result &&
+  typeof result.reason === "string";
 
 /** A run handed back pending, to resume on a later observation. */
 export type WatcherFaultProofPendingOutcome = Readonly<{
@@ -124,13 +124,12 @@ const withAlarms = (
 
 /**
  * Holds a pending objective under its name: one paused because the prover
- * wallet cannot fund it, one in a state its family named, one whose session stalled, or
- * one still awaiting its counterparty past the response deadline (as of
- * `nowMs`) and its slack. The last two, and a named state its family marks
- * as an alarm, are also logged at error level. A funding, named-state or
- * stall hold also names every action the run skipped as unbuilt, each an
- * alarm, and is then logged at error level even when the run went on to land
- * another move. An objective awaiting its counterparty before then is healthy
+ * wallet cannot fund it, one in a state its family named, or one still
+ * awaiting its counterparty past the response deadline (as of `nowMs`) and
+ * its slack. The last, and a named state its family marks as an alarm, are
+ * also logged at error level. A funding or named-state hold also names every
+ * action the run skipped as unbuilt, each an alarm, and is then logged at
+ * error level even when the run went on to land another move. An objective awaiting its counterparty before then is healthy
  * and holds nothing.
  */
 export const holdWatcherFaultProofPending = (
@@ -164,40 +163,12 @@ export const holdWatcherFaultProofPending = (
     return { kind: "pending", reason: String(result.reason) };
   }
   const overdue = counterpartyOverdue(result, nowMs);
-  if (overdue === undefined && !isWatcherFaultProofContinuationStall(result))
-    return undefined;
-  const hold =
-    overdue === undefined
-      ? withAlarms(
-          {
-            reason: WATCHER_FAULT_PROOF_CONTINUATION_STALLED,
-            detail: `${objective}: ${String(result.reason)}`,
-          },
-          result,
-        )
-      : {
-          reason: WATCHER_FAULT_PROOF_COUNTERPARTY_DEADLINE_PASSED,
-          detail: `${objective}: ${overdue}`,
-        };
+  if (overdue === undefined) return undefined;
+  const hold = {
+    reason: WATCHER_FAULT_PROOF_COUNTERPARTY_DEADLINE_PASSED,
+    detail: `${objective}: ${overdue}`,
+  };
   holds.set(objective, hold);
   logError(hold);
   return { kind: "pending", reason: String(result.reason) };
 };
-
-/**
- * The progress callback of an objective's run: its first progress
- * clears a stall hold left by an earlier run, without waiting for this run to
- * end. Any other hold is left to the run's outcome.
- */
-export const releaseWatcherFaultProofStallOnProgress =
-  (
-    holds: Map<string, Readonly<{ reason: string; detail: string }>>,
-    job: WatcherProofObjective,
-  ) =>
-  (): void => {
-    const objective = `${job.category}/${job.headerHash}`;
-    if (
-      holds.get(objective)?.reason === WATCHER_FAULT_PROOF_CONTINUATION_STALLED
-    )
-      holds.delete(objective);
-  };

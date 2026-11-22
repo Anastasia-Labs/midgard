@@ -12,10 +12,8 @@
  * script, its run token minted by the record's own policy, is walked in
  * place of a Bind of its own. A stage transaction a stopped process signed
  * but never sent is built again after the restart, one copy landing, and one
- * it sent is found on chain and never built again; a read that lags the
- * chunk, or a rollback that includes the stage transaction again, is waited
- * out on the same out-ref; a chunk that is gone for good is served by an
- * exact copy on chain.
+ * it sent is found on chain and never built again; a chunk that is gone for
+ * good is served by an exact copy on chain.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -50,7 +48,6 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
 
 import {
   emulatorWallClock,
-  lagReadsOf,
   type LedgerVerdict,
   type LedgerWatch,
   plantCopies,
@@ -86,16 +83,13 @@ const SCENARIO = {
   ...INSTALLED_WITNESS,
   nativeTx: () => witnessSubject([ITEM]).nativeTx,
 };
-/** Each run convicts well inside these, so one that spins fails fast. */
-const POLL_CAP = 200;
+/** Each run convicts well inside this, so one that spins fails fast. */
 const TURN_CAP = 20;
 /**
  * Blocks every run takes before the record begins, planted outputs or
  * none, so each run's transactions are built at the same chain time.
  */
 const SETUP_BLOCKS = 24;
-/** How long reads lag the chain in the lagging row: three blocks. */
-const LAG_MS = 60_000;
 
 /** Whether the transaction that creates `outRef` is in our node's mempool. */
 const inMempool = (harness: Harness, outRef: string): boolean =>
@@ -143,7 +137,6 @@ const runWith = async (
   let harness: Harness | undefined;
   const { decide, during, ...runOptions } = options;
   const run = await runInstalled(SCENARIO, hooks, {
-    maxPolls: POLL_CAP,
     maxTurns: TURN_CAP,
     ...runOptions,
     beforeTurns: async (context) => {
@@ -282,7 +275,7 @@ describe("script-decode staging found by content, in the installed watcher appli
 
   it("stages the chunk again after a restart loses the stage transaction its stopped process signed but never sent, landing one copy", async () => {
     let withheld: string | undefined;
-    const stopping = stopsOnceAndRestarts(POLL_CAP);
+    const stopping = stopsOnceAndRestarts();
     const { run, watch, harness, cost } = await runWith(() => [], {
       decide: (transaction) => {
         const { staging } = rolesOf(stopping.harness());
@@ -292,9 +285,9 @@ describe("script-decode staging found by content, in the installed watcher appli
         )
           return "accept";
         // Signed, and lost before the ledger saw it; the process stops at
-        // its next poll, and the next one holds nothing of it.
+        // its next observation, and the next one holds nothing of it.
         withheld = transaction.txHash;
-        stopping.stopAtNextPoll();
+        stopping.stopAtNextObservation();
         return "withhold";
       },
       during: stopping.during,
@@ -313,7 +306,7 @@ describe("script-decode staging found by content, in the installed watcher appli
 
   it("finds on chain the chunk its stopped process's sent stage transaction staged, staging it once", async () => {
     let sent: string | undefined;
-    const stopping = stopsOnceAndRestarts(POLL_CAP);
+    const stopping = stopsOnceAndRestarts();
     const { run, watch, harness, cost } = await runWith(() => [], {
       decide: (transaction) => {
         const { staging } = rolesOf(stopping.harness());
@@ -321,9 +314,9 @@ describe("script-decode staging found by content, in the installed watcher appli
           sent === undefined &&
           stagedChunkOf(transaction, staging) !== undefined
         ) {
-          // The ledger takes it; the process stops at its next poll.
+          // The ledger takes it; the process stops at its next observation.
           sent = transaction.txHash;
-          stopping.stopAtNextPoll();
+          stopping.stopAtNextObservation();
         }
         return "accept";
       },
@@ -339,90 +332,11 @@ describe("script-decode staging found by content, in the installed watcher appli
     expectBaselineCost(cost, baseline);
   }, 900_000);
 
-  it("waits out reads that do not yet show its confirmed chunk, then continues from the same out-ref", async () => {
-    let hidden: string | undefined;
-    let shownFrom = 0;
-    const context: { harness?: Harness; reads?: () => number } = {};
-    const { run, watch, harness, cost } = await runWith(() => [], {
-      decide: (transaction) => {
-        const chunk = stagedChunkOf(
-          transaction,
-          rolesOf(context.harness!).staging,
-        );
-        if (chunk !== undefined && hidden === undefined) {
-          // Once confirmed, reads show the chunk only a minute after it was
-          // sent: well inside the provider grace. In the mempool, our node
-          // shows it.
-          hidden = chunk;
-          shownFrom = context.harness!.emulator.now() + LAG_MS;
-        }
-        return "accept";
-      },
-      during: ({ harness }) => {
-        context.harness = harness;
-        const lag = lagReadsOf(harness.emulator, () =>
-          hidden !== undefined &&
-          harness.emulator.now() < shownFrom &&
-          !inMempool(harness, hidden)
-            ? hidden
-            : undefined,
-        );
-        context.reads = lag.hiddenReads;
-        return lag.restore;
-      },
-    });
-    expect(context.reads!()).toBeGreaterThan(0);
-    expect(run.convicted).toBe(true);
-    const stages = stagesOf(watch, harness);
-    expect(stages.map(({ chunk }) => chunk)).toEqual([hidden]);
-    for (const reader of readersOf(watch, harness))
-      expect(reader.referenceInputs).toContain(hidden);
-    expectBaselineCost(cost, baseline);
-  }, 900_000);
-
-  it("continues from the same out-ref when its chunk drops out of reads after the Bind and is included again", async () => {
-    let hidden: string | undefined;
-    let shownFrom = 0;
-    const context: { reads?: () => number } = {};
-    const { run, watch, harness, cost } = await runWith(() => [], {
-      during: ({ harness, clock }, watch) => {
-        clock.state.onPoll = async () => {
-          if (hidden !== undefined) return;
-          const [first] = stagesOf(watch, harness);
-          const bind = readersOf(watch, harness)[0];
-          if (first === undefined || bind === undefined) return;
-          const status = await harness.emulator.getTransactionStatus(
-            bind.txHash,
-          );
-          if (status.status !== "confirmed") return;
-          // Rolled back once the run is bound, and the same stage
-          // transaction included again a minute later: well inside the
-          // provider grace.
-          hidden = first.chunk;
-          shownFrom = harness.emulator.now() + LAG_MS;
-        };
-        const lag = lagReadsOf(harness.emulator, () =>
-          harness.emulator.now() < shownFrom ? hidden : undefined,
-        );
-        context.reads = lag.hiddenReads;
-        return lag.restore;
-      },
-    });
-    expect(hidden).toBeDefined();
-    expect(context.reads!()).toBeGreaterThan(0);
-    expect(run.convicted).toBe(true);
-    const stages = stagesOf(watch, harness);
-    expect(stages.map(({ chunk }) => chunk)).toEqual([hidden]);
-    for (const reader of readersOf(watch, harness))
-      expect(reader.referenceInputs).toContain(hidden);
-    expectBaselineCost(cost, baseline);
-  }, 900_000);
-
   it("reads an exact copy of its chunk once its own is gone for good, staging none again", async () => {
     let removed: string | undefined;
     const { run, watch, harness } = await runWith(() => [], {
       during: ({ harness, clock }, watch) => {
-        clock.state.onPoll = async () => {
+        clock.state.onObservation = async () => {
           if (removed !== undefined) return;
           const [first] = stagesOf(watch, harness);
           const bind = readersOf(watch, harness)[0];

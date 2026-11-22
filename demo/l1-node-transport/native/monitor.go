@@ -44,25 +44,23 @@ func (c *monitorClient) await() (protocol.Message, error) {
 	}
 }
 
-// acquire takes a fresh mempool snapshot and returns the slot the node
-// acquired it at.
-func (c *monitorClient) acquire() (uint64, error) {
+// acquire takes a fresh mempool snapshot.
+func (c *monitorClient) acquire() error {
 	if err := c.raw.send(localtxmonitor.NewMsgAcquire()); err != nil {
-		return 0, err
+		return err
 	}
 	msg, err := c.await()
 	if err != nil {
-		return 0, err
+		return err
 	}
-	acquired, ok := msg.(*localtxmonitor.MsgAcquired)
-	if !ok {
-		return 0, errors.New("unexpected reply to MsgAcquire")
+	if _, ok := msg.(*localtxmonitor.MsgAcquired); !ok {
+		return errors.New("unexpected reply to MsgAcquire")
 	}
-	return acquired.SlotNo, nil
+	return nil
 }
 
 func (c *monitorClient) snapshot(ask protocol.Message, read func(protocol.Message) error) error {
-	if _, err := c.acquire(); err != nil {
+	if err := c.acquire(); err != nil {
 		return err
 	}
 	if err := c.raw.send(ask); err != nil {
@@ -79,34 +77,33 @@ func (c *monitorClient) snapshot(ask protocol.Message, read func(protocol.Messag
 }
 
 // txs lists every transaction of one mempool snapshot, in mempool order:
-// MsgNextTx until the reply that carries none. It returns the slot the
-// snapshot was acquired at and each transaction's bytes as the node holds
-// them (the content of the reply's [era, tag24(bytes)]). The listing is
-// bounded by the node's mempool capacity.
-func (c *monitorClient) txs() (uint64, [][]byte, error) {
-	slot, err := c.acquire()
-	if err != nil {
-		return 0, nil, err
+// MsgNextTx until the reply that carries none. It returns each
+// transaction's bytes as the node holds them (the content of the reply's
+// [era, tag24(bytes)]). The listing is bounded by the node's mempool
+// capacity.
+func (c *monitorClient) txs() ([][]byte, error) {
+	if err := c.acquire(); err != nil {
+		return nil, err
 	}
 	listed := [][]byte{}
 	for {
 		if err := c.raw.send(localtxmonitor.NewMsgNextTx()); err != nil {
-			return 0, nil, err
+			return nil, err
 		}
 		msg, err := c.await()
 		if err != nil {
-			return 0, nil, err
+			return nil, err
 		}
 		reply, ok := msg.(*localtxmonitor.MsgReplyNextTx)
 		if !ok {
-			return 0, nil, errors.New("unexpected reply to MsgNextTx")
+			return nil, errors.New("unexpected reply to MsgNextTx")
 		}
 		if reply.Transaction.Tx == nil {
 			break
 		}
 		listed = append(listed, append([]byte(nil), reply.Transaction.Tx...))
 	}
-	return slot, listed, c.raw.send(localtxmonitor.NewMsgRelease())
+	return listed, c.raw.send(localtxmonitor.NewMsgRelease())
 }
 
 // hasTx asks under the Conway era index: the node matches ids by hash, so

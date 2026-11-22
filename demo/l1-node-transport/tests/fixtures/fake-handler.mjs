@@ -59,10 +59,7 @@ export default (options, controls) => ({
   submit: (tx) =>
     tx[0] === 1 ? { accepted: true } : { rejection: Uint8Array.from([0x80]) },
   hasTx: (txId) => txId === hash("ab"),
-  txs: () => ({
-    acquiredSlot: tip.point.slot,
-    txs: [Uint8Array.from([0x84, 1]), Uint8Array.from([0x84, 2])],
-  }),
+  txs: () => [Uint8Array.from([0x84, 1]), Uint8Array.from([0x84, 2])],
   sizes: () => {
     if (!options.malformedAnswer)
       return { capacity: 100, size: 10, txCount: 1 };

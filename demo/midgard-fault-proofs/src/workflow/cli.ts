@@ -58,7 +58,6 @@ export const runFraudProofWorkflowCli = async ({
   decisionDigest,
   actuationPermit,
   objectiveWallet,
-  onProgress,
   applicationRegistry,
 }: {
   readonly category: FraudProofCatalogueCategoryName;
@@ -70,7 +69,6 @@ export const runFraudProofWorkflowCli = async ({
   readonly actuationPermit?: WorkflowActuationPermit;
   /** The objective's wallet wiring, shared with its restricted wallet. */
   readonly objectiveWallet?: WorkflowObjectiveWallet;
-  readonly onProgress?: () => void;
   /** Application-installed only after signed deployment identity admission. */
   readonly applicationRegistry?: WorkflowApplicationRegistry;
 }): Promise<unknown> => {
@@ -108,7 +106,6 @@ export const runFraudProofWorkflowCli = async ({
       actuationPermit,
       objectiveWallet,
       runtimeConfigPath,
-      ...(onProgress === undefined ? {} : { onProgress }),
     },
   );
 };

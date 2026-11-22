@@ -216,7 +216,6 @@ export type WatcherOperationsStatus = Readonly<{
   /**
    * The watcher's own reasons, then each named L1 reason of `l1Readiness`
    * (follower, decision driver, proof execution), e.g. `l1_follower_catching_up`,
-   * `fault_proof_continuation_stalled` (cleared by the objective's progress)
    * or `fault_proof_objective_quarantined` (one objective held and re-checked).
    */
   readinessReasons: readonly (WatcherOperationsReadinessReason | string)[];

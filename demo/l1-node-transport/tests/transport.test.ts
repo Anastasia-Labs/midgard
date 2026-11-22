@@ -476,7 +476,6 @@ describe("local state query, submit and monitor", () => {
 
   it("lists the mempool byte-exact in submission order, and an empty one as no transactions", async () => {
     const node = await mockNode();
-    const [tip] = await node.extend(1);
     const sample = await node.command({ op: "sampleTx" });
     const first = Uint8Array.from(Buffer.from(sample.tx as string, "hex"));
     // The same transaction flagged phase-2 invalid ([body, witnesses, false,
@@ -485,15 +484,12 @@ describe("local state query, submit and monitor", () => {
     const second = Uint8Array.from(first);
     second[second.length - 2] = 0xf4;
     const transport = transportFor(node.socketPath);
-    expect(await transport.mempoolTxs()).toEqual({
-      acquiredSlot: BigInt(tip!.slot),
-      txs: [],
-    });
+    expect(await transport.mempoolTxs()).toEqual([]);
     expect(await transport.submit(first, 6)).toEqual({ accepted: true });
     expect(await transport.submit(second, 6)).toEqual({ accepted: true });
     const listed = await transport.mempoolTxs();
-    expect(listed.txs.map(hex)).toEqual([hex(first), hex(second)]);
+    expect(listed.map(hex)).toEqual([hex(first), hex(second)]);
     await node.command({ op: "clearMempool" });
-    expect((await transport.mempoolTxs()).txs).toEqual([]);
+    expect(await transport.mempoolTxs()).toEqual([]);
   });
 });

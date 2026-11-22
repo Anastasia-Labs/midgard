@@ -54,14 +54,12 @@ import { undecodablePlutusShape } from "./witness-script-decoding-lifecycle.scan
 
 describe("script-decode record through the installed watcher application", () => {
   it("convicts an accepted undecodable Plutus witness from detection, recording it in the workflow", async () => {
-    // The record takes 9 polls; a run that keeps acting never stops polling.
     const run = await runInstalled(
       { ...WITNESS, nativeTx: () => undecodablePlutusShape().nativeTx },
       hooks,
-      { maxPolls: 100 },
     );
     expect(run.convicted).toBe(true);
-    // About 5 s: a run that spins without polling fails on this timeout.
+    // A run that spins fails on this timeout.
   }, 180_000);
 
   it("convicts the maximum undecodable Plutus witness (kind 0), every record action funded by the watcher", async () => {

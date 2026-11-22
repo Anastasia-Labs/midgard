@@ -87,7 +87,6 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     });
   const {
     claimsOf,
-    registerNeeds,
     observePublication,
     observeCertificate,
     resolvePublications,
@@ -295,11 +294,6 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
         certificate: observed.utxo,
         requirement: required,
       });
-    },
-    need: async ({ holder, baseAction, artifact }) => {
-      const required = await requirement({ action: baseAction, artifact });
-      if (required !== null && required.planned.plan.tier !== "Inline")
-        registerNeeds(holder, required);
     },
     inspect: async (input) => await inspect(input),
     capture: async ({ headerHash, holder, action, artifact }) => {

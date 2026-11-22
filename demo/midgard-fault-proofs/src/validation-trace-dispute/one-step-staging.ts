@@ -430,9 +430,6 @@ export const validationTraceStaging = ({
             shortfall.cause,
           );
     },
-    // Once the header rolls back, each staging output no thread of ours
-    // needs is still spent back; nothing is staged.
-    reclaim: async (context, observed) => await sweep(context, observed),
     // Resolved by another record, our workflow is done: each staging output
     // is spent back, and final at release depth, before it resolves.
     resolved: async (context) =>

@@ -501,7 +501,6 @@ names why:
 
 | `reason`                            | What holds it                                                             | What clears it                               |
 | ----------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------- |
-| `fault_proof_continuation_stalled`  | A run made no progress within its continuation bound                      | A later run that makes progress              |
 | `fault_proof_objective_quarantined` | A run stalled or met an integrity error of its own; retried on a backoff  | Another outcome, or its objective settling   |
 | `fault_proof_start_deadline_passed` | The header matured with nothing of ours landed                            | Its header leaving the finalized state queue |
 | `fault_proof_l1_refused:<reason>`   | The L1 source refused a read the proof needs (for example pruned history) | The next run whose reads the source answers  |

@@ -1,9 +1,7 @@
 import {
-  FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
   FraudProofL1CheckpointChangedError,
   FraudProofL1RefusedError,
   FraudProofL1UnavailableError,
-  type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
 import { assertWorkflowActuationPermitIdentity } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import { WorkflowFundingUnavailableError } from "@al-ft/midgard-fault-proofs/workflow/workflow-funding-shortfall";
@@ -11,9 +9,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS,
-  WATCHER_FAULT_PROOF_CONTINUATION_STALLED,
   WATCHER_FAULT_PROOF_COUNTERPARTY_DEADLINE_PASSED,
-} from "../../src/fault-proofs/fault-proof-continuation-stall.js";
+} from "../../src/fault-proofs/fault-proof-pending-hold.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { WatcherRetainedDaTransportUnavailableError } from "../../src/storage/retained-da-transport-unavailable.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
@@ -201,63 +198,6 @@ describe("supervisor execution adapter", () => {
     expect(test.execution.readiness()).toEqual([]);
   });
 
-  it("names a stalled session on readiness and logs it at error level until a later run makes progress", async () => {
-    const test = await setup();
-    const reason = `${FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED}: no progress for 1800000 ms over 1800 polls; last pending: transaction for walk is pending`;
-    const detail = `doubleSpend/${test.input.job.headerHash}: ${reason}`;
-    test.runOrResume.mockResolvedValueOnce({
-      kind: "pending",
-      resumeOnObservation: true,
-      reason,
-    });
-    const logged: string[] = [];
-    const stderr = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation((line) => logged.push(String(line)) > 0);
-    try {
-      expect(await test.execution.execute(test.input)).toEqual({
-        kind: "pending",
-        resume: "await_observation",
-        reason,
-      });
-    } finally {
-      stderr.mockRestore();
-    }
-    const stalled = {
-      reason: WATCHER_FAULT_PROOF_CONTINUATION_STALLED,
-      detail,
-    };
-    expect(test.execution.readiness()).toEqual([stalled]);
-    expect(logged).toContain(
-      `${JSON.stringify({ packageName: "midgard-watcher", level: "error", ...stalled })}\n`,
-    );
-    // The next run waits on L1 at first, then its first progress clears the
-    // alarm before the run ends.
-    const during: unknown[] = [];
-    const progressThenPend = async (invocation: WorkflowAdapterRunnerInput) => {
-      during.push(test.execution.readiness());
-      invocation.onProgress?.();
-      during.push(test.execution.readiness());
-      return { kind: "pending", reason: "transaction for walk is pending" };
-    };
-    test.runOrResume.mockImplementationOnce(progressThenPend);
-    await test.execution.execute(test.input);
-    // A hold under another name is left to the run's outcome.
-    test.runOrResume.mockResolvedValueOnce({
-      kind: "pending",
-      reason: "script re-execution is held",
-      namedState: { name: "validation_trace_replay_held", alarm: false },
-    });
-    await test.execution.execute(test.input);
-    test.runOrResume.mockImplementationOnce(progressThenPend);
-    await test.execution.execute(test.input);
-    const named = expect.objectContaining({
-      reason: "validation_trace_replay_held",
-    });
-    expect(during).toEqual([[stalled], [], [named], [named]]);
-    expect(test.execution.readiness()).toEqual([]);
-  });
-
   it("returns structured read-only provider transport failures for bounded backoff", async () => {
     const test = await setup();
     const cause = Object.assign(new Error("socket reset"), {
@@ -267,11 +207,7 @@ describe("supervisor execution adapter", () => {
     test.runOrResume.mockRejectedValueOnce(
       new TypeError("fetch failed", { cause }),
     );
-    const outcome = await test.execution.execute({
-      ...test.input,
-      job: { ...test.input.job, mode: "run" },
-      admission: test.runAdmission,
-    });
+    const outcome = await test.execution.execute(test.input);
     expect(outcome).toMatchObject({
       kind: "retryable",
       resume: "backoff",
@@ -288,11 +224,7 @@ describe("supervisor execution adapter", () => {
       resumeOnObservation: true,
       reason: new WorkflowFundingUnavailableError().message,
     });
-    const outcome = await test.execution.execute({
-      ...test.input,
-      job: { ...test.input.job, mode: "run" },
-      admission: test.runAdmission,
-    });
+    const outcome = await test.execution.execute(test.input);
     expect(outcome).toMatchObject({
       kind: "pending",
       resume: "await_observation",
@@ -327,17 +259,11 @@ describe("supervisor execution adapter", () => {
     "waits on %s met while building the next move, run after run",
     async (_label, failure, waiting) => {
       const test = await setup();
-      // A run admitted to build a fresh move.
-      const input = {
-        ...test.input,
-        job: { ...test.input.job, mode: "run" },
-        admission: test.runAdmission,
-      } as const;
       test.runOrResume.mockImplementation(async () => {
         throw failure();
       });
       for (let run = 1; run <= 3; run += 1) {
-        expect(await test.execution.execute(input)).toMatchObject(waiting);
+        expect(await test.execution.execute(test.input)).toMatchObject(waiting);
         expect(test.runOrResume).toHaveBeenCalledTimes(run);
       }
       expect(test.setAlert).not.toHaveBeenCalled();

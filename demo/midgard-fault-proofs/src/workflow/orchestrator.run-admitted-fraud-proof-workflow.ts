@@ -1,7 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
-import { VALIDATION_TRACE_STAGING_RECLAIM } from "../validation-trace-dispute/one-step-staging-journal.js";
 import { WorkflowActionChangedError } from "./action-changed.js";
 import { workflowActuationDecisionDigest } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import type { WorkflowActuationCheckpoint } from "./actuation-permit.create-workflow-reconciliation-permit-controller.js";
@@ -29,10 +28,7 @@ import {
   type FraudProofWorkflowSubmitResult,
   type FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
-import {
-  FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
-  type FraudProofWorkflowRunResult,
-} from "./orchestrator.fraud-proof-workflow-run-result.js";
+import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import { normalizeTxHash } from "./orchestrator.immutable-fraud-proof-workflow-registry.js";
 import {
   normalizeWorkflowTerminal,
@@ -45,7 +41,6 @@ import {
   createUnbuiltWorkflowActions,
   workflowRunOutcomes,
 } from "./orchestrator.unbuilt-actions.js";
-import { isProofMaterialsSweepAction } from "./proof-materials-sweep.action.js";
 import { isFraudProofRawL1DerivationError } from "./raw-l1-family-derivation.state-queue-topology.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 import {
@@ -60,16 +55,6 @@ import {
   WorkflowFundingUnavailableError,
 } from "./workflow-funding-shortfall.js";
 import type { WorkflowRun } from "./workflow-run.js";
-
-/**
- * The sends reconciliation-only authority admits, by kind: the proof-materials
- * sweep and the spend back of a validation-dispute staging output. Each only
- * returns outputs of ours to our wallet, and what it may select is still the
- * proof-materials view's to decide.
- */
-const isReconciliationReclaim = (action: FraudProofWorkflowAction): boolean =>
-  isProofMaterialsSweepAction(action) ||
-  action.input.schemaVersion === VALIDATION_TRACE_STAGING_RECLAIM;
 
 /**
  * Q51/W-O4 single-command core. Every step is derived from authenticated L1
@@ -205,9 +190,6 @@ export const runAdmittedFraudProofWorkflow = async ({
     return artifactPendingResult(cause, resumeOnObservation);
   }
 
-  /** The last action this run submitted: a session counts a new one as
-   * progress. */
-  let submittedActionId: string | undefined;
   for (let actionNumber = 0; actionNumber < maxActions; actionNumber += 1) {
     const context: FraudProofWorkflowAdapterContext = {
       reconciliationOnly,
@@ -265,23 +247,12 @@ export const runAdmittedFraudProofWorkflow = async ({
     }
     const held = unbuilt.held(observation);
     if (held !== undefined) return resumeOnObservation(held);
-    if (observation.kind === "pending")
-      return pending(observation.reason, submittedActionId);
-    // Under reconciliation-only authority a fresh submission waits for the
-    // operator, save a reclaim of our own outputs (`isReconciliationReclaim`).
-    if (reconciliationOnly && !isReconciliationReclaim(observation.action))
-      return pending(FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED);
-    const beforePreflight = reconciliationOnly
-      ? "before_reclaim_preflight"
-      : "before_preflight";
-    const beforeSubmit = reconciliationOnly
-      ? "before_reclaim_submit"
-      : "before_submit";
+    if (observation.kind === "pending") return pending(observation.reason);
     const action = validateAction(observation.action);
     let preflight: FraudProofWorkflowPreflight;
     let adapterPreflightFailed = false;
     try {
-      assertActuation(beforePreflight);
+      assertActuation("before_preflight");
       let captured: FraudProofWorkflowPreflight;
       try {
         captured = await adapter.preflight({ ...context, action });
@@ -312,9 +283,8 @@ export const runAdmittedFraudProofWorkflow = async ({
       return stalled(
         `preflight of ${action.actionId} omitted its captured signed transaction`,
       );
-    assertActuation(beforeSubmit);
+    assertActuation("before_submit");
     let submitted: FraudProofWorkflowSubmitResult;
-    submittedActionId = action.actionId;
     try {
       submitted = await adapter.submit({ ...context, action, preflight });
     } catch (cause) {

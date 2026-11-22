@@ -82,11 +82,6 @@ export type InstalledTurnContext = Readonly<{
 
 export type InstalledRunOptions = Readonly<{
   /**
-   * Confirmation polls after which the process stops: a run that spins
-   * inside one turn fails instead of hanging.
-   */
-  maxPolls?: number;
-  /**
    * Turns the run may take to convict (at most the harness budget): a run
    * that spins across turns fails fast instead of after the whole budget.
    */
@@ -184,7 +179,6 @@ export const runInstalled = async (
     // Conviction is the proof token. Removal after it is not driven here: a
     // bond-backed slash needs the finalized manifest's slash authority, which
     // this legacy-deployment harness lacks.
-    clock.state.crashAfterPolls = options.maxPolls;
     cleanup =
       (await options.beforeTurns?.({ harness, application, clock })) ??
       undefined;
@@ -253,7 +247,6 @@ export const runInstalled = async (
     return {
       convicted,
       turns,
-      polls: clock.state.polls,
       sent: application.sent(),
       reasons,
       footprint,
@@ -276,11 +269,11 @@ export const stagingOutputsOf = async (harness: Harness) =>
   ).filter(isStaging);
 
 /**
- * A process that stops once, at the poll after `stopAtNextPoll()`, and is
- * restarted with `pollCap` more polls. `during` takes the run's context,
- * `onStopped` restarts it, `stops()` counts the stops.
+ * A process that stops once, at the observation after
+ * `stopAtNextObservation()`, and is restarted. `during` takes the run's
+ * context, `onStopped` restarts it, `stops()` counts the stops.
  */
-export const stopsOnceAndRestarts = (pollCap: number) => {
+export const stopsOnceAndRestarts = () => {
   let context: Omit<InstalledTurnContext, "result" | "turn"> | undefined;
   let stops = 0;
   return {
@@ -288,17 +281,16 @@ export const stopsOnceAndRestarts = (pollCap: number) => {
       context = run;
     },
     harness: () => context!.harness,
-    stopAtNextPoll: () => {
-      context!.clock.state.crashAfterPolls = context!.clock.state.polls;
+    stopAtNextObservation: () => {
+      context!.clock.state.stopAtNextObservation = true;
     },
     onStopped: async (
       error: unknown,
-      { application, clock }: Omit<InstalledTurnContext, "result">,
+      { application }: Omit<InstalledTurnContext, "result">,
     ) => {
       expect(String(error)).toContain("installed application process stopped");
       stops += 1;
       application.restart();
-      clock.state.crashAfterPolls = clock.state.polls + pollCap;
     },
     stops: () => stops,
   };

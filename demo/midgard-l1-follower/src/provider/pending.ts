@@ -33,13 +33,10 @@ export const utxoKey = (utxo: UTxO): string =>
 export const applyPending = (
   pending: readonly PendingTransaction[],
 ): PendingApplied => {
-  const overlay = overlayPending(pending);
+  const { spent, created } = overlayPending(pending);
   return Object.freeze({
-    spent: overlay.spent,
-    created: overlay.overOutRefs(
-      pending.flatMap((tx) => tx.creates.map((output) => output.outRef)),
-      [],
-    ),
+    spent,
+    created: created.map((output) => output.utxo),
     digest:
       pending.length === 0
         ? ""

@@ -72,7 +72,6 @@ export const harness = (input: {
   const controllerGenerations: string[] = [];
   const revocations: string[] = [];
   const revokedPermits = new WeakSet<object>();
-  const restrictions: string[] = [];
   const progressRequests: WatcherFaultProofProgressRequest[] = [];
   const authorityRevocations: string[] = [];
   const permitIdentities = new WeakMap<
@@ -203,9 +202,6 @@ export const harness = (input: {
           supplied ??
           Object.freeze({
             permit,
-            restrictToReconciliation: (reason: string) => {
-              restrictions.push(reason);
-            },
             revoke: (reason: string) => {
               revocations.push(reason);
               revokedPermits.add(permit);
@@ -259,7 +255,6 @@ export const harness = (input: {
     enqueued,
     enqueuedGenerations,
     revocations,
-    restrictions,
     progressRequests,
     authorityRevocations,
     retainedDecisionAuthorities,

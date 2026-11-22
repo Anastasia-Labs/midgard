@@ -20,6 +20,7 @@
  */
 import {
   decodePendingTransactions,
+  overlayPending,
   type PendingTransaction,
 } from "@al-ft/midgard-l1-follower/mempool";
 import { layerMethod } from "@al-ft/midgard-test-support/method-layer";
@@ -73,14 +74,8 @@ export const layerEmulatorMempool = (
       return transaction;
     });
   /** What the mempool creates and does not itself spend. */
-  const created = (emulator: Emulator): readonly UTxO[] => {
-    const transactions = pending(emulator);
-    const spent = new Set(transactions.flatMap((tx) => tx.spends));
-    return transactions
-      .flatMap((tx) => tx.creates)
-      .filter((output) => !spent.has(output.outRef))
-      .map((output) => output.utxo);
-  };
+  const created = (emulator: Emulator): readonly UTxO[] =>
+    overlayPending(pending(emulator)).created.map((output) => output.utxo);
   const at = (addressOrCredential: string | Credential, utxo: UTxO) =>
     typeof addressOrCredential === "string"
       ? utxo.address === addressOrCredential

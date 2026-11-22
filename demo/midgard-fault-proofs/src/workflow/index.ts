@@ -59,7 +59,6 @@ export {
   FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE,
   FRAUD_PROOF_THREAD_RECLAIM_UNFUNDED,
 } from "./own-thread-reclaim.js";
-export { WORKFLOW_CONTINUATION_QUIET_BOUND_MS } from "./pending-continuation.js";
 export * from "./proof-chunk-prerequisite.js";
 export { runProofMaterialsSweep } from "./proof-materials-sweep-run.js";
 export * from "./proof-materials-view.follower-reader.js";

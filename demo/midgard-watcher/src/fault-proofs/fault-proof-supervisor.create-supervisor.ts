@@ -14,7 +14,6 @@ import { isSqliteBusyError } from "@al-ft/midgard-fault-proofs/workflow/sqlite-b
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.production-dependencies.js";
-import { isWatcherFaultProofContinuationStall } from "./fault-proof-continuation-stall.js";
 import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-execution.js";
 import {
   isBeyondWatcherRollbackRecovery,
@@ -276,9 +275,6 @@ export const createSupervisor = (input: {
     if (processedContexts.size > MAX_RECOVERABLE_WORKFLOWS)
       processedContexts.delete(processedContexts.keys().next().value!);
   };
-  // Objectives whose session stalled: each yields its place to other queued
-  // objectives for the next pick, then competes by deadline again.
-  const yielded = new Set<string>();
   // One finality threshold (plan section 9: depth > k is final): a completion
   // applies only beyond rollback recovery, the depth its marker needs; one
   // verified at exactly k waits a block rather than finish unmarked with its
@@ -424,8 +420,6 @@ export const createSupervisor = (input: {
   const compareJobs = watcherFaultProofJobOrder(categories);
 
   const comparePending = (left: PendingJob, right: PendingJob): number =>
-    Number(yielded.has(objectiveKey(left.job))) -
-      Number(yielded.has(objectiveKey(right.job))) ||
     compareJobs(left.job, right.job);
 
   const runPending = async (entry: PendingJob): Promise<void> => {
@@ -486,12 +480,10 @@ export const createSupervisor = (input: {
       } else if (timing === "observe") {
         outcome = await observeAtMaturity(job, actuationPermit);
       } else {
-        const admission: WatcherFaultProofExecutionAdmission = {
-          mode: job.deadline === null ? "resume" : "run",
-          ...(timing === "on_time" ? {} : { startedLate: job.deadline! }),
-        };
+        const admission: WatcherFaultProofExecutionAdmission =
+          timing === "on_time" ? {} : { startedLate: job.deadline! };
         outcome = await input.dependencies.run({
-          job: { ...job, mode: admission.mode },
+          job: { ...job, mode: "run" },
           actuationPermit,
           admission,
         });
@@ -574,7 +566,6 @@ export const createSupervisor = (input: {
       }
       rememberContext(key, contextKey(job));
       openDeadlines.finished(job, runnerOutcomeKind(outcome));
-      if (isWatcherFaultProofContinuationStall(outcome)) yielded.add(key);
       entry.resolve(outcome);
       if (runnerOutcomeKind(outcome) === "retryable") {
         const previous = transportRetries.get(key);
@@ -624,7 +615,6 @@ export const createSupervisor = (input: {
           while (queue.length > 0 && busy.reason() === null) {
             queue.sort(comparePending);
             const entry = queue.shift()!;
-            yielded.clear();
             await runPending(entry);
           }
           if (
@@ -658,7 +648,6 @@ export const createSupervisor = (input: {
       rawJob,
       categories,
       !input.exposeUnsafeRunnerForTest,
-      actuationPermit,
     );
     // Held work is requeued from durable state once the hold clears.
     if (busy.reason() !== null)
@@ -670,8 +659,6 @@ export const createSupervisor = (input: {
       if (BigInt(job.rollbackGeneration) < BigInt(latest.rollbackGeneration))
         return { completion: existing.completion };
       if (
-        existing.job.deadline !== null &&
-        job.deadline !== null &&
         JSON.stringify(existing.job.deadline) !== JSON.stringify(job.deadline)
       ) {
         throw new Error(
@@ -883,7 +870,7 @@ export const createSupervisor = (input: {
             const scheduled = await serializeSchedule(() =>
               scheduleImpl(
                 {
-                  mode: deadline === null ? "resume" : "run",
+                  mode: "run",
                   category:
                     decision.category as WatcherInstalledWorkflowCategory,
                   headerHash: decision.headerHash,
@@ -950,9 +937,7 @@ export const createSupervisor = (input: {
       const remaining =
         earliestDeadlineJob === null
           ? null
-          : earliestDeadlineJob.deadline === null
-            ? null
-            : remainingSafeStartMs(earliestDeadlineJob);
+          : remainingSafeStartMs(earliestDeadlineJob);
       const deadlineHealth =
         phase === "blocked" || (remaining !== null && remaining <= 0n)
           ? ("unsafe" as const)

@@ -17,7 +17,6 @@ import {
   coreToTxOutput,
   type Emulator,
   type TxOutput,
-  type UTxO,
 } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
@@ -327,43 +326,6 @@ export const kindOf = (
     return transaction.withdraws ? "walk" : "bind-or-finish";
   if (stagedChunkOf(transaction, staging) !== undefined) return "stage";
   return "step";
-};
-
-/**
- * Reads of the chain that do not yet show `outRef` while `hidden()` holds:
- * a provider lagging the chain, or a rollback that has not yet re-included
- * the transaction. The ledger itself is unchanged.
- */
-export const lagReadsOf = (
-  emulator: Emulator,
-  outRef: () => string | undefined,
-) => {
-  let hiddenReads = 0;
-  const visible = (utxos: UTxO[]) => {
-    const hidden = outRef();
-    if (hidden === undefined) return utxos;
-    const shown = utxos.filter(
-      ({ txHash, outputIndex }) =>
-        `${txHash}#${outputIndex.toString()}` !== hidden,
-    );
-    if (shown.length < utxos.length) hiddenReads += 1;
-    return shown;
-  };
-  const byOutRef = emulator.getUtxosByOutRef.bind(emulator);
-  const atAddress = emulator.getUtxos.bind(emulator);
-  const spies = [
-    vi
-      .spyOn(emulator, "getUtxosByOutRef")
-      .mockImplementation(async (outRefs) => visible(await byOutRef(outRefs))),
-    vi
-      .spyOn(emulator, "getUtxos")
-      .mockImplementation(async (address) => visible(await atAddress(address))),
-  ];
-  return {
-    /** Reads that would have shown the out-ref and did not. */
-    hiddenReads: () => hiddenReads,
-    restore: () => spies.forEach((spy) => spy.mockRestore()),
-  };
 };
 
 /**

@@ -66,11 +66,7 @@ export const createCursorFamilyWorkflowAdapter = <
     throw new Error(`${category} cursor-family ports changed identity`);
   }
   const prepared = new Map<string, CursorFamilyCapturedAction>();
-  const current = async (
-    headerHash: string,
-    artifact: JournalJsonObject,
-    reconciliationOnly = false,
-  ) => {
+  const current = async (headerHash: string, artifact: JournalJsonObject) => {
     const observed = await l1.observe({ headerHash });
     let workflow: FraudProofWorkflowObservation = cursorFamilyObservation({
       spec,
@@ -78,11 +74,7 @@ export const createCursorFamilyWorkflowAdapter = <
       provenance: observed.provenance,
       stage: observed.stage,
     });
-    if (
-      workflow.kind === "action_required" &&
-      refineAction !== undefined &&
-      !reconciliationOnly
-    ) {
+    if (workflow.kind === "action_required" && refineAction !== undefined) {
       const fields = normalizeJournalJson(
         await refineAction({ observed, action: workflow.action, artifact }),
       );
@@ -162,16 +154,14 @@ export const createCursorFamilyWorkflowAdapter = <
             });
           },
         }),
-    observe: async ({ identity, artifact, reconciliationOnly }) => {
+    observe: async ({ identity, artifact }) => {
       if (
         identity.category !== category ||
         identity.target.kind !== "state_queue_header"
       ) {
         throw new Error(`${category} adapter received another identity`);
       }
-      return (
-        await current(identity.target.headerHash, artifact, reconciliationOnly)
-      ).workflow;
+      return (await current(identity.target.headerHash, artifact)).workflow;
     },
     preflight: async ({ identity, workflowId, artifact, action }) => {
       if (

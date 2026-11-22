@@ -5,7 +5,6 @@ import { DaLibp2pRetainedDaSource } from "../transition-trace/fetch.da-libp2p-re
 import {
   assertWorkflowRunActuation,
   bindWorkflowRunActuation,
-  workflowRunIsReconciliationOnly,
 } from "./actuation-permit.js";
 import type {
   WorkflowAdapterReadinessInput,
@@ -25,7 +24,6 @@ import type {
 import { FAMILY_APPLICATION_REGISTRY } from "./family-application-registry.family-application-registry.js";
 import type { FamilyApplicationRegistryEntry } from "./family-application-registry.value-not-preserved-family-application-record.js";
 import type { InstalledFraudProofCategory } from "./installed-categories.js";
-import { continuePendingWorkflow } from "./pending-continuation.js";
 import {
   createAdmittedWorkflowRunner,
   WORKFLOW_ADAPTER_RUNNER,
@@ -167,14 +165,10 @@ const createManifestBoundWorkflowRunOrResume =
         loaded.infrastructure,
         invocation,
       );
-      const reconciliationOnly = workflowRunIsReconciliationOnly(run);
       const application: FamilyApplicationInvocation = {
         deploymentFingerprint: invocation.deploymentFingerprint,
         category,
         headerHash: invocation.headerHash,
-        ...(reconciliationOnly
-          ? { reconciliationAuthority: invocation.actuationPermit }
-          : {}),
       };
       const { workflow } = await applyFamilyApplicationRecord({
         record,
@@ -182,16 +176,7 @@ const createManifestBoundWorkflowRunOrResume =
         resolveReferenceScript: loaded.resolveReferenceScript,
         invocation: application,
       });
-      return await continuePendingWorkflow({
-        invocation,
-        run,
-        execute: async () =>
-          await record.execute({
-            workflow,
-            sources,
-            run,
-          }),
-      });
+      return await record.execute({ workflow, sources, run });
     } finally {
       await loaded.close();
     }

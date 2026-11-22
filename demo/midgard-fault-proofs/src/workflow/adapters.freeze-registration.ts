@@ -27,12 +27,6 @@ export type WorkflowAdapterRunnerInput = WorkflowAdapterReadinessInput & {
   /** The objective's wallet wiring (`workflow-run.ts`), shared with the
    * restricted wallet the caller installs for it. */
   readonly objectiveWallet: WorkflowObjectiveWallet;
-  /**
-   * Called when a continuing session makes progress past its first poll,
-   * so a caller can clear an alarm before the session ends. Never authority.
-   * A throw is ignored and does not end the session.
-   */
-  readonly onProgress?: () => void;
 };
 
 export type WorkflowAdapterRunner = {

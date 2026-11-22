@@ -53,26 +53,15 @@ import * as submitters from "../src/field-preimage-length-mismatch/submit-lucid.
 import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import { bindWorkflowActuationRecoveryIdentity } from "../src/workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
-import {
-  createWorkflowActuationPermitController,
-  createWorkflowReconciliationPermitController,
-} from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
-import { COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.replay-context-identity.js";
+import { createWorkflowActuationPermitController } from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import { FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { defineFamilyApplication } from "../src/workflow/family-application.assert-family-definition-roster.js";
-import {
-  authenticatedStateQueueObservationDigest,
-  HEADER_CLASSIFIER,
-  HEADER_DECISION,
-  type HeaderFaultDecision,
-} from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { authenticatedStateQueueObservationDigest } from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
 import { createHeaderClassifier } from "../src/workflow/header-classifier.create-header-classifier.js";
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowTerminal,
-  journalJsonDigest,
-  normalizeJournalJson,
 } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
@@ -225,11 +214,7 @@ it("rejects a mismatched physical branch and yields a changed selected header be
   expect(submit).not.toHaveBeenCalled();
 });
 
-it.each([
-  "reconciliation-only",
-  "fresh authorizing decision",
-  "wrong authorizing decision",
-] as const)(
+it.each(["fresh authorizing decision", "wrong authorizing decision"] as const)(
   "completes a removal the chain already holds, after a restart, through %s",
   async (mode) => {
     const nativeFixture = await rawFixture();
@@ -272,29 +257,6 @@ it.each([
     const fixture = await bound(headerHash, stage);
     const first = createFieldPreimageLengthRecoveryAdapter(fixture.workflow);
     const familyArtifact = await first.transactions.prepareRaw!(routed);
-    const unsealed: Omit<HeaderFaultDecision, "decisionDigest"> = {
-      schemaVersion: HEADER_DECISION,
-      classifierVersion: HEADER_CLASSIFIER,
-      deploymentFingerprint,
-      headerHash,
-      authenticatedObservationDigest: hash("55"),
-      payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
-      payloadSha256: routed.evidence.payloadSha256,
-      replayVersion: COMPLETE_CANONICAL_REPLAY,
-      replayDigest: hash("88"),
-      launchScope: [category],
-      launchScopeDigest: hash("99"),
-      classificationDigest: hash("aa"),
-      decision: "fault_detected",
-      category,
-      violationId: "field-preimage-length-mismatch",
-      detectionId: "retained-test-fault",
-      position: "0",
-    };
-    let decision: HeaderFaultDecision = {
-      ...unsealed,
-      decisionDigest: journalJsonDigest(normalizeJournalJson(unsealed)),
-    };
     const publicSource = new DaLibp2pRetainedDaSource({
       deploymentFingerprint,
       peers: [{ peerId: "12D3KooWfieldRecoveryTest" }],
@@ -339,34 +301,24 @@ it.each([
         throw new Error("expected classified length mismatch");
       return result;
     };
-    if (mode !== "reconciliation-only") decision = await classify(30);
+    const decision = await classify(30);
     const identity = {
       ...context(headerHash, familyArtifact).identity,
       decisionDigest: decision.decisionDigest,
     };
     const workflowId = computeFraudProofWorkflowId(identity);
-    const freshDecision =
-      mode === "reconciliation-only" ? decision : await classify(31);
-    const controller =
-      mode === "reconciliation-only"
-        ? createWorkflowReconciliationPermitController({
-            decision,
-            deploymentFingerprint,
-            rollbackGeneration: "0",
-          })
-        : createWorkflowActuationPermitController({
-            decision: freshDecision,
-            rollbackGeneration: "0",
-          });
-    if (mode !== "reconciliation-only") {
-      expect(freshDecision.decisionDigest).not.toBe(decision.decisionDigest);
-      bindWorkflowActuationRecoveryIdentity({
-        permit: controller.permit,
-        category,
-        rollbackGeneration: "0",
-        originalDecision: decision,
-      });
-    }
+    const freshDecision = await classify(31);
+    const controller = createWorkflowActuationPermitController({
+      decision: freshDecision,
+      rollbackGeneration: "0",
+    });
+    expect(freshDecision.decisionDigest).not.toBe(decision.decisionDigest);
+    bindWorkflowActuationRecoveryIdentity({
+      permit: controller.permit,
+      category,
+      rollbackGeneration: "0",
+      originalDecision: decision,
+    });
     // This checks shared recovery wiring with scripted L1 observations, not native receipt validation.
     const restarted = createFieldPreimageLengthRecoveryAdapter(
       fixture.workflow,
@@ -387,7 +339,7 @@ it.each([
       },
     };
     // With nothing stored, every mode reads the header again to prepare from
-    // its evidence; reconciliation-only authority reads as a fresh one does.
+    // its evidence.
     fixture.observeHeader.mockResolvedValue(
       authenticatedHeaderObservation(nativeFixture, {
         confirmationDepth: 31,
@@ -449,38 +401,21 @@ it.each([
         objectiveWallet: process.objectiveWallet({ category, headerHash }),
         runtimeConfigPath: "/fixture/field-runtime.json",
       })) as FraudProofWorkflowRunResult;
-    if (mode !== "reconciliation-only") {
-      const run = resume();
-      if (mode === "wrong authorizing decision") {
-        await expect(run).rejects.toThrow(
-          "run actuation permit changed decision digest",
-        );
-        expect(fixture.observeHeader).not.toHaveBeenCalled();
-      } else {
-        await expect(run).resolves.toMatchObject({
-          kind: "terminal_included",
-          workflowId,
-          identity,
-        });
-        expect(fixture.observeHeader).toHaveBeenCalledOnce();
-      }
-      expect(process.sent()).toEqual([]);
-      expect(close).toHaveBeenCalledOnce();
-      return;
+    const run = resume();
+    if (mode === "wrong authorizing decision") {
+      await expect(run).rejects.toThrow(
+        "run actuation permit changed decision digest",
+      );
+      expect(fixture.observeHeader).not.toHaveBeenCalled();
+    } else {
+      await expect(run).resolves.toMatchObject({
+        kind: "terminal_included",
+        workflowId,
+        identity,
+      });
+      expect(fixture.observeHeader).toHaveBeenCalledOnce();
     }
-    const result = await resume();
-    expect(result.kind).toBe("terminal_included");
-    expect(fixture.observeHeader).toHaveBeenCalledOnce();
     expect(process.sent()).toEqual([]);
-    stage.value = {
-      kind: "removed",
-      terminal: {
-        ...terminal,
-        observedAt: { ...terminal.observedAt, confirmationDepth: 2162 },
-      },
-    };
-    expect((await resume()).kind).toBe("completed");
-    expect(fixture.observeHeader).toHaveBeenCalledTimes(2);
-    expect(process.sent()).toEqual([]);
+    expect(close).toHaveBeenCalledOnce();
   },
 );

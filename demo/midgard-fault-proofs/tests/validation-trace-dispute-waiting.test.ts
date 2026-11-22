@@ -1,8 +1,7 @@
 /** The validation-trace dispute runner waiting on its counterparty, on the
  * emulator: once our case is open and undefended, a run reports
- * `awaiting_counterparty` with the case's on-chain defense deadline, and a
- * session hands its turn back at once instead of polling; once the operator
- * defends, the run awaits the defender's move on the thread the Defend
+ * `awaiting_counterparty` with the case's on-chain defense deadline; once
+ * the operator defends, the run awaits the defender's move on the thread the Defend
  * opened, until the defender's clock ends, and reads no thread for the
  * Defend's other outputs that only look like threads. */
 import {
@@ -16,9 +15,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { validationTraceThreadTokenName } from "../src/validation-trace-dispute/case-history.js";
 import { awaitingValidationTraceCounterparty } from "../src/validation-trace-dispute/waiting.js";
-import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
-import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
 import { defendAsOperator } from "./support/validation-trace-dispute-defend.js";
 import {
   type Scene,
@@ -29,7 +26,6 @@ import {
   type Runner,
   runUntil,
 } from "./support/validation-trace-dispute-runner.js";
-import { DEPLOYMENT_FINGERPRINT } from "./workflow.make-adapter.js";
 
 let scene: Scene;
 let runner: Runner;
@@ -78,41 +74,6 @@ describe("validation-trace dispute runner: waiting on the counterparty", () => {
         MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
     });
   });
-
-  // A session that kept polling would run to the 30-minute quiet bound.
-  it("hands the session's turn back at once while it awaits, without a continuation stall", async () => {
-    const { h } = scene;
-    const before = h.emulator.now();
-    h.emulator.awaitSlot(31 * 60);
-    expect(h.emulator.now() - before).toBeGreaterThan(30 * 60_000);
-    let runs = 0;
-    const result = await continuePendingWorkflow({
-      invocation: {
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        category: "validationTraceDispute",
-        headerHash: scene.failing.evidence.headerHash,
-      },
-      run: runner.process.run({
-        category: "validationTraceDispute",
-        headerHash: scene.failing.evidence.headerHash,
-      }),
-      execute: async () => {
-        runs += 1;
-        return awaitingValidationTraceCounterparty(
-          await runner.runOnce(scene.failing),
-        );
-      },
-    });
-    expect(runs).toBe(1);
-    expect(result).toMatchObject({
-      kind: "awaiting_counterparty",
-      outRef: caseOutRef,
-    });
-    if (!("reason" in result)) throw new Error("no reason");
-    expect(result.reason).not.toContain(
-      FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
-    );
-  }, 120_000);
 
   it("awaits the defender's move on the thread once the operator's Defend lands, until the defender's clock ends", async () => {
     defense = await defendAsOperator(scene, await liveCase(), DECOYS);

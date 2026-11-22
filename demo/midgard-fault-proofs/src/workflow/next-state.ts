@@ -15,8 +15,10 @@
  * admitted ledger snapshot alone: a pending transaction has no inclusion
  * point, and the view carries none.
  */
-import type { PendingTransaction } from "@al-ft/midgard-l1-follower/mempool";
-import { CML } from "@lucid-evolution/lucid";
+import {
+  overlayPending,
+  type PendingTransaction,
+} from "@al-ft/midgard-l1-follower/mempool";
 
 import type {
   FraudProofRawL1Snapshot,
@@ -40,96 +42,6 @@ export type FraudProofNextView = Readonly<{
    */
   createdRank: (txHash: string) => bigint;
 }>;
-
-/** The outputs of the transaction `txHash`, as raw outputs; frees each. */
-const rawOutputsOf = (
-  txHash: string,
-  outputs: CML.TransactionOutputList,
-): readonly FraudProofRawL1Utxo[] =>
-  Object.freeze(
-    Array.from({ length: outputs.len() }, (_, index) => {
-      const output = outputs.get(index);
-      const datum = output.datum();
-      const inline = datum?.as_datum();
-      const scriptRef = output.script_ref();
-      try {
-        return Object.freeze({
-          outRef: `${txHash}#${index.toString()}`,
-          outputCbor: output.to_canonical_cbor_hex(),
-          datumCbor: inline?.to_canonical_cbor_hex() ?? null,
-          referenceScriptCbor: scriptRef?.to_canonical_cbor_hex() ?? null,
-        });
-      } finally {
-        scriptRef?.free();
-        inline?.free();
-        datum?.free();
-        output.free();
-      }
-    }),
-  );
-
-/** The outputs the transaction body `bodyCbor` of `txHash` pays, as raw
- * outputs in the canonical encoding an admitted snapshot holds. */
-export const bodyRawOutputs = (
-  txHash: string,
-  bodyCbor: string,
-): readonly FraudProofRawL1Utxo[] => {
-  const body = CML.TransactionBody.from_cbor_hex(bodyCbor);
-  const outputs = body.outputs();
-  try {
-    return rawOutputsOf(txHash, outputs);
-  } finally {
-    outputs.free();
-    body.free();
-  }
-};
-
-/** `pending`'s body and witness set as CBOR, and its outputs as raw outputs. */
-export type PendingParts = Readonly<{
-  bodyCbor: string;
-  witnessSetCbor: string;
-  outputs: readonly FraudProofRawL1Utxo[];
-}>;
-
-const decodedParts = new WeakMap<PendingTransaction, PendingParts>();
-
-/** `pending`'s body, witness set and outputs, decoded once and freed. */
-export const pendingParts = (pending: PendingTransaction): PendingParts => {
-  const known = decodedParts.get(pending);
-  if (known !== undefined) return known;
-  const tx = CML.Transaction.from_cbor_hex(pending.cborHex);
-  const body = tx.body();
-  const witnesses = tx.witness_set();
-  const outputs = body.outputs();
-  try {
-    const parts = Object.freeze({
-      bodyCbor: body.to_cbor_hex(),
-      witnessSetCbor: witnesses.to_cbor_hex(),
-      outputs: rawOutputsOf(pending.txHash, outputs),
-    });
-    decodedParts.set(pending, parts);
-    return parts;
-  } finally {
-    outputs.free();
-    witnesses.free();
-    body.free();
-    tx.free();
-  }
-};
-
-/** `pending`'s outputs as raw outputs. */
-export const pendingRawOutputs = (
-  pending: PendingTransaction,
-): readonly FraudProofRawL1Utxo[] => pendingParts(pending).outputs;
-
-/** `pending`'s transaction body, as CBOR. */
-export const pendingBodyCbor = (pending: PendingTransaction): string =>
-  pendingParts(pending).bodyCbor;
-
-/** Every out-ref the pending transactions spend. */
-export const pendingSpent = (
-  pending: readonly PendingTransaction[],
-): ReadonlySet<string> => new Set(pending.flatMap((tx) => tx.spends));
 
 /**
  * The next view over an admitted ledger snapshot: every scope minus what the
@@ -163,28 +75,20 @@ export const nextViewOf = ({
   };
   if (pending.length === 0)
     return Object.freeze({ scopes: snapshot.scopes, pending, createdRank });
-  const spent = pendingSpent(pending);
+  const { spent, created } = overlayPending(pending);
   const scopes = snapshot.scopes.map((scope) => {
     const wanted =
       scope.outRefs === undefined ? undefined : new Set(scope.outRefs);
     const listed = new Map<string, FraudProofRawL1Utxo>();
     for (const utxo of scope.utxos)
       if (!spent.has(utxo.outRef)) listed.set(utxo.outRef, utxo);
-    for (const tx of pending) {
-      const at = tx.creates.filter(
-        ({ outRef, utxo }) =>
-          utxo.address === scope.address &&
-          !spent.has(outRef) &&
-          !listed.has(outRef) &&
-          (wanted === undefined || wanted.has(outRef)),
-      );
-      if (at.length === 0) continue;
-      const raws = pendingRawOutputs(tx);
-      for (const { outRef } of at) {
-        const raw = raws.find((candidate) => candidate.outRef === outRef);
-        if (raw !== undefined) listed.set(outRef, raw);
-      }
-    }
+    for (const { outRef, utxo, raw } of created)
+      if (
+        utxo.address === scope.address &&
+        !listed.has(outRef) &&
+        (wanted === undefined || wanted.has(outRef))
+      )
+        listed.set(outRef, raw);
     return Object.freeze({
       ...scope,
       utxos: Object.freeze([...listed.values()]),

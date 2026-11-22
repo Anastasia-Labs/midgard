@@ -5,23 +5,6 @@ import {
 } from "./journal.js";
 import type { FraudProofResolvedByAnotherRecord } from "./resolved-by-another-record.js";
 
-/**
- * The `pending` reason of a run whose next action needs a new submission while
- * it holds reconciliation-only authority (its latest safe start has passed).
- * The run follows the transactions it already sent and takes no further step
- * by itself; a person resubmits.
- */
-export const FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED =
-  "Canonical workflow requires fresh submission authority";
-
-/**
- * The prefix of the `pending` reason of a run whose session saw no progress
- * within the continuation bound. The run hands its turn back and
- * resumes on the next observation; it never refuses for this.
- */
-export const FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED =
-  "Canonical workflow made no progress within its continuation bound";
-
 /** A pending run's own readiness state, named by its family. */
 export type FraudProofWorkflowNamedState = Readonly<{
   name: string;
@@ -70,11 +53,6 @@ export type FraudProofWorkflowRunResult =
       readonly workflowId: string;
       readonly identity: FraudProofWorkflowIdentity;
       readonly reason: string;
-      /**
-       * The last action the run submitted before it waits: a session counts
-       * a new one as progress (`pending-continuation.ts`).
-       */
-      readonly awaitingActionId?: string;
       /**
        * Present when a stalled run failed while the adapter built the next
        * transaction. That transaction targets the live L1 tip while the stage

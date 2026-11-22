@@ -28,7 +28,7 @@ export type WatcherFaultProofProgressContext = Readonly<{
   observationRevision: string;
   decision: HeaderFaultDecision;
   actuationPermit: WorkflowActuationPermit;
-  deadline: WatcherFaultProofDeadline | null;
+  deadline: WatcherFaultProofDeadline;
   rollbackGeneration: string;
 }>;
 

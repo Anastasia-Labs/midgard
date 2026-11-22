@@ -62,7 +62,7 @@ export const samePoint = (a, b) =>
  *   Uint8Array (the raw answer) or {error: {code, message}}.
  * - submit(tx, era): {accepted: true} | {rejection: Uint8Array} | {error}.
  * - hasTx(txIdHex): boolean; sizes(): {capacity, size, txCount};
- *   txs(): {acquiredSlot, txs: Uint8Array[]}, the mempool in order.
+ *   txs(): Uint8Array[], the mempool in order.
  * - ignoreInputEnd: true keeps the process running after stdin closes.
  */
 export const serveFakeSidecar = (handler) => {
@@ -356,11 +356,10 @@ export const serveFakeSidecar = (handler) => {
       }
       case "monitor_txs": {
         if (handler.txs === undefined) return refuse(id, "monitor_unavailable");
-        const listing = await handler.txs();
         return answer(
           id,
-          { type: "monitor_txs_result", slot: BigInt(listing.acquiredSlot) },
-          encodeCbor([...listing.txs]),
+          { type: "monitor_txs_result" },
+          encodeCbor([...(await handler.txs())]),
         );
       }
       default:

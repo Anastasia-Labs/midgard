@@ -803,11 +803,10 @@ func TestSubmitAndMonitor(t *testing.T) {
 
 func TestMempoolListing(t *testing.T) {
 	node, socket := startNode(t)
-	blocks := extend(t, node, 2, 0)
 	h := startSidecar(t, node, socket)
 	h.hello()
 	var payload []byte
-	list := func() (uint64, [][]byte) {
+	list := func() [][]byte {
 		t.Helper()
 		h.sendRaw(map[string]any{"type": "monitor_txs", "id": h.id()}, nil)
 		f := h.expect("monitor_txs_result")
@@ -816,11 +815,11 @@ func TestMempoolListing(t *testing.T) {
 		if err := cbor.Unmarshal(f.payload, &txs); err != nil {
 			t.Fatalf("listing payload %x: %v", f.payload, err)
 		}
-		return asUint(t, f.header["slot"]), txs
+		return txs
 	}
-	// An empty mempool is the empty array, acquired at the tip.
-	if slot, txs := list(); slot != blocks[1].Slot || len(txs) != 0 || !bytes.Equal(payload, []byte{0x80}) {
-		t.Fatalf("empty mempool listed slot %d, payload %x", slot, payload)
+	// An empty mempool is the empty array.
+	if txs := list(); len(txs) != 0 || !bytes.Equal(payload, []byte{0x80}) {
+		t.Fatalf("empty mempool listed payload %x", payload)
 	}
 	first, _, err := mocknode.SampleTx()
 	if err != nil {
@@ -837,11 +836,11 @@ func TestMempoolListing(t *testing.T) {
 		h.sendRaw(map[string]any{"type": "submit", "id": h.id(), "era": conwayEra}, tx)
 		h.expect("submit_accepted")
 	}
-	if _, txs := list(); len(txs) != 2 || !bytes.Equal(txs[0], first) || !bytes.Equal(txs[1], second) {
+	if txs := list(); len(txs) != 2 || !bytes.Equal(txs[0], first) || !bytes.Equal(txs[1], second) {
 		t.Fatalf("listed %x", txs)
 	}
 	node.ClearMempool()
-	if _, txs := list(); len(txs) != 0 {
+	if txs := list(); len(txs) != 0 {
 		t.Fatalf("listing answered from a stale snapshot: %x", txs)
 	}
 }

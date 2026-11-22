@@ -1545,10 +1545,9 @@ proof chain with margin; a family that needs more must publish an audited plan
 instead of widening the bound. Because that bound is loose, the correction wait
 also ends at the watcher's own verdicts on the objective, which it reads from the
 `l1Readiness` holds of `/v1/status`. A hold by which the watcher gives up
-(`fault_proof_continuation_stalled`, `fault_proof_counterparty_deadline_passed`)
-fails the wait at once. A pausing hold
-(funding, replay, quarantine or an L1 refusal) fails it once it persists for the
-watcher's continuation quiet bound with no transaction of ours landing; a
+(`fault_proof_counterparty_deadline_passed`) fails the wait at once. A pausing
+hold (funding, replay, quarantine or an L1 refusal) fails it once it persists
+for 30 minutes (`JOURNEY_PAUSE_BOUND_MS`) with no transaction of ours landing; a
 landing or a cleared hold restarts that clock. A silence the watcher does not
 call a stall, such as a defense window, keeps the wait open. A transaction of
 ours is any output at the prover's address created since the fault's header:

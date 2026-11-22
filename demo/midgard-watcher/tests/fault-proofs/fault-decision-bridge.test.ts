@@ -98,7 +98,6 @@ describe("production fault decision bridge", () => {
       301,
     );
     expect(h.controllerGenerations).toEqual(["1"]);
-    expect(h.restrictions).toEqual([]);
     expect(h.revocations).toEqual([]);
     expect(h.retainedDecisionAuthorities.at(-1)).toBe(
       decision(faulty!.headerHash, "transitionTrace").decisionDigest,
@@ -492,7 +491,6 @@ describe("production fault decision bridge", () => {
       selected.deadline,
     );
     expect(h.controllerGenerations).toEqual(["1"]);
-    expect(h.restrictions).toEqual([]);
     expect(h.revocations).toEqual([]);
   });
 
@@ -605,7 +603,6 @@ describe("production fault decision bridge", () => {
       previous = next;
     }
     expect(h.application.classifyHeader).toHaveBeenCalledOnce();
-    expect(h.restrictions).toEqual([]);
     expect(h.revocations).toEqual([]);
     expect(h.controllerGenerations).toEqual(["1"]);
     expect(new Set(h.enqueuedGenerations)).toEqual(new Set(["1"]));
@@ -709,7 +706,6 @@ describe("production fault decision bridge", () => {
       };
       h.admitted.add(changed);
       expect((await h.bridge.reconcileAndDispatch(changed)).target).toBeNull();
-      expect(h.restrictions).toEqual([]);
       expect(h.application.classifyHeader).toHaveBeenCalledOnce();
     },
   );

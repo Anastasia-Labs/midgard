@@ -71,7 +71,6 @@ export {
   type L1NodeTransportOptions,
   type LedgerStateSession,
   type MempoolSizes,
-  type MempoolTransactions,
   type QueryOptions,
   type SubmitResult,
   TransportTimeoutError,

@@ -352,10 +352,6 @@ export const validationTraceChainOwnView = ({
         });
         return found === undefined ? undefined : claimOf("proof", found, unit);
       },
-      // Every read is of the capture that shows what the follower applied
-      // and our node's mempool holds, so no transaction of ours is waited on
-      // past it.
-      unseen: async () => undefined,
       receipts: async () => {
         const { history, threads, outputsOf } = await capture();
         const receipts: (ValidationTraceOwnReceipt & { rank: bigint })[] = [];

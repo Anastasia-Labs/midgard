@@ -23,7 +23,8 @@
  * that a rollback drops leaves its outputs live, and a later sweep takes
  * them. A sweep that does not build is the run's recorded alarm, and the
  * ending goes through; the next workflow to end takes those materials. A
- * workflow under reconciliation-only authority takes its sweep too.
+ * sweep under a reconciliation permit (`proof-materials-sweep-run.ts`) adds
+ * no funding-address coin.
  */
 import {
   getAddressDetails,
@@ -105,7 +106,7 @@ export const lucidProofMaterialsSweepPort = ({
         signed = await spend(page, false);
       } catch (cause) {
         // A page whose remainder falls under min-ADA tops up from the
-        // prover's funding coins; none under reconciliation-only authority.
+        // prover's funding coins; none under a reconciliation permit.
         // A page that builds alone never tops up.
         if (reconciling) throw cause;
         signed = await spend(page, true);
@@ -210,7 +211,6 @@ export const withProofMaterialsSweep = ({
     own: {
       owns: isProofMaterialsSweepAction,
       next: atEnd,
-      reclaim: atEnd,
       resolved: async (context, resolution) =>
         final(resolution.confirmationDepth) ? await sweep(context) : undefined,
       build: async (context, action) => {

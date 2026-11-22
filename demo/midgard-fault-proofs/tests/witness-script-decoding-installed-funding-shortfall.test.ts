@@ -60,8 +60,6 @@ const SCENARIO = {
   violationId: "witness-script-header-malformed",
 };
 const ADA = 1_000_000n;
-/** Confirmation polls a run may take before it counts as spinning. */
-const POLL_CAP = 5_000;
 const PLAIN_ADA_RULE =
   "from its plain-ADA coins (a coin holding a token is never spent)";
 
@@ -77,11 +75,10 @@ describe("a proof action the prover wallet cannot fund, in the installed watcher
     const run = await runInstalled(SCENARIO, hooks, {
       beforeTurns: (context) => {
         harness = context.harness;
-        context.clock.state.crashAfterPolls = POLL_CAP;
         // Once the proof has begun, the operator leaves one plain coin below
-        // the collateral line while the runner waits for a confirmation; the
+        // the collateral line between two of its actions; the
         // wallet's ada now sits in a coin that also holds a token.
-        context.clock.state.onPoll = async () => {
+        context.clock.state.onObservation = async () => {
           if (drained) return;
           drained = true;
           await drainProverToOneCoin(context.harness, 1_500_000n);
@@ -113,10 +110,9 @@ describe("a proof action the prover wallet cannot fund, in the installed watcher
     const pausedReasons: string[] = [];
     const run = await runInstalled(SCENARIO, hooks, {
       beforeTurns: ({ harness, clock }) => {
-        clock.state.crashAfterPolls = POLL_CAP;
         // Once the proof has begun, the operator leaves one plain coin below
-        // the collateral line while the runner waits for a confirmation.
-        clock.state.onPoll = async () => {
+        // the collateral line between two of its actions.
+        clock.state.onObservation = async () => {
           if (drained) return;
           drained = true;
           await drainProverToOneCoin(harness, 1_500_000n);

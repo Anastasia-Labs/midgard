@@ -1,13 +1,12 @@
 /** The validation-trace dispute's wait on its counterparty: a case of ours
  * that nobody has defended waits for a Defend until its defense deadline,
  * computed from the case datum with the case validator's own formula. The
- * run reports that wait as `awaiting_counterparty` with the deadline, so the
- * session hands its turn back at once and the watcher treats the objective as
- * healthy until the deadline passes. A defended thread of ours waits the same
- * way on its defender's move, until the defender's clock runs out.
+ * run reports that wait as `awaiting_counterparty` with the deadline, and the
+ * watcher treats the objective as healthy until the deadline passes. A
+ * defended thread of ours waits the same way on its defender's move, until
+ * the defender's clock runs out.
  *
- * Ten other states are named for readiness, so a session hands its turn
- * back at once instead of polling into a continuation stall: a thread that
+ * Ten other states are named for readiness: a thread that
  * needs a one-step resolution the runner does not drive, a move of ours that
  * does not build, a thread lost, a case a defender won, a move whose fee
  * would pass the runtime funding policy's per-transaction fee ceiling, a

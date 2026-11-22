@@ -176,23 +176,23 @@ would refuse such a query only when it is first sent. Version 3 added
 | `submit`         | `id, era?` + payload: the raw transaction                           | `submit_accepted` or `submit_rejected` (+ raw reason) or `error` |
 | `monitor_has_tx` | `id, txId (32 bytes)`                                               | `monitor_has_tx_result {has}`                                    |
 | `monitor_sizes`  | `id`                                                                | `monitor_sizes_result {capacity, size, txCount}`                 |
-| `monitor_txs`    | `id`                                                                | `monitor_txs_result {slot}` (+ the mempool)                      |
+| `monitor_txs`    | `id`                                                                | `monitor_txs_result` (+ the mempool)                             |
 
 ### Sidecar to client
 
-| type                     | fields                                                                                                    |
-| ------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `cs_opened`              | `id, stream, point (the intersection), tip`                                                               |
-| `cs_intersect_not_found` | `id, stream, tip`                                                                                         |
-| `cs_roll_forward`        | `stream, seq, point, blockNo, blockType, prevHash?, tip` + payload: the raw block                         |
-| `cs_roll_backward`       | `stream, seq, point, tip`                                                                                 |
-| `cs_failed`              | `stream, code, message`: the stream ended; the session lives on                                           |
-| `lsq_result`             | `id` + payload: the node's raw answer                                                                     |
-| `submit_accepted`        | `id`                                                                                                      |
-| `submit_rejected`        | `id` + payload: the node's raw rejection reason                                                           |
-| `monitor_txs_result`     | `id, slot` (the snapshot's acquired slot) + payload: a CBOR array of the mempool's transactions, in order |
-| `error`                  | `id, code, message`: one request refused; the session lives on                                            |
-| `fatal`                  | `code, message`: the session ends; it is the last frame                                                   |
+| type                     | fields                                                                            |
+| ------------------------ | --------------------------------------------------------------------------------- |
+| `cs_opened`              | `id, stream, point (the intersection), tip`                                       |
+| `cs_intersect_not_found` | `id, stream, tip`                                                                 |
+| `cs_roll_forward`        | `stream, seq, point, blockNo, blockType, prevHash?, tip` + payload: the raw block |
+| `cs_roll_backward`       | `stream, seq, point, tip`                                                         |
+| `cs_failed`              | `stream, code, message`: the stream ended; the session lives on                   |
+| `lsq_result`             | `id` + payload: the node's raw answer                                             |
+| `submit_accepted`        | `id`                                                                              |
+| `submit_rejected`        | `id` + payload: the node's raw rejection reason                                   |
+| `monitor_txs_result`     | `id` + payload: a CBOR array of the mempool's transactions, in order              |
+| `error`                  | `id, code, message`: one request refused; the session lives on                    |
+| `fatal`                  | `code, message`: the session ends; it is the last frame                           |
 
 ### Chain-sync streams
 

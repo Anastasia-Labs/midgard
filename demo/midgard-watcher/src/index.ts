@@ -59,13 +59,6 @@ export {
   type WatcherFaultProofSupervisorStatus,
 } from "./fault-proofs/fault-proof-supervisor.validate-job.js";
 export {
-  isWatcherPreflightStalledResult,
-  runWorkflowWithPreflightStallRetries,
-  WATCHER_PREFLIGHT_STALL_RETRY_BUDGET_MS,
-  WATCHER_PREFLIGHT_STALL_RETRY_DELAY_MS,
-  type WatcherPreflightStalledResult,
-} from "./fault-proofs/preflight-stall-retry.js";
-export {
   assertWatcherWorkflowFundingProfileOverlay,
   createWatcherWorkflowFundingProfileBundle,
   loadWatcherWorkflowFundingProfileOverlay,

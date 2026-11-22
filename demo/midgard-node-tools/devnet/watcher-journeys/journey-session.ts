@@ -6,7 +6,6 @@ import "node:timers/promises";
 import "node:url";
 import "@al-ft/midgard-fault-proofs/runtime";
 import "@al-ft/midgard-fault-proofs/validation-trace-dispute/actions";
-import "@al-ft/midgard-fault-proofs/workflow/pending-continuation";
 import "midgard-watcher";
 import "midgard-watcher/tests/support/published-deployment-authority";
 import "./artifacts.js";

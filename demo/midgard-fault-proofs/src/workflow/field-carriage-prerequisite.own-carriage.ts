@@ -108,15 +108,6 @@ export const fieldCarriageOwnCarriage = ({
         ),
         required,
       ),
-    /** Registers the publications of `required` at the proof-materials
-     * address as needs of `holder`. */
-    registerNeeds: (holder: ProofMaterialsHolder, required: Requirement) => {
-      const { view } = materialsFor(holder);
-      const datums = publicationSlots(required)
-        .filter(({ address }) => address === view.address)
-        .map(({ datumCbor }) => datumCbor);
-      if (datums.length > 0) view.need(holder, datums);
-    },
     observePublication,
     observeCertificate: async (
       headerHash: string,

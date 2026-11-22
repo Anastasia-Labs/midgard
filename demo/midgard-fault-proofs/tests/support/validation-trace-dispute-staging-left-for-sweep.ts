@@ -1,6 +1,5 @@
-/** Our staging outputs coming back to our wallet, what follows once those
- * spend backs roll back after the workflow's ending, and outputs left live
- * for a later proof-materials sweep. The ending waits on no spend back's
+/** Our staging outputs coming back to our wallet, and what follows once
+ * those spend backs roll back after the workflow's ending. The ending waits on no spend back's
  * finality. A spend back a rollback drops leaves its outputs live on the
  * ledger, and the next runs spend them back again from what the ledger
  * shows: the same signed bytes when the build comes out the same, or one
@@ -9,10 +8,6 @@ import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { CML, coreToTxOutput, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  createProofMaterialsView,
-  lucidProofMaterialsReader,
-} from "../../src/workflow/proof-materials-view.js";
 import { landedSpenderOf } from "./validation-trace-dispute-one-step-staged-drive.js";
 import {
   onLedger,
@@ -70,25 +65,6 @@ export const expectBackInOurWallet = async (
     );
   }
   return spenders;
-};
-
-/**
- * Expects a proof-materials view over our proof-materials address to select
- * each output of `staged` for a sweep.
- */
-export const expectSelectedForSweep = async (
-  scene: Pick<Scene, "h">,
-  staged: readonly string[],
-): Promise<void> => {
-  const { proofMaterialsAddress } = scene.h.proverSigner;
-  const selected = await createProofMaterialsView({
-    address: proofMaterialsAddress,
-    reader: lucidProofMaterialsReader(
-      scene.h.proverLucid,
-      proofMaterialsAddress,
-    ),
-  }).sweepable(100);
-  expect(selected.map(outRefOf)).toEqual(expect.arrayContaining([...staged]));
 };
 
 /**

@@ -118,14 +118,8 @@ export const workflowRunOutcomes = ({
       ...result("stalled", reason),
       ...(phase === undefined ? {} : { phase }),
     }),
-    pending: (
-      reason: string,
-      awaitingActionId?: string,
-    ): FraudProofWorkflowRunResult =>
-      named(reason) ?? {
-        ...result("pending", reason),
-        ...(awaitingActionId === undefined ? {} : { awaitingActionId }),
-      },
+    pending: (reason: string): FraudProofWorkflowRunResult =>
+      named(reason) ?? result("pending", reason),
     resumeOnObservation: (
       reason: string,
       namedState?: FraudProofWorkflowNamedState,

@@ -59,15 +59,13 @@ export const setupFaultProofExecution = async ({
       deadline: null,
     },
     actuationPermit: controller.permit,
-    admission: { mode: "resume" },
+    admission: {},
   } as const;
   return {
     fresh,
     controller,
     execution,
     input,
-    /** The admission of a fresh run. */
-    runAdmission: { mode: "run" } as const,
     runOrResume,
     verifyCompleted,
     recordProofStep,

@@ -75,9 +75,6 @@ import {
   recordingRecord,
 } from "./support/workflow-process.js";
 
-/** A run polls once per emulator block; one turn of the dispute stays well
- * inside this, and a run that never returns stops here instead. */
-const MAX_POLLS_PER_TURN = 200;
 const MAX_TURNS = 30;
 
 let recorder: ReturnType<typeof recordCrossBlockRawEmulator>;
@@ -186,7 +183,6 @@ describe("validation-trace dispute through the installed watcher application", (
     try {
       // The first turn opens the case, verifies the source, and hands the
       // wait on the defender back to the host with the case's deadline.
-      clock.state.crashAfterPolls = clock.state.polls + MAX_POLLS_PER_TURN;
       const opened = await app.turn();
       expect(opened).toMatchObject({ kind: "awaiting_counterparty" });
       if (opened.kind !== "awaiting_counterparty")
@@ -226,7 +222,6 @@ describe("validation-trace dispute through the installed watcher application", (
           `the target's removal within the turn budget: ${history.join("\n")}`,
         ).toBeLessThan(MAX_TURNS);
         await workflowClock.advance(result);
-        clock.state.crashAfterPolls = clock.state.polls + MAX_POLLS_PER_TURN;
         result = await app.turn();
         history.push(
           "reason" in result && result.reason !== undefined

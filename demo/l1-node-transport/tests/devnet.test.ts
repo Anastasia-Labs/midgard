@@ -290,7 +290,7 @@ describe.skipIf(!enabled)("real node conformance (devnet)", () => {
     expect(result).toEqual({ accepted: true });
     // The listing holds the transaction exactly as submitted.
     const listedHex = async (): Promise<string[]> =>
-      (await transport!.mempoolTxs()).txs.map((tx) =>
+      (await transport!.mempoolTxs()).map((tx) =>
         Buffer.from(tx).toString("hex"),
       );
     expect(await listedHex()).toContain(envelope.cborHex);

@@ -52,9 +52,8 @@ export type FamilyCommonInfrastructure = Readonly<{
 
 /**
  * The identity every constructed workflow carries. `decisionDigest` is present
- * only on the families whose record sets `bindsDecisionDigest`. The three
- * recovery members are what a reconciliation-only resume reads back an
- * already-submitted chain through, so every family's constructor supplies them.
+ * only on the families whose record sets `bindsDecisionDigest`. Every
+ * family's constructor supplies the three recovery members.
  */
 export type FamilyApplicationWorkflowIdentity<
   Category extends FraudProofCatalogueCategoryName,

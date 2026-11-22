@@ -153,7 +153,7 @@ describe("the proof-materials sweep", () => {
     expect(await scene.at(scene.materialsAddress)).toEqual([]);
   }, 300_000);
 
-  it("sweeps a workflow under reconciliation-only authority too, with no funding coin", async () => {
+  it("sweeps under a reconciliation permit too, with no funding coin", async () => {
     const scene = await prover();
     await scene.publish(2, "ee");
     const adapter = sweeping(scene, viewOf(scene), CONFLICT);
@@ -175,7 +175,7 @@ describe("the proof-materials sweep", () => {
     expect(spent.sort()).toEqual([...sweptOutRefs(action)]);
   }, 300_000);
 
-  it("takes the sweep through the runner under reconciliation-only authority, which admits it by its kind", async () => {
+  it("takes the sweep through the runner under a reconciliation permit", async () => {
     const scene = await prover();
     await scene.publish(2, "ef");
     const evidence = await canonicalEvidence();

@@ -1,7 +1,6 @@
 import "node:fs/promises";
 import "node:path";
 import "@al-ft/midgard-fault-proofs/validation-trace-dispute/actions";
-import "@al-ft/midgard-fault-proofs/workflow/pending-continuation";
 import "@al-ft/midgard-sdk/core";
 import "@al-ft/midgard-sdk/da";
 import "@al-ft/midgard-sdk/fraud-proof";

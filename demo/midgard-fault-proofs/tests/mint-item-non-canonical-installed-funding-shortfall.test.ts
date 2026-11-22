@@ -128,8 +128,6 @@ const SCENARIO = {
   violationId: "mint-item-non-canonical",
 };
 const ADA = 1_000_000n;
-/** Confirmation polls a run may take before it counts as spinning. */
-const POLL_CAP = 5_000;
 
 type Harness = InstalledTurnContext["harness"];
 
@@ -143,11 +141,10 @@ describe("a mint-item proof the prover wallet cannot fund, in the installed watc
     const run = await runInstalled(SCENARIO, hooks, {
       beforeTurns: (context) => {
         harness = context.harness;
-        context.clock.state.crashAfterPolls = POLL_CAP;
         // Once the proof has begun, the operator leaves one plain coin below
-        // the collateral line while the runner waits for a confirmation; the
+        // the collateral line between two of its actions; the
         // wallet's ada now sits in a coin that also holds a token.
-        context.clock.state.onPoll = async () => {
+        context.clock.state.onObservation = async () => {
           if (drained) return;
           drained = true;
           await drainProverToOneCoin(context.harness, 1_500_000n);

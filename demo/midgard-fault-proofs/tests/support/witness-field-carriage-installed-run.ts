@@ -58,8 +58,7 @@ const scenarioOf = (widePadBytes: number) => ({
   nativeTx: () =>
     witnessSubject([ITEM, plutusItem(honestScript(widePadBytes))]).nativeTx,
 });
-/** Each run convicts well inside these, so one that spins fails fast. */
-export const POLL_CAP = 200;
+/** Each run convicts well inside this, so one that spins fails fast. */
 const TURN_CAP = 20;
 /** Blocks every run takes before the record begins. */
 const SETUP_BLOCKS = 24;
@@ -199,7 +198,6 @@ export const runWith = async (
     ...runOptions
   } = options;
   const run = await runInstalled(scenarioOf(widePadBytes), hooks, {
-    maxPolls: POLL_CAP,
     maxTurns: TURN_CAP,
     ...runOptions,
     beforeTurns: async (context) => {

@@ -24,7 +24,6 @@ import {
   type L1NodeTransportOptions,
   type LedgerStateSession,
   type MempoolSizes,
-  type MempoolTransactions,
   type QueryOptions,
   type SubmitResult,
   TransportTimeoutError,
@@ -400,19 +399,17 @@ export class L1NodeTransport {
   }
 
   /**
-   * Every transaction of one fresh mempool snapshot, in mempool order. One
-   * listing is bounded by the node's mempool capacity.
+   * Every transaction of one fresh mempool snapshot, in mempool order, as
+   * the node holds its bytes. One listing is bounded by the node's mempool
+   * capacity.
    */
-  async mempoolTxs(): Promise<MempoolTransactions> {
+  async mempoolTxs(): Promise<Uint8Array[]> {
     const sidecar = await this.#readySidecar();
     const answer = await this.#call(sidecar, { type: "monitor_txs" });
     const listed = decodeCbor(answer.payload);
     if (!Array.isArray(listed))
       throw new TransportProtocolError("the mempool listing is not an array");
-    return {
-      acquiredSlot: natural(answer.header.slot, "mempool snapshot slot"),
-      txs: listed.map((tx) => bytesOf(tx, undefined, "mempool transaction")),
-    };
+    return listed.map((tx) => bytesOf(tx, undefined, "mempool transaction"));
   }
 
   /** Opens a chain-sync stream; it attaches to every ready sidecar in turn. */

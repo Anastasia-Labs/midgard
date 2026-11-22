@@ -72,15 +72,6 @@ export interface ScriptDecodePrerequisitePort<
 > {
   readonly portVersion: typeof SCRIPT_DECODE_PREREQUISITE;
   readonly category: Category;
-  /**
-   * Registers what the step of `baseAction` stages with `holder`, so no
-   * sweep takes it while the workflow builds nothing.
-   */
-  need(input: {
-    readonly holder: ProofMaterialsHolder;
-    readonly baseAction: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
-  }): Promise<void>;
   inspect(input: {
     readonly headerHash: string;
     /** The workflow that finds the staged chunks, and its objective. */

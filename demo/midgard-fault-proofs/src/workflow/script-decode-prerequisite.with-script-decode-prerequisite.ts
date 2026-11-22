@@ -99,16 +99,6 @@ export const withScriptDecodePrerequisite = <
         return observed;
       }
       const holder = workflowProofMaterialsHolder(context);
-      // A workflow under reconciliation-only authority builds nothing, but
-      // what its record stages stays out of every sweep.
-      if (context.reconciliationOnly === true) {
-        await prerequisite.need({
-          holder,
-          baseAction: observed.action,
-          artifact: context.artifact,
-        });
-        return observed;
-      }
       const inspection = await prerequisite.inspect({
         headerHash: context.identity.target.headerHash,
         holder,

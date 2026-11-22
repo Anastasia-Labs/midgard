@@ -125,16 +125,6 @@ export interface FieldCarriagePrerequisitePort<
       requirement: FieldCarriageRequirement | RawRequirement | null;
     }>
   >;
-  /**
-   * Registers with the proof-materials view what the step for `baseAction`
-   * needs at the proof-materials address, without reading anything else.
-   */
-  need(input: {
-    readonly headerHash: string;
-    readonly holder: ProofMaterialsHolder;
-    readonly baseAction: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
-  }): Promise<void>;
   inspect(input: {
     readonly headerHash: string;
     readonly holder: ProofMaterialsHolder;

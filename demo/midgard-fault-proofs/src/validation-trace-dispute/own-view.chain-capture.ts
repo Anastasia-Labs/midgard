@@ -16,17 +16,15 @@
  * our node's mempool applied, and each unit's history with the mempool
  * transactions touching the unit after the ledger's, in mempool order. A
  * mempool transaction has no inclusion point; it is never evidence. */
-import type { PendingTransaction } from "@al-ft/midgard-l1-follower/mempool";
+import {
+  bodyRawOutputs,
+  type PendingTransaction,
+} from "@al-ft/midgard-l1-follower/mempool";
 import * as SDK from "@al-ft/midgard-sdk/da";
 import { CML, coreToTxOutput, type TxOutput } from "@lucid-evolution/lucid";
 
 import { datumProver } from "../fraud-proof-record-selection.js";
-import {
-  bodyRawOutputs,
-  type FraudProofNextView,
-  nextViewOf,
-  pendingParts,
-} from "../workflow/next-state.js";
+import { type FraudProofNextView, nextViewOf } from "../workflow/next-state.js";
 import { parseOwnOutRef } from "../workflow/own-outputs.js";
 import { historicalTransactions } from "../workflow/raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
 import { rawToUtxo } from "../workflow/raw-l1-family-derivation.state-queue-topology.js";
@@ -244,11 +242,11 @@ const resolvePending = (
       return raw === undefined ? [] : [raw];
     });
   return view.pending.map((pending) => {
-    const parts = pendingParts(pending);
+    const outputs = pending.creates.map(({ raw }) => raw);
     const transaction = Object.freeze({
       txHash: pending.txHash,
-      bodyCbor: parts.bodyCbor,
-      witnessSetCbor: parts.witnessSetCbor,
+      bodyCbor: pending.bodyCbor,
+      witnessSetCbor: pending.witnessSetCbor,
       resolvedInputs: resolved(pending.spends),
       referenceInputs: pending.reads,
       resolvedReferenceInputs: resolved(pending.reads),
@@ -256,8 +254,8 @@ const resolvePending = (
       pending: true,
       confirmationDepth: undefined,
     });
-    for (const raw of parts.outputs) known.set(raw.outRef, raw);
-    return { transaction, outputs: parts.outputs };
+    for (const raw of outputs) known.set(raw.outRef, raw);
+    return { transaction, outputs };
   });
 };
 

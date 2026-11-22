@@ -9,7 +9,7 @@ import {
  * How a run of `job` starts against its header's deadline, which the header
  * fixes:
  *
- * - `on_time`: before its latest safe start, or deadline-free work.
+ * - `on_time`: before its latest safe start.
  * - `late`: past its latest safe start but before the header's maturity.
  *   The latest safe start is a design margin (worst-case proof time before
  *   maturity), not the last moment a removal lands: the state queue accepts
@@ -26,9 +26,8 @@ export const watcherProofStartTiming = (
   job: WatcherFaultProofJob,
   nowMs: bigint,
 ): "on_time" | "late" | "observe" => {
-  if (job.deadline === null || nowMs < BigInt(job.deadline.latestSafeStartAtMs))
-    return "on_time";
-  if (nowMs < BigInt(job.deadline.maturityAtMs)) return "late";
+  if (nowMs < BigInt(job.deadline!.latestSafeStartAtMs)) return "on_time";
+  if (nowMs < BigInt(job.deadline!.maturityAtMs)) return "late";
   return "observe";
 };
 
@@ -68,9 +67,9 @@ export const createWatcherOpenProofDeadlines = () => {
   const keyOf = ({ category, headerHash }: WatcherProofObjective) =>
     `${category}/${headerHash}`;
   return Object.freeze({
-    /** Records the job when it carries a header deadline. */
+    /** Records the job. */
     track: (job: WatcherFaultProofJob): void => {
-      if (job.deadline !== null) open.set(keyOf(job), job);
+      open.set(keyOf(job), job);
     },
     /** A run whose outcome ends the race against maturity drops it. */
     finished: (job: WatcherProofObjective, outcomeKind: unknown): void => {

@@ -110,14 +110,6 @@ export const createScriptDecodePrerequisitePort = <
   const port: ScriptDecodePrerequisitePort<Category> = {
     portVersion: SCRIPT_DECODE_PREREQUISITE,
     category,
-    need: async ({ holder, baseAction, artifact }) => {
-      const script = await scriptOf({ action: baseAction, artifact });
-      if (script === undefined) return;
-      proofMaterialsAccess({ signer, lucid, holder }).view.need(
-        holder,
-        scriptDecodeStagingDatums(script.scriptBytes),
-      );
-    },
     inspect: async ({ baseAction, artifact, holder }) => {
       const script = await scriptOf({ action: baseAction, artifact });
       if (script === undefined) return { kind: "not_required" };

@@ -62,10 +62,7 @@ const readOver = (
     node: {
       mempoolTxs: async () => {
         calls.push("mempoolTxs");
-        return {
-          acquiredSlot: 0n,
-          txs: (await node.mempoolTxs()).map(encodeSimTx),
-        };
+        return (await node.mempoolTxs()).map(encodeSimTx);
       },
     },
     nodeTip: async () => {

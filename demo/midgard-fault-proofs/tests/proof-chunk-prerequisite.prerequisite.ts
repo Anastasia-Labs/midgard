@@ -142,7 +142,6 @@ export const prerequisite = ({
       errorSha256: "77".repeat(32),
     };
   }),
-  need: vi.fn(async () => undefined),
   inspect: vi.fn(async () =>
     satisfied
       ? { kind: "satisfied" as const, chunks: [] }

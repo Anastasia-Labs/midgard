@@ -167,7 +167,7 @@ describe("witness field publication through the mempool, in the installed watche
       // in the mempool: the prover's wallet spends the first publication's
       // output back to itself.
       during: ({ clock }, { harness, watch }) => {
-        clock.state.onPoll = async () => {
+        clock.state.onObservation = async () => {
           if (
             waiting === undefined ||
             spent !== undefined ||
@@ -188,7 +188,7 @@ describe("witness field publication through the mempool, in the installed watche
           moved.add(`${watch.accepted.at(-1)!.txHash}#0`);
         };
         return () => {
-          clock.state.onPoll = undefined;
+          clock.state.onObservation = undefined;
         };
       },
     });

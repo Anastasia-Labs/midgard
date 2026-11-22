@@ -71,7 +71,6 @@ import {
   expectOwnFieldCarriage,
   type Harness,
   type PlaceContext,
-  POLL_CAP,
   runWith,
   sitesOf,
 } from "./support/witness-field-carriage-installed-run.js";
@@ -131,7 +130,7 @@ describe("witness field carriage recovered from the chain, in the installed watc
     "builds the %s transaction its stopped process signed but never sent again after the restart, landing one copy",
     async (kind) => {
       let withheld: string | undefined;
-      const stopping = stopsOnceAndRestarts(POLL_CAP);
+      const stopping = stopsOnceAndRestarts();
       const { run, watch, harness, cost } = await runWith(hooks, () => [], {
         decide: (transaction, { harness }) => {
           const sites = sitesOf(harness);
@@ -141,9 +140,9 @@ describe("witness field carriage recovered from the chain, in the installed watc
               : certificateOf(transaction, sites) !== undefined;
           if (withheld !== undefined || !pays) return "accept";
           // Signed, and lost before the ledger saw it; the process stops at
-          // its next poll, and the next one holds nothing of it.
+          // its next observation, and the next one holds nothing of it.
           withheld = transaction.txHash;
-          stopping.stopAtNextPoll();
+          stopping.stopAtNextObservation();
           return "withhold";
         },
         during: stopping.during,
@@ -169,7 +168,7 @@ describe("witness field carriage recovered from the chain, in the installed watc
       // confirmed, and the prover's wallet spends the first publication's
       // output back to itself.
       during: ({ clock }, { harness, watch }) => {
-        clock.state.onPoll = async () => {
+        clock.state.onObservation = async () => {
           if (spent !== undefined) return;
           const carriage = fieldCarriageOf(watch, sitesOf(harness));
           if (
@@ -199,7 +198,7 @@ describe("witness field carriage recovered from the chain, in the installed watc
           );
         };
         return () => {
-          clock.state.onPoll = undefined;
+          clock.state.onObservation = undefined;
         };
       },
     });
@@ -319,14 +318,14 @@ describe("witness field carriage recovered from the chain, in the installed watc
           lost = transaction;
           return "withhold";
         },
-        // At the poll after the lost transaction is first sent: another
+        // At the observation after the lost transaction is first sent: another
         // transaction of the prover's wallet spends a coin it spends, so
         // neither it nor a rebuild of it on the same coin can land. With
         // `copy`, another party certifies the same field in the same block,
         // so its certificate is on chain before the application plans the
         // certificate again.
         during: ({ clock }, { harness, watch, other }) => {
-          clock.state.onPoll = async () => {
+          clock.state.onObservation = async () => {
             if (lost === undefined || spent) return;
             const [txHash, index] = lost.inputs[0]!.split("#");
             const utxo = harness.emulator.ledger[`${txHash!}${index!}`]?.utxo;
@@ -348,7 +347,7 @@ describe("witness field carriage recovered from the chain, in the installed watc
             harness.emulator.awaitBlock();
           };
           return () => {
-            clock.state.onPoll = undefined;
+            clock.state.onObservation = undefined;
           };
         },
       });
@@ -432,7 +431,7 @@ describe("witness field carriage recovered from the chain, in the installed watc
           return "withhold";
         },
         during: ({ clock }, { harness, watch }) => {
-          clock.state.onPoll = async () => {
+          clock.state.onObservation = async () => {
             if (retired !== undefined) return;
             // "landed": the certify transaction is sent, and lands before
             // the application reconciles it.
@@ -444,7 +443,7 @@ describe("witness field carriage recovered from the chain, in the installed watc
               await retire(watch, harness, certificate.output.outRef);
           };
           return () => {
-            clock.state.onPoll = undefined;
+            clock.state.onObservation = undefined;
           };
         },
       });

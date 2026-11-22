@@ -21,13 +21,12 @@
  * each thread stands, and whether an output is live, is read every time from
  * the ledger with our node's mempool applied: a move of ours in the mempool
  * has taken its thread on, and a spend back of ours in the mempool has spent
- * its output. A thread move of ours goes first, save once the header has rolled back: the workflow, then
- * reconciliation-only, takes no move, and its spend backs go on, save for
- * the outputs a thread of ours at the PrepareSelected move's holder or past
- * it holds, as above. That hold lasts until the dispute ends for the
- * thread: it leaves its holders (a cancel, a timeout or an award) or the
- * case closes, whoever sends it. Once our workflow is done (completed, in conflict, or resolved by another
- * record) no thread needs any output: each is spent back before its ending
+ * its output. A thread move of ours goes first. A thread of ours at the
+ * PrepareSelected move's holder or past it holds its outputs, as above,
+ * until the dispute ends for the thread: it leaves its holders (a cancel, a
+ * timeout or an award) or the case closes, whoever sends it. Once our
+ * workflow is done (completed, in conflict, or resolved by another record)
+ * no thread needs any output: each is spent back before its ending
  * is taken. The ending does not wait for a spend back to be final: one that
  * is rolled back leaves its output live, an unneeded plain output at our
  * proof-materials address once the workflow is released, which a later
@@ -307,13 +306,8 @@ export const validationTraceStagingSweep = ({
       context.unbuiltActionIds?.has(actionId) === true;
     const ending =
       current === VALIDATION_TRACE_RESOLVED_ELSEWHERE ? undefined : current;
-    // A thread move of ours goes first, save under reconciliation-only
-    // authority, which takes no move.
-    if (
-      ending?.kind === "action_required" &&
-      context.reconciliationOnly !== true &&
-      !unbuilt(ending.action.actionId)
-    )
+    // A thread move of ours goes first.
+    if (ending?.kind === "action_required" && !unbuilt(ending.action.actionId))
       return undefined;
     const planned = await plans(context);
     const known = await withCopies(context, await stagings(context), planned);
@@ -322,10 +316,9 @@ export const validationTraceStagingSweep = ({
       ending === undefined ||
       ending.kind === "completed" ||
       ending.kind === "conflict";
-    // Under reconciliation-only authority a standing thread of ours still
-    // holds its stagings. Past the PrepareSelected move its evidence names
-    // those very outputs, so none can be staged again should the header come
-    // back; at the prepare holder it keeps the usable ones so the thread can
+    // A standing thread of ours holds its stagings. Past the PrepareSelected
+    // move its evidence names those very outputs, so none can be staged
+    // again; at the prepare holder it keeps the usable ones so the thread can
     // go on without a fresh staging. The hold ends once the thread leaves its
     // holders (a cancel, a timeout or an award) or the case closes, whoever
     // sends it, and the spend back follows.

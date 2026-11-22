@@ -7,11 +7,9 @@ import {
   VALIDATION_TRACE_REPLAY_HELD,
   ValidationTraceReplayHeldError,
 } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/replay-hold";
-import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
 import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs/workflow/workflow-funding-shortfall";
 import { describe, expect, it, vi } from "vitest";
 
-import { WATCHER_FAULT_PROOF_CONTINUATION_STALLED } from "../../src/fault-proofs/fault-proof-continuation-stall.js";
 import { WATCHER_PROVER_FUNDING_UNAVAILABLE } from "../../src/fault-proofs/fault-proof-funding-hold.js";
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
 
@@ -181,10 +179,6 @@ describe("supervisor execution adapter with skipped actions behind another hold"
     {
       hold: WATCHER_PROVER_FUNDING_UNAVAILABLE,
       reason: `${WORKFLOW_FUNDING_SHORTFALL}: the prover wallet cannot fund validation-trace-reveal:b#1 from its plain-ADA coins (a coin holding a token is never spent): Your wallet does not have enough funds`,
-    },
-    {
-      hold: WATCHER_FAULT_PROOF_CONTINUATION_STALLED,
-      reason: `${FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED}: no journaled progress for 1800000 ms over 1800 polls; last pending: transaction for validation-trace-reveal:b#1 is pending`,
     },
   ])(
     "names every skipped action on readiness under $hold and logs it at error level",

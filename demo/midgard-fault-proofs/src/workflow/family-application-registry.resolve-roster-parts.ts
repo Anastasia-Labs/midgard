@@ -92,10 +92,8 @@ export function resolvedSteps(
 
 /**
  * The predecessor replay context, laid into a family's config only when its
- * record requires it and the host supplied one. The shared loop refuses a
- * required context that is absent before `bindConfig` runs; here the field
- * stays optional so a reconciliation-only invocation, which is exempt from
- * the requirement, still binds.
+ * record requires it. The shared loop refuses a required context that is
+ * absent before `bindConfig` runs.
  */
 export const optionalReplayContext = (
   requires: readonly FamilyApplicationRequirement[],
@@ -128,8 +126,7 @@ export type CursorFamilyRequirements = Readonly<{
 /**
  * The config fields a cursor family reads from the infrastructure its record
  * requires: the replay context. The shared loop refuses a required part that
- * is absent before `bindConfig` runs, except on a reconciliation-only
- * invocation, which never reaches the evidence pipeline.
+ * is absent before `bindConfig` runs.
  */
 export const requiredInfrastructureFields = (
   family: CursorFamilyRequirements,

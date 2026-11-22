@@ -16,10 +16,6 @@ export type WorkflowActuationCheckpoint =
   | "before_observe"
   | "before_preflight"
   | "before_submit"
-  // A reclaim of our own outputs, the one send reconciliation-only
-  // authority still admits.
-  | "before_reclaim_preflight"
-  | "before_reclaim_submit"
   | "before_terminal_verify";
 
 /**
@@ -32,7 +28,6 @@ export interface WorkflowActuationPermit {
 
 export type WorkflowActuationPermitController = Readonly<{
   permit: WorkflowActuationPermit;
-  restrictToReconciliation(reason: string): void;
   revoke(reason: string): void;
 }>;
 
@@ -46,7 +41,7 @@ type PermitState = {
   readonly headerHash: string;
   readonly rollbackGeneration: string;
   revokedReason: string | undefined;
-  reconciliationReason: string | undefined;
+  readonly reconciliation: boolean;
 };
 
 export class WorkflowActuationRevokedError extends Error {
@@ -112,16 +107,15 @@ export const revokeWorkflowActuationPermit = (
 const createController = ({
   decision,
   rollbackGeneration,
-  reconciliationReason,
+  reconciliation,
 }: {
   readonly decision: HeaderFaultDecision;
   readonly rollbackGeneration: string;
-  readonly reconciliationReason?: string;
+  readonly reconciliation: boolean;
 }): WorkflowActuationPermitController => {
-  const admitted =
-    reconciliationReason === undefined
-      ? requireRunnableHeaderFault(decision)
-      : decision;
+  const admitted = reconciliation
+    ? decision
+    : requireRunnableHeaderFault(decision);
   if (!CANONICAL_NATURAL.test(rollbackGeneration)) {
     throw new Error(
       "actuation permit rollback generation must be a canonical natural",
@@ -140,14 +134,11 @@ const createController = ({
     headerHash: admitted.headerHash,
     rollbackGeneration,
     revokedReason: undefined,
-    reconciliationReason,
+    reconciliation,
   };
   admittedPermits.set(permit, state);
   return Object.freeze({
     permit,
-    restrictToReconciliation: (reason: string): void => {
-      state.reconciliationReason ??= canonicalReason(reason);
-    },
     revoke: (reason: string): void => {
       revokeWorkflowActuationPermit(permit, reason);
     },
@@ -157,12 +148,13 @@ const createController = ({
 export const createWorkflowActuationPermitController = (input: {
   readonly decision: HeaderFaultDecision;
   readonly rollbackGeneration: string;
-}): WorkflowActuationPermitController => createController(input);
+}): WorkflowActuationPermitController =>
+  createController({ ...input, reconciliation: false });
 
 /**
- * Historical classification grants reconciliation only: observation and
- * the reclaim of our own outputs, never runnable classification or
- * submission authority for a fault move.
+ * Authority over a fault that is no longer live: the exact classified fault,
+ * without the runnable-classification check, revoked on rollback like any
+ * permit. It runs the completion check and the proof-materials sweep.
  */
 export const createWorkflowReconciliationPermitController = (input: {
   readonly decision: HeaderFaultDecision;
@@ -178,10 +170,7 @@ export const createWorkflowReconciliationPermitController = (input: {
     throw new Error(
       "reconciliation authority requires the exact classified fault",
     );
-  return createController({
-    ...input,
-    reconciliationReason: "existing_signed_workflow_only",
-  });
+  return createController({ ...input, reconciliation: true });
 };
 
 export const assertPermit = ({
@@ -216,11 +205,7 @@ export const assertPermit = ({
       `production workflow actuation permit identity mismatch at ${checkpoint}`,
     );
   }
-  const revokedReason =
-    state.revokedReason ??
-    (checkpoint === "before_preflight" || checkpoint === "before_submit"
-      ? state.reconciliationReason
-      : undefined);
+  const revokedReason = state.revokedReason;
   if (revokedReason !== undefined) {
     const error = new WorkflowActuationRevokedError({
       decisionDigest: state.decisionDigest,

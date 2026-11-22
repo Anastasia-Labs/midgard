@@ -20,10 +20,8 @@ import {
   WORKFLOW_ADAPTER_RUNNER,
   workflowAdapterRunner,
 } from "../src/workflow/adapters.js";
-import { applyFamilyApplicationRecord } from "../src/workflow/family-application.apply-family-application-record.js";
 import { defineFamilyApplication } from "../src/workflow/family-application.assert-family-definition-roster.js";
 import { FAMILY_APPLICATION_REGISTRY } from "../src/workflow/family-application-registry.family-application-registry.js";
-import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
 import {
   createFamilyApplicationWorkflowRunner,
   createManifestBoundWorkflowRunner,
@@ -46,7 +44,6 @@ import {
   doubleSpendRecord,
   loadedRuntime,
   recoverableDoubleSpendWorkflow,
-  retainedDaSource,
 } from "./workflow-runtime.loaded-runtime.js";
 
 /** A fresh wallet wiring for `actuation`'s objective. */
@@ -363,202 +360,6 @@ describe("compiled manifest-bound production runtime V1", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
-  it("keeps one admitted runner session until pending work completes", async () => {
-    const actuation = await admittedActuation();
-    const close = vi.fn(async () => undefined);
-    const sources = [retainedDaSource()];
-    const workflow = recoverableDoubleSpendWorkflow(actuation.headerHash);
-    const loadRuntime = vi.fn(async () =>
-      loadedRuntime(actuation, { retainedDaSources: sources, close }),
-    );
-    const constructWorkflow = vi.fn(async () => workflow);
-    const completed = { kind: "completed", workflowId: "existing-workflow" };
-    const execute =
-      vi.fn<
-        Parameters<
-          typeof doubleSpendRecord<Record<string, never>, typeof workflow>
-        >[0]["execute"]
-      >();
-    execute.mockImplementation(async () =>
-      execute.mock.calls.length < 3 ? { kind: "pending" } : completed,
-    );
-    const runner = createManifestBoundWorkflowRunner({
-      record: doubleSpendRecord({
-        bindConfig: () => ({}),
-        constructWorkflow,
-        execute,
-      }),
-      loadRuntime,
-    });
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    try {
-      const running = runner.runOrResume({
-        category: "doubleSpend",
-        deploymentFingerprint: DEPLOYMENT,
-        headerHash: actuation.headerHash,
-        decisionDigest: actuation.decisionDigest,
-        actuationPermit: actuation.actuationPermit,
-        objectiveWallet: objectiveWalletOf(actuation),
-        runtimeConfigPath: "/etc/midgard/runtime.json",
-      });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(execute).toHaveBeenCalledTimes(1);
-      expect(close).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(999);
-      expect(execute).toHaveBeenCalledTimes(1);
-      await vi.advanceTimersByTimeAsync(1);
-      expect(execute).toHaveBeenCalledTimes(2);
-      expect(close).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(1_000);
-      await expect(running).resolves.toBe(completed);
-      expect(execute).toHaveBeenCalledTimes(3);
-      const calls = execute.mock.calls;
-      for (const [input] of calls) {
-        expect(input.run).toBe(calls[0]![0].run);
-        expect(input.workflow).toBe(workflow);
-        expect(input.sources).toBe(sources);
-      }
-      expect(loadRuntime).toHaveBeenCalledOnce();
-      expect(constructWorkflow).toHaveBeenCalledOnce();
-      expect(close).toHaveBeenCalledOnce();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("stops pending continuation when authority is revoked and closes the session", async () => {
-    const actuation = await admittedActuation();
-    const close = vi.fn(async () => undefined);
-    const sources = [retainedDaSource()];
-    const execute = vi.fn(async () => ({ kind: "pending" }));
-    const runner = createManifestBoundWorkflowRunner({
-      record: doubleSpendRecord({
-        bindConfig: () => ({}),
-        constructWorkflow: async () =>
-          recoverableDoubleSpendWorkflow(actuation.headerHash),
-        execute,
-      }),
-      loadRuntime: async () =>
-        loadedRuntime(actuation, { retainedDaSources: sources, close }),
-    });
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    try {
-      const running = runner.runOrResume({
-        category: "doubleSpend",
-        deploymentFingerprint: DEPLOYMENT,
-        headerHash: actuation.headerHash,
-        decisionDigest: actuation.decisionDigest,
-        actuationPermit: actuation.actuationPermit,
-        objectiveWallet: objectiveWalletOf(actuation),
-        runtimeConfigPath: "/etc/midgard/runtime.json",
-      });
-      const rejected = running.catch((error: unknown) => error);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(execute).toHaveBeenCalledTimes(1);
-      actuation.revoke("canonical rollback observed during confirmation");
-      await vi.advanceTimersByTimeAsync(1_000);
-      expect(isWorkflowActuationRevokedError(await rejected)).toBe(true);
-      expect(execute).toHaveBeenCalledTimes(1);
-      expect(close).toHaveBeenCalledOnce();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("yields pending ownership contention even with a submission permit", async () => {
-    const actuation = await admittedActuation();
-    const run = bindWorkflowRunActuation({
-      run: createWorkflowRun(objectiveWalletOf(actuation)),
-      permit: actuation.actuationPermit,
-      decisionDigest: actuation.decisionDigest,
-      deploymentFingerprint: DEPLOYMENT,
-      category: "doubleSpend",
-      headerHash: actuation.headerHash,
-    });
-    const result = {
-      kind: "pending",
-      resumeOnObservation: true,
-      reason: "funding is reserved",
-    };
-    const execute = vi.fn(async () => result);
-    await expect(
-      continuePendingWorkflow({
-        invocation: {
-          deploymentFingerprint: DEPLOYMENT,
-          category: "doubleSpend",
-          headerHash: actuation.headerHash,
-        },
-        run,
-        execute,
-      }),
-    ).resolves.toBe(result);
-    expect(execute).toHaveBeenCalledOnce();
-  });
-
-  it("returns a pending reconciliation without occupying the execution slot", async () => {
-    const actuation = await admittedActuation();
-    const run = bindWorkflowRunActuation({
-      run: createWorkflowRun(objectiveWalletOf(actuation)),
-      permit: actuation.actuationPermit,
-      decisionDigest: actuation.decisionDigest,
-      deploymentFingerprint: DEPLOYMENT,
-      category: "doubleSpend",
-      headerHash: actuation.headerHash,
-    });
-    actuation.restrictToReconciliation("target removed from canonical queue");
-    const result = { kind: "pending", reason: "terminal inclusion absent" };
-    const execute = vi.fn(async () => result);
-    await expect(
-      continuePendingWorkflow({
-        invocation: {
-          deploymentFingerprint: DEPLOYMENT,
-          category: "doubleSpend",
-          headerHash: actuation.headerHash,
-        },
-        run,
-        execute,
-      }),
-    ).resolves.toBe(result);
-    expect(execute).toHaveBeenCalledOnce();
-  });
-
-  it("returns every non-pending continuation result unchanged", async () => {
-    const actuation = await admittedActuation();
-    const run = bindWorkflowRunActuation({
-      run: createWorkflowRun(objectiveWalletOf(actuation)),
-      permit: actuation.actuationPermit,
-      decisionDigest: actuation.decisionDigest,
-      deploymentFingerprint: DEPLOYMENT,
-      category: "doubleSpend",
-      headerHash: actuation.headerHash,
-    });
-    const values = [
-      { kind: "terminal_included" },
-      { kind: "stalled" },
-      { kind: "awaiting_counterparty" },
-      { kind: "unknown-result" },
-      { state: "pending" },
-      undefined,
-      null,
-      "pending",
-    ];
-    for (const value of values) {
-      const execute = vi.fn(async () => value);
-      await expect(
-        continuePendingWorkflow({
-          invocation: {
-            deploymentFingerprint: DEPLOYMENT,
-            category: "doubleSpend",
-            headerHash: actuation.headerHash,
-          },
-          run,
-          execute,
-        }),
-      ).resolves.toBe(value);
-      expect(execute).toHaveBeenCalledOnce();
-    }
-  });
-
   it("rejects a revoked decision permit before loading runtime infrastructure", async () => {
     const actuation = await admittedActuation();
     actuation.revoke("canonical rollback observed");
@@ -622,8 +423,6 @@ describe("compiled manifest-bound production runtime V1", () => {
       "before_observe",
       "before_preflight",
       "before_submit",
-      "before_reclaim_preflight",
-      "before_reclaim_submit",
       "before_terminal_verify",
     ];
     for (const checkpoint of checkpoints) {
@@ -660,50 +459,6 @@ describe("compiled manifest-bound production runtime V1", () => {
     }
   });
 
-  it("exempts a family's requirements only under real reconciliation authority", async () => {
-    const actuation = await admittedActuation();
-    const record = defineFamilyApplication({
-      category: "doubleSpend" as const,
-      roster: {},
-      requires: ["replayContext"] as const,
-      bindConfig: () => undefined,
-      constructWorkflow: async () =>
-        recoverableDoubleSpendWorkflow(actuation.headerHash),
-      execute: async () => ({}),
-      bindsDecisionDigest: false,
-    });
-    const apply = () =>
-      applyFamilyApplicationRecord({
-        record,
-        infrastructure: {
-          manifest: {},
-          blueprintJson: "{}",
-          deploymentInfo: {},
-          headerHash: actuation.headerHash,
-          lucid: {} as never,
-          signer: {} as never,
-          l1Source: {} as never,
-          stateQueueMutationLeaseCoordinator: {} as never,
-        },
-        resolveReferenceScript: async () => {
-          throw new Error("empty roster resolves nothing");
-        },
-        invocation: {
-          deploymentFingerprint: DEPLOYMENT,
-          category: "doubleSpend",
-          headerHash: actuation.headerHash,
-          reconciliationAuthority: actuation.actuationPermit,
-        },
-      });
-    await expect(apply()).rejects.toThrow(
-      "doubleSpend application claimed the reconciliation exemption under a permit that still admits actuation",
-    );
-    actuation.restrictToReconciliation("runtime test");
-    await expect(apply()).resolves.toMatchObject({
-      referenceScriptOutRefs: {},
-    });
-  });
-
   /**
    * One refusal test per check of the generic run-or-resume body. Every row of
    * the runner table is this body applied to a registry record, so each check
@@ -735,7 +490,6 @@ describe("compiled manifest-bound production runtime V1", () => {
       deploymentFingerprint,
       category,
       record = {},
-      restrictToReconciliation = false,
     }: {
       readonly loaded: (
         actuation: Actuation,
@@ -749,11 +503,8 @@ describe("compiled manifest-bound production runtime V1", () => {
           "roster" | "requires" | "constructWorkflow"
         >
       >;
-      readonly restrictToReconciliation?: boolean;
     }) => {
       const actuation = await admittedActuation();
-      if (restrictToReconciliation)
-        actuation.restrictToReconciliation("runtime refusal test");
       const execute = vi.fn(async () => ({ kind: "unexpected" }));
       const close = vi.fn(async () => undefined);
       const loadRuntime = vi.fn(async () => loaded(actuation, close));
@@ -912,17 +663,6 @@ describe("compiled manifest-bound production runtime V1", () => {
       });
       expect(rostered.close).toHaveBeenCalledOnce();
       expect(rostered.execute).not.toHaveBeenCalled();
-    });
-
-    it("exempts the record's requirements under reconciliation-only authority", async () => {
-      const { outcome, close, execute } = await driveGenericRunOrResume({
-        loaded: publicLoaded(),
-        record: { requires: ["replayContext"] },
-        restrictToReconciliation: true,
-      });
-      await expect(outcome).resolves.toStrictEqual({ kind: "unexpected" });
-      expect(close).toHaveBeenCalledOnce();
-      expect(execute).toHaveBeenCalledOnce();
     });
 
     it("checks the constructed decision digest against the invocation only when the record binds it", async () => {

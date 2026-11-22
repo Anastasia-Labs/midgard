@@ -1,7 +1,7 @@
 /**
  * The host parts of the installed application a test stands in for: public
  * retained DA answered from the committed payload, the mutation-lease
- * service, and the clock the runner's pending loop polls.
+ * service, and the clock the application observes.
  */
 import { CML, type Emulator } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
@@ -52,58 +52,22 @@ export class FixtureRetainedDaSource extends DaLibp2pRetainedDaSource {
 
 /**
  * The emulator's clock as the application sees it: `Date.now` reads the
- * emulator, and every 1 s pending poll of the runner adds one block and
- * counts in `polls`. Each observation the application makes (`observation`,
- * which its runner calls before each capture) is the moment between two of
- * its actions, its last transaction perhaps still in the mempool: no block,
- * and no count. Setting `crashAfterPolls` stops the process once, at the
- * first observation or poll once that many polls are counted, standing in
- * for a process that dies between two actions: a poll throws, and an
+ * emulator. Each observation the application makes (`observation`, which its
+ * runner calls before each capture) is the moment between two of its
+ * actions, its last transaction perhaps still in the mempool; it adds no
+ * block. Setting `stopAtNextObservation` stops the process once, at its next
+ * observation, standing in for a process that dies between two actions: that
  * observation never returns while `stopped()` rejects with the stop.
- * `onPoll`, when set, runs before a poll or an observation returns: the
- * world acting while the runner waits.
+ * `onObservation`, when set, runs before an observation returns: the world
+ * acting between two of the application's actions.
  */
 export const installApplicationClock = (emulator: Emulator) => {
-  const realSetTimeout = globalThis.setTimeout;
   const state = {
-    polls: 0,
-    crashAfterPolls: undefined as number | undefined,
-    onPoll: undefined as (() => Promise<void>) | undefined,
-    pollError: undefined as unknown,
-  };
-  /** The stop, once `counted` passes `crashAfterPolls`. */
-  const stopPast = (counted: number): Error | undefined => {
-    if (state.crashAfterPolls === undefined || counted <= state.crashAfterPolls)
-      return undefined;
-    state.crashAfterPolls = undefined;
-    return new Error("installed application process stopped");
+    stopAtNextObservation: false,
+    onObservation: undefined as (() => Promise<void>) | undefined,
   };
   let halt: ((stop: Error) => void) | undefined;
   const now = vi.spyOn(Date, "now").mockImplementation(() => emulator.now());
-  const timers = vi.spyOn(globalThis, "setTimeout").mockImplementation(((
-    callback: (...args: unknown[]) => void,
-    ms?: number,
-    ...args: unknown[]
-  ) => {
-    if (ms !== 1_000) return realSetTimeout(callback, ms, ...args);
-    state.polls += 1;
-    const stop = stopPast(state.polls);
-    if (stop !== undefined) throw stop;
-    emulator.awaitBlock();
-    const onPoll = state.onPoll;
-    if (onPoll === undefined) return realSetTimeout(callback, 0, ...args);
-    return realSetTimeout(() => {
-      void onPoll().then(
-        () => callback(...args),
-        (error: unknown) => {
-          // The poll's promise has no reject path: surface the failure as
-          // the stopped process it leaves.
-          state.pollError = error;
-          callback(...args);
-        },
-      );
-    }, 0);
-  }) as typeof setTimeout);
   return {
     state,
     /** Rejects with the stop an observation makes from now on. */
@@ -112,17 +76,14 @@ export const installApplicationClock = (emulator: Emulator) => {
         halt = reject;
       }),
     observation: async () => {
-      const stop = stopPast(state.polls + 1);
-      if (stop !== undefined) {
-        halt?.(stop);
+      if (state.stopAtNextObservation) {
+        state.stopAtNextObservation = false;
+        halt?.(new Error("installed application process stopped"));
         return await new Promise<never>(() => undefined);
       }
-      await state.onPoll?.();
+      await state.onObservation?.();
     },
-    restore: () => {
-      timers.mockRestore();
-      now.mockRestore();
-    },
+    restore: () => now.mockRestore(),
   };
 };
 

@@ -45,18 +45,9 @@ export interface ProofChunkPrerequisitePort<
   readonly category: Category;
   classifyDirectCapacityFailure(cause: unknown): DirectCapacityFailure;
   /**
-   * Registers with the process's proof-materials view the chunks
-   * `baseAction` needs, so no sweep takes them while the workflow lives.
-   */
-  need(input: {
-    readonly headerHash: string;
-    readonly workflowId: string;
-    readonly baseAction: FraudProofWorkflowAction;
-    readonly artifact: JournalJsonObject;
-  }): Promise<void>;
-  /**
-   * Registers what `need` registers, then finds the chunks by content:
-   * `satisfied` with them once each is authenticated on the current chain.
+   * Finds the chunks `baseAction` needs by content, keeping them out of every
+   * sweep while the workflow lives: `satisfied` with them once each is
+   * authenticated on the current chain.
    */
   inspect(input: {
     readonly headerHash: string;

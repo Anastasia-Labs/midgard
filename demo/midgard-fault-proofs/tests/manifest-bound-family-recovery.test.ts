@@ -43,7 +43,7 @@ const releaseFinality = {
   policy,
 };
 
-// Local decision fixture. This test exercises the real opaque read-only
+// Local decision fixture. This test exercises the real opaque reconciliation
 // permit and runner; it does not claim native L1 evidence.
 const recovery = () => {
   const unsealed: Omit<HeaderFaultDecision, "decisionDigest"> = {

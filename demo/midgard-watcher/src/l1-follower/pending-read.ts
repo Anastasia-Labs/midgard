@@ -113,13 +113,13 @@ export const createWatcherPendingRead = (
       throw new WatcherFollowerNotAtNodeTipError(
         `the follower's view is at slot ${view.point.slot.toString()}, the node's tip at slot ${tip.slot.toString()}`,
       );
-    const key = `${viewKey(view)}|${listingDigest(listing.txs)}`;
+    const key = `${viewKey(view)}|${listingDigest(listing)}`;
     if (memo?.key === key) return memo.read;
     const read = Object.freeze({
       view,
       pending: await pendingOutsideFacts(
         input.store,
-        decodePendingTransactions(listing.txs),
+        decodePendingTransactions(listing),
       ),
     });
     memo = { key, view: viewKey(view), read };

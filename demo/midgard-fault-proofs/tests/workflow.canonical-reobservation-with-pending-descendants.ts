@@ -3,11 +3,7 @@ import "./workflow.compiled-production-workflow-boundary.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
-import * as actuationAuthority from "../src/workflow/actuation-permit.js";
-import {
-  FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
-  type FraudProofFamilyWorkflowAdapter,
-} from "../src/workflow/orchestrator.js";
+import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { WorkflowFundingUnavailableError } from "../src/workflow/workflow-funding-shortfall.js";
 import { signedWorkflowTransactionFixture } from "./support/signed-workflow-transaction.js";
@@ -62,32 +58,6 @@ describe("canonical reobservation with pending descendants", () => {
       reason: expect.stringContaining("validator rejected"),
     });
     expect(adapter.submit).not.toHaveBeenCalled();
-  });
-
-  it("waits for fresh authority before building again a transaction that left the mempool, under reconciliation-only authority", async () => {
-    const evidence = await canonicalEvidence();
-    const process = createTestWorkflowProcess();
-    const adapter = makeAdapter({ lands: false });
-    const chain = chainOf(adapter);
-    // The proof waits in the mempool; the removal over it does too.
-    expect((await run({ evidence, adapter, process })).kind).toBe("pending");
-    expect(adapter.submit).toHaveBeenCalledTimes(2);
-    // Both leave the mempool unlanded: the proof is required again.
-    chain.drop(PROOF_TX_HASH);
-    chain.drop(REMOVAL_TX_HASH);
-    const readonly = vi
-      .spyOn(actuationAuthority, "workflowRunIsReconciliationOnly")
-      .mockReturnValue(true);
-    try {
-      expect(await run({ evidence, adapter, process })).toMatchObject({
-        kind: "pending",
-        reason: FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
-      });
-      expect(adapter.preflight).toHaveBeenCalledTimes(2);
-      expect(adapter.submit).toHaveBeenCalledTimes(2);
-    } finally {
-      readonly.mockRestore();
-    }
   });
 
   it("builds neither a parent nor its descendant again while the mempool holds both", async () => {

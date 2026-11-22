@@ -111,7 +111,8 @@ export type WorkflowRawFamilyEvidence = Extract<
 >;
 
 export type FraudProofWorkflowAdapterContext = {
-  /** Set from the admitted authority; never grants submission authority. */
+  /** True under a permit over a fault that is no longer live: the
+   * proof-materials sweep then adds no funding input. */
   readonly reconciliationOnly?: boolean;
   readonly identity: FraudProofWorkflowIdentity;
   readonly workflowId: string;

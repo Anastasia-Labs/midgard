@@ -51,7 +51,7 @@ describe("authenticated family action refinement", () => {
     expect(capture).toHaveBeenCalledOnce();
     expect(capture.mock.calls[0]).toBeDefined();
   });
-  it("never permits canonical input overrides and does not refine read-only observation", async () => {
+  it("never permits canonical input overrides", async () => {
     const refineAction = vi.fn(async () => ({ stage: "remove" }));
     const adapter = createCursorFamilyWorkflowAdapter({
       spec: THIRTEEN_STEP_CURSOR_SPEC,
@@ -62,9 +62,6 @@ describe("authenticated family action refinement", () => {
     await expect(adapter.observe(context)).rejects.toThrow(
       "cannot override canonical input stage",
     );
-    expect(
-      await adapter.observe({ ...context, reconciliationOnly: true }),
-    ).toEqual({ kind: "action_required", action: required(stage.value) });
     expect(refineAction).toHaveBeenCalledOnce();
   });
 });

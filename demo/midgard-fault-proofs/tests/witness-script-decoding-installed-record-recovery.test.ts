@@ -68,14 +68,10 @@ const SCENARIO = {
   nativeTx: () => witnessSubject([plutusItem(delayChainScript(600))]).nativeTx,
 };
 const ADA = 1_000_000n;
-/** Confirmation polls a run may take before it counts as spinning. */
-const POLL_CAP = 5_000;
 /**
- * Confirmation polls one process of the restart row may take, and turns
- * each of its runs may take: each run convicts well inside both, so a run
- * that spins within a turn or across turns fails fast.
+ * Turns each run of the restart row may take: each run convicts well inside
+ * this, so a run that spins across turns fails fast.
  */
-const RECOVERY_POLL_CAP = 100;
 const RECOVERY_TURN_CAP = 10;
 /** The stops the restart row engineers, each followed by a restart. */
 const STOPS = 2;
@@ -95,23 +91,21 @@ const recordAddress = (harness: Harness) =>
 describe("script-decode record recovery in the installed watcher application", () => {
   it("resumes a record its stopped process began from the chain, taking no record action twice", async () => {
     const uninterrupted = await runInstalled(SCENARIO, hooks, {
-      maxPolls: RECOVERY_POLL_CAP,
       maxTurns: RECOVERY_TURN_CAP,
     });
     expect(uninterrupted.convicted).toBe(true);
 
     let stops = 0;
-    let engineered = false;
     const restarted = await runInstalled(SCENARIO, hooks, {
-      maxPolls: RECOVERY_POLL_CAP,
       maxTurns: RECOVERY_TURN_CAP,
       beforeTurns: ({ harness, clock }) => {
         const address = recordAddress(harness);
         const seen = new Set<string>();
         let bound = false;
         let walked = false;
-        // The process stops while it waits for the Bind, and again for the
-        // first Walk: both submitted, neither yet confirmed.
+        // The process stops at its next observation once it submits the
+        // Bind, and again once it submits the first Walk: each still in the
+        // mempool.
         return interceptSubmissions(harness.emulator, (submission) => {
           if (seen.has(submission.txHash) || !submission.paysTo(address))
             return "accept";
@@ -119,23 +113,17 @@ describe("script-decode record recovery in the installed watcher application", (
           if (!bound || (submission.withdraws && !walked)) {
             if (bound) walked = true;
             bound = true;
-            engineered = true;
-            clock.state.crashAfterPolls = clock.state.polls;
+            clock.state.stopAtNextObservation = true;
           }
           return "accept";
         }).restore;
       },
-      onStopped: async (error, { application, clock }) => {
+      onStopped: async (error, { application }) => {
         expect(String(error)).toContain(
           "installed application process stopped",
         );
-        expect(engineered, "a stop the row engineered, not the poll cap").toBe(
-          true,
-        );
-        engineered = false;
         stops += 1;
         application.restart();
-        clock.state.crashAfterPolls = clock.state.polls + RECOVERY_POLL_CAP;
       },
     });
 
@@ -150,11 +138,9 @@ describe("script-decode record recovery in the installed watcher application", (
     const pausedReasons: string[] = [];
     const run = await runInstalled(SCENARIO, hooks, {
       beforeTurns: ({ harness, clock }) => {
-        clock.state.crashAfterPolls = POLL_CAP;
         // Once the record has begun, the operator leaves one plain coin
-        // below the collateral line while the runner waits for a
-        // confirmation.
-        clock.state.onPoll = async () => {
+        // below the collateral line between two of its actions.
+        clock.state.onObservation = async () => {
           if (drained || (await stagingOutputsOf(harness)).length === 0) return;
           drained = true;
           await drainProverToOneCoin(harness, 1_500_000n);
@@ -188,8 +174,7 @@ describe("script-decode record recovery in the installed watcher application", (
     const run = await runInstalled(SCENARIO, hooks, {
       beforeTurns: (context) => {
         harness = context.harness;
-        context.clock.state.crashAfterPolls = POLL_CAP;
-        context.clock.state.onPoll = async () => {
+        context.clock.state.onObservation = async () => {
           if (drained || (await stagingOutputsOf(context.harness)).length === 0)
             return;
           drained = true;

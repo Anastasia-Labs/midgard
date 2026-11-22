@@ -86,7 +86,6 @@ export const admittedActuation = async () => {
     actuationPermit: controller.permit,
     headerHash: decision.headerHash,
     revoke: controller.revoke,
-    restrictToReconciliation: controller.restrictToReconciliation,
   });
 };
 

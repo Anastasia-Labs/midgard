@@ -48,8 +48,8 @@ const fixture = (): { decision: HeaderFaultDecision } => {
   return { decision };
 };
 
-describe("reconciliation-only workflow authority", () => {
-  it("lets a run bound to it observe and verify its terminal, refuses every build and send, and refuses everything once revoked", () => {
+describe("reconciliation workflow authority", () => {
+  it("lets a run bound to it observe and verify its terminal, and refuses everything once revoked", () => {
     const { decision } = fixture();
     const controller = createWorkflowReconciliationPermitController({
       decision,
@@ -85,12 +85,6 @@ describe("reconciliation-only workflow authority", () => {
       });
     check("before_observe");
     check("before_terminal_verify");
-    expect(() => check("before_preflight")).toThrow(
-      "existing_signed_workflow_only",
-    );
-    expect(() => check("before_submit")).toThrow(
-      "existing_signed_workflow_only",
-    );
     controller.revoke("native_chain_rollback");
     expect(() => check("before_observe")).toThrow("native_chain_rollback");
   });

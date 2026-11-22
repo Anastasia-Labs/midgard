@@ -70,18 +70,16 @@ export const journeyStartDeadlinePassed = (
 
 /**
  * Holds by which the watcher has itself given up on the objective: its
- * continuation reached no new awaited action for its quiet bound, or its
  * counterparty's deadline passed unanswered.
  */
 const JOURNEY_FATAL_HOLDS: ReadonlySet<string> = new Set([
-  "fault_proof_continuation_stalled",
   "fault_proof_counterparty_deadline_passed",
 ]);
 
 /**
  * Holds that pause the objective until a later run clears them: a refused L1
  * read, unavailable prover funding, a held trace replay, or a quarantined
- * run awaiting its backoff. One that outlasts the watcher's quiet bound with
+ * run awaiting its backoff. One that outlasts `JOURNEY_PAUSE_BOUND_MS` with
  * nothing of ours landing ends the correction.
  */
 const isJourneyPausingHold = (reason: string) =>

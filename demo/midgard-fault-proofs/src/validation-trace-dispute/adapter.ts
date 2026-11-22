@@ -256,12 +256,6 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
       if (recorded !== undefined)
         return await removalStage.convicted(context, recorded);
     }
-    const unseen = await view.unseen();
-    if (unseen !== undefined)
-      return {
-        kind: "pending",
-        reason: `validation-trace transaction ${unseen} is not yet visible to the provider`,
-      };
     if (opened)
       return {
         kind: "conflict",

@@ -135,7 +135,6 @@ export const prerequisite = ({
     publications: [],
     requirement: null,
   })),
-  need: vi.fn(async () => {}),
   inspect: vi.fn(async () =>
     phase === "satisfied"
       ? { kind: "satisfied" as const }

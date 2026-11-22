@@ -254,13 +254,11 @@ type monitorHasTxResultHeader struct {
 	Has  bool   `cbor:"has"`
 }
 
-// monitorTxsResultHeader carries the slot the mempool snapshot was acquired
-// at; the payload is a CBOR array of the transactions' bytes, in mempool
-// order.
+// monitorTxsResultHeader heads a mempool listing; the payload is a CBOR
+// array of the transactions' bytes, in mempool order.
 type monitorTxsResultHeader struct {
 	Type string `cbor:"type"`
 	ID   uint64 `cbor:"id"`
-	Slot uint64 `cbor:"slot"`
 }
 
 type monitorSizesResultHeader struct {
