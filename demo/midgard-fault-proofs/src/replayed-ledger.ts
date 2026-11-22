@@ -145,10 +145,12 @@ export type ReplayedLedger = {
    * replayed over its parent's ledger, whether or not the store already
    * holds the root it commits, unless this process replayed that block
    * itself; the verified head moves up block by block. True once the head
-   * is verified and its ledger persisted. False when a block's payload or
-   * ledger is not available yet, when a block is refused (its replay, its
-   * root or its parent's root, reported through `onRefusal`), or when the
-   * head's own header commits another root than the confirmed one.
+   * is verified and its ledger persisted. False when the source does not
+   * know the head or serves no payload of it, when a block is refused (its
+   * replay, its root or its parent's root, reported through `onRefusal`),
+   * or when the head's own header commits another root than the confirmed
+   * one. A payload a source failed to fetch rejects with
+   * `RetainedDaPayloadUnavailableError`, except as below.
    *
    * A block below the head that cannot be replayed any more (no source
    * retains its payload, or the ledger it starts from cannot be derived) is
