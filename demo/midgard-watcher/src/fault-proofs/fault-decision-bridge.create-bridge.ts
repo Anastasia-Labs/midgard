@@ -10,6 +10,7 @@ import { watcherSameCanonicalJson } from "../storage/durable-store.canonical-jso
 import { classificationMissRecorder } from "./fault-decision-bridge.classification-miss.js";
 import { verificationRecorder } from "./fault-decision-bridge.classification-record.js";
 import { decisionHolds } from "./fault-decision-bridge.decision-holds.js";
+import { skippedHeaders } from "./fault-decision-bridge.matured-headers.js";
 import { unverifiedMergedRecorder } from "./fault-decision-bridge.merged-headers.js";
 import { preservesPendingTargetEvidence } from "./fault-decision-bridge.preserves-pending-target-evidence.js";
 import {
@@ -105,6 +106,7 @@ export const createBridge = (input: {
     // L1 is resolved before any availability or DA read and never classified.
     const merged =
       (await input.dependencies.mergedHeaders?.(candidate)) ?? new Map();
+    const skipped = await skippedHeaders(candidate, input.dependencies, merged);
     await mergedRecorder.recordAll(candidate, merged);
     const pendingAvailability =
       (await input.dependencies.pendingAvailabilityHeaders?.(
@@ -194,7 +196,7 @@ export const createBridge = (input: {
         if (index >= deferredFromIndex) return;
         const header = candidate.finalizedHeaders[index]!;
         if (
-          merged.has(header.headerHash) ||
+          skipped.has(header.headerHash) ||
           misses.skippedPastHorizon(header.headerHash)
         ) {
           classifications[index] = null;

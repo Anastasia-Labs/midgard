@@ -178,6 +178,9 @@ export type BridgeDependencies = Readonly<{
   ): void;
   nowMs?(): bigint;
   monotonicNowMs?(): number;
+  /** The L1 time at the follower's tip, in ms; `undefined` while the
+   * follower has no tip. Headers matured by then are not classified. */
+  l1TipTimeMs?(): Promise<number | undefined>;
   /** The durable record of detected faults whose header merged unproven. */
   unprovenFaultMerges?(): WatcherUnprovenFaultMerges;
   requestProgress(request: WatcherFaultProofProgressRequest): Promise<void>;

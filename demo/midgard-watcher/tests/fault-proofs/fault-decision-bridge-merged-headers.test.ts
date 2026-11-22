@@ -1,3 +1,4 @@
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { RetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk/core";
 import { describe, expect, it, vi } from "vitest";
@@ -110,6 +111,61 @@ describe("fault decision bridge behind an L1 merge", () => {
         ([request]) => request.header.headerHash,
       ),
     ).toEqual([live.headerHash, live.headerHash, live.headerHash]);
+  });
+
+  it("never classifies a header matured at the follower's tip, nor asks for its predecessor, and classifies the headers after it", async () => {
+    const { maturityMs } = MIDGARD_RETENTION_WINDOW;
+    const tipMs = 1_000_000 + maturityMs;
+    // The first matured exactly at the tip; the next two have not matured.
+    const current = observation(
+      [headerFixture("01"), headerFixture("02"), headerFixture("03")],
+      "Idle",
+      [ATTESTED, ATTESTED, ATTESTED],
+      [1_000_000n, 1_000_001n, 1_000_001n],
+    );
+    const [matured, second, third] = current.finalizedHeaders;
+    const observability = operations();
+    const predecessorsAskedFor: string[] = [];
+    const h = harness({
+      current,
+      categoryByHeader: {
+        [matured!.headerHash]: "doubleSpend",
+        [second!.headerHash]: "transitionTrace",
+        [third!.headerHash]: "transitionTrace",
+      },
+      operationsSink: observability.sink,
+      mergedHeaders: async () => new Map(),
+      l1TipTimeMs: async () => tipMs,
+      resolvePredecessorOverride: async (header) => {
+        predecessorsAskedFor.push(header.headerHash);
+        return undefined;
+      },
+      // Its public DA is pruned: a classification would fail closed.
+      classifyOverride: prunedPayload(matured!.headerHash),
+    });
+    expect((await h.bridge.reconcileAndDispatch(current)).target).toBeNull();
+    expect(
+      h.application.classifyHeader.mock.calls.map(
+        ([request]) => request.header.headerHash,
+      ),
+    ).toEqual([second!.headerHash, third!.headerHash]);
+    expect(predecessorsAskedFor).toEqual([
+      second!.headerHash,
+      third!.headerHash,
+    ]);
+    // A matured header leaves no record and no latency sample.
+    expect(
+      records(observability).map(({ headerHash, outcome }) => ({
+        headerHash,
+        outcome,
+      })),
+    ).toEqual([
+      { headerHash: second!.headerHash, outcome: "verified" },
+      { headerHash: third!.headerHash, outcome: "verified" },
+    ]);
+    expect(observability.api.metrics().verificationLatencyMs.sampleCount).toBe(
+      "2",
+    );
   });
 
   it("still fails closed on an unmerged Attested header whose payload is unavailable", async () => {
