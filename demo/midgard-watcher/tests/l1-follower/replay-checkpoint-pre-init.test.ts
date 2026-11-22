@@ -3,6 +3,7 @@ import {
   createLedgerStore,
   createMemoryLedgerStorage,
 } from "@al-ft/midgard-fault-proofs/ledger-store";
+import { memoryVerifiedHead } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import type { OutRef } from "@al-ft/midgard-l1-follower";
 import {
   SIM_ORIGIN,
@@ -65,6 +66,7 @@ const followed = async () => {
   // A chain event landing once, right after the keeper's next root read.
   let afterRead: (() => Promise<void>) | undefined;
   const keeper = createWatcherReplayedLedger({
+    verifiedHead: memoryVerifiedHead(),
     follower: {
       ...source,
       confirmed: async (observation) => {

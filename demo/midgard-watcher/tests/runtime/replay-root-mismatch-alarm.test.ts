@@ -11,6 +11,7 @@ import {
   createLedgerStore,
   createMemoryLedgerStorage,
 } from "@al-ft/midgard-fault-proofs/ledger-store";
+import { memoryVerifiedHead } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import * as SDK from "@al-ft/midgard-sdk/core";
@@ -64,6 +65,7 @@ const watcher = async (follower: WatcherFollowerReplaySource) => {
     log: (line) => logged.push(JSON.parse(line) as Record<string, unknown>),
   });
   const keeper = createWatcherReplayedLedger({
+    verifiedHead: memoryVerifiedHead(),
     follower,
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     availabilityAuthority,

@@ -8,6 +8,7 @@ import {
   createLedgerStore,
   createMemoryLedgerStorage,
 } from "@al-ft/midgard-fault-proofs/ledger-store";
+import { memoryVerifiedHead } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import {
   replayedLedgerChain,
   type ReplayedLedgerChainBlock,
@@ -59,6 +60,7 @@ export const replayKeeper = async (
   const store = createLedgerStore(createMemoryLedgerStorage());
   await store.persist(await store.admit(chain.base, chain.baseRoot));
   return createWatcherReplayedLedger({
+    verifiedHead: memoryVerifiedHead(),
     follower: {
       epoch: () => 0,
       headerAt: async (headerHash) =>

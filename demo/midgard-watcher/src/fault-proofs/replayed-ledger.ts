@@ -8,6 +8,8 @@ import {
   createReplayedLedger,
   type ReplayedLedgerRefusal,
   type ReplayedLedgerSource,
+  type ReplayedLedgerUnverified,
+  type ReplayedLedgerVerifiedHead,
 } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import {
   type RetainedPayloadReleases,
@@ -36,6 +38,7 @@ import type {
   WatcherReplayRefusalPhase,
   WatcherReplayRefusals,
 } from "./replay-refusals.js";
+import { logWatcherReplayUnverified } from "./replay-unverified.js";
 
 export type WatcherReplayedLedger = Readonly<{
   ledgerAt(
@@ -82,6 +85,10 @@ export const watcherReplayAvailabilityAuthority =
  * header's root before it was persisted, so a follower rewind cannot make
  * one wrong and the keeper outlives it. Only an operation the rewind
  * interrupts is fenced: it fails with `FraudProofL1CheckpointChangedError`.
+ *
+ * `advance` verifies every confirmed block between `verifiedHead` and the
+ * stable confirmed head by replaying it, whatever the store already holds
+ * (`ReplayedLedger.ensure`).
  */
 export const createWatcherReplayedLedger = (
   input: Readonly<{
@@ -89,6 +96,9 @@ export const createWatcherReplayedLedger = (
     l1SlotConfig: L1SlotConfig;
     /** The deployment's ledger store (`openSqliteLedgerStorage`). */
     store: LedgerStore;
+    /** The deployment's durable verified confirmed head, kept with the
+     * store (`SqliteLedgerStorage.verifiedHead`). */
+    verifiedHead: ReplayedLedgerVerifiedHead;
     /** The deployment's availability commitment authority. */
     availabilityAuthority: () => SDK.DaPayloadAvailabilityAuthority;
     /** The local-fault holds' clock, in ms (default `Date.now`). */
@@ -97,6 +107,9 @@ export const createWatcherReplayedLedger = (
     refusals?: WatcherReplayRefusals;
     /** Where ledgers the store lost are recorded (`replay-lost-roots.ts`). */
     lostRoots?: WatcherReplayLostRoots;
+    /** Told each confirmed block passed without a replay; by default one
+     * warning line each (`replay-unverified.ts`). */
+    onUnverified?: (block: ReplayedLedgerUnverified) => void;
   }>,
 ): WatcherReplayedLedger => {
   // A refusal met while ensuring the confirmed head's ledger runs in that
@@ -109,6 +122,8 @@ export const createWatcherReplayedLedger = (
   const asked = new Set<string>();
   const keeper = createReplayedLedger({
     store: input.store,
+    verifiedHead: input.verifiedHead,
+    onUnverified: input.onUnverified ?? logWatcherReplayUnverified(),
     ...(refusals === undefined
       ? {}
       : {

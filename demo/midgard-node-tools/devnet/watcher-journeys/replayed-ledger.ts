@@ -136,6 +136,7 @@ export const openJourneyReplayedLedger = async (input: {
       follower: source,
       l1SlotConfig: slotConfig,
       store: createLedgerStore(storage),
+      verifiedHead: storage.verifiedHead,
       availabilityAuthority:
         watcherReplayAvailabilityAuthority(deploymentIdentity),
     });

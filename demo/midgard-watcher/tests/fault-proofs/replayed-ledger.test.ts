@@ -6,6 +6,7 @@ import {
   createMemoryLedgerStorage,
   type LedgerStorage,
 } from "@al-ft/midgard-fault-proofs/ledger-store";
+import { memoryVerifiedHead } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import {
   replayedLedgerChain,
   type ReplayedLedgerChainBlock,
@@ -136,6 +137,7 @@ const setup = () => {
   };
   const keeper = () =>
     createWatcherReplayedLedger({
+      verifiedHead: memoryVerifiedHead(),
       follower,
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       availabilityAuthority,
@@ -173,6 +175,7 @@ describe("the production replay keeper", { timeout: 120_000 }, () => {
     const block = chain.blocks[0]!;
     const durable: bigint[] = [];
     const keeper = createWatcherReplayedLedger({
+      verifiedHead: memoryVerifiedHead(),
       follower: {
         ...followerOver(chain.blocks),
         confirmed: async () => ({
@@ -208,6 +211,7 @@ describe("the production replay keeper", { timeout: 120_000 }, () => {
     ]);
     expect(h.durable).toEqual([]);
     const keeper = createWatcherReplayedLedger({
+      verifiedHead: memoryVerifiedHead(),
       follower: {
         ...h.follower,
         confirmed: async () => {
@@ -231,6 +235,7 @@ describe("the production replay keeper", { timeout: 120_000 }, () => {
     const h = setup();
     let faulted = true;
     const keeper = createWatcherReplayedLedger({
+      verifiedHead: memoryVerifiedHead(),
       follower: {
         ...h.follower,
         confirmed: async (current) => {
@@ -275,6 +280,7 @@ describe(
       const requests: string[] = [];
       const base = followerOver(chain.blocks);
       const keeper = createWatcherReplayedLedger({
+        verifiedHead: memoryVerifiedHead(),
         follower: {
           ...base,
           epoch: () => epoch,
@@ -315,6 +321,7 @@ describe(
       let epoch = 0;
       const base = followerOver(chain.blocks);
       const keeper = createWatcherReplayedLedger({
+        verifiedHead: memoryVerifiedHead(),
         follower: {
           ...base,
           epoch: () => epoch,
@@ -381,6 +388,7 @@ describe(
       );
       const statuses: string[] = [];
       const keeper = createWatcherReplayedLedger({
+        verifiedHead: memoryVerifiedHead(),
         follower: {
           ...followerOver(chain.blocks),
           confirmed: async () => ({

@@ -9,6 +9,7 @@ import {
   createLedgerStore,
   createMemoryLedgerStorage,
 } from "@al-ft/midgard-fault-proofs/ledger-store";
+import { memoryVerifiedHead } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import { replayedLedgerChain } from "@al-ft/midgard-fault-proofs/test-support/replayed-ledger-chain";
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import * as SDK from "@al-ft/midgard-sdk/core";
@@ -80,6 +81,7 @@ describe("the replayed ledger's lost-root alert", { timeout: 120_000 }, () => {
     const observability = operations();
     const logged: string[] = [];
     const keeper = createWatcherReplayedLedger({
+      verifiedHead: memoryVerifiedHead(),
       follower,
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       availabilityAuthority: () => ({
