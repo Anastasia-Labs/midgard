@@ -4,7 +4,7 @@
  * Held nodes and outputs are reference counted (see `LedgerStorage`). A held
  * node's children are all held: a child is deleted only after its last
  * parent is, since each parent's reference is in the child's count. So
- * `persist` never looks below a held node.
+ * `persist` and `adopt` never look below a held node.
  */
 import { type LedgerEntry, LedgerRootMismatchError } from "../ledger-at.js";
 import { buildTrie, EMPTY_LEDGER_ROOT, LedgerTrieStore } from "./engine.js";
@@ -56,6 +56,19 @@ export interface LedgerStore {
    */
   persist(ledger: Ledger): Promise<void>;
   /**
+   * Takes in the ledger with `root` from nodes its caller already holds, and
+   * moves the storage's current-root marker to `root` (see
+   * `LedgerStorageChange.currentRoot`), in one atomic write: the walk, the
+   * reference counts and the retained root are those `persist` would give,
+   * with each node the storage does not hold taken from `input.nodes` and
+   * each new leaf's output the storage does not hold from `input.outputs`.
+   * Supplied nodes the walk does not reach are not written. A node neither
+   * held nor supplied is refused with `LedgerNodeMissing`, an output with
+   * `LedgerOutputMissing`, and nothing is written. Adopting a retained root
+   * (or the empty one) writes the marker and nothing else.
+   */
+  adopt(root: string, input: LedgerAdoption): Promise<void>;
+  /**
    * Drops every retained root that `roots` does not name, and deletes every
    * node and output no retained root reaches any more. A ledger value whose
    * root is dropped stops being readable. `roots` is read when `retain` is
@@ -77,6 +90,19 @@ export interface LedgerStore {
     roots: ReadonlySet<string>,
   ): Promise<{ readonly notRetained: ReadonlySet<string> }>;
 }
+
+/** What `adopt` takes the nodes and outputs the storage does not hold from. */
+export type LedgerAdoption = {
+  readonly nodes: ReadonlyMap<NodeHash, StoredNode>;
+  /** Outputs of new leaves; none for storage that holds every output. */
+  readonly outputs?: ReadonlyMap<OutRefHex, Buffer>;
+};
+
+/** Where a write takes each node and output the storage does not hold. */
+type Unheld = {
+  readonly node: (hash: NodeHash) => StoredNode | undefined;
+  readonly output: (outRef: OutRefHex) => Buffer | undefined;
+};
 
 const READ_BATCH = 1024;
 /** Dead-queue hashes one deletion batch takes. */
@@ -182,15 +208,18 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
   const retained = async (root: string): Promise<boolean> =>
     root === EMPTY_LEDGER_ROOT || (await retainedRoots()).has(root);
 
-  const persistLocked = async (ledger: LedgerValue): Promise<void> => {
-    const roots = await retainedRoots();
-    if (roots.has(ledger.root)) return;
+  /**
+   * The change that writes the nodes reachable from `root` that the storage
+   * does not hold, and the outputs of the new leaves, taking each from
+   * `unheld`, and retains `root`.
+   */
+  const rootChange = async (root: NodeHash, unheld: Unheld) => {
     const change = newChange();
     /** Stored counts read so far; `undefined` for a node not held. */
     const stored = new Map<NodeHash, number | undefined>();
     const newLeaves: OutRefHex[] = [];
     // Each listed hash is one reference: the root's own, then one per parent.
-    let level: NodeHash[] = [ledger.root];
+    let level: NodeHash[] = [root];
     while (level.length > 0) {
       const next: NodeHash[] = [];
       for (const slice of slices(level, READ_BATCH)) {
@@ -211,7 +240,7 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
             change.nodeRefs.set(hash, refs + 1);
             continue;
           }
-          const node = overlayNode(ledger.overlay, hash);
+          const node = unheld.node(hash);
           if (node === undefined) throw new LedgerNodeMissing(hash);
           change.putNodes.set(hash, { node, refs: 1 });
           if (node.__kind === "Leaf") newLeaves.push(node.key);
@@ -234,15 +263,33 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
         change.outputRefs.set(outRef, refs + 1);
         continue;
       }
-      // A leaf the trie moved is a new node whose output the overlay does not
+      // A leaf the trie moved is a new node whose output `unheld` need not
       // carry: it must still be held.
-      const output = overlayOutput(ledger.overlay, outRef);
+      const output = unheld.output(outRef);
       if (output === undefined) throw new LedgerOutputMissing(outRef);
       change.putOutputs.set(outRef, { output, refs: 1 });
     }
-    change.addRoots.push(ledger.root);
-    await storage.write(change);
-    roots.add(ledger.root);
+    change.addRoots.push(root);
+    return change;
+  };
+
+  /**
+   * Writes `rootChange(root, unheld)` unless `root` is retained, in which case
+   * nothing is written. With `moveMarker`, the same write moves the
+   * current-root marker to `root`, and a retained root writes the marker
+   * alone.
+   */
+  const writeRootLocked = async (
+    root: NodeHash,
+    unheld: Unheld,
+    moveMarker: boolean,
+  ): Promise<void> => {
+    const roots = await retainedRoots();
+    const held = root === EMPTY_LEDGER_ROOT || roots.has(root);
+    if (held && !moveMarker) return;
+    const change = held ? newChange() : await rootChange(root, unheld);
+    await storage.write(moveMarker ? { ...change, currentRoot: root } : change);
+    if (!held) roots.add(root);
   };
 
   /** Drops the retained roots `roots` does not name, queueing each whose
@@ -367,8 +414,19 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
     persist: async (ledger) => {
       if (!(ledger instanceof LedgerValue) || ledger.owner !== owner)
         throw new Error("persist: the ledger does not belong to this store");
-      if (ledger.root === EMPTY_LEDGER_ROOT) return;
-      await writeLock(() => persistLocked(ledger));
+      const unheld: Unheld = {
+        node: (hash) => overlayNode(ledger.overlay, hash),
+        output: (outRef) => overlayOutput(ledger.overlay, outRef),
+      };
+      await writeLock(() => writeRootLocked(ledger.root, unheld, false));
+    },
+
+    adopt: async (root, input) => {
+      const unheld: Unheld = {
+        node: (hash) => input.nodes.get(hash),
+        output: (outRef) => input.outputs?.get(outRef),
+      };
+      await writeLock(() => writeRootLocked(root, unheld, true));
     },
 
     retain: async (roots) => {

@@ -8,12 +8,16 @@ import {
 } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
   createLedgerStore,
+  createMemoryLedgerStorage,
   type Ledger,
 } from "@al-ft/midgard-fault-proofs/ledger-store";
 import {
+  appliedEntries,
   describeLedgerStoreConformance,
   event,
+  expectLedgerMatches,
   type OpenedLedgerStorage,
+  storedNodesOf,
   testLedgerEntries,
   testOutputOf,
   testOutRef,
@@ -148,7 +152,7 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
     }
   });
 
-  it("never touches the __root__ marker, and a retain keeps it readable", async () => {
+  it("persist and retain never touch the __root__ marker, and a retain keeps it readable", async () => {
     const { path, level, store, a, b, c } = await written();
     // The marker the node's own writer keeps for its current trie.
     await level.put(ROOT_KEY, a.root);
@@ -171,6 +175,96 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
       expect(await Effect.runPromise(mpf.persistedRootHex())).toBe(a.root);
     } finally {
       await Effect.runPromise(mpf.close());
+    }
+  });
+
+  /**
+   * The nodes of `a` (`base`), and of `b` and `c` built on it, as a caller
+   * that already holds them hands them to `adopt`; read from a memory store
+   * that persisted them.
+   */
+  const heldNodes = async () => {
+    const memory = createMemoryLedgerStorage();
+    const store = createLedgerStore(memory);
+    const a = await store.admit(base, await ledgerEntriesRoot(base));
+    await store.persist(a);
+    const b = await a.apply(event([0, 1], [100]));
+    await store.persist(b);
+    const c = await a.apply(event([2, 3], [101]));
+    await store.persist(c);
+    const adoption = async (root: string) => ({
+      root,
+      input: { nodes: await storedNodesOf(memory, root) },
+    });
+    return {
+      a: await adoption(a.root),
+      b: await adoption(b.root),
+      c: await adoption(c.root),
+    };
+  };
+
+  /** Node keys, count keys and every key, of the whole database. */
+  const keysOf = async (level: Level<string, MpfStoredValue>) => {
+    const all: string[] = [];
+    for await (const key of level.keys()) all.push(key);
+    return {
+      all,
+      nodes: new Set(all.filter((key) => /^[0-9a-f]{64}$/.test(key))),
+      counted: new Set(
+        all
+          .filter((key) => key.startsWith("__refs__/"))
+          .map((key) => key.slice("__refs__/".length)),
+      ),
+    };
+  };
+
+  const reachableFrom = async (
+    level: Level<string, MpfStoredValue>,
+    roots: readonly string[],
+  ) => {
+    const reachable = new Set<string>();
+    for (const root of roots)
+      await walkReachableRecords(asOwnerLevel(level), root, (hash) => {
+        reachable.add(hash);
+      });
+    return reachable;
+  };
+
+  it("adopt moves __root__ to the adopted root and writes no node key without its count", async () => {
+    const { a, b } = await heldNodes();
+    const level = await openLevel(await freshPath());
+    try {
+      const store = createLedgerStore(levelStorage(level));
+      await store.adopt(a.root, a.input);
+      expect(await level.get(ROOT_KEY)).toBe(a.root);
+      await store.adopt(b.root, b.input);
+      expect(await level.get(ROOT_KEY)).toBe(b.root);
+      const keys = await keysOf(level);
+      expect(keys.counted).toEqual(keys.nodes);
+      expect(keys.nodes).toEqual(await reachableFrom(level, [a.root, b.root]));
+      await expectLedgerMatches(
+        await store.at(b.root),
+        appliedEntries(base, event([0, 1], [100])),
+      );
+    } finally {
+      await level.close();
+    }
+  });
+
+  it("a retain after adopt leaves no key of the root it drops", async () => {
+    const { a, b, c } = await heldNodes();
+    const level = await openLevel(await freshPath());
+    try {
+      const store = createLedgerStore(levelStorage(level));
+      for (const { root, input } of [a, b, c]) await store.adopt(root, input);
+      await store.retain(new Set([a.root, c.root]));
+      const keys = await keysOf(level);
+      expect(keys.all.filter((key) => key.includes(b.root))).toEqual([]);
+      expect(keys.nodes).toEqual(await reachableFrom(level, [a.root, c.root]));
+      expect(keys.counted).toEqual(keys.nodes);
+      expect(await level.get(ROOT_KEY)).toBe(c.root);
+    } finally {
+      await level.close();
     }
   });
 });
