@@ -10,8 +10,7 @@ import { watcherSameCanonicalJson } from "../storage/durable-store.canonical-jso
 import { classificationMissRecorder } from "./fault-decision-bridge.classification-miss.js";
 import { verificationRecorder } from "./fault-decision-bridge.classification-record.js";
 import { decisionHolds } from "./fault-decision-bridge.decision-holds.js";
-import { skippedHeaders } from "./fault-decision-bridge.matured-headers.js";
-import { unverifiedMergedRecorder } from "./fault-decision-bridge.merged-headers.js";
+import { skippedHeadersRecorder } from "./fault-decision-bridge.matured-headers.js";
 import { preservesPendingTargetEvidence } from "./fault-decision-bridge.preserves-pending-target-evidence.js";
 import {
   assertExactFinalizedHeaderOrder,
@@ -65,8 +64,8 @@ export const createBridge = (input: {
   // Only the selected fault retains private replay/actuation authority. Healthy
   // decisions can depend on moving settlement/event context and are not reused.
   let targetClassification: ClassificationBinding | null = null;
-  const mergedRecorder = unverifiedMergedRecorder(input.dependencies);
   const misses = classificationMissRecorder(input.dependencies);
+  const skippedRecorder = skippedHeadersRecorder(input.dependencies, misses);
   const holds = decisionHolds(input.dependencies);
 
   const invalidate = (reason: string): void => {
@@ -82,7 +81,7 @@ export const createBridge = (input: {
     targetDeadline = null;
     preparedResult = null;
     targetClassification = null;
-    mergedRecorder.reset();
+    skippedRecorder.reset();
   };
 
   /** Prepares `candidate` over its decided prefix. `failed` is the first header
@@ -106,8 +105,7 @@ export const createBridge = (input: {
     // L1 is resolved before any availability or DA read and never classified.
     const merged =
       (await input.dependencies.mergedHeaders?.(candidate)) ?? new Map();
-    const skipped = await skippedHeaders(candidate, input.dependencies, merged);
-    await mergedRecorder.recordAll(candidate, merged);
+    const skipped = await skippedRecorder.recordAll(candidate, merged);
     const pendingAvailability =
       (await input.dependencies.pendingAvailabilityHeaders?.(
         candidate,
@@ -312,7 +310,7 @@ export const createBridge = (input: {
             );
           }
           verification.recordDecision(authenticatedObservationDigest, decision);
-          mergedRecorder.decided(header.headerHash, decision);
+          skippedRecorder.decided(header.headerHash, decision);
           classifiedBindings.set(header.headerHash, { predecessor, deadline });
           classifications[index] = decision;
           misses.classified(header.headerHash);

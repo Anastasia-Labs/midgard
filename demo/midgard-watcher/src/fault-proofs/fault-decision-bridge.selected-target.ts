@@ -171,7 +171,7 @@ export type BridgeDependencies = Readonly<{
   daFetchAlert?: Readonly<{ settle(headerHash: string): void }>;
   /**
    * Operator warning, once per header released on L1 unverified, skipped
-   * past its challengeability horizon or deferred.
+   * past its challengeability horizon, matured unverified or deferred.
    */
   warn?(
     warning: WatcherUnverifiedHeaderWarning | WatcherClassificationWarning,

@@ -73,6 +73,14 @@ export type WatcherClassificationWarning = Readonly<
       challengeableUntilMs: string;
     }
   | {
+      /** A header matured before this watcher decided on it: no fraud proof
+       * against it can land any more (`fault-decision-bridge.matured-headers`). */
+      event: "unverified_matured";
+      headerHash: string;
+      /** `block_time + block_maturity_ms`, at or before the follower's tip. */
+      maturedAtMs: string;
+    }
+  | {
       event: "fault_decision_supersede_held";
       headerHash: string;
       cause: WatcherDecisionSupersedeHoldReason;
