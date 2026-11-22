@@ -118,16 +118,15 @@ export const createLedgerHolds = (store: LedgerStore) => {
     retain: async (roots: Iterable<string>): Promise<ReadonlySet<string>> => {
       const kept = new Set(roots);
       for (const root of pins.keys()) kept.add(root);
-      // A root persisted while this call runs is kept by the store, and
-      // stays seen.
-      const dropped = [...seen].filter((root) => !kept.has(root));
+      // Forgotten now, so a root persisted or opened while this call runs,
+      // which the store keeps, is seen again.
+      for (const root of seen) if (!kept.has(root)) seen.delete(root);
       const running = storeCall("retain the ledger window", () =>
         store.retain(kept),
       );
       retaining.add(running);
       try {
         const { notRetained } = await running;
-        for (const root of dropped) seen.delete(root);
         return new Set([...notRetained].filter((root) => seen.has(root)));
       } finally {
         retaining.delete(running);
