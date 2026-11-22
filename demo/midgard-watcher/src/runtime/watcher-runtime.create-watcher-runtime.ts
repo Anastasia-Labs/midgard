@@ -33,6 +33,7 @@ import {
 import type { WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
 import { createWatcherQueueHeaderSource } from "../l1-follower/observation.js";
 import { watcherReplayCheckpointPrecedesInit } from "../l1-follower/replay-source.js";
+import { watcherL1TipTimeMs } from "../l1-follower/replay-source.window.js";
 import type { WatcherUserEvents } from "../l1-follower/user-events.js";
 import { bindWatcherRetainedDaOperations } from "../storage/retained-da-runtime.js";
 import type { WatcherRetainedDaOperationsBinding } from "../storage/retained-da-runtime.retained-da-request-permits.js";
@@ -366,6 +367,11 @@ export const startWatcherRuntime = async (
       perHeaderAlerts: [...perHeaderAlerts, retainedDaOperationsBinding],
       daFetchAlert: retainedDaOperationsBinding,
       pendingAvailabilityHeaders: activeAvailability.pendingAvailabilityHeaders,
+      l1TipTimeMs: () =>
+        watcherL1TipTimeMs(
+          store,
+          deploymentAuthority.ruleBundle.ruleBundle.l1SlotConfig,
+        ),
     });
     faultDecisionBridge = activeBridge;
     startupOperations.attach(operations);

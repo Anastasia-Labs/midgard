@@ -31,6 +31,7 @@ export const harness = (input: {
   readonly operationsSink?: WatcherOperationsSink;
   readonly nowMs?: () => bigint;
   readonly monotonicNowMs?: () => number;
+  readonly l1TipTimeMs?: BridgeDependencies["l1TipTimeMs"];
   readonly pendingAvailabilityHeaders?: (
     observation: WatcherAuthenticatedStateQueueObservation,
     merged?: ReadonlySet<string>,
@@ -114,6 +115,9 @@ export const harness = (input: {
       ...(input.monotonicNowMs === undefined
         ? {}
         : { monotonicNowMs: input.monotonicNowMs }),
+      ...(input.l1TipTimeMs === undefined
+        ? {}
+        : { l1TipTimeMs: input.l1TipTimeMs }),
       ...(input.pendingAvailabilityHeaders === undefined
         ? {}
         : { pendingAvailabilityHeaders: input.pendingAvailabilityHeaders }),

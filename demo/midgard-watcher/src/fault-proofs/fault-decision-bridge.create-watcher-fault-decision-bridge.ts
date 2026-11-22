@@ -48,6 +48,8 @@ export const createWatcherFaultDecisionBridge = async (input: {
   readonly daFetchAlert: NonNullable<BridgeDependencies["daFetchAlert"]>;
   readonly pendingAvailabilityHeaders?: BridgeDependencies["pendingAvailabilityHeaders"];
   readonly nowMs?: () => bigint;
+  /** The L1 time at the follower's tip (`BridgeDependencies.l1TipTimeMs`). */
+  readonly l1TipTimeMs?: BridgeDependencies["l1TipTimeMs"];
   /** Defaults to one JSON line on stderr per warning. */
   readonly warn?: BridgeDependencies["warn"];
 }): Promise<WatcherFaultDecisionBridge> => {
@@ -109,6 +111,9 @@ export const createWatcherFaultDecisionBridge = async (input: {
       perHeaderAlerts: input.perHeaderAlerts,
       daFetchAlert: input.daFetchAlert,
       ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
+      ...(input.l1TipTimeMs === undefined
+        ? {}
+        : { l1TipTimeMs: input.l1TipTimeMs }),
       warn: input.warn ?? writeWarning,
       supersede: input.supervisor.supersedeDecision,
       driveProvenRemoval: async ({ headerHash, fraudProofAssetName }) =>
