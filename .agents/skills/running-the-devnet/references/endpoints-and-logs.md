@@ -180,8 +180,9 @@ deadline:
   shape mismatch). Run `migrate`, or point the node at the right database.
 - `startup_failed` in the `database_initialization` stage, the log naming
   `This database serves deployment <recorded>, not the configured deployment
-<configured>`: the database is bound to the deployment whose manifest id it
-  recorded first, and the node was started under another manifest. Nothing
+<configured>`: the database is bound to the deployment whose hub-oracle
+  policy id it recorded first, and the node was started under another
+  deployment. Nothing
   is retried or written; the node stays up, unready. Point the node at a
   fresh database for this deployment (or back at the recorded deployment's
   manifest); never edit the record.

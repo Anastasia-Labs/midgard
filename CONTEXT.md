@@ -7,10 +7,19 @@ language of its L1 dispute machinery and compact-transaction commitments.
 
 ### Deployment identity
 
+**Deployment identity**:
+The hub-oracle policy id, fixed by the one-shot output the deployment spent.
+It is the deployment's only identity, on L1 and off it: it scopes the DA
+network, stamps every local store, and is what a node serves to its clients.
+_Avoid_: manifest ID, deployment marker
+
 **Deployment manifest**:
-The document identifying a Midgard deployment's contracts, reference scripts,
-protocol configuration, and recorded deployment steps by a content-derived
-manifest ID.
+The document recording a Midgard deployment's contracts, reference scripts,
+protocol configuration, and deployment steps. It carries no identifier of its
+own; the release key signs its content.
+
+**DA deployment fingerprint**:
+The deployment identity as carried in DA topics, protocol ids and messages.
 
 **Finalized deployment manifest**:
 A deployment manifest whose contents satisfy the deployment identity and

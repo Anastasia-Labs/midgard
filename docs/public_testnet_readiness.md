@@ -189,8 +189,8 @@ Every contract item merges before the validator freeze.
 - **Store identity.** In progress. The node's database binds to its
   deployment before any startup write (`e3ebd17ee`); the L1 follower store
   refuses another origin. Open: bind every Postgres, MPF and DA store with a
-  marker holding the network, one-shot outref, policy ids, manifest hash and
-  schema version, failing before serving on a mismatch. Wiping local state
+  marker holding the network, one-shot outref, policy ids and schema
+  version, failing before serving on a mismatch. Wiping local state
   requires a fresh on-chain deployment.
 - **Fee and collateral.** Open. Audit fee and collateral selection across
   protocol transactions: pure-ADA inputs owned by the intended wallet, above

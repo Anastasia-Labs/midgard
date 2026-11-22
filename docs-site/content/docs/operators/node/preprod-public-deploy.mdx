@@ -53,7 +53,8 @@ set `MIDGARD_DEPLOYMENT_PROFILE=preprod-rehearsal` wherever this page says
     `MIDGARD_PUBLIC_INGRESS_IMAGE`. The `.env` must not hold the node secrets,
     `L1_USER_SEED_PHRASE`, or any setting the stack derives
     (`MIDGARD_CONFIG_FILE`, the `MIDGARD_PUBLIC_*_FILE` paths,
-    `MIDGARD_PUBLIC_MANIFEST_ID`, `MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE`,
+    `MIDGARD_PUBLIC_HUB_ORACLE_POLICY_ID`,
+    `MIDGARD_DEPLOYMENT_PARAMETER_REGISTRY_FILE`,
     `MIDGARD_BLUEPRINT_CLASSIFICATION_FILE`, `HTTP_SOCKET_PATH`), or
     `HTTP_TRUSTED_PROXY_PEERS`: the node sits behind its TLS ingress, which
     names each client.
