@@ -13,7 +13,7 @@ const state = vi.hoisted(() => ({
   failBinding: false,
   failNativeClose: false,
   sessionSources: [] as string[],
-  replayCheckpointDirectories: [] as string[],
+  replayLedgerStoreDirectories: [] as string[],
 }));
 vi.mock("../../../../scripts/lib/source-facets.mjs", () => ({
   sourceFacetPaths: () => state.sessionSources,
@@ -157,17 +157,17 @@ vi.mock("./workflow-binding-preflight.js", () => ({
 
 vi.mock("./replayed-ledger.js", () => ({
   openJourneyReplayedLedger: async (input: {
-    checkpointDirectory: string;
+    ledgerStoreDirectory: string;
     authority: { deploymentIdentity: { manifestId: string } };
   }) => {
-    state.replayCheckpointDirectories.push(input.checkpointDirectory);
+    state.replayLedgerStoreDirectories.push(input.ledgerStoreDirectory);
     // The real store the keeper keeps there, holding its writer lease.
     const { openSqliteLedgerStorage } = await import(
       "@al-ft/midgard-fault-proofs/ledger-store/sqlite"
     );
     const storage = openSqliteLedgerStorage(
       join(
-        input.checkpointDirectory,
+        input.ledgerStoreDirectory,
         `replayed-ledger-${input.authority.deploymentIdentity.manifestId}.sqlite`,
       ),
     );

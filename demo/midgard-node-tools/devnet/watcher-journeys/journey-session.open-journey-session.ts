@@ -177,7 +177,7 @@ export const openJourneySession = async (runDirectory: string) => {
       watcherConfig,
       binaryPath: nativeQuery.binaryPath,
       directory,
-      checkpointDirectory: directory,
+      ledgerStoreDirectory: directory,
       networkMagic: journeyNetwork().magic,
     });
     onClose(replayedLedger.close);

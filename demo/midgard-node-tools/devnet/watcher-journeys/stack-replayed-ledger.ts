@@ -93,7 +93,7 @@ const openStackReplayedLedgerIn = (
     ),
     binaryPath: context.layout.node.binaryPath,
     directory,
-    checkpointDirectory: directory,
+    ledgerStoreDirectory: directory,
     networkMagic: context.customNetwork.networkMagic,
   });
 

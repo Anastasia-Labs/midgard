@@ -200,7 +200,7 @@ describe("the production replay keeper", { timeout: 120_000 }, () => {
     ]);
     expect(durable).toEqual([]);
   });
-  it("names unavailable L1 and a reset during restore instead of trusting missing material", async () => {
+  it("names unavailable L1 and a reset during the confirmed read instead of trusting missing material", async () => {
     const h = setup();
     h.retire();
     expect(await h.keeper().advance(observation([]), [])).toMatchObject([

@@ -44,7 +44,7 @@ export const openJourneyReplayedLedger = async (input: {
   watcherConfig: WatcherConfig;
   binaryPath: string;
   directory: string;
-  checkpointDirectory: string;
+  ledgerStoreDirectory: string;
   networkMagic: number;
 }) => {
   const deploymentIdentity = input.authority.deploymentIdentity;
@@ -125,10 +125,10 @@ export const openJourneyReplayedLedger = async (input: {
   let da: Awaited<ReturnType<typeof createWatcherRetainedDaRuntime>>;
   try {
     // The deployment's replayed ledgers, as the watcher keeps them.
-    mkdirSync(input.checkpointDirectory, { recursive: true, mode: 0o700 });
+    mkdirSync(input.ledgerStoreDirectory, { recursive: true, mode: 0o700 });
     storage = openSqliteLedgerStorage(
       join(
-        input.checkpointDirectory,
+        input.ledgerStoreDirectory,
         `replayed-ledger-${deploymentIdentity.manifestId}.sqlite`,
       ),
     );
