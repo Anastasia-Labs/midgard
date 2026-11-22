@@ -111,7 +111,7 @@ export const publicDeploymentBlueprintRegistry = (
       "$.parameterRegistry",
       [
         "schemaVersion",
-        "manifestId",
+        "hubOraclePolicyId",
         "blueprintHash",
         "deployment",
         "referenceScripts",

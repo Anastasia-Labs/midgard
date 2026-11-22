@@ -50,10 +50,10 @@ import {
 import { runningFollower } from "./readiness-l1-follower.fixture.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
-// Only the manifest id the sampler reads settlement jobs under.
+// Only the hub-oracle policy id the sampler reads settlement jobs under.
 const identity = {
   kind: "manifest",
-  manifestId: "a7".repeat(32),
+  hubOraclePolicyId: "a7".repeat(28),
 } as unknown as ContractDeploymentIdentity;
 
 /** Every role wallet, each view empty. */

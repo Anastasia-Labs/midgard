@@ -1,5 +1,4 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import { type DeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import * as DepositsDB from "./deposits.js";
 import * as ForcedTransactionsDB from "./forcedTransactions.js";
@@ -50,7 +49,8 @@ export type NativeMpfReplayInput = {
 };
 
 export type PendingBlockFinalizationMetadata = {
-  readonly deploymentMarker: DeploymentMarker;
+  /** The deployment's hub-oracle policy id (56 lowercase hex). */
+  readonly hubOraclePolicyId: string;
   readonly consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   readonly stateQueueLeaseToken: string;
   readonly baseSnapshotId: string;

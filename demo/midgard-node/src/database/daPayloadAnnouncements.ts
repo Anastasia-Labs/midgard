@@ -89,16 +89,16 @@ export const claimDue = ({
   leaseOwner,
   leaseToken,
   leaseMs,
-  deploymentIdentityDigest,
+  hubOraclePolicyId,
 }: {
   readonly retentionDays: number;
   readonly limit: number;
   readonly leaseOwner: string;
   readonly leaseToken: string;
   readonly leaseMs: number;
-  /** Verified manifest ID; absent for a derived contract bundle, which
+  /** The deployment's hub-oracle policy id; absent for a derived contract bundle, which
    * consults no removal (see `owedPayload`). */
-  readonly deploymentIdentityDigest?: Buffer;
+  readonly hubOraclePolicyId?: string;
 }): Effect.Effect<readonly Row[], DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -116,7 +116,7 @@ export const claimDue = ({
             OR announcement.lease_expires_at <= NOW()
           )
           AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
-          AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
+          AND ${owedPayload(sql, hubOraclePolicyId, dead)}
         ORDER BY announcement.next_retry_at ASC, announcement.header_hash ASC
         FOR UPDATE OF announcement SKIP LOCKED
         LIMIT ${limit}
@@ -258,7 +258,7 @@ export const releaseClaim = ({
 export const backlogCount = (
   retentionDays: number,
   /** See `owedPayload`. */
-  deploymentIdentityDigest?: Buffer,
+  hubOraclePolicyId?: string,
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -269,7 +269,7 @@ export const backlogCount = (
       INNER JOIN da_payloads payload ON payload.header_hash = announcement.header_hash
       WHERE announcement.status IN ('pending', 'failed')
         AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
-        AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
+        AND ${owedPayload(sql, hubOraclePolicyId, dead)}
     `;
     return Number(rows[0]?.count ?? 0);
   }).pipe(

@@ -7,7 +7,6 @@
  */
 import { outRefToCbor } from "@al-ft/lucid-midgard";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   encodeEventToStepValueCbor,
   encodeTransitionIntegerCbor,
@@ -387,13 +386,12 @@ export const retainedRow = async (
   );
 };
 
-export const MANIFEST_ID = "de".repeat(32);
+export const HUB_ORACLE_POLICY_ID = "de".repeat(28);
 
 export const identity = ContractDeploymentIdentity.make({
   kind: "manifest",
-  manifestId: MANIFEST_ID,
+  hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-  deploymentMarker: makeDeploymentMarker(MANIFEST_ID),
 });
 
 /** The L1 clock the replayer reads: POSIX ms of a slot, shifted by `offsetMs`. */

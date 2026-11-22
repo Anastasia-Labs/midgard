@@ -1,4 +1,5 @@
 import { RETENTION_MS_PER_DAY } from "@al-ft/midgard-core";
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -34,7 +35,7 @@ const run = <A>(work: Effect.Effect<A, unknown, SqlClient.SqlClient>) =>
     ) as Effect.Effect<A, never>,
   );
 
-const identity = () => Buffer.from(deploymentManifest.manifestId, "hex");
+const identity = () => deploymentManifestHubOraclePolicyId(deploymentManifest);
 const old = () => new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
 
 /** Prunes at `NOW` under a view final through `finalThroughHeight`. */
@@ -47,7 +48,7 @@ const pruneAt = (finalThroughHeight: number) =>
       liveQueueHeaderHashes: [],
       finalThroughHeight,
     },
-    deploymentIdentityDigest: identity(),
+    hubOraclePolicyId: identity(),
   });
 
 describe.skipIf(process.env.MIDGARD_SKIP_DB_TESTS === "1")(

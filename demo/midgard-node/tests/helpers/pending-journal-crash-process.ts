@@ -1,5 +1,4 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
@@ -49,7 +48,7 @@ const program = Effect.gen(function* () {
     headerHash: Buffer.from(headerHashHex, "hex"),
     headerCbor: Buffer.from("00", "hex"),
     metadata: {
-      deploymentMarker: makeDeploymentMarker("de".repeat(32)),
+      hubOraclePolicyId: "de".repeat(28),
       consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
       stateQueueLeaseToken: "crash-probe-lease",
       baseSnapshotId: "crash-probe-snapshot",

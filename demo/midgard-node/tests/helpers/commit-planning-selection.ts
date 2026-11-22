@@ -14,7 +14,6 @@ export const commitPlanningSelection = (
     epoch: "1",
     baseHeaderHash: "bb".repeat(28),
     baseUtxosRoot: "cc".repeat(32),
-    deploymentFingerprint: "dd".repeat(32),
   },
   coverageStartTimeMs: 100,
   selectedEndTimeMs: mode === "normal" ? 1_000 : 200,

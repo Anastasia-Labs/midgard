@@ -18,14 +18,6 @@ import { Database } from "../services/database.js";
 import { QUEUE_TERMINALS_TABLE } from "./schema.js";
 import { newestTerminalOutcome } from "./terminal-outcome.js";
 
-/** The verified manifest ID of the running deployment, if it has one. */
-export const deploymentIdentityDigestOf = (identity: {
-  readonly manifestId?: string;
-}): Buffer | undefined =>
-  identity.manifestId === undefined
-    ? undefined
-    : Buffer.from(identity.manifestId, "hex");
-
 const NODE_PREFIX = Buffer.from(SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX, "hex");
 
 /**
@@ -96,16 +88,16 @@ export const removedHeader = (sql: SqlClient.SqlClient, headerColumn: string) =>
  * (`deadJournals`) the caller read in its transaction. A rollback of the
  * removal deletes the terminal row, and a dead block that lands after all
  * is no longer dead, so the payload is owed again.
- * `deploymentIdentityDigest` is the verified manifest ID; a node running a
- * derived contract bundle consults only the dead journals.
+ * `hubOraclePolicyId` is the verified deployment's hub-oracle policy id; a
+ * node running a derived contract bundle consults only the dead journals.
  */
 export const owedPayload = (
   sql: SqlClient.SqlClient,
-  deploymentIdentityDigest: Buffer | undefined,
+  hubOraclePolicyId: string | undefined,
   dead: readonly Buffer[],
 ) => {
   const removed =
-    deploymentIdentityDigest === undefined
+    hubOraclePolicyId === undefined
       ? sql`FALSE`
       : removedHeader(sql, "payload.header_hash");
   return sql`NOT ${removed} AND NOT payload.header_hash = ANY(${(

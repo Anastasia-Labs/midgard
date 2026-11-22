@@ -1,5 +1,6 @@
 import { RETENTION_MS_PER_DAY } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
@@ -91,8 +92,8 @@ export const seedPublished = (endTime: Date, sequence = 1, height = sequence) =>
     return fixture;
   });
 
-export const manifestDigest = (): Buffer =>
-  Buffer.from(deploymentManifest.manifestId, "hex");
+const deploymentPolicyId = (): string =>
+  deploymentManifestHubOraclePolicyId(deploymentManifest);
 
 /** An L1 view that references none of the seeded payloads. */
 const unrelatedView: DaPayloadsDB.RetentionL1View = {
@@ -101,14 +102,14 @@ const unrelatedView: DaPayloadsDB.RetentionL1View = {
 };
 
 /**
- * Prunes at `NOW` under this deployment (or `digest`), at `view` as given
+ * Prunes at `NOW` under this deployment (or `hubOraclePolicyId`), at `view` as given
  * (a view without `finalThroughHeight` has no final height), or by default
  * at a view of none of the seeded payloads final through `FINAL_THROUGH`.
  */
 export const prune = (
   options: {
     readonly view?: DaPayloadsDB.RetentionL1View;
-    readonly digest?: Buffer | undefined;
+    readonly hubOraclePolicyId?: string | undefined;
   } = {},
 ) =>
   DaPayloadsDB.pruneBeyondRetention({
@@ -118,8 +119,10 @@ export const prune = (
       ...unrelatedView,
       finalThroughHeight: FINAL_THROUGH,
     },
-    deploymentIdentityDigest:
-      "digest" in options ? options.digest : manifestDigest(),
+    hubOraclePolicyId:
+      "hubOraclePolicyId" in options
+        ? options.hubOraclePolicyId
+        : deploymentPolicyId(),
   });
 
 export const remainingHashes = Effect.gen(function* () {
@@ -149,7 +152,7 @@ export const withSweepServices = <A, E, R>(
         ContractDeploymentIdentity,
         ContractDeploymentIdentity.make({
           kind: "manifest",
-          manifestId: manifest.manifestId,
+          hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           manifest,
         }),

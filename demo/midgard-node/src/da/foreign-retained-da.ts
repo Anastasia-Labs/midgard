@@ -106,8 +106,8 @@ export const fetchForeignRetainedDa = (
         ),
     });
     if (
-      identity.manifestId === undefined ||
-      manifest.contractDeploymentManifestId !== identity.manifestId
+      identity.hubOraclePolicyId === undefined ||
+      manifest.deploymentFingerprint !== identity.hubOraclePolicyId
     )
       return yield* Effect.fail(
         missing(

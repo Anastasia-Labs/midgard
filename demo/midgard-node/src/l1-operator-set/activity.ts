@@ -8,7 +8,7 @@
  * than k must still read removed when the node returns).
  *
  * It is `operator_membership_observations` (migration 0003), keyed by
- * (manifest_id, operator_key). The record counts while the follower's facts
+ * (hub_oracle_policy_id, operator_key). The record counts while the follower's facts
  * do not show its block orphaned (`pointStatusIn`): on the stored chain, or
  * below the retained window. Two places drop a record whose block a fork
  * orphaned: the driver hook, when it runs (caught up), and the follower's
@@ -66,12 +66,12 @@ export const databaseActivityRecord = (options: {
   readonly run: <A>(
     effect: Effect.Effect<A, unknown, SqlClient.SqlClient>,
   ) => Promise<A>;
-  /** The deployment manifest id (64 hex). */
-  readonly manifestId: string;
+  /** The deployment's hub-oracle policy id (56 hex). */
+  readonly hubOraclePolicyId: string;
   /** The operator key hash (56 hex). */
   readonly ownKey: string;
 }): OperatorActivityRecord => {
-  const manifestId = Buffer.from(options.manifestId, "hex");
+  const hubOraclePolicyId = Buffer.from(options.hubOraclePolicyId, "hex");
   const operatorKey = Buffer.from(options.ownKey, "hex");
   return {
     read: () =>
@@ -84,7 +84,7 @@ export const databaseActivityRecord = (options: {
             active_block_height: string;
           }>`SELECT active_block_hash, active_block_slot::text, active_block_height::text
             FROM operator_membership_observations
-            WHERE manifest_id = ${manifestId} AND operator_key = ${operatorKey}`;
+            WHERE hub_oracle_policy_id = ${hubOraclePolicyId} AND operator_key = ${operatorKey}`;
           const row = rows[0];
           return row === undefined
             ? null
@@ -102,9 +102,9 @@ export const databaseActivityRecord = (options: {
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           yield* sql`INSERT INTO operator_membership_observations
-            (manifest_id, operator_key, active_block_hash, active_block_slot, active_block_height)
-            VALUES (${manifestId}, ${operatorKey}, ${point.hash}, ${point.slot}, ${height})
-            ON CONFLICT (manifest_id, operator_key) DO UPDATE SET
+            (hub_oracle_policy_id, operator_key, active_block_hash, active_block_slot, active_block_height)
+            VALUES (${hubOraclePolicyId}, ${operatorKey}, ${point.hash}, ${point.slot}, ${height})
+            ON CONFLICT (hub_oracle_policy_id, operator_key) DO UPDATE SET
               active_block_hash = EXCLUDED.active_block_hash,
               active_block_slot = EXCLUDED.active_block_slot,
               active_block_height = EXCLUDED.active_block_height`;
@@ -115,7 +115,7 @@ export const databaseActivityRecord = (options: {
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           yield* sql`DELETE FROM operator_membership_observations
-            WHERE manifest_id = ${manifestId} AND operator_key = ${operatorKey}`;
+            WHERE hub_oracle_policy_id = ${hubOraclePolicyId} AND operator_key = ${operatorKey}`;
         }),
       ),
     readIn: async (tx) => {
@@ -123,8 +123,8 @@ export const databaseActivityRecord = (options: {
         await tx.query(
           `SELECT active_block_hash, active_block_slot::text AS slot, active_block_height::text AS height
             FROM operator_membership_observations
-            WHERE manifest_id = ? AND operator_key = ?`,
-          [manifestId, operatorKey],
+            WHERE hub_oracle_policy_id = ? AND operator_key = ?`,
+          [hubOraclePolicyId, operatorKey],
         )
       )[0];
       return row === undefined
@@ -141,8 +141,8 @@ export const databaseActivityRecord = (options: {
       (
         await tx.query(
           `DELETE FROM operator_membership_observations
-            WHERE manifest_id = ? AND operator_key = ? RETURNING 1 AS one`,
-          [manifestId, operatorKey],
+            WHERE hub_oracle_policy_id = ? AND operator_key = ? RETURNING 1 AS one`,
+          [hubOraclePolicyId, operatorKey],
         )
       ).length,
   };

@@ -1,3 +1,4 @@
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { HttpServerRequest } from "@effect/platform";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql";
@@ -146,7 +147,8 @@ const query = (route: "GET" | "batch", options: Options = {}) =>
                 ContractDeploymentIdentity,
                 ContractDeploymentIdentity.make({
                   kind: "manifest",
-                  manifestId: manifest.manifestId,
+                  hubOraclePolicyId:
+                    deploymentManifestHubOraclePolicyId(manifest),
                   consensusProfile: manifest.consensusProfile,
                   manifest,
                 }),

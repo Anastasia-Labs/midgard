@@ -80,7 +80,7 @@ const daPayloadRetentionDeadlineRemainingGauge = Metric.gauge(
 const publishDaPayloadRetentionDeadline = (
   now: Date,
   view: DaPayloadsDB.RetentionL1View | undefined,
-  deploymentIdentityDigest: Buffer | undefined,
+  hubOraclePolicyId: string | undefined,
 ): Effect.Effect<void, never, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -92,7 +92,7 @@ const publishDaPayloadRetentionDeadline = (
             ...view.liveQueueHeaderHashes,
           ])} AND NOT ${DaPayloadsDB.finalityHeldPayload(
             sql,
-            deploymentIdentityDigest,
+            hubOraclePolicyId,
             "da_payloads.header_hash",
             view.finalThroughHeight,
           )}`;
@@ -215,10 +215,7 @@ export const retentionSweepAction = (
     const deploymentIdentity = yield* ContractDeploymentIdentity;
     const prunedOrphanDeltas = yield* MempoolTxDeltasDB.deleteOrphans;
     const challengeableCutoff = computeChallengeableCutoff(sweptAt);
-    const deploymentIdentityDigest =
-      deploymentIdentity.manifestId === undefined
-        ? undefined
-        : Buffer.from(deploymentIdentity.manifestId, "hex");
+    const { hubOraclePolicyId } = deploymentIdentity;
     const daPayloadsPruned =
       view === undefined
         ? Either.right(0)
@@ -231,14 +228,10 @@ export const retentionSweepAction = (
                   .retentionDays ?? deploymentDaRetentionDays(),
               ),
               view,
-              deploymentIdentityDigest,
+              hubOraclePolicyId,
             }),
           );
-    yield* publishDaPayloadRetentionDeadline(
-      sweptAt,
-      view,
-      deploymentIdentityDigest,
-    );
+    yield* publishDaPayloadRetentionDeadline(sweptAt, view, hubOraclePolicyId);
     if (Either.isLeft(daPayloadsPruned))
       return yield* Effect.fail(daPayloadsPruned.left);
     const prunedDaPayloads = daPayloadsPruned.right;
@@ -280,7 +273,7 @@ export const retentionSweepAction = (
       olderThanMs: retentionDays * RETENTION_MS_PER_DAY,
     });
     const prunedJournals =
-      view === undefined || deploymentIdentityDigest === undefined
+      view === undefined || hubOraclePolicyId === undefined
         ? undefined
         : yield* withRetentionHistoryProducer(
             Effect.gen(function* () {
@@ -290,7 +283,7 @@ export const retentionSweepAction = (
               return yield* pruneFoldedBeyondChallengeability({
                 challengeableCutoff: cutoff,
                 view,
-                deploymentIdentityDigest,
+                hubOraclePolicyId,
                 deadlineMs,
               });
             }),

@@ -18,7 +18,8 @@ export type DaBondContext = Readonly<{
   lucid: LucidEvolution;
   /** The deployment's network, recorded in and checked against every file. */
   network: string;
-  manifestId: string;
+  /** The deployment's hub-oracle policy id, recorded in and checked against every file. */
+  hubOraclePolicyId: string;
   poolValidator: SDKCore.AuthenticatedValidator;
   /** The authenticated `da-bond-pool spending` reference-script UTxO. */
   poolSpendingReference: UTxO;

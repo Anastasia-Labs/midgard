@@ -4,14 +4,14 @@ import { Effect } from "effect";
 export type SettlementKind = "deposit" | "withdrawal";
 export type SettlementPhase = "absorb" | "initialize" | "fund" | "conclude";
 export type SettlementJob = {
-  deployment_id: string;
+  hub_oracle_policy_id: string;
   kind: SettlementKind;
   event_id: string;
   phase: SettlementPhase | "complete";
   failures: number;
 };
 export type SettlementAttempt = {
-  deployment_id: string;
+  hub_oracle_policy_id: string;
   tx_hash: string;
   kind: SettlementKind;
   event_id: string;
@@ -35,7 +35,7 @@ export type OpenSettlementAttempt = SettlementAttempt & {
   latest: boolean;
 };
 export type SettlementOwner = {
-  deploymentId: string;
+  hubOraclePolicyId: string;
   walletAddress: string;
   token: string;
 };
@@ -46,12 +46,12 @@ export const renew = (owner: SettlementOwner) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql`INSERT INTO settlement_owners
-    (deployment_id, wallet_address, owner_token, lease_until)
-    VALUES (${owner.deploymentId}, ${owner.walletAddress}, ${owner.token}::uuid, clock_timestamp() + interval '60 seconds')
-    ON CONFLICT (deployment_id) DO UPDATE SET owner_token = EXCLUDED.owner_token, lease_until = EXCLUDED.lease_until
+    (hub_oracle_policy_id, wallet_address, owner_token, lease_until)
+    VALUES (${owner.hubOraclePolicyId}, ${owner.walletAddress}, ${owner.token}::uuid, clock_timestamp() + interval '60 seconds')
+    ON CONFLICT (hub_oracle_policy_id) DO UPDATE SET owner_token = EXCLUDED.owner_token, lease_until = EXCLUDED.lease_until
     WHERE settlement_owners.wallet_address = EXCLUDED.wallet_address
       AND (settlement_owners.owner_token = EXCLUDED.owner_token OR settlement_owners.lease_until < clock_timestamp())
-    RETURNING deployment_id`;
+    RETURNING hub_oracle_policy_id`;
     if (rows.length !== 1)
       return yield* Effect.fail(
         new SettlementOwnershipRefused(
@@ -63,11 +63,11 @@ export const renew = (owner: SettlementOwner) =>
 /** The settlement wallet a deployment's ownership row is bound to. Tells a
  * renew refused by another owner's live lease, which expiry resolves, from
  * one refused because the settlement wallet changed, which nothing does. */
-export const boundWalletAddress = (deploymentId: string) =>
+export const boundWalletAddress = (hubOraclePolicyId: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{ wallet_address: string }>`SELECT wallet_address
-    FROM settlement_owners WHERE deployment_id = ${deploymentId}`;
+    FROM settlement_owners WHERE hub_oracle_policy_id = ${hubOraclePolicyId}`;
     return rows[0]?.wallet_address;
   });
 
@@ -82,7 +82,7 @@ export const assertOwner = (owner: SettlementOwner) =>
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{ epoch: string }>`SELECT g.epoch::text AS epoch
     FROM settlement_owners s JOIN node_follower_write_gate g ON g.singleton
-    WHERE s.deployment_id = ${owner.deploymentId} AND s.wallet_address = ${owner.walletAddress}
+    WHERE s.hub_oracle_policy_id = ${owner.hubOraclePolicyId} AND s.wallet_address = ${owner.walletAddress}
       AND s.owner_token = ${owner.token}::uuid AND s.lease_until > clock_timestamp()
       AND g.pending_reason IS NULL AND g.applied_generation IS NOT NULL`;
     if (rows.length !== 1)
@@ -99,16 +99,16 @@ export const assertOwner = (owner: SettlementOwner) =>
  * attempt, and every final attempt of an unfinished job (one that reached
  * depth > k while the tick did not run, so its job may not have advanced).
  */
-export const openAttempts = (deploymentId: string) =>
+export const openAttempts = (hubOraclePolicyId: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     return yield* sql<OpenSettlementAttempt>`SELECT a.*, j.phase AS job_phase,
       NOT EXISTS (SELECT 1 FROM settlement_attempts l
-        WHERE l.deployment_id = a.deployment_id AND l.kind = a.kind
+        WHERE l.hub_oracle_policy_id = a.hub_oracle_policy_id AND l.kind = a.kind
           AND l.event_id = a.event_id AND l.status <> 'expired'
           AND (l.created_at, l.tx_hash) > (a.created_at, a.tx_hash)) AS latest
-    FROM settlement_attempts a JOIN settlement_jobs j USING (deployment_id, kind, event_id)
-    WHERE a.deployment_id = ${deploymentId}
+    FROM settlement_attempts a JOIN settlement_jobs j USING (hub_oracle_policy_id, kind, event_id)
+    WHERE a.hub_oracle_policy_id = ${hubOraclePolicyId}
       AND (a.status = 'pending' OR (a.status = 'final' AND j.phase <> 'complete'))
     ORDER BY a.created_at, a.tx_hash`;
   });
@@ -117,7 +117,7 @@ export const nextJob = (owner: SettlementOwner) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<SettlementJob>`SELECT * FROM settlement_jobs
-    WHERE deployment_id = ${owner.deploymentId}
+    WHERE hub_oracle_policy_id = ${owner.hubOraclePolicyId}
       AND due_at <= clock_timestamp() AND phase <> 'complete'
     ORDER BY due_at, created_at, kind, event_id LIMIT 1`;
     return rows[0];
@@ -130,7 +130,7 @@ export const nextDeferredJob = (owner: SettlementOwner) =>
       due_at: string;
       last_error: string | null;
     }>`SELECT due_at::text, last_error
-    FROM settlement_jobs WHERE deployment_id = ${owner.deploymentId} AND phase <> 'complete'
+    FROM settlement_jobs WHERE hub_oracle_policy_id = ${owner.hubOraclePolicyId} AND phase <> 'complete'
     ORDER BY due_at, created_at LIMIT 1`;
     return rows[0];
   });
@@ -144,22 +144,25 @@ export type SettlementFailingJob = {
   due_at: Date;
 };
 
-/** Read-only backlog of deployment `deploymentId`'s settlement jobs: how
+/** Read-only backlog of deployment `hubOraclePolicyId`'s settlement jobs: how
  * many are unfinished, and the earliest-due unfinished ones whose last
  * attempt failed, with the worker's error. Jobs of another deployment never
  * count. */
-export const inspectBacklog = (deploymentId: string, failingLimit: number) =>
+export const inspectBacklog = (
+  hubOraclePolicyId: string,
+  failingLimit: number,
+) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const [counts, failing] = yield* Effect.all(
       [
         sql<{ count: string }>`SELECT COUNT(*)::text AS count
         FROM settlement_jobs j
-        WHERE j.deployment_id = ${deploymentId} AND j.phase <> 'complete'`,
+        WHERE j.hub_oracle_policy_id = ${hubOraclePolicyId} AND j.phase <> 'complete'`,
         sql<SettlementFailingJob>`SELECT j.kind, j.event_id, j.phase, j.failures,
           j.last_error, j.due_at
         FROM settlement_jobs j
-        WHERE j.deployment_id = ${deploymentId}
+        WHERE j.hub_oracle_policy_id = ${hubOraclePolicyId}
           AND j.phase <> 'complete' AND j.last_error IS NOT NULL
         ORDER BY j.due_at, j.created_at, j.kind, j.event_id
         LIMIT ${failingLimit}`,
@@ -172,10 +175,10 @@ export const inspectBacklog = (deploymentId: string, failingLimit: number) =>
     };
   });
 
-/** Deployment `deploymentId`'s stuck settlement jobs: unfinished jobs whose
+/** Deployment `hubOraclePolicyId`'s stuck settlement jobs: unfinished jobs whose
  * consecutive failures reached `failureCap`. How many, and the earliest-due
  * one with its last error. */
-export const stuckJobs = (deploymentId: string, failureCap: number) =>
+export const stuckJobs = (hubOraclePolicyId: string, failureCap: number) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<
@@ -183,7 +186,7 @@ export const stuckJobs = (deploymentId: string, failureCap: number) =>
     >`SELECT j.kind, j.event_id, j.phase, j.failures, j.last_error, j.due_at,
         COUNT(*) OVER ()::text AS stuck
       FROM settlement_jobs j
-      WHERE j.deployment_id = ${deploymentId}
+      WHERE j.hub_oracle_policy_id = ${hubOraclePolicyId}
         AND j.phase <> 'complete' AND j.failures >= ${failureCap}
       ORDER BY j.due_at, j.created_at, j.kind, j.event_id
       LIMIT 1`;
@@ -214,7 +217,7 @@ export const expiredParents = (
     const rows = yield* sql<{
       tx_hash: string;
     }>`SELECT tx_hash FROM settlement_attempts
-    WHERE deployment_id = ${owner.deploymentId} AND status = 'expired' AND tx_hash IN ${sql.in(hashes)}`;
+    WHERE hub_oracle_policy_id = ${owner.hubOraclePolicyId} AND status = 'expired' AND tx_hash IN ${sql.in(hashes)}`;
     return new Set(rows.map((row) => row.tx_hash));
   });
 
@@ -235,11 +238,11 @@ export const saveAttempt = <E, R>(
       Effect.gen(function* () {
         yield* assertOwner(owner);
         yield* sql`SELECT 1 FROM settlement_owners
-        WHERE deployment_id = ${owner.deploymentId} FOR UPDATE`;
+        WHERE hub_oracle_policy_id = ${owner.hubOraclePolicyId} FOR UPDATE`;
         yield* unsettled;
         yield* sql`INSERT INTO settlement_attempts
-      (deployment_id, kind, event_id, phase, tx_hash, signed_cbor, required_outputs, fee_inputs, status)
-      VALUES (${attempt.deployment_id}, ${attempt.kind}, ${attempt.event_id}, ${attempt.phase},
+      (hub_oracle_policy_id, kind, event_id, phase, tx_hash, signed_cbor, required_outputs, fee_inputs, status)
+      VALUES (${attempt.hub_oracle_policy_id}, ${attempt.kind}, ${attempt.event_id}, ${attempt.phase},
         ${attempt.tx_hash}, ${attempt.signed_cbor},
         ARRAY(SELECT jsonb_array_elements_text(CAST(${JSON.stringify(attempt.required_outputs)} AS TEXT)::jsonb))::integer[],
         ARRAY(SELECT jsonb_array_elements_text(CAST(${JSON.stringify(attempt.fee_inputs)} AS TEXT)::jsonb)),
@@ -261,7 +264,7 @@ export const updateJob = (
     yield* sql`UPDATE settlement_jobs SET phase = ${phase},
     due_at = clock_timestamp() + ${delayMs} * interval '1 millisecond', last_error = ${error},
     failures = CASE WHEN ${error}::text IS NULL THEN 0 ELSE failures + 1 END
-    WHERE deployment_id = ${owner.deploymentId} AND kind = ${job.kind} AND event_id = ${job.event_id}`;
+    WHERE hub_oracle_policy_id = ${owner.hubOraclePolicyId} AND kind = ${job.kind} AND event_id = ${job.event_id}`;
   });
 
 /** Records an attempt proven never to land, and returns its job to the
@@ -276,7 +279,7 @@ export const expireAttempt = (
       Effect.gen(function* () {
         yield* assertOwner(owner);
         yield* sql`UPDATE settlement_attempts SET status = 'expired'
-      WHERE tx_hash = ${attempt.tx_hash} AND deployment_id = ${owner.deploymentId}`;
+      WHERE tx_hash = ${attempt.tx_hash} AND hub_oracle_policy_id = ${owner.hubOraclePolicyId}`;
         yield* updateJob(owner, attempt, attempt.phase);
       }),
     );

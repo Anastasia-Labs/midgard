@@ -2,7 +2,7 @@
 -- survive user-event row consumption and journal body retention.
 CREATE TABLE event_history_census_blocks (
   binding_digest BYTEA NOT NULL CHECK (octet_length(binding_digest) = 32),
-  manifest_id BYTEA NOT NULL CHECK (octet_length(manifest_id) = 32),
+  hub_oracle_policy_id BYTEA NOT NULL CHECK (octet_length(hub_oracle_policy_id) = 28),
   block_hash BYTEA NOT NULL CHECK (octet_length(block_hash) = 32),
   parent_hash BYTEA NOT NULL CHECK (octet_length(parent_hash) = 32),
   block_slot BIGINT NOT NULL CHECK (block_slot >= 0),
@@ -17,7 +17,7 @@ CREATE UNIQUE INDEX uniq_event_history_census_canonical_height
   ON event_history_census_blocks (binding_digest, block_height) WHERE canonical;
 CREATE TABLE event_history_census_frontier (
   binding_digest BYTEA PRIMARY KEY CHECK (octet_length(binding_digest) = 32),
-  manifest_id BYTEA NOT NULL CHECK (octet_length(manifest_id) = 32),
+  hub_oracle_policy_id BYTEA NOT NULL CHECK (octet_length(hub_oracle_policy_id) = 28),
   activation_hash BYTEA NOT NULL CHECK (octet_length(activation_hash) = 32),
   activation_height BIGINT NOT NULL CHECK (activation_height >= 0),
   activation_transaction_index BIGINT NOT NULL CHECK (activation_transaction_index >= 0),

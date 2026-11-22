@@ -229,16 +229,16 @@ export const claimDue = ({
   leaseOwner,
   leaseToken,
   leaseMs,
-  deploymentIdentityDigest,
+  hubOraclePolicyId,
 }: {
   readonly retentionDays: number;
   readonly limit: number;
   readonly leaseOwner: string;
   readonly leaseToken: string;
   readonly leaseMs: number;
-  /** Verified manifest ID; absent for a derived contract bundle, which
+  /** The deployment's hub-oracle policy id; absent for a derived contract bundle, which
    * consults no removal (see `owedPayload`). */
-  readonly deploymentIdentityDigest?: Buffer;
+  readonly hubOraclePolicyId?: string;
 }): Effect.Effect<readonly Row[], DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -253,7 +253,7 @@ export const claimDue = ({
           AND (publication.attempts = 0 OR publication.next_retry_at <= NOW())
           AND (publication.lease_expires_at IS NULL OR publication.lease_expires_at <= NOW())
           AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
-          AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
+          AND ${owedPayload(sql, hubOraclePolicyId, dead)}
         ORDER BY publication.next_retry_at ASC,
           publication.header_hash ASC,
           publication.peer_id ASC
@@ -280,7 +280,7 @@ export const claimDue = ({
 export const backlogCount = (
   retentionDays: number,
   /** See `owedPayload`. */
-  deploymentIdentityDigest?: Buffer,
+  hubOraclePolicyId?: string,
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -292,7 +292,7 @@ export const backlogCount = (
         ON payload.header_hash = publication.header_hash
       WHERE publication.status IN ('pending', 'rejected', 'transport_error')
         AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
-        AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
+        AND ${owedPayload(sql, hubOraclePolicyId, dead)}
     `;
     return Number(rows[0]?.count ?? 0);
   }).pipe(
@@ -336,7 +336,7 @@ export const releaseClaim = ({
 export const conflictCount = (
   retentionDays: number,
   /** See `owedPayload`. */
-  deploymentIdentityDigest?: Buffer,
+  hubOraclePolicyId?: string,
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -348,7 +348,7 @@ export const conflictCount = (
         ON payload.header_hash = publication.header_hash
       WHERE publication.status = 'conflict'
         AND payload.created_at >= NOW() - (${retentionDays} * INTERVAL '1 day')
-        AND ${owedPayload(sql, deploymentIdentityDigest, dead)}
+        AND ${owedPayload(sql, hubOraclePolicyId, dead)}
     `;
     return Number(rows[0]?.count ?? 0);
   }).pipe(

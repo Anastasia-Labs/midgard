@@ -2,7 +2,7 @@
  * The L1 origin a first finalized deployment manifest records: the point the
  * nonce command recorded in run state before it signed the hub-oracle nonce,
  * proved on the local node's chain and before the nonce's block. A manifest
- * already written keeps its own, so its manifestId never changes.
+ * already written keeps its own, so rewriting it never changes its origin.
  */
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";

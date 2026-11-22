@@ -52,7 +52,7 @@ export const fixture = async () => {
   const submitted: string[] = [];
   let blockNo = 100;
   const context: DaAvailabilityOperationContext = {
-    deploymentIdentity: "aa".repeat(32),
+    hubOraclePolicyId: "aa".repeat(28),
     actor: paymentCredentialOf(account.address).hash,
     journal,
     stateQueuePolicyId: "cc".repeat(28),

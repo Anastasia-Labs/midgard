@@ -46,7 +46,7 @@ import { TEST_DATABASE_PREFIX } from "./test-env.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const enabled = process.env.MIDGARD_RUN_DA_PHASE5_JOINED_E2E === "1";
-const DEPLOYMENT = "c7".repeat(32);
+const DEPLOYMENT = "c7".repeat(28);
 const RETENTION_DAYS = DA_TRANSPORT_LIMITS.minimumRetentionDays;
 // A dedicated, non-committee Noise identity for the public retained-DA
 // plane, as parseDaLibp2pRuntimeManifest requires.
@@ -157,7 +157,6 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
     });
     const manifest: DaProducerPublicationManifest = {
       deploymentFingerprint: DEPLOYMENT,
-      contractDeploymentManifestId: DEPLOYMENT,
       localPrivateKeySource: producerSeed,
       threshold: 2,
       requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
@@ -353,9 +352,8 @@ const runtimeManifest = (
   network: "Preview",
   deployment: {
     fingerprint: manifest.deploymentFingerprint,
-    contract_deployment_manifest_id: manifest.deploymentFingerprint,
     contract_deployment_info_sha256: "cd".repeat(32),
-    identity_source: "contract_deployment_manifest_id",
+    identity_source: "hub_oracle_policy_id",
   },
   runtime_topology: {
     target: "producer",

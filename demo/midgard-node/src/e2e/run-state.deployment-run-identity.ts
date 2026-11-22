@@ -1,4 +1,3 @@
-import { type DeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 
 import { exactRecord } from "../artifact-schema.js";
@@ -27,7 +26,8 @@ export type DeploymentRunIdentity = {
   };
   readonly manifestPath?: string;
   readonly manifestSha256?: string;
-  readonly deploymentMarker?: DeploymentMarker;
+  /** The bound manifest's hub-oracle policy id (56 lowercase hex). */
+  readonly hubOraclePolicyId?: string;
   /**
    * The local node's tip the nonce command read before it first signed the
    * hub-oracle nonce, recorded with the signed bytes.

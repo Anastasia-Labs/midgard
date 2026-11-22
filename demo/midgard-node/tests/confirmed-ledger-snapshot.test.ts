@@ -76,9 +76,7 @@ const record = ({
     PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_VERSION,
   [PendingBlockFinalizationsDB.Columns.REPLAY_KIND]:
     PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKind.LedgerDelta,
-  [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]:
-    "midgard-deployment-marker-v1",
-  [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MANIFEST_ID]: "de".repeat(32),
+  [PendingBlockFinalizationsDB.Columns.HUB_ORACLE_POLICY_ID]: "de".repeat(28),
   [PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID]:
     "midgard-consensus-v1",
   [PendingBlockFinalizationsDB.Columns.STATE_QUEUE_LEASE_TOKEN]: "lease",

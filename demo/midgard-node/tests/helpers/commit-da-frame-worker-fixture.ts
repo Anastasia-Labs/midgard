@@ -23,10 +23,7 @@ export const nodeConfig = makeTestNodeConfig({
 });
 export const deploymentIdentity = ContractDeploymentIdentity.make({
   kind: "derived",
-  deploymentMarker: {
-    schemaVersion: "midgard-deployment-marker-v1",
-    manifestId: "test-manifest",
-  } as never,
+  hubOraclePolicyId: "ab".repeat(28),
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
 });
 export const fakeSql = Object.assign(

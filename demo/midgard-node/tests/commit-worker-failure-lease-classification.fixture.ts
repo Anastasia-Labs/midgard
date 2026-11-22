@@ -105,10 +105,7 @@ export const baseCommitArgs = {
     },
   } as never,
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-  deploymentMarker: {
-    schemaVersion: "midgard-deployment-marker-v1",
-    manifestId: "test-manifest",
-  } as never,
+  hubOraclePolicyId: "ab".repeat(28),
   latestBlock: {
     utxo: {
       txHash: "22".repeat(32),

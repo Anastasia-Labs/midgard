@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { default as path } from "node:path";
 
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
@@ -84,7 +83,7 @@ export const registerFinalizationTests = () => {
           "hex",
         ),
         metadata: {
-          deploymentMarker: makeDeploymentMarker("de".repeat(32)),
+          hubOraclePolicyId: "de".repeat(28),
           consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
           stateQueueLeaseToken: "lease-token",
           baseSnapshotId: "snapshot",

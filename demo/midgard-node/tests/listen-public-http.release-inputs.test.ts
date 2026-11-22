@@ -24,7 +24,7 @@ import {
 const registryFixture = () => {
   const registry = {
     schemaVersion: "midgard-deployment-parameter-registry-v1",
-    manifestId: "ab".repeat(32),
+    hubOraclePolicyId: "ab".repeat(28),
     blueprintHash: "cd".repeat(32),
     deployment: {
       validators: [
@@ -47,7 +47,7 @@ const registryFixture = () => {
     registry,
     classification: { "fixture.unused": "explicit fixture exclusion" },
     expected: {
-      manifestId: registry.manifestId,
+      hubOraclePolicyId: registry.hubOraclePolicyId,
       blueprintHash: registry.blueprintHash,
       parameterRegistryDigest: computeDeploymentManifestJsonDigest(registry),
     },
@@ -66,7 +66,7 @@ describe("mounted public release inputs", () => {
       verifyMountedPublicRegistry(registry, classification, expected),
     ).toThrow("signed public release provenance");
   });
-  it.each(["manifestId", "blueprintHash"] as const)(
+  it.each(["hubOraclePolicyId", "blueprintHash"] as const)(
     "refuses %s independently of the whole registry digest",
     (field) => {
       const { registry, classification, expected } = registryFixture();

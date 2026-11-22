@@ -127,12 +127,12 @@ const sampleSettlementJobs: Effect.Effect<
   SqlError,
   SqlClient | ContractDeploymentIdentity
 > = Effect.gen(function* () {
-  const { manifestId } = yield* ContractDeploymentIdentity;
+  const { hubOraclePolicyId } = yield* ContractDeploymentIdentity;
   const stuck =
-    manifestId === undefined
+    hubOraclePolicyId === undefined
       ? { count: 0 }
       : yield* SettlementJournal.stuckJobs(
-          manifestId,
+          hubOraclePolicyId,
           SETTLEMENT_JOB_FAILURE_CAP,
         );
   yield* settlementJobsStuckGauge(Effect.succeed(BigInt(stuck.count)));

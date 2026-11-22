@@ -1,5 +1,4 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import { parseDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import {
   assertNativeMpfReplay,
@@ -84,7 +83,7 @@ export const parsePendingBlockFinalizationMetadata = (
   const candidate = exactRecord(
     value,
     [
-      "deploymentMarker",
+      "hubOraclePolicyId",
       "consensusProfileId",
       "stateQueueLeaseToken",
       "baseSnapshotId",
@@ -136,7 +135,11 @@ export const parsePendingBlockFinalizationMetadata = (
     ],
     "PendingBlockFinalizationV1 metadata.expectedCounts",
   );
-  const deploymentMarker = parseDeploymentMarker(candidate.deploymentMarker);
+  const hubOraclePolicyId = exactHex(
+    candidate.hubOraclePolicyId,
+    28,
+    "PendingBlockFinalizationV1 metadata.hubOraclePolicyId",
+  );
   if (candidate.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_ID) {
     throw new Error(
       `PendingBlockFinalizationV1 metadata.consensusProfileId must equal ${MIDGARD_CONSENSUS_PROFILE_ID}`,
@@ -187,7 +190,7 @@ export const parsePendingBlockFinalizationMetadata = (
     );
   }
   return {
-    deploymentMarker,
+    hubOraclePolicyId,
     consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     stateQueueLeaseToken: exactNonEmptyString(
       candidate.stateQueueLeaseToken,

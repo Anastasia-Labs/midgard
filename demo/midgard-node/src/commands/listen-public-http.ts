@@ -109,7 +109,7 @@ export const verifyMountedPublicRegistry = (
   parameters: unknown,
   classification: unknown,
   expectedRelease: Readonly<{
-    manifestId: string;
+    hubOraclePolicyId: string;
     blueprintHash: string;
     parameterRegistryDigest: string;
   }>,
@@ -119,8 +119,8 @@ export const verifyMountedPublicRegistry = (
     parameters === null ||
     !("schemaVersion" in parameters) ||
     parameters.schemaVersion !== "midgard-deployment-parameter-registry-v1" ||
-    !("manifestId" in parameters) ||
-    parameters.manifestId !== expectedRelease.manifestId ||
+    !("hubOraclePolicyId" in parameters) ||
+    parameters.hubOraclePolicyId !== expectedRelease.hubOraclePolicyId ||
     !("blueprintHash" in parameters) ||
     parameters.blueprintHash !== expectedRelease.blueprintHash ||
     computeDeploymentManifestJsonDigest(parameters) !==
@@ -233,7 +233,7 @@ export const authenticatePublicHttpRelease = (env: NodeJS.ProcessEnv): void => {
       ),
       expected: {
         sourceRevision: env.MIDGARD_PUBLIC_RELEASE_REVISION ?? "",
-        manifestId: env.MIDGARD_PUBLIC_MANIFEST_ID ?? "",
+        hubOraclePolicyId: env.MIDGARD_PUBLIC_HUB_ORACLE_POLICY_ID ?? "",
         roleImages: {
           node: env.MIDGARD_PUBLIC_NODE_IMAGE ?? "",
           postgres: env.MIDGARD_PUBLIC_POSTGRES_IMAGE ?? "",
@@ -251,7 +251,7 @@ export const authenticatePublicHttpRelease = (env: NodeJS.ProcessEnv): void => {
         PUBLIC_RELEASE_INPUT_LIMITS.classification,
       ),
       {
-        manifestId: release.manifestId,
+        hubOraclePolicyId: release.hubOraclePolicyId,
         blueprintHash: release.provenance.blueprintHash,
         parameterRegistryDigest:
           release.provenance.evidence.parameterRegistryDigest,

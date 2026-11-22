@@ -55,7 +55,7 @@ import { makeEventCommitments } from "./transition-commitments.js";
 export const submitTxBackedCommit = ({
   contracts,
   consensusProfile,
-  deploymentMarker,
+  hubOraclePolicyId,
   latestBlock,
   endTime,
   blockTimeMs,
@@ -325,7 +325,7 @@ export const submitTxBackedCommit = ({
                     validationTraceCount: BigInt(validationTraceCount),
                   },
                   consensusProfile,
-                  deploymentMarker,
+                  hubOraclePolicyId,
                 });
                 const journalLedgerState =
                   yield* resolvePendingJournalLedgerState({

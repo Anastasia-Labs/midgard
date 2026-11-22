@@ -48,26 +48,23 @@ const deploymentInfo = Effect.gen(function* () {
 }).pipe(Effect.provide(AlwaysSucceedsContract.Default));
 
 describe("the L1 origin a finalized manifest records", () => {
-  it.effect(
-    "M-a: the builder records the deployment's L1 origin, and the origin is part of the manifest id",
-    () =>
-      Effect.gen(function* () {
-        const info = yield* deploymentInfo;
-        const context = { ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT, now: NOW };
-        const without = buildDeploymentManifest(info, context);
-        const recorded = buildDeploymentManifest(info, {
-          ...context,
-          l1Origin: T,
-        });
-        expect(Object.keys(without)).not.toContain("l1Origin");
-        expect(recorded.l1Origin).toEqual(T);
-        expect(parseDeploymentManifest(recorded).l1Origin).toEqual(T);
-        expect(recorded.manifestId).not.toBe(without.manifestId);
-      }),
+  it.effect("M-a: the builder records the deployment's L1 origin", () =>
+    Effect.gen(function* () {
+      const info = yield* deploymentInfo;
+      const context = { ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT, now: NOW };
+      const without = buildDeploymentManifest(info, context);
+      const recorded = buildDeploymentManifest(info, {
+        ...context,
+        l1Origin: T,
+      });
+      expect(Object.keys(without)).not.toContain("l1Origin");
+      expect(recorded.l1Origin).toEqual(T);
+      expect(parseDeploymentManifest(recorded).l1Origin).toEqual(T);
+    }),
   );
 
   it.effect(
-    "M-a: a rewrite keeps the existing manifest's origin, or its absence, so the manifest id never changes",
+    "M-a: a rewrite keeps the existing manifest's origin, or its absence, and changes nothing else",
     () =>
       Effect.gen(function* () {
         const info = yield* deploymentInfo;
@@ -82,7 +79,7 @@ describe("the L1 origin a finalized manifest records", () => {
           l1Origin: LATER,
         });
         expect(rewritten.l1Origin).toEqual(T);
-        expect(rewritten.manifestId).toBe(recorded.manifestId);
+        expect(rewritten).toEqual(recorded);
 
         const legacy = buildDeploymentManifest(info, context);
         const legacyRewritten = buildDeploymentManifest(info, {
@@ -91,7 +88,7 @@ describe("the L1 origin a finalized manifest records", () => {
           l1Origin: T,
         });
         expect(Object.keys(legacyRewritten)).not.toContain("l1Origin");
-        expect(legacyRewritten.manifestId).toBe(legacy.manifestId);
+        expect(legacyRewritten).toEqual(legacy);
       }),
   );
 });

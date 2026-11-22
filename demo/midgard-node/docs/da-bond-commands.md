@@ -230,7 +230,7 @@ node dist/index.js da-bond withdraw begin \
 - `withdraw cancel` takes neither.
 
 The command writes the unsigned file (format `midgard-da-bond-unsigned-v1`:
-network, manifest id, `action`, `txCbor`, `txBodyHash`, `requiredSigners`,
+network, hub-oracle policy id, `action`, `txCbor`, `txBodyHash`, `requiredSigners`,
 `feePayerKeyHash`, `poolOutRef`, `daParamsOutRef`, and `validFrom`/`validTo`
 when the transaction has them), submits nothing, and prints
 `{action, unsignedFile, txBodyHash, requiredSigners, feePayerKeyHash, updateThreshold, poolOutRef, daParamsOutRef, validFrom?, validTo?, validToIso?, unlockAt?, unlockAtIso?, amount?, to?, submitted: false}`.
@@ -274,7 +274,7 @@ node dist/index.js da-bond assemble \
   begin.unsigned.json owner-a.witness.json owner-b.witness.json fee-payer.witness.json
 ```
 
-`assemble` checks, in order: the file's network and manifest id match the
+`assemble` checks, in order: the file's network and hub-oracle policy id match the
 deployment; each witness is for this transaction and carries a valid signature
 from the key it claims; the pool is an input and the DA params UTxO a reference
 input of the transaction; that DA params UTxO is still live and authentic; the
@@ -355,7 +355,7 @@ snapshots, whether or not a header is pending. `GET /v1/status` serves the lates
 `requiredBacking`, `belowBond`, `unlockAt` and `unlockable` while withdrawing,
 `alerts: {underBacked, withdrawing}`, and `observedAtMs`), or `null` before the
 first read. A missing pool counts as under-backed. The two alert codes appear in
-`activeAlerts` with the deployment manifest id as subject, and count in
+`activeAlerts` with the deployment's identity as subject, and count in
 `/v1/metrics` `activeAlertCount`, but they are informational: they never add a
 readiness reason and never make the watcher not ready, and the pool's state
 never stops the watcher from challenging. A failed pool read (a transport error,

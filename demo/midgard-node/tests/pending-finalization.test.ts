@@ -1,5 +1,4 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
@@ -7,11 +6,11 @@ import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 
 const ROOT = SDK.EMPTY_MERKLE_TREE_ROOT;
 const CANDIDATE_ROOT = "11".repeat(32);
-const MARKER = makeDeploymentMarker("ab".repeat(32));
+const HUB_ORACLE_POLICY_ID = "ab".repeat(28);
 
 const metadata =
   (): PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata => ({
-    deploymentMarker: MARKER,
+    hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
     consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     stateQueueLeaseToken: "lease-v1",
     baseSnapshotId: "snapshot-v1",
@@ -104,7 +103,7 @@ describe("PendingBlockFinalizationV1 exact envelope", () => {
 
     expect(parsed.version).toBe(1);
     expect(parsed.replay.kind).toBe("ledger_delta_v1");
-    expect(parsed.metadata.deploymentMarker).toEqual(MARKER);
+    expect(parsed.metadata.hubOraclePolicyId).toBe(HUB_ORACLE_POLICY_ID);
     expect(parsed.replay.ledgerDelta.spent[0]?.toString("hex")).toBe("0102");
   });
 
@@ -184,22 +183,6 @@ describe("PendingBlockFinalizationV1 exact envelope", () => {
           metadata: {
             ...envelope.metadata,
             consensusProfileId: "midgard-consensus-v0",
-          },
-        };
-      },
-    ],
-    [
-      "deployment-marker alias",
-      () => {
-        const envelope = deltaEnvelope();
-        return {
-          ...envelope,
-          metadata: {
-            ...envelope.metadata,
-            deploymentMarker: {
-              schema: MARKER.schemaVersion,
-              manifestId: MARKER.manifestId,
-            },
           },
         };
       },

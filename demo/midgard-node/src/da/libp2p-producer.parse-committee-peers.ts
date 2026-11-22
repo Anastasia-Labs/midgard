@@ -83,7 +83,6 @@ export type DaProducerCommitteePeer = {
 
 export type DaProducerPublicationManifest = {
   readonly deploymentFingerprint: string;
-  readonly contractDeploymentManifestId: string;
   readonly localPrivateKeySource: string;
   readonly threshold: number;
   readonly requestTimeoutMs: number;

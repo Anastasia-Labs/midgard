@@ -46,7 +46,7 @@ export type ContractDeploymentInfo = {
 
 export type DeploymentManifestVerificationReport = {
   readonly ok: boolean;
-  readonly manifestId?: string;
+  readonly hubOraclePolicyId?: string;
   readonly path?: string;
   readonly mismatches: readonly string[];
   readonly recommendation:
@@ -57,7 +57,7 @@ export type DeploymentManifestVerificationReport = {
 
 export type FinalizedDeploymentIdentity = {
   readonly path: string;
-  readonly manifestId: string;
+  readonly hubOraclePolicyId: string;
   readonly contractDeploymentInfoSha256: string;
   readonly manifest: DeploymentManifest;
 };

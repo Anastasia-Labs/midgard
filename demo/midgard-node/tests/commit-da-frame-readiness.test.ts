@@ -245,7 +245,7 @@ describe("commit DA frame readiness", () => {
       const params = {
         contracts: {},
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-        deploymentMarker: {},
+        hubOraclePolicyId: "ab".repeat(28),
         latestBlock: {},
         endTime: new Date(Number(header.endTime)),
         ...content,

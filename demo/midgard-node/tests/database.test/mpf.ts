@@ -1,7 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
@@ -232,7 +231,7 @@ export const registerMpfTests = () => {
                     "hex",
                   ),
                   metadata: {
-                    deploymentMarker: makeDeploymentMarker("de".repeat(32)),
+                    hubOraclePolicyId: "de".repeat(28),
                     consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
                     stateQueueLeaseToken: `phase3-${index.toString()}`,
                     baseSnapshotId: `phase3-${index.toString()}`,
@@ -568,7 +567,7 @@ export const registerMpfTests = () => {
               headerHash,
               headerCbor: Buffer.from("d87980", "hex"),
               metadata: {
-                deploymentMarker: makeDeploymentMarker("de".repeat(32)),
+                hubOraclePolicyId: "de".repeat(28),
                 consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
                 stateQueueLeaseToken: "implicit-genesis-test",
                 baseSnapshotId: "implicit-genesis-test",

@@ -21,12 +21,11 @@ import { sha256 } from "../src/sha256.js";
 import { type DaCopy } from "./landed-blocks-replay-foreign.availability.js";
 import {
   envelope,
-  MANIFEST_ID,
+  HUB_ORACLE_POLICY_ID,
 } from "./landed-blocks-replay-foreign.fixture.js";
 
 const manifest: DaProducerPublicationManifest = {
-  deploymentFingerprint: "de".repeat(32),
-  contractDeploymentManifestId: MANIFEST_ID,
+  deploymentFingerprint: HUB_ORACLE_POLICY_ID,
   localPrivateKeySource: "seed:" + "ef".repeat(32),
   threshold: 1,
   requestTimeoutMs: 100,

@@ -87,11 +87,11 @@ export const followerOperatorSet = (options: {
       } as FollowerOperatorSet;
     }
     const activity =
-      identity.manifestId === undefined
+      identity.hubOraclePolicyId === undefined
         ? memoryActivityRecord()
         : databaseActivityRecord({
             run: (effect) => Runtime.runPromise(dbRuntime)(effect),
-            manifestId: identity.manifestId,
+            hubOraclePolicyId: identity.hubOraclePolicyId,
             ownKey: ownKey.right,
           });
     const hook = operatorSetHook({

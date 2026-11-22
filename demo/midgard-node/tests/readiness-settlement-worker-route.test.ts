@@ -39,7 +39,7 @@ type ReadyzSettlement = {
   readonly settlement: SettlementHealth;
 };
 
-const readyz = (health: SettlementHealth, manifestId?: string) =>
+const readyz = (health: SettlementHealth, hubOraclePolicyId?: string) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
@@ -91,14 +91,14 @@ const readyz = (health: SettlementHealth, manifestId?: string) =>
         Effect.provideService(MidgardContracts, {} as MidgardContracts),
         Effect.provideService(
           ContractDeploymentIdentity,
-          manifestId === undefined
+          hubOraclePolicyId === undefined
             ? ContractDeploymentIdentity.make({
                 kind: "derived",
                 consensusProfile: MIDGARD_CONSENSUS_PROFILE,
               })
             : ({
                 kind: "manifest",
-                manifestId,
+                hubOraclePolicyId,
               } as unknown as ContractDeploymentIdentity),
         ),
         Effect.provide(Globals.Default),
@@ -170,15 +170,15 @@ describe("GET /readyz settlement worker", () => {
   });
 
   it("names a stuck settlement job as a detail and stays ready on it", async () => {
-    const deploymentId = "a2".repeat(32);
+    const hubOraclePolicyId = "a2".repeat(28);
     const insertJob = (eventId: string, failures: number, error: string) =>
       Effect.runPromise(
         provideDatabaseLayers(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
             yield* sql`INSERT INTO settlement_jobs
-              (deployment_id, kind, event_id, phase, failures, last_error)
-              VALUES (${deploymentId}, 'withdrawal', ${eventId}, 'conclude',
+              (hub_oracle_policy_id, kind, event_id, phase, failures, last_error)
+              VALUES (${hubOraclePolicyId}, 'withdrawal', ${eventId}, 'conclude',
                 ${failures}, ${error})`;
           }),
         ),
@@ -186,7 +186,7 @@ describe("GET /readyz settlement worker", () => {
     await Effect.runPromise(provideDatabaseLayers(resetApplicationTables));
     const running = health("running", "settlement progress checkpointed");
     await insertJob("cc".repeat(34), SETTLEMENT_JOB_FAILURE_CAP - 1, "failing");
-    expect(await readyz(running, deploymentId)).toMatchObject({
+    expect(await readyz(running, hubOraclePolicyId)).toMatchObject({
       settlementReasons: [],
       settlementDetails: [],
     });
@@ -195,14 +195,14 @@ describe("GET /readyz settlement worker", () => {
       SETTLEMENT_JOB_FAILURE_CAP,
       "settlement withdrawal conclude: builder refused\n    at stack",
     );
-    expect(await readyz(running, deploymentId)).toMatchObject({
+    expect(await readyz(running, hubOraclePolicyId)).toMatchObject({
       settlementReasons: [],
       settlementDetails: [
         `settlement_jobs_stuck:1:withdrawal:${"dd".repeat(34)}:conclude:settlement withdrawal conclude: builder refused`,
       ],
     });
     // Another deployment's stuck jobs are not this node's.
-    expect((await readyz(running, "b3".repeat(32))).settlementDetails).toEqual(
+    expect((await readyz(running, "b3".repeat(28))).settlementDetails).toEqual(
       [],
     );
   });

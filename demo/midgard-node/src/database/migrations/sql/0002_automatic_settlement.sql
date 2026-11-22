@@ -1,6 +1,6 @@
 -- Operational journals are committed before a signed transaction leaves the node.
 CREATE TABLE settlement_jobs (
-    deployment_id text NOT NULL,
+    hub_oracle_policy_id text NOT NULL,
     kind text NOT NULL CHECK (kind IN ('deposit', 'withdrawal')),
     event_id text NOT NULL,
     phase text NOT NULL CHECK (phase IN ('absorb', 'initialize', 'fund', 'conclude', 'complete')),
@@ -9,12 +9,12 @@ CREATE TABLE settlement_jobs (
     last_error text,
     failures integer NOT NULL DEFAULT 0,
     verified_generation bigint NOT NULL DEFAULT -1,
-    PRIMARY KEY (deployment_id, kind, event_id)
+    PRIMARY KEY (hub_oracle_policy_id, kind, event_id)
 );
-CREATE INDEX settlement_jobs_due ON settlement_jobs (deployment_id, due_at, created_at) WHERE phase <> 'complete';
-CREATE INDEX settlement_jobs_generation ON settlement_jobs (deployment_id, verified_generation) WHERE phase = 'complete';
+CREATE INDEX settlement_jobs_due ON settlement_jobs (hub_oracle_policy_id, due_at, created_at) WHERE phase <> 'complete';
+CREATE INDEX settlement_jobs_generation ON settlement_jobs (hub_oracle_policy_id, verified_generation) WHERE phase = 'complete';
 CREATE TABLE settlement_attempts (
-    deployment_id text NOT NULL,
+    hub_oracle_policy_id text NOT NULL,
     tx_hash text PRIMARY KEY CHECK (tx_hash ~ '^[0-9a-f]{64}$'),
     kind text NOT NULL,
     event_id text NOT NULL,
@@ -26,13 +26,13 @@ CREATE TABLE settlement_attempts (
     hold_slot bigint NOT NULL CHECK (hold_slot >= 0),
     status text NOT NULL CHECK (status IN ('pending', 'confirmed', 'expired')),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-    FOREIGN KEY (deployment_id, kind, event_id) REFERENCES settlement_jobs(deployment_id, kind, event_id)
+    FOREIGN KEY (hub_oracle_policy_id, kind, event_id) REFERENCES settlement_jobs(hub_oracle_policy_id, kind, event_id)
 );
-CREATE UNIQUE INDEX settlement_one_pending ON settlement_attempts (deployment_id) WHERE status = 'pending';
-CREATE INDEX settlement_attempts_event ON settlement_attempts (deployment_id, kind, event_id, created_at);
+CREATE UNIQUE INDEX settlement_one_pending ON settlement_attempts (hub_oracle_policy_id) WHERE status = 'pending';
+CREATE INDEX settlement_attempts_event ON settlement_attempts (hub_oracle_policy_id, kind, event_id, created_at);
 CREATE INDEX settlement_confirmed_fee_inputs ON settlement_attempts USING gin (fee_inputs) WHERE status = 'confirmed';
 CREATE TABLE settlement_owners (
-    deployment_id text PRIMARY KEY,
+    hub_oracle_policy_id text PRIMARY KEY,
     wallet_address text NOT NULL UNIQUE,
     owner_token uuid NOT NULL,
     lease_until timestamptz NOT NULL
@@ -50,8 +50,8 @@ BEGIN
     IF NEW.status <> 'finalized' OR NEW.validity IS DISTINCT FROM 'WithdrawalIsValid' THEN RETURN NEW; END IF;
     event_kind := 'withdrawal'; initial_phase := 'initialize';
   END IF;
-  INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-    SELECT encode(deployment_identity, 'hex'), event_kind, encode(NEW.event_id, 'hex'), initial_phase
+  INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase)
+    SELECT encode(hub_oracle_policy_id, 'hex'), event_kind, encode(NEW.event_id, 'hex'), initial_phase
     FROM event_history_authority WHERE singleton
     ON CONFLICT DO NOTHING;
   RETURN NEW;
@@ -63,10 +63,10 @@ CREATE TRIGGER withdrawal_automatic_settlement AFTER INSERT OR UPDATE OF status,
   FOR EACH ROW EXECUTE FUNCTION enqueue_automatic_settlement();
 
 -- One-time discovery for an existing deployment; no local or chain reset.
-INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-  SELECT encode(a.deployment_identity, 'hex'), 'deposit', encode(d.event_id, 'hex'), 'absorb'
+INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase)
+  SELECT encode(a.hub_oracle_policy_id, 'hex'), 'deposit', encode(d.event_id, 'hex'), 'absorb'
   FROM event_history_authority a CROSS JOIN deposits_utxos d WHERE d.status = 'consumed';
-INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-  SELECT encode(a.deployment_identity, 'hex'), 'withdrawal', encode(w.event_id, 'hex'), 'initialize'
+INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase)
+  SELECT encode(a.hub_oracle_policy_id, 'hex'), 'withdrawal', encode(w.event_id, 'hex'), 'initialize'
   FROM event_history_authority a CROSS JOIN withdrawal_utxos w
   WHERE w.status = 'finalized' AND w.validity = 'WithdrawalIsValid';

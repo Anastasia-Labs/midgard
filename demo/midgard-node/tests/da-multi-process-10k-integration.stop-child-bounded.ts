@@ -14,7 +14,7 @@ export const packageRoot = resolve(
   fileURLToPath(new URL("..", import.meta.url)),
 );
 
-export const DEPLOYMENT = "b6".repeat(32);
+export const DEPLOYMENT = "b6".repeat(28);
 
 export const TRANSACTION_COUNT = 10_000;
 

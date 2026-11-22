@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
   type DeploymentManifest,
+  deploymentManifestHubOraclePolicyId,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk/core";
@@ -183,7 +184,7 @@ export const makeGenuineDeploymentRegistryForTest = async (published?: {
     ));
   const retained = {
     schemaVersion: "midgard-deployment-parameter-registry-v1",
-    manifestId: manifest.manifestId,
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
     blueprintHash: manifest.artifacts.blueprintHash,
     deployment: registry,
     referenceScripts: manifest.referenceScripts,

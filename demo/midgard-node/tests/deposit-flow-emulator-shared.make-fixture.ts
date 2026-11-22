@@ -6,7 +6,6 @@ import "./helpers/follower-emulator.chain.js";
 import { randomUUID } from "node:crypto";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import type * as SDK from "@al-ft/midgard-sdk/core";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk/state-queue";
@@ -65,7 +64,7 @@ export const EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 24 * 60 * 60 * 1000;
 
 export const EMULATOR_DEPLOYMENT_IDENTITY = ContractDeploymentIdentity.make({
   kind: "derived",
-  deploymentMarker: makeDeploymentMarker("de".repeat(32)),
+  hubOraclePolicyId: "de".repeat(28),
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
 });
 

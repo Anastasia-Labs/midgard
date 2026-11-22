@@ -1,5 +1,4 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import { MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION } from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import * as WithdrawalsDB from "./withdrawals.js";
 
@@ -27,8 +26,7 @@ export enum Columns {
   HEADER_CBOR = "header_cbor",
   FORMAT_VERSION = "format_version",
   REPLAY_KIND = "replay_kind",
-  DEPLOYMENT_MARKER_SCHEMA_VERSION = "deployment_marker_schema_version",
-  DEPLOYMENT_MANIFEST_ID = "deployment_manifest_id",
+  HUB_ORACLE_POLICY_ID = "hub_oracle_policy_id",
   CONSENSUS_PROFILE_ID = "consensus_profile_id",
   PREPARED_TX_HASH = "prepared_tx_hash",
   INTENDED_TX_HASH = "intended_tx_hash",
@@ -106,8 +104,7 @@ export type Row = {
   [Columns.HEADER_CBOR]: Buffer;
   [Columns.FORMAT_VERSION]: typeof PENDING_BLOCK_FINALIZATION_VERSION;
   [Columns.REPLAY_KIND]: PendingBlockFinalizationReplayKind;
-  [Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]: typeof MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION;
-  [Columns.DEPLOYMENT_MANIFEST_ID]: string;
+  [Columns.HUB_ORACLE_POLICY_ID]: string;
   [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   [Columns.PREPARED_TX_HASH]?: Buffer | null;
   [Columns.INTENDED_TX_HASH]?: Buffer | null;

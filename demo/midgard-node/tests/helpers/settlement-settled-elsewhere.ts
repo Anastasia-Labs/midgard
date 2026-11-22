@@ -65,7 +65,7 @@ import { ChainDriver, testDatabases } from "./l1-events-store.js";
 
 export const K = 6;
 export const CD = 3;
-const deploymentId = "a8".repeat(32);
+const hubOraclePolicyId = "a8".repeat(28);
 const PAYOUT_POLICY = "c1".repeat(28);
 const PAYOUT_ADDRESS = Buffer.from(`70${"c2".repeat(28)}`, "hex");
 const databases = testDatabases();
@@ -98,14 +98,14 @@ const contracts = {
 } as unknown as MidgardContracts;
 const identity = {
   kind: "manifest",
-  manifestId: deploymentId,
+  hubOraclePolicyId,
   manifest: {
     l1Finality: { confirmationDepth: CD, automaticRecoveryMaxDepth: K },
   },
 } as unknown as ContractDeploymentIdentity;
 
 const owner: Journal.SettlementOwner = {
-  deploymentId,
+  hubOraclePolicyId,
   walletAddress: "settlement-wallet",
   token: randomUUID(),
 };
@@ -197,7 +197,7 @@ export const scenario = async () => {
           failures: number;
           last_error: string | null;
         }>`SELECT phase, failures, last_error FROM settlement_jobs
-          WHERE deployment_id = ${deploymentId} AND event_id = ${eventId}`;
+          WHERE hub_oracle_policy_id = ${hubOraclePolicyId} AND event_id = ${eventId}`;
         return rows[0];
       }),
     );
@@ -205,13 +205,13 @@ export const scenario = async () => {
     run(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-          VALUES (${deploymentId}, ${kind}, ${eventId},
+        yield* sql`INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase)
+          VALUES (${hubOraclePolicyId}, ${kind}, ${eventId},
             ${kind === "deposit" ? "absorb" : "initialize"})`;
       }),
     );
   const stuck = () =>
-    run(Journal.stuckJobs(deploymentId, SETTLEMENT_JOB_FAILURE_CAP));
+    run(Journal.stuckJobs(hubOraclePolicyId, SETTLEMENT_JOB_FAILURE_CAP));
   /** The node's own settlement attempt for `body`, journaled and saved as
    * the tick's send step saves it, before it lands. */
   const ownAttempt = async (
@@ -239,7 +239,7 @@ export const scenario = async () => {
         yield* Journal.saveAttempt(
           owner,
           {
-            deployment_id: deploymentId,
+            hub_oracle_policy_id: hubOraclePolicyId,
             kind,
             event_id: eventId,
             phase,

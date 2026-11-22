@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { expect, vi } from "vitest";
 
@@ -52,8 +52,7 @@ export const openPublishedLifecycle = async (
   const identity = ContractDeploymentIdentity.make({
     kind: "manifest",
     manifest,
-    manifestId: manifest.manifestId,
-    deploymentMarker: makeDeploymentMarker(manifest.manifestId),
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
     l1Finality: manifest.l1Finality,
     consensusProfile: manifest.consensusProfile,
   });

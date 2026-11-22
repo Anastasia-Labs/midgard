@@ -1,3 +1,4 @@
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { HttpServerRequest } from "@effect/platform";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql";
@@ -106,7 +107,7 @@ const identity = () => {
   const manifest = canonicalManifest();
   return ContractDeploymentIdentity.make({
     kind: "manifest",
-    manifestId: manifest.manifestId,
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
     consensusProfile: manifest.consensusProfile,
     manifest,
   });

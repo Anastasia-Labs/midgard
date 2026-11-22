@@ -41,7 +41,7 @@ describe("public readiness database diagnostics", () => {
     const epoch = "9007199254740993";
     const body = {
       ready: false,
-      deploymentFingerprint: "ab".repeat(32),
+      deploymentFingerprint: "ab".repeat(28),
       observedAtMs: 1234,
       reasons: [
         "l1_driver_recompute_pending",
@@ -122,7 +122,7 @@ describe("public readiness database diagnostics", () => {
             view: { generation: 3, slot: 4, height: 5, hash: "de".repeat(32) },
             baseHeaderHash: "cd".repeat(28),
             baseUtxosRoot: "ef".repeat(32),
-            deploymentFingerprint: "ab".repeat(32),
+            deploymentFingerprint: "ab".repeat(28),
           },
         },
       },

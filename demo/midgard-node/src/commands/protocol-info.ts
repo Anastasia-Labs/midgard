@@ -9,10 +9,6 @@ import {
   MIDGARD_PROTOCOL_INFO_API_VERSION,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
-import {
-  type DeploymentMarker,
-  parseDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { Network } from "@lucid-evolution/lucid";
 
 import { positiveSafeInteger } from "../artifact-schema.js";
@@ -28,7 +24,8 @@ type ProtocolInfoConfig = {
 };
 
 type ProtocolInfoCommon = {
-  readonly deploymentMarker: DeploymentMarker;
+  /** The deployment's hub-oracle policy id (56 lowercase hex). */
+  readonly hubOraclePolicyId: string;
   readonly network: Network;
   readonly currentSlot: string;
   readonly codecSupportedScriptLanguages: typeof MIDGARD_SUPPORTED_SCRIPT_LANGUAGES;
@@ -72,15 +69,24 @@ const stringifyCurrentSlot = (slot: number | bigint): string => {
   return slot.toString(10);
 };
 
+const hubOraclePolicyIdOf = (value: unknown): string => {
+  if (typeof value !== "string" || !/^[0-9a-f]{56}$/u.test(value)) {
+    throw new Error(
+      "hubOraclePolicyId must be the deployment's 28-byte hub-oracle policy id in lowercase hex",
+    );
+  }
+  return value;
+};
+
 export const encodeProtocolInfo = ({
   nodeConfig,
   currentSlot,
-  deploymentMarker,
+  hubOraclePolicyId,
   consensusProfile = MIDGARD_CONSENSUS_PROFILE,
 }: {
   readonly nodeConfig: ProtocolInfoConfig;
   readonly currentSlot: number | bigint;
-  readonly deploymentMarker: unknown;
+  readonly hubOraclePolicyId: unknown;
   readonly consensusProfile?: MidgardConsensusProfile;
 }): ProtocolInfo => {
   if (!isMidgardConsensusProfile(consensusProfile)) {
@@ -96,7 +102,7 @@ export const encodeProtocolInfo = ({
     );
   }
   const common: ProtocolInfoCommon = {
-    deploymentMarker: parseDeploymentMarker(deploymentMarker),
+    hubOraclePolicyId: hubOraclePolicyIdOf(hubOraclePolicyId),
     network: nodeConfig.NETWORK,
     currentSlot: stringifyCurrentSlot(currentSlot),
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,

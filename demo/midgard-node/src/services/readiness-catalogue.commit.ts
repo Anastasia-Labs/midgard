@@ -72,7 +72,6 @@ const PLANNING_REASONS = members<
   no_selected_plan: null,
   follower_recomputing: null,
   follower_authority_changed: null,
-  deployment_authority_changed: null,
   clock_invalid: null,
   plan_expired: null,
 });

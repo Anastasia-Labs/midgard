@@ -46,12 +46,7 @@ export const readTxStatusMergeEvidence = (txIds: readonly Buffer[]) =>
     const identity = yield* ContractDeploymentIdentity;
     const { confirmationDepth } = yield* settlementDepthParameters;
     const empty = () => new Map<string, TxStatusMergeEvidence>();
-    if (
-      identity.manifest === undefined ||
-      identity.manifestId === undefined ||
-      txIds.length === 0
-    )
-      return empty();
+    if (identity.manifest === undefined || txIds.length === 0) return empty();
     const tipHeight = yield* followerCoveredTipHeight;
     if (tipHeight === null) return empty();
     const safeThroughHeight = heightAtDepth(tipHeight, confirmationDepth);

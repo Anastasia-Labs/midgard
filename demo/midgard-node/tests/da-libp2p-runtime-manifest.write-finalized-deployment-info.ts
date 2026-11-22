@@ -10,11 +10,11 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import {
   computeDeploymentManifestDaCommitteeSignersHash,
-  computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   type DeploymentManifest,
+  deploymentManifestHubOraclePolicyId,
   normalizeDeploymentManifestJsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
@@ -96,7 +96,7 @@ export const writeFinalizedDeploymentInfo = async (
   mutate?: (manifest: Record<string, unknown>) => void,
 ): Promise<{
   readonly path: string;
-  readonly manifestId: string;
+  readonly hubOraclePolicyId: string;
   readonly sha256: string;
 }> => {
   const dir = await mkdtemp(join(tmpdir(), "midgard-da-runtime-manifest-"));
@@ -162,16 +162,14 @@ export const writeFinalizedDeploymentInfo = async (
     },
   ) as unknown as Record<string, unknown>;
   mutate?.(manifest);
-  delete manifest.manifestId;
-  manifest.manifestId = computeDeploymentManifestId(
-    manifest as unknown as Omit<DeploymentManifest, "manifestId">,
-  );
   const raw = `${JSON.stringify(manifest, null, 2)}\n`;
   const path = join(dir, "contract-deployment-info.json");
   await writeFile(path, raw, "utf8");
   return {
     path,
-    manifestId: String(manifest.manifestId),
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
+      manifest as unknown as DeploymentManifest,
+    ),
     sha256: createHash("sha256").update(raw).digest("hex"),
   };
 };

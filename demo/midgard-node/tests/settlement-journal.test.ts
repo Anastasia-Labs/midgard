@@ -22,9 +22,9 @@ import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 const run = <A, E>(
   effect: Effect.Effect<A, E, SqlClient.SqlClient | NodeConfig>,
 ) => Effect.runPromise(provideDatabaseLayers(effect));
-const deploymentId = "a1".repeat(32);
+const hubOraclePolicyId = "a1".repeat(28);
 const owner = () => ({
-  deploymentId,
+  hubOraclePolicyId,
   walletAddress: "settlement-wallet",
   token: randomUUID(),
 });
@@ -32,19 +32,19 @@ const owner = () => ({
  * journal's writes and its enqueue trigger need. */
 const ready = Effect.zipRight(
   openFollowerWriteGate,
-  NodeDeployment.record(deploymentId),
+  NodeDeployment.record(hubOraclePolicyId),
 );
 const insertJob = (eventId = "01") =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-    VALUES (${deploymentId}, 'deposit', ${eventId}, 'absorb')`;
+    yield* sql`INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase)
+    VALUES (${hubOraclePolicyId}, 'deposit', ${eventId}, 'absorb')`;
   });
 const attempt = (
   eventId = "01",
   hash = "d1".repeat(32),
 ): Journal.SettlementAttempt => ({
-  deployment_id: deploymentId,
+  hub_oracle_policy_id: hubOraclePolicyId,
   kind: "deposit",
   event_id: eventId,
   phase: "absorb",
@@ -213,7 +213,7 @@ describe("settlement durable submission journal", () => {
         yield* Journal.saveAttempt(actor, attempt(), Effect.void);
       }),
     );
-    const [stored] = await run(Journal.openAttempts(deploymentId));
+    const [stored] = await run(Journal.openAttempts(hubOraclePolicyId));
     expect(stored).toMatchObject({
       ...attempt(),
       job_phase: "absorb",
@@ -224,11 +224,11 @@ describe("settlement durable submission journal", () => {
         // Safe is not final: the attempt stays open while it may still revert.
         statuses.set(attempt().tx_hash, landed(3));
         yield* settleAttempts(actor, depths);
-        expect(yield* Journal.openAttempts(deploymentId)).toHaveLength(1);
+        expect(yield* Journal.openAttempts(hubOraclePolicyId)).toHaveLength(1);
         const sql = yield* SqlClient.SqlClient;
         yield* sql`UPDATE settlement_attempts SET status = 'final'`;
         // A final attempt of a complete job is no longer read.
-        expect(yield* Journal.openAttempts(deploymentId)).toEqual([]);
+        expect(yield* Journal.openAttempts(hubOraclePolicyId)).toEqual([]);
       }),
     );
   });
@@ -245,7 +245,7 @@ describe("settlement durable submission journal", () => {
         yield* sql`UPDATE settlement_attempts SET status = 'final'`;
         expect(yield* settleAttempts(actor, depths)).toBeUndefined();
         expect(yield* jobPhase()).toBe("complete");
-        expect(yield* Journal.openAttempts(deploymentId)).toEqual([]);
+        expect(yield* Journal.openAttempts(hubOraclePolicyId)).toEqual([]);
       }),
     );
   });
@@ -260,7 +260,7 @@ describe("settlement durable submission journal", () => {
         const second = attempt("01", "d2".repeat(32));
         yield* Journal.saveAttempt(actor, first, Effect.void);
         yield* Journal.saveAttempt(actor, second, Effect.void);
-        const open = yield* Journal.openAttempts(deploymentId);
+        const open = yield* Journal.openAttempts(hubOraclePolicyId);
         expect(open.map((a) => [a.tx_hash, a.latest])).toEqual([
           [first.tx_hash, false],
           [second.tx_hash, true],
@@ -276,7 +276,7 @@ describe("settlement durable submission journal", () => {
         expect(yield* attemptStatus(second.tx_hash)).toBe("expired");
         // The expired attempt leaves the set; the first is latest again.
         expect(
-          (yield* Journal.openAttempts(deploymentId)).map((a) => [
+          (yield* Journal.openAttempts(hubOraclePolicyId)).map((a) => [
             a.tx_hash,
             a.latest,
           ]),
@@ -325,7 +325,7 @@ describe("settlement durable submission journal", () => {
             Journal.saveAttempt(actor, attempt(), Effect.void),
           ))._tag,
         ).toBe("Left");
-        expect(yield* Journal.openAttempts(deploymentId)).toEqual([]);
+        expect(yield* Journal.openAttempts(hubOraclePolicyId)).toEqual([]);
       }),
     );
   });

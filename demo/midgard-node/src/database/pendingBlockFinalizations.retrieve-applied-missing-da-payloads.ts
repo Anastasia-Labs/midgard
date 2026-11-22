@@ -249,7 +249,7 @@ export const withdrawalMemberToAssignment = (
 export const pruneFoldedBeyondChallengeability = ({
   challengeableCutoff,
   view,
-  deploymentIdentityDigest,
+  hubOraclePolicyId,
   // Each batch cascades into the journal's tx, trace and witness rows while
   // holding the history write lock, so batches stay small.
   batchLimit = 50,
@@ -258,7 +258,7 @@ export const pruneFoldedBeyondChallengeability = ({
 }: {
   readonly challengeableCutoff: Date;
   readonly view: DaPayloadsDB.RetentionL1View;
-  readonly deploymentIdentityDigest: Buffer;
+  readonly hubOraclePolicyId: string;
   readonly batchLimit?: number;
   readonly maxBatches?: number;
   readonly deadlineMs?: number;
@@ -287,7 +287,7 @@ export const pruneFoldedBeyondChallengeability = ({
         )}
         WHERE ${sql(Columns.HEADER_HASH)} IN (
           SELECT p.${sql(Columns.HEADER_HASH)} FROM ${sql(tableName)} p
-          WHERE NOT ${challengeRelevantHeader(sql, `p.${Columns.HEADER_HASH}`, { view, deploymentIdentityDigest })}
+          WHERE NOT ${challengeRelevantHeader(sql, `p.${Columns.HEADER_HASH}`, { view, hubOraclePolicyId })}
             AND (${spentDead} OR (p.${sql(Columns.BLOCK_TIME)} < ${challengeableCutoff}
             AND ${ownBlockStatusSql(sql, "p")} = 'folded'
             AND NOT ${recoveryRelevantJournal(sql, `p.${Columns.HEADER_HASH}`)}

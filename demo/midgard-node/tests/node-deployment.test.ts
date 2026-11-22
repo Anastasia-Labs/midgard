@@ -13,13 +13,13 @@ const run = <A, E>(
 const recorded = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const rows = yield* sql<{
-    deployment_id: string;
-  }>`SELECT deployment_id FROM node_deployment`;
-  return rows.map((row) => row.deployment_id);
+    hub_oracle_policy_id: string;
+  }>`SELECT hub_oracle_policy_id FROM node_deployment`;
+  return rows.map((row) => row.hub_oracle_policy_id);
 });
 
-const deploymentA = "a1".repeat(32);
-const deploymentB = "b2".repeat(32);
+const deploymentA = "a1".repeat(28);
+const deploymentB = "b2".repeat(28);
 
 beforeEach(() => run(resetApplicationTables));
 
@@ -51,7 +51,7 @@ describe("the node database's deployment record", () => {
         const sql = yield* SqlClient.SqlClient;
         yield* sql.withTransaction(
           Effect.gen(function* () {
-            yield* sql`INSERT INTO node_deployment (singleton, deployment_id)
+            yield* sql`INSERT INTO node_deployment (singleton, hub_oracle_policy_id)
               VALUES (true, ${deploymentA})`;
             inserted();
             yield* Effect.promise(() => committed);

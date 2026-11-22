@@ -22,8 +22,11 @@ import {
 } from "./utils.js";
 
 const RETENTION_DAYS = 15;
-/** The running deployment's verified manifest ID. */
-const DEPLOYMENT = deterministicFixtureBytes("da-removed:deployment", 32);
+/** The running deployment's hub-oracle policy id. */
+const DEPLOYMENT = deterministicFixtureBytes(
+  "da-removed:deployment",
+  28,
+).toString("hex");
 const peer = {
   signerIndex: 0,
   daVkey: "01".repeat(32),
@@ -78,7 +81,7 @@ const claimPublications = (token: string) =>
     leaseOwner: "reconciler",
     leaseToken: token,
     leaseMs: 30_000,
-    deploymentIdentityDigest: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
   });
 
 const claimAnnouncements = (token: string) =>
@@ -88,7 +91,7 @@ const claimAnnouncements = (token: string) =>
     leaseOwner: "reconciler",
     leaseToken: token,
     leaseMs: 30_000,
-    deploymentIdentityDigest: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
   });
 
 const hex = (rows: readonly { readonly header_hash: Buffer }[]) =>
@@ -142,8 +145,7 @@ const insertDeadJournal = (headerHash: Buffer) =>
       header_cbor: Buffer.from("a0", "hex"),
       format_version: 1,
       replay_kind: "ledger_delta_v1",
-      deployment_marker_schema_version: "midgard-deployment-marker-v1",
-      deployment_manifest_id: DEPLOYMENT.toString("hex"),
+      hub_oracle_policy_id: DEPLOYMENT,
       expected_transition_trace_root: ZERO_ROOT,
       expected_event_to_step_root: ZERO_ROOT,
       expected_withdrawal_count: 0n,

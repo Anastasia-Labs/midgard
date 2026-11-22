@@ -98,7 +98,9 @@ export const settleAttempts = (
 ) =>
   Effect.gen(function* () {
     let blocker: DerivedAttempt | undefined;
-    for (const attempt of yield* Journal.openAttempts(owner.deploymentId)) {
+    for (const attempt of yield* Journal.openAttempts(
+      owner.hubOraclePolicyId,
+    )) {
       const derived = yield* derive(attempt, parameters);
       const settled = derived.level !== "open";
       if (!settled) blocker ??= derived;
@@ -125,7 +127,9 @@ export const noOpenAttempt = (
   parameters: DepthParameters,
 ) =>
   Effect.gen(function* () {
-    for (const attempt of yield* Journal.openAttempts(owner.deploymentId)) {
+    for (const attempt of yield* Journal.openAttempts(
+      owner.hubOraclePolicyId,
+    )) {
       if ((yield* derive(attempt, parameters)).level === "open")
         return yield* Effect.fail(
           new Error(

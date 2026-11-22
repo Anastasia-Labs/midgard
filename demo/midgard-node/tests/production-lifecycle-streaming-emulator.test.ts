@@ -917,7 +917,6 @@ it("streams public raw events through production reconciliation, native commitme
             {
               scope:
                 "Actual public SDK external raw Deposit and invalid/valid Withdrawal admission; real node signature classification, commitment, attestation, mature merge, reserve absorption, exact raw refund/payout and owner-authorized reclamation of all3retained payloads; the follower stand-in's synthetic block hashes and heights only. No fraud-proof or challenge transaction construction or invented reclaim time lock.",
-              manifestId: h.deployment.manifest.manifestId,
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               deploymentInfoSha256: h.deploymentInfoSha256,
               protocolParameters:

@@ -184,7 +184,7 @@ describe.skipIf(!dbEnabled)("DA payload retention held to L1 finality", () => {
         yield* seedSupersededHead;
         return yield* prune({
           view: tipView(deterministicFixtureBytes("other-head", 28)),
-          digest: undefined,
+          hubOraclePolicyId: undefined,
         });
       }),
     );

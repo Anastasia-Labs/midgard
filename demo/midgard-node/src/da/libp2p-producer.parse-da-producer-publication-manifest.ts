@@ -42,8 +42,6 @@ export const parseDaProducerPublicationManifest = (
   }
   return {
     deploymentFingerprint: manifest.deployment.fingerprint,
-    contractDeploymentManifestId:
-      manifest.deployment.contract_deployment_manifest_id,
     localPrivateKeySource: requiredLibp2pPrivateKeySource(env),
     threshold,
     requestTimeoutMs: daTransport.limits.request_timeout_ms,

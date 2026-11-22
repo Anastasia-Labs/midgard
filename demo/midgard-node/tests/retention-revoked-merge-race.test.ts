@@ -1,4 +1,5 @@
 import { RETENTION_MS_PER_DAY } from "@al-ft/midgard-core";
+import { deploymentManifestHubOraclePolicyId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { beforeAll, expect, it } from "vitest";
@@ -32,7 +33,7 @@ import {
 const clear = resetApplicationTables;
 const run = <A>(work: Effect.Effect<A, unknown, SqlClient.SqlClient>) =>
   Effect.runPromise(provideDatabaseLayers(work) as Effect.Effect<A, never>);
-const identity = () => Buffer.from(deploymentManifest.manifestId, "hex");
+const identity = () => deploymentManifestHubOraclePolicyId(deploymentManifest);
 const OLD = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
 
 beforeAll(async () => {
@@ -109,12 +110,12 @@ it.each(["pre-rollback", "restored"] as const)(
               challengeableCutoff: computeChallengeableCutoff(NOW),
               retentionCutoff: computeRetentionCutoff(NOW, 15),
               view,
-              deploymentIdentityDigest: identity(),
+              hubOraclePolicyId: identity(),
             });
             const journalsDeleted = yield* pruneFoldedBeyondChallengeability({
               challengeableCutoff: computeChallengeableCutoff(NOW),
               view,
-              deploymentIdentityDigest: identity(),
+              hubOraclePolicyId: identity(),
             });
             const journals =
               yield* sql`SELECT header_hash FROM pending_block_finalizations WHERE header_hash = ${seeded.headerHash}`;
@@ -170,7 +171,7 @@ it("does not hold an unrelated eligible payload for another header's live node",
               liveQueueHeaderHashes: [],
               finalThroughHeight: FINAL_THROUGH,
             },
-            deploymentIdentityDigest: identity(),
+            hubOraclePolicyId: identity(),
           });
           return {
             deleted,

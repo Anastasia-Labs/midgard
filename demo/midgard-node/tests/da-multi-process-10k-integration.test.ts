@@ -240,7 +240,6 @@ describe("real separate-process canonical V1 DA publication", () => {
 
       const manifest: DaProducerPublicationManifest = {
         deploymentFingerprint: DEPLOYMENT,
-        contractDeploymentManifestId: DEPLOYMENT,
         localPrivateKeySource: producerSeed,
         threshold: THRESHOLD,
         requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,

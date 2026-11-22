@@ -484,7 +484,6 @@ it("retains the original signed intent through landing and an accepted queue poi
             {
               scope:
                 "Actual emulator acceptance followed by one lost provider response; independent durable pre-provider SQL read; the parent applied when it lands; real authorized explicit event-only child submission recreates the parent queue outref. Original signed intent identity preserved through landing and the child's submission; the child is not taken in. Synthetic transport ancestry. No automatic-worker child, service restart, OS kill, or production FailureOutput mutation-lease classification coverage.",
-              manifestId: h.deployment.manifest.manifestId,
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               deploymentInfoSha256: h.deploymentInfoSha256,
               protocolParameters:

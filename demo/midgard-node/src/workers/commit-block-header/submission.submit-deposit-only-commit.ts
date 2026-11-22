@@ -60,7 +60,7 @@ import { makeEventCommitments } from "./transition-commitments.js";
 export const submitDepositOnlyCommit = ({
   contracts,
   consensusProfile,
-  deploymentMarker,
+  hubOraclePolicyId,
   latestBlock,
   endTime,
   blockTimeMs,
@@ -91,9 +91,7 @@ export const submitDepositOnlyCommit = ({
 }: CommitSubmissionHooks & {
   readonly contracts: SDK.MidgardValidators;
   readonly consensusProfile: ContractDeploymentIdentityValue["consensusProfile"];
-  readonly deploymentMarker: NonNullable<
-    ContractDeploymentIdentityValue["deploymentMarker"]
-  >;
+  readonly hubOraclePolicyId: string;
   readonly latestBlock: SDKStateQueue.StateQueueUTxO;
   readonly endTime: Date;
   readonly blockTimeMs?: number;
@@ -309,7 +307,7 @@ export const submitDepositOnlyCommit = ({
                     validationTraceCount: BigInt(validationTraceCount),
                   },
                   consensusProfile,
-                  deploymentMarker,
+                  hubOraclePolicyId,
                 });
                 const journalLedgerState =
                   yield* resolvePendingJournalLedgerState({

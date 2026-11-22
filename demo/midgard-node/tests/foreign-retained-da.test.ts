@@ -7,7 +7,6 @@ import {
   encodeDaMetadataByHeaderResponseCbor,
   encodeDaPayloadByHeaderResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Clock, Effect } from "effect";
@@ -31,8 +30,7 @@ import {
 } from "./landed-blocks-replay-foreign.availability.js";
 
 const manifest: DaProducerPublicationManifest = {
-  deploymentFingerprint: "de".repeat(32),
-  contractDeploymentManifestId: "de".repeat(32),
+  deploymentFingerprint: "de".repeat(28),
   localPrivateKeySource: "seed:" + "ef".repeat(32),
   threshold: 1,
   requestTimeoutMs: 100,
@@ -55,9 +53,8 @@ const manifest: DaProducerPublicationManifest = {
 };
 const identity = ContractDeploymentIdentity.make({
   kind: "manifest",
-  manifestId: manifest.contractDeploymentManifestId,
+  hubOraclePolicyId: manifest.deploymentFingerprint,
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-  deploymentMarker: makeDeploymentMarker(manifest.contractDeploymentManifestId),
 });
 const acquire = (payload: SDKDa.DaPayload) =>
   Effect.runPromise(
@@ -195,7 +192,7 @@ it("refuses a publication manifest from another deployment before opening transp
     Manifest.loadDaProducerPublicationManifestFromEnv,
   ).mockResolvedValue({
     ...manifest,
-    contractDeploymentManifestId: "ff".repeat(32),
+    deploymentFingerprint: "ff".repeat(28),
   });
   const result = await acquire(payload);
   expect(result._tag).toBe("Left");

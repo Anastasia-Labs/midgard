@@ -25,9 +25,7 @@ import type { CommitSubmissionHooks } from "./submission-hooks.js";
 export type SubmitTxBackedCommitInput = CommitSubmissionHooks & {
   readonly contracts: SDK.MidgardValidators;
   readonly consensusProfile: ContractDeploymentIdentityValue["consensusProfile"];
-  readonly deploymentMarker: NonNullable<
-    ContractDeploymentIdentityValue["deploymentMarker"]
-  >;
+  readonly hubOraclePolicyId: string;
   readonly latestBlock: SDKStateQueue.StateQueueUTxO;
   readonly endTime: Date;
   readonly blockTimeMs?: number;

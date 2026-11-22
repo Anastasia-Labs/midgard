@@ -144,7 +144,6 @@ export const preparePendingSubmission = (
       PendingBlockFinalizationReplayKind.LedgerDeltaWithNativeMpf
         ? pendingV1.replay.nativeMpfReplay
         : undefined;
-    const deploymentMarker = metadata.deploymentMarker;
     yield* assertSameIdSet(
       tableName,
       "deposit",
@@ -298,9 +297,7 @@ export const preparePendingSubmission = (
           [Columns.HEADER_CBOR]: input.headerCbor,
           [Columns.FORMAT_VERSION]: pendingV1.version,
           [Columns.REPLAY_KIND]: pendingV1.replay.kind,
-          [Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]:
-            deploymentMarker.schemaVersion,
-          [Columns.DEPLOYMENT_MANIFEST_ID]: deploymentMarker.manifestId,
+          [Columns.HUB_ORACLE_POLICY_ID]: metadata.hubOraclePolicyId,
           [Columns.CONSENSUS_PROFILE_ID]: metadata.consensusProfileId,
           [Columns.PREPARED_TX_HASH]: input.preparedTxHash ?? null,
           [Columns.COMMIT_ANCHOR_HASH]: anchor?.hash ?? null,

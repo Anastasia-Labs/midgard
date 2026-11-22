@@ -211,7 +211,7 @@ describe("availability reconciliation after a rollback deeper than the confirmat
     try {
       const old = await f.prepare("c9".repeat(28), f.coins[0]!);
       await confirm(f);
-      const redeployed = { ...f.context, deploymentIdentity: "dd".repeat(32) };
+      const redeployed = { ...f.context, hubOraclePolicyId: "dd".repeat(28) };
       f.submitted.splice(0);
       // Evidence that would rewind it, or that does not authenticate it,
       // changes nothing for the new deployment.

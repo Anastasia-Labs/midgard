@@ -28,7 +28,7 @@ export const PEER_C = "12D3KooWKf1kXPQFRZ6SR6WQF1Z7gqDRUjUe7S4hSm8LRmSk5kvA";
 // plane, as parseDaLibp2pRuntimeManifest requires.
 const PEER_RETAINED = "12D3KooWQYV9dGMFoRzNStwpXztXaBUjtPqi6aU76ZgUriHhKust";
 
-export const DEPLOYMENT = "ab".repeat(32);
+export const DEPLOYMENT = "ab".repeat(28);
 
 export const HEADER_HASH = Buffer.alloc(28, 0x02);
 
@@ -43,9 +43,8 @@ export const manifestFixture = (): Record<string, unknown> => ({
   network: "Preview",
   deployment: {
     fingerprint: DEPLOYMENT.toUpperCase(),
-    contract_deployment_manifest_id: DEPLOYMENT,
     contract_deployment_info_sha256: "cd".repeat(32),
-    identity_source: "contract_deployment_manifest_id",
+    identity_source: "hub_oracle_policy_id",
   },
   runtime_topology: {
     target: "producer",

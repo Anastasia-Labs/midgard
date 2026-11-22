@@ -8,10 +8,10 @@ import {
   MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
-  computeDeploymentManifestId,
   DEPLOYMENT_MANIFEST_L1_FINALITY,
   type DeploymentManifest,
   type DeploymentManifestEconomicsProfile,
+  deploymentManifestHubOraclePolicyId,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
@@ -34,13 +34,6 @@ import {
   resolvePackageRootFromModuleUrl,
 } from "./contract-deployment-info.build-reference-script-out-ref-map.js";
 import { assertOutRefFields } from "./contract-deployment-info.exact-protocol-parameter-snapshot.js";
-
-const withManifestId = (
-  manifest: Omit<DeploymentManifest, "manifestId">,
-): DeploymentManifest => ({
-  ...manifest,
-  manifestId: computeDeploymentManifestId(manifest),
-});
 
 /**
  * Builds the sole canonical V1 manifest and re-parses it before return so
@@ -78,7 +71,7 @@ export const buildDeploymentManifest = (
     context.existingManifest === undefined
       ? context.l1Origin
       : context.existingManifest.l1Origin;
-  const manifest = withManifestId({
+  const manifest: DeploymentManifest = {
     schemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
@@ -113,7 +106,7 @@ export const buildDeploymentManifest = (
     availabilityChallenge: context.availabilityChallenge,
     l1SlotConfig: context.l1SlotConfig,
     ...(l1Origin === undefined ? {} : { l1Origin }),
-  });
+  };
   return verifyFinalizedDeploymentManifest(manifest);
 };
 
@@ -137,7 +130,7 @@ export const readFinalizedDeploymentIdentity = (
   const manifest = parseDeploymentManifest(parsed);
   return {
     path: resolvedOutputPath,
-    manifestId: manifest.manifestId,
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
     contractDeploymentInfoSha256: createHash("sha256")
       .update(raw)
       .digest("hex"),
@@ -193,7 +186,7 @@ export const verifyDeploymentManifestAgainstConfig = (
   }
   return {
     ok: mismatches.length === 0,
-    manifestId: manifest.manifestId,
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
     path: context.path,
     mismatches,
     recommendation:

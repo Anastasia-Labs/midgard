@@ -125,14 +125,14 @@ describe("Q54 executable retention deadline alert", () => {
   it("retains and alerts on a deployment fingerprint mismatch", () => {
     const result = evaluateRetentionCheck({
       nowMillis: NOW.getTime(),
-      expectedDeploymentFingerprint: "aa".repeat(32),
+      expectedDeploymentFingerprint: "aa".repeat(28),
       records: [
         {
           headerHash,
           blockTimeMs,
           headerStatus: "attested",
           queueReference: "none",
-          deploymentFingerprint: "bb".repeat(32),
+          deploymentFingerprint: "bb".repeat(28),
         },
       ],
     });

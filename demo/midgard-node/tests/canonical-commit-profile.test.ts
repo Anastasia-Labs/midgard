@@ -206,10 +206,6 @@ const workerInput = {
     stateQueueHasUnmergedTail: false,
   },
 } as unknown as WorkerInput;
-const deploymentMarker = {
-  schemaVersion: "midgard-deployment-marker-v1",
-  manifestId: "test-manifest",
-} as never;
 const fakeLucid = {
   api: {},
   switchToOperatorsMainWallet: Effect.void,
@@ -252,7 +248,7 @@ describe("canonical V1 commit profile", () => {
     });
     const deploymentIdentity = ContractDeploymentIdentity.make({
       kind: "derived",
-      deploymentMarker,
+      hubOraclePolicyId: "ab".repeat(28),
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
     const runWorker = (input: typeof workerInput) =>

@@ -6,7 +6,6 @@
 export { queueTerminalDerivation } from "./derive.js";
 export { queueTerminalProjection } from "./projection.js";
 export {
-  deploymentIdentityDigestOf,
   followerCoveredTipHeight,
   latestMergedHeader,
   liveQueueNodeHeader,

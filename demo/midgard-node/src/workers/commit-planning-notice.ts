@@ -14,7 +14,6 @@ export type CommitPlanningSelection = Readonly<{
     epoch: string;
     baseHeaderHash: string;
     baseUtxosRoot: string;
-    deploymentFingerprint: string | null;
   }>;
   coverageStartTimeMs: number;
   selectedEndTimeMs: number;
@@ -98,11 +97,7 @@ export const parseCommitPlanningNotice = (
     !view(s.authority.view) ||
     !historyEpoch(s.authority.epoch) ||
     !hex(s.authority.baseHeaderHash, 56) ||
-    !hex(s.authority.baseUtxosRoot, 64) ||
-    !(
-      s.authority.deploymentFingerprint === null ||
-      hex(s.authority.deploymentFingerprint, 64)
-    )
+    !hex(s.authority.baseUtxosRoot, 64)
   )
     return undefined;
   if (
@@ -192,7 +187,6 @@ export const commitPlanningReadiness = (input: {
   gate: GateState | undefined;
   localEpoch: string | undefined;
   recomputing: boolean;
-  deploymentFingerprint: string | undefined;
   nowMs: number;
   maxAgeMs: number;
 }) => {
@@ -220,16 +214,14 @@ export const commitPlanningReadiness = (input: {
           gate?.epoch !== s.authority.epoch ||
           input.localEpoch !== s.authority.epoch
         ? "follower_authority_changed"
-        : input.deploymentFingerprint !== s.authority.deploymentFingerprint
-          ? "deployment_authority_changed"
-          : !natural(input.nowMs) ||
-              !natural(input.maxAgeMs) ||
-              input.nowMs < s.observedAtMs ||
-              input.nowMs < snapshot.receivedAtMs
-            ? "clock_invalid"
-            : ageMs > input.maxAgeMs
-              ? "plan_expired"
-              : undefined;
+        : !natural(input.nowMs) ||
+            !natural(input.maxAgeMs) ||
+            input.nowMs < s.observedAtMs ||
+            input.nowMs < snapshot.receivedAtMs
+          ? "clock_invalid"
+          : ageMs > input.maxAgeMs
+            ? "plan_expired"
+            : undefined;
   return {
     status:
       staleReason === undefined ? ("current" as const) : ("stale" as const),

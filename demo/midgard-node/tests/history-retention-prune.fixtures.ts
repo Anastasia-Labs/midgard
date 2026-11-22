@@ -11,7 +11,7 @@ import {
 } from "./utils.js";
 
 export const DAY_MS = 24 * 60 * 60_000;
-export const DEPLOYMENT = Buffer.alloc(32, 7);
+export const DEPLOYMENT = "07".repeat(28);
 
 export const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.runPromise(

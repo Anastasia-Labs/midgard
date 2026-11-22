@@ -76,7 +76,7 @@ export const generateDaLibp2pRuntimeManifest = async (
     options.contractDeploymentInfoPath,
   );
   const deploymentFingerprint = normalizeDaDeploymentFingerprintHex(
-    deploymentIdentity.manifestId,
+    deploymentIdentity.hubOraclePolicyId,
   );
   const producerIdentity = await loadDaLibp2pIdentity(
     options.producerPrivateKeySource,
@@ -208,7 +208,6 @@ export const generateDaLibp2pRuntimeManifest = async (
     network: options.network,
     deployment: {
       fingerprint: deploymentFingerprint,
-      contract_deployment_manifest_id: deploymentFingerprint,
       contract_deployment_info_sha256:
         deploymentIdentity.contractDeploymentInfoSha256,
       identity_source: DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE,

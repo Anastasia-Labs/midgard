@@ -790,7 +790,6 @@ Each entry has the shape:
 ```json
 {
   "schemaVersion": "midgard-deployment-manifest-v1",
-  "manifestId": "...",
   "consensusProfile": {
     "profileId": "midgard-consensus-v1",
     "protocolVersion": 1

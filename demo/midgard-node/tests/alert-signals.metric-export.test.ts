@@ -42,7 +42,7 @@ import {
 } from "./prometheus-scrape.fixture.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
-const deploymentId = "a7".repeat(32);
+const hubOraclePolicyId = "a7".repeat(28);
 
 /** The node's default `READINESS_MAX_HEARTBEAT_AGE_MS`, which `/readyz`
  * applies to a selected plan. */
@@ -87,15 +87,15 @@ const insertStuckJob = (eventId: string, failures: number) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO settlement_jobs
-      (deployment_id, kind, event_id, phase, failures, last_error)
-      VALUES (${deploymentId}, 'withdrawal', ${eventId}, 'conclude',
+      (hub_oracle_policy_id, kind, event_id, phase, failures, last_error)
+      VALUES (${hubOraclePolicyId}, 'withdrawal', ${eventId}, 'conclude',
         ${failures}, 'builder refused')`;
   });
 
-// Only the manifest id the sampler reads settlement jobs under.
+// Only the hub-oracle policy id the sampler reads settlement jobs under.
 const identity = {
   kind: "manifest",
-  manifestId: deploymentId,
+  hubOraclePolicyId,
 } as unknown as ContractDeploymentIdentity;
 
 let exporter: Awaited<ReturnType<typeof startPrometheusExporter>>;
@@ -315,7 +315,7 @@ describe("alert signal metrics", () => {
         );
 
         yield* sql`UPDATE settlement_jobs SET phase = 'complete'
-          WHERE deployment_id = ${deploymentId}`;
+          WHERE hub_oracle_policy_id = ${hubOraclePolicyId}`;
         yield* Ref.update(globals.SETTLEMENT_HEALTH, (health) => ({
           ...health,
           reconcileStuck: undefined,

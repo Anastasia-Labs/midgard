@@ -223,7 +223,7 @@ describe("a derived contract bundle's L1 slot mapping", () => {
     configuredManifest.mockReturnValue({
       path: "/nonexistent/manifest.json",
       manifest: {
-        manifestId: "ab".repeat(32),
+        contracts: { hubOracleMint: { scriptHash: "ab".repeat(28) } },
         consensusProfile: {},
         l1SlotConfig: DEVNET,
       },

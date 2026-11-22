@@ -110,8 +110,8 @@ const seed = Effect.gen(function* () {
   }
   for (const kind of ["deposit", "withdrawal"] as const)
     for (const completion of ["unsettled", "complete"] as const)
-      yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
-        VALUES (${DEPLOYMENT.toString("hex")}, ${kind},
+      yield* sql`INSERT INTO settlement_jobs (hub_oracle_policy_id, kind, event_id, phase)
+        VALUES (${DEPLOYMENT}, ${kind},
           ${tx(`${kind}-${completion}`).toString("hex")},
           ${completion === "complete" ? "complete" : kind === "deposit" ? "absorb" : "initialize"})`;
   yield* journals(
@@ -186,7 +186,7 @@ const sweep = (setup: { readonly driverRecomputing?: boolean } = {}) =>
         }).pipe(Effect.ensuring(Effect.orDie(clear)));
       }).pipe(
         Effect.provideService(ContractDeploymentIdentity, {
-          manifestId: DEPLOYMENT.toString("hex"),
+          hubOraclePolicyId: DEPLOYMENT,
           manifest: {
             da: { transportProfile: { retentionDays: MANIFEST_DAYS } },
           },

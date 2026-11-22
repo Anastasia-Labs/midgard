@@ -315,13 +315,8 @@ describe("applied fresh-install schema", () => {
     },
     {
       table: "pending_block_finalizations",
-      constraint: "pending_block_finalizations_deployment_marker_schema_check",
-      fragments: ["'midgard-deployment-marker-v1'"],
-    },
-    {
-      table: "pending_block_finalizations",
-      constraint: "pending_block_finalizations_deployment_manifest_id_check",
-      fragments: ["'^[0-9a-f]{64}$'"],
+      constraint: "pending_block_finalizations_hub_oracle_policy_id_check",
+      fragments: ["'^[0-9a-f]{56}$'"],
     },
   ];
 

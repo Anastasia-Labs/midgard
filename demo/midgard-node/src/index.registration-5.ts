@@ -34,7 +34,7 @@ program
   )
   .requiredOption(
     "--contract-deployment-info <path>",
-    "Finalized V1 contract deployment info path; deployment.fingerprint is derived from manifestId",
+    "Finalized V1 contract deployment info path; deployment.fingerprint is its hub-oracle policy id",
   )
   .requiredOption(
     "--producer-libp2p-key-source <source>",

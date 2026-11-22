@@ -46,7 +46,7 @@ test("offline compiled holds lists real pending and lease-only residues absent f
       {
         id: "pending",
         actor: "actor",
-        deploymentIdentity: "deployment",
+        hubOraclePolicyId: "deployment",
         headerHash: "header",
         action: "publish",
         signedCbor: "PRIVATE-CBOR",

@@ -200,10 +200,7 @@ export const decodeLedgerDelta = (row: Row): LedgerDeltaInput => {
 export const pendingBlockFinalizationMetadataFromRow = (
   row: Row,
 ): PendingBlockFinalizationMetadata => ({
-  deploymentMarker: {
-    schemaVersion: row[Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION],
-    manifestId: row[Columns.DEPLOYMENT_MANIFEST_ID],
-  },
+  hubOraclePolicyId: row[Columns.HUB_ORACLE_POLICY_ID],
   consensusProfileId: row[Columns.CONSENSUS_PROFILE_ID],
   stateQueueLeaseToken: row[Columns.STATE_QUEUE_LEASE_TOKEN],
   baseSnapshotId: row[Columns.BASE_SNAPSHOT_ID],

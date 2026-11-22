@@ -106,7 +106,7 @@ const observedEnums: ReadonlySet<string> = new Set([
 const enumField =
   /^(?:status|state|mode|kind|phase|source|rescue|holder|type|level|commitPipelinePhase|protocolInit|providerQueryMode|providerQueryEvidenceKind|providerQueryLastObservationKind|providerQueryLastExactObservationKind)$/u;
 const identityField =
-  /^(?:deploymentFingerprint|manifestId|headerHash|baseHeaderHash|baseUtxosRoot|hash|root|durableRoot|eventId|event_id|intendedTxHash|submittedTxHash|txHash|ownerEpoch)$/u;
+  /^(?:deploymentFingerprint|hubOraclePolicyId|headerHash|baseHeaderHash|baseUtxosRoot|hash|root|durableRoot|eventId|event_id|intendedTxHash|submittedTxHash|txHash|ownerEpoch)$/u;
 const pipelineCountPath =
   /^(?:durableAdmission\.backlog|localResidue\.(?:mempoolTxCount|processedMempoolTxCount)|settlement\.unfinishedJobs|pendingBlockFinalizations\.live|pendingBlockFinalizations\.countsByStatus\.(?:unlanded|landed|applied|folded))$/u;
 

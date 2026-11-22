@@ -824,17 +824,6 @@ describe("DA payload libp2p producer publication", () => {
     }
   });
 
-  it("rejects runtime manifests with split deployment identity", () => {
-    const manifest = manifestFixture();
-    (manifest.deployment as Record<string, unknown>).fingerprint = "cd".repeat(
-      32,
-    );
-
-    expect(() => parseDaProducerPublicationManifest(manifest)).toThrow(
-      /contract_deployment_manifest_id/,
-    );
-  });
-
   it("keeps DA payload bytes out of the production HTTP router", async () => {
     const routerPath = fileURLToPath(
       new URL("../src/commands/http/", import.meta.url),
