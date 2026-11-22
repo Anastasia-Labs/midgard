@@ -398,13 +398,26 @@ readiness as `replayed_ledger_source_pending` for as long as it fails.
 
 ### MidgardWatcherReplayRootMismatch
 
-**Meaning.** The watcher's replayed ledger does not open the root of the L1
-confirmed state (or does not start from its parent's root). The
-`root_mismatch` alert is active, the watcher holds its replay checkpoint
-(`/readyz` names `replayed_ledger_checkpoint_pending` and `active_alert`), and
-the watcher logs one `replayed_ledger_root_mismatch` error per confirmed
-head. The alert clears
-once the ledger advances to the confirmed state again.
+**Meaning.** A confirmed block's events, replayed over its parent's ledger,
+do not open the root its header commits (or the block does not start from its
+parent's root). The watcher replays every confirmed block above the last one
+it verified, whether or not its store already holds the root the block
+commits, and keeps that verified head in the replayed-ledger store across
+restarts. The `root_mismatch` alert is active, the watcher holds its replay
+checkpoint (`/readyz` names `replayed_ledger_checkpoint_pending` and
+`active_alert`), and the watcher logs one `replayed_ledger_root_mismatch`
+error per refused block. The alert clears once the ledger advances to the
+confirmed state again.
+
+A confirmed block below the confirmed head that can no longer be replayed is
+passed and logged once as a `replayed_ledger_confirmed_unverified` warning
+naming the header hash and the cause: `payload-not-retained` (every
+configured DA source answered that it holds no payload of the block),
+`parent-ledger-not-held` (the ledger the block starts from is neither held
+nor derivable) or `header-not-held` (the L1 follower no longer holds the
+header, so neither it nor the confirmed blocks below it were replayed). The
+warning holds nothing and raises no alert. A DA source that has not answered
+is waited for instead, as `replayed_ledger_source_pending`.
 
 **First checks.**
 

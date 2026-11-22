@@ -14,6 +14,7 @@ import {
   createMemoryLedgerStorage,
 } from "@al-ft/midgard-fault-proofs/ledger-store";
 import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
+import { memoryVerifiedHead } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import { replayedLedgerChain } from "@al-ft/midgard-fault-proofs/test-support/replayed-ledger-chain";
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
@@ -94,6 +95,7 @@ const scene = async () => {
     },
   ];
   const keeper = createWatcherReplayedLedger({
+    verifiedHead: memoryVerifiedHead(),
     follower: {
       epoch: () => 0,
       headerAt: async (hash) =>
