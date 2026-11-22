@@ -1,4 +1,5 @@
 import "./deployment-profile-operator-economics.test-cases.mjs";
+import "./deployment-profiles.ledger-retention.test-cases.mjs";
 import "./deployment-profiles.rehearsal.test-cases.mjs";
 import "./deployment-profiles.treasury-script.test-cases.mjs";
 
@@ -772,6 +773,7 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
   for (const name of testingProfiles) {
     const profile = structuredClone(profiles[name]);
     profile.timing.block_maturity_ms = 2_000_000;
+    profile.timing.ledger_retention_ms = 2_000_000;
     assert.equal(specDaBondWithdrawDelayFloorMs(profile.timing), 2_380_000);
     assert.equal(daBondWithdrawDelayFloorMs(profile.timing), 2_780_000);
     assert.throws(

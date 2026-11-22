@@ -11,6 +11,7 @@ export const DEPLOYMENT_PROFILES = {
     },
     timing: {
       block_maturity_ms: 604800000,
+      ledger_retention_ms: 734400000,
       dispute_side_clock_ms: 86400000,
       dispute_max_validity_range_ms: 120000,
       dispute_resolution_allowance_ms: 21600000,
@@ -96,6 +97,7 @@ export const DEPLOYMENT_PROFILES = {
     },
     timing: {
       block_maturity_ms: 604800000,
+      ledger_retention_ms: 734400000,
       dispute_side_clock_ms: 86400000,
       dispute_max_validity_range_ms: 120000,
       dispute_resolution_allowance_ms: 21600000,
@@ -178,6 +180,7 @@ export const DEPLOYMENT_PROFILES = {
     },
     timing: {
       block_maturity_ms: 604800000,
+      ledger_retention_ms: 734400000,
       dispute_side_clock_ms: 86400000,
       dispute_max_validity_range_ms: 120000,
       dispute_resolution_allowance_ms: 21600000,
@@ -260,6 +263,7 @@ export const DEPLOYMENT_PROFILES = {
     },
     timing: {
       block_maturity_ms: 900000,
+      ledger_retention_ms: 900000,
       dispute_side_clock_ms: 3600000,
       dispute_max_validity_range_ms: 20000,
       dispute_resolution_allowance_ms: 900000,
@@ -334,6 +338,7 @@ export const DEPLOYMENT_PROFILES = {
     },
     timing: {
       block_maturity_ms: 900000,
+      ledger_retention_ms: 900000,
       dispute_side_clock_ms: 3600000,
       dispute_max_validity_range_ms: 20000,
       dispute_resolution_allowance_ms: 900000,
@@ -408,6 +413,7 @@ export const DEPLOYMENT_PROFILES = {
     },
     timing: {
       block_maturity_ms: 259200000,
+      ledger_retention_ms: 259200000,
       dispute_side_clock_ms: 6460000,
       dispute_max_validity_range_ms: 120000,
       dispute_resolution_allowance_ms: 7220000,
@@ -482,6 +488,7 @@ export const DEPLOYMENT_PROFILES = {
     },
     timing: {
       block_maturity_ms: 259200000,
+      ledger_retention_ms: 259200000,
       dispute_side_clock_ms: 3600000,
       dispute_max_validity_range_ms: 20000,
       dispute_resolution_allowance_ms: 900000,
@@ -556,6 +563,7 @@ export const DEPLOYMENT_PROFILES = {
     },
     timing: {
       block_maturity_ms: 259200000,
+      ledger_retention_ms: 259200000,
       dispute_side_clock_ms: 3600000,
       dispute_max_validity_range_ms: 20000,
       dispute_resolution_allowance_ms: 900000,
@@ -621,21 +629,21 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "46c79b131d3b47f1c550bb2ed2df086c4f5e8ffa7751d172ef12d635a8e5ed4b",
+  mainnet: "6955d129b27d76905a18436c33bfb8cfa862481ca7a435cea1041c2ffb9734f3",
   "preprod-public":
-    "b379c2a712c011f8ba1968a9e63967ea88641146a18e670925f7d5366e710532",
+    "eed1faa56b43666ae09f9c7e36b1d4a35946efd88affd895848990d67c79964a",
   "preprod-rehearsal":
-    "91043256c21ff635c1b80dae0805dc1ef9dcc6523f6c993d887b000c41d5fac5",
+    "6ab5df9379d76b434bedde3fa303dd8407e8c6792e9873914bf1252e6b16127e",
   "preprod-testing":
-    "eb9e2fed4434ee58df122bb07b52e239f22cef0b561ab1e757ef1027e5675316",
+    "1f99b51f7d5b57890eb5557892333471113aa62f8a1c78fe4885c66a476ad876",
   "local-devnet-testing":
-    "e59eb501122530c3ff7ae83c73c6d8849ef6a3ee73d492dff7df9bb2d433a2da",
+    "6f172bfd90b58a76cb124aafeacfc289648e237dea346cdca6f3968162963aa6",
   "local-devnet-dispute-testing":
-    "e05f952e284af2ac1cbb6199e792c3843b2cc09fcbf5c36f7dc1b653fc748034",
+    "488b4954d0bec6b75d91851b2d7171ebde9febf1b1879c902163c1a8751431b2",
   "preprod-emulator-testing":
-    "d737e37fed195766797bd492cdb8c8ca3d90c85d0ac444ef611a69df1a333a93",
+    "3d98e8ba6328a83e072de8e64e1ccaa0b7f75067f5fd141689aa1de44cd7bcc0",
   "preprod-emulator-curated":
-    "865831379a33aa01c738147696a187b3558787e5b26f569a0254b6eee9329971",
+    "ee6aaa151f40885ee2de1622724663c4877bf66d7b7a40fe8af25e95745112e3",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {

@@ -69,6 +69,18 @@ the shorter `max_validity_range_ms`, which their history-list insertion
 enforces. Validation requires `max_validity_range_ms ≤
 max_event_validity_range_ms`.
 
+`timing.ledger_retention_ms` is how long each L2 block's ledger root stays
+readable off-chain, in the watcher and the node. It is off-chain only: it is
+not compiled into the Aiken environment, so it changes no script hash. The only
+rule on its value is `ledger_retention_ms ≥ block_maturity_ms`; equal is
+allowed (owner, 2026-11-21). `mainnet`, `preprod-public` and
+`preprod-rehearsal` use 734,400,000 ms (8.5 days): seven days of maturity plus
+36 hours, the 3k/f slots (k = 2,160, f = 0.05) the deepest automatic L1
+rollback can span. Every other profile uses its own block maturity, since a
+testing profile assumes no deep L1 rollback. Like every profile field, it is
+part of the profile digest, so a deployment prepared before the key existed
+needs its manifest prepared again.
+
 The existing economics schedule identifiers are retained as manifest data, not
 runtime selectors. Profiles sharing a schedule identifier must have identical
 economics. Settle launch parameter choices before deploying; generation does not
@@ -412,7 +424,8 @@ operator shifts shorter than grace/validity windows or the negligence timeout, i
 schedules (with the explicit non-interactive testing rule above), and pooled DA
 bond values that break the relations above (challenge window order, slash
 penalty inside the DA bond, withdrawal delay, and the public challenge-window
-margin), and a commit-event depth outside the bounds in
+margin), a ledger retention below block maturity, and a commit-event depth
+outside the bounds in
 [Commit-event depth](#commit-event-depth). Digests use SHA-256 over recursively
 key-sorted JSON, independent of YAML formatting and key order.
 

@@ -11,6 +11,10 @@ l1_finality:
   slot_length_ms: 1000
 timing:
   block_maturity_ms: 604800000
+  # How long each L2 block's ledger root stays readable off chain (never
+  # compiled into Aiken): 7 days of maturity plus 36 hours, the 3k/f slots
+  # (k = 2,160, f = 0.05) the deepest automatic L1 rollback can span.
+  ledger_retention_ms: 734400000
   # Validation-trace chess clock (pd-design §6.3). Each side's cumulative budget C,
   # the longest dispute-move validity range L_d, and the resolution allowance R.
   # Measured on the emulator at the preprod Conway fee parameters (2026-10-21):

@@ -25,6 +25,9 @@ timing:
   # needs only 2 D_case + 1 = 72,440,001 ms, and the case open deadline M/2
   # = 129,600,000 leaves P = M/2 - D_case = 93,380,000 ms after the case.
   block_maturity_ms: 259200000
+  # Differs, as maturity does. Ledger roots readable off chain for exactly
+  # block maturity: a testing profile assumes no deep L1 rollback.
+  ledger_retention_ms: 259200000
   # Differs. Validation-trace chess clock (pd-design §6.3). Each side's
   # cumulative budget C, the longest dispute-move validity range L_d, and the
   # resolution allowance R, at f = 0.05 with the watcher acting at depth 1.
