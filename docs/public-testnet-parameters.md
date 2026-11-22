@@ -44,51 +44,52 @@ lovelace); the readable column converts them. "Set at" links the profile line.
 | `l1_finality.active_slot_coeff`                      | `0.05`                                                     | ratio             |             | [L10](../config/deployments/preprod-public.yaml#L10)   |
 | `l1_finality.slot_length_ms`                         | `1000`                                                     | ms                | 1 s         | [L11](../config/deployments/preprod-public.yaml#L11)   |
 | `timing.block_maturity_ms`                           | `604800000`                                                | ms                | 7 d         | [L13](../config/deployments/preprod-public.yaml#L13)   |
-| `timing.dispute_side_clock_ms`                       | `86400000`                                                 | ms                | 1 d         | [L24](../config/deployments/preprod-public.yaml#L24)   |
-| `timing.dispute_max_validity_range_ms`               | `120000`                                                   | ms                | 2 min       | [L25](../config/deployments/preprod-public.yaml#L25)   |
-| `timing.dispute_resolution_allowance_ms`             | `21600000`                                                 | ms                | 6 h         | [L26](../config/deployments/preprod-public.yaml#L26)   |
-| `timing.operator_shift_ms`                           | `3600000`                                                  | ms                | 1 h         | [L27](../config/deployments/preprod-public.yaml#L27)   |
-| `timing.registration_ms`                             | `30000`                                                    | ms                | 30 s        | [L28](../config/deployments/preprod-public.yaml#L28)   |
-| `timing.event_wait_ms`                               | `1800000`                                                  | ms                | 30 min      | [L29](../config/deployments/preprod-public.yaml#L29)   |
-| `timing.user_events_negligence_timeout_ms`           | `1200000`                                                  | ms                | 20 min      | [L30](../config/deployments/preprod-public.yaml#L30)   |
-| `timing.new_shift_inactivity_grace_period_ms`        | `480000`                                                   | ms                | 8 min       | [L31](../config/deployments/preprod-public.yaml#L31)   |
-| `timing.max_validity_range_ms`                       | `480000`                                                   | ms                | 8 min       | [L32](../config/deployments/preprod-public.yaml#L32)   |
-| `timing.max_event_validity_range_ms`                 | `600000`                                                   | ms                | 10 min      | [L33](../config/deployments/preprod-public.yaml#L33)   |
-| `timing.da_attestation_timeout_ms`                   | `3600000`                                                  | ms                | 1 h         | [L34](../config/deployments/preprod-public.yaml#L34)   |
-| `timing.da_small_response_window_ms`                 | `3600000`                                                  | ms                | 1 h         | [L35](../config/deployments/preprod-public.yaml#L35)   |
-| `timing.da_full_response_window_ms`                  | `172800000`                                                | ms                | 2 d         | [L36](../config/deployments/preprod-public.yaml#L36)   |
-| `timing.da_challenge_window_ms`                      | `86400000`                                                 | ms                | 1 d         | [L42](../config/deployments/preprod-public.yaml#L42)   |
-| `timing.da_slash_grace_ms`                           | `172800000`                                                | ms                | 2 d         | [L43](../config/deployments/preprod-public.yaml#L43)   |
-| `timing.da_bond_withdraw_delay_ms`                   | `778080000`                                                | ms                | 9 d 8 min   | [L47](../config/deployments/preprod-public.yaml#L47)   |
-| `da_transport.retention_days`                        | `120`                                                      | days              |             | [L50](../config/deployments/preprod-public.yaml#L50)   |
-| `da_bond.da_bond_lovelace`                           | `100000000000`                                             | lovelace          | 100,000 ADA | [L52](../config/deployments/preprod-public.yaml#L52)   |
-| `da_bond.da_slash_penalty_lovelace`                  | `25000000000`                                              | lovelace          | 25,000 ADA  | [L53](../config/deployments/preprod-public.yaml#L53)   |
-| `da_bond.da_bond_min_top_up_lovelace`                | `1000000000`                                               | lovelace          | 1,000 ADA   | [L54](../config/deployments/preprod-public.yaml#L54)   |
-| `da_bond.da_bond_pool_floor_lovelace`                | `5000000`                                                  | lovelace          | 5 ADA       | [L55](../config/deployments/preprod-public.yaml#L55)   |
-| `da_bond.challenge_record_lovelace`                  | `27000000`                                                 | lovelace          | 27 ADA      | [L61](../config/deployments/preprod-public.yaml#L61)   |
-| `limits.max_bisection_rounds`                        | `32`                                                       | rounds            |             | [L63](../config/deployments/preprod-public.yaml#L63)   |
-| `limits.max_inactivity_strikes`                      | `1000000`                                                  | strikes           | 1,000,000   | [L65](../config/deployments/preprod-public.yaml#L65)   |
-| `limits.coins_per_utxo_byte`                         | `4310`                                                     | lovelace per byte |             | [L66](../config/deployments/preprod-public.yaml#L66)   |
-| `limits.max_dispute_move_fee_lovelace`               | `1200000`                                                  | lovelace          | 1.2 ADA     | [L70](../config/deployments/preprod-public.yaml#L70)   |
-| `limits.fraud_proof_output_lovelace`                 | `2000000`                                                  | lovelace          | 2 ADA       | [L74](../config/deployments/preprod-public.yaml#L74)   |
-| `economics.profile`                                  | `public-preprod-launch-v1`                                 | text              |             | [L76](../config/deployments/preprod-public.yaml#L76)   |
-| `economics.requiredBondLovelace`                     | `100000000000`                                             | lovelace          | 100,000 ADA | [L77](../config/deployments/preprod-public.yaml#L77)   |
-| `economics.slashingPenaltyLovelace`                  | `25000000000`                                              | lovelace          | 25,000 ADA  | [L78](../config/deployments/preprod-public.yaml#L78)   |
-| `economics.inactivitySlashingPenaltyLovelace`        | `10000000000`                                              | lovelace          | 10,000 ADA  | [L79](../config/deployments/preprod-public.yaml#L79)   |
-| `economics.fraudProverRewardLovelace`                | `75000000000`                                              | lovelace          | 75,000 ADA  | [L80](../config/deployments/preprod-public.yaml#L80)   |
-| `economics.proverCollateralFloorLovelace`            | `5000000`                                                  | lovelace          | 5 ADA       | [L81](../config/deployments/preprod-public.yaml#L81)   |
-| `protocol_treasury_native_script.type`               | `atLeast`                                                  | text              |             | [L88](../config/deployments/preprod-public.yaml#L88)   |
-| `protocol_treasury_native_script.required`           | `2`                                                        | signatures        |             | [L89](../config/deployments/preprod-public.yaml#L89)   |
-| `protocol_treasury_native_script.scripts[0].type`    | `sig`                                                      | text              |             | [L91](../config/deployments/preprod-public.yaml#L91)   |
-| `protocol_treasury_native_script.scripts[0].keyHash` | `f1fb1abc10fc4d90b367c7f994b87aeeb4db60fa8a42ee43a159256c` | payment key hash  |             | [L92](../config/deployments/preprod-public.yaml#L92)   |
-| `protocol_treasury_native_script.scripts[1].type`    | `sig`                                                      | text              |             | [L93](../config/deployments/preprod-public.yaml#L93)   |
-| `protocol_treasury_native_script.scripts[1].keyHash` | `9ac54f4b18dcdbaeb981b9acbb4e79b590315eb508a08b3a50509cb9` | payment key hash  |             | [L94](../config/deployments/preprod-public.yaml#L94)   |
-| `protocol_treasury_native_script.scripts[2].type`    | `sig`                                                      | text              |             | [L95](../config/deployments/preprod-public.yaml#L95)   |
-| `protocol_treasury_native_script.scripts[2].keyHash` | `65a0683b5ca28e4a8fed2b5a443210741faad5ed43802d20fd329a53` | payment key hash  |             | [L96](../config/deployments/preprod-public.yaml#L96)   |
-| `allow_lists.operators[0]`                           | `041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424` | payment key hash  |             | [L102](../config/deployments/preprod-public.yaml#L102) |
-| `allow_lists.operators[1]`                           | `089282d30b55fee0d97ad5c24034a6d7afd390a59f7a467379afc5bf` | payment key hash  |             | [L103](../config/deployments/preprod-public.yaml#L103) |
-| `allow_lists.operators[2]`                           | `4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6` | payment key hash  |             | [L104](../config/deployments/preprod-public.yaml#L104) |
-| `allow_lists.operators[3]`                           | `f9e6484e0ef75bb127589916d54920cdeec2ee0f3d43e8d320f5e7f3` | payment key hash  |             | [L105](../config/deployments/preprod-public.yaml#L105) |
+| `timing.ledger_retention_ms`                         | `734400000`                                                | ms                | 8 d 12 h    | [L17](../config/deployments/preprod-public.yaml#L17)   |
+| `timing.dispute_side_clock_ms`                       | `86400000`                                                 | ms                | 1 d         | [L28](../config/deployments/preprod-public.yaml#L28)   |
+| `timing.dispute_max_validity_range_ms`               | `120000`                                                   | ms                | 2 min       | [L29](../config/deployments/preprod-public.yaml#L29)   |
+| `timing.dispute_resolution_allowance_ms`             | `21600000`                                                 | ms                | 6 h         | [L30](../config/deployments/preprod-public.yaml#L30)   |
+| `timing.operator_shift_ms`                           | `3600000`                                                  | ms                | 1 h         | [L31](../config/deployments/preprod-public.yaml#L31)   |
+| `timing.registration_ms`                             | `30000`                                                    | ms                | 30 s        | [L32](../config/deployments/preprod-public.yaml#L32)   |
+| `timing.event_wait_ms`                               | `1800000`                                                  | ms                | 30 min      | [L33](../config/deployments/preprod-public.yaml#L33)   |
+| `timing.user_events_negligence_timeout_ms`           | `1200000`                                                  | ms                | 20 min      | [L34](../config/deployments/preprod-public.yaml#L34)   |
+| `timing.new_shift_inactivity_grace_period_ms`        | `480000`                                                   | ms                | 8 min       | [L35](../config/deployments/preprod-public.yaml#L35)   |
+| `timing.max_validity_range_ms`                       | `480000`                                                   | ms                | 8 min       | [L36](../config/deployments/preprod-public.yaml#L36)   |
+| `timing.max_event_validity_range_ms`                 | `600000`                                                   | ms                | 10 min      | [L37](../config/deployments/preprod-public.yaml#L37)   |
+| `timing.da_attestation_timeout_ms`                   | `3600000`                                                  | ms                | 1 h         | [L38](../config/deployments/preprod-public.yaml#L38)   |
+| `timing.da_small_response_window_ms`                 | `3600000`                                                  | ms                | 1 h         | [L39](../config/deployments/preprod-public.yaml#L39)   |
+| `timing.da_full_response_window_ms`                  | `172800000`                                                | ms                | 2 d         | [L40](../config/deployments/preprod-public.yaml#L40)   |
+| `timing.da_challenge_window_ms`                      | `86400000`                                                 | ms                | 1 d         | [L46](../config/deployments/preprod-public.yaml#L46)   |
+| `timing.da_slash_grace_ms`                           | `172800000`                                                | ms                | 2 d         | [L47](../config/deployments/preprod-public.yaml#L47)   |
+| `timing.da_bond_withdraw_delay_ms`                   | `778080000`                                                | ms                | 9 d 8 min   | [L51](../config/deployments/preprod-public.yaml#L51)   |
+| `da_transport.retention_days`                        | `120`                                                      | days              |             | [L54](../config/deployments/preprod-public.yaml#L54)   |
+| `da_bond.da_bond_lovelace`                           | `100000000000`                                             | lovelace          | 100,000 ADA | [L56](../config/deployments/preprod-public.yaml#L56)   |
+| `da_bond.da_slash_penalty_lovelace`                  | `25000000000`                                              | lovelace          | 25,000 ADA  | [L57](../config/deployments/preprod-public.yaml#L57)   |
+| `da_bond.da_bond_min_top_up_lovelace`                | `1000000000`                                               | lovelace          | 1,000 ADA   | [L58](../config/deployments/preprod-public.yaml#L58)   |
+| `da_bond.da_bond_pool_floor_lovelace`                | `5000000`                                                  | lovelace          | 5 ADA       | [L59](../config/deployments/preprod-public.yaml#L59)   |
+| `da_bond.challenge_record_lovelace`                  | `27000000`                                                 | lovelace          | 27 ADA      | [L65](../config/deployments/preprod-public.yaml#L65)   |
+| `limits.max_bisection_rounds`                        | `32`                                                       | rounds            |             | [L67](../config/deployments/preprod-public.yaml#L67)   |
+| `limits.max_inactivity_strikes`                      | `1000000`                                                  | strikes           | 1,000,000   | [L69](../config/deployments/preprod-public.yaml#L69)   |
+| `limits.coins_per_utxo_byte`                         | `4310`                                                     | lovelace per byte |             | [L70](../config/deployments/preprod-public.yaml#L70)   |
+| `limits.max_dispute_move_fee_lovelace`               | `1200000`                                                  | lovelace          | 1.2 ADA     | [L74](../config/deployments/preprod-public.yaml#L74)   |
+| `limits.fraud_proof_output_lovelace`                 | `2000000`                                                  | lovelace          | 2 ADA       | [L78](../config/deployments/preprod-public.yaml#L78)   |
+| `economics.profile`                                  | `public-preprod-launch-v1`                                 | text              |             | [L80](../config/deployments/preprod-public.yaml#L80)   |
+| `economics.requiredBondLovelace`                     | `100000000000`                                             | lovelace          | 100,000 ADA | [L81](../config/deployments/preprod-public.yaml#L81)   |
+| `economics.slashingPenaltyLovelace`                  | `25000000000`                                              | lovelace          | 25,000 ADA  | [L82](../config/deployments/preprod-public.yaml#L82)   |
+| `economics.inactivitySlashingPenaltyLovelace`        | `10000000000`                                              | lovelace          | 10,000 ADA  | [L83](../config/deployments/preprod-public.yaml#L83)   |
+| `economics.fraudProverRewardLovelace`                | `75000000000`                                              | lovelace          | 75,000 ADA  | [L84](../config/deployments/preprod-public.yaml#L84)   |
+| `economics.proverCollateralFloorLovelace`            | `5000000`                                                  | lovelace          | 5 ADA       | [L85](../config/deployments/preprod-public.yaml#L85)   |
+| `protocol_treasury_native_script.type`               | `atLeast`                                                  | text              |             | [L92](../config/deployments/preprod-public.yaml#L92)   |
+| `protocol_treasury_native_script.required`           | `2`                                                        | signatures        |             | [L93](../config/deployments/preprod-public.yaml#L93)   |
+| `protocol_treasury_native_script.scripts[0].type`    | `sig`                                                      | text              |             | [L95](../config/deployments/preprod-public.yaml#L95)   |
+| `protocol_treasury_native_script.scripts[0].keyHash` | `f1fb1abc10fc4d90b367c7f994b87aeeb4db60fa8a42ee43a159256c` | payment key hash  |             | [L96](../config/deployments/preprod-public.yaml#L96)   |
+| `protocol_treasury_native_script.scripts[1].type`    | `sig`                                                      | text              |             | [L97](../config/deployments/preprod-public.yaml#L97)   |
+| `protocol_treasury_native_script.scripts[1].keyHash` | `9ac54f4b18dcdbaeb981b9acbb4e79b590315eb508a08b3a50509cb9` | payment key hash  |             | [L98](../config/deployments/preprod-public.yaml#L98)   |
+| `protocol_treasury_native_script.scripts[2].type`    | `sig`                                                      | text              |             | [L99](../config/deployments/preprod-public.yaml#L99)   |
+| `protocol_treasury_native_script.scripts[2].keyHash` | `65a0683b5ca28e4a8fed2b5a443210741faad5ed43802d20fd329a53` | payment key hash  |             | [L100](../config/deployments/preprod-public.yaml#L100) |
+| `allow_lists.operators[0]`                           | `041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424` | payment key hash  |             | [L106](../config/deployments/preprod-public.yaml#L106) |
+| `allow_lists.operators[1]`                           | `089282d30b55fee0d97ad5c24034a6d7afd390a59f7a467379afc5bf` | payment key hash  |             | [L107](../config/deployments/preprod-public.yaml#L107) |
+| `allow_lists.operators[2]`                           | `4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6` | payment key hash  |             | [L108](../config/deployments/preprod-public.yaml#L108) |
+| `allow_lists.operators[3]`                           | `f9e6484e0ef75bb127589916d54920cdeec2ee0f3d43e8d320f5e7f3` | payment key hash  |             | [L109](../config/deployments/preprod-public.yaml#L109) |
 
 <!-- END PUBLIC_TESTNET_PARAMETERS_GENERATED -->
 
@@ -128,6 +129,10 @@ W is `event_wait_ms`, d is `commit_event_depth` and M is `block_maturity_ms`.
   the execution dispute on at launch (owner, 2026-10-21). It must be at least
   2 D_case + 1 = 420,960,001 ms, and an execution-dispute case must be able to
   open by M / 2 = 302,400,000 ms, after the latest DA answer at 259,680,000 ms.
+- `ledger_retention_ms` (8 d 12 h): how long each L2 block's ledger root stays
+  readable off-chain, in the watcher and the node. Off-chain only: it is not
+  compiled into Aiken. It must be at least M (owner, 2026-11-21); here M plus
+  36 hours, 3k/f slots, the longest span of the deepest automatic L1 rollback.
 - `dispute_side_clock_ms` (24 h): each side's total time in an execution
   dispute, a chess clock (owner, 2026-10-13). This is the real move timer.
 - `dispute_max_validity_range_ms` (2 min): the widest validity range a dispute

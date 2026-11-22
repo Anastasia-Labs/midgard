@@ -141,6 +141,11 @@ const validateExcludedFraudProofCategories = (categories) => {
     );
 };
 
+// Timing keys read only off chain. Every other timing key is an Aiken constant
+// (timingConstants); renderAiken never reads these.
+const offChainTimingKeys = ["ledger_retention_ms"];
+const timingKeys = [...Object.keys(timingConstants), ...offChainTimingKeys];
+
 const exactKeys = (value, keys, field) => {
   if (
     value === null ||
@@ -222,8 +227,8 @@ export const validateProfile = (profile, name) => {
     throw new Error(
       "l1_finality.active_slot_coeff must be a canonical decimal string in (0, 1]",
     );
-  exactKeys(profile.timing, Object.keys(timingConstants), "timing");
-  positiveIntegers(profile.timing, Object.keys(timingConstants), "timing");
+  exactKeys(profile.timing, timingKeys, "timing");
+  positiveIntegers(profile.timing, timingKeys, "timing");
   exactKeys(profile.da_bond, Object.keys(daBondConstants), "da_bond");
   positiveIntegers(profile.da_bond, Object.keys(daBondConstants), "da_bond");
   exactKeys(profile.limits, Object.keys(limitConstants), "limits");
@@ -246,6 +251,11 @@ export const validateProfile = (profile, name) => {
   validateAllowLists(profile.allow_lists, name);
   validateExcludedFraudProofCategories(profile.excluded_fraud_proof_categories);
   const timing = profile.timing;
+  // The only floor (owner ruling 2026-11-21): no rollback-horizon term.
+  if (timing.ledger_retention_ms < timing.block_maturity_ms)
+    throw new Error(
+      `timing.ledger_retention_ms (${timing.ledger_retention_ms}) must be at least timing.block_maturity_ms (${timing.block_maturity_ms})`,
+    );
   // The 900 s live testing profiles: not fault-proof security configurations.
   const nonInteractiveTesting =
     name === "preprod-testing" || name === "local-devnet-testing";
