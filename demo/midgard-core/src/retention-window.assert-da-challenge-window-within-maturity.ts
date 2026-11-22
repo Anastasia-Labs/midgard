@@ -1,6 +1,9 @@
 import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile.js";
 import { DA_TRANSPORT_LIMITS } from "./da-transport.js";
-import { DEPLOYMENT_PROFILES } from "./generated-deployment-profiles.js";
+import {
+  DEPLOYMENT_PROFILES,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "./generated-deployment-profiles.js";
 
 /** Milliseconds in one calendar-independent 24h day. */
 export const RETENTION_MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -44,6 +47,12 @@ export type RetentionWindow = {
    * only.
    */
   readonly measuredValidationDisputeScheduleMs: number;
+  /**
+   * How long after a block's `block_time` a watcher or node keeps the L2
+   * ledger after that block readable: the selected profile's off-chain
+   * `timing.ledger_retention_ms`, never below maturity. No script reads it.
+   */
+  readonly ledgerRetentionMs: number;
 };
 
 const deriveRetentionWindow = (): RetentionWindow => {
@@ -64,6 +73,7 @@ const deriveRetentionWindow = (): RetentionWindow => {
     marginMs: deployedRetentionMs - requiredRetentionMs,
     measuredValidationDisputeScheduleMs:
       MIDGARD_CONSENSUS_LIMITS.minValidationDisputeMaturityMs,
+    ledgerRetentionMs: SELECTED_DEPLOYMENT_PROFILE.timing.ledger_retention_ms,
   });
 };
 
