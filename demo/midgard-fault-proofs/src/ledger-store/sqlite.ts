@@ -5,12 +5,12 @@
  *
  * Nodes are kept in the trie library's JSON shape, keyed by their 32 hash
  * bytes, and outputs keyed by their out-ref bytes; each row carries its
- * reference count. The dead queue is a table of node hashes. Every change is
- * one IMMEDIATE transaction.
+ * reference count. The dead queue is a table of node hashes. Every change to
+ * them is one IMMEDIATE transaction.
  *
  * The same database keeps the watcher's verified confirmed head
  * (`replayed-ledger.confirmed.ts`), one header hash, beside the ledgers it
- * speaks of.
+ * speaks of; a write of it is one statement.
  */
 import { DatabaseSync } from "node:sqlite";
 

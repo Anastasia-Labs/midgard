@@ -11,7 +11,8 @@
  * already replayed that block.
  *
  * The confirmed head handed in must be stable. One that is not above the
- * verified head on the same chain is verified from genesis.
+ * verified head on the same chain is verified from the lowest block the
+ * source still knows.
  */
 import * as SDK from "@al-ft/midgard-sdk/core";
 
@@ -135,18 +136,28 @@ export const confirmedChainVerifier = (input: {
   ): Promise<Outcome> => {
     const own = await holds.open(header.utxosRoot);
     if (own === undefined && head) return "stop";
-    onUnverified?.({ headerHash, cause });
-    if (own !== undefined) onHeld?.(headerHash, header.utxosRoot);
+    try {
+      onUnverified?.({ headerHash, cause });
+      if (own !== undefined) onHeld?.(headerHash, header.utxosRoot);
+    } catch (error) {
+      own?.release();
+      throw error;
+    }
     return { held: own };
   };
 
-  /** The ledger `block` starts from: held, or derived by a root lookup. */
+  /**
+   * The ledger `block` starts from: held, or, for the lowest block of the
+   * walk, derived by a root lookup. Above it, a parent that left no ledger
+   * was passed, so its ledger cannot be derived either.
+   */
   const parentLedger = async (
     { header }: ChainBlock,
     source: ReplayedLedgerSource,
+    lowest: boolean,
   ): Promise<HeldLedger | undefined> => {
     const held = await holds.open(header.prevUtxosRoot);
-    if (held !== undefined) return held;
+    if (held !== undefined || !lowest) return held;
     try {
       return await input.ledgerAfter(header.prevHeaderHash, source);
     } catch (error) {
@@ -165,7 +176,7 @@ export const confirmedChainVerifier = (input: {
     parentRoot: string | undefined,
     below: HeldLedger | undefined,
     source: ReplayedLedgerSource,
-    head: boolean,
+    { head, lowest }: { readonly head: boolean; readonly lowest: boolean },
   ): Promise<Outcome> => {
     const { headerHash, header } = block;
     if (parentRoot !== undefined && parentRoot !== header.prevUtxosRoot) {
@@ -179,12 +190,19 @@ export const confirmedChainVerifier = (input: {
     if (input.replayedHere(headerHash)) {
       const own = await holds.open(header.utxosRoot);
       if (own !== undefined) {
-        onHeld?.(headerHash, header.utxosRoot);
+        try {
+          onHeld?.(headerHash, header.utxosRoot);
+        } catch (error) {
+          own.release();
+          throw error;
+        }
         return { held: own };
       }
     }
     const opened =
-      below === undefined ? await parentLedger(block, source) : undefined;
+      below === undefined
+        ? await parentLedger(block, source, lowest)
+        : undefined;
     try {
       const parent = below ?? opened;
       if (parent === undefined)
@@ -257,14 +275,12 @@ export const confirmedChainVerifier = (input: {
     }
     let carry: HeldLedger | undefined;
     try {
+      const lowest = chain[chain.length - 1]!.headerHash;
       for (const block of chain.reverse()) {
-        const outcome = await verifyBlock(
-          block,
-          parentRoot,
-          carry,
-          source,
-          block.headerHash === headerHash,
-        );
+        const outcome = await verifyBlock(block, parentRoot, carry, source, {
+          head: block.headerHash === headerHash,
+          lowest: block.headerHash === lowest,
+        });
         if (outcome === "stop") return false;
         carry?.release();
         carry = outcome.held;

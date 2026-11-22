@@ -146,26 +146,39 @@ describe(
       },
     );
 
-    it("refuses a confirmed head that starts from a held root other than its parent's", async () => {
-      // b0 <- b1 <- stray, where stray starts from b0's root.
-      const chain = await replayedLedgerChain(2, [1]);
-      const [b0, b1] = chain.blocks as [
-        ReplayedLedgerChainBlock,
-        ReplayedLedgerChainBlock,
-      ];
-      const stray = await replayedLedgerChainBlockWith(chain.forks[0]!, {
-        prevHeaderHash: b1.headerHash,
-      });
-      const s = await scene(chain);
-      const ledger = s.keeper();
-      const source = replayedLedgerChainSource([b0, b1, stray]);
-      expect(await ledger.ensure(head(b1), source)).toBe(true);
+    it.each(["no lookup replayed", "a lookup already replayed"] as const)(
+      "refuses a confirmed head that starts from a held root other than its parent's, when %s it",
+      async (when) => {
+        // b0 <- b1 <- stray, where stray starts from b0's root.
+        const chain = await replayedLedgerChain(2, [1]);
+        const [b0, b1] = chain.blocks as [
+          ReplayedLedgerChainBlock,
+          ReplayedLedgerChainBlock,
+        ];
+        const stray = await replayedLedgerChainBlockWith(chain.forks[0]!, {
+          prevHeaderHash: b1.headerHash,
+        });
+        const s = await scene(chain);
+        const ledger = s.keeper();
+        const source = replayedLedgerChainSource([b0, b1, stray]);
+        expect(await ledger.ensure(head(b1), source)).toBe(true);
+        // A lookup opens the ledger stray starts from by its root, so it
+        // replays stray over b0's ledger and refuses nothing.
+        if (when === "a lookup already replayed") {
+          const replayed = await ledger.ledgerAt(source)(stray.headerHash);
+          expect(await ledgerEntriesRoot(replayed!)).toBe(
+            stray.header.utxosRoot,
+          );
+          expect(s.refusals).toEqual([]);
+        }
 
-      expect(await ledger.ensure(head(stray), source)).toBe(false);
-      expect(
-        s.refusals.map(({ headerHash, kind }) => [headerHash, kind]),
-      ).toEqual([[stray.headerHash, "parent-mismatch"]]);
-    });
+        expect(await ledger.ensure(head(stray), source)).toBe(false);
+        expect(
+          s.refusals.map(({ headerHash, kind }) => [headerHash, kind]),
+        ).toEqual([[stray.headerHash, "parent-mismatch"]]);
+        expect(await s.verifiedHead.read()).toBe(b1.headerHash);
+      },
+    );
 
     it("replays each confirmed block once: not one this process replayed, and after a restart only those above the verified head", async () => {
       const chain = await replayedLedgerChain(4);
@@ -335,6 +348,65 @@ describe(
       expect(await verifiedHead.read()).toBe(b1.headerHash);
       expect(await ledger.ensure(head(b1), source)).toBe(true);
       expect(unverified).toHaveLength(2);
+    });
+
+    it("passes every block above one that left no ledger, the head too when the store holds its ledger, and asks each payload once", async () => {
+      const chain = await replayedLedgerChain(3);
+      const [b0, b1, b2] = chain.blocks as [
+        ReplayedLedgerChainBlock,
+        ReplayedLedgerChainBlock,
+        ReplayedLedgerChainBlock,
+      ];
+      const s = await scene(chain);
+      // The store holds the head's ledger from an earlier run, and neither
+      // ledger below it.
+      await s.store.persist(
+        await s.store.admit(b2.entries, b2.header.utxosRoot),
+      );
+      const asked: string[] = [];
+      const source = replayedLedgerChainSource(chain.blocks, {
+        asked,
+        onRequest: (headerHash) => {
+          if (headerHash === b0.headerHash)
+            throw new RetainedDaPayloadUnavailableError(
+              headerHash,
+              `no payload of ${headerHash}`,
+              "not_found",
+            );
+        },
+      });
+      expect(await s.keeper().ensure(head(b2), source)).toBe(true);
+      expect(s.unverified).toEqual([
+        { headerHash: b0.headerHash, cause: "payload-not-retained" },
+        { headerHash: b1.headerHash, cause: "parent-ledger-not-held" },
+        { headerHash: b2.headerHash, cause: "parent-ledger-not-held" },
+      ]);
+      expect(asked).toEqual([b0.headerHash]);
+      expect(await s.verifiedHead.read()).toBe(b2.headerHash);
+    });
+
+    it("passes a block above the verified head when the verified head's ledger was dropped and no source retains its payload", async () => {
+      const chain = await replayedLedgerChain(3);
+      const [b0, b1, b2] = chain.blocks as [
+        ReplayedLedgerChainBlock,
+        ReplayedLedgerChainBlock,
+        ReplayedLedgerChainBlock,
+      ];
+      const s = await scene(chain);
+      await s.verifiedHead.write(b0.headerHash);
+      await s.store.persist(
+        await s.store.admit(b2.entries, b2.header.utxosRoot),
+      );
+      expect(
+        await s
+          .keeper()
+          .ensure(head(b2), sourceWithout(chain.blocks, b0, "not_found")),
+      ).toBe(true);
+      expect(s.unverified).toEqual([
+        { headerHash: b1.headerHash, cause: "parent-ledger-not-held" },
+        { headerHash: b2.headerHash, cause: "parent-ledger-not-held" },
+      ]);
+      expect(await s.verifiedHead.read()).toBe(b2.headerHash);
     });
 
     it("does not pass a head whose ledger the store does not hold", async () => {
