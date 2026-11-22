@@ -128,9 +128,9 @@ written trust roots. A public release is then opened exactly as public listen
 opens it, with the provenance's source revision and node, Postgres and ingress
 images as the expected identities, so provenance that public listen would
 refuse, such as one without an ingress image, is refused here. It prints the
-manifest id (`MIDGARD_PUBLIC_MANIFEST_ID`) and the trust-root id. An existing
-output directory is refused; a refused release leaves no output directory, so
-the same command can be rerun once the input is corrected.
+hub-oracle policy id (`MIDGARD_PUBLIC_HUB_ORACLE_POLICY_ID`) and the trust-root
+id. An existing output directory is refused; a refused release leaves no output
+directory, so the same command can be rerun once the input is corrected.
 
 | File                            | Node public listen                           | Watcher process config                        |
 | ------------------------------- | -------------------------------------------- | --------------------------------------------- |

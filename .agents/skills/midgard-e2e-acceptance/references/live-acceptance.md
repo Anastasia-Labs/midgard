@@ -203,7 +203,7 @@ Report, with artifact paths rather than bodies:
 
 - run mode, reason and configuration path (never secret values);
 - the final summary's `result`, `confirmedSteps` and `cycles`;
-- the deployment manifest ID and the nonce, `init` and operator transaction
+- the hub-oracle policy id and the nonce, `init` and operator transaction
   hashes from the journal;
 - per cycle: the deposit, transfer and withdrawal hashes, the committed header,
   the public DA payload file, and the exact L2 and payout values;

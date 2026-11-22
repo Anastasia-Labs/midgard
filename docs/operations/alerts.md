@@ -437,7 +437,7 @@ progress resolves by itself.
 
 **Action.** Keep the watcher running and preserve its state directory. Do not
 delete or edit the replayed-ledger store
-(`replayed-ledger-<manifest id>.sqlite` in the journal directory).
+(`replayed-ledger-<hub-oracle policy id>.sqlite` in the journal directory).
 
 **Escalate** at once when the alert lasts past the next confirmed-state
 advance: the watcher's replay and the confirmed state disagree, and the
@@ -446,7 +446,7 @@ watcher cannot classify later blocks until they agree.
 ### MidgardWatcherReplayedLedgerRootLost
 
 **Meaning.** The watcher's replayed-ledger store
-(`replayed-ledger-<manifest id>.sqlite` in the journal directory) no longer
+(`replayed-ledger-<hub-oracle policy id>.sqlite` in the journal directory) no longer
 holds a ledger that the retention window keeps and that this process had
 held. The `replayed_ledger_root_lost` alert is active, and the watcher logs
 one `replayed_ledger_root_lost` error per lost root. The watcher derives a lost

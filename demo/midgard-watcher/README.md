@@ -369,8 +369,8 @@ snapshots, whether or not a header is pending. `GET /v1/status` serves the lates
 above the pool floor), `requiredBacking` (`da_bond_lovelace`), `belowBond`,
 `unlockAt` and `unlockable` while withdrawing, `alerts: {underBacked, withdrawing}`
 and `observedAtMs`, with amounts as decimal lovelace strings; it is `null` before
-the first read. Two alert codes follow it, with the deployment manifest id as
-subject: `da_bond_pool_under_backed` fires when the backing is below one DA bond
+the first read. Two alert codes follow it, with a digest of the hub-oracle policy id
+as subject: `da_bond_pool_under_backed` fires when the backing is below one DA bond
 (after a slash or a withdrawal; a missing pool counts) and clears after a top-up,
 and `da_bond_pool_withdrawing` fires on BeginWithdraw and clears on cancel or
 completion. Both appear in `activeAlerts` and count in `/v1/metrics`

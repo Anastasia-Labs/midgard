@@ -168,7 +168,9 @@ acceptance evidence.
 
 ## Protocol routes
 
-Topics and request-response routes are deployment-scoped:
+Topics and request-response routes are deployment-scoped. The deployment
+fingerprint is the deployment's hub-oracle policy id, 56 lowercase hex
+characters:
 
 ```text
 /midgard/{deployment_fingerprint}/da/payload-announcements/1
