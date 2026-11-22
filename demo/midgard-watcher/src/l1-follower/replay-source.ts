@@ -1,4 +1,7 @@
-import type { BlockReplayMaterial } from "@al-ft/midgard-fault-proofs/replayed-ledger";
+import type {
+  BlockReplayMaterial,
+  ReplayedLedgerBlockRoots,
+} from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
@@ -29,6 +32,10 @@ import type { WatcherObservationAuthority } from "./observation.js";
 import { replayEventIds } from "./replay-events.js";
 import { watcherReplayMaterial } from "./replay-material.js";
 import type { WatcherReplayRetention } from "./replay-retention.js";
+import {
+  createWatcherLedgerWindowReader,
+  watcherAdmittedHeader,
+} from "./replay-source.window.js";
 import { WATCHER_QUEUE_OUTPUTS_TABLE } from "./tables.js";
 import {
   type WatcherUserEventIdentity,
@@ -102,6 +109,15 @@ export const watcherReplayCheckpointPrecedesInit = (
 
 export type WatcherFollowerReplaySource = Readonly<{
   epoch(): number;
+  /** The header as its authenticated admission carries it, or `undefined`
+   * once the follower holds no node row of it. */
+  headerAt(headerHash: string): Promise<SDK.Header | undefined>;
+  /** The blocks inside the ledger window at the follower's tip, and the root
+   * after the queue's newest block (`undefined` for an empty queue). */
+  ledgerWindow(): Promise<{
+    readonly blocks: readonly ReplayedLedgerBlockRoots[];
+    readonly newestRoot: string | undefined;
+  }>;
   /**
    * The ConfirmedState at the observation's point, or `null` when that point
    * precedes the deployment's protocol init: the queue is empty there, and
@@ -207,8 +223,15 @@ export const createWatcherFollowerReplaySource = (
       finalityDepth: "1",
     };
   };
+  const ledgerWindow = createWatcherLedgerWindowReader({
+    store: input.store,
+    slotConfig: input.retention.slotConfig,
+    ledgerRetentionMs: Number(input.retention.ledgerRetentionMs),
+  });
   return {
     epoch: () => generation,
+    headerAt: (headerHash) => watcherAdmittedHeader(input.store, headerHash),
+    ledgerWindow,
     confirmed: async (observation) => {
       assertWatcherStateQueueObservation(observation);
       if (

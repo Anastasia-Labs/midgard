@@ -27,6 +27,8 @@ export const replayRetention = (zeroSlot = 0) =>
     eventWaitMs: 1n,
     maximumAdmissionRangeMs: 1n,
     maximumProtectionWaitMs: 0n,
+    ledgerRetentionMs: 900_000n,
+    maturityMs: 900_000n,
   });
 
 /** The follower's replay port over `store`, for its queue reads only. */
