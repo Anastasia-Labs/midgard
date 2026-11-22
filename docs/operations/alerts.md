@@ -406,8 +406,9 @@ commits, and keeps that verified head in the replayed-ledger store across
 restarts. The `root_mismatch` alert is active, the watcher holds its replay
 checkpoint (`/readyz` names `replayed_ledger_checkpoint_pending` and
 `active_alert`), and the watcher logs one `replayed_ledger_root_mismatch`
-error per refused block. The alert clears once the ledger advances to the
-confirmed state again.
+error per such block. The alert clears once the ledger advances to the
+confirmed state again. A confirmed block whose replay itself is refused is
+[MidgardWatcherConfirmedReplayRefused](#midgardwatcherconfirmedreplayrefused).
 
 A confirmed block below the confirmed head that can no longer be replayed is
 passed and logged once as a `replayed_ledger_confirmed_unverified` warning
@@ -416,8 +417,11 @@ configured DA source answered that it holds no payload of the block),
 `parent-ledger-not-held` (the ledger the block starts from is neither held
 nor derivable) or `header-not-held` (the L1 follower no longer holds the
 header, so neither it nor the confirmed blocks below it were replayed). The
-warning holds nothing and raises no alert. A DA source that has not answered
-is waited for instead, as `replayed_ledger_source_pending`.
+warning holds nothing and raises no alert. A block is passed for its payload
+only when every configured DA source answers that it holds none: one that
+does not answer, or serves a payload that does not verify, is waited for as
+`replayed_ledger_source_pending`. The confirmed head's own payload is always
+waited for.
 
 **First checks.**
 
@@ -465,7 +469,10 @@ nothing else touches: the store is losing ledgers it was asked to keep.
 
 **Meaning.** While moving its replay checkpoint to the confirmed state, the
 watcher refused to replay a block (`replay-refused`), for example because
-its payload could not be read as a block. The checkpoint stays held.
+its payload could not be read as a block. The checkpoint stays held. Every
+confirmed block above the last verified one is replayed, so this also names
+a merged block whose events the replay refuses while the store already holds
+the root the block commits.
 
 **First checks.** `replayRefusals.recent` in `GET /v1/status` and the
 watcher's `replayed_ledger_refused` warning name the header and the detail.
