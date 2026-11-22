@@ -2,6 +2,10 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import { ledgerEntriesRoot } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
+import {
   createReplayedLedger,
   type ReplayedLedgerRefusal,
 } from "@al-ft/midgard-fault-proofs/replayed-ledger";
@@ -243,27 +247,25 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
         },
       ]),
     );
+    // The store holds the parent's ledger.
+    const store = createLedgerStore(createMemoryLedgerStorage());
+    await store.persist(
+      await store.admit(
+        BASE.map((row) => ({
+          outRef: row[LedgerUtils.Columns.OUTREF],
+          output: row[LedgerUtils.Columns.OUTPUT],
+        })),
+        root,
+      ),
+    );
     const refusals: ReplayedLedgerRefusal[] = [];
     const ledger = createReplayedLedger({
-      checkpoints: {
-        read: async () => ({
-          headerHash: header.prevHeaderHash,
-          entries: BASE.map((row) => ({
-            outRef: row[LedgerUtils.Columns.OUTREF],
-            output: row[LedgerUtils.Columns.OUTPUT],
-          })),
-        }),
-        write: async () => undefined,
-      },
+      store,
       onRefusal: (refusal) => refusals.push(refusal),
     });
-    expect(
-      await ledger.restore({
-        headerHash: header.prevHeaderHash,
-        utxosRoot: root,
-      }),
-    ).toBe("restored");
     const ledgerAt = ledger.ledgerAt({
+      headerAt: async (headerHash) =>
+        headerHash === payload.block_body.header_hash ? header : undefined,
       payloadAt: async (headerHash) =>
         headerHash === payload.block_body.header_hash ? payload : undefined,
       materialFor: async () => {

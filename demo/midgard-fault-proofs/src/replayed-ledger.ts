@@ -3,20 +3,26 @@
  *
  * No DA payload carries a UTxO set, so the ledger after a block is derived by
  * replaying that block's retained payload over its parent's ledger with the
- * block replay the node also runs (`replayBlockEvents`). Ledgers are
- * content-addressed: each is keyed by the header hash it follows and admitted
- * only when it opens that header's `utxos_root`. The owning runtime fences
- * these ephemeral derivations when mutable L1 admission facts are rewound;
- * only its stable, root-checked checkpoint survives that generation change.
+ * block replay the node also runs (`replayBlockEvents`). Every derived ledger
+ * lives in one ledger store, addressed by its root: the ledger after a block
+ * is the store's ledger at the block's `utxos_root`, and a block's ledger is
+ * persisted only once its replay opens that root.
  *
- * What is kept: one checkpoint (the ledger after the L1 ConfirmedState head,
- * persisted and re-checked against ConfirmedState's `utxos_root` on load) and
- * a bounded in-memory LRU of ledgers above it. A ledger missing from both is
- * rebuilt by walking `prev_header_hash` back to a kept ledger (or genesis) and
- * replaying forward.
+ * A lookup the store cannot answer walks `prev_header_hash` back, holding
+ * headers only, to the first block whose `prev_utxos_root` the store holds
+ * (the empty ledger at genesis is always held), then replays forward one
+ * block at a time: fetch its payload, replay it over the parent's ledger,
+ * check the root, persist, let the payload go. Each persisted block is a
+ * resume point, so a crash, a retry or a payload not served yet resumes from
+ * the highest one, and a fresh start over an empty store is the same walk.
  *
- * A block whose replay is refused, or whose replayed ledger does not open its
- * `utxos_root`, is reported through `onRefusal`. Its own header still gets the
+ * The store holds what `retain` names, set by the caller from its window of
+ * blocks; see `ReplayedLedger.retain`. How overlapping lookups, replays and
+ * retention stay out of each other's way is `replayed-ledger.holds.ts`.
+ *
+ * A block whose replay is refused, whose replayed ledger does not open its
+ * `utxos_root`, or that does not start from its parent's ledger is reported
+ * through `onRefusal` and never persisted. Its own lookup still gets the
  * replayed entries on a root mismatch, unchecked, so a classifier records the
  * post-ledger mismatch; nothing above it is derived from them. A payload no
  * attested availability commitment binds yet (`ReplayedLedgerSource.binding`)
@@ -25,22 +31,29 @@
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import type * as SDKDa from "@al-ft/midgard-sdk/da";
-import { Cause, Effect, Exit } from "effect";
 
-import { isReplayLocalFault, ReplayLocalFault } from "./block-replay.faults.js";
-import { type BlockReplayContext, replayBlockEvents } from "./block-replay.js";
+import { type BlockReplayContext } from "./block-replay.js";
 import {
-  type CheckedLedger,
-  checkLedgerAgainstRoot,
   type LedgerAt,
   type LedgerEntry,
   LedgerRootMismatchError,
 } from "./ledger-at.js";
 import {
-  createLedgerStore,
-  createMemoryLedgerStorage,
+  EMPTY_LEDGER_ROOT,
+  type Ledger,
+  type LedgerStore,
 } from "./ledger-store/index.js";
-import { RetainedDaPayloadUnavailableError } from "./transition-trace/fetch.retained-da-payload-unavailable.js";
+import {
+  createLedgerHolds,
+  type HeldLedger,
+  storeCall,
+} from "./replayed-ledger.holds.js";
+import {
+  authenticHeader,
+  authenticPayload,
+  replayBlock,
+  unboundWait,
+} from "./replayed-ledger.replay-block.js";
 
 /** The L1 facts a block's user events and forced orders replay against. */
 export type BlockReplayMaterial = Pick<
@@ -50,6 +63,11 @@ export type BlockReplayMaterial = Pick<
 
 /** Where one operation reads blocks and their L1 material. */
 export type ReplayedLedgerSource = {
+  /**
+   * The header of the block `headerHash`, or `undefined` when the source
+   * does not know the block. It must hash to `headerHash`.
+   */
+  readonly headerAt: (headerHash: string) => Promise<SDK.Header | undefined>;
   /**
    * The retained DA payload of the block `headerHash`, or `undefined` when no
    * source retains it. The payload's own header must hash to `headerHash`.
@@ -75,17 +93,6 @@ export type ReplayedLedgerSource = {
   }>;
 };
 
-/** The ledger after the block `headerHash`. */
-export type LedgerCheckpoint = {
-  readonly headerHash: string;
-  readonly entries: readonly LedgerEntry[];
-};
-
-export type LedgerCheckpointStore = {
-  readonly read: () => Promise<LedgerCheckpoint | undefined>;
-  readonly write: (checkpoint: LedgerCheckpoint) => Promise<void>;
-};
-
 /** A block whose ledger could not be derived or does not open its root. */
 export type ReplayedLedgerRefusal = {
   readonly headerHash: string;
@@ -93,315 +100,228 @@ export type ReplayedLedgerRefusal = {
   readonly detail: string;
 };
 
+/** The roots of one block, as its header commits them. */
+export type ReplayedLedgerBlockRoots = {
+  readonly utxosRoot: string;
+  readonly prevUtxosRoot: string;
+};
+
+/** What the store keeps: see `ReplayedLedger.retain`. */
+export type ReplayedLedgerWindow = {
+  /** Every block inside the retention window. */
+  readonly blocks: Iterable<ReplayedLedgerBlockRoots>;
+  /** The root after the newest block the caller knows. */
+  readonly newestRoot: string;
+  /** The root of the stable confirmed head. */
+  readonly confirmedRoot: string;
+};
+
 export type ReplayedLedger = {
   /** The `LedgerAt` over one operation's sources. */
   readonly ledgerAt: (source: ReplayedLedgerSource) => LedgerAt;
   /**
-   * Loads the persisted checkpoint. One for the ConfirmedState head must open
-   * its `utxos_root`, or it is refused and not used. One for an older head is
-   * kept as a candidate, checked against the first child that reaches it.
+   * Makes the store hold the ledger after the confirmed head, replaying up
+   * to it when needed. True once that ledger is persisted; false when it
+   * cannot be derived yet, or when the head's own header commits another
+   * root (refused as a root mismatch).
    */
-  readonly restore: (confirmed: {
-    readonly headerHash: string;
-    readonly utxosRoot: string;
-  }) => Promise<"restored" | "candidate" | "absent" | "refused">;
-  /**
-   * Moves the checkpoint to the ConfirmedState head. False, and the old
-   * checkpoint kept, when that ledger cannot be derived yet.
-   */
-  readonly advance: (
+  readonly ensure: (
     confirmed: { readonly headerHash: string; readonly utxosRoot: string },
     source: ReplayedLedgerSource,
   ) => Promise<boolean>;
+  /**
+   * Keeps every window block's `utxos_root` and `prev_utxos_root`, the newest
+   * root, the confirmed root and the roots running replays hold, and drops
+   * every other ledger. Resolves to the roots of that set this keeper had
+   * seen held in this process that are not held any more, which calls for an
+   * operations alert; a root never held is only not derived yet.
+   */
+  readonly retain: (
+    window: ReplayedLedgerWindow,
+  ) => Promise<ReadonlySet<string>>;
 };
 
-type Kept = { readonly headerHash: string; readonly ledger: CheckedLedger };
-
-type Replayed =
-  | { readonly kind: "checked"; readonly ledger: CheckedLedger }
+type Step =
+  | { readonly kind: "held"; readonly held: HeldLedger }
   | { readonly kind: "mismatch"; readonly entries: readonly LedgerEntry[] }
-  | { readonly kind: "refused" };
+  | { readonly kind: "absent" };
 
 const label = (headerHash: string) => `replayed ledger after ${headerHash}`;
 
-/** Whether `error` is a script run left without a verdict
- * (`ScriptEvaluationIndeterminateError`), matched by its tag. */
-const isScriptEvaluationIndeterminate = (error: unknown): error is Error =>
-  error instanceof Error &&
-  (error as { readonly _tag?: unknown })._tag ===
-    "ScriptEvaluationIndeterminate";
-
-/**
- * A payload no commitment binds yet that does not replay says nothing of
- * its block: the copy is released and the read waits for another.
- */
-const unboundWait = (
-  source: ReplayedLedgerSource,
-  headerHash: string,
-  detail: string,
-) => {
-  if (source.binding?.unbound(headerHash) !== true) return;
-  source.binding.release(headerHash);
-  throw new RetainedDaPayloadUnavailableError(
-    headerHash,
-    `the payload of ${headerHash} is not bound to an attested commitment yet, and this copy does not replay: ${detail}`,
-    "unreachable",
-  );
-};
-
 export const createReplayedLedger = ({
-  checkpoints,
-  capacity = 64,
+  store,
   onRefusal,
+  onHeld,
 }: {
-  readonly checkpoints: LedgerCheckpointStore;
-  /** Ledgers kept in memory above the checkpoint. */
-  readonly capacity?: number;
+  readonly store: LedgerStore;
   readonly onRefusal?: (refusal: ReplayedLedgerRefusal) => void;
+  /** Told each header whose ledger the store is found to hold, with the
+   * ledger's root. */
+  readonly onHeld?: (headerHash: string, root: string) => void;
 }): ReplayedLedger => {
-  if (!Number.isSafeInteger(capacity) || capacity < 1)
-    throw new Error("replayed ledger capacity must be a positive integer");
-  const recent = new Map<string, CheckedLedger>();
-  let checkpoint: Kept | undefined;
-  let candidate: LedgerCheckpoint | undefined;
-
+  const holds = createLedgerHolds(store);
   const refuse = (refusal: ReplayedLedgerRefusal) => onRefusal?.(refusal);
 
-  const remember = (headerHash: string, ledger: CheckedLedger) => {
-    recent.delete(headerHash);
-    recent.set(headerHash, ledger);
-    while (recent.size > capacity)
-      recent.delete(recent.keys().next().value as string);
-  };
+  /** The ledger's entries: the one place a `LedgerAt` answer is listed. */
+  const listed = (ledger: Ledger): Promise<readonly LedgerEntry[]> =>
+    storeCall(`list ledger ${ledger.root}`, async () => {
+      const entries: LedgerEntry[] = [];
+      for await (const entry of ledger.entries()) entries.push(entry);
+      return entries;
+    });
 
-  const kept = (headerHash: string): CheckedLedger | undefined => {
-    const hit = recent.get(headerHash);
-    if (hit !== undefined) {
-      remember(headerHash, hit);
-      return hit;
-    }
-    return checkpoint?.headerHash === headerHash
-      ? checkpoint.ledger
-      : undefined;
-  };
-
-  /** The candidate checkpoint, admitted against the root its child binds. */
-  const admitCandidate = async (
-    headerHash: string,
-    utxosRoot: string,
-  ): Promise<CheckedLedger | undefined> => {
-    if (candidate?.headerHash !== headerHash) return undefined;
-    const entries = candidate.entries;
-    candidate = undefined;
-    try {
-      const ledger = await checkLedgerAgainstRoot({
-        entries,
-        utxosRoot,
-        label: label(headerHash),
-      });
-      checkpoint = { headerHash, ledger };
-      return ledger;
-    } catch (error) {
-      if (!(error instanceof LedgerRootMismatchError)) throw error;
-      return undefined;
-    }
-  };
-
-  const replay = async (
-    headerHash: string,
-    payload: SDKDa.DaPayload,
-    parent: CheckedLedger,
+  /** Replays `block` over `parent`, persisting the ledger when it opens the
+   * block's root. Called by one caller at a time per block. */
+  const replayStep = async (
+    block: { readonly headerHash: string; readonly header: SDK.Header },
+    parent: HeldLedger,
     source: ReplayedLedgerSource,
-  ): Promise<Replayed> => {
-    const header = payload.block_body.header;
-    if (parent.utxosRoot !== header.prevUtxosRoot) {
-      refuse({
+    target: boolean,
+  ): Promise<Step> => {
+    const { headerHash, header } = block;
+    // A caller this one waited on may have persisted it.
+    const done = await holds.open(header.utxosRoot);
+    if (done !== undefined) {
+      onHeld?.(headerHash, header.utxosRoot);
+      return { kind: "held", held: done };
+    }
+    const release = holds.reserve(header.utxosRoot);
+    try {
+      const payload = await authenticPayload(source, headerHash);
+      if (payload === undefined) {
+        release();
+        return { kind: "absent" };
+      }
+      const replayed = await replayBlock({
         headerHash,
-        kind: "parent-mismatch",
-        detail: `the block starts from ${header.prevUtxosRoot}, its parent's ledger opens ${parent.utxosRoot}`,
-      });
-      return { kind: "refused" };
-    }
-    const material = await source.materialFor(payload);
-    const parentLedger = await createLedgerStore(
-      createMemoryLedgerStorage(),
-    ).admit(parent.entries, parent.utxosRoot);
-    const exit = await Effect.runPromiseExit(
-      replayBlockEvents({
-        header,
-        parent: parentLedger,
-        expectedNetworkId: header.expectedNetworkId,
-        minFeeA: header.minFeeA,
-        minFeeB: header.minFeeB,
-        blockSlot: header.blockSlot,
-        l1SlotConfig: source.l1SlotConfig,
         payload,
-        ...material,
-      }),
-    );
-    if (Exit.isFailure(exit)) {
-      // A local fault says nothing about the block: it is raised, so the
-      // block is replayed again, never refused. A script run left without a
-      // verdict is one: verdict mode leaves that only when the evaluator
-      // itself failed.
-      const causes = [
-        ...Cause.defects(exit.cause),
-        ...Cause.failures(exit.cause),
-      ];
-      const local = causes.find(isReplayLocalFault);
-      if (local !== undefined) throw local;
-      const noVerdict = causes.find(isScriptEvaluationIndeterminate);
-      if (noVerdict !== undefined)
-        throw new ReplayLocalFault({
-          message: `the replay of ${headerHash} has no script verdict: ${noVerdict.message}`,
-          cause: noVerdict,
-        });
-      const detail = String(exit.cause);
-      unboundWait(source, headerHash, detail);
-      refuse({ headerHash, kind: "replay-refused", detail });
-      return { kind: "refused" };
-    }
-    const entries: LedgerEntry[] = [];
-    for await (const entry of exit.value.entries()) entries.push(entry);
-    try {
-      return {
-        kind: "checked",
-        ledger: await checkLedgerAgainstRoot({
-          entries,
-          utxosRoot: header.utxosRoot,
-          label: label(headerHash),
-        }),
-      };
+        parent: parent.ledger,
+        source,
+        refuse,
+      });
+      if (replayed === undefined) {
+        release();
+        return { kind: "absent" };
+      }
+      if (replayed.root !== header.utxosRoot) {
+        const { message } = new LedgerRootMismatchError(
+          label(headerHash),
+          header.utxosRoot,
+          replayed.root,
+        );
+        unboundWait(source, headerHash, message);
+        refuse({ headerHash, kind: "root-mismatch", detail: message });
+        const entries = target ? await listed(replayed) : [];
+        release();
+        return target ? { kind: "mismatch", entries } : { kind: "absent" };
+      }
+      await holds.persist(replayed);
+      onHeld?.(headerHash, header.utxosRoot);
+      return { kind: "held", held: { ledger: replayed, release } };
     } catch (error) {
-      if (!(error instanceof LedgerRootMismatchError)) throw error;
-      unboundWait(source, headerHash, error.message);
-      refuse({ headerHash, kind: "root-mismatch", detail: error.message });
-      return { kind: "mismatch", entries };
+      release();
+      throw error;
     }
   };
 
-  /** The authenticated payload of `headerHash`, or `undefined`. */
-  const payloadAt = async (
-    source: ReplayedLedgerSource,
-    headerHash: string,
-  ): Promise<SDKDa.DaPayload | undefined> => {
-    const payload = await source.payloadAt(headerHash);
-    if (payload === undefined) return undefined;
-    const hash = await Effect.runPromise(
-      SDK.hashBlockHeader(payload.block_body.header),
-    );
-    if (hash !== headerHash || payload.block_body.header_hash !== headerHash)
-      throw new Error(
-        `the retained payload served for ${headerHash} is another block's`,
-      );
-    return payload;
-  };
-
+  /** The ledger after `headerHash`, held until released; the replayed
+   * entries of a target that does not open its root; or nothing. */
   const derive = async (
     headerHash: string,
     source: ReplayedLedgerSource,
-  ): Promise<readonly LedgerEntry[] | undefined> => {
-    if (headerHash === SDK.GENESIS_HEADER_HASH) return [];
-    const hit = kept(headerHash);
-    if (hit !== undefined) return hit.entries;
-    // Walk back to a kept ledger, then replay forward.
-    const chain: { headerHash: string; payload: SDKDa.DaPayload }[] = [];
-    let cursor = headerHash;
-    let base: CheckedLedger | undefined;
-    while (base === undefined) {
-      const payload = await payloadAt(source, cursor);
-      if (payload === undefined) return undefined;
-      chain.push({ headerHash: cursor, payload });
-      const { prevHeaderHash, prevUtxosRoot } = payload.block_body.header;
-      if (prevHeaderHash === SDK.GENESIS_HEADER_HASH)
-        base = await checkLedgerAgainstRoot({
-          entries: [],
-          utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          label: "genesis ledger",
-        });
-      else
-        base =
-          kept(prevHeaderHash) ??
-          (await admitCandidate(prevHeaderHash, prevUtxosRoot));
-      cursor = prevHeaderHash;
+  ): Promise<Step> => {
+    if (headerHash === SDK.GENESIS_HEADER_HASH) {
+      const empty = await holds.open(EMPTY_LEDGER_ROOT);
+      return empty === undefined
+        ? { kind: "absent" }
+        : { kind: "held", held: empty };
     }
-    let parent = base;
-    for (const block of chain.reverse()) {
-      const replayed = await replay(
-        block.headerHash,
-        block.payload,
-        parent,
-        source,
-      );
-      if (replayed.kind !== "checked")
-        return replayed.kind === "mismatch" && block.headerHash === headerHash
-          ? replayed.entries
-          : undefined;
-      remember(block.headerHash, replayed.ledger);
-      parent = replayed.ledger;
+    const target = await authenticHeader(source, headerHash);
+    if (target === undefined) return { kind: "absent" };
+    const hit = await holds.open(target.utxosRoot);
+    if (hit !== undefined) {
+      onHeld?.(headerHash, target.utxosRoot);
+      return { kind: "held", held: hit };
     }
-    return parent.entries;
+    // Walk back by headers to a block whose parent's ledger is held.
+    const chain = [{ headerHash, header: target }];
+    let parent: HeldLedger | undefined;
+    for (;;) {
+      const top = chain[chain.length - 1]!.header;
+      parent = await holds.open(top.prevUtxosRoot);
+      if (parent !== undefined) break;
+      if (top.prevHeaderHash === SDK.GENESIS_HEADER_HASH) {
+        parent = await holds.open(EMPTY_LEDGER_ROOT);
+        if (parent === undefined) return { kind: "absent" };
+        break;
+      }
+      const below = await authenticHeader(source, top.prevHeaderHash);
+      if (below === undefined) return { kind: "absent" };
+      chain.push({ headerHash: top.prevHeaderHash, header: below });
+    }
+    try {
+      for (const block of chain.reverse()) {
+        if (block.header.prevUtxosRoot !== parent.ledger.root) {
+          refuse({
+            headerHash: block.headerHash,
+            kind: "parent-mismatch",
+            detail: `the block starts from ${block.header.prevUtxosRoot}, its parent's ledger opens ${parent.ledger.root}`,
+          });
+          return { kind: "absent" };
+        }
+        const from: HeldLedger = parent;
+        const step = await holds.exclusive(block.headerHash, () =>
+          replayStep(block, from, source, block.headerHash === headerHash),
+        );
+        if (step.kind !== "held") return step;
+        parent.release();
+        parent = step.held;
+      }
+      const held = parent;
+      parent = undefined;
+      return { kind: "held", held };
+    } finally {
+      parent?.release();
+    }
   };
 
   return {
-    ledgerAt: (source) => (headerHash) => derive(headerHash, source),
-    restore: async ({ headerHash, utxosRoot }) => {
-      let stored: LedgerCheckpoint | undefined;
+    ledgerAt: (source) => async (headerHash) => {
+      const step = await derive(headerHash, source);
+      if (step.kind === "absent") return undefined;
+      if (step.kind === "mismatch") return step.entries;
       try {
-        stored = await checkpoints.read();
-      } catch (error) {
-        // An unreadable checkpoint is rebuilt from retained payloads.
-        refuse({ headerHash, kind: "replay-refused", detail: String(error) });
-        return "refused";
-      }
-      if (stored === undefined) return "absent";
-      if (stored.headerHash !== headerHash) {
-        candidate = stored;
-        return "candidate";
-      }
-      try {
-        checkpoint = {
-          headerHash,
-          ledger: await checkLedgerAgainstRoot({
-            entries: stored.entries,
-            utxosRoot,
-            label: label(headerHash),
-          }),
-        };
-        return "restored";
-      } catch (error) {
-        if (!(error instanceof LedgerRootMismatchError)) throw error;
-        refuse({ headerHash, kind: "root-mismatch", detail: error.message });
-        return "refused";
+        return await listed(step.held.ledger);
+      } finally {
+        step.held.release();
       }
     },
-    advance: async ({ headerHash, utxosRoot }, source) => {
-      if (checkpoint?.headerHash === headerHash) {
-        if (checkpoint.ledger.utxosRoot === utxosRoot) return true;
+    ensure: async ({ headerHash, utxosRoot }, source) => {
+      const header =
+        headerHash === SDK.GENESIS_HEADER_HASH
+          ? { utxosRoot: EMPTY_LEDGER_ROOT }
+          : await authenticHeader(source, headerHash);
+      if (header === undefined) return false;
+      if (header.utxosRoot !== utxosRoot) {
         refuse({
           headerHash,
           kind: "root-mismatch",
-          detail: "the confirmed root differs from the checked checkpoint",
+          detail: `the confirmed root ${utxosRoot} differs from the root ${header.utxosRoot} its header commits`,
         });
         return false;
       }
-      const entries = await derive(headerHash, source);
-      if (entries === undefined) return false;
-      let ledger: CheckedLedger;
-      try {
-        ledger = await checkLedgerAgainstRoot({
-          entries,
-          utxosRoot,
-          label: label(headerHash),
-        });
-      } catch (error) {
-        if (!(error instanceof LedgerRootMismatchError)) throw error;
-        return false;
-      }
-      await checkpoints.write({ headerHash, entries: ledger.entries });
-      checkpoint = { headerHash, ledger };
-      recent.delete(headerHash);
+      const step = await derive(headerHash, source);
+      if (step.kind !== "held") return false;
+      step.held.release();
       return true;
+    },
+    retain: ({ blocks, newestRoot, confirmedRoot }) => {
+      const roots = new Set([newestRoot, confirmedRoot]);
+      for (const block of blocks) {
+        roots.add(block.utxosRoot);
+        roots.add(block.prevUtxosRoot);
+      }
+      return holds.retain(roots);
     },
   };
 };

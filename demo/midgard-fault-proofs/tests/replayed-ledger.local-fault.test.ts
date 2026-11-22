@@ -13,8 +13,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { isReplayLocalFault } from "../src/block-replay.faults.js";
 import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "../src/ledger-store/index.js";
+import {
   createReplayedLedger,
-  type LedgerCheckpoint,
   type ReplayedLedgerRefusal,
   type ReplayedLedgerSource,
 } from "../src/replayed-ledger.js";
@@ -46,7 +49,7 @@ afterEach(() => {
   evaluator.runs = 0;
 });
 
-/** A ledger whose checkpoint is the block's predecessor, and a source
+/** A ledger whose store holds the block's predecessor, and a source
  * serving the block. */
 const scene = async (scenario: "passing" | "failing") => {
   const fixture = await plutusExecutionBlockFixture(scenario);
@@ -56,26 +59,16 @@ const scene = async (scenario: "passing" | "failing") => {
   const header = payload.block_body.header;
   const headerHash = payload.block_body.header_hash;
   const refusals: ReplayedLedgerRefusal[] = [];
-  const writes: LedgerCheckpoint[] = [];
+  const store = createLedgerStore(createMemoryLedgerStorage());
+  await store.persist(
+    await store.admit(fixture.predecessorEntries, header.prevUtxosRoot),
+  );
   const ledger = createReplayedLedger({
-    checkpoints: {
-      read: async () => ({
-        headerHash: header.prevHeaderHash,
-        entries: fixture.predecessorEntries,
-      }),
-      write: async (checkpoint) => {
-        writes.push(checkpoint);
-      },
-    },
+    store,
     onRefusal: (refusal) => refusals.push(refusal),
   });
-  expect(
-    await ledger.restore({
-      headerHash: header.prevHeaderHash,
-      utxosRoot: header.prevUtxosRoot,
-    }),
-  ).toBe("restored");
   const source: ReplayedLedgerSource = {
+    headerAt: async (hash) => (hash === headerHash ? header : undefined),
     payloadAt: async (hash) => (hash === headerHash ? payload : undefined),
     materialFor: async () => ({
       blockTimeMs: Number(header.endTime),
@@ -90,7 +83,12 @@ const scene = async (scenario: "passing" | "failing") => {
     headerHash,
     head: { headerHash, utxosRoot: header.utxosRoot },
     refusals,
-    writes,
+    /** Whether the store holds the block's ledger. */
+    persisted: () =>
+      store.at(header.utxosRoot).then(
+        () => true,
+        () => false,
+      ),
   };
 };
 
@@ -125,18 +123,16 @@ describe("the replayed ledger over a script run with no verdict", () => {
     expect(s.refusals).toEqual([]);
   });
 
-  it("fails the checkpoint advance with a local fault rather than holding it, and moves it once the evaluator answers", async () => {
+  it("fails ensuring the confirmed head's ledger with a local fault rather than holding it, and persists it once the evaluator answers", async () => {
     const s = await scene("passing");
     evaluator.fault = new Error("wasm runtime unreachable");
-    await localFault(s.ledger.advance(s.head, s.source), s.headerHash);
-    expect(s.writes).toEqual([]);
+    await localFault(s.ledger.ensure(s.head, s.source), s.headerHash);
+    expect(await s.persisted()).toBe(false);
     expect(s.refusals).toEqual([]);
 
     evaluator.fault = undefined;
-    expect(await s.ledger.advance(s.head, s.source)).toBe(true);
-    expect(s.writes.map(({ headerHash }) => headerHash)).toEqual([
-      s.headerHash,
-    ]);
+    expect(await s.ledger.ensure(s.head, s.source)).toBe(true);
+    expect(await s.persisted()).toBe(true);
   });
 
   it("still refuses a block whose script runs to a failure within its bounds", async () => {
@@ -146,7 +142,7 @@ describe("the replayed ledger over a script run with no verdict", () => {
     expect(s.refusals).toMatchObject([
       { headerHash: s.headerHash, kind: "replay-refused" },
     ]);
-    expect(await s.ledger.advance(s.head, s.source)).toBe(false);
-    expect(s.writes).toEqual([]);
+    expect(await s.ledger.ensure(s.head, s.source)).toBe(false);
+    expect(await s.persisted()).toBe(false);
   });
 });

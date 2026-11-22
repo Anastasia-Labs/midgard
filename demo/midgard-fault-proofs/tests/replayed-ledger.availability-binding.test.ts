@@ -16,6 +16,11 @@ import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { ledgerEntriesRoot, type LedgerEntry } from "../src/ledger-at.js";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "../src/ledger-store/index.js";
 import {
   createReplayedLedger,
   type ReplayedLedgerRefusal,
@@ -26,7 +31,8 @@ import {
 } from "../src/retained-payload-replay-source.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.admit-retained-da-provenance.js";
 import { RetainedDaPayloadUnavailableError } from "../src/transition-trace/fetch.retained-da-payload-unavailable.js";
-import { buildCanonicalBlockFixture } from "./helpers/canonical-block-evidence-fixture.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import { plutusExecutionBlockFixture } from "./helpers/plutus-execution-block-fixture.js";
 
 const AUTHORITY: SDKDa.DaPayloadAvailabilityAuthority = {
   deploymentIdentity: "c7".repeat(28),
@@ -40,44 +46,52 @@ const AUTHORITY: SDKDa.DaPayloadAvailabilityAuthority = {
 const envelope = (payload: SDKDa.DaPayload) =>
   wrapDaPayload(SDKDa.encodeDaPayload(payload), { mode: "identity" });
 
-/** An empty block on genesis, its envelope, and copies of its header. */
+/**
+ * A block spending one output of its predecessor's ledger (the store holds
+ * that ledger), its envelope, and copies of its header. The block changes
+ * the ledger, so its own root is never held before it is replayed.
+ */
 const blocks = async () => {
-  const honest = await buildCanonicalBlockFixture({
-    transactions: [],
-    utxos: [],
-    prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+  const fixture = await plutusExecutionBlockFixture("passing");
+  const { payload } = await reconstructDaPayload({
+    payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
   });
+  const honest = payload.block_body;
   /** The block's header over a body with `alter` applied. */
   const tampered = (alter: Partial<SDKDa.DaPayload["block_body"]>) =>
-    envelope({
-      ...honest.payload,
-      block_body: { ...honest.payload.block_body, ...alter },
+    envelope({ ...payload, block_body: { ...honest, ...alter } });
+  // Preimages of no transaction beside the block's own: the header does not
+  // commit this section.
+  const strayPreimages = (txId: string) =>
+    tampered({
+      transaction_preimages: [
+        ...honest.transaction_preimages,
+        [txId, "00"] as [string, string],
+      ].sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)),
     });
   // A block that does not open its own root: the bytes are canonical, the
   // transition is not.
   const header = { ...honest.header, utxosRoot: "99".repeat(32) };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   return {
-    headerHash: honest.headerHash,
-    honest: honest.payloadEnvelopeCbor,
-    // Preimages of no transaction: the header does not commit this section.
-    stray: await tampered({ transaction_preimages: [["ab".repeat(32), "00"]] }),
-    strayOther: await tampered({
-      transaction_preimages: [["cd".repeat(32), "00"]],
-    }),
+    headerHash: honest.header_hash,
+    header: honest.header,
+    predecessorEntries: fixture.predecessorEntries,
+    honest: fixture.payloadEnvelopeCbor,
+    stray: await strayPreimages("ab".repeat(32)),
+    strayOther: await strayPreimages("cd".repeat(32)),
     fraud: {
       headerHash,
+      header,
       bytes: await envelope({
-        ...honest.payload,
-        block_body: {
-          ...honest.payload.block_body,
-          header,
-          header_hash: headerHash,
-        },
+        ...payload,
+        block_body: { ...honest, header, header_hash: headerHash },
       }),
     },
   };
 };
+
+type Blocks = Awaited<ReturnType<typeof blocks>>;
 
 const commitment = (headerHash: string, bytes: Uint8Array) =>
   SDKDa.buildDaAvailabilityCommitment({
@@ -105,7 +119,10 @@ const published = (headerHash: string, bytes: Uint8Array) => ({
  * each `read` is one operation's view, as the watcher makes one per
  * classification or advance.
  */
-const setup = (served: readonly (readonly [string, Buffer])[]) => {
+const setup = async (
+  b: Blocks,
+  served: readonly (readonly [string, Buffer])[],
+) => {
   const requests: string[] = [];
   const refusals: ReplayedLedgerRefusal[] = [];
   const releases: RetainedPayloadReleases = new Map();
@@ -130,13 +147,18 @@ const setup = (served: readonly (readonly [string, Buffer])[]) => {
       };
     },
   }));
+  const store = createLedgerStore(createMemoryLedgerStorage());
+  await store.persist(
+    await store.admit(b.predecessorEntries, b.header.prevUtxosRoot),
+  );
   const ledger = createReplayedLedger({
-    checkpoints: {
-      read: async () => undefined,
-      write: async () => undefined,
-    },
+    store,
     onRefusal: (refusal) => refusals.push(refusal),
   });
+  const headers = new Map([
+    [b.headerHash, b.header],
+    [b.fraud.headerHash, b.fraud.header],
+  ]);
   const read = (
     headerHash: string,
     via: readonly RetainedDaPayloadSource[] = sources,
@@ -150,6 +172,7 @@ const setup = (served: readonly (readonly [string, Buffer])[]) => {
       },
     });
     return ledger.ledgerAt({
+      headerAt: async (hash) => headers.get(hash),
       payloadAt: retained.payloadAt,
       materialFor: async (payload) => ({
         blockTimeMs: Number(payload.block_body.header.endTime),
@@ -163,37 +186,44 @@ const setup = (served: readonly (readonly [string, Buffer])[]) => {
   return { node, read, sources, requests, refusals, releases };
 };
 
+/** The root of the ledger a read served. */
+const rootOf = async (read: Promise<readonly LedgerEntry[] | undefined>) => {
+  const entries = await read;
+  if (entries === undefined) throw new Error("the read served no ledger");
+  return await ledgerEntriesRoot(entries);
+};
+
 const UNBOUND =
   /^the payload of [0-9a-f]{56} is not bound to an attested commitment yet, and this copy does not replay: .*preimage coverage mismatch/;
 
 describe("a retained payload against its node's availability commitment", () => {
   it("takes the next source's copy within one fetch once the node is Attested", async () => {
     const b = await blocks();
-    const h = setup([
+    const h = await setup(b, [
       ["s0", b.stray],
       ["s1", b.honest],
     ]);
     h.node.status = attested(b.headerHash, b.honest);
-    expect(await h.read(b.headerHash)).toEqual([]);
+    expect(await rootOf(h.read(b.headerHash))).toBe(b.header.utxosRoot);
     expect(h.requests).toEqual(["s0", "s1"]);
     expect(h.refusals).toEqual([]);
   });
 
   it("binds a Published node's copy by its terminal commitment", async () => {
     const b = await blocks();
-    const h = setup([
+    const h = await setup(b, [
       ["s0", b.stray],
       ["s1", b.honest],
     ]);
     h.node.status = published(b.headerHash, b.honest);
-    expect(await h.read(b.headerHash)).toEqual([]);
+    expect(await rootOf(h.read(b.headerHash))).toBe(b.header.utxosRoot);
     expect(h.requests).toEqual(["s0", "s1"]);
     expect(h.refusals).toEqual([]);
   });
 
   it("refuses the block when the copy its commitment binds does not replay", async () => {
     const b = await blocks();
-    const h = setup([
+    const h = await setup(b, [
       ["s0", b.honest],
       ["s1", b.stray],
     ]);
@@ -211,7 +241,7 @@ describe("a retained payload against its node's availability commitment", () => 
 
   it("re-checks a copy another view captured first, and fetches past it", async () => {
     const b = await blocks();
-    const h = setup([
+    const h = await setup(b, [
       ["s0", b.stray],
       ["s1", b.honest],
     ]);
@@ -220,14 +250,16 @@ describe("a retained payload against its node's availability commitment", () => 
     const snapshot = retainedPayloadReplaySource({ sources: h.sources });
     await snapshot.payloadAt(b.headerHash);
     h.node.status = attested(b.headerHash, b.honest);
-    expect(await h.read(b.headerHash, snapshot.sources)).toEqual([]);
+    expect(await rootOf(h.read(b.headerHash, snapshot.sources))).toBe(
+      b.header.utxosRoot,
+    );
     expect(h.requests).toEqual(["s0", "s0", "s1"]);
     expect(h.refusals).toEqual([]);
   });
 
   it("reports the payload unavailable, not the block refused, when no source serves the bound copy", async () => {
     const b = await blocks();
-    const h = setup([
+    const h = await setup(b, [
       ["s0", b.stray],
       ["s1", b.strayOther],
     ]);
@@ -241,7 +273,7 @@ describe("a retained payload against its node's availability commitment", () => 
 
   it("waits on an Unattested copy that does not replay, and the next read asks past it", async () => {
     const b = await blocks();
-    const h = setup([
+    const h = await setup(b, [
       ["s0", b.stray],
       ["s1", b.honest],
     ]);
@@ -251,14 +283,14 @@ describe("a retained payload against its node's availability commitment", () => 
     );
     await expect(first).rejects.toThrow(UNBOUND);
     expect(h.refusals).toEqual([]);
-    expect(await h.read(b.headerHash)).toEqual([]);
+    expect(await rootOf(h.read(b.headerHash))).toBe(b.header.utxosRoot);
     expect(h.requests).toEqual(["s0", "s0", "s1"]);
     expect(h.refusals).toEqual([]);
   });
 
   it("never refuses the block while Unattested, however often its only copy fails", async () => {
     const b = await blocks();
-    const h = setup([["s0", b.stray]]);
+    const h = await setup(b, [["s0", b.stray]]);
     await expect(h.read(b.headerHash)).rejects.toThrow(UNBOUND);
     for (let read = 0; read < 2; read += 1)
       await expect(h.read(b.headerHash)).rejects.toBeInstanceOf(
@@ -270,14 +302,15 @@ describe("a retained payload against its node's availability commitment", () => 
 
   it("refuses a block that does not open its root only once its node is Attested", async () => {
     const b = await blocks();
-    const h = setup([["s0", b.fraud.bytes]]);
+    const h = await setup(b, [["s0", b.fraud.bytes]]);
     await expect(h.read(b.fraud.headerHash)).rejects.toThrow(
       "is not bound to an attested commitment yet",
     );
     expect(h.refusals).toEqual([]);
     expect(h.releases.size).toBe(1);
     h.node.status = attested(b.fraud.headerHash, b.fraud.bytes);
-    expect(await h.read(b.fraud.headerHash)).toEqual([]);
+    // The unchecked replayed ledger is the honest block's.
+    expect(await rootOf(h.read(b.fraud.headerHash))).toBe(b.header.utxosRoot);
     expect(h.releases.size).toBe(0);
     expect(h.requests).toEqual(["s0", "s0"]);
     expect(h.refusals).toMatchObject([
