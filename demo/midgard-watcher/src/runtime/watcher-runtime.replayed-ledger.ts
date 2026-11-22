@@ -1,10 +1,15 @@
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
+import { createLedgerStore } from "@al-ft/midgard-fault-proofs/ledger-store";
+import { openSqliteLedgerStorage } from "@al-ft/midgard-fault-proofs/ledger-store/sqlite";
 import {
   EVENT_WAIT_DURATION_MS,
   MAX_EVENT_VALIDITY_RANGE_LENGTH_MS,
 } from "@al-ft/midgard-sdk/core";
 
+import { createWatcherReplayLostRoots } from "../fault-proofs/replay-lost-roots.js";
 import { createWatcherReplayRefusals } from "../fault-proofs/replay-refusals.js";
 import {
   createWatcherReplayedLedger,
@@ -23,8 +28,11 @@ import type { WatcherOperationsSink } from "./operations-observability.js";
 
 /**
  * Allocate the origin floor before the follower, then bind its replay facts.
- * A confirmed head that does not open its root raises `root_mismatch` on
- * `operationsSink`.
+ * The deployment's replayed ledgers live in
+ * `replayed-ledger-<manifest id>.sqlite` in the journal directory, open from
+ * `bind` until its `close`. A confirmed head that does not open its root
+ * raises `root_mismatch` on `operationsSink`, and a ledger the store lost
+ * `replayed_ledger_root_lost`.
  */
 export const createWatcherRuntimeReplayHost = (
   deploymentAuthority: VerifiedWatcherDeploymentAuthority,
@@ -41,6 +49,8 @@ export const createWatcherRuntimeReplayHost = (
     maximumProtectionWaitMs: BigInt(
       userEventScripts.maximumProtectionDurationMs,
     ),
+    ledgerRetentionMs: BigInt(MIDGARD_RETENTION_WINDOW.ledgerRetentionMs),
+    maturityMs: BigInt(MIDGARD_RETENTION_WINDOW.maturityMs),
   });
   const identity = {
     deploymentManifestId: deploymentIdentity.manifestId,
@@ -76,16 +86,21 @@ export const createWatcherRuntimeReplayHost = (
           watcherDeploymentProtocolScriptAuthority(deploymentIdentity),
       });
       const refusals = createWatcherReplayRefusals({ sink: operationsSink });
+      mkdirSync(journalDirectory, { recursive: true, mode: 0o700 });
+      const storage = openSqliteLedgerStorage(
+        join(
+          journalDirectory,
+          `replayed-ledger-${deploymentIdentity.manifestId}.sqlite`,
+        ),
+      );
       const keeper = createWatcherReplayedLedger({
         follower: source,
         l1SlotConfig,
-        checkpointPath: join(
-          journalDirectory,
-          `replayed-ledger-${deploymentIdentity.manifestId}.json`,
-        ),
+        store: createLedgerStore(storage),
         availabilityAuthority:
           watcherReplayAvailabilityAuthority(deploymentIdentity),
         refusals,
+        lostRoots: createWatcherReplayLostRoots({ sink: operationsSink }),
       });
       const unregister = registerWatcherDaFetcher(
         deploymentIdentity,
@@ -98,6 +113,7 @@ export const createWatcherRuntimeReplayHost = (
         close: () => {
           unregister();
           source.close();
+          storage.close();
         },
       };
     },

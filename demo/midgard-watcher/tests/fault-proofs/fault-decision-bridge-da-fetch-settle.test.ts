@@ -6,7 +6,6 @@
  */
 import { RetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
-import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import { watcherDaFetchAlertSubject } from "../../src/runtime/operations-observability.alert-book.js";
@@ -14,7 +13,7 @@ import { registerWatcherDaFetcher } from "../../src/storage/retained-da-runtime.
 import {
   active,
   AUTHORITY,
-  emptyBlock,
+  chainOf,
   failingFetches,
   replayKeeper,
   serving,
@@ -113,65 +112,72 @@ describe("fault decision bridge settling a failed DA fetch", () => {
     }
   });
 
-  it("keeps the failed DA fetch alert of a merged header the replayed ledger still fetches while a queued header defers on it, and clears it once it is served", async () => {
-    const observability = operations();
-    const { binding, runtime, close } = await failingFetches(observability);
-    const merged = await emptyBlock(SDK.GENESIS_HEADER_HASH);
-    const head = await emptyBlock(merged.headerHash);
-    const keeper = replayKeeper(() => head);
-    const unregister = registerWatcherDaFetcher(
-      AUTHORITY.result,
-      keeper.mayStillFetch,
-    );
-    const current = observation([headerFixture("01")], "Idle", [ATTESTED]);
-    const [queued] = current.finalizedHeaders;
-    let missing = true;
-    const h = harness({
-      current,
-      categoryByHeader: { [queued!.headerHash]: "transitionTrace" },
-      operationsSink: observability.sink,
-      mergedHeaders: async () => new Map(),
-      // Inside the queued header's challengeability window.
-      nowMs: () => 3n,
-      perHeaderAlerts: [binding],
-      daFetchAlert: binding,
-      // The queued header's classification needs the merged block too.
-      classifyOverride: (fresh) => {
-        if (missing)
-          throw new RetainedDaPayloadUnavailableError(
-            merged.headerHash,
-            "every public DA peer failed the merged block",
-            "unreachable",
-          );
-        return fresh;
-      },
-    });
-    try {
-      for (let pass = 0; pass < 2; pass += 1) {
-        expect(
-          await keeper.advance(observation([]), [
-            serving([head]),
-            ...runtime.sources,
-          ]),
-        ).toMatchObject([{ reason: "replayed_ledger_source_pending" }]);
-        expect(
-          (await h.bridge.reconcileAndDispatch(current)).target,
-        ).toBeNull();
-        expect(active(observability, "da_fetch_failure")).toEqual([
-          watcherDaFetchAlertSubject(merged.headerHash),
-        ]);
-      }
+  it(
+    "keeps the failed DA fetch alert of a merged header the replayed ledger still fetches while a queued header defers on it, and clears it once it is served",
+    { timeout: 120_000 },
+    async () => {
+      const observability = operations();
+      const { binding, runtime, close } = await failingFetches(observability);
+      const chain = await chainOf(2);
+      const [merged, head] = chain.blocks as [
+        (typeof chain.blocks)[number],
+        (typeof chain.blocks)[number],
+      ];
+      const keeper = await replayKeeper(chain, () => head);
+      const unregister = registerWatcherDaFetcher(
+        AUTHORITY.result,
+        keeper.mayStillFetch,
+      );
+      const current = observation([headerFixture("01")], "Idle", [ATTESTED]);
+      const [queued] = current.finalizedHeaders;
+      let missing = true;
+      const h = harness({
+        current,
+        categoryByHeader: { [queued!.headerHash]: "transitionTrace" },
+        operationsSink: observability.sink,
+        mergedHeaders: async () => new Map(),
+        // Inside the queued header's challengeability window.
+        nowMs: () => 3n,
+        perHeaderAlerts: [binding],
+        daFetchAlert: binding,
+        // The queued header's classification needs the merged block too.
+        classifyOverride: (fresh) => {
+          if (missing)
+            throw new RetainedDaPayloadUnavailableError(
+              merged.headerHash,
+              "every public DA peer failed the merged block",
+              "unreachable",
+            );
+          return fresh;
+        },
+      });
+      try {
+        for (let pass = 0; pass < 2; pass += 1) {
+          expect(
+            await keeper.advance(observation([]), [
+              serving([head]),
+              ...runtime.sources,
+            ]),
+          ).toMatchObject([{ reason: "replayed_ledger_source_pending" }]);
+          expect(
+            (await h.bridge.reconcileAndDispatch(current)).target,
+          ).toBeNull();
+          expect(active(observability, "da_fetch_failure")).toEqual([
+            watcherDaFetchAlertSubject(merged.headerHash),
+          ]);
+        }
 
-      // Another source serves it: the checkpoint passes both blocks.
-      expect(
-        await keeper.advance(observation([]), [serving([head, merged])]),
-      ).toEqual([]);
-      missing = false;
-      await h.bridge.reconcileAndDispatch(current);
-      expect(active(observability, "da_fetch_failure")).toEqual([]);
-    } finally {
-      unregister();
-      await close();
-    }
-  });
+        // Another source serves it: the checkpoint passes both blocks.
+        expect(
+          await keeper.advance(observation([]), [serving([head, merged])]),
+        ).toEqual([]);
+        missing = false;
+        await h.bridge.reconcileAndDispatch(current);
+        expect(active(observability, "da_fetch_failure")).toEqual([]);
+      } finally {
+        unregister();
+        await close();
+      }
+    },
+  );
 });

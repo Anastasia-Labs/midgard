@@ -1,7 +1,11 @@
+import { mkdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
+import { createLedgerStore } from "@al-ft/midgard-fault-proofs/ledger-store";
+import { openSqliteLedgerStorage } from "@al-ft/midgard-fault-proofs/ledger-store/sqlite";
 import {
   EVENT_WAIT_DURATION_MS,
   MAX_EVENT_VALIDITY_RANGE_LENGTH_MS,
@@ -62,6 +66,8 @@ export const openJourneyReplayedLedger = async (input: {
     eventWaitMs: BigInt(EVENT_WAIT_DURATION_MS),
     maximumAdmissionRangeMs: MAX_EVENT_VALIDITY_RANGE_LENGTH_MS,
     maximumProtectionWaitMs: BigInt(binding.maximumProtectionDurationMs),
+    ledgerRetentionMs: BigInt(MIDGARD_RETENTION_WINDOW.ledgerRetentionMs),
+    maturityMs: BigInt(MIDGARD_RETENTION_WINDOW.maturityMs),
   });
   const nativeSource = input.watcherConfig.l1.source;
   if (nativeSource.sourceMode !== "local_node")
@@ -114,13 +120,18 @@ export const openJourneyReplayedLedger = async (input: {
     minimumCheckpointDepth,
     observationAuthority: protocolAuthority,
   });
+  // The deployment's replayed ledgers, as the watcher keeps them.
+  mkdirSync(input.checkpointDirectory, { recursive: true, mode: 0o700 });
+  const storage = openSqliteLedgerStorage(
+    join(
+      input.checkpointDirectory,
+      `replayed-ledger-${deploymentIdentity.manifestId}.sqlite`,
+    ),
+  );
   const keeper = createWatcherReplayedLedger({
     follower: source,
     l1SlotConfig: slotConfig,
-    checkpointPath: join(
-      input.checkpointDirectory,
-      `replayed-ledger-${deploymentIdentity.manifestId}.json`,
-    ),
+    store: createLedgerStore(storage),
     availabilityAuthority:
       watcherReplayAvailabilityAuthority(deploymentIdentity),
   });
@@ -133,6 +144,7 @@ export const openJourneyReplayedLedger = async (input: {
   } catch (error) {
     source.close();
     userEvents.close();
+    storage.close();
     await follower.close();
     throw error;
   }
@@ -176,6 +188,7 @@ export const openJourneyReplayedLedger = async (input: {
       lifetime.close(async () => {
         source.close();
         userEvents.close();
+        storage.close();
         const results = await Promise.allSettled([
           da.close(),
           follower.close(),

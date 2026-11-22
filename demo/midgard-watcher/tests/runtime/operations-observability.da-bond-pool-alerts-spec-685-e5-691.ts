@@ -72,6 +72,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
       "da_bond_pool_under_backed",
       "da_bond_pool_withdrawing",
       "fault_detector_failed",
+      "replayed_ledger_root_lost",
       "unproven_fault_merged",
       "validation_trace_replay_stuck",
     ]);

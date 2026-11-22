@@ -1,9 +1,8 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import type { LedgerCheckpoint } from "@al-ft/midgard-fault-proofs/replayed-ledger";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import type { OutRef } from "@al-ft/midgard-l1-follower";
 import {
   SIM_ORIGIN,
@@ -12,7 +11,7 @@ import {
   simUniverse,
 } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk/da";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createWatcherReplayedLedger } from "../../src/fault-proofs/replayed-ledger.js";
 import { readWatcherObservation } from "../../src/l1-follower/observation.js";
@@ -43,11 +42,6 @@ import {
 const CHECKPOINT_DEPTH = RECOVERY_DEPTH + 2;
 
 // Synthetic chain framing and the real follower projection; no Plutus execution.
-const directories: string[] = [];
-afterEach(async () => {
-  for (const directory of directories.splice(0))
-    await rm(directory, { recursive: true, force: true });
-});
 
 /**
  * A store following the deployment (watching its hub-oracle one-shot, as
@@ -64,13 +58,10 @@ const followed = async () => {
   const empty = async (blocks: number) => {
     for (let index = 0; index < blocks; index += 1) await forward();
   };
-  const directory = await mkdtemp(join(tmpdir(), "watcher-preinit-"));
-  directories.push(directory);
   // Genesis's checked ledger releases admissions up to one slot past the
   // origin, so a release is visible as a prune floor above the origin.
   const retention = replayRetention(SIM_ORIGIN.point.slot + 2);
   const source = replaySource(store, CHECKPOINT_DEPTH, retention);
-  let stored: LedgerCheckpoint | undefined;
   // A chain event landing once, right after the keeper's next root read.
   let afterRead: (() => Promise<void>) | undefined;
   const keeper = createWatcherReplayedLedger({
@@ -93,13 +84,7 @@ const followed = async () => {
         maxTrancheCount: 1024,
       }),
     }),
-    checkpointPath: join(directory, "ledger.json"),
-    unsafeCheckpointStoreForTest: {
-      read: async () => stored,
-      write: async (checkpoint) => {
-        stored = checkpoint;
-      },
-    },
+    store: createLedgerStore(createMemoryLedgerStorage()),
   });
   const observe = (depth: number) =>
     readWatcherObservation(store, {
@@ -146,8 +131,6 @@ const followed = async () => {
     source,
     readiness,
     checkpointObservation,
-    /** The ledger checkpoint the keeper persisted, if any. */
-    persisted: () => stored,
     /** The slot the replay retention lets the follower prune up to. */
     pruneFloor: () =>
       store.transaction("read", (tx) =>
@@ -336,15 +319,14 @@ describe("a replay checkpoint deeper than the follower's origin", () => {
         expect(await f.readiness()).toEqual([]);
         await f.empty(1);
       }
-      expect(f.persisted()).toBeUndefined();
       expect(await f.pruneFloor()).toBe(SIM_ORIGIN.point.slot);
       // The init block is now the checkpoint point, above the origin.
       expect(await f.precedesInit(CHECKPOINT_DEPTH)).toBe(false);
       const deep = await f.source.confirmed(await f.checkpointObservation());
       expect(deep.state).toEqual(GENESIS);
       expect(await f.readiness()).toEqual([]);
-      // The checked genesis ledger is persisted, and admissions are released.
-      expect(f.persisted()).toMatchObject({ headerHash: GENESIS.headerHash });
+      // The genesis ledger is checked against the root, and admissions are
+      // released.
       expect(await f.pruneFloor()).toBe(SIM_ORIGIN.point.slot + 1);
     } finally {
       await f.close();

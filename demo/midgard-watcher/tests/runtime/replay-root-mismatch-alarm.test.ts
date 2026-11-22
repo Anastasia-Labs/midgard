@@ -5,19 +5,18 @@
  * and kind, logged once, and listed in `/v1/status`, and `/metrics` serves
  * both to Prometheus.
  */
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import type { LedgerCheckpoint } from "@al-ft/midgard-fault-proofs/replayed-ledger";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createWatcherReplayRefusals } from "../../src/fault-proofs/replay-refusals.js";
 import { createWatcherReplayedLedger } from "../../src/fault-proofs/replayed-ledger.js";
@@ -40,12 +39,6 @@ const availabilityAuthority = () => ({
   }),
 });
 
-const directories: string[] = [];
-afterEach(async () => {
-  for (const directory of directories.splice(0))
-    await rm(directory, { recursive: true, force: true });
-});
-
 const sample = (
   text: string,
   name: string,
@@ -60,8 +53,6 @@ const sample = (
 
 /** A watcher's replay keeper with its refusals wired to operations. */
 const watcher = async (follower: WatcherFollowerReplaySource) => {
-  const directory = await mkdtemp(join(tmpdir(), "watcher-replay-alarm-"));
-  directories.push(directory);
   const logged: Record<string, unknown>[] = [];
   const recorder = createWatcherOperationsSink({
     deploymentFingerprint: MANIFEST,
@@ -72,18 +63,11 @@ const watcher = async (follower: WatcherFollowerReplaySource) => {
     nowMs: () => 100_000,
     log: (line) => logged.push(JSON.parse(line) as Record<string, unknown>),
   });
-  let stored: LedgerCheckpoint | undefined;
   const keeper = createWatcherReplayedLedger({
     follower,
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     availabilityAuthority,
-    checkpointPath: join(directory, "ledger.json"),
-    unsafeCheckpointStoreForTest: {
-      read: async () => stored,
-      write: async (checkpoint) => {
-        stored = checkpoint;
-      },
-    },
+    store: createLedgerStore(createMemoryLedgerStorage()),
     refusals,
   });
   const operations = createWatcherOperationsView(recorder, {
@@ -125,6 +109,8 @@ describe("the replayed ledger's root mismatch alarm", () => {
     const genesisRoot = state.utxoRoot;
     const w = await watcher({
       epoch: () => 0,
+      headerAt: async () => undefined,
+      ledgerWindow: async () => ({ blocks: [], newestRoot: undefined }),
       confirmed: async () => ({ state, current: () => true }),
       materialFor: async () => {
         throw new Error("genesis never needs replay material");
@@ -248,6 +234,8 @@ describe("the replayed ledger's root mismatch alarm", () => {
     });
     const w = await watcher({
       epoch: () => 0,
+      headerAt: async (hash) => (hash === headerHash ? header : undefined),
+      ledgerWindow: async () => ({ blocks: [], newestRoot: undefined }),
       confirmed: async () => ({
         state: SDK.makeGenesisConfirmedState(1000n),
         current: () => true,

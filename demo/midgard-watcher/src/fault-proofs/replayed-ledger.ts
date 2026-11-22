@@ -1,16 +1,14 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
 
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
+import type { LedgerStore } from "@al-ft/midgard-fault-proofs/ledger-store";
 import {
   createReplayedLedger,
-  type LedgerCheckpointStore,
   type ReplayedLedgerRefusal,
+  type ReplayedLedgerSource,
 } from "@al-ft/midgard-fault-proofs/replayed-ledger";
-import { fileLedgerCheckpointStore } from "@al-ft/midgard-fault-proofs/replayed-ledger.checkpoint-file";
 import {
   type RetainedPayloadReleases,
   retainedPayloadReplaySource,
@@ -33,6 +31,7 @@ import { watcherDeploymentProtocolScriptAuthority } from "../runtime/deployment-
 import { watcherDeploymentAvailabilityChallengeAuthority } from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import type { WatcherDecisionReadiness } from "../runtime/watcher-runtime.decision-driver.js";
 import { replayLocalFaultHolds } from "./replay-local-fault-bound.js";
+import type { WatcherReplayLostRoots } from "./replay-lost-roots.js";
 import type {
   WatcherReplayRefusalPhase,
   WatcherReplayRefusals,
@@ -47,8 +46,9 @@ export type WatcherReplayedLedger = Readonly<{
     observation: WatcherAuthenticatedStateQueueObservation,
     sources: readonly RetainedDaPayloadSource[],
   ): Promise<readonly WatcherDecisionReadiness[]>;
-  /** The headers a replay asked a payload for that the checkpoint has not
-   * passed (`registerWatcherDaFetcher`). */
+  /** The headers a replay asked a payload for whose ledger the store has not
+   * been found to hold, while the follower still shows them
+   * (`registerWatcherDaFetcher`). */
   mayStillFetch(): Iterable<string>;
 }>;
 
@@ -76,112 +76,108 @@ export const watcherReplayAvailabilityAuthority =
     ),
   });
 
-/** One keeper per production application, never one per classification. */
+/**
+ * One keeper per production application, never one per classification. The
+ * ledgers live in `store`, named by root; each was checked against its
+ * header's root before it was persisted, so a follower rewind cannot make
+ * one wrong and the keeper outlives it. Only an operation the rewind
+ * interrupts is fenced: it fails with `FraudProofL1CheckpointChangedError`.
+ */
 export const createWatcherReplayedLedger = (
   input: Readonly<{
     follower: WatcherFollowerReplaySource;
     l1SlotConfig: L1SlotConfig;
-    checkpointPath: string;
+    /** The deployment's ledger store (`openSqliteLedgerStorage`). */
+    store: LedgerStore;
     /** The deployment's availability commitment authority. */
     availabilityAuthority: () => SDK.DaPayloadAvailabilityAuthority;
-    unsafeCheckpointStoreForTest?: LedgerCheckpointStore;
     /** The local-fault holds' clock, in ms (default `Date.now`). */
     nowMs?: () => number;
     /** Where the keeper's refusals are recorded (`replay-refusals.ts`). */
     refusals?: WatcherReplayRefusals;
+    /** Where ledgers the store lost are recorded (`replay-lost-roots.ts`). */
+    lostRoots?: WatcherReplayLostRoots;
   }>,
 ): WatcherReplayedLedger => {
-  const checkpoints =
-    input.unsafeCheckpointStoreForTest ??
-    fileLedgerCheckpointStore(input.checkpointPath);
-  // A refusal met while moving the checkpoint to the confirmed head runs in
-  // that advance's async context; any other is a classification's replay.
+  // A refusal met while ensuring the confirmed head's ledger runs in that
+  // advance's async context; any other is a classification's replay.
   const phase = new AsyncLocalStorage<WatcherReplayRefusalPhase>();
-  const refusals = input.refusals;
-  const onRefusal =
-    refusals === undefined
-      ? undefined
-      : (refusal: ReplayedLedgerRefusal) =>
-          refusals.record(refusal, phase.getStore() ?? "classification");
-  const create = () =>
-    createReplayedLedger({
-      checkpoints,
-      ...(onRefusal === undefined ? {} : { onRefusal }),
-    });
-  let epoch = input.follower.epoch();
-  let keeper = create();
-  let restoredKeeper: typeof keeper | undefined;
-  // L1 event IDs do not bind every admission byte. A rewind fences the
-  // ephemeral derivations; only the stable root-checked file survives it.
-  const currentKeeper = () => {
-    if (epoch !== input.follower.epoch()) {
-      epoch = input.follower.epoch();
-      keeper = create();
-    }
-    return keeper;
-  };
+  const { refusals, lostRoots, follower } = input;
+  // The headers a replay asked a payload for. One leaves once its ledger is
+  // found held, or once the follower no longer shows it (a rolled-back
+  // header, or one pruned after it left the window).
+  const asked = new Set<string>();
+  const keeper = createReplayedLedger({
+    store: input.store,
+    ...(refusals === undefined
+      ? {}
+      : {
+          onRefusal: (refusal: ReplayedLedgerRefusal) =>
+            refusals.record(refusal, phase.getStore() ?? "classification"),
+        }),
+    onHeld: (headerHash, root) => {
+      asked.delete(headerHash);
+      lostRoots?.held(root);
+    },
+  });
   // Unbound copies a replay refused, kept across operations so a later fetch
   // asks past the peers that served them.
   const releases: RetainedPayloadReleases = new Map();
   const localFaults = replayLocalFaultHolds(input.nowMs);
-  // The headers a replay asked a payload for that the checkpoint has not
-  // passed, with the parent a served payload names and the checkpoint move
-  // they were last asked at. A move passes the new head and the asked
-  // ancestors linked below it; a header no replay asked for since the move
-  // before (a removed or rolled-back one) is dropped then too.
-  const asked = new Map<string, { move: number; parent?: string }>();
-  let moves = 0;
-  let checkpointHead: string | undefined;
-  const pass = (head: string) => {
-    if (head === checkpointHead) return;
-    checkpointHead = head;
-    for (let cursor: string | undefined = head; cursor !== undefined; ) {
-      const entry = asked.get(cursor);
-      asked.delete(cursor);
-      cursor = entry?.parent;
-    }
-    moves += 1;
-    for (const [headerHash, { move }] of asked)
-      if (move < moves - 1) asked.delete(headerHash);
-  };
   const source = (
     sources: readonly RetainedDaPayloadSource[],
     retries?: number,
-  ) => {
+  ): ReplayedLedgerSource => {
     // Each payload is checked against the availability commitment its
     // block's node carries; one no commitment binds yet only waits.
     const retained = retainedPayloadReplaySource({
       sources,
       ...(retries === undefined ? {} : { retries }),
       availability: {
-        status: input.follower.availabilityStatus,
+        status: follower.availabilityStatus,
         authority: input.availabilityAuthority,
         releases,
       },
     });
     return {
-      payloadAt: async (headerHash: string) => {
-        asked.set(headerHash, { move: moves });
-        const payload = await retained.payloadAt(headerHash);
-        const parent = payload?.block_body.header.prevHeaderHash;
-        if (parent !== undefined)
-          asked.set(headerHash, { move: moves, parent });
-        return payload;
+      headerAt: follower.headerAt,
+      payloadAt: (headerHash) => {
+        asked.add(headerHash);
+        return retained.payloadAt(headerHash);
       },
-      materialFor: input.follower.materialFor,
+      materialFor: follower.materialFor,
       l1SlotConfig: input.l1SlotConfig,
       binding: retained.binding,
     };
   };
+  /** Keeps the window's ledgers and lets go of headers the follower no
+   * longer shows. */
+  const retain = async (confirmedRoot: string) => {
+    const { blocks, newestRoot } = await follower.ledgerWindow();
+    const window = {
+      blocks,
+      newestRoot: newestRoot ?? confirmedRoot,
+      confirmedRoot,
+    };
+    const notHeld = await keeper.retain(window);
+    const kept = new Set([window.newestRoot, confirmedRoot]);
+    for (const block of blocks) {
+      kept.add(block.utxosRoot);
+      kept.add(block.prevUtxosRoot);
+    }
+    lostRoots?.retained(kept, notHeld);
+    for (const headerHash of [...asked])
+      if ((await follower.headerAt(headerHash)) === undefined)
+        asked.delete(headerHash);
+  };
   return {
-    mayStillFetch: () => asked.keys(),
+    mayStillFetch: () => asked.values(),
     ledgerAt: (sources, retries) => {
       const operationSource = source(sources, retries);
       return async (headerHash) => {
-        const before = input.follower.epoch();
-        const entries =
-          await currentKeeper().ledgerAt(operationSource)(headerHash);
-        if (before !== input.follower.epoch())
+        const before = follower.epoch();
+        const entries = await keeper.ledgerAt(operationSource)(headerHash);
+        if (before !== follower.epoch())
           throw new FraudProofL1CheckpointChangedError(
             "the follower changed during ledger replay",
           );
@@ -191,7 +187,7 @@ export const createWatcherReplayedLedger = (
     advance: async (observation, sources) => {
       let head: Readonly<{ headerHash: string; utxosRoot: string }> | undefined;
       try {
-        const confirmed = await input.follower.confirmed(observation);
+        const confirmed = await follower.confirmed(observation);
         if (confirmed.state === null) {
           // The checkpoint point precedes the deployment's protocol init:
           // there is no head to check, and every ledger replays from
@@ -209,30 +205,15 @@ export const createWatcherReplayedLedger = (
         // A head held on a local fault waits out its backoff.
         const waiting = localFaults.pass()(head.headerHash);
         if (waiting !== undefined) return [waiting];
-        const activeKeeper = currentKeeper();
         const confirmedHead = head;
-        if (restoredKeeper !== activeKeeper) {
-          await phase.run("confirmed", () =>
-            activeKeeper.restore(confirmedHead),
-          );
-          restoredKeeper = activeKeeper;
-        }
-        await mkdir(dirname(input.checkpointPath), {
-          recursive: true,
-          mode: 0o700,
-        });
-        if (!confirmed.current())
-          throw new FraudProofL1CheckpointChangedError(
-            "replay checkpoint changed during restore",
-          );
-        const durable = await phase.run("confirmed", () =>
-          activeKeeper.advance(confirmedHead, source(sources)),
+        const held = await phase.run("confirmed", () =>
+          keeper.ensure(confirmedHead, source(sources)),
         );
         if (!confirmed.current())
           throw new FraudProofL1CheckpointChangedError(
-            "replay checkpoint changed during persistence",
+            "replay checkpoint changed while its ledger was derived",
           );
-        if (!durable)
+        if (!held)
           return [
             {
               reason: "replayed_ledger_checkpoint_pending",
@@ -241,8 +222,10 @@ export const createWatcherReplayedLedger = (
           ];
         localFaults.progressed(head.headerHash);
         refusals?.progressed();
-        pass(head.headerHash);
-        input.follower.checkpointDurable(confirmed.state.endTime);
+        // The ledger the head commits is durably held: the follower may
+        // prune the admissions it needed.
+        follower.checkpointDurable(confirmed.state.endTime);
+        await retain(head.utxosRoot);
         return [];
       } catch (error) {
         // This watcher's own replay failed: held under its own reason, and

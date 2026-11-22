@@ -1,7 +1,8 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { openSqliteLedgerStorage } from "@al-ft/midgard-fault-proofs/ledger-store/sqlite";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { state } from "./journey-mocks.js";
@@ -281,7 +282,7 @@ it.each([
   await expect(session.ensureWatcher()).rejects.toThrow("closed");
 });
 
-it("keeps concurrent sessions' real checkpoint writes in separately owned directories", async () => {
+it("keeps concurrent sessions' replayed-ledger stores in separately owned directories", async () => {
   const sessions = await Promise.all([
     openJourneySession(state.runDirectory),
     openJourneySession(state.runDirectory),
@@ -292,19 +293,14 @@ it("keeps concurrent sessions' real checkpoint writes in separately owned direct
     await Promise.all(
       sessions.map((session, i) => session.ledgerAt(hashes[i])),
     );
-    const stored = await Promise.all(
-      state.replayCheckpointDirectories.map(async (directory) =>
-        JSON.parse(
-          await readFile(
-            join(directory, `replayed-ledger-${"ab".repeat(32)}.json`),
-            "utf8",
-          ),
+    // Each session holds its own ledger store open; a second opener of
+    // either is refused.
+    for (const directory of state.replayCheckpointDirectories)
+      expect(() =>
+        openSqliteLedgerStorage(
+          join(directory, `replayed-ledger-${"ab".repeat(32)}.sqlite`),
         ),
-      ),
-    );
-    expect(stored.map((checkpoint) => checkpoint.headerHash).sort()).toEqual(
-      hashes,
-    );
+      ).toThrow("is open in another process");
   } finally {
     await Promise.all(sessions.map((session) => session.close()));
   }
