@@ -15,6 +15,10 @@ import { describe, expect, it } from "vitest";
 
 import { watcherProjection } from "../../src/l1-follower/projection.js";
 import { createWatcherReplayRetention } from "../../src/l1-follower/replay-retention.js";
+import {
+  createWatcherLedgerWindowReader,
+  watcherL1TipTimeMs,
+} from "../../src/l1-follower/replay-source.window.js";
 import { loadWatcherVerifiedDeploymentAuthority } from "../../src/runtime/deployment-authority.js";
 import { createWatcherRuntimeReplayHost } from "../../src/runtime/watcher-runtime.replayed-ledger.js";
 import {
@@ -192,5 +196,112 @@ describe("replay admission retention", () => {
     } finally {
       await store.close();
     }
+  });
+});
+
+describe("the follower's ledger window and tip time", () => {
+  const origin = SIM_ORIGIN.point.slot;
+  // Slot `origin` starts at 1_000_000 ms; one slot is one second.
+  const slotConfig = {
+    zeroTime: 1_000_000,
+    zeroSlot: origin,
+    slotLength: 1000,
+  };
+  const following = async (
+    run: (follow: {
+      store: ReturnType<typeof openStore>;
+      chain: SimChain;
+      forward: (txs: Parameters<SimChain["forward"]>[0]) => Promise<void>;
+    }) => Promise<void>,
+  ) => {
+    const store = openStore(":memory:");
+    try {
+      await store.start();
+      await store.initialize(SIM_ORIGIN);
+      const chain = new SimChain(simUniverse(), SIM_ORIGIN);
+      await run({
+        store,
+        chain,
+        forward: (txs) => applyAll(store, [chain.forward(txs).event]),
+      });
+    } finally {
+      await store.close();
+    }
+  };
+  const reader = (
+    store: ReturnType<typeof openStore>,
+    ledgerRetentionMs = 900_000,
+  ) =>
+    createWatcherLedgerWindowReader({ store, slotConfig, ledgerRetentionMs });
+
+  it("reads no tip time before the follower holds a cursor, then the POSIX time of the cursor's slot", async () => {
+    const store = openStore(":memory:");
+    try {
+      await store.start();
+      expect(await watcherL1TipTimeMs(store, slotConfig)).toBeUndefined();
+      await store.initialize(SIM_ORIGIN);
+      expect(await watcherL1TipTimeMs(store, slotConfig)).toBe(1_000_000);
+      const chain = new SimChain(simUniverse(), SIM_ORIGIN);
+      await applyAll(store, [chain.forward([]).event]);
+      await applyAll(store, [chain.forward([]).event]);
+      expect(chain.tip.point.slot).toBeGreaterThan(origin);
+      expect(await watcherL1TipTimeMs(store, slotConfig)).toBe(
+        1_000_000 + (chain.tip.point.slot - origin) * 1000,
+      );
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("names the open tail block's root as the newest, and none for an empty queue", async () => {
+    await following(async ({ store, chain, forward }) => {
+      const window = reader(store);
+      await forward([initTx(D)]);
+      expect(await window()).toEqual({ blocks: [], newestRoot: undefined });
+      const first = "a1".repeat(32);
+      const second = "b2".repeat(32);
+      // Inside the window: committed at the origin's time.
+      await forward([
+        commitTx(queueState(chain, D)!, D, undefined, {
+          endTime: 1_000_000n,
+          utxosRoot: first,
+        }),
+      ]);
+      expect((await window()).newestRoot).toBe(first);
+      await forward([
+        commitTx(queueState(chain, D)!, D, undefined, {
+          endTime: 1_000_000n,
+          prevUtxosRoot: first,
+          utxosRoot: second,
+        }),
+      ]);
+      const read = await window();
+      expect(read.newestRoot).toBe(second);
+      expect(read.blocks.map(({ utxosRoot }) => utxosRoot).sort()).toEqual([
+        first,
+        second,
+      ]);
+    });
+  });
+
+  it("leaves a block outside the window exactly at tip == block_time + ledger_retention_ms, inside one millisecond before", async () => {
+    await following(async ({ store, chain, forward }) => {
+      await forward([initTx(D)]);
+      // block_time is the header's endTime.
+      const blockTimeMs = 1_000_500;
+      await forward([
+        commitTx(queueState(chain, D)!, D, undefined, {
+          endTime: BigInt(blockTimeMs),
+        }),
+      ]);
+      await forward([]);
+      const tipMs = 1_000_000 + (chain.tip.point.slot - origin) * 1000;
+      const retentionAtTip = tipMs - blockTimeMs;
+      expect(retentionAtTip).toBeGreaterThan(0);
+      expect((await reader(store, retentionAtTip)()).blocks).toEqual([]);
+      expect((await reader(store, retentionAtTip + 1)()).blocks).toHaveLength(
+        1,
+      );
+    });
   });
 });

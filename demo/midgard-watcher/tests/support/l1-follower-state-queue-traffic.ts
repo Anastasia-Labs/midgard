@@ -232,10 +232,14 @@ export const queueState = (
 };
 
 /** The header a CommitBlockHeader append on top of `state` commits. */
-export const commitHeader = (state: QueueState): SDK.Header => ({
+export const commitHeader = (
+  state: QueueState,
+  fields: Partial<SDK.Header> = {},
+): SDK.Header => ({
   ...createSyntheticStateQueueHeader(),
   blockSlot: BigInt(state.length),
   prevHeaderHash: state.tailHeaderHash ?? h28("00"),
+  ...fields,
 });
 
 /**
@@ -246,8 +250,10 @@ export const commitTx = (
   state: QueueState,
   deployment: WatcherProjectionDeployment = SIM_WATCHER_DEPLOYMENT,
   funding?: OutRef,
+  /** Header fields in place of the synthetic header's. */
+  headerFields?: Partial<SDK.Header>,
 ): SimTx => {
-  const header = commitHeader(state);
+  const header = commitHeader(state, headerFields);
   const headerHash = computeHash28(
     Buffer.from(Data.to(header, SDK.Header), "hex"),
   ).toString("hex");
