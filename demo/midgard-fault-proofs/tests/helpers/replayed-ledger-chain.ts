@@ -4,13 +4,14 @@
  * starts above a ledger that holds every seed (`base`), as the ledger after a
  * block no fixture header names. */
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import type * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 
 import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
 import type { ReplayedLedgerSource } from "../../src/replayed-ledger.js";
 import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import { reencodeFixturePayload } from "./canonical-block-evidence-fixture.js";
 import {
   depositSeed,
   plutusExecutionBlockFixture,
@@ -94,6 +95,36 @@ export const replayedLedgerChain = async (
     baseRoot: await ledgerEntriesRoot(base),
     blocks,
     forks: forked,
+  };
+};
+
+/**
+ * `block` committed under a header that differs in `fields`: the same
+ * events under another header hash. With another `utxosRoot` it is a block
+ * whose events do not replay to the root it commits; with another
+ * `prevHeaderHash` it is the same block above another parent. `entries`
+ * stays what its events replay to.
+ */
+export const replayedLedgerChainBlockWith = async (
+  block: ReplayedLedgerChainBlock,
+  fields: Partial<Pick<SDK.Header, "utxosRoot" | "prevHeaderHash">>,
+): Promise<ReplayedLedgerChainBlock> => {
+  const header: SDK.Header = { ...block.header, ...fields };
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const payload: SDKDa.DaPayload = {
+    ...block.payload,
+    block_body: {
+      ...block.payload.block_body,
+      header,
+      header_hash: headerHash,
+    },
+  };
+  return {
+    ...block,
+    headerHash,
+    header,
+    payload,
+    payloadEnvelopeCbor: await reencodeFixturePayload(payload),
   };
 };
 
