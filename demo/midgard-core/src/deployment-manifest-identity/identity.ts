@@ -146,7 +146,12 @@ const exactRoot = (candidate: Record<string, unknown>): void => {
  */
 export const deploymentManifestHubOraclePolicyId = (
   manifest: DeploymentManifest,
-): string => manifest.contracts.hubOracleMint.scriptHash;
+): string => {
+  const hubOracleMint = manifest.contracts.hubOracleMint;
+  if (hubOracleMint === undefined)
+    throw new Error("deployment manifest has no contracts.hubOracleMint");
+  return hubOracleMint.scriptHash;
+};
 
 /**
  * A named network's manifest must carry that network's static mapping; a
