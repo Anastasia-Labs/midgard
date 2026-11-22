@@ -236,7 +236,6 @@ export const createWatcherFollowerReplaySource = (
       assertWatcherStateQueueObservation(observation);
       if (
         closed ||
-        observation.hubOraclePolicyId !== input.identity.hubOraclePolicyId ||
         observation.protocolScriptAuthorityDigest !==
           input.observationAuthority.authorityDigest ||
         observation.stateQueuePolicyId !==

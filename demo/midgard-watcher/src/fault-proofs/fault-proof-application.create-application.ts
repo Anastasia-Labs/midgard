@@ -28,7 +28,10 @@ import {
 import { parseWatcherConfig } from "../runtime/config.parse-watcher-config.js";
 import { assertWatcherVerifiedDeploymentAuthority } from "../runtime/deployment-authority.js";
 import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
-import { watcherDeploymentReleaseFinalityAuthority } from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import {
+  matchesWatcherSignedDeploymentManifest,
+  watcherDeploymentReleaseFinalityAuthority,
+} from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import {
   createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,
@@ -188,8 +191,13 @@ export function createApplication({
               ),
           ),
         );
+      const manifest: unknown = JSON.parse(manifestJson!);
+      if (!matchesWatcherSignedDeploymentManifest(deploymentIdentity, manifest))
+        throw new Error(
+          "classifier manifest differs from the signed deployment manifest",
+        );
       const transitionBinding = await bindFraudProofWorkflowDeployment({
-        manifest: JSON.parse(manifestJson!),
+        manifest,
         blueprintJson: blueprintJson!,
         deploymentInfo: JSON.parse(deploymentInfoJson!),
         category: "transitionTrace",
@@ -197,11 +205,6 @@ export function createApplication({
         proverCredential: "00".repeat(28),
         stepDatumSchemas: TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
       });
-      if (
-        transitionBinding.hubOraclePolicyId !==
-        deploymentIdentity.hubOraclePolicyId
-      )
-        throw new Error("transition trace classifier changed deployment");
       const transitionTraceEventAuthority = createTransitionTraceEventAuthority(
         {
           binding: transitionBinding,
@@ -395,6 +398,11 @@ export function createApplication({
           dependencies.readText(await requireCanonicalFile(path, dependencies)),
         ),
       );
+      const manifest: unknown = JSON.parse(manifestJson!);
+      if (!matchesWatcherSignedDeploymentManifest(deploymentIdentity, manifest))
+        throw new Error(
+          "completed workflow manifest differs from the signed deployment manifest",
+        );
       // The removal must cite the prover's record: the credential a fresh
       // run's terminal names, else (an observed completion) the wallet's key.
       const proverCredential =
@@ -409,7 +417,7 @@ export function createApplication({
           }),
         }).paymentKeyHash;
       const binding = await bindFraudProofTerminalDeployment({
-        manifest: JSON.parse(manifestJson!),
+        manifest,
         blueprintJson: blueprintJson!,
         deploymentInfo: JSON.parse(deploymentJson!),
         category: input.category,
@@ -422,9 +430,8 @@ export function createApplication({
         hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       });
       if (
-        binding.hubOraclePolicyId !== deploymentIdentity.hubOraclePolicyId ||
         workflowJsonDigest(normalizeWorkflowJson(binding.releaseFinality)) !==
-          workflowJsonDigest(normalizeWorkflowJson(finality))
+        workflowJsonDigest(normalizeWorkflowJson(finality))
       )
         throw new Error(
           "completed workflow changed its verified deployment release",

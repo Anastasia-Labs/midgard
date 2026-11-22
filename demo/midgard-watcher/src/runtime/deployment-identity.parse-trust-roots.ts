@@ -321,6 +321,11 @@ export const availabilityChallengeAuthorityByDeploymentIdentity = new WeakMap<
   WatcherDeploymentAvailabilityChallengeAuthority
 >();
 
+export const signedManifestByDeploymentIdentity = new WeakMap<
+  object,
+  DeploymentManifest
+>();
+
 export const USER_EVENT_SIGNED_CONTRACT_NAMES = [
   "hubOracleMint",
   "depositMint",

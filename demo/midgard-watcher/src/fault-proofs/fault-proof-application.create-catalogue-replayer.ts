@@ -26,7 +26,8 @@ import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application
 /**
  * The classifier's replay of every installed category, bound to the loaded
  * deployment: the fabricated-event histories and the slot mapping come from
- * its manifest. `onReplayStuck` is told each time a script re-execution keeps
+ * its manifest, which the caller has already matched to the signed manifest.
+ * `onReplayStuck` is told each time a script re-execution keeps
  * failing the same way. A category whose replay fails in a way a retry would
  * only repeat has its result withheld (`watcherFaultDetectorIsolation`), and
  * `faultDetectorAlert` is raised for it.
@@ -76,14 +77,7 @@ export const createWatcherCatalogueReplayer = async (input: {
     depositBinding.resolvedContracts.contracts.fabricatedDeposit?.history;
   const withdrawalHistory =
     withdrawalBinding.resolvedContracts.contracts.fabricatedWithdrawal?.history;
-  if (
-    depositBinding.hubOraclePolicyId !==
-      input.deploymentIdentity.hubOraclePolicyId ||
-    withdrawalBinding.hubOraclePolicyId !==
-      input.deploymentIdentity.hubOraclePolicyId ||
-    depositHistory === undefined ||
-    withdrawalHistory === undefined
-  )
+  if (depositHistory === undefined || withdrawalHistory === undefined)
     throw new Error("Event replay history differs from the applied deployment");
   const replayer = createCatalogueCompleteCanonicalReplay({
     lucid: input.lucid,

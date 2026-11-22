@@ -1,3 +1,4 @@
+import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { FraudProofReleaseEconomicsAuthority } from "@al-ft/midgard-fault-proofs/workflow/release-economics-policy";
 import type {
   FraudProofReleaseFinalityAuthority,
@@ -14,6 +15,7 @@ import {
   releaseEconomicsAuthorityByDeploymentIdentity,
   releaseFinalityAuthorityByDeploymentIdentity,
   releaseFinalityByDeploymentIdentity,
+  signedManifestByDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
   type WatcherDeploymentAvailabilityChallengeAuthority,
   type WatcherDeploymentProtocolParameterAuthority,
@@ -114,5 +116,23 @@ export const watcherDeploymentReleaseEconomicsAuthority = (
   return (
     releaseEconomicsAuthorityByDeploymentIdentity.get(identity) ??
     fail("invalid_field", "$.verifiedDeploymentIdentity.releaseEconomics")
+  );
+};
+
+/**
+ * Whether a manifest read from another source (a file, a saved release) has
+ * exactly the content the release signature covers.
+ */
+export const matchesWatcherSignedDeploymentManifest = (
+  identity: VerifiedWatcherDeploymentIdentity,
+  manifest: unknown,
+): boolean => {
+  assertVerifiedWatcherDeploymentIdentity(identity);
+  const signed =
+    signedManifestByDeploymentIdentity.get(identity) ??
+    fail("invalid_field", "$.verifiedDeploymentIdentity.manifest");
+  return (
+    computeDeploymentManifestJsonDigest(manifest) ===
+    computeDeploymentManifestJsonDigest(signed)
   );
 };

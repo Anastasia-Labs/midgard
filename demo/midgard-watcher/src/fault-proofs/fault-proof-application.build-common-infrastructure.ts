@@ -16,7 +16,10 @@ import {
 
 import type { WatcherConfig } from "../runtime/config.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
-import { watcherDeploymentAppliedScriptHashes } from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import {
+  matchesWatcherSignedDeploymentManifest,
+  watcherDeploymentAppliedScriptHashes,
+} from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import type { WatcherWorkflowInfrastructure } from "../storage/retained-da-runtime.js";
 import {
   bindWatcherDeploymentAuthority,
@@ -162,6 +165,15 @@ export const buildCommonInfrastructure = async ({
       label: "watcher prover wallet",
     }),
   ]);
+  if (
+    !matchesWatcherSignedDeploymentManifest(
+      deploymentIdentity,
+      binding.manifest,
+    )
+  )
+    throw new Error(
+      "fault-proof runtime manifest differs from the signed deployment manifest",
+    );
   const keySigner = dependencies.resolveSigner({
     network: watcherConfig.targetNetwork,
     secret: proverSecret,

@@ -45,9 +45,10 @@ const release = async () => {
     signingKey: KeyObject,
     existingAuthority: WatcherExistingAuthorityPolicy,
     programCommitments: Readonly<Record<string, string>> = PROGRAM_COMMITMENTS,
+    requested: unknown = manifest,
   ) =>
     authorWatcherDeploymentRelease({
-      manifest,
+      manifest: requested,
       blueprintJson: BLUEPRINT_JSON,
       programCommitments,
       fundingProfiles: [],
@@ -103,6 +104,21 @@ describe("watcher deployment release authoring", () => {
       author(signingKey, "replace", {
         "computation-thread-policy-v1": "ff".repeat(32),
       }),
+    ).rejects.toThrow("Saved watcher authority differs");
+    expect(writes).toEqual([]);
+    expect(await readFile(paths.authority, "utf8")).toBe(saved);
+  });
+
+  it("refuses to reuse a saved authority for a manifest that differs in one field under the same hub-oracle policy id", async () => {
+    const { paths, writes, author } = await release();
+    const signingKey = key();
+    await author(signingKey, "refuse");
+    const saved = await readFile(paths.authority, "utf8");
+    const requested = { ...manifest, updatedAt: "2026-07-29T00:00:00.000Z" };
+
+    writes.length = 0;
+    await expect(
+      author(signingKey, "refuse", PROGRAM_COMMITMENTS, requested),
     ).rejects.toThrow("Saved watcher authority differs");
     expect(writes).toEqual([]);
     expect(await readFile(paths.authority, "utf8")).toBe(saved);

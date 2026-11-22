@@ -33,6 +33,7 @@ import {
 import { loadWatcherVerifiedDeploymentAuthority } from "./deployment-authority.js";
 import type { WatcherDeploymentIdentityPolicy } from "./deployment-identity.catalogue-category-to-contract.js";
 import { makeWatcherDeploymentIdentitySignaturePayload } from "./deployment-identity.parse-policy.js";
+import { matchesWatcherSignedDeploymentManifest } from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import { verifyDeploymentReleaseParameterRegistry } from "./deployment-release-parameter-registry.js";
 
 /** Where a release's artifacts live; the watcher process config names them. */
@@ -240,8 +241,7 @@ export const authorWatcherDeploymentRelease = async ({
     });
     const identity = deploymentAuthority.deploymentIdentity;
     if (
-      identity.hubOraclePolicyId !==
-        deploymentManifestHubOraclePolicyId(manifest) ||
+      !matchesWatcherSignedDeploymentManifest(identity, manifest) ||
       identity.blueprintHash !== blueprintHash ||
       identity.ruleBundleCommitment !== ruleBundleCommitment ||
       identity.fundingProfileBundleDigest !==
