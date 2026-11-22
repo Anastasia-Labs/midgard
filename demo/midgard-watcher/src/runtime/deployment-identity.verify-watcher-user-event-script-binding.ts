@@ -51,7 +51,7 @@ type UserEventScriptIdentity = Readonly<{
 }>;
 
 type WatcherUserEventScriptBindingDescription = Readonly<{
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   blueprintHash: string;
   blueprintSha256: string;
   network: VerifiedWatcherDeploymentIdentity["network"];
@@ -262,7 +262,7 @@ export const verifyWatcherUserEventScriptBinding = (input: {
       ).to_hex(),
     });
   const description: WatcherUserEventScriptBindingDescription = Object.freeze({
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     blueprintHash: deploymentIdentity.blueprintHash,
     blueprintSha256: signed.blueprintSha256,
     maximumProtectionDurationMs: [

@@ -38,7 +38,7 @@ const healthy = (
   const content = {
     schemaVersion: "midgard-production-header-decision-v1" as const,
     classifierVersion: "midgard-production-header-classifier-v1" as const,
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     headerHash,
     authenticatedObservationDigest,
     payloadEnvelopeSha256: "26".repeat(32),
@@ -93,7 +93,7 @@ describe("fault decision bridge durable evidence", () => {
     directories.push(root);
     const journal = await unsafeOpenWatcherFaultDecisionJournalForTest({
       directory: root,
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
       authenticationKey: TEST_JOURNAL_KEY,
     });

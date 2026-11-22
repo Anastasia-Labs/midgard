@@ -30,7 +30,7 @@ export const io = { ...availabilityFollowerIo(), snapshot: sdk.snapshot };
 export const l1 = availabilityFollowerL1(io);
 
 export const identity = {
-  manifestId: "11".repeat(32),
+  hubOraclePolicyId: "11".repeat(28),
   blueprintHash: "22".repeat(32),
 } as VerifiedWatcherDeploymentIdentity;
 export const deployment = {
@@ -42,7 +42,7 @@ export const deployment = {
   },
 } as SDK.DaAvailabilityDeployment;
 export const observation = {
-  deploymentIdentityDigest: identity.manifestId,
+  hubOraclePolicyId: identity.hubOraclePolicyId,
   observationDigest: "point",
   nativePoint: {
     blockNo: "7",

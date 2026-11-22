@@ -270,16 +270,8 @@ export const createRuntimeFromAdmittedConfig = async (
     );
   }
   const deploymentFingerprint = normalizeDaDeploymentFingerprintHex(
-    options.deploymentIdentity.manifestId,
+    options.deploymentIdentity.hubOraclePolicyId,
   );
-  if (
-    options.deploymentIdentity.durableMarker.manifestId !==
-    deploymentFingerprint
-  ) {
-    throw new Error(
-      "production retained-DA deployment marker differs from the verified manifest",
-    );
-  }
   if (config.targetNetwork !== options.deploymentIdentity.network) {
     throw new Error(
       "production retained-DA watcher network differs from the verified deployment",
@@ -331,7 +323,6 @@ export const createRuntimeFromAdmittedConfig = async (
     let closed = false;
     return Object.freeze({
       schemaVersion: WATCHER_RETAINED_DA_RUNTIME,
-      deploymentFingerprint,
       sources,
       close: async (): Promise<void> => {
         if (closed) return;

@@ -23,7 +23,7 @@ export type WatcherBlockCheckpoints =
   | Readonly<{ kind: "beyond_retention"; prunedThroughSlot: number }>;
 
 export type CheckpointReadOptions = Readonly<{
-  deploymentIdentityDigest: string;
+  hubOraclePolicyId: string;
   stateQueuePolicyId: string;
   finalityDepth: number;
   /** The store cursor's `prunedThroughSlot`. */
@@ -133,7 +133,7 @@ const checkpointsOf = (
       row.transition as string,
     ) as WatcherQueueTransition;
     const checkpoint = SDK.deriveStateQueueAuthenticatedReplayCheckpoint({
-      deploymentIdentityDigest: options.deploymentIdentityDigest,
+      hubOraclePolicyId: options.hubOraclePolicyId,
       stateQueuePolicyId: options.stateQueuePolicyId,
       transactionHash: stored.transactionHash,
       blockHash: point.blockHash,

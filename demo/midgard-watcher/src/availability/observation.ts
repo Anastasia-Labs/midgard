@@ -64,7 +64,7 @@ export const createWatcherAvailabilityObservation = (input: {
   ): Promise<T> => {
     assertWatcherStateQueueObservation(observation);
     if (
-      observation.deploymentIdentityDigest !== input.identity.manifestId ||
+      observation.hubOraclePolicyId !== input.identity.hubOraclePolicyId ||
       BigInt(observation.nativePoint.finalityDepth) < BigInt(confirmationDepth)
     ) {
       throw new Error(

@@ -40,7 +40,7 @@ const name = (target: WatcherProofRetentionTarget) =>
 /** An authority over one live fault, with a retention that records pins. */
 const setup = async () => {
   const fixture = await setupClassifiedFaultFixture();
-  const deploymentFingerprint = deploymentIdentity.manifestId;
+  const hubOraclePolicyId = deploymentIdentity.hubOraclePolicyId;
   const pinned = new Set<string>();
   const retention: WatcherProofRetention = {
     ...storelessProofRetention,
@@ -49,7 +49,7 @@ const setup = async () => {
   };
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot: fixture.journalRoot,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     categories: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
     retention,
@@ -73,7 +73,7 @@ const setup = async () => {
    * live fault. */
   const admit = (revision: number, headerQueued: boolean) => {
     const observation = progressObservation({
-      deploymentFingerprint,
+      hubOraclePolicyId,
       revision,
       ...(headerQueued
         ? {
@@ -116,7 +116,7 @@ const setup = async () => {
   const queueJob = async () => {
     const queue = await openWatcherFaultProofQueueJournal({
       journalRoot: fixture.journalRoot,
-      deploymentFingerprint,
+      hubOraclePolicyId,
       authenticationKey: TEST_JOURNAL_KEY,
     });
     const identity = {
@@ -126,7 +126,7 @@ const setup = async () => {
     };
     await queue.register(identity, "1");
     const digest = watcherFaultProofQueueIdentityDigest({
-      deploymentFingerprint,
+      hubOraclePolicyId,
       identity,
     });
     return {

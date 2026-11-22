@@ -97,7 +97,7 @@ export const prepareWatcherRuntimeWorkflows = async (
         await retryL1Read(() =>
           faultProofApplication.assertStartupReady({
             category,
-            deploymentFingerprint: deploymentIdentity.manifestId,
+            hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
             headerHash: WATCHER_STARTUP_READINESS_HEADER_HASH,
           }),
         ),

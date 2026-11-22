@@ -6,7 +6,7 @@ import {
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  makeDeploymentMarker,
+  deploymentManifestHubOraclePolicyId,
   parseDeploymentManifestEconomics,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -217,7 +217,7 @@ export const authorWatcherDeploymentRelease = async ({
     throw new Error("Deployment manifest has no fraud-proof catalogue");
   const rules = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
-      manifestId: manifest.manifestId,
+      hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
       network: manifest.network,
       blueprintHash,
       l1SlotConfig: manifest.l1SlotConfig,
@@ -240,7 +240,8 @@ export const authorWatcherDeploymentRelease = async ({
     });
     const identity = deploymentAuthority.deploymentIdentity;
     if (
-      identity.manifestId !== manifest.manifestId ||
+      identity.hubOraclePolicyId !==
+        deploymentManifestHubOraclePolicyId(manifest) ||
       identity.blueprintHash !== blueprintHash ||
       identity.ruleBundleCommitment !== ruleBundleCommitment ||
       identity.fundingProfileBundleDigest !==
@@ -321,7 +322,7 @@ export const authorWatcherDeploymentRelease = async ({
       signature: sign(
         null,
         makeWatcherDeploymentIdentitySignaturePayload(
-          manifest.manifestId,
+          manifest,
           releaseBindings,
         ),
         signingKey,
@@ -385,7 +386,6 @@ export const authorWatcherDeploymentRelease = async ({
       signedIdentity,
       policy,
       trustRoots: [{ trustRootId, publicKeySpkiDerHex }],
-      durableMarker: makeDeploymentMarker(manifest.manifestId),
     }),
   );
   return reopen();

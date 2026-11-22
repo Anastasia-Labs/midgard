@@ -69,7 +69,7 @@ describe("watcher rule bundle L1 slot mapping", () => {
     expect(() =>
       makeWatcherCanonicalRuleBundle({
         constructionIdentity: {
-          manifestId: h32("1"),
+          hubOraclePolicyId: "11".repeat(28),
           network: "Preprod",
           blueprintHash: h32("2"),
           l1SlotConfig: DEVNET,

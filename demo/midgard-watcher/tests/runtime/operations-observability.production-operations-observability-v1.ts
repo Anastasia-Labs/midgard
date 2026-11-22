@@ -12,7 +12,7 @@ describe("production operations observability V1", () => {
     let monotonic = 1000;
     let queuedAt = "99000";
     const observability = createWatcherOperationsObservability({
-      deploymentFingerprint: "11".repeat(32),
+      hubOraclePolicyId: "11".repeat(28),
       supervisor: supervisor().runtime,
       launchScopeStatus: () => ({
         installedCategoryCount: 54,
@@ -98,7 +98,7 @@ describe("production operations observability V1", () => {
     const proofSupervisor = supervisor();
     let now = 100_000n;
     const observability = createWatcherOperationsObservability({
-      deploymentFingerprint: "11".repeat(32),
+      hubOraclePolicyId: "11".repeat(28),
       supervisor: proofSupervisor.runtime,
       launchScopeStatus: () => ({
         installedCategoryCount: 32,
@@ -265,7 +265,7 @@ describe("production operations observability V1", () => {
   it("rejects unbounded pages and secret-shaped diagnostic labels", () => {
     const proofSupervisor = supervisor();
     const observability = createWatcherOperationsObservability({
-      deploymentFingerprint: "11".repeat(32),
+      hubOraclePolicyId: "11".repeat(28),
       supervisor: proofSupervisor.runtime,
       launchScopeStatus: () => ({
         installedCategoryCount: 31,
@@ -318,7 +318,7 @@ describe("production operations observability V1", () => {
     ).not.toThrow();
     expect(() =>
       createWatcherOperationsObservability({
-        deploymentFingerprint: "11".repeat(32),
+        hubOraclePolicyId: "11".repeat(28),
         supervisor: proofSupervisor.runtime,
         launchScopeStatus: () => ({
           installedCategoryCount: 32,
@@ -341,7 +341,7 @@ describe("production operations observability V1", () => {
       >[0]["retainedDaTransportStatus"],
     ) =>
       createWatcherOperationsObservability({
-        deploymentFingerprint: "11".repeat(32),
+        hubOraclePolicyId: "11".repeat(28),
         supervisor: supervisor().runtime,
         launchScopeStatus: () => ({
           installedCategoryCount: 32,
@@ -385,7 +385,7 @@ describe("production operations observability V1", () => {
   it("names objective cleanup failures and start-deadline holds on readiness, and clears them once settled", () => {
     const proofSupervisor = supervisor();
     const observability = createWatcherOperationsObservability({
-      deploymentFingerprint: "11".repeat(32),
+      hubOraclePolicyId: "11".repeat(28),
       supervisor: proofSupervisor.runtime,
       launchScopeStatus: () => ({
         installedCategoryCount: 32,

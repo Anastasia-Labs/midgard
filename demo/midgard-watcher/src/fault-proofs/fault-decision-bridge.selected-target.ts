@@ -93,7 +93,7 @@ export type WatcherFaultDecisionBridge = Readonly<{
 
 export type BridgeApplication = Pick<
   WatcherFaultProofApplication,
-  "classifyHeader" | "deploymentFingerprint" | "installedCategories"
+  "classifyHeader" | "hubOraclePolicyId" | "installedCategories"
 >;
 
 export type WatcherUnverifiedHeaderWarning = Readonly<{
@@ -474,7 +474,7 @@ export const preservesObservationAuthority = (
   return (
     (samePoint || forwardPoint) &&
     BigInt(current.finalityDepth) >= BigInt(prior.finalityDepth) &&
-    previous.deploymentIdentityDigest === candidate.deploymentIdentityDigest &&
+    previous.hubOraclePolicyId === candidate.hubOraclePolicyId &&
     previous.protocolScriptAuthorityDigest ===
       candidate.protocolScriptAuthorityDigest &&
     previous.sourceId === candidate.sourceId &&

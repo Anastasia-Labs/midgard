@@ -48,7 +48,7 @@ vi.mock("../../src/fault-proofs/fault-decision-journal.js", () => ({
   }),
 }));
 
-const deploymentFingerprint = "ab".repeat(32);
+const hubOraclePolicyId = "ab".repeat(28);
 /** The deployment's k comes from the follower behind the retention. */
 const K = storelessProofRetention.securityParameter;
 const BEYOND_RECOVERY = K + 1;
@@ -102,7 +102,7 @@ const restartOver = async (count: number, state: Seeded) => {
   closeWatcherJournalDatabase(journalRoot);
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     categories: ["doubleSpend"],
     authenticationKey: TEST_JOURNAL_KEY,
     retention: storelessProofRetention,
@@ -117,7 +117,7 @@ const restartOver = async (count: number, state: Seeded) => {
       }),
     admit: () =>
       authority.admit({
-        observation: progressObservation({ deploymentFingerprint }),
+        observation: progressObservation({ hubOraclePolicyId }),
         rollbackGeneration: "0",
       }),
   };

@@ -5,11 +5,11 @@ import { WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX } from "../l1-follower/fault-proof
  * byte-identical to the earlier source so persisted records still match.
  */
 export const watcherObservationSourceId = (
-  manifestId: string,
+  hubOraclePolicyId: string,
   authorityNodeId: string,
 ): string =>
   `${WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX}${[
     "watcher-native-crosscheck",
-    manifestId,
+    hubOraclePolicyId,
     authorityNodeId,
   ].join("/")}`;

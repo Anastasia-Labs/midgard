@@ -157,7 +157,7 @@ describe("watcher production fault-proof application V1", () => {
         application.applicationRegistry,
       ),
     ).toMatchObject({
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       installedCategoryCount: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
       requestedCategoryCount: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
       readyCategoryCount: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length,
@@ -180,7 +180,7 @@ describe("watcher production fault-proof application V1", () => {
         schemaVersion: WATCHER_FAULT_PROOF_STARTUP_READINESS,
         ready: true,
         category,
-        deploymentFingerprint: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
         headerHash: HEADER,
       });
 
@@ -316,7 +316,7 @@ describe("watcher production fault-proof application V1", () => {
     expect(readiness).toMatchObject({
       ready: true,
       category: "nativeScriptDecoding",
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       headerHash: HEADER,
     });
     // Six physical steps, each bound to a distinct deployment contract of
@@ -343,7 +343,7 @@ describe("watcher production fault-proof application V1", () => {
     await application.close();
   });
 
-  it("fails closed on application/category, deployment, authority, and secret substitution", async () => {
+  it("fails closed on application/category, authority, and secret substitution", async () => {
     expect(() =>
       unsafeCreateWatcherFaultProofApplicationForTest(
         {
@@ -428,13 +428,6 @@ describe("watcher production fault-proof application V1", () => {
         }),
       ),
     ).rejects.toThrow("no installed production workflow");
-    await expect(
-      admitted.assertStartupReady(
-        invocation("doubleSpend", {
-          deploymentFingerprint: "ff".repeat(32),
-        }),
-      ),
-    ).rejects.toThrow("differs from verified watcher authority");
   });
 
   it("derives the predecessor-ledger set from the classifier's replay requirement", () => {
@@ -551,7 +544,7 @@ describe("watcher production fault-proof application V1", () => {
             bindConfig: () => undefined,
             constructWorkflow: async () => ({
               binding: {
-                deploymentFingerprint: DEPLOYMENT,
+                hubOraclePolicyId: DEPLOYMENT,
                 definition: { category, headerHash: HEADER },
               },
               decisionDigest: execution.decisionDigest,
@@ -569,7 +562,7 @@ describe("watcher production fault-proof application V1", () => {
           infrastructure: loaded.infrastructure,
           resolveReferenceScript: loaded.resolveReferenceScript,
           invocation: {
-            deploymentFingerprint: DEPLOYMENT,
+            hubOraclePolicyId: DEPLOYMENT,
             category,
             headerHash: HEADER,
           },

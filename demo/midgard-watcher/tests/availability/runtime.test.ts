@@ -77,7 +77,7 @@ vi.mock("../../src/availability/published-payload.js", () => ({
 const observation = (slot: number) =>
   ({
     observationDigest: String(slot),
-    deploymentIdentityDigest: "deployment",
+    hubOraclePolicyId: "deployment",
     nativePoint: {
       slot: String(slot),
       blockNo: String(slot),
@@ -105,7 +105,7 @@ const fixture = (
     } as unknown as WatcherProcessConfig,
     identity: {
       network: "Custom",
-      manifestId: "deployment",
+      hubOraclePolicyId: "deployment",
     } as VerifiedWatcherDeploymentIdentity,
     l1: {
       reads: {},
@@ -397,11 +397,11 @@ it("projects pending availability onto current inclusion without changing finali
   await expect(
     runtime.pendingAvailabilityHeaders(observation(3)),
   ).rejects.toThrow("current authenticated observation");
-  included = { ...included, deploymentIdentityDigest: "another-deployment" };
+  included = { ...included, hubOraclePolicyId: "another-deployment" };
   await expect(runtime.pendingAvailabilityHeaders(included)).rejects.toThrow(
     "current authenticated observation",
   );
-  included = { ...included, deploymentIdentityDigest: "deployment" };
+  included = { ...included, hubOraclePolicyId: "deployment" };
   runtime.invalidateForRollback();
   await expect(runtime.pendingAvailabilityHeaders(included)).rejects.toThrow(
     "current authenticated observation",

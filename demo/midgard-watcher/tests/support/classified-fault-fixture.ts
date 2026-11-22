@@ -89,7 +89,7 @@ export const classifiedDoubleSpend = async ({
   });
   const observation = authenticatedHeaderObservation(fixture);
   const classifier = await createHeaderClassifier({
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority: finality,
   });
@@ -130,7 +130,7 @@ export const setupClassifiedFaultFixture = async (
     await classifiedDoubleSpend(options);
   const decisionJournal = await openWatcherFaultDecisionJournal({
     directory: journalRoot,
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     launchScope: installedLaunchScope(old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
   });

@@ -19,7 +19,7 @@ import {
 } from "../support/watcher-journal-fixture.js";
 
 const directories: string[] = [];
-const DEPLOYMENT_FINGERPRINT = "dd".repeat(32);
+const HUB_ORACLE_POLICY_ID = "dd".repeat(28);
 const latestSafeStartOffsetMs =
   MIDGARD_RETENTION_WINDOW.maturityMs -
   MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs;
@@ -71,7 +71,7 @@ describe("production fault-proof supervisor", () => {
     const supervisor = createWatcherFaultProofSupervisor({
       proofRetention: storelessProofRetention,
       journalRoot: root,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: Uint8Array.from({ length: 32 }, () => 0xa5),
@@ -98,7 +98,7 @@ describe("production fault-proof supervisor", () => {
     ]);
     await supervisor.requestProgress({
       observation: progressObservation({
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       }),
       rollbackGeneration: "0",
     });
@@ -115,7 +115,7 @@ describe("production fault-proof supervisor", () => {
     const observed: string[] = [];
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       run: async (job) => {
         observed.push(`${job.mode}:${job.category}:${job.headerHash}`);
         return job.headerHash;
@@ -145,7 +145,7 @@ describe("production fault-proof supervisor", () => {
     });
     const unknown = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: unknownRoot,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       run: async () => undefined,
     });
     await expect(unknown.recoverExisting(null)).rejects.toThrow(
@@ -159,7 +159,7 @@ describe("production fault-proof supervisor", () => {
     });
     const malformed = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: malformedRoot,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       run: async () => undefined,
     });
     await expect(malformed.recoverExisting(null)).rejects.toThrow(
@@ -173,7 +173,7 @@ describe("production fault-proof supervisor", () => {
     const starts: WatcherFaultProofJob[] = [];
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       run: async (job) => {
         starts.push(job);
         return starts.length === 1 ? await first.promise : job.headerHash;
@@ -232,7 +232,7 @@ describe("production fault-proof supervisor", () => {
     const gate = deferred<string>();
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       run: async () => await gate.promise,
     });
     await supervisor.recoverExisting(null);
@@ -268,7 +268,7 @@ describe("production fault-proof supervisor", () => {
     const starts: WatcherFaultProofJob[] = [];
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       run: async (job) => {
         starts.push(job);
         return starts.length === 1 ? await active.promise : "second";
@@ -313,7 +313,7 @@ describe("production fault-proof supervisor", () => {
     let calls = 0;
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       unsafeIsActuationRevokedErrorForTest: (
         error,
       ): error is WorkflowActuationRevokedError => error === revoked,
@@ -357,7 +357,7 @@ describe("production fault-proof supervisor", () => {
     let calls = 0;
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       run: async () => {
         calls += 1;
         await gate.promise;
@@ -420,7 +420,7 @@ describe("production fault-proof supervisor", () => {
     const ran: string[] = [];
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       run: async ({ category }) => {
         ran.push(category);
         if (category === "doubleSpend")
@@ -465,7 +465,7 @@ describe("production fault-proof supervisor", () => {
     const starts: string[] = [];
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       unsafeNowMsForTest: () => 1_000,
       run: async (job) => {
         starts.push(job.headerHash);
@@ -511,7 +511,7 @@ describe("production fault-proof supervisor", () => {
     let nowMs = 1_000;
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
       deadlineAlertHeadroomMs: 1_000,
       unsafeNowMsForTest: () => nowMs,
       run: async (job) => {
@@ -562,7 +562,7 @@ describe("production fault-proof supervisor", () => {
     const create = () =>
       unsafeCreateWatcherFaultProofSupervisorForTest({
         journalRoot: root,
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
         deadlineAlertHeadroomMs: 1_000,
         unsafeNowMsForTest: () => nowMs,
         run: async (job) => {

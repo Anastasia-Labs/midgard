@@ -40,7 +40,7 @@ export const replaySource = (
   createWatcherFollowerReplaySource({
     store,
     identity: {
-      deploymentManifestId: AUTHORITY.deploymentFingerprint,
+      hubOraclePolicyId: D.hubOracleMint,
       blueprintHash: "00".repeat(32),
       network: "Preprod",
     },
@@ -51,7 +51,7 @@ export const replaySource = (
       forcedOrderAddressHex: "70" + "04".repeat(28),
     },
     userEvents: {
-      deploymentManifestId: AUTHORITY.deploymentFingerprint,
+      hubOraclePolicyId: D.hubOracleMint,
       blueprintHash: "00".repeat(32),
       eventAuthority: async () => {
         throw new Error("checkpoint read does not read events");

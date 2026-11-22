@@ -240,7 +240,7 @@ const captureOnce = async (
     throw chainMoved("the follower rolled back during the snapshot capture");
   const value = {
     schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
-    deploymentIdentityDigest: request.deploymentIdentityDigest,
+    hubOraclePolicyId: request.hubOraclePolicyId,
     blueprintHash: request.blueprintHash,
     finalityPolicyDigest: request.finalityPolicyDigest,
     headerHash: request.headerHash,
@@ -261,7 +261,7 @@ const captureOnce = async (
       tip,
       confirmationDepth: view.height - boundary.height + 1,
       rollbackCursor: computeFraudProofRawL1RollbackCursor({
-        deploymentIdentityDigest: request.deploymentIdentityDigest,
+        hubOraclePolicyId: request.hubOraclePolicyId,
         blueprintHash: request.blueprintHash,
         finalityPolicyDigest: request.finalityPolicyDigest,
         sourceId,

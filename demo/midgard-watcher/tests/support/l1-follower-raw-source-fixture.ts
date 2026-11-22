@@ -39,7 +39,7 @@ const POLICY = {
 
 export const RELEASE: VerifiedFraudProofReleaseFinalityPolicy = {
   schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  deploymentIdentityDigest: "d1".repeat(32),
+  hubOraclePolicyId: "d1".repeat(28),
   blueprintHash: "b1".repeat(32),
   policyDigest: computeFraudProofReleaseFinalityPolicyDigest(POLICY),
   policy: POLICY,
@@ -59,7 +59,7 @@ export const requestFor = (
   header: string,
   overrides: Partial<FraudProofRawL1SnapshotRequest> = {},
 ): FraudProofRawL1SnapshotRequest => ({
-  deploymentIdentityDigest: RELEASE.deploymentIdentityDigest,
+  hubOraclePolicyId: RELEASE.hubOraclePolicyId,
   blueprintHash: RELEASE.blueprintHash,
   finalityPolicyDigest: RELEASE.policyDigest,
   headerHash: header,

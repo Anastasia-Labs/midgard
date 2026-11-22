@@ -6,7 +6,7 @@ import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.cano
 
 /** Canonical test observation admitted through the real persisted-data parser. */
 export const progressObservation = (input: {
-  deploymentFingerprint: string;
+  hubOraclePolicyId: string;
   header?: { header: Header; headerHash: string };
   /** Several finalized headers, in queue order, in place of `header`. */
   headers?: readonly { header: Header; headerHash: string }[];
@@ -51,10 +51,9 @@ export const progressObservation = (input: {
   }));
   const value = {
     schemaVersion: "midgard-watcher-production-state-queue-observation-v1",
-    deploymentIdentityDigest: input.deploymentFingerprint,
+    hubOraclePolicyId: input.hubOraclePolicyId,
     protocolScriptAuthorityDigest: "45".repeat(32),
     stateQueuePolicyId: "46".repeat(28),
-    hubOraclePolicyId: "47".repeat(28),
     nativePoint: point,
     sourceId: "local-kupmios:test",
     previousObservationDigest: null,

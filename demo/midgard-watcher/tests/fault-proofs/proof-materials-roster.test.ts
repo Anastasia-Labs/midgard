@@ -106,14 +106,14 @@ describe("proof-materials first pass and roster", () => {
 describe("proof-materials needs of an objective whose header leaves the queue", () => {
   it("releases the needs of an objective whose workflow has not ended, and its materials become sweepable", async () => {
     const fixture = await setupClassifiedFaultFixture();
-    const deploymentFingerprint = deploymentIdentity.manifestId;
+    const hubOraclePolicyId = deploymentIdentity.hubOraclePolicyId;
     const chain = [material("c1"), material("c2", "d87a80")];
     const views = viewsOver(chain);
     const view = views.viewFor(ADDRESS);
     views.passAtTip(() => true);
     const authority = createWatcherFaultProofProgressAuthority({
       journalRoot: fixture.journalRoot,
-      deploymentFingerprint,
+      hubOraclePolicyId,
       categories: installedLaunchScope(fixture.old.launchScope),
       authenticationKey: TEST_JOURNAL_KEY,
       retention: storelessProofRetention,
@@ -127,7 +127,7 @@ describe("proof-materials needs of an objective whose header leaves the queue", 
      * live fault. */
     const admit = (revision: number, headerQueued: boolean) => {
       const observation = progressObservation({
-        deploymentFingerprint,
+        hubOraclePolicyId,
         revision,
         ...(headerQueued ? { header: fixture.fixture } : {}),
       });

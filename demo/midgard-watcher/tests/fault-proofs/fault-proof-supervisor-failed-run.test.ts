@@ -70,7 +70,7 @@ const classifyDoubleSpend = async () => {
     confirmationDepth: 30,
   };
   const classifier = await createHeaderClassifier({
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority:
       watcherDeploymentReleaseFinalityAuthority(deploymentIdentity),
@@ -112,7 +112,7 @@ const createProcess = (
 ) =>
   unsafeCreateWatcherFaultProofSupervisorForTest({
     journalRoot: root,
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     unsafeQueueAuthenticationKeyForTest: QUEUE_KEY,
     run: async (job) => await run(job.mode),
   });
@@ -160,7 +160,7 @@ describe("fault-proof supervisor over a run that failed before its journal", () 
     // reached its workflow journal.
     const journal = await openWatcherFaultProofQueueJournal({
       journalRoot: root,
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       authenticationKey: QUEUE_KEY,
     });
     const identity = Object.freeze({
@@ -170,7 +170,7 @@ describe("fault-proof supervisor over a run that failed before its journal", () 
       rollbackGeneration: ROLLBACK_GENERATION,
     });
     const digest = watcherFaultProofQueueIdentityDigest({
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       identity,
     });
     await journal.register(identity, "0");

@@ -77,10 +77,10 @@ export const createWatcherCatalogueReplayer = async (input: {
   const withdrawalHistory =
     withdrawalBinding.resolvedContracts.contracts.fabricatedWithdrawal?.history;
   if (
-    depositBinding.deploymentFingerprint !==
-      input.deploymentIdentity.manifestId ||
-    withdrawalBinding.deploymentFingerprint !==
-      input.deploymentIdentity.manifestId ||
+    depositBinding.hubOraclePolicyId !==
+      input.deploymentIdentity.hubOraclePolicyId ||
+    withdrawalBinding.hubOraclePolicyId !==
+      input.deploymentIdentity.hubOraclePolicyId ||
     depositHistory === undefined ||
     withdrawalHistory === undefined
   )

@@ -14,7 +14,7 @@ describe("production operations HTTP V1", () => {
     let statusReads = 0;
     let monotonic = 100_000;
     const observability = createWatcherOperationsObservability({
-      deploymentFingerprint: "11".repeat(32),
+      hubOraclePolicyId: "11".repeat(28),
       supervisor: proofSupervisor.runtime,
       launchScopeStatus: () => ({
         installedCategoryCount: 54,

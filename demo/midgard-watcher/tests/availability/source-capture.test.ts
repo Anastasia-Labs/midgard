@@ -46,7 +46,7 @@ vi.mock("../../src/runtime/deployment-identity.js", () => ({
 
 const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
 const identity = {
-  manifestId: "11".repeat(32),
+  hubOraclePolicyId: "11".repeat(28),
   blueprintHash: "22".repeat(32),
 } as VerifiedWatcherDeploymentIdentity;
 const deployment = {
@@ -69,7 +69,7 @@ const deployment = {
 } as SDK.DaAvailabilityDeployment;
 const observation = (slot: number) =>
   ({
-    deploymentIdentityDigest: identity.manifestId,
+    hubOraclePolicyId: identity.hubOraclePolicyId,
     observationDigest: slot.toString(),
     nativePoint: {
       slot: slot.toString(),
@@ -537,6 +537,17 @@ describe("DA bond pool read (spec #685 E5, #691)", () => {
       intake.pool({
         ...observation(12),
         nativePoint: { ...observation(12).nativePoint, finalityDepth: "1" },
+      } as unknown as WatcherAuthenticatedStateQueueObservation),
+    ).rejects.toThrow("exact finalized deployment observation");
+    expect(io.address).not.toHaveBeenCalled();
+  });
+
+  it("refuses a pool read at an observation of another hub-oracle policy id", async () => {
+    const { intake } = fixture();
+    await expect(
+      intake.pool({
+        ...observation(12),
+        hubOraclePolicyId: "33".repeat(28),
       } as unknown as WatcherAuthenticatedStateQueueObservation),
     ).rejects.toThrow("exact finalized deployment observation");
     expect(io.address).not.toHaveBeenCalled();

@@ -11,7 +11,7 @@ import {
   WatcherPublicDaLibp2pTransport,
 } from "../../src/storage/public-da-libp2p-transport.js";
 
-const FINGERPRINT = "1a".repeat(32);
+const FINGERPRINT = "1a".repeat(28);
 
 const collectBuffers = async (
   iterable: AsyncIterable<Buffer>,

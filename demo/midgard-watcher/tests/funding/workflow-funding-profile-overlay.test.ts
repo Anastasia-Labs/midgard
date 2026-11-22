@@ -171,8 +171,8 @@ describe("signed deployment funding bundle", () => {
     for (const category of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
       expect(
         workflowFundingProfileFromOverlay({ overlay, category })
-          .deploymentFingerprint,
-      ).toBe(input.deploymentIdentity.manifestId);
+          .hubOraclePolicyId,
+      ).toBe(input.deploymentIdentity.hubOraclePolicyId);
     }
   });
 

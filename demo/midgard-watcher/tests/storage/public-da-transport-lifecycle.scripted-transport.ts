@@ -22,7 +22,7 @@ export const requestFixture = (
   multiaddr: `/dns4/public-da.example/tcp/39003/p2p/${peerId}`,
   protocol: DaRequestResponseProtocol.capabilities,
   protocolId: daRequestResponseProtocolId(
-    "22".repeat(32),
+    "22".repeat(28),
     DaRequestResponseProtocol.capabilities,
   ),
   requestCbor: Buffer.from([0xa0]),

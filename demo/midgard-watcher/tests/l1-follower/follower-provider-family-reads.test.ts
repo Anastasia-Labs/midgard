@@ -107,7 +107,7 @@ const RELEASE: VerifiedFraudProofReleaseFinalityPolicy = (() => {
   } as const satisfies ReleaseL1FinalityPolicy;
   return {
     schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-    deploymentIdentityDigest: "d1".repeat(32),
+    hubOraclePolicyId: "d1".repeat(28),
     blueprintHash: deployment.deploymentIdentity.blueprintHash,
     policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
     policy,

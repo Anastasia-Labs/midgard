@@ -48,7 +48,7 @@ describe("fault-proof supervisor over a yielded objective", () => {
     }));
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       run,
     });
     const controller = createWorkflowActuationPermitController({

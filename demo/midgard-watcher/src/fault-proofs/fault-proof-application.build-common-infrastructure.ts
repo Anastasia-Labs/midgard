@@ -38,11 +38,11 @@ import type { WatcherProofMaterialsViews } from "./proof-materials-views.js";
  */
 export const watcherFaultProofSourceId = ({
   category,
-  manifestId,
+  hubOraclePolicyId,
   localL1Source,
 }: {
   readonly category: string;
-  readonly manifestId: string;
+  readonly hubOraclePolicyId: string;
   readonly localL1Source: Readonly<{
     authorityNodeId: string;
     chainSync: Readonly<{ genesisIdentitySha256: string }>;
@@ -51,7 +51,7 @@ export const watcherFaultProofSourceId = ({
   [
     "watcher-fault-proof",
     category,
-    manifestId,
+    hubOraclePolicyId,
     localL1Source.authorityNodeId,
     localL1Source.chainSync.genesisIdentitySha256,
   ].join("/");
@@ -193,7 +193,7 @@ export const buildCommonInfrastructure = async ({
       l1Source: l1.source(
         watcherFaultProofSourceId({
           category,
-          manifestId: deploymentIdentity.manifestId,
+          hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
           localL1Source: binding.localL1Source,
         }),
       ),

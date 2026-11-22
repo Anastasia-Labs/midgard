@@ -290,7 +290,7 @@ export const watcherAvailabilityWorkflowRefusal = (
   >,
   step: Readonly<{
     actor: string;
-    deploymentIdentity: string;
+    hubOraclePolicyId: string;
     headerHash: string;
     action: string;
     nowMs: number;
@@ -300,7 +300,7 @@ export const watcherAvailabilityWorkflowRefusal = (
   try {
     journal.assertWorkflow(
       lease,
-      step.deploymentIdentity,
+      step.hubOraclePolicyId,
       step.headerHash,
       step.action,
       step.nowMs,
@@ -382,7 +382,7 @@ export const releaseWatcherAvailabilityWorkflows = async (
   };
   for (const row of journal.unsettledReleases(actor)) {
     const where = {
-      deployment: row.deploymentIdentity,
+      deployment: row.hubOraclePolicyId,
       headerHash: row.headerHash,
     };
     const defer = (cause: unknown) => deferred.push(deferral(where, cause));
@@ -422,7 +422,7 @@ export const releaseWatcherAvailabilityWorkflows = async (
   }
   for (const row of journal.workflows(actor)) {
     const where = {
-      deployment: row.deploymentIdentity,
+      deployment: row.hubOraclePolicyId,
       headerHash: row.headerHash,
     };
     const defer = (cause: unknown) => deferred.push(deferral(where, cause));
@@ -455,7 +455,7 @@ export const releaseWatcherAvailabilityWorkflows = async (
       leased((lease, nowMs) =>
         journal.releaseWorkflow(
           lease,
-          row.deploymentIdentity,
+          row.hubOraclePolicyId,
           row.headerHash,
           { openIntentId, ...release, recoveryDepth },
           nowMs,

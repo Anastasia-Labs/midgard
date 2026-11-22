@@ -38,14 +38,14 @@ vi.mock(
 
 afterEach(removeJournalDirectories);
 
-const DEPLOYMENT = "dd".repeat(32);
+const DEPLOYMENT = "dd".repeat(28);
 
 describe("readiness over a capacity read that meets corruption (R7)", () => {
   it("answers /readyz 503 journal_integrity, never 400", async () => {
     const journalRoot = await journalDirectory("midgard-journal-capacity");
     const supervisor = createWatcherFaultProofSupervisor({
       journalRoot,
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: TEST_JOURNAL_KEY,
@@ -60,7 +60,7 @@ describe("readiness over a capacity read that meets corruption (R7)", () => {
       },
     });
     const operations = createWatcherOperationsObservability({
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       supervisor,
       launchScopeStatus: () => ({
         installedCategoryCount: 54,

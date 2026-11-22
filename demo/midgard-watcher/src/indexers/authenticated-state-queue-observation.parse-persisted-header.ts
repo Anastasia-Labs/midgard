@@ -49,7 +49,6 @@ export type LockOutput = Readonly<{
 
 export type WatcherAuthenticatedStateQueueObservation = Readonly<{
   schemaVersion: typeof WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION;
-  deploymentIdentityDigest: string;
   protocolScriptAuthorityDigest: string;
   stateQueuePolicyId: string;
   hubOraclePolicyId: string;

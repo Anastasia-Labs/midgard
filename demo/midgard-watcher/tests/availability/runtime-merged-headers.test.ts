@@ -85,7 +85,7 @@ const observation = (
 ) =>
   ({
     observationDigest: String(slot),
-    deploymentIdentityDigest: "deployment",
+    hubOraclePolicyId: "deployment",
     nativePoint: {
       slot: String(slot),
       blockNo: String(slot),
@@ -126,7 +126,7 @@ const fixture = (
     } as unknown as WatcherProcessConfig,
     identity: {
       network: "Custom",
-      manifestId: "deployment",
+      hubOraclePolicyId: "deployment",
     } as VerifiedWatcherDeploymentIdentity,
     l1: {
       reads: {},

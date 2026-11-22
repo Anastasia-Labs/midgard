@@ -8,7 +8,7 @@ export const readyzReasons = async (
   supervisor: ReturnType<typeof createWatcherFaultProofSupervisor>,
 ): Promise<readonly string[]> => {
   const operations = createWatcherOperationsObservability({
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     supervisor,
     launchScopeStatus: () => ({
       installedCategoryCount: 1,

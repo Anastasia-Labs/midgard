@@ -10,7 +10,6 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
@@ -18,7 +17,7 @@ import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
   DEPLOYMENT_MANIFEST_STEP_NAMES,
-  makeDeploymentMarker,
+  type DeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   daBondManifestAmounts,
@@ -107,7 +106,7 @@ const buildWatcherDeploymentAuthorityFixture = (
       retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
     },
   };
-  const identity: MutableRecord = {
+  const manifest: MutableRecord = {
     schemaVersion: "midgard-deployment-manifest-v1",
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
@@ -203,11 +202,6 @@ const buildWatcherDeploymentAuthorityFixture = (
       maxTimeoutFeeLovelace: 1_200_000,
     },
   };
-  const manifestId = computeDeploymentManifestId(identity);
-  const manifest: MutableRecord = {
-    ...identity,
-    manifestId,
-  };
   const releaseBindings = {
     schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
     fundingProfileBundleDigest:
@@ -239,7 +233,10 @@ const buildWatcherDeploymentAuthorityFixture = (
   };
   signedIdentity.attestation.signature = sign(
     null,
-    makeWatcherDeploymentIdentitySignaturePayload(manifestId, releaseBindings),
+    makeWatcherDeploymentIdentitySignaturePayload(
+      manifest as unknown as DeploymentManifest,
+      releaseBindings,
+    ),
     privateKey,
   ).toString("hex");
   const deploymentPolicy: WatcherDeploymentIdentityPolicy = {
@@ -295,19 +292,16 @@ const buildWatcherDeploymentAuthorityFixture = (
     blueprintHash,
   };
   const trustRoots = [{ trustRootId, publicKeySpkiDerHex }];
-  const marker = makeDeploymentMarker(manifestId);
   const result = verifyWatcherDeploymentIdentity({
     signedIdentity,
     policy: deploymentPolicy,
     trustRoots,
-    durableMarker: marker,
   });
   return {
     signedIdentity,
     policy: deploymentPolicy,
     trustRoots,
     result,
-    marker,
     contracts,
   };
 };
@@ -326,7 +320,6 @@ const cloneDefaultWatcherDeploymentAuthorityFixture = (
     signedIdentity: fixture.signedIdentity,
     policy: fixture.policy,
     trustRoots: fixture.trustRoots,
-    marker: fixture.marker,
     contracts: fixture.contracts,
   });
   return {

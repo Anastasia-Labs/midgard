@@ -2,7 +2,6 @@ import { type KeyObject, sign } from "node:crypto";
 
 import {
   computeDeploymentManifestJsonDigest,
-  makeDeploymentMarker,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
@@ -25,11 +24,10 @@ import {
   type MutableRecord,
   referenceScriptPolicy,
   RULE_BUNDLE_COMMITMENT,
-  withManifestId,
 } from "./deployment-identity.canonical-identity.js";
 
 export const makeFixture = () => {
-  const manifest = withManifestId(canonicalIdentity());
+  const manifest = canonicalIdentity();
   verifyFinalizedDeploymentManifest(manifest);
   const programCommitments = {
     "validation-machine-v1": "88".repeat(32),
@@ -80,7 +78,7 @@ export const makeFixture = () => {
     identity.attestation.signature = sign(
       null,
       makeWatcherDeploymentIdentitySignaturePayload(
-        identity.manifest.manifestId,
+        identity.manifest,
         identity.releaseBindings,
       ),
       signingKey,
@@ -93,7 +91,6 @@ export const makeFixture = () => {
     trustRoot,
     privateKey,
     resign,
-    durableMarker: makeDeploymentMarker(manifest.manifestId),
   };
 };
 

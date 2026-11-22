@@ -32,6 +32,16 @@ it("accepts every real deployed script with its canonical published or null role
     ),
   ).toEqual(fixture.retained);
 });
+it("refuses a registry stamped with another hub-oracle policy id", () => {
+  expect(() =>
+    verifyDeploymentReleaseParameterRegistry(
+      { ...fixture.retained, hubOraclePolicyId: "00".repeat(28) },
+      fixture.blueprintJson,
+      fixture.manifest,
+    ),
+  ).toThrow("Parameter registry belongs to a different deployed release");
+});
+
 it("refuses changed deployed contract bytes and retained reference outpoints", () => {
   const changed = {
     ...fixture.manifest,
@@ -164,7 +174,9 @@ it("the author reconstructs the genuine registry before publishing", async () =>
   const { authored } = await authorOverGenuineRegistry([]);
   expect("value" in authored && authored.value).toMatchObject({
     deploymentAuthority: {
-      deploymentIdentity: { manifestId: fixture.manifest.manifestId },
+      deploymentIdentity: {
+        hubOraclePolicyId: fixture.manifest.contracts.hubOracleMint.scriptHash,
+      },
     },
   });
 }, 120_000);

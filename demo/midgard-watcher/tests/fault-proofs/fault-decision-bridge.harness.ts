@@ -85,7 +85,7 @@ export const harness = (input: {
   const retainedDecisionAuthorities: (string | null)[] = [];
   const supersessions: { prior: string; fresh: string }[] = [];
   const application = {
-    deploymentFingerprint: input.current.deploymentIdentityDigest,
+    hubOraclePolicyId: input.current.hubOraclePolicyId,
     installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     classifyHeader: vi.fn(async ({ observation: header }) => {
       const category = input.categoryByHeader[header.headerHash];
@@ -180,7 +180,7 @@ export const harness = (input: {
           decisionDigest: stored.decision.decisionDigest,
           executionDecisionDigest: stored.decision.decisionDigest,
           launchScope: stored.decision.launchScope,
-          deploymentFingerprint: input.current.deploymentIdentityDigest,
+          hubOraclePolicyId: input.current.hubOraclePolicyId,
           headerHash: stored.decision.headerHash,
           authority:
             typeof input.permitAuthority === "function"

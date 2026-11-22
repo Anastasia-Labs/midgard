@@ -3,11 +3,9 @@ import {
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   type DeploymentManifest,
+  deploymentManifestHubOraclePolicyId,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import {
-  releaseRecord,
-  releaseString,
-} from "@al-ft/midgard-core/deployment-release";
+import { releaseRecord } from "@al-ft/midgard-core/deployment-release";
 import {
   parseFaultProofBlueprint,
   verifyBlueprintDeploymentRegistry,
@@ -21,14 +19,15 @@ export const verifyDeploymentReleaseParameterRegistry = (
 ) => {
   const registry = releaseRecord(value, "$.parameterRegistry", [
     "schemaVersion",
-    "manifestId",
+    "hubOraclePolicyId",
     "blueprintHash",
     "deployment",
     "referenceScripts",
   ]);
   if (
     registry.schemaVersion !== "midgard-deployment-parameter-registry-v1" ||
-    registry.manifestId !== manifest.manifestId ||
+    registry.hubOraclePolicyId !==
+      deploymentManifestHubOraclePolicyId(manifest) ||
     registry.blueprintHash !== manifest.artifacts.blueprintHash
   )
     throw new Error(
@@ -78,11 +77,7 @@ export const verifyDeploymentReleaseParameterRegistry = (
     );
   return Object.freeze({
     schemaVersion: "midgard-deployment-parameter-registry-v1",
-    manifestId: releaseString(
-      registry.manifestId,
-      "$.parameterRegistry.manifestId",
-      /^[0-9a-f]{64}$/u,
-    ),
+    hubOraclePolicyId: deploymentManifestHubOraclePolicyId(manifest),
     blueprintHash: manifest.artifacts.blueprintHash,
     deployment,
     referenceScripts: manifest.referenceScripts,

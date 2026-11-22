@@ -8,9 +8,7 @@
 import {
   assertRetentionDaysCoverWindow,
   DA_TRANSPORT_LIMITS,
-  type DeploymentMarker,
   MIDGARD_RETENTION_WINDOW,
-  parseDeploymentMarker,
   retentionDeadlineForBlock,
 } from "@al-ft/midgard-core";
 
@@ -68,18 +66,8 @@ const plainRecord = (value: unknown, path: string): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 
-const parseMarker = (value: unknown, path: string): DeploymentMarker => {
-  try {
-    return parseDeploymentMarker(value);
-  } catch {
-    return fail("invalid_field", path);
-  }
-};
-
 export type WatcherCanonicalRetentionWindow = Readonly<{
   schemaVersion: typeof WATCHER_RETENTION_WINDOW_SCHEMA_VERSION;
-  manifestId: string;
-  deploymentMarker: DeploymentMarker;
   retentionDays: number;
   deployedRetentionMs: number;
   requiredRetentionMs: number;
@@ -123,8 +111,6 @@ const assertRetentionDays = (value: unknown, path: string): number => {
 };
 
 const makeRetentionWindow = (
-  manifestId: string,
-  deploymentMarker: DeploymentMarker,
   retentionDays: number,
 ): WatcherCanonicalRetentionWindow => {
   // Duration arithmetic is delegated to the Q54 helper so a profile change
@@ -135,8 +121,6 @@ const makeRetentionWindow = (
   });
   return Object.freeze({
     schemaVersion: WATCHER_RETENTION_WINDOW_SCHEMA_VERSION,
-    manifestId,
-    deploymentMarker,
     retentionDays,
     deployedRetentionMs: deadline.deployedRetentionMs,
     requiredRetentionMs: MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
@@ -170,8 +154,6 @@ const makeRetentionWindow = (
  */
 export const watcherCanonicalRetentionWindowFromVerifiedManifest = (input: {
   readonly manifest: unknown;
-  readonly manifestId: string;
-  readonly deploymentMarker: DeploymentMarker;
   readonly path?: string;
 }): WatcherCanonicalRetentionWindow => {
   const path = input.path ?? "$.manifest";
@@ -179,11 +161,7 @@ export const watcherCanonicalRetentionWindowFromVerifiedManifest = (input: {
     manifestRetentionDays(input.manifest, path),
     `${path}.da.transportProfile.retentionDays`,
   );
-  return makeRetentionWindow(
-    input.manifestId,
-    parseMarker(input.deploymentMarker, "$.deploymentMarker"),
-    retentionDays,
-  );
+  return makeRetentionWindow(retentionDays);
 };
 
 /**
@@ -196,7 +174,6 @@ export const resolveWatcherCanonicalRetentionWindow = (input: {
   readonly signedIdentity: unknown;
   readonly policy: WatcherDeploymentIdentityPolicy;
   readonly trustRoots: readonly WatcherDeploymentTrustRoot[];
-  readonly durableMarker: unknown;
 }): Readonly<{
   identity: VerifiedWatcherDeploymentIdentity;
   window: WatcherCanonicalRetentionWindow;
@@ -205,15 +182,12 @@ export const resolveWatcherCanonicalRetentionWindow = (input: {
     signedIdentity: input.signedIdentity,
     policy: input.policy,
     trustRoots: input.trustRoots,
-    durableMarker: input.durableMarker,
   });
   const envelope = plainRecord(input.signedIdentity, "$.signedIdentity");
   return Object.freeze({
     identity,
     window: watcherCanonicalRetentionWindowFromVerifiedManifest({
       manifest: envelope.manifest,
-      manifestId: identity.manifestId,
-      deploymentMarker: identity.durableMarker,
       path: "$.signedIdentity.manifest",
     }),
   });
@@ -231,11 +205,7 @@ export const assertWatcherCanonicalRetentionWindow = (
     window.retentionDays,
     `${path}.retentionDays`,
   );
-  const expected = makeRetentionWindow(
-    window.manifestId,
-    window.deploymentMarker,
-    retentionDays,
-  );
+  const expected = makeRetentionWindow(retentionDays);
   if (
     window.deployedRetentionMs !== expected.deployedRetentionMs ||
     window.requiredRetentionMs !== expected.requiredRetentionMs ||

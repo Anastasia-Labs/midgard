@@ -29,7 +29,7 @@ import {
 import { observation } from "../fault-proofs/fault-decision-bridge.observation.js";
 import { supervisor } from "./operations-observability.supervisor.js";
 
-const MANIFEST = "11".repeat(32);
+const MANIFEST = "11".repeat(28);
 
 const availabilityAuthority = () => ({
   deploymentIdentity: "c7".repeat(28),
@@ -56,7 +56,7 @@ const sample = (
 const watcher = async (follower: WatcherFollowerReplaySource) => {
   const logged: Record<string, unknown>[] = [];
   const recorder = createWatcherOperationsSink({
-    deploymentFingerprint: MANIFEST,
+    hubOraclePolicyId: MANIFEST,
     nowMs: () => 100_000n,
   });
   const refusals = createWatcherReplayRefusals({

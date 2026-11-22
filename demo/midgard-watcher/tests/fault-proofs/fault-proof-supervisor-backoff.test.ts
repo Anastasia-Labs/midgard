@@ -43,7 +43,7 @@ describe("objective progress transport backoff", () => {
     const run = vi.fn(async () => retryable);
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: "dd".repeat(32),
+      hubOraclePolicyId: "dd".repeat(28),
       run,
     });
     let failure: unknown;
@@ -88,7 +88,7 @@ describe("objective progress transport backoff", () => {
     const run = vi.fn(async () => retryable);
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: "dd".repeat(32),
+      hubOraclePolicyId: "dd".repeat(28),
       run,
       unsafeNowMsForTest: () => now,
       // At maturity the chain is asked first: nothing of ours landed.

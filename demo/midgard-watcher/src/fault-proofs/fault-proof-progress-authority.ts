@@ -93,7 +93,7 @@ export const createWatcherFaultProofProgressAuthority = (
 const createProgressAuthority = (
   input: WatcherFaultProofProgressListeners & {
     readonly journalRoot: string;
-    readonly deploymentFingerprint: string;
+    readonly hubOraclePolicyId: string;
     readonly categories: readonly WatcherInstalledWorkflowCategory[];
     readonly authenticationKey: Uint8Array;
     readonly retention?: WatcherProofRetention; // holds open objectives' L1 history
@@ -133,7 +133,7 @@ const createProgressAuthority = (
       () =>
         openWatcherFaultDecisionJournal({
           directory: input.journalRoot,
-          deploymentFingerprint: input.deploymentFingerprint,
+          hubOraclePolicyId: input.hubOraclePolicyId,
           launchScope: input.categories,
           authenticationKey: input.authenticationKey,
         }),
@@ -273,7 +273,7 @@ const createProgressAuthority = (
         generation: rollbackGeneration,
         permit: createWorkflowReconciliationPermitController({
           decision: objective.decision,
-          deploymentFingerprint: input.deploymentFingerprint,
+          hubOraclePolicyId: input.hubOraclePolicyId,
           rollbackGeneration,
         }).permit,
       };
@@ -324,8 +324,7 @@ const createProgressAuthority = (
     admit: async (request) => {
       assertWatcherStateQueueObservation(request.observation);
       if (
-        request.observation.deploymentIdentityDigest !==
-          input.deploymentFingerprint ||
+        request.observation.hubOraclePolicyId !== input.hubOraclePolicyId ||
         !/^(0|[1-9][0-9]*)$/u.test(request.rollbackGeneration)
       )
         throw new Error(
@@ -375,7 +374,6 @@ const createProgressAuthority = (
         });
         if (
           authority.authority !== "submission" ||
-          authority.deploymentFingerprint !== input.deploymentFingerprint ||
           authority.headerHash !== fault.decision.headerHash ||
           authority.decisionDigest !== fault.decision.decisionDigest ||
           fault.deadline.headerHash !== fault.decision.headerHash ||

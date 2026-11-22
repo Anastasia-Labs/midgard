@@ -10,7 +10,6 @@ import {
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
@@ -18,7 +17,6 @@ import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
   DEPLOYMENT_MANIFEST_STEP_NAMES,
-  makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   daBondManifestAmounts,
@@ -259,11 +257,6 @@ export const canonicalManifestIdentity = (): MutableRecord => {
   };
 };
 
-export const withManifestId = (identity: MutableRecord): MutableRecord => ({
-  ...identity,
-  manifestId: computeDeploymentManifestId(identity),
-});
-
 export const makeTrustRoot = (): {
   readonly privateKey: ReturnType<typeof generateKeyPairSync>["privateKey"];
   readonly trustRoot: WatcherDeploymentTrustRoot;
@@ -333,5 +326,4 @@ export type SignedAuthorityFixture = Readonly<{
   signedIdentity: MutableRecord;
   policy: WatcherDeploymentIdentityPolicy;
   trustRoots: readonly WatcherDeploymentTrustRoot[];
-  durableMarker: ReturnType<typeof makeDeploymentMarker>;
 }>;

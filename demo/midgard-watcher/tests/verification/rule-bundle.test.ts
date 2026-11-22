@@ -22,10 +22,7 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/consensus-profile";
-import {
-  computeDeploymentManifestJsonDigest,
-  makeDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
+import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import { describe, expect, it } from "vitest";
@@ -334,11 +331,11 @@ describe("watcher canonical V1 rule bundle", () => {
     );
   });
 
-  it("rejects deployment, release, network, and durable-marker cross-binding drift", () => {
+  it("rejects deployment, release and network cross-binding drift", () => {
     const { authority, bundle } = fixture();
 
     const deployment = clone(bundle);
-    deployment.deploymentManifestId = h32("a");
+    deployment.hubOraclePolicyId = "aa".repeat(28);
     rejected(
       () =>
         loadWatcherRuleBundle({
@@ -373,17 +370,6 @@ describe("watcher canonical V1 rule bundle", () => {
       "deployment_identity_mismatch",
       "$.ruleBundle",
     );
-
-    authorityRejected(
-      () =>
-        loadWatcherRuleBundle({
-          ...authority,
-          durableMarker: makeDeploymentMarker(h32("c")),
-          ruleBundle: bundle,
-        }),
-      "durable_marker_mismatch",
-      "$.durableMarker",
-    );
   });
 
   it("requires raw signed W02 authority and rejects forged summaries, signatures, policies, and trust roots", () => {
@@ -397,7 +383,7 @@ describe("watcher canonical V1 rule bundle", () => {
           ruleBundle: bundle,
         }),
       "unknown_field",
-      "$.manifestId",
+      "$.hubOraclePolicyId",
     );
 
     const invalidSignature = clone(authority);

@@ -39,8 +39,8 @@ import {
 } from "./fault-proof-supervisor.safe-start.js";
 import {
   CANONICAL_NATURAL,
-  DEPLOYMENT_FINGERPRINT,
   MAX_RECOVERABLE_WORKFLOWS,
+  POLICY_ID,
   recordedWorkflowObjectives,
   supervisorClock,
   type SupervisorDependencies,
@@ -82,13 +82,13 @@ const NOT_LANDED = new Set<string | undefined>([
 /** The completion the chain verified for `job`, bound to the removal it
  * shows and that removal's depth. */
 const verifiedCompletion = (
-  deploymentFingerprint: string,
+  hubOraclePolicyId: string,
   job: Pick<WatcherFaultProofJob, "category" | "headerHash" | "decisionDigest">,
   verification: Readonly<{ terminalTxHash: string; confirmationDepth: number }>,
 ): WatcherProofVerifiedCompletion => ({
   workflowId: computeFraudProofWorkflowId({
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint,
+    hubOraclePolicyId,
     category: job.category,
     target: { kind: "state_queue_header", headerHash: job.headerHash },
     decisionDigest: job.decisionDigest,
@@ -101,7 +101,7 @@ type Objective = Readonly<{ category: string; headerHash: string }>;
 
 export const createSupervisor = (input: {
   readonly journalRoot: string;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly deadlineAlertHeadroomMs: number;
   readonly queueAuthenticationKey: Uint8Array;
   readonly nowMs: () => number;
@@ -115,9 +115,9 @@ export const createSupervisor = (input: {
    * admitted observation queued are drained; its failure is its own. */
   readonly ownThreadSweep?: () => Promise<void>;
 }): WatcherFaultProofSupervisor | UnsafeWatcherFaultProofSupervisorForTest => {
-  if (!DEPLOYMENT_FINGERPRINT.test(input.deploymentFingerprint)) {
+  if (!POLICY_ID.test(input.hubOraclePolicyId)) {
     throw new Error(
-      "watcher fault-proof supervisor deployment fingerprint is invalid",
+      "watcher fault-proof supervisor hub-oracle policy id is invalid",
     );
   }
   if (
@@ -144,7 +144,7 @@ export const createSupervisor = (input: {
       async () =>
         (openedQueueJournal = await openWatcherFaultProofQueueJournal({
           journalRoot: input.journalRoot,
-          deploymentFingerprint: input.deploymentFingerprint,
+          hubOraclePolicyId: input.hubOraclePolicyId,
           authenticationKey: input.queueAuthenticationKey,
         })),
       { retryInBackground: true },
@@ -170,7 +170,7 @@ export const createSupervisor = (input: {
   const createAuthority = () =>
     createWatcherFaultProofProgressAuthority({
       journalRoot: input.journalRoot,
-      deploymentFingerprint: input.deploymentFingerprint,
+      hubOraclePolicyId: input.hubOraclePolicyId,
       categories,
       authenticationKey: input.queueAuthenticationKey,
       retention: input.proofRetention,
@@ -193,7 +193,7 @@ export const createSupervisor = (input: {
           return {
             kind: "final",
             verified: verifiedCompletion(
-              input.deploymentFingerprint,
+              input.hubOraclePolicyId,
               job,
               verification,
             ),
@@ -311,7 +311,7 @@ export const createSupervisor = (input: {
     if (verification.kind === "applicable") {
       await progressAuthority.markCompleted(
         job,
-        verifiedCompletion(input.deploymentFingerprint, job, verification),
+        verifiedCompletion(input.hubOraclePolicyId, job, verification),
       );
       return Object.freeze({
         kind: "completed" as const,
@@ -452,7 +452,6 @@ export const createSupervisor = (input: {
           rollbackGeneration: job.rollbackGeneration,
         });
         if (
-          authority.deploymentFingerprint !== input.deploymentFingerprint ||
           authority.headerHash !== job.headerHash ||
           authority.decisionDigest !== job.decisionDigest
         )
@@ -687,7 +686,7 @@ export const createSupervisor = (input: {
       rollbackGeneration: job.rollbackGeneration,
     });
     const jobIdentityDigest = watcherFaultProofQueueIdentityDigest({
-      deploymentFingerprint: input.deploymentFingerprint,
+      hubOraclePolicyId: input.hubOraclePolicyId,
       identity,
     });
     // Queue completion records scheduling only; the run is admitted inside
@@ -804,7 +803,7 @@ export const createSupervisor = (input: {
             }
             const fault = requireRunnableHeaderFault(decision);
             if (
-              fault.deploymentFingerprint !== input.deploymentFingerprint ||
+              fault.hubOraclePolicyId !== input.hubOraclePolicyId ||
               fault.launchScope.length !== categories.length ||
               fault.launchScope.some(
                 (category, index) => category !== categories[index],

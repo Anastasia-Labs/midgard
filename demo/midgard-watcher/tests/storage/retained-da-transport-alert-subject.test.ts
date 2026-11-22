@@ -12,7 +12,7 @@ import { watcherDaFetchAlertSubject } from "../../src/runtime/operations-observa
 import { watcherDaFetchSubjectDigest } from "../../src/storage/retained-da-runtime.watcher-retained-da-libp2p-transport.js";
 
 const HEADER = "ab".repeat(28);
-const FINGERPRINT = Buffer.from("dd".repeat(32), "hex");
+const FINGERPRINT = Buffer.from("dd".repeat(28), "hex");
 const headerHash = Buffer.from(HEADER, "hex");
 
 describe("retained-DA fetch failure subject", () => {

@@ -12,10 +12,6 @@ import "./deployment-identity.canonical-identity.js";
 import "./deployment-identity.make-fixture.js";
 
 import {
-  computeDeploymentManifestId,
-  makeDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
-import {
   daBondManifestAmounts,
   DEPLOYMENT_PROFILES,
   SELECTED_DEPLOYMENT_PROFILE,
@@ -57,7 +53,6 @@ describe("watcher deployment identity", () => {
           signedIdentity: fixture.signedIdentity,
           policy: fixture.policy,
           trustRoots: [fixture.trustRoot],
-          durableMarker: fixture.durableMarker,
         }),
       "invalid_signature",
       "$.attestation.signature",
@@ -69,11 +64,25 @@ describe("watcher deployment identity", () => {
           signedIdentity: fixture.signedIdentity,
           policy: fixture.policy,
           trustRoots: [fixture.trustRoot],
-          durableMarker: fixture.durableMarker,
         }),
       "mismatched_identity",
       "$.releaseBindings.fundingProfileBundleDigest",
     );
+  });
+
+  it("refuses a signature over a manifest that differs in one field under the same hub-oracle policy id", () => {
+    const fixture = makeFixture();
+    const verify = () =>
+      verifyWatcherDeploymentIdentity({
+        signedIdentity: fixture.signedIdentity,
+        policy: fixture.policy,
+        trustRoots: [fixture.trustRoot],
+      });
+    const policyId = verify().hubOraclePolicyId;
+    fixture.signedIdentity.manifest.updatedAt = "2026-07-29T00:00:00.000Z";
+    rejection(verify, "invalid_signature", "$.attestation.signature");
+    fixture.resign();
+    expect(verify().hubOraclePolicyId).toBe(policyId);
   });
 
   it.each(["policy", "releaseBindings"] as const)(
@@ -84,7 +93,6 @@ describe("watcher deployment identity", () => {
         signedIdentity: fixture.signedIdentity,
         policy: { ...fixture.policy },
         trustRoots: [fixture.trustRoot],
-        durableMarker: fixture.durableMarker,
       };
       const record: MutableRecord =
         location === "policy"
@@ -97,7 +105,7 @@ describe("watcher deployment identity", () => {
     },
   );
 
-  it("verifies the exact signed deployment identity and durable marker", () => {
+  it("verifies the exact signed deployment identity", () => {
     const fixture = makeFixture();
 
     expect(
@@ -105,10 +113,10 @@ describe("watcher deployment identity", () => {
         signedIdentity: fixture.signedIdentity,
         policy: fixture.policy,
         trustRoots: [fixture.trustRoot],
-        durableMarker: fixture.durableMarker,
       }),
     ).toEqual({
-      manifestId: fixture.signedIdentity.manifest.manifestId,
+      hubOraclePolicyId:
+        fixture.signedIdentity.manifest.contracts.hubOracleMint.scriptHash,
       network: "Preprod",
       trustRootId: fixture.trustRoot.trustRootId,
       blueprintHash: BLUEPRINT_HASH,
@@ -116,7 +124,6 @@ describe("watcher deployment identity", () => {
       ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
       programCommitments:
         fixture.signedIdentity.releaseBindings.programCommitments,
-      durableMarker: fixture.durableMarker,
     });
   });
 
@@ -126,12 +133,10 @@ describe("watcher deployment identity", () => {
       signedIdentity: fixture.signedIdentity,
       policy: fixture.policy,
       trustRoots: [fixture.trustRoot],
-      durableMarker: fixture.durableMarker,
     });
     const authority = watcherDeploymentProtocolScriptAuthority(identity);
 
     expect(authority).toMatchObject({
-      deploymentFingerprint: identity.manifestId,
       network: "Preprod",
       hubOracleOneShotOutRef: fixture.policy.hubOracleOneShotOutRef,
       protocolScriptHashes: {
@@ -185,14 +190,13 @@ describe("watcher deployment identity", () => {
       signedIdentity: fixture.signedIdentity,
       policy: fixture.policy,
       trustRoots: [fixture.trustRoot],
-      durableMarker: fixture.durableMarker,
     });
     const authority = watcherDeploymentProtocolParameterAuthority(identity);
 
     expect(authority).toEqual({
       schemaVersion:
         "midgard-watcher-deployment-protocol-parameter-authority-v1",
-      deploymentFingerprint: identity.manifestId,
+      hubOraclePolicyId: identity.hubOraclePolicyId,
       snapshot:
         fixture.signedIdentity.manifest.cardanoProtocolParameters.snapshot,
       snapshotDigest:
@@ -225,14 +229,13 @@ describe("watcher deployment identity", () => {
       signedIdentity: fixture.signedIdentity,
       policy: fixture.policy,
       trustRoots: [fixture.trustRoot],
-      durableMarker: fixture.durableMarker,
     });
     const authority = watcherDeploymentAvailabilityChallengeAuthority(identity);
 
     expect(authority).toEqual({
       schemaVersion:
         "midgard-watcher-deployment-availability-challenge-authority-v1",
-      deploymentFingerprint: identity.manifestId,
+      hubOraclePolicyId: identity.hubOraclePolicyId,
       parameters: fixture.signedIdentity.manifest.availabilityChallenge,
       parametersDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
       authorityDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
@@ -277,29 +280,30 @@ describe("watcher deployment identity", () => {
       signedIdentity: fixture.signedIdentity,
       policy: fixture.policy,
       trustRoots: [fixture.trustRoot],
-      durableMarker: fixture.durableMarker,
     });
     const authority = watcherDeploymentReleaseFinalityAuthority(identity);
 
     await expect(
       authority.verifyForWorkflow({
-        deploymentFingerprint: identity.manifestId,
+        hubOraclePolicyId: identity.hubOraclePolicyId,
       }),
     ).resolves.toMatchObject({
-      deploymentIdentityDigest: identity.manifestId,
+      hubOraclePolicyId: identity.hubOraclePolicyId,
       blueprintHash: BLUEPRINT_HASH,
       policy: RELEASE_L1_FINALITY_POLICY,
       policyDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
     });
     await expect(
       authority.verifyForWorkflow({
-        deploymentFingerprint: "aa".repeat(32),
+        hubOraclePolicyId: "aa".repeat(28),
       }),
     ).rejects.toThrow("mismatched_identity");
 
     const clone = { ...authority };
     await expect(
-      clone.verifyForWorkflow({ deploymentFingerprint: identity.manifestId }),
+      clone.verifyForWorkflow({
+        hubOraclePolicyId: identity.hubOraclePolicyId,
+      }),
     ).rejects.toThrow("invalid_field");
     expect(() =>
       watcherDeploymentReleaseFinalityAuthority({ ...identity }),
@@ -335,14 +339,13 @@ describe("watcher deployment identity", () => {
       signedIdentity: fixture.signedIdentity,
       policy: fixture.policy,
       trustRoots: [fixture.trustRoot],
-      durableMarker: fixture.durableMarker,
     });
     const releaseFinality = watcherDeploymentReleaseFinalityPolicy(identity);
     expect(releaseFinality.policy.confirmationDepth).toBe(selectedDepth);
     expect(releaseFinality.policy.automaticRecoveryMaxDepth).toBe(2160);
     await expect(
       watcherDeploymentReleaseFinalityAuthority(identity).verifyForWorkflow({
-        deploymentFingerprint: identity.manifestId,
+        hubOraclePolicyId: identity.hubOraclePolicyId,
       }),
     ).resolves.toEqual(releaseFinality);
     expect(() =>
@@ -355,8 +358,6 @@ describe("watcher deployment identity", () => {
       ...mismatched.manifest.l1Finality,
       confirmationDepth: otherDepth,
     };
-    const { manifestId: _manifestId, ...unsigned } = mismatched.manifest;
-    mismatched.manifest.manifestId = computeDeploymentManifestId(unsigned);
     fixture.resign(mismatched);
     rejection(
       () =>
@@ -364,7 +365,6 @@ describe("watcher deployment identity", () => {
           signedIdentity: mismatched,
           policy: fixture.policy,
           trustRoots: [fixture.trustRoot],
-          durableMarker: makeDeploymentMarker(mismatched.manifest.manifestId),
         }),
       "canonical_manifest_invalid",
       "$.manifest",
@@ -377,16 +377,14 @@ describe("watcher deployment identity", () => {
       signedIdentity: fixture.signedIdentity,
       policy: fixture.policy,
       trustRoots: [fixture.trustRoot],
-      durableMarker: fixture.durableMarker,
     });
     const authority = watcherDeploymentReleaseEconomicsAuthority(identity);
 
     await expect(
       authority.verifyForWorkflow({
-        deploymentFingerprint: identity.manifestId,
+        hubOraclePolicyId: identity.hubOraclePolicyId,
       }),
     ).resolves.toMatchObject({
-      deploymentIdentityDigest: identity.manifestId,
       blueprintHash: BLUEPRINT_HASH,
       policy: {
         profile: "bounded-acceptance-v1",
@@ -396,13 +394,15 @@ describe("watcher deployment identity", () => {
     });
     await expect(
       authority.verifyForWorkflow({
-        deploymentFingerprint: "aa".repeat(32),
+        hubOraclePolicyId: "aa".repeat(28),
       }),
     ).rejects.toThrow("mismatched_identity");
 
     const clone = { ...authority };
     await expect(
-      clone.verifyForWorkflow({ deploymentFingerprint: identity.manifestId }),
+      clone.verifyForWorkflow({
+        hubOraclePolicyId: identity.hubOraclePolicyId,
+      }),
     ).rejects.toThrow("invalid_field");
     expect(() =>
       watcherDeploymentReleaseEconomicsAuthority({ ...identity }),
@@ -518,28 +518,9 @@ describe("watcher deployment identity", () => {
           signedIdentity: fixture.signedIdentity,
           policy: fixture.policy,
           trustRoots: [fixture.trustRoot],
-          durableMarker: fixture.durableMarker,
         }),
       "mismatched_identity",
       "$.manifest.contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.zeroInput",
-    );
-  });
-
-  it("requires the exact durable deployment marker", () => {
-    const fixture = makeFixture();
-    const verify = (durableMarker: unknown) =>
-      verifyWatcherDeploymentIdentity({
-        signedIdentity: fixture.signedIdentity,
-        policy: fixture.policy,
-        trustRoots: [fixture.trustRoot],
-        durableMarker,
-      });
-
-    rejection(() => verify(null), "missing_durable_marker", "$.durableMarker");
-    rejection(
-      () => verify(makeDeploymentMarker("aa".repeat(32))),
-      "durable_marker_mismatch",
-      "$.durableMarker",
     );
   });
 
@@ -551,7 +532,6 @@ describe("watcher deployment identity", () => {
         signedIdentity: fixture.signedIdentity,
         policy: fixture.policy,
         trustRoots: [fixture.trustRoot],
-        durableMarker: fixture.durableMarker,
       });
 
     fixture.signedIdentity.attestation.trustRootId =
@@ -571,7 +551,6 @@ describe("watcher deployment identity", () => {
         signedIdentity: fixture.signedIdentity,
         policy: fixture.policy,
         trustRoots: [fixture.trustRoot],
-        durableMarker: fixture.durableMarker,
       });
 
     fixture.signedIdentity.historicalVersion = 9;
@@ -611,8 +590,6 @@ describe("watcher deployment identity", () => {
     const fixture = makeFixture();
     const signedIdentity = structuredClone(fixture.signedIdentity);
     mutate(signedIdentity.manifest);
-    const { manifestId: _manifestId, ...identity } = signedIdentity.manifest;
-    signedIdentity.manifest.manifestId = computeDeploymentManifestId(identity);
     fixture.resign(signedIdentity);
 
     rejection(
@@ -621,7 +598,6 @@ describe("watcher deployment identity", () => {
           signedIdentity,
           policy: fixture.policy,
           trustRoots: [fixture.trustRoot],
-          durableMarker: fixture.durableMarker,
         }),
       "canonical_manifest_invalid",
       "$.manifest",
@@ -633,10 +609,6 @@ describe("watcher deployment identity", () => {
       "network",
       (fixture: ReturnType<typeof makeFixture>) => {
         fixture.signedIdentity.manifest.network = "Preview";
-        const { manifestId: _manifestId, ...identity } =
-          fixture.signedIdentity.manifest;
-        fixture.signedIdentity.manifest.manifestId =
-          computeDeploymentManifestId(identity);
         fixture.resign();
       },
       "$.manifest.network",
@@ -650,6 +622,19 @@ describe("watcher deployment identity", () => {
         };
       },
       "$.manifest.hubOracleOneShot",
+    ],
+    [
+      "hub-oracle policy id",
+      (fixture: ReturnType<typeof makeFixture>) => {
+        fixture.policy = {
+          ...fixture.policy,
+          appliedScriptHashes: {
+            ...fixture.policy.appliedScriptHashes,
+            hubOracleMint: "aa".repeat(28),
+          },
+        };
+      },
+      "$.manifest.contracts",
     ],
     [
       "applied script hash",
@@ -747,7 +732,6 @@ describe("watcher deployment identity", () => {
           signedIdentity: fixture.signedIdentity,
           policy: fixture.policy,
           trustRoots: [fixture.trustRoot],
-          durableMarker: fixture.durableMarker,
         }),
       _label === "network"
         ? "canonical_manifest_invalid"
@@ -770,7 +754,6 @@ describe("watcher deployment identity", () => {
           signedIdentity: fixture.signedIdentity,
           policy: fixture.policy,
           trustRoots: [fixture.trustRoot],
-          durableMarker: fixture.durableMarker,
         }),
       "invalid_signature",
       "$.attestation.signature",

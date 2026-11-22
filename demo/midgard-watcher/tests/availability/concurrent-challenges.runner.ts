@@ -16,7 +16,7 @@ export const stubRunner = async (
   try {
     context.journal.assertWorkflow(
       lease,
-      context.deploymentIdentity,
+      context.hubOraclePolicyId,
       operation.headerHash,
       operation.action,
       now,
@@ -27,7 +27,7 @@ export const stubRunner = async (
       lease,
       {
         id,
-        deploymentIdentity: context.deploymentIdentity,
+        hubOraclePolicyId: context.hubOraclePolicyId,
         actor: context.actor,
         headerHash: operation.headerHash,
         action: operation.action,

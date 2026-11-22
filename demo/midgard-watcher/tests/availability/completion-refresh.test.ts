@@ -44,7 +44,7 @@ it.each([
       .mockImplementation(() => Effect.succeed({ tx: ledger.transaction() }));
     io.closeBuild = build;
     const header = liveChallenge("71");
-    const watcher = await runtime("d0".repeat(32));
+    const watcher = await runtime("d0".repeat(28));
     try {
       await watcher.reconcile(observation([answered(header.challenged)]), true);
       expect(watcher.status(), JSON.stringify(watcher.status())).toMatchObject({
@@ -70,7 +70,7 @@ it.each([
       expect(context.transactionLimits).toEqual(ledger.limits(attempt!.lucid));
       expect(operation.preparationScope.signal.aborted).toBe(true);
       const intent = ledger.sdk.inspectDaAvailabilitySignedIntent({
-        deploymentIdentity: "d0".repeat(32),
+        hubOraclePolicyId: "d0".repeat(28),
         actor: ledger.actor,
         headerHash: header.challenged.headerHash,
         action: "close",
@@ -78,7 +78,7 @@ it.each([
       });
       expect(intent.completesWorkflow).toBe(true);
       const retained = withJournal((journal) => ({
-        pending: journal.pending("d0".repeat(32), ledger.actor),
+        pending: journal.pending("d0".repeat(28), ledger.actor),
         reserved: journal.reservedOutRefs(ledger.actor),
       }));
       expect(retained.pending).toHaveLength(1);
@@ -97,7 +97,7 @@ it.each([
       expect(build).toHaveBeenCalledTimes(2);
       expect(
         withJournal((journal) => ({
-          pending: journal.pending("d0".repeat(32), ledger.actor),
+          pending: journal.pending("d0".repeat(28), ledger.actor),
           reserved: journal.reservedOutRefs(ledger.actor),
         })),
       ).toEqual(retained);
@@ -159,7 +159,7 @@ it("reselects the Timeout pool/collateral and preserves its terminal burn and ex
       }),
     );
   io.timeoutTx = build;
-  const watcher = await runtime("d0".repeat(32));
+  const watcher = await runtime("d0".repeat(28));
   try {
     await watcher.reconcile(observation([header]), true);
     expect(watcher.status(), JSON.stringify(watcher.status())).toMatchObject({
@@ -177,7 +177,7 @@ it("reselects the Timeout pool/collateral and preserves its terminal burn and ex
     expect(operation.preparationScope.deadlineEpochMs).toBeUndefined();
     expect(ledger.signs()).toBe(1);
     const intent = ledger.sdk.inspectDaAvailabilitySignedIntent({
-      deploymentIdentity: "d0".repeat(32),
+      hubOraclePolicyId: "d0".repeat(28),
       actor: context.actor,
       headerHash: header.headerHash,
       action: "timeout",
@@ -231,7 +231,7 @@ it("retires a pending completion refresh before signing and isolates its late mu
       tx: ledger.transaction({ cost: ledger.initial.coinsPerUtxoByte }),
     } as never);
   const header = liveChallenge("73");
-  const watcher = await runtime("d0".repeat(32));
+  const watcher = await runtime("d0".repeat(28));
   try {
     const state = observation([answered(header.challenged)]);
     const old = watcher.reconcile(state, true);
@@ -286,7 +286,7 @@ it("expires the same completion scope during wallet selection before any signing
       }),
     });
   });
-  const watcher = await runtime("d0".repeat(32));
+  const watcher = await runtime("d0".repeat(28));
   try {
     const state = observation([answered(liveChallenge("74").challenged)]);
     const pending = watcher.reconcile(state, true);
@@ -334,7 +334,7 @@ it.each([false, true])(
         burnHeader: terminal ? header.headerHash : undefined,
       });
     };
-    const watcher = await runtime("d0".repeat(32));
+    const watcher = await runtime("d0".repeat(28));
     try {
       await watcher.reconcile(observation([header]), true);
       expect(ledger.signs()).toBe(0);

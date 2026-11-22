@@ -79,7 +79,7 @@ const complete = async (confirmationDepth: number, rounds: number) => {
   );
   const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
     journalRoot: root,
-    deploymentFingerprint: "dd".repeat(32),
+    hubOraclePolicyId: "dd".repeat(28),
     unsafeNowMsForTest: () => MIDGARD_RETENTION_WINDOW.maturityMs + 1,
     run: async () => {
       throw new Error(

@@ -51,7 +51,7 @@ describe("fault-proof supervisor queue order", () => {
     let nowMs = 1_000;
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
-      deploymentFingerprint: "dd".repeat(32),
+      hubOraclePolicyId: "dd".repeat(28),
       deadlineAlertHeadroomMs: 1_000,
       unsafeNowMsForTest: () => nowMs,
       run: async ({ headerHash }) => {

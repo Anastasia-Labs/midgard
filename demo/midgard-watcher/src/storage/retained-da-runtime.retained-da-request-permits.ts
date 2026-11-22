@@ -175,7 +175,6 @@ export const bindWatcherRetainedDaOperations = (input: {
 
 export type WatcherRetainedDaRuntime = Readonly<{
   schemaVersion: typeof WATCHER_RETAINED_DA_RUNTIME;
-  deploymentFingerprint: string;
   sources: readonly DaLibp2pRetainedDaSource[];
   close(): Promise<void>;
 }>;

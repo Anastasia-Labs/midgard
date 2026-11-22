@@ -21,6 +21,8 @@ export const WATCHER_RULE_BUNDLE_REJECTION_SELECTION =
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
 
+const POLICY_ID = /^[0-9a-f]{56}$/u;
+
 const COMMITMENT_NAME = /^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)*$/u;
 
 export const WATCHER_RULE_BUNDLE_TRANSITION_PRIORITY = Object.freeze([
@@ -144,6 +146,13 @@ export const exactHex32 = (value: unknown, path: string): string => {
   return value;
 };
 
+export const exactPolicyId = (value: unknown, path: string): string => {
+  if (typeof value !== "string" || !POLICY_ID.test(value)) {
+    return fail("invalid_field", path);
+  }
+  return value;
+};
+
 export const exactNetwork = (
   value: unknown,
   path: string,
@@ -242,7 +251,7 @@ export type WatcherRuleBundleTargetParameters = Readonly<{
 export type WatcherRuleBundle = Readonly<{
   schemaVersion: typeof WATCHER_RULE_BUNDLE_SCHEMA_VERSION;
   ruleBundleVersion: typeof WATCHER_RULE_BUNDLE_VERSION;
-  deploymentManifestId: string;
+  hubOraclePolicyId: string;
   network: "Mainnet" | "Preprod" | "Preview" | "Custom";
   blueprintHash: string;
   /**
@@ -270,7 +279,7 @@ export type LoadedWatcherRuleBundle = Readonly<{
 }>;
 
 export type WatcherRuleBundleConstructionIdentity = Readonly<{
-  manifestId: string;
+  hubOraclePolicyId: string;
   network: "Mainnet" | "Preprod" | "Preview" | "Custom";
   blueprintHash: string;
   l1SlotConfig: L1SlotConfig;

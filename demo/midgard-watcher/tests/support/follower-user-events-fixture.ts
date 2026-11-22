@@ -217,7 +217,7 @@ export const openFollowerUserEvents = async (
     rawReads,
     proofRetention,
     identity: {
-      deploymentManifestId: deployment.deploymentIdentity.manifestId,
+      hubOraclePolicyId: deployment.deploymentIdentity.hubOraclePolicyId,
       blueprintHash: deployment.deploymentIdentity.blueprintHash,
       network: deployment.deploymentIdentity.network,
     },

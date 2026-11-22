@@ -36,12 +36,12 @@ type ProbeBody = {
 
 afterEach(removeJournalDirectories);
 
-const DEPLOYMENT = "dd".repeat(32);
+const DEPLOYMENT = "dd".repeat(28);
 
 const startSupervisor = (journalRoot: string) => {
   const supervisor = createWatcherFaultProofSupervisor({
     journalRoot,
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     deadlineAlertHeadroomMs: MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
     queueAuthenticationKey: TEST_JOURNAL_KEY,
     proofRetention: storelessProofRetention,
@@ -59,7 +59,7 @@ const startSupervisor = (journalRoot: string) => {
     failure = error;
   });
   const operations = createWatcherOperationsObservability({
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     supervisor,
     launchScopeStatus: () => ({
       installedCategoryCount: 54,
@@ -98,7 +98,7 @@ const expectHeldUnready = async (
   for (let pass = 0; pass < 2; pass += 1)
     await expect(
       supervisor.requestProgress({
-        observation: progressObservation({ deploymentFingerprint: DEPLOYMENT }),
+        observation: progressObservation({ hubOraclePolicyId: DEPLOYMENT }),
         rollbackGeneration: "0",
       }),
     ).rejects.toThrow(detail);
@@ -216,7 +216,7 @@ describe("watcher journal open failures (R6)", () => {
       startSupervisor(journalRoot);
     await expect(
       supervisor.requestProgress({
-        observation: progressObservation({ deploymentFingerprint: DEPLOYMENT }),
+        observation: progressObservation({ hubOraclePolicyId: DEPLOYMENT }),
         rollbackGeneration: "0",
       }),
     ).rejects.toThrow("watcher journals are unavailable");
@@ -284,7 +284,7 @@ describe("watcher journal open failures (R6)", () => {
     rmSync(path);
     await expect(
       supervisor.requestProgress({
-        observation: progressObservation({ deploymentFingerprint: DEPLOYMENT }),
+        observation: progressObservation({ hubOraclePolicyId: DEPLOYMENT }),
         rollbackGeneration: "0",
       }),
     ).rejects.toThrow("file is not a database");

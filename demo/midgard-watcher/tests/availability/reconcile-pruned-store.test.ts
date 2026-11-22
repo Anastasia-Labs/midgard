@@ -208,10 +208,10 @@ describe("a signed intent the store may have pruned", () => {
   it("retires an earlier deployment's confirmed anchor the store pruned before it was pinned", async () => {
     const fx = await harness();
     const journal = openJournal();
-    const earlier = "b2".repeat(32);
+    const earlier = "b2".repeat(28);
     const [input, collateral] = await fund(fx, 2);
     const { tx, intent } = recorded(fx, journal, "prepare", {
-      deploymentIdentity: earlier,
+      hubOraclePolicyId: earlier,
       inputs: [input!],
       collaterals: [collateral!],
     });

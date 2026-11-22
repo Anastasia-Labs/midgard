@@ -37,7 +37,7 @@ export const watcherDeadlineAlertHeadroomMs = (
 
 export const createWatcherFaultProofSupervisor = (input: {
   readonly journalRoot: string;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly deadlineAlertHeadroomMs: number;
   readonly queueAuthenticationKey: Uint8Array;
   readonly execution: Pick<
@@ -63,7 +63,7 @@ export const createWatcherFaultProofSupervisor = (input: {
 }): WatcherFaultProofSupervisor =>
   createSupervisor({
     journalRoot: input.journalRoot,
-    deploymentFingerprint: input.deploymentFingerprint,
+    hubOraclePolicyId: input.hubOraclePolicyId,
     deadlineAlertHeadroomMs: input.deadlineAlertHeadroomMs,
     queueAuthenticationKey: input.queueAuthenticationKey,
     nowMs: Date.now,
@@ -133,7 +133,7 @@ export const createWatcherFaultProofSupervisor = (input: {
 /** Test-only dependency seam; production category admission cannot be changed. */
 export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
   readonly journalRoot: string;
-  readonly deploymentFingerprint: string;
+  readonly hubOraclePolicyId: string;
   readonly deadlineAlertHeadroomMs?: number;
   readonly unsafeNowMsForTest?: () => number;
   readonly unsafeQueueAuthenticationKeyForTest?: Uint8Array;
@@ -156,7 +156,7 @@ export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
       ? {}
       : { proofRetention: input.unsafeProofRetentionForTest }),
     journalRoot: input.journalRoot,
-    deploymentFingerprint: input.deploymentFingerprint,
+    hubOraclePolicyId: input.hubOraclePolicyId,
     deadlineAlertHeadroomMs:
       input.deadlineAlertHeadroomMs ??
       Math.min(3_600_000, MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs),

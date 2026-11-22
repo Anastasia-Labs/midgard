@@ -152,15 +152,17 @@ export const setup = async (
 ) => {
   const fixture = await setupClassifiedFaultFixture({ headerEndTime });
   const verifiedFinality = await finality.verifyForWorkflow({
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
   });
   const verifiedEconomics = await watcherDeploymentReleaseEconomicsAuthority(
     deploymentIdentity,
-  ).verifyForWorkflow({ deploymentFingerprint: deploymentIdentity.manifestId });
+  ).verifyForWorkflow({
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
+  });
   const raw = await terminalFixture({
     proofCreation: true,
     header: fixture.fixture.header,
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     blueprintHash: verifiedFinality.blueprintHash,
     verifiedFinality,
     verifiedEconomics,
@@ -190,7 +192,7 @@ export const setup = async (
   );
   const workflowId = computeFraudProofWorkflowId({
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     category: "doubleSpend",
     target: { kind: "state_queue_header", headerHash: fixture.old.headerHash },
     decisionDigest: fixture.fresh.decisionDigest,
@@ -236,13 +238,13 @@ export const setup = async (
           }),
       },
       runtimeConfigPath: "/unused-objective-test.json",
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       operationsSink,
     });
     const supervisor = createWatcherFaultProofSupervisor({
       proofRetention,
       journalRoot: fixture.journalRoot,
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: new Uint8Array(32).fill(0xa5),
@@ -264,7 +266,7 @@ export const setup = async (
       rollbackGeneration: generation.toString(),
     });
     const observation = progressObservation({
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       header: targetPresent ? fixture.fixture : undefined,
       revision: generation,
     });
@@ -311,7 +313,7 @@ export const setup = async (
         await terminalFixture({
           proofCreation: true,
           header: fixture.fixture.header,
-          deploymentFingerprint: deploymentIdentity.manifestId,
+          hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
           blueprintHash: verifiedFinality.blueprintHash,
           verifiedFinality,
           verifiedEconomics,
@@ -831,7 +833,7 @@ describe("proof objective progress with journals", () => {
     // While its header is queued the row stays: a live fault requeues it.
     await restarted.requestProgress({
       observation: progressObservation({
-        deploymentFingerprint: deploymentIdentity.manifestId,
+        hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
         header: test.fixture.fixture,
         revision: 3,
       }),
@@ -896,7 +898,7 @@ describe("proof objective progress with journals", () => {
     if (final)
       await supervisor.requestProgress({
         observation: progressObservation({
-          deploymentFingerprint: deploymentIdentity.manifestId,
+          hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
           header: test.fixture.fixture,
           revision: 2,
         }),
@@ -1124,7 +1126,7 @@ describe("proof objective progress with journals", () => {
     const supervisor = test.createSupervisor();
     await supervisor.requestProgress({
       observation: progressObservation({
-        deploymentFingerprint: deploymentIdentity.manifestId,
+        hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       }),
       rollbackGeneration: "0",
     });
@@ -1132,7 +1134,7 @@ describe("proof objective progress with journals", () => {
     expect(initializedReader).toHaveBeenCalledOnce();
     const writer = await openWatcherFaultDecisionJournal({
       directory: test.fixture.journalRoot,
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       launchScope: installedLaunchScope(test.fixture.old.launchScope),
       authenticationKey: TEST_JOURNAL_KEY,
     });

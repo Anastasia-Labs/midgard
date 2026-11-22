@@ -76,7 +76,6 @@ export const parsePersistedObservation = (
 ): WatcherAuthenticatedStateQueueObservation | null => {
   const record = exactRecord(value, [
     "schemaVersion",
-    "deploymentIdentityDigest",
     "protocolScriptAuthorityDigest",
     "stateQueuePolicyId",
     "hubOraclePolicyId",
@@ -121,8 +120,6 @@ export const parsePersistedObservation = (
     nativePoint === null ||
     record.schemaVersion !==
       WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION ||
-    typeof record.deploymentIdentityDigest !== "string" ||
-    !HEX_32.test(record.deploymentIdentityDigest) ||
     typeof record.protocolScriptAuthorityDigest !== "string" ||
     !HEX_32.test(record.protocolScriptAuthorityDigest) ||
     typeof record.stateQueuePolicyId !== "string" ||
@@ -163,7 +160,6 @@ export const parsePersistedObservation = (
   }
   const canonical = {
     schemaVersion: record.schemaVersion,
-    deploymentIdentityDigest: record.deploymentIdentityDigest,
     protocolScriptAuthorityDigest: record.protocolScriptAuthorityDigest,
     stateQueuePolicyId: record.stateQueuePolicyId,
     hubOraclePolicyId: record.hubOraclePolicyId,

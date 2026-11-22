@@ -33,7 +33,7 @@ const funds = () => {
 };
 const retained = (actor: string) =>
   withJournal((journal) => ({
-    pending: journal.pending("d0".repeat(32), actor),
+    pending: journal.pending("d0".repeat(28), actor),
     reserved: journal.reservedOutRefs(actor),
   }));
 
@@ -55,7 +55,7 @@ it.each([
       .sign.withWallet()
       .complete();
     const intent = ledger.sdk.inspectDaAvailabilitySignedIntent({
-      deploymentIdentity: "d0".repeat(32),
+      hubOraclePolicyId: "d0".repeat(28),
       actor: ledger.actor,
       headerHash: header.headerHash,
       action: "close",
@@ -75,7 +75,7 @@ it.each([
       }
     });
     const before = retained(ledger.actor);
-    const watcher = await runtime("d0".repeat(32));
+    const watcher = await runtime("d0".repeat(28));
     try {
       await watcher.reconcile(observation([header]), true);
       if (fee < PARAMETERS.max_close_fee_lovelace) {
@@ -119,7 +119,7 @@ it.each([
           )
         : Effect.succeed({ tx: ledger.transaction() } as never);
     const state = observation([answered(liveChallenge("79").challenged)]);
-    const watcher = await runtime("d0".repeat(32));
+    const watcher = await runtime("d0".repeat(28));
     try {
       await watcher.reconcile(state, true);
       expect(watcher.status(), JSON.stringify(watcher.status())).toMatchObject({
@@ -176,7 +176,7 @@ it("uses fresh recovery limits when the protocol changes after construction and 
     return Effect.succeed({ tx } as never);
   };
   const state = observation([answered(liveChallenge("70").challenged)]);
-  const watcher = await runtime("d0".repeat(32));
+  const watcher = await runtime("d0".repeat(28));
   try {
     await watcher.reconcile(state, true);
     expect(ledger.signs()).toBe(1);
@@ -207,7 +207,7 @@ it("rechecks recovery ownership at the actual submit handoff after the SDK's las
       tx: ledger.transaction({ cost: ledger.initial.coinsPerUtxoByte }),
     } as never);
   const state = observation([answered(liveChallenge("7e").challenged)]);
-  const watcher = await runtime("d0".repeat(32));
+  const watcher = await runtime("d0".repeat(28));
   let revoke = true;
   io.run.mockImplementation(async (context, operation) => {
     const submit = context.submit;
@@ -260,7 +260,7 @@ it("pins a newly actuated step in the follower before it is broadcast", async ()
       tx: ledger.transaction({ cost: ledger.initial.coinsPerUtxoByte }),
     } as never);
   const pins = vi.fn(async (_txHashes: readonly string[]) => undefined);
-  const watcher = await runtime("d0".repeat(32), {
+  const watcher = await runtime("d0".repeat(28), {
     onDaBondPool: () => undefined,
     onDaBondPoolReadFailure: () => undefined,
     pinJournalTransactions: pins,
@@ -308,7 +308,7 @@ it.each([
         : Effect.succeed({ tx: ledger.transaction() } as never);
     const header = withheld("7a");
     const state = observation([header.attested]);
-    const watcher = await runtime("d0".repeat(32));
+    const watcher = await runtime("d0".repeat(28));
     try {
       await watcher.reconcile(state, true);
       expect(
@@ -350,7 +350,7 @@ it("holds an existing signed Close when current minimumADA increases, then resum
   io.closeBuild = () =>
     Effect.succeed({ tx: ledger.transaction({ cost: 4310n }) } as never);
   const state = observation([answered(liveChallenge("7b").challenged)]);
-  const watcher = await runtime("d0".repeat(32));
+  const watcher = await runtime("d0".repeat(28));
   try {
     await watcher.reconcile(state, true);
     expect(io.submitTx, JSON.stringify(watcher.status())).toHaveBeenCalledTimes(
@@ -387,7 +387,7 @@ it("does not rebroadcast when the post-parameter exact-point read loses canonica
       tx: ledger.transaction({ cost: ledger.initial.coinsPerUtxoByte }),
     } as never);
   const state = observation([answered(liveChallenge("7c").challenged)]);
-  const watcher = await runtime("d0".repeat(32));
+  const watcher = await runtime("d0".repeat(28));
   try {
     await watcher.reconcile(state, true);
     expect(io.submitTx, JSON.stringify(watcher.status())).toHaveBeenCalledTimes(
@@ -423,7 +423,7 @@ it.each(["rollback", "deadline"])(
         tx: ledger.transaction({ cost: ledger.initial.coinsPerUtxoByte }),
       } as never);
     const state = observation([answered(liveChallenge("7d").challenged)]);
-    const watcher = await runtime("d0".repeat(32));
+    const watcher = await runtime("d0".repeat(28));
     try {
       await watcher.reconcile(state, true);
       expect(

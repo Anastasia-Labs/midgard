@@ -37,12 +37,10 @@ export const REFERENCE_SCRIPT_ROLES = Object.freeze(
 
 export type WatcherDeploymentIdentityErrorCode =
   | "canonical_manifest_invalid"
-  | "durable_marker_mismatch"
   | "duplicate_trust_root"
   | "invalid_field"
   | "invalid_signature"
   | "invalid_trust_root"
-  | "missing_durable_marker"
   | "missing_field"
   | "mismatched_identity"
   | "unknown_field"

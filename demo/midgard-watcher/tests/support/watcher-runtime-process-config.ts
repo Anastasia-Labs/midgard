@@ -30,7 +30,7 @@ export const writeWatcherRuntimeProcessConfig = async (
   const ruleBundle = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-      manifestId: construction.result.manifestId,
+      hubOraclePolicyId: construction.result.hubOraclePolicyId,
       network: construction.result.network,
       blueprintHash: construction.result.blueprintHash,
       programCommitments: construction.result.programCommitments,
@@ -121,7 +121,6 @@ export const writeWatcherRuntimeProcessConfig = async (
         signedIdentity: deployment.signedIdentity,
         policy: deployment.policy,
         trustRoots: deployment.trustRoots,
-        durableMarker: deployment.marker,
       }),
     ),
     writeFile(config.ruleBundlePath, JSON.stringify(ruleBundle)),

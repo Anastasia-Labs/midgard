@@ -436,7 +436,7 @@ describe("snapshot authority: admitted, provenance exact", () => {
     });
     expect(snapshot.cursor.rollbackCursor).toBe(
       computeFraudProofRawL1RollbackCursor({
-        deploymentIdentityDigest: RELEASE.deploymentIdentityDigest,
+        hubOraclePolicyId: RELEASE.hubOraclePolicyId,
         blueprintHash: RELEASE.blueprintHash,
         finalityPolicyDigest: RELEASE.policyDigest,
         sourceId: SOURCE_ID,

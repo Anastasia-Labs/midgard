@@ -19,7 +19,7 @@ import type { WatcherProcessConfig } from "../../src/runtime/process-config.js";
 // the SDK's own reconciliation runs over a real journal holding a real signed
 // intent, so the runtime's rollback recovery is the shipped one. Only the L1
 // reads and the broadcast are injected.
-const DEPLOYMENT = "ab".repeat(32);
+const DEPLOYMENT = "ab".repeat(28);
 const io = vi.hoisted(() => ({
   actor: "",
   operation: vi.fn(),
@@ -102,7 +102,7 @@ vi.mock("../../src/availability/published-payload.js", () => ({
 const observation = (slot: number) =>
   ({
     observationDigest: `${slot.toString()}:${"11".repeat(32)}`,
-    deploymentIdentityDigest: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     nativePoint: {
       slot: String(slot),
       blockNo: String(slot),
@@ -146,7 +146,7 @@ const confirmedIntent = async (journalPath: string) => {
   });
   const signed = await built.sign.withWallet().complete();
   const intent = inspectDaAvailabilitySignedIntent({
-    deploymentIdentity: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     actor: io.actor,
     headerHash: "bb".repeat(28),
     action: "prepare",
@@ -183,7 +183,7 @@ describe("availability runtime recovery through the SDK's own reconciliation", (
       } as unknown as WatcherProcessConfig,
       identity: {
         network: "Custom",
-        manifestId: DEPLOYMENT,
+        hubOraclePolicyId: DEPLOYMENT,
       } as VerifiedWatcherDeploymentIdentity,
       l1: {
         reads: {},

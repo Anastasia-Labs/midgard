@@ -135,7 +135,7 @@ const setup = async () => {
       store: follower.store,
       userEvents,
       identity: {
-        deploymentManifestId: deployment.deploymentIdentity.manifestId,
+        hubOraclePolicyId: deployment.deploymentIdentity.hubOraclePolicyId,
         blueprintHash: deployment.deploymentIdentity.blueprintHash,
         network: deployment.deploymentIdentity.network,
       },

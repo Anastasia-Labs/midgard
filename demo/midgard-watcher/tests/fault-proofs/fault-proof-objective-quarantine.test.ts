@@ -68,7 +68,7 @@ const secondObjective = async (
   };
   const decision = await classifyHeader({
     classifier: await createHeaderClassifier({
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finality,
     }),
@@ -85,7 +85,7 @@ const secondObjective = async (
   await (
     await openWatcherFaultDecisionJournal({
       directory: fixture.journalRoot,
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       launchScope: installedLaunchScope(decision.launchScope),
       authenticationKey: TEST_JOURNAL_KEY,
     })
@@ -138,13 +138,13 @@ const setup = async (cause: () => unknown) => {
         ),
       },
       runtimeConfigPath: "/unused-quarantine-test.json",
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       operationsSink: { recordProofStep, setAlert },
     });
     const supervisor = createWatcherFaultProofSupervisor({
       proofRetention: storelessProofRetention,
       journalRoot: fixture.journalRoot,
-      deploymentFingerprint: deploymentIdentity.manifestId,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: TEST_JOURNAL_KEY,
@@ -159,7 +159,7 @@ const setup = async (cause: () => unknown) => {
   let failed: unknown;
   let watcher = await start();
   const observation = progressObservation({
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     headers: [fixture.fixture, second.block],
     revision: 1,
   });
@@ -237,7 +237,7 @@ const setup = async (cause: () => unknown) => {
         request(
           fixture.old,
           progressObservation({
-            deploymentFingerprint: deploymentIdentity.manifestId,
+            hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
             headers: [fixture.fixture],
             revision: 2,
           }),

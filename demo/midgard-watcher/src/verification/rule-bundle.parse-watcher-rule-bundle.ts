@@ -26,6 +26,7 @@ import {
   equalStringMaps,
   exactHex32,
   exactNetwork,
+  exactPolicyId,
   exactRecord,
   fail,
   type LoadedWatcherRuleBundle,
@@ -115,7 +116,7 @@ export const parseWatcherRuleBundle = (value: unknown): WatcherRuleBundle => {
   const bundle = exactRecord(value, "$", [
     "schemaVersion",
     "ruleBundleVersion",
-    "deploymentManifestId",
+    "hubOraclePolicyId",
     "network",
     "blueprintHash",
     "l1SlotConfig",
@@ -167,9 +168,9 @@ export const parseWatcherRuleBundle = (value: unknown): WatcherRuleBundle => {
   return Object.freeze({
     schemaVersion: WATCHER_RULE_BUNDLE_SCHEMA_VERSION,
     ruleBundleVersion: WATCHER_RULE_BUNDLE_VERSION,
-    deploymentManifestId: exactHex32(
-      bundle.deploymentManifestId,
-      "$.deploymentManifestId",
+    hubOraclePolicyId: exactPolicyId(
+      bundle.hubOraclePolicyId,
+      "$.hubOraclePolicyId",
     ),
     network,
     blueprintHash: exactHex32(bundle.blueprintHash, "$.blueprintHash"),
@@ -213,22 +214,22 @@ const parseConstructionIdentity = (
   value: WatcherRuleBundleConstructionIdentity,
 ): WatcherRuleBundleConstructionIdentity => {
   const identity = exactRecord(value, "$.constructionIdentity", [
-    "manifestId",
+    "hubOraclePolicyId",
     "network",
     "blueprintHash",
     "l1SlotConfig",
     "programCommitments",
   ]);
-  const manifestId = exactHex32(
-    identity.manifestId,
-    "$.constructionIdentity.manifestId",
+  const hubOraclePolicyId = exactPolicyId(
+    identity.hubOraclePolicyId,
+    "$.constructionIdentity.hubOraclePolicyId",
   );
   const network = exactNetwork(
     identity.network,
     "$.constructionIdentity.network",
   );
   return Object.freeze({
-    manifestId,
+    hubOraclePolicyId,
     network,
     blueprintHash: exactHex32(
       identity.blueprintHash,
@@ -271,7 +272,7 @@ export const makeWatcherCanonicalRuleBundle = (input: {
   return parseWatcherRuleBundle({
     schemaVersion: WATCHER_RULE_BUNDLE_SCHEMA_VERSION,
     ruleBundleVersion: WATCHER_RULE_BUNDLE_VERSION,
-    deploymentManifestId: identity.manifestId,
+    hubOraclePolicyId: identity.hubOraclePolicyId,
     network: identity.network,
     blueprintHash: identity.blueprintHash,
     l1SlotConfig: identity.l1SlotConfig,
@@ -300,18 +301,16 @@ export const loadWatcherRuleBundle = (input: {
   readonly signedIdentity: unknown;
   readonly policy: WatcherDeploymentIdentityPolicy;
   readonly trustRoots: readonly WatcherDeploymentTrustRoot[];
-  readonly durableMarker: unknown;
   readonly ruleBundle: unknown;
 }): LoadedWatcherRuleBundle => {
   const identity = verifyWatcherDeploymentIdentity({
     signedIdentity: input.signedIdentity,
     policy: input.policy,
     trustRoots: input.trustRoots,
-    durableMarker: input.durableMarker,
   });
   const ruleBundle = parseWatcherRuleBundle(input.ruleBundle);
   if (
-    ruleBundle.deploymentManifestId !== identity.manifestId ||
+    ruleBundle.hubOraclePolicyId !== identity.hubOraclePolicyId ||
     ruleBundle.network !== identity.network ||
     ruleBundle.blueprintHash !== identity.blueprintHash
   ) {

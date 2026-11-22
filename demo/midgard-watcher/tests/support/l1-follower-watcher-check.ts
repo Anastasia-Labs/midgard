@@ -196,7 +196,7 @@ export const watcherCheck = (seen: Coverage) => {
           return `queued header ${header}: history tx ${txHash}: ${raw.reason}`;
         const checkpoint = await store.transaction("read", (tx) =>
           readWatcherTransactionCheckpoint(tx, entry.tx.hash, {
-            deploymentIdentityDigest: "00".repeat(32),
+            hubOraclePolicyId: "00".repeat(28),
             stateQueuePolicyId: D.stateQueueMint,
             finalityDepth: 1,
             prunedThroughSlot: cursor.prunedThroughSlot,

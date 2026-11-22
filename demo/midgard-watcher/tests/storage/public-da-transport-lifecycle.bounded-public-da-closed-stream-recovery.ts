@@ -29,14 +29,14 @@ describe("bounded public DA closed-stream recovery", () => {
         Object.assign(request, {
           protocol: DaRequestResponseProtocol.payloadSubmit,
           protocolId: daRequestResponseProtocolId(
-            "22".repeat(32),
+            "22".repeat(28),
             DaRequestResponseProtocol.payloadSubmit,
           ),
         });
       } else if (scenario === "mismatched protocol") {
         Object.assign(request, {
           protocolId: daRequestResponseProtocolId(
-            "22".repeat(32),
+            "22".repeat(28),
             DaRequestResponseProtocol.payloadSubmit,
           ),
         });

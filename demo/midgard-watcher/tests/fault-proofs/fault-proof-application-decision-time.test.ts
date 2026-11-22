@@ -67,7 +67,7 @@ import {
  * strict superset the shared application loop enforces at load time.
  */
 const classifier = vi.hoisted(() => ({
-  deploymentFingerprint: "",
+  hubOraclePolicyId: "",
   issued: new WeakSet<object>(),
   contexts: new WeakMap<object, CompleteCanonicalReplayContext>(),
   respond: undefined as undefined | (() => HeaderDecision),
@@ -78,7 +78,7 @@ const classifier = vi.hoisted(() => ({
 vi.mock("@al-ft/midgard-fault-proofs", async (load) => {
   const actual = await load<typeof import("@al-ft/midgard-fault-proofs")>();
   const bound = () => ({
-    deploymentFingerprint: classifier.deploymentFingerprint,
+    hubOraclePolicyId: classifier.hubOraclePolicyId,
     resolvedContracts: {
       contracts: Object.fromEntries(
         [
@@ -114,7 +114,7 @@ vi.mock("@al-ft/midgard-fault-proofs", async (load) => {
     // carry its deployment identity and the explicit history configuration.
     bindFraudProofWorkflowDeployment: async () => bound(),
     bindFraudProofTerminalDeployment: async () => ({
-      deploymentFingerprint: classifier.deploymentFingerprint,
+      hubOraclePolicyId: classifier.hubOraclePolicyId,
       releaseFinality: classifier.releaseFinality,
     }),
     createTransitionTraceEventAuthority: () => bound(),
@@ -122,7 +122,7 @@ vi.mock("@al-ft/midgard-fault-proofs", async (load) => {
       input: Parameters<typeof actual.createHeaderClassifier>[0],
     ) => ({
       classifierVersion: "midgard-production-header-classifier-v1",
-      deploymentFingerprint: input.deploymentFingerprint,
+      hubOraclePolicyId: input.hubOraclePolicyId,
       launchScope: input.replayer.launchScope,
     }),
     classifyHeader: async () => {
@@ -170,7 +170,7 @@ vi.mock(
   },
 );
 
-classifier.deploymentFingerprint = DEPLOYMENT;
+classifier.hubOraclePolicyId = DEPLOYMENT;
 const SOURCE_ID = "watcher-test-local-node";
 const OBSERVED_SLOT = 900n;
 const OBSERVED_BLOCK_HASH = "19".repeat(32);
@@ -248,10 +248,9 @@ admitted.headers.add(genesisQueueHeader);
 const queueObservation: WatcherAuthenticatedStateQueueObservation =
   Object.freeze({
     schemaVersion: "midgard-watcher-production-state-queue-observation-v1",
-    deploymentIdentityDigest: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     protocolScriptAuthorityDigest: "10".repeat(32),
     stateQueuePolicyId: "11".repeat(28),
-    hubOraclePolicyId: "12".repeat(28),
     nativePoint: Object.freeze({
       blockHash: "13".repeat(32),
       parentBlockHash: "14".repeat(32),
@@ -321,7 +320,7 @@ const issue = (
   const decision: HeaderDecision = Object.freeze({
     schemaVersion: "midgard-production-header-decision-v1",
     classifierVersion: "midgard-production-header-classifier-v1",
-    deploymentFingerprint: DEPLOYMENT,
+    hubOraclePolicyId: DEPLOYMENT,
     headerHash,
     authenticatedObservationDigest: OBSERVATION_DIGEST,
     payloadEnvelopeSha256: "26".repeat(32),
@@ -432,7 +431,7 @@ describe("watcher decision-time predecessor ledger", () => {
   ) => {
     const execution = {
       category,
-      deploymentFingerprint: DEPLOYMENT,
+      hubOraclePolicyId: DEPLOYMENT,
       headerHash: HEADER_HASH,
       runtimeConfigPath: FORWARDED_RUNTIME_CONFIG_PATH,
       decisionDigest: decisionDigestFor(category),
@@ -454,7 +453,7 @@ describe("watcher decision-time predecessor ledger", () => {
       bindConfig: () => undefined,
       constructWorkflow: async () => ({
         binding: {
-          deploymentFingerprint: DEPLOYMENT,
+          hubOraclePolicyId: DEPLOYMENT,
           definition: { category, headerHash: HEADER_HASH },
         },
         decisionDigest: execution.decisionDigest,
@@ -471,7 +470,7 @@ describe("watcher decision-time predecessor ledger", () => {
         infrastructure: loaded.infrastructure,
         resolveReferenceScript: loaded.resolveReferenceScript,
         invocation: {
-          deploymentFingerprint: DEPLOYMENT,
+          hubOraclePolicyId: DEPLOYMENT,
           category,
           headerHash: HEADER_HASH,
         },
@@ -654,7 +653,7 @@ describe("watcher admitted runtime configuration", () => {
     classifier.releaseFinality =
       await watcherDeploymentReleaseFinalityAuthority(
         AUTHORITY.result,
-      ).verifyForWorkflow({ deploymentFingerprint: DEPLOYMENT });
+      ).verifyForWorkflow({ hubOraclePolicyId: DEPLOYMENT });
     try {
       const category = OTHER_FAMILIES[0]!;
       const decision = issue(category, undefined);
@@ -687,7 +686,7 @@ describe("watcher admitted runtime configuration", () => {
       expect(sourceIds).toContain(
         watcherFaultProofSourceId({
           category: "doubleSpend",
-          manifestId: DEPLOYMENT,
+          hubOraclePolicyId: DEPLOYMENT,
           localL1Source: admittedConfig.l1.source,
         }),
       );

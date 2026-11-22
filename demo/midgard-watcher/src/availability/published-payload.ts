@@ -269,7 +269,7 @@ export const createWatcherL1AvailabilityPayloadSource = (input: {
     minimumConfirmationDepth < 1
   )
     throw new Error("L1 payload history depth must be positive");
-  const sourceId = `watcher-l1-availability/${input.identity.manifestId}`;
+  const sourceId = `watcher-l1-availability/${input.identity.hubOraclePolicyId}`;
   const sourcePeerId = "cardano-l1";
   const cache = new Map<
     string,
@@ -283,7 +283,7 @@ export const createWatcherL1AvailabilityPayloadSource = (input: {
       if (observation === null) return { ok: false, sourceId, attempts: [] };
       assertWatcherStateQueueObservation(observation);
       if (
-        observation.deploymentIdentityDigest !== input.identity.manifestId ||
+        observation.hubOraclePolicyId !== input.identity.hubOraclePolicyId ||
         BigInt(observation.nativePoint.finalityDepth) <
           BigInt(minimumConfirmationDepth)
       ) {

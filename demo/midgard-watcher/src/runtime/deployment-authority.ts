@@ -81,8 +81,8 @@ const readAuthorityJson = async (
 
 /**
  * Reopens the signed deployment authority and its separately supplied release
- * rule bundle. Both verifiers receive the same raw identity, policy, trust roots
- * and durable marker; the runtime never constructs a replacement rule bundle.
+ * rule bundle. Both verifiers receive the same raw identity, policy and trust
+ * roots; the runtime never constructs a replacement rule bundle.
  * The resulting authority is process-local and must be freshly loaded on restart.
  */
 export const loadWatcherVerifiedDeploymentAuthority = async (input: {
@@ -99,7 +99,6 @@ export const loadWatcherVerifiedDeploymentAuthority = async (input: {
     "signedIdentity",
     "policy",
     "trustRoots",
-    "durableMarker",
   ]);
   if (!Array.isArray(authority.trustRoots)) {
     throw new Error("watcher deployment authority trust roots are invalid");
@@ -112,7 +111,6 @@ export const loadWatcherVerifiedDeploymentAuthority = async (input: {
     trustRoots: authority.trustRoots as Parameters<
       typeof verifyWatcherDeploymentIdentity
     >[0]["trustRoots"],
-    durableMarker: authority.durableMarker,
   };
   const deploymentIdentity = verifyWatcherDeploymentIdentity(verificationInput);
   const loadedRuleBundle = loadWatcherRuleBundle({

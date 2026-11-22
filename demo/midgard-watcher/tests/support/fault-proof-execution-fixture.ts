@@ -46,7 +46,7 @@ export const setupFaultProofExecution = async ({
       verifyCompleted,
     },
     runtimeConfigPath: "/unused-test-runtime.json",
-    deploymentFingerprint: deploymentIdentity.manifestId,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     operationsSink: { recordProofStep, setAlert },
   });
   const input = {

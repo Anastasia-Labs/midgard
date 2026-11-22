@@ -11,14 +11,14 @@ import {
 } from "../../src/runtime/operations-observability.js";
 import { supervisor } from "./operations-observability.supervisor.js";
 
-const MANIFEST = "11".repeat(32);
+const MANIFEST = "11".repeat(28);
 const RESERVATION = "ab".repeat(32);
 
 describe("the watcher operations sink", () => {
   it("serves an alert raised before the view exists in status().activeAlerts", () => {
     let now = 5_000n;
     const recorder = createWatcherOperationsSink({
-      deploymentFingerprint: MANIFEST,
+      hubOraclePolicyId: MANIFEST,
       nowMs: () => now,
     });
     recorder.sink.setAlert({
@@ -43,7 +43,7 @@ describe("the watcher operations sink", () => {
     });
 
     const status = operations.api.status();
-    expect(status.deploymentFingerprint).toBe(MANIFEST);
+    expect(status.hubOraclePolicyId).toBe(MANIFEST);
     expect(status.activeAlerts).toEqual([
       {
         code: "proof_submission_failure",
