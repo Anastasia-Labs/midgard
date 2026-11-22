@@ -4,6 +4,11 @@ import {
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
 import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
+import { ledgerEntriesRoot } from "@al-ft/midgard-fault-proofs/ledger-at";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
@@ -55,6 +60,15 @@ const ledger = new Map([
     }),
   ],
 ]);
+/** A ledger holding exactly `entries`. */
+const ledgerOf = async (
+  entries: readonly { readonly outRef: Buffer; readonly output: Buffer }[],
+) =>
+  createLedgerStore(createMemoryLedgerStorage()).admit(
+    entries,
+    await ledgerEntriesRoot(entries),
+  );
+
 const eventId = Data.to(
   { transactionId: "01".repeat(32), outputIndex: 0n },
   SDK.OutputReference,
@@ -112,7 +126,12 @@ const replayed = async (read: WatcherUserEvent, settlement: string) =>
     }).replayUserEvent({
       step: { phase: "Withdrawal" } as unknown as SDK.TransitionStep,
       source: [eventId, settlement],
-      ledger,
+      ledger: await ledgerOf(
+        [...ledger].map(([key, output]) => ({
+          outRef: Buffer.from(key, "hex"),
+          output,
+        })),
+      ),
     }),
   );
 

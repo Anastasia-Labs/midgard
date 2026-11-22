@@ -7,23 +7,26 @@
  * replayed transaction needs one, canonical and bounded, carrying the replayed
  * verdict, and nothing more is asked of it (the DA committee's rule). The
  * node's foreign-block import and the watcher's ledger both run this one
- * function; each supplies its own ledger-root computation and L1 event
- * material.
+ * function; each supplies the parent `Ledger` and its own L1 event material.
+ *
+ * The replay reads from the ledger only the out-refs the block's events name
+ * (a transaction's spend and reference inputs and its outputs, a user event's
+ * out-refs) and applies each event's changes with `Ledger.apply`, so its work
+ * follows what the block touches, not the ledger's size. It returns the
+ * ledger after the block.
  *
  * Faults of the payload are thrown as `BlockReplayFault` defects; the
- * callbacks' and the root computation's failures pass through, and a
- * callback names a local fault of its own with `ReplayLocalFault`. A defect
- * of the event replay is a `ReplayLocalFault` marked `held`.
+ * callbacks' failures pass through, and a callback names a local fault of its
+ * own with `ReplayLocalFault`. A failure of the ledger's `read` or `apply` is
+ * a `ReplayLocalFault`. A defect of the event replay is a `ReplayLocalFault`
+ * marked `held`.
  */
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
-import {
-  replayValidationVerdictEvent,
-  type ValidationMachineLedgerEntry,
-} from "@al-ft/midgard-validation";
+import { replayValidationVerdictEvent } from "@al-ft/midgard-validation";
 import type {
   MidgardCommittedScriptRun,
   RejectedTx,
@@ -45,6 +48,13 @@ import {
   locally,
   ReplayLocalFault,
 } from "./block-replay.faults.js";
+import {
+  applyChanges,
+  type BlockReplayLedgerChange,
+  readOutputs,
+  resolvableOutRefs,
+} from "./block-replay.ledger.js";
+import type { Ledger } from "./ledger-store/index.js";
 
 export {
   encodeEventToStepValueCbor,
@@ -63,6 +73,10 @@ export {
   ReplayLocalFault,
 } from "./block-replay.faults.js";
 export {
+  type BlockReplayLedgerChange,
+  readLedgerOutput,
+} from "./block-replay.ledger.js";
+export {
   attributeWithdrawalClassificationFault,
   withdrawalClassificationInputReadable,
 } from "./withdrawal-classification-fault.js";
@@ -75,28 +89,20 @@ export {
 const descriptorVerdict = (valueHex: string) =>
   SDKDa.decodeCanonicalValidationTraceDescriptorData(valueHex).verdict;
 
-/** One ledger entry: the out-ref key bytes and the full output CBOR. */
-export type BlockReplayLedgerEntry = {
-  readonly outRef: Buffer;
-  readonly output: Buffer;
-};
-
 /** An L2 transaction a replay applied by its committed verdict. */
 export type CommittedTransaction = Readonly<{
   transactionId: Buffer;
   canonicalTransactionCbor: Buffer;
-  /** The ledger the transaction was replayed on, keyed by out-ref CBOR hex;
-   * it changes as the replay goes on. */
-  ledger: ReadonlyMap<string, Buffer>;
+  /** The outputs the transaction's spend and reference inputs resolved to
+   * on the ledger it was replayed on (those the ledger held), keyed by
+   * out-ref CBOR hex. */
+  resolvedOutputs: ReadonlyMap<string, Buffer>;
 }>;
 
 export type BlockReplayContext = {
   readonly header: SDK.Header;
-  readonly parentEntries: readonly BlockReplayLedgerEntry[];
-  /** The ledger's MPF root (the trie of canonical ledger descriptors). */
-  readonly ledgerRoot: (
-    entries: readonly BlockReplayLedgerEntry[],
-  ) => Effect.Effect<string, unknown>;
+  /** The ledger the block starts from. */
+  readonly parent: Ledger;
   readonly expectedNetworkId: bigint;
   readonly minFeeA: bigint;
   readonly minFeeB: bigint;
@@ -105,24 +111,20 @@ export type BlockReplayContext = {
   readonly blockTimeMs: number;
   /** The slot mapping script contexts carry their validity range in. */
   readonly l1SlotConfig: L1SlotConfig;
-  /** Observation only: emitted after a transition matches canonical replay.
+  /** Observation only: emitted after a transition matches canonical replay,
+   * with the out-refs whose output the event changed (`null`: removed).
    * The caller keeps it private until the entire block and prefix validate. */
   readonly onReplayedEvent?: (input: {
-    readonly mutations: readonly {
-      readonly key: string;
-      readonly output: Buffer | null;
-    }[];
+    readonly mutations: readonly BlockReplayLedgerChange[];
     readonly root: string;
   }) => void;
-  /** Authenticated L1 event material; never take projection authority from DA. */
+  /** Authenticated L1 event material; never take projection authority from
+   * DA. Reads what it needs from `ledger` (`readLedgerOutput`). */
   readonly replayUserEvent: (input: {
     readonly step: SDK.TransitionStep;
     readonly source: SDKDa.DaPayloadEntry;
-    readonly ledger: ReadonlyMap<string, Buffer>;
-  }) => Effect.Effect<
-    readonly { readonly key: string; readonly output: Buffer | null }[],
-    unknown
-  >;
+    readonly ledger: Ledger;
+  }) => Effect.Effect<readonly BlockReplayLedgerChange[], unknown>;
   /**
    * Set: every L2 transaction is replayed by its committed Accepted verdict
    * and runs no script. Each script run is handed to `onScriptRun`, without
@@ -151,17 +153,7 @@ export const replayBlockEvents = (
 ) =>
   Effect.gen(function* () {
     const body = input.payload.block_body;
-    const ledger = new Map(
-      input.parentEntries.map((entry) => [
-        entry.outRef.toString("hex"),
-        Buffer.from(entry.output),
-      ]),
-    );
-    const entriesOf = (): BlockReplayLedgerEntry[] =>
-      [...ledger].map(([key, output]) => ({
-        outRef: Buffer.from(key, "hex"),
-        output,
-      }));
+    let ledger = input.parent;
     const steps = body.transition_trace
       .map(([key, value]) => {
         const step = LucidData.from(
@@ -224,7 +216,6 @@ export const replayBlockEvents = (
       forcedPreimages.size !== body.forced_transactions.length
     )
       throw blockFault("foreign transaction preimage coverage mismatch");
-    let root = yield* input.ledgerRoot(input.parentEntries);
     for (const [index, { step, value }] of steps.entries()) {
       if (step.step_index !== BigInt(index) || step.schema_version !== 1n)
         throw blockFault("foreign transition indices/schema mismatch");
@@ -233,9 +224,12 @@ export const replayBlockEvents = (
       if (source === undefined || source.phase !== step.phase)
         throw blockFault("foreign transition source coverage/phase mismatch");
       expectedSources.delete(key);
-      const priorRoot = root;
-      const priorLedger =
-        input.onReplayedEvent === undefined ? undefined : new Map(ledger);
+      const priorRoot = ledger.root;
+      /** The event's changes, in order (`applyChanges`). */
+      let changes: readonly BlockReplayLedgerChange[];
+      let strict: boolean;
+      /** Outputs already read from `ledger` this event. */
+      let known = new Map<string, Buffer | undefined>();
       if (
         step.phase === "L2Transaction" ||
         step.phase === "ForcedTransaction"
@@ -259,13 +253,11 @@ export const replayBlockEvents = (
         // to their committed rejection rather than failing program selection.
         if (step.phase === "ForcedTransaction")
           deriveMidgardForcedTxFaultEvidenceMaterial(cbor);
-        const witnessEntries: ValidationMachineLedgerEntry[] = [...ledger].map(
-          ([outRef, output]) => ({
-            outRef: Buffer.from(outRef, "hex"),
-            output,
-          }),
-        );
         const sourceKind = step.phase === "L2Transaction" ? "normal" : "forced";
+        known = yield* readOutputs(ledger, resolvableOutRefs(cbor, sourceKind));
+        const resolvedOutputs = new Map<string, Buffer>();
+        for (const [outRef, output] of known)
+          if (output !== undefined) resolvedOutputs.set(outRef, output);
         const committed =
           step.phase === "L2Transaction" ? input.committedVerdicts : undefined;
         // Replay runs Phase A over every carried Flat script, then resolves
@@ -275,7 +267,12 @@ export const replayBlockEvents = (
         const replay = yield* replayValidationVerdictEvent({
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           canonicalTransactionCbor: cbor,
-          ledgerWitnessEntries: witnessEntries,
+          ledgerWitnessEntries: [...resolvedOutputs].map(
+            ([outRef, output]) => ({
+              outRef: Buffer.from(outRef, "hex"),
+              output,
+            }),
+          ),
           blockTimeMs: input.blockTimeMs,
           expectedNetworkId: input.expectedNetworkId,
           minFeeA: input.minFeeA,
@@ -314,7 +311,7 @@ export const replayBlockEvents = (
         committed?.onTransaction({
           transactionId: replay.transactionId,
           canonicalTransactionCbor: cbor,
-          ledger,
+          resolvedOutputs,
         });
         if (step.phase === "ForcedTransaction")
           yield* input.verifyForcedSource({
@@ -322,9 +319,17 @@ export const replayBlockEvents = (
             canonicalTransactionCbor: cbor,
             rejection: replay.rejection,
           });
-        for (const key of replay.statePatch.deletedOutRefs) ledger.delete(key);
-        for (const [key, output] of replay.statePatch.upsertedOutRefs)
-          ledger.set(key, output);
+        changes = [
+          ...replay.statePatch.deletedOutRefs.map((outRef) => ({
+            key: outRef,
+            output: null,
+          })),
+          ...[...replay.statePatch.upsertedOutRefs].map(([outRef, output]) => ({
+            key: outRef,
+            output,
+          })),
+        ];
+        strict = false;
         const descriptor = descriptors.get(key);
         if (descriptor === undefined)
           throw blockFault("foreign event lacks its validation descriptor");
@@ -334,25 +339,16 @@ export const replayBlockEvents = (
           );
         descriptors.delete(key);
       } else {
-        const mutations = yield* input.replayUserEvent({
+        changes = yield* input.replayUserEvent({
           step,
           source: source.source,
           ledger,
         });
-        for (const { key, output } of mutations) {
-          if (output === null) {
-            if (!ledger.delete(key))
-              throw blockFault(
-                "foreign user event spends missing ledger output",
-              );
-          } else {
-            if (ledger.has(key))
-              throw blockFault("foreign user event substitutes ledger output");
-            ledger.set(key, output);
-          }
-        }
+        strict = true;
       }
-      root = yield* input.ledgerRoot(entriesOf());
+      const next = yield* applyChanges(ledger, changes, known, strict);
+      ledger = next.ledger;
+      const root = ledger.root;
       const expectedStep = {
         ...step,
         pre_utxos_root: priorRoot,
@@ -373,20 +369,7 @@ export const replayBlockEvents = (
         )
       )
         throw blockFault("foreign event-to-step mapping mismatch");
-      if (priorLedger !== undefined) {
-        const mutations: { key: string; output: Buffer | null }[] = [];
-        for (const [outRef, output] of priorLedger) {
-          const after = ledger.get(outRef);
-          if (after === undefined)
-            mutations.push({ key: outRef, output: null });
-          else if (!after.equals(output))
-            mutations.push({ key: outRef, output: Buffer.from(after) });
-        }
-        for (const [outRef, output] of ledger)
-          if (!priorLedger.has(outRef))
-            mutations.push({ key: outRef, output: Buffer.from(output) });
-        input.onReplayedEvent?.({ mutations: Object.freeze(mutations), root });
-      }
+      input.onReplayedEvent?.({ mutations: next.applied, root });
       mappings.delete(key);
       if (input.committedVerdicts !== undefined) yield* yieldToEventLoop;
     }
@@ -398,7 +381,7 @@ export const replayBlockEvents = (
       throw blockFault(
         "foreign replay omitted committed events, mappings or validation descriptors",
       );
-    return entriesOf();
+    return ledger;
   });
 
 /**

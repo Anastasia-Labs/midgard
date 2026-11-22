@@ -9,12 +9,12 @@ import {
   locally,
   replayBlockEvents,
 } from "@al-ft/midgard-fault-proofs/block-replay";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
-import {
-  decodeMidgardLedgerTxFromCanonicalCbor,
-  midgardOutRefToCborHex,
-} from "@al-ft/midgard-validation";
 import type { MidgardCommittedScriptRun } from "@al-ft/midgard-validation/types";
 import { Data, Effect } from "effect";
 
@@ -28,28 +28,26 @@ import {
   headerRoots,
   rootMismatches,
 } from "../workers/commit-block-header/da-payload.compute-da-payload-roots.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "./ledger-hydration.js";
 import {
-  checkLedgerRoot,
   countLedgerDivergence,
+  type LedgerDivergence,
   ledgerDivergenceDetail,
 } from "./local-ledger-divergence.js";
 
 /** The shared block replay's context over the node's ledger rows. */
 export type ImportedBlockReplayContext = Omit<
   BlockReplayContext,
-  "parentEntries" | "ledgerRoot" | "committedVerdicts"
+  "parent" | "committedVerdicts" | "onReplayedEvent"
 > & {
   readonly parentEntries: readonly Ledger.MinimalEntry[];
 };
 
-const ledgerRows = (
-  entries: readonly { readonly outRef: Buffer; readonly output: Buffer }[],
-): Ledger.MinimalEntry[] =>
-  entries.map(({ outRef, output }) => ({
-    [Ledger.Columns.OUTREF]: outRef,
-    [Ledger.Columns.OUTPUT]: output,
-  }));
+/** Whether `error` is the ledger store's `LedgerRootMismatchError`, matched
+ * by name: the package ships more than one entry bundle. */
+const isLedgerRootMismatch = (
+  error: unknown,
+): error is Error & { readonly actualRoot: string } =>
+  error instanceof Error && error.name === "LedgerRootMismatchError";
 
 /**
  * - `missing`: the block's DA payload is not available yet;
@@ -136,9 +134,7 @@ const blockChecksCollector = (context: ImportCheckContext) => {
   const scripts = new Map<string, Buffer>();
   return {
     committedVerdicts: {
-      // The bookkeeping is this node's own: a throw from it is local. That
-      // includes decoding the transaction again: the replay has already
-      // decoded and accepted it with the same decoder.
+      // The bookkeeping is this node's own: a throw from it is local.
       onScriptRun: (run: MidgardCommittedScriptRun) =>
         locally("import check bookkeeping", () => {
           runs += 1;
@@ -151,18 +147,10 @@ const blockChecksCollector = (context: ImportCheckContext) => {
       onTransaction: (transaction: CommittedTransaction) => {
         if (runs > 0) {
           locally("import check bookkeeping", () => {
-            const tx = decodeMidgardLedgerTxFromCanonicalCbor(
-              transaction.canonicalTransactionCbor,
-            );
-            const keys = [...tx.spendInputs, ...tx.referenceInputs].map(
-              midgardOutRefToCborHex,
-            );
             // No run's context is built at import: each is estimated as
             // the transaction and the outputs it resolves.
             let contextBytes = transaction.canonicalTransactionCbor.byteLength;
-            for (const key of keys) {
-              const output = transaction.ledger.get(key);
-              if (output === undefined) continue;
+            for (const [key, output] of transaction.resolvedOutputs) {
               outputs.set(key, output);
               contextBytes += output.byteLength;
             }
@@ -363,18 +351,34 @@ export const verifyAndImportBlock = (
     // this node's ledger divergence, never the block's. Checked after every
     // check of the payload that does not read them, so a payload fault is
     // judged on any parent ledger.
-    yield* checkLedgerRoot({
-      check: "landed_parent",
-      headerHash: input.parentHeaderHash,
-      root: input.parentUtxosRoot,
-      derivedRoot: yield* computeLedgerMpfRootFromLedgerEntries(
-        input.parentEntries,
-      ),
+    // Interim: the parent ledger is built in memory from this node's
+    // whole-table entries for each block; the node's own ledger store
+    // replaces it.
+    const parent = yield* Effect.tryPromise({
+      try: () =>
+        createLedgerStore(createMemoryLedgerStorage()).admit(
+          input.parentEntries.map((entry) => ({
+            outRef: entry[Ledger.Columns.OUTREF],
+            output: entry[Ledger.Columns.OUTPUT],
+          })),
+          input.parentUtxosRoot,
+        ),
+      catch: (cause) => cause,
     }).pipe(
-      Effect.tapError(countLedgerDivergence),
-      Effect.catchAll((divergence) =>
-        fail("local_fault", ledgerDivergenceDetail(divergence)),
-      ),
+      Effect.catchAll((cause) => {
+        if (!isLedgerRootMismatch(cause)) return Effect.fail(cause);
+        const divergence: LedgerDivergence = {
+          check: "landed_parent",
+          headerHash: input.parentHeaderHash,
+          root: input.parentUtxosRoot,
+          derivedRoot: cause.actualRoot,
+        };
+        return countLedgerDivergence(divergence).pipe(
+          Effect.zipRight(
+            fail("local_fault", ledgerDivergenceDetail(divergence)),
+          ),
+        );
+      }),
     );
     const collector = blockChecksCollector({
       blockTimeMs: input.blockTimeMs,
@@ -384,25 +388,37 @@ export const verifyAndImportBlock = (
       minFeeB: input.minFeeB,
       l1SlotConfig: input.l1SlotConfig,
     });
-    const entries = ledgerRows(
-      yield* replayBlockEvents({
-        ...input,
-        parentEntries: input.parentEntries.map((entry) => ({
-          outRef: entry[Ledger.Columns.OUTREF],
-          output: entry[Ledger.Columns.OUTPUT],
-        })),
-        ledgerRoot: (ledger) =>
-          computeLedgerMpfRootFromLedgerEntries(ledgerRows(ledger)),
-        payload,
-        replayUserEvent: (event) => passThrough(input.replayUserEvent(event)),
-        verifyForcedSource: (source) =>
-          passThrough(input.verifyForcedSource(source)),
-        committedVerdicts: collector.committedVerdicts,
-      }),
+    // Interim: the entries after the block are the parent's with each
+    // event's changes folded in, for callers that hold whole-table entries;
+    // the node's own ledger store replaces them.
+    const after = new Map(
+      input.parentEntries.map((entry) => [
+        entry[Ledger.Columns.OUTREF].toString("hex"),
+        entry,
+      ]),
     );
-    const replayRoot = yield* computeLedgerMpfRootFromLedgerEntries(entries);
+    const replayed = yield* replayBlockEvents({
+      ...input,
+      parent,
+      payload,
+      replayUserEvent: (event) => passThrough(input.replayUserEvent(event)),
+      verifyForcedSource: (source) =>
+        passThrough(input.verifyForcedSource(source)),
+      committedVerdicts: collector.committedVerdicts,
+      onReplayedEvent: ({ mutations }) => {
+        for (const { key, output } of mutations)
+          if (output === null) after.delete(key);
+          else
+            after.set(key, {
+              [Ledger.Columns.OUTREF]: Buffer.from(key, "hex"),
+              [Ledger.Columns.OUTPUT]: output,
+            });
+      },
+    });
+    const replayRoot = replayed.root;
     if (replayRoot !== input.header.utxosRoot)
       return yield* fail("invalid", "foreign replay UTxO root mismatch");
+    const entries = [...after.values()];
     // Replay compares every transition and mapping by its canonical bytes,
     // independently of the payload's internally consistent roots; validation
     // descriptors, which the header does not commit, only by verdict.

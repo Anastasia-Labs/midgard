@@ -32,7 +32,10 @@ import { outRefToCbor } from "@al-ft/lucid-midgard";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { reconstructMidgardTransaction } from "@al-ft/midgard-core/consensus-validation";
-import { attributeWithdrawalClassificationFault } from "@al-ft/midgard-fault-proofs/block-replay";
+import {
+  attributeWithdrawalClassificationFault,
+  readLedgerOutput,
+} from "@al-ft/midgard-fault-proofs/block-replay";
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs/workflow/forced-rejection-reason";
 import type { FactStore, OutRef } from "@al-ft/midgard-l1-follower";
 import {
@@ -146,7 +149,7 @@ export const foreignReplayMaterial = (
         l2ValueCbor: entry.l2Value,
         eventInfoCbor: entry.info,
         ledgerOutRef: outRef,
-        ledgerOutput: ledger.get(outRef.toString("hex")) ?? null,
+        ledgerOutput: (yield* readLedgerOutput(ledger, outRef)) ?? null,
       };
       // A runtime fault of the classifier is this node's (`local_fault`),
       // never the block's.

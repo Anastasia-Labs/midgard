@@ -15,6 +15,11 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
+import { ledgerEntriesRoot } from "@al-ft/midgard-fault-proofs/ledger-at";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
@@ -59,6 +64,15 @@ const address = CML.EnterpriseAddress.new(
 const value: SDK.Value = new Map([["", new Map([["", 7_000_000n]])]]);
 const eventId = { transactionId: "cd".repeat(32), outputIndex: 0n };
 const header = { startTime: 0n, endTime: 10n } as SDK.Header;
+
+/** A ledger holding exactly `entries`. */
+const ledgerOf = async (
+  entries: readonly { readonly outRef: Buffer; readonly output: Buffer }[],
+) =>
+  createLedgerStore(createMemoryLedgerStorage()).admit(
+    entries,
+    await ledgerEntriesRoot(entries),
+  );
 
 /** A withdrawal event, the ledger it spends from, and its committed verdict. */
 const withdrawal = async (signed: "honest" | "wrong") => {
@@ -107,7 +121,7 @@ const withdrawal = async (signed: "honest" | "wrong") => {
   });
   return {
     verdict,
-    replay: () =>
+    replay: async () =>
       Effect.runPromiseExit(
         material.replayUserEvent({
           step: { phase: "Withdrawal" } as SDK.TransitionStep,
@@ -115,7 +129,9 @@ const withdrawal = async (signed: "honest" | "wrong") => {
             Data.to(eventId, SDK.OutputReference),
             verdict.settlementEventInfo.toString("hex"),
           ],
-          ledger: new Map([[ledgerOutRef.toString("hex"), ledgerOutput]]),
+          ledger: await ledgerOf([
+            { outRef: ledgerOutRef, output: ledgerOutput },
+          ]),
         }),
       ),
     ledgerKey: ledgerOutRef.toString("hex"),
