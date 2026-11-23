@@ -8,7 +8,6 @@
  * the input-existence chronologies add forced transactions, withdrawals and
  * deposits.
  */
-import type * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import { eventLedgerBefore } from "../src/event-ledger.js";
@@ -22,10 +21,12 @@ import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/comple
 import { outRefCbor } from "./helpers/canonical-block-evidence-fixture.js";
 import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
 import {
+  afresh,
   bytes,
-  type Draw,
   FAULTS,
   hex,
+  type Request,
+  requests,
   seeded,
   seededBlock,
   shuffled,
@@ -111,42 +112,6 @@ const outcome = async (
   }
   return { ledger: await ledgerSnapshot(ledger, probes) };
 };
-
-type Request = Readonly<{ eventKey: SDK.EventKey; stepIndex: bigint }>;
-
-/** Every withdrawal and transaction event of `block` at every step, and
- * requests outside them: a forced event and a withdrawal the block does not
- * hold, steps out of range, and a deposit, which has no event ledger. */
-const requests = (block: CanonicalBlockEvidence, draw: Draw): Request[] => {
-  const steps = block.header.transitionStepCount;
-  const keys: SDK.EventKey[] = [];
-  for (const { value } of block.reconstruction.traceByStepIndex.values())
-    if (!("DepositEventKey" in value.event_key)) keys.push(value.event_key);
-  const absent = () => ({
-    transactionId: hex(bytes(draw, 32)),
-    outputIndex: 0n,
-  });
-  keys.push(
-    { ForcedTransactionEventKey: { tx_order_id: absent() } },
-    { WithdrawalEventKey: { withdrawal_id: absent() } },
-  );
-  const all: Request[] = [];
-  for (const eventKey of keys)
-    for (let stepIndex = -1n; stepIndex <= steps; stepIndex += 1n)
-      all.push({ eventKey, stepIndex });
-  all.push({
-    eventKey: { DepositEventKey: { deposit_id: absent() } },
-    stepIndex: 0n,
-  });
-  return all;
-};
-
-/** `block` with a reconstruction object of its own, so that its walk
- * starts afresh: a block's one walk is shared by its reconstruction. */
-const afresh = (block: CanonicalBlockEvidence): CanonicalBlockEvidence => ({
-  ...block,
-  reconstruction: { ...block.reconstruction },
-});
 
 /**
  * Compares, for every request: the reference; one fresh walk asked every

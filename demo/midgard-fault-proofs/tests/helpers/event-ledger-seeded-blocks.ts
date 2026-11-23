@@ -1,6 +1,6 @@
-/** Seeded committed blocks for the event-ledger differential test: normal
- * transactions with one drawn fault, and committed withdrawals for the
- * input-existence chronologies. */
+/** Seeded committed blocks for the event-ledger differential tests: normal
+ * transactions with one drawn fault, committed withdrawals for the
+ * input-existence chronologies, and the requests a walk is asked. */
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
@@ -8,6 +8,7 @@ import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures"
 import { canonicalCommittedWithdrawalTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data } from "@lucid-evolution/lucid";
 
+import type { CanonicalBlockEvidence } from "../../src/evidence/canonical-block-evidence.js";
 import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
 import {
   buildFixtureTransaction,
@@ -242,3 +243,44 @@ export const withdrawalOf = (byte: number, valid: boolean) => {
   };
   return { seed: byte * 2 + (valid ? 0 : 1), committed };
 };
+
+export type Request = Readonly<{ eventKey: SDK.EventKey; stepIndex: bigint }>;
+
+/** Every withdrawal and transaction event of `block` at every step, and
+ * requests outside them: a forced event and a withdrawal the block does not
+ * hold, steps out of range, and a deposit, which has no event ledger. */
+export const requests = (
+  block: CanonicalBlockEvidence,
+  draw: Draw,
+): Request[] => {
+  const steps = block.header.transitionStepCount;
+  const keys: SDK.EventKey[] = [];
+  for (const { value } of block.reconstruction.traceByStepIndex.values())
+    if (!("DepositEventKey" in value.event_key)) keys.push(value.event_key);
+  const absent = () => ({
+    transactionId: hex(bytes(draw, 32)),
+    outputIndex: 0n,
+  });
+  keys.push(
+    { ForcedTransactionEventKey: { tx_order_id: absent() } },
+    { WithdrawalEventKey: { withdrawal_id: absent() } },
+  );
+  const all: Request[] = [];
+  for (const eventKey of keys)
+    for (let stepIndex = -1n; stepIndex <= steps; stepIndex += 1n)
+      all.push({ eventKey, stepIndex });
+  all.push({
+    eventKey: { DepositEventKey: { deposit_id: absent() } },
+    stepIndex: 0n,
+  });
+  return all;
+};
+
+/** `block` with a reconstruction object of its own, so that its walk
+ * starts afresh: a block's one walk is shared by its reconstruction. */
+export const afresh = (
+  block: CanonicalBlockEvidence,
+): CanonicalBlockEvidence => ({
+  ...block,
+  reconstruction: { ...block.reconstruction },
+});
