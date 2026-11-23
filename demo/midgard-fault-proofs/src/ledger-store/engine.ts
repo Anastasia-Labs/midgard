@@ -13,6 +13,7 @@
  * the library runs exactly its upstream algorithm.
  */
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { midgardBlake2b } from "@al-ft/midgard-core/codec/hash";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 
 import { LedgerNodeMissing } from "./errors.js";
@@ -25,6 +26,14 @@ export const EMPTY_LEDGER_ROOT: string = EMPTY_MERKLE_TREE_ROOT;
 const NULL_ROOT_HEX = "00".repeat(32);
 
 export type NodeReader = (hash: NodeHash) => Promise<StoredNode | undefined>;
+
+/**
+ * The trie path of `key`, one hex digit per nibble: the blake2b-256 digest
+ * of the key, as the library derives it (`intoPath` in its `lib/helpers.js`).
+ * A node's `prefix` is a run of these digits.
+ */
+export const keyPath = (key: Uint8Array): string =>
+  Buffer.from(midgardBlake2b(key, { dkLen: 32 })).toString("hex");
 
 type Deserialise = (hash: Buffer, blob: unknown, store: Store) => Promise<Trie>;
 

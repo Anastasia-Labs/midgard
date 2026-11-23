@@ -16,7 +16,7 @@
 import { midgardBlake2b } from "@al-ft/midgard-core/codec/hash";
 
 import { ledgerEntryLeaf } from "../ledger-at.js";
-import { EMPTY_LEDGER_ROOT } from "./engine.js";
+import { EMPTY_LEDGER_ROOT, keyPath } from "./engine.js";
 import { LedgerWitnessRefused } from "./errors.js";
 import { type Ledger, LedgerValue } from "./ledger.js";
 import type {
@@ -108,9 +108,6 @@ const checkShape = (node: WitnessNode, index: number): void => {
   }
   if (present < 2) refuse("a branch has at least two children");
 };
-
-const pathOfKey = (key: string): string =>
-  digest(Buffer.from(key, "hex")).toString("hex");
 
 /**
  * Wraps `ledger` so that everything read through the returned ledger, and
@@ -217,7 +214,7 @@ export const ledgerFromWitness = (
     paths.set(hash, path);
     const full = path + node.prefix;
     if (node.__kind === "Leaf") {
-      if (full !== pathOfKey(node.key))
+      if (full !== keyPath(Buffer.from(node.key, "hex")))
         throw new LedgerWitnessRefused(`leaf ${hash} is not at its key's path`);
       leafValues.set(node.key, node.value);
       continue;
