@@ -37,6 +37,7 @@ import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/material.js";
 import {
   buildDirectSourceIndex,
@@ -132,7 +133,7 @@ const directMaterial = async (
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     }),
     eventKey,
-    predecessor,
+    predecessor: await checkedLedgerAsLedger(predecessor),
   });
 };
 

@@ -7,10 +7,13 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import { eventLedgerBeforeStep } from "../event-ledger.js";
-import type { CheckedLedger } from "../ledger-at.js";
+import {
+  ledgerBeforeTraceStep,
+  readingLedger,
+} from "../event-ledger.ledger.js";
+import { ledgerEntryLeaf } from "../ledger-at.js";
+import { type Ledger, ledgerProof } from "../ledger-store/index.js";
 import { forcedTxFromCoreCompact } from "../step-support.js";
-import { keyValuePhasProof } from "../transition-trace/phas.js";
 import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
@@ -33,30 +36,38 @@ export type TransactionResolvedInputs = Readonly<{
   proof: (key: Buffer) => Promise<SDK.Proof>;
 }>;
 
-const resolvedInputsAt = (
-  ledger: CheckedLedger,
+const resolvedInputsAt = async (
+  ledger: Ledger,
   keys: readonly Buffer[],
-): TransactionResolvedInputs => {
+): Promise<TransactionResolvedInputs> => {
+  const read = await readingLedger(
+    "direct script derivation resolved inputs",
+    async () => await ledger.read(keys),
+  );
   const byKey = new Map<string, ResolvedInput>();
   for (const key of keys) {
-    const leaf = ledger.trie.entries.find((entry) =>
-      entry.key.equals(key),
-    )?.value;
-    if (leaf !== undefined)
+    const output = read.get(key.toString("hex"))?.output;
+    if (output !== undefined)
       byKey.set(key.toString("hex"), {
-        output: ledger.outputs.get(key.toString("hex"))!,
-        leaf,
+        output,
+        // The output's trie leaf: the descriptor the ledger commits for it.
+        leaf: ledgerEntryLeaf(
+          { outRef: key, output },
+          "direct script derivation resolved input",
+        ).leaf,
       });
   }
   return {
     byKey,
     proof: async (key) => {
-      const input = byKey.get(key.toString("hex"));
-      if (input === undefined)
+      if (!byKey.has(key.toString("hex")))
         throw new Error(
           "direct script derivation: proof of an input the ledger does not hold",
         );
-      return await keyValuePhasProof(ledger.trie, key, input.leaf);
+      return await readingLedger(
+        "direct script derivation resolved input proof",
+        async () => await ledgerProof(ledger, key),
+      );
     },
   };
 };
@@ -70,7 +81,8 @@ export const prepareDirectScriptMaterial = async ({
   eventKey,
 }: {
   readonly current: TransitionTraceReconstruction;
-  readonly predecessor?: CheckedLedger;
+  /** The ledger the block starts from; none when it starts from genesis. */
+  readonly predecessor?: Ledger;
   readonly eventKey: SDK.EventKey;
 }) => {
   const fingerprint = eventKeyFingerprint(eventKey);
@@ -98,7 +110,7 @@ export const prepareDirectScriptMaterial = async ({
     throw new Error(
       "direct script derivation: selected event/transition differs",
     );
-  const ledger = await eventLedgerBeforeStep(
+  const ledger = await ledgerBeforeTraceStep(
     current,
     step.step_index,
     predecessor,
@@ -173,7 +185,10 @@ export const prepareDirectScriptMaterial = async ({
     sourceBound,
     bound,
     material,
-    resolvedInputs: resolvedInputsAt(ledger, [...fields[0]!, ...fields[1]!]),
+    resolvedInputs: await resolvedInputsAt(ledger, [
+      ...fields[0]!,
+      ...fields[1]!,
+    ]),
     eventKey,
     eventMembership,
     transitionMembership,

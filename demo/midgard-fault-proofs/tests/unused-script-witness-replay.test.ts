@@ -36,6 +36,7 @@ import {
 import {
   expectedHash,
   honestForcedShape,
+  scriptLockedEntries,
 } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
 import { unreadableItemViolations } from "./support/unreadable-item-block.js";
 import { holdingNativeScript } from "./support/unused-script-witness-emulator.subject.js";
@@ -49,6 +50,15 @@ const daProvenance = {
 /** One Plutus observer with its witness and redeemer: every witness used. */
 const USED: MissingRedeemerSubjectShape = {
   observers: [{ script: plutusScript(1), redeemer: true }],
+};
+
+/** Two spends locked by distinct scripts, each carried as a witness and
+ * redeemed: each witness is used by its own spend. */
+const TWO_SPENDS: MissingRedeemerSubjectShape = {
+  observers: [],
+  spend: scriptLockedEntries(0x61, [plutusScript(3), plutusScript(4)]),
+  witnesses: [plutusScript(3), plutusScript(4)],
+  spendRedeemers: [0n, 1n],
 };
 
 /** A second witness whose hash no purpose names. */
@@ -115,9 +125,15 @@ const replayUnder = async (
 };
 
 describe("unusedScriptWitness replay over accepted transactions", () => {
-  it("leaves alone a transaction whose every witness is used", async () => {
-    await expect(replayUnder({ kind: "normal" }, USED)).resolves.toEqual([]);
-  });
+  it.each([
+    ["an observer", USED],
+    ["two spends, each its own", TWO_SPENDS],
+  ] as const)(
+    "leaves alone a transaction whose every witness %s uses",
+    async (_label, shape) => {
+      await expect(replayUnder({ kind: "normal" }, shape)).resolves.toEqual([]);
+    },
+  );
 
   it.each([
     ["a witness no purpose executes", EXTRA],

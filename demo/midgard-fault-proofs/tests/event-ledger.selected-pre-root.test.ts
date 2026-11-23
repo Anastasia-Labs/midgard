@@ -65,7 +65,9 @@ describe("the shared walk refuses a selected event's moved pre-state before its 
     await expect(
       prepareDirectScriptMaterial({
         current: fixture.evidence.reconstruction,
-        predecessor: completeCanonicalReplayPredecessorLedger(fixture)!,
+        predecessor: await checkedLedgerAsLedger(
+          completeCanonicalReplayPredecessorLedger(fixture)!,
+        ),
         eventKey: fixture.key(1),
       }),
     ).rejects.toThrow(REFUSED);

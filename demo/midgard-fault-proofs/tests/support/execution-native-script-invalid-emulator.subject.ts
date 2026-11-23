@@ -33,6 +33,7 @@ import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
+import { checkedLedgerAsLedger } from "../../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
 import {
   checkLedgerAgainstRoot,
@@ -366,7 +367,9 @@ export const buildNativeBlock = async ({
   const material = await prepareDirectScriptMaterial({
     current: block.reconstruction,
     eventKey,
-    ...(predecessor === undefined ? {} : { predecessor }),
+    ...(predecessor === undefined
+      ? {}
+      : { predecessor: await checkedLedgerAsLedger(predecessor) }),
   });
   return {
     nativeTx,

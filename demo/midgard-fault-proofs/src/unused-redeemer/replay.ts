@@ -10,6 +10,7 @@ import {
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import type * as SDK from "@al-ft/midgard-sdk/core";
 
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
   acceptedScriptSources,
@@ -87,7 +88,9 @@ export const prepareUnusedRedeemerReplay = async ({
     const material = await prepareDirectScriptMaterial({
       current,
       eventKey,
-      ...(predecessor === undefined ? {} : { predecessor }),
+      ...(predecessor === undefined
+        ? {}
+        : { predecessor: await checkedLedgerAsLedger(predecessor) }),
     });
     const detection = await unusedRedeemerDetection(material);
     return detection === null

@@ -6,6 +6,7 @@
  * verdict. */
 import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
   acceptedScriptSources,
@@ -58,7 +59,9 @@ export const prepareMissingRedeemerReplay = async ({
     const material = await prepareDirectScriptMaterial({
       current,
       eventKey,
-      ...(predecessor === undefined ? {} : { predecessor }),
+      ...(predecessor === undefined
+        ? {}
+        : { predecessor: await checkedLedgerAsLedger(predecessor) }),
     });
     const detection = await missingRedeemerDetection(material);
     return detection === null

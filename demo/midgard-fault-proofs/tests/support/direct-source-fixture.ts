@@ -8,6 +8,7 @@ import type * as SDKCore from "@al-ft/midgard-sdk/core";
 import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
+import { checkedLedgerAsLedger } from "../../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
 import { buildDirectSourceIndexEvidence } from "../../src/direct-script-derivation/source-index.js";
 import {
@@ -96,7 +97,7 @@ export const directSourceBatchFixture = async (
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     }),
     eventKey,
-    predecessor,
+    predecessor: await checkedLedgerAsLedger(predecessor),
   });
   const evidence = await buildDirectSourceIndexEvidence(material);
   const steps = [...evidence.steps];
