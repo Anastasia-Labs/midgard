@@ -3,12 +3,10 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Exit, Option, Ref } from "effect";
 
 import {
-  MempoolLedgerDB,
   MpfEngineStateDB,
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
 import { readLedgerOutputs } from "../landed-blocks/ledger-outputs.js";
-import { utxoToLedgerInsertMaterial } from "../mpf/ledger-hydration.js";
 import {
   MPF_EMPTY_ROOT_HEX,
   parseStoredRootHex,
@@ -127,51 +125,25 @@ export const initializeArchitectureGOwner = <R = never>(
         });
         const snapshot = yield* stateQueueSnapshot;
         const tailRoot = snapshot.tailCommitBase.roots.utxosRoot;
-        // An initialized trie may legitimately become empty after its last
-        // withdrawal. Replaying configured genesis would resurrect spent funds.
+        // Genesis is the empty ledger on every network: an unstamped empty
+        // store is admitted only on a queue with no block, at its root.
         if (storedRoot === MPF_EMPTY_ROOT_HEX) {
-          const genesisEntries = yield* Effect.forEach(
-            nodeConfig.GENESIS_UTXOS,
-            (utxo) =>
-              utxoToLedgerInsertMaterial(utxo).pipe(
-                Effect.map(({ ledgerOp, outputCbor }) => ({
-                  [MempoolLedgerDB.Columns.TX_ID]: Buffer.from(
-                    utxo.txHash,
-                    "hex",
-                  ),
-                  [MempoolLedgerDB.Columns.OUTREF]: ledgerOp.key,
-                  [MempoolLedgerDB.Columns.OUTPUT]: outputCbor,
-                  [MempoolLedgerDB.Columns.ADDRESS]: utxo.address,
-                  [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
-                })),
-              ),
-          );
           if (snapshot.blockCount !== 0)
             return yield* Effect.fail(
               new Error(
                 "Native genesis bootstrap requires the authenticated clean state queue",
               ),
             );
-          // Genesis, empty or not, must be this deployment's committed root.
           yield* Effect.tryPromise({
-            try: () =>
-              writeGenesisLedger(
-                store,
-                genesisEntries.map((entry) => ({
-                  outRef: entry[MempoolLedgerDB.Columns.OUTREF],
-                  output: entry[MempoolLedgerDB.Columns.OUTPUT],
-                })),
-                tailRoot,
-              ),
+            try: () => writeGenesisLedger(store, [], tailRoot),
             catch: (cause) =>
               cause instanceof LedgerRootMismatchError
                 ? new Error(
-                    "Configured native genesis does not match the committed state-queue root",
+                    "The empty native genesis does not match the committed state-queue root",
                     { cause },
                   )
                 : cause,
           });
-          yield* writeSql(MempoolLedgerDB.insert(genesisEntries));
         } else if (storedRoot !== tailRoot) {
           // An unstamped nonempty trie is trusted only at the committed tail
           // root. A store left from an earlier run must not be stamped onto a
