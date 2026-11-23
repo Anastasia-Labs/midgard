@@ -7,8 +7,8 @@ import {
 } from "@al-ft/midgard-validation/validation-machine";
 import { Effect } from "effect";
 
-import { eventLedgerBefore } from "../../src/event-ledger.js";
-import type { CheckedLedger } from "../../src/ledger-at.js";
+import { ledgerBeforeStep } from "../../src/event-ledger.ledger.js";
+import type { Ledger } from "../../src/ledger-store/index.js";
 import {
   buildValidationTraceClaimMaterial,
   type ValidationTraceClaimMaterial,
@@ -17,7 +17,7 @@ import {
   type CommittedL2Event,
   plutusReplayInput,
 } from "../../src/validation-trace-dispute/replay.js";
-import { completeCanonicalReplayPredecessorLedger } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import type { plutusExecutionBlockFixture } from "../helpers/plutus-execution-block-fixture.js";
 
 export const l1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
@@ -30,7 +30,7 @@ type Block = Pick<
 /** The block's single L2 event and the ledger it executes over. */
 export const eventAndLedger = async (
   block: Block,
-): Promise<{ event: CommittedL2Event; ledger: CheckedLedger }> => {
+): Promise<{ event: CommittedL2Event; ledger: Ledger }> => {
   const { evidence, context } = block;
   const event = evidence.reconstruction.sourceEvents.find(
     (candidate) => candidate.phase === "L2Transaction",
@@ -39,11 +39,11 @@ export const eventAndLedger = async (
   const opening = evidence.reconstruction.eventToStepByFingerprint.get(
     event.fingerprint,
   )!;
-  const ledger = await eventLedgerBefore({
+  const ledger = await ledgerBeforeStep({
     block: evidence,
     eventKey: event.eventKey,
     stepIndex: opening.value.step_index,
-    predecessor: completeCanonicalReplayPredecessorLedger({
+    predecessor: await completeCanonicalReplayPredecessorStoreLedger({
       evidence,
       context,
     }),
@@ -70,7 +70,7 @@ export const rejectedReplayInputOf = async (
   block: Block,
 ): Promise<ValidationMachineReplayInput> => {
   const { event, ledger } = await eventAndLedger(block);
-  return plutusReplayInput({
+  return await plutusReplayInput({
     header: block.evidence.header,
     event,
     ledger,

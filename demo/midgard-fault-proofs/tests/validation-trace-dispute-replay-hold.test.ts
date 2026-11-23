@@ -78,13 +78,13 @@ vi.mock("@al-ft/midgard-validation", async (importOriginal) => {
   };
 });
 
-vi.mock("../src/event-ledger.js", async (importOriginal) => {
+vi.mock("../src/event-ledger.ledger.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("../src/event-ledger.js")>();
+    await importOriginal<typeof import("../src/event-ledger.ledger.js")>();
   return {
     ...actual,
-    eventLedgerBefore: async (
-      input: Parameters<typeof actual.eventLedgerBefore>[0],
+    ledgerBeforeStep: async (
+      input: Parameters<typeof actual.ledgerBeforeStep>[0],
     ) => {
       const { L2TransactionEventKey: key } = input.eventKey as {
         readonly L2TransactionEventKey?: { readonly tx_id: string };
@@ -92,7 +92,7 @@ vi.mock("../src/event-ledger.js", async (importOriginal) => {
       const fault =
         key === undefined ? undefined : injected.ledgerFaults.get(key.tx_id);
       if (fault !== undefined) throw fault;
-      return await actual.eventLedgerBefore(input);
+      return await actual.ledgerBeforeStep(input);
     },
   };
 });

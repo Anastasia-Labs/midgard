@@ -20,14 +20,12 @@ import {
 } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { classifyCommittedFieldShapeFields } from "../committed-field-shape/prepare-committed-field-shape.js";
-import {
-  eventLedgerBefore,
-  EventLedgerReplayRefusal,
-} from "../event-ledger.js";
+import { ledgerBeforeStep } from "../event-ledger.ledger.js";
+import { EventLedgerReplayRefusal } from "../event-ledger.steps.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { isCommittedInvalidNormalLeaf } from "../evidence/committed-normal-leaf-validity.js";
 import { detectInvalidRangeForcedReplay } from "../invalid-range/replay.js";
-import { type CheckedLedger } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.resolve-double-spend-pair.js";
 import {
   type CommittedL2Event,
@@ -44,13 +42,11 @@ import {
 import { detectZeroInputForcedReplay } from "../zero-input/replay.js";
 import { type CanonicalViolationDetection } from "./classification.js";
 import {
+  completeCanonicalReplayPredecessorStoreLedger,
   EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
   PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID,
 } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
-import {
-  type CompleteCanonicalReplayContext,
-  requireReplayPredecessorLedger,
-} from "./complete-replay.replay-context-identity.js";
+import type { CompleteCanonicalReplayContext } from "./complete-replay.replay-context-identity.js";
 import {
   acceptedTransactionSubject,
   detectionEventOrder,
@@ -350,7 +346,10 @@ export const detectPlutusExecutionFailures = async ({
   readonly l1SlotConfig: L1SlotConfig;
   readonly holds?: ValidationTraceReplayHolds;
 }): Promise<readonly CanonicalViolationDetection[]> => {
-  const predecessor = requireReplayPredecessorLedger({ evidence, context });
+  const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
+    evidence,
+    context,
+  });
   const detections: CanonicalViolationDetection[] = [];
   const held: ValidationTraceReplayHold[] = [];
   let heldFromOrder = Number.POSITIVE_INFINITY;
@@ -419,9 +418,9 @@ export const detectPlutusExecutionFailures = async ({
       );
       continue;
     }
-    let ledger: CheckedLedger;
+    let ledger: Ledger;
     try {
-      ledger = await eventLedgerBefore({
+      ledger = await ledgerBeforeStep({
         block: evidence,
         eventKey: event.eventKey,
         stepIndex: opening.value.step_index,

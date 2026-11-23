@@ -12,9 +12,10 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
-import type { ValidationMachineWorkWitness } from "@al-ft/midgard-validation/validation-machine";
-
-import type { CheckedLedger } from "../ledger-at.js";
+import type {
+  ValidationMachineLedgerEntry,
+  ValidationMachineWorkWitness,
+} from "@al-ft/midgard-validation/validation-machine";
 
 /** A CEK script selection's evidence. */
 export type ValidationTraceSelection = Extract<
@@ -51,19 +52,25 @@ export const recordedSelectionOf = (
 /**
  * Reads the versioned item of a selection's script: the inline witness at
  * the item its first chunk names in `transactionCbor`'s script witnesses,
- * or the reference script of the resolved output `ledger` keeps under the
- * source's out-ref. Throws unless the item is exactly the one the
- * selection commits to.
+ * or the reference script of the output `resolved` (the entries the
+ * transaction's inputs resolve to, as its replay read them) holds under the
+ * source's out-ref. Throws unless the item is exactly the one the selection
+ * commits to.
  */
-export const selectedScriptItemReader =
-  ({
-    transactionCbor,
-    ledger,
-  }: {
-    readonly transactionCbor: Uint8Array;
-    readonly ledger: CheckedLedger;
-  }) =>
-  ({ source, firstChunkProof }: ValidationTraceSelectionSource): Buffer => {
+export const selectedScriptItemReader = ({
+  transactionCbor,
+  resolved,
+}: {
+  readonly transactionCbor: Uint8Array;
+  readonly resolved: readonly ValidationMachineLedgerEntry[];
+}) => {
+  const outputs = new Map(
+    resolved.map(({ outRef, output }) => [outRef.toString("hex"), output]),
+  );
+  return ({
+    source,
+    firstChunkProof,
+  }: ValidationTraceSelectionSource): Buffer => {
     let bytes: Uint8Array | undefined;
     if (source.originKind === "inline") {
       const { witnessSet } =
@@ -73,7 +80,7 @@ export const selectedScriptItemReader =
         "script_tx_wits",
       )[firstChunkProof.itemIndex];
     } else {
-      const output = ledger.outputs.get(source.sourceKey.toString("hex"));
+      const output = outputs.get(source.sourceKey.toString("hex"));
       const script =
         output === undefined
           ? undefined
@@ -99,6 +106,7 @@ export const selectedScriptItemReader =
       );
     return Buffer.from(item.bytes);
   };
+};
 
 /**
  * The item of the first script of `selections` (our trace's recorded

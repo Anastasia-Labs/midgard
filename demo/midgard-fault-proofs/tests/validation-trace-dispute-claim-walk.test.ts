@@ -1,14 +1,15 @@
 /** Claim preparation and artifact validation read their pre-state ledger
  * from the block's one walk, which the validation-trace detector advanced:
  * after detection, preparing and validating a claim walks none of the
- * block's steps again, however large the predecessor ledger, and proves
- * against the trie the detector built for its event while that event is
- * among the walk's first four proved. Each claim still matches the one built
- * from its own pre-state rebuilt from scratch, for every failing event of the
- * block. Work is counted as in `helpers/trie-leaves.ts`. */
+ * block's steps again and builds no trie the size of the predecessor
+ * ledger, however large it is and however late the event's step. Each claim
+ * still matches the one built from its own pre-state rebuilt from scratch,
+ * for every failing event of the block. Work is counted as in
+ * `helpers/trie-leaves.ts`. */
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { describe, expect, it } from "vitest";
 
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { encodeValidationTraceDisputeArtifact } from "../src/validation-trace-dispute/artifact.js";
 import { buildValidationTraceClaimMaterial } from "../src/validation-trace-dispute/claim-material.js";
 import {
@@ -104,7 +105,7 @@ describe("validation-trace dispute claim: the detector's walk serves the claim",
     expect((largeLeaves - smallLeaves) / FILLER).toBe(0);
   });
 
-  it("proves the four earliest failing events' claims against the detector's tries, and rebuilds a later one's", async () => {
+  it("proves every failing event's claim from the walk's ledger, however late its step", async () => {
     const failing = Array.from({ length: 6 }, () => "failing" as const);
     const [small, large] = await Promise.all([
       plutusExecutionEventsBlockFixture(failing),
@@ -116,15 +117,14 @@ describe("validation-trace dispute claim: the detector's walk serves the claim",
       await claimLeavesByStep(small),
       await claimLeavesByStep(large),
     ];
-    // Ledger-sized tries each claim builds: one to prepare and one to
-    // validate, past the walk's four kept tries.
+    // Ledger-sized tries each claim builds, to prepare and to validate.
     expect(
       [...largeLeaves.keys()]
         .sort((a, b) => (a < b ? -1 : 1))
         .map(
           (step) => (largeLeaves.get(step)! - smallLeaves.get(step)!) / FILLER,
         ),
-    ).toStrictEqual([0, 0, 0, 0, 2, 2]);
+    ).toStrictEqual([0, 0, 0, 0, 0, 0]);
   });
 
   it("prepares each failing event's claim from exactly its own pre-state", async () => {
@@ -165,7 +165,7 @@ describe("validation-trace dispute claim: the detector's walk serves the claim",
           material: await buildValidationTraceClaimMaterial({
             evidence: block.evidence,
             event,
-            ledger: oneOff,
+            ledger: await checkedLedgerAsLedger(oneOff),
             l1SlotConfig,
           }),
         }),

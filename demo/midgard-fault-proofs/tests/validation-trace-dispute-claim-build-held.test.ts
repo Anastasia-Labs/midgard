@@ -9,6 +9,7 @@ import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { ValidationTraceStopped } from "@al-ft/midgard-validation/validation-machine";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { EventLedgerReplayRefusal } from "../src/event-ledger.js";
 import { encodeValidationTraceDisputeArtifact } from "../src/validation-trace-dispute/artifact.js";
 import {
@@ -52,18 +53,18 @@ vi.mock("@al-ft/midgard-validation", async (importOriginal) => {
   };
 });
 
-vi.mock("../src/event-ledger.js", async (importOriginal) => {
+vi.mock("../src/event-ledger.ledger.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("../src/event-ledger.js")>();
+    await importOriginal<typeof import("../src/event-ledger.ledger.js")>();
   return {
     ...actual,
-    eventLedgerBefore: async (
-      input: Parameters<typeof actual.eventLedgerBefore>[0],
+    ledgerBeforeStep: async (
+      input: Parameters<typeof actual.ledgerBeforeStep>[0],
     ) => {
       const fault = injected.next;
       injected.next = undefined;
       if (fault !== undefined) throw fault;
-      return await actual.eventLedgerBefore(input);
+      return await actual.ledgerBeforeStep(input);
     },
   };
 });
@@ -127,7 +128,7 @@ describe("validation-trace claim build: held only when it ends without a result"
         material: await buildValidationTraceClaimMaterial({
           evidence: block.evidence,
           event,
-          ledger,
+          ledger: await checkedLedgerAsLedger(ledger),
           l1SlotConfig,
         }),
       }),
