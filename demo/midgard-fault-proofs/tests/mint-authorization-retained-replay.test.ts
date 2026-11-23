@@ -1,7 +1,16 @@
 import { encodeMidgardVersionedScript } from "@al-ft/midgard-core";
+import { encodeMidgardMintPolicyItem } from "@al-ft/midgard-core/codec";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
+import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { describe, expect, it } from "vitest";
 
+import { isReplayLocalFault } from "../src/block-replay.faults.js";
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  LedgerNodeMissing,
+} from "../src/ledger-store/index.js";
 import {
   admitMintAuthorizationWorkflowArtifact,
   MINT_AUTHORIZATION_ARTIFACT,
@@ -9,9 +18,15 @@ import {
 import {
   detectMintAuthorizationReplay,
   mintAuthorizationDetectionId,
+  mintAuthorizationInputProof,
   prepareMintAuthorizationReplay,
 } from "../src/mint-authorization/replay.js";
+import { keyValuePhasProof } from "../src/transition-trace/phas.js";
 import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { buildFixtureTransaction } from "./helpers/canonical-block-evidence-fixture.js";
+import { block, OTHER, SPENT } from "./helpers/event-ledger-committed-steps.js";
+import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
+import { outRef } from "./helpers/event-ledger-seeded-blocks.js";
 import {
   buildMintAuthorizationSubject,
   directionBNativeScript,
@@ -139,6 +154,127 @@ describe("mint authorization policies sourced from spent outputs", () => {
           inputField === "spend" ? 1 : 0,
         );
       }
+    },
+  );
+});
+
+/** A transaction that spends `spent` and mints one unit of a policy no
+ * resolved output carries: an absent policy, proved at direction 0. */
+const unauthorizedMint = (spent: Buffer, referenceInputs: Buffer[] = []) => ({
+  spendInputs: [spent],
+  referenceInputs,
+  outputs: [makeOutput(2_999_993n)],
+  mintPolicyItems: [
+    encodeMidgardMintPolicyItem({
+      policyId: Buffer.alloc(28, 0x11),
+      assets: [{ assetName: Buffer.alloc(0), quantity: 1n }],
+    }),
+  ],
+  fee: 7n,
+});
+
+describe("mint authorization resolved inputs", () => {
+  it("reads and proves each resolved input against the ledger before its transaction", async () => {
+    // Step 0 spends `SPENT` and creates the output step 1 references: the
+    // ledger before step 1 differs from the predecessor in entries step 1
+    // does not read as well as in one it does.
+    const creator = {
+      spendInputs: [SPENT.outRef],
+      outputs: [makeOutput(1_999_993n)],
+      fee: 7n,
+    };
+    const created = outRef(buildFixtureTransaction(creator).txId, 0);
+    const fixture = await block([
+      { input: creator, applied: true },
+      { input: unauthorizedMint(OTHER.outRef, [created]), applied: true },
+    ]);
+    const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+    const before = await referenceLedgerBefore({
+      block: fixture.evidence,
+      predecessor,
+      eventKey: fixture.key(1),
+      stepIndex: 1n,
+    });
+    expect(before.utxosRoot).not.toBe(predecessor.utxosRoot);
+    const expected = async (key: Buffer) => {
+      const { value } = before.trie.entries.find((entry) =>
+        entry.key.equals(key),
+      )!;
+      return {
+        keyHex: key.toString("hex"),
+        descriptorCbor: value.toString("hex"),
+        proof: await keyValuePhasProof(before.trie, key, value),
+      };
+    };
+    const findings = await prepareMintAuthorizationReplay({
+      current: fixture.evidence.reconstruction,
+      predecessor: await checkedLedgerAsLedger(predecessor),
+      sourceIndex: Number(fixture.position(1)),
+    });
+    expect(findings.map(({ finding }) => finding.direction)).toEqual([0n]);
+    const prepared = findings[0]!;
+    const resolved = async (inputs: typeof prepared.references) =>
+      await Promise.all(
+        inputs.map(async (input) => ({
+          keyHex: input.keyHex,
+          descriptorCbor: input.descriptorCbor,
+          proof: await mintAuthorizationInputProof(prepared, input),
+        })),
+      );
+    expect(await resolved(prepared.references)).toStrictEqual([
+      await expected(created),
+    ]);
+    expect(await resolved(prepared.spends)).toStrictEqual([
+      await expected(OTHER.outRef),
+    ]);
+  });
+
+  type Prepare = () => ReturnType<typeof prepareMintAuthorizationReplay>;
+  it.each([
+    [
+      "reading its inputs",
+      async (dropLedger: () => Promise<void>, prepare: Prepare) => {
+        await dropLedger();
+        await prepare();
+      },
+    ],
+    [
+      "proving an input",
+      async (dropLedger: () => Promise<void>, prepare: Prepare) => {
+        const [prepared] = await prepare();
+        await dropLedger();
+        await mintAuthorizationInputProof(prepared!, prepared!.spends[0]!);
+      },
+    ],
+  ] as const)(
+    "is this process's local fault %s when the store no longer holds the ledger",
+    async (_, run) => {
+      // The transaction is step 0, so it reads the predecessor itself, which
+      // `retain` of nothing deletes.
+      const fixture = await block([
+        { input: unauthorizedMint(OTHER.outRef), applied: true },
+      ]);
+      const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+      const store = createLedgerStore(createMemoryLedgerStorage());
+      const ledger = await store.admit(
+        predecessor.entries,
+        predecessor.utxosRoot,
+      );
+      const error: unknown = await run(
+        async () => {
+          await store.retain(new Set());
+        },
+        async () =>
+          await prepareMintAuthorizationReplay({
+            current: fixture.evidence.reconstruction,
+            predecessor: ledger,
+            sourceIndex: Number(fixture.position(0)),
+          }),
+      ).catch((cause: unknown) => cause);
+      expect(isReplayLocalFault(error)).toBe(true);
+      expect((error as { cause: unknown }).cause).toBeInstanceOf(
+        LedgerNodeMissing,
+      );
     },
   );
 });

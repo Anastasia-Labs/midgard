@@ -38,7 +38,10 @@ import {
 import { signerWitnessVerdictCloses } from "@al-ft/midgard-fault-proofs/signer-witness-scan";
 import { deriveSpendInputSignerMissingEvidenceFromCompleteReplay } from "@al-ft/midgard-fault-proofs/spend-input-signer-missing";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
-import { checkedLedgerAfter } from "@al-ft/midgard-fault-proofs/test-support/predecessor-ledger";
+import {
+  checkedLedgerAfter,
+  ledgerAfter,
+} from "@al-ft/midgard-fault-proofs/test-support/predecessor-ledger";
 import { deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock } from "@al-ft/midgard-fault-proofs/transaction-output-non-canonical";
 import { prepareValueConservationArtifact } from "@al-ft/midgard-fault-proofs/value-not-preserved";
 import { classifyCanonicalBlockViolations } from "@al-ft/midgard-fault-proofs/workflow/classification";
@@ -217,7 +220,7 @@ export const prepareJourneyTransactionProof = async (input: {
     case "mintItemNonCanonical":
       return deriveMintItemNonCanonicalEvidenceFromCanonicalBlock(evidence);
     case "mintAuthorization": {
-      const predecessor = await checkedLedgerAfter(
+      const predecessor = await ledgerAfter(
         await canonicalBlockEvidenceFromVerifiedPayload({
           ...raw,
           observation: authenticatedHeaderObservation(input.predecessor),

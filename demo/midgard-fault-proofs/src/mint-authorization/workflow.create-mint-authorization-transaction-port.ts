@@ -11,7 +11,6 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import { type ResolvedProverSigner } from "../runtime.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { buildInit } from "../submit-init.submit-init.js";
-import { keyValuePhasMembershipProofs } from "../transition-trace/phas.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
@@ -31,6 +30,7 @@ import {
   admitMintAuthorizationWorkflowArtifact,
   prepareMintAuthorizationWorkflowArtifact,
 } from "./artifact.js";
+import { mintAuthorizationInputProof } from "./replay.js";
 import {
   requireMintAuthorizationStepState,
   requireMintAuthorizationThreadUtxo,
@@ -245,20 +245,10 @@ export const createMintAuthorizationTransactionPort = (
                         );
                       return Buffer.from(
                         Data.to(
-                          (
-                            await keyValuePhasMembershipProofs(
-                              admitted.referenceLedger,
-                              [
-                                {
-                                  key,
-                                  value: Buffer.from(
-                                    reference.descriptorCbor,
-                                    "hex",
-                                  ),
-                                },
-                              ],
-                            )
-                          )[0]!,
+                          await mintAuthorizationInputProof(
+                            admitted,
+                            reference,
+                          ),
                           Proof,
                         ),
                         "hex",
