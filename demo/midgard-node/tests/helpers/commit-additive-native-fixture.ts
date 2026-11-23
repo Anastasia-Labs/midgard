@@ -40,7 +40,6 @@ import { processMpfs } from "../../src/mpf/process.process-mpfs.js";
 import { MidgardMpf } from "../../src/mpf/store.midgard-mpf.js";
 import type { Lucid } from "../../src/services/index.js";
 import { encodeNativeMpfEventLog } from "../../src/services/mpf-native-owner/service.parse-promotion-records.js";
-import { ProductionNativeMpfOwnerService } from "../../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { assertExactCommitRescueDaFrame } from "../../src/workers/commit-block-header.assert-rescue-frame.js";
 import {
   buildNativeTx,
@@ -52,6 +51,7 @@ import {
   nativeOwnerBinaryPath,
   nativeOwnerBinarySha256,
 } from "./native-owner-binary.js";
+import { createOwnerService } from "./native-owner-ledger.js";
 
 /** Exact stored script bytes: one CBOR wrapper around a generated Flat term. */
 export const delayProgram = (nodes: number): Buffer => {
@@ -133,8 +133,7 @@ export const openNativeFrameFixture = async (
   await seed.open();
   await seed.put("__root__", SDK.EMPTY_MERKLE_TREE_ROOT);
   await seed.close();
-  const native = await ProductionNativeMpfOwnerService.create({
-    levelPath,
+  const native = await createOwnerService(levelPath, {
     sidecarPath: join(directory, "sidecar"),
     binaryPath: nativeOwnerBinaryPath,
     binarySha256: nativeOwnerBinarySha256(),

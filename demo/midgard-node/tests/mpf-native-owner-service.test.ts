@@ -22,17 +22,24 @@ import {
   type NativeMpfEventOp,
   parseNativeOwnerCgroupMemoryLimit,
 } from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
+import { openNativeOwnerLedger } from "../src/services/mpf-native-owner/service.open-ledger.js";
 import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
-import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
-import {
-  createEventFlatDigest,
-  prepareEventFlatDigest,
-} from "../src/workers/utils/mpf-event-flat-digest.js";
+import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import {
   nativeOwnerBinaryPath,
   nativeOwnerBinaryPresent,
   warnNativeOwnerBinaryAbsent,
 } from "./helpers/native-owner-binary.js";
+import {
+  createOwnerService,
+  expectCountedLedger,
+  leafKeys,
+  leafRoot,
+  ledgerStoreRecords,
+  reachableNodes,
+  seedLeafLedger,
+  seedOwnerLedger,
+} from "./helpers/native-owner-ledger.js";
 
 // The service spawns the native owner binary; see the helper for the
 // build/skip contract (#642).
@@ -41,34 +48,6 @@ const binaryPresent = nativeOwnerBinaryPresent();
 if (!binaryPresent) {
   warnNativeOwnerBinaryAbsent("mpf-native-owner-service");
 }
-
-const digest = (...parts: readonly Uint8Array[]): Buffer => {
-  const state = createEventFlatDigest();
-  for (const part of parts) state.update(part);
-  return state.digest();
-};
-
-const nibbles = (value: Uint8Array): string =>
-  [...digest(value)]
-    .flatMap((byte) => [byte >> 4, byte & 15])
-    .map((value) => value.toString(16))
-    .join("");
-
-const packedNibbles = (value: string): Buffer =>
-  Buffer.from(
-    Array.from({ length: value.length / 2 }, (_, index) =>
-      Number.parseInt(value.slice(index * 2, index * 2 + 2), 16),
-    ),
-  );
-
-const leafRoot = (key: Buffer, value: Buffer): string => {
-  const prefix = nibbles(key);
-  return digest(
-    Buffer.from([0xff]),
-    packedNibbles(prefix),
-    digest(value),
-  ).toString("hex");
-};
 
 const event = (
   deleted: Buffer,
@@ -104,16 +83,11 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     const levelPath = join(root, "ledger");
     const sidecarPath = join(root, "ledger.sidecar");
     const emptyRoot = SDK.EMPTY_MERKLE_TREE_ROOT;
-    const seed = new Level<string, unknown>(levelPath, {
-      valueEncoding: "json",
-    });
-    await seed.open();
-    await seed.put("__root__", emptyRoot);
-    await seed.close();
-    const options = { levelPath, binaryPath, binarySha256, sidecarPath };
+    await seedOwnerLedger(levelPath, emptyRoot);
+    const options = { binaryPath, binarySha256, sidecarPath };
     const key = Buffer.alloc(32, 91);
     const value = Buffer.alloc(64, 92);
-    let service = await ProductionNativeMpfOwnerService.create(options);
+    let service = await createOwnerService(levelPath, options);
     try {
       expect(await service.diagnostics()).toMatchObject({
         durableRoot: emptyRoot,
@@ -127,7 +101,7 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       expect(result.candidateRoot).toBe(leafRoot(key, value));
       await service.promote(inserted);
       await service.close();
-      service = await ProductionNativeMpfOwnerService.create(options);
+      service = await createOwnerService(levelPath, options);
       expect(await service.diagnostics()).toMatchObject({
         durableRoot: result.candidateRoot,
         residentNodes: 1,
@@ -142,14 +116,14 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       expect(removed.candidateRoot).toBe(emptyRoot);
       await service.promote(deleted);
       await service.close();
-      service = await ProductionNativeMpfOwnerService.create(options);
+      service = await createOwnerService(levelPath, options);
       expect(await service.diagnostics()).toMatchObject({
         durableRoot: emptyRoot,
         residentNodes: 0,
       });
       // Loading the empty sidecar is the same authenticated empty closure.
       await service.close();
-      service = await ProductionNativeMpfOwnerService.create(options);
+      service = await createOwnerService(levelPath, options);
       expect((await service.diagnostics()).durableRoot).toBe(emptyRoot);
     } finally {
       await service.close();
@@ -162,11 +136,7 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     await invalid.put("__root__", leafRoot(key, value));
     await invalid.close();
     await expect(
-      ProductionNativeMpfOwnerService.create({
-        ...options,
-        levelPath: invalidPath,
-        sidecarPath: undefined,
-      }),
+      createOwnerService(invalidPath, { ...options, sidecarPath: undefined }),
     ).rejects.toThrow(/missing record/);
   });
 
@@ -183,25 +153,7 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     const value2 = Buffer.alloc(64, 22);
     const value3 = Buffer.alloc(64, 33);
     const value4 = Buffer.alloc(64, 44);
-    const baseRoot = leafRoot(key1, value1);
-    const seed = new Level<string, unknown>(levelPath, {
-      valueEncoding: "json",
-    });
-    await seed.open();
-    await seed.batch([
-      {
-        type: "put",
-        key: baseRoot,
-        value: {
-          __kind: "Leaf",
-          prefix: nibbles(key1),
-          key: key1.toString("hex"),
-          value: value1.toString("hex"),
-        },
-      },
-      { type: "put", key: "__root__", value: baseRoot },
-    ]);
-    await seed.close();
+    const baseRoot = await seedLeafLedger(levelPath, key1, value1);
 
     const events: readonly (readonly NativeMpfEventOp[])[] = [
       [{ type: "insert", key: key2, value: value2 }],
@@ -266,8 +218,7 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     );
     await Effect.runPromise(legacyTraceMpf.close());
 
-    let service = await ProductionNativeMpfOwnerService.create({
-      levelPath,
+    let service = await createOwnerService(levelPath, {
       binaryPath,
       binarySha256,
       maxChunkBytes: 200,
@@ -394,8 +345,7 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     expect((await service.diagnostics()).activeGenerations).toBe(0);
     await service.close();
 
-    service = await ProductionNativeMpfOwnerService.create({
-      levelPath,
+    service = await createOwnerService(levelPath, {
       binaryPath,
       binarySha256,
       maxChunkBytes: 211,
@@ -420,8 +370,7 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     corruptSidecar[corruptSidecar.length - 1] ^= 1;
     await writeFile(sidecarPath, corruptSidecar);
 
-    service = await ProductionNativeMpfOwnerService.create({
-      levelPath,
+    service = await createOwnerService(levelPath, {
       binaryPath,
       binarySha256,
       sidecarPath,
@@ -441,43 +390,47 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     );
     await service.close();
 
-    const verify = new Level(levelPath, { valueEncoding: "json" });
-    await verify.open();
-    expect(await verify.get("__root__")).toBe(recoveryApplied.candidateRoot);
-    await verify.close();
+    expect((await ledgerStoreRecords(levelPath)).marker).toBe(
+      recoveryApplied.candidateRoot,
+    );
   });
 
-  it("pins the native binary SHA before opening the durable Level path", async () => {
+  // A refused creation must release the LevelDB lock it was handed, or the
+  // node's next start cannot open its ledger.
+  const expectRefusedReleasingLedger = async (
+    levelPath: string,
+    options: Parameters<typeof createOwnerService>[1],
+    refusal: RegExp,
+  ) => {
+    await expect(createOwnerService(levelPath, options)).rejects.toThrow(
+      refusal,
+    );
+    await (await openNativeOwnerLedger(levelPath)).level.close();
+  };
+
+  it("refuses a native binary whose SHA differs from the pin and releases the ledger", async () => {
     const root = await mkdtemp(join(tmpdir(), "midgard-native-owner-sha-"));
     temporaryPaths.push(root);
-    await expect(
-      ProductionNativeMpfOwnerService.create({
-        levelPath: join(root, "absent-level"),
-        binaryPath,
-        binarySha256: "00".repeat(32),
-      }),
-    ).rejects.toThrow(/binary SHA-256 mismatch/);
+    await expectRefusedReleasingLedger(
+      join(root, "ledger"),
+      { binaryPath, binarySha256: "00".repeat(32) },
+      /binary SHA-256 mismatch/,
+    );
   });
 
-  it("enforces native frame and chunk caps before opening Level", async () => {
+  it("enforces native frame and chunk caps and releases the ledger", async () => {
     const root = await mkdtemp(join(tmpdir(), "midgard-native-owner-caps-"));
     temporaryPaths.push(root);
-    await expect(
-      ProductionNativeMpfOwnerService.create({
-        levelPath: join(root, "zero-chunk-level"),
-        binaryPath,
-        binarySha256,
-        maxChunkBytes: 0,
-      }),
-    ).rejects.toThrow(/maxChunkBytes must be a positive safe integer/);
-    await expect(
-      ProductionNativeMpfOwnerService.create({
-        levelPath: join(root, "oversized-frame-level"),
-        binaryPath,
-        binarySha256,
-        maxFrameBytes: 64 * 1024 * 1024 + 1,
-      }),
-    ).rejects.toThrow(/maxFrameBytes exceeds the compiled native owner cap/);
+    await expectRefusedReleasingLedger(
+      join(root, "zero-chunk-level"),
+      { binaryPath, binarySha256, maxChunkBytes: 0 },
+      /maxChunkBytes must be a positive safe integer/,
+    );
+    await expectRefusedReleasingLedger(
+      join(root, "oversized-frame-level"),
+      { binaryPath, binarySha256, maxFrameBytes: 64 * 1024 * 1024 + 1 },
+      /maxFrameBytes exceeds the compiled native owner cap/,
+    );
   });
 
   it("requires explicit cgroup headroom above the V8 heap and native owner cap", () => {
@@ -538,29 +491,10 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     const key2 = Buffer.alloc(32, 42);
     const value1 = Buffer.alloc(64, 51);
     const value2 = Buffer.alloc(64, 52);
-    const baseRoot = leafRoot(key1, value1);
-    const seed = new Level<string, unknown>(levelPath, {
-      valueEncoding: "json",
-    });
-    await seed.open();
-    await seed.batch([
-      {
-        type: "put",
-        key: baseRoot,
-        value: {
-          __kind: "Leaf",
-          prefix: nibbles(key1),
-          key: key1.toString("hex"),
-          value: value1.toString("hex"),
-        },
-      },
-      { type: "put", key: "__root__", value: baseRoot },
-    ]);
-    await seed.close();
+    const baseRoot = await seedLeafLedger(levelPath, key1, value1);
 
     const childPids: number[] = [];
-    const service = await ProductionNativeMpfOwnerService.create({
-      levelPath,
+    const service = await createOwnerService(levelPath, {
       binaryPath,
       binarySha256,
       onChildSpawnForTests(pid) {
@@ -595,6 +529,56 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     await service.close();
   });
 
+  it("counts nodes two promotions share once per listing and keeps the first root open", async () => {
+    const root = await mkdtemp(join(tmpdir(), "midgard-native-owner-two-"));
+    temporaryPaths.push(root);
+    const levelPath = join(root, "ledger");
+    const [key1, key2, key3] = [1, 2, 3].map((n) => Buffer.alloc(32, n + 60));
+    const value = Buffer.alloc(64, 70);
+    const baseRoot = await seedLeafLedger(levelPath, key1!, value);
+    const service = await createOwnerService(levelPath, {
+      binaryPath,
+      binarySha256,
+    });
+    const promote = async (from: string, key: Buffer) => {
+      const handle = await service.fork(from);
+      const applied = await service.applyEvents(
+        handle,
+        encodeNativeMpfEventLog(from, [[{ type: "insert", key, value }]]),
+      );
+      await service.promote(handle);
+      return applied.candidateRoot;
+    };
+    const first = await promote(baseRoot, key2!);
+    const second = await promote(first, key3!);
+    await service.close();
+
+    const records = await ledgerStoreRecords(levelPath, [first]);
+    expect(records.marker).toBe(second);
+    expectCountedLedger(records);
+    const underSecond = reachableNodes(records, second);
+    const shared = new Set(
+      [...reachableNodes(records, first)].filter((hash) =>
+        underSecond.has(hash),
+      ),
+    );
+    // A shared node no shared branch lists is listed once under each root.
+    const listedByShared = new Set(
+      [...shared].flatMap((hash) => {
+        const node = records.nodes.get(hash)!;
+        return node.__kind === "Branch" ? node.children : [];
+      }),
+    );
+    const topShared = [...shared].filter((hash) => !listedByShared.has(hash));
+    expect(topShared.length).toBeGreaterThan(0);
+    for (const hash of topShared)
+      expect(records.counts.get(hash)).toBeGreaterThanOrEqual(2);
+    expect(records.opened.get(first)).toBe(true);
+    expect(leafKeys(records, first)).toEqual(
+      new Set([key1!.toString("hex"), key2!.toString("hex")]),
+    );
+  });
+
   it("recovers the authoritative old-or-candidate marker across both promotion crash boundaries", async () => {
     for (const point of [
       "before_promotion_batch",
@@ -610,31 +594,12 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       const key2 = Buffer.alloc(32, 52);
       const value1 = Buffer.alloc(64, 61);
       const value2 = Buffer.alloc(64, 62);
-      const baseRoot = leafRoot(key1, value1);
-      const seed = new Level<string, unknown>(levelPath, {
-        valueEncoding: "json",
-      });
-      await seed.open();
-      await seed.batch([
-        {
-          type: "put",
-          key: baseRoot,
-          value: {
-            __kind: "Leaf",
-            prefix: nibbles(key1),
-            key: key1.toString("hex"),
-            value: value1.toString("hex"),
-          },
-        },
-        { type: "put", key: "__root__", value: baseRoot },
-      ]);
-      await seed.close();
+      const baseRoot = await seedLeafLedger(levelPath, key1, value1);
 
       const log = encodeNativeMpfEventLog(baseRoot, [
         [{ type: "insert", key: key2, value: value2 }],
       ]);
-      let service = await ProductionNativeMpfOwnerService.create({
-        levelPath,
+      let service = await createOwnerService(levelPath, {
         sidecarPath,
         binaryPath,
         binarySha256,
@@ -649,15 +614,18 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       );
       await service.close();
 
-      const inspect = new Level(levelPath, { valueEncoding: "json" });
-      await inspect.open();
-      expect(await inspect.get("__root__")).toBe(
+      // The promotion's write landed whole or not at all: nodes, counts,
+      // retained root and marker together.
+      const crashed = await ledgerStoreRecords(levelPath);
+      expect(crashed.marker).toBe(
         point === "before_promotion_batch" ? baseRoot : applied.candidateRoot,
       );
-      await inspect.close();
+      expectCountedLedger(crashed);
+      expect(crashed.nodes.has(applied.candidateRoot)).toBe(
+        point !== "before_promotion_batch",
+      );
 
-      service = await ProductionNativeMpfOwnerService.create({
-        levelPath,
+      service = await createOwnerService(levelPath, {
         sidecarPath,
         binaryPath,
         binarySha256,
@@ -676,6 +644,9 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
         applied.candidateRoot,
       );
       await service.close();
+      const recovered = await ledgerStoreRecords(levelPath);
+      expect(recovered.marker).toBe(applied.candidateRoot);
+      expectCountedLedger(recovered);
     }
   });
 });

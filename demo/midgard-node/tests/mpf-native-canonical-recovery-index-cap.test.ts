@@ -14,9 +14,10 @@ import {
 } from "../src/services/mpf-native-owner/protocol.js";
 import { FULL_INDEX_HEADER_BYTES } from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
 import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
-import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
+import type { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { nativeOwnerBinaryPath } from "./helpers/native-owner-binary.js";
+import { createOwnerService } from "./helpers/native-owner-ledger.js";
 
 const DEFAULT_RECORDS = 2_000_000;
 const DEFAULT_BYTES = 512 * 1024 * 1024;
@@ -100,7 +101,7 @@ describe("native canonical root recovery over a full-index cap", () => {
     await seed.open();
     await seed.put("__root__", SDK.EMPTY_MERKLE_TREE_ROOT);
     await seed.close();
-    const service = await ProductionNativeMpfOwnerService.create(options);
+    const service = await createOwnerService(options.levelPath, options);
     services.add(service);
     const insert = async (base: string, fill: number) => {
       const generation = await service.fork(base);

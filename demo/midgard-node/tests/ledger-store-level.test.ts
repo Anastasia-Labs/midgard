@@ -37,7 +37,15 @@ import {
 } from "../src/mpf/store-primitives.js";
 import type { MpfStoredValue } from "../src/mpf/types.js";
 import { walkReachableRecords } from "../src/services/mpf-native-owner/service.encode-stored-node.js";
-import type { StoredValue } from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
+import type {
+  StoredNode,
+  StoredValue,
+} from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
+import {
+  type NativeOwnerLedger,
+  openNativeOwnerLedger,
+  writeGenesisLedger,
+} from "../src/services/mpf-native-owner/service.open-ledger.js";
 
 const directories: string[] = [];
 const freshPath = async () => {
@@ -265,6 +273,66 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
       expect(await level.get(ROOT_KEY)).toBe(c.root);
     } finally {
       await level.close();
+    }
+  });
+
+  const genesis = async ({ store }: NativeOwnerLedger) =>
+    await writeGenesisLedger(store, base, await ledgerEntriesRoot(base));
+
+  /**
+   * Opens the node's ledger at `path` with every write after the first
+   * `survive` refused, as if the process died there.
+   */
+  const openDyingAfter = async (path: string, survive: number) => {
+    const ledger = await openNativeOwnerLedger(path);
+    const level = ledger.level as unknown as Record<
+      string,
+      (...args: unknown[]) => Promise<unknown>
+    >;
+    let writes = 0;
+    for (const method of ["batch", "put", "del"]) {
+      const write = level[method]!.bind(ledger.level);
+      level[method] = (...args) =>
+        writes++ < survive
+          ? write(...args)
+          : Promise.reject(new Error("killed"));
+    }
+    return ledger;
+  };
+
+  it("genesis killed at any write leaves an empty or whole store, and restarting completes it", async () => {
+    const root = await ledgerEntriesRoot(base);
+    for (let survive = 0, killed = true; killed; survive += 1) {
+      const path = await freshPath();
+      const dying = await openDyingAfter(path, survive);
+      killed = await genesis(dying).then(
+        () => false,
+        () => true,
+      );
+      await dying.level.close();
+      const restarted = await openNativeOwnerLedger(path);
+      const level = restarted.level as unknown as Level<string, MpfStoredValue>;
+      try {
+        if ((await level.get(ROOT_KEY)) === undefined) {
+          expect((await keysOf(level)).all).toEqual([]);
+          await genesis(restarted);
+        }
+        expect(await level.get(ROOT_KEY)).toBe(root);
+        await restarted.store.at(root);
+        const keys = await keysOf(level);
+        expect(keys.counted).toEqual(keys.nodes);
+        expect(keys.nodes).toEqual(await reachableFrom(level, [root]));
+        const leaves = (await level.getMany([...keys.nodes])) as StoredNode[];
+        expect(
+          new Set(
+            leaves.flatMap((node) =>
+              node.__kind === "Leaf" ? [node.key] : [],
+            ),
+          ),
+        ).toEqual(new Set(base.map(({ outRef }) => outRef.toString("hex"))));
+      } finally {
+        await restarted.level.close();
+      }
     }
   });
 });

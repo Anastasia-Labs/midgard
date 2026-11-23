@@ -1,3 +1,4 @@
+import { LedgerRootMismatchError } from "@al-ft/midgard-fault-proofs/ledger-at";
 import { SqlClient } from "@effect/sql";
 import { Effect, Exit, Option, Ref } from "effect";
 
@@ -6,11 +7,12 @@ import {
   MpfEngineStateDB,
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
+import { utxoToLedgerInsertMaterial } from "../mpf/ledger-hydration.js";
 import {
-  computeLedgerMpfRootFromLedgerEntries,
-  utxoToLedgerInsertMaterial,
-} from "../mpf/ledger-hydration.js";
-import { MidgardMpf } from "../mpf/store.midgard-mpf.js";
+  MPF_EMPTY_ROOT_HEX,
+  parseStoredRootHex,
+  ROOT_KEY,
+} from "../mpf/store-primitives.js";
 import type { NodeConfigDep } from "./config.js";
 import type { Database } from "./database.js";
 import { withFollowerWrite } from "./follower-write-gate.js";
@@ -19,6 +21,11 @@ import { landedStateQueueSnapshot } from "./landed-state-queue.js";
 import { Lucid } from "./lucid.js";
 import { MidgardContracts } from "./midgard-contracts.make-midgard-contract-runtime.js";
 import { NativeMpfPromotionIndexCapExceeded } from "./mpf-native-owner/protocol.js";
+import {
+  type NativeOwnerLedger,
+  openNativeOwnerLedger,
+  writeGenesisLedger,
+} from "./mpf-native-owner/service.open-ledger.js";
 import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.production-native-mpf-owner-service.js";
 
 /**
@@ -94,51 +101,49 @@ export const initializeArchitectureGOwner = <R = never>(
       SELECT root_hex FROM mpf_engine_state
       WHERE store_name = 'ledger' AND migration_version >= 1 AND root_hex IS NOT NULL`;
     const alreadyInitialized = initializedStores.length === 1;
-    const bootstrap = yield* MidgardMpf.create(
-      "architecture-g-bootstrap",
-      nodeConfig.LEDGER_MPF_DB_PATH,
-      {
-        mode: "overlay",
-        spillThresholdBytes: nodeConfig.MPF_OVERLAY_SPILL_BYTES,
-      },
-    );
-    const initialized = yield* Effect.either(
+    const stateQueueSnapshot = Effect.gen(function* () {
+      const contracts = yield* MidgardContracts;
+      return yield* landedStateQueueSnapshot(contracts.stateQueue, "startup");
+    });
+    const initializeLedger = ({ level, store }: NativeOwnerLedger) =>
       Effect.gen(function* () {
-        if (
-          alreadyInitialized &&
-          (yield* bootstrap.persistedRootMarker()) === undefined
-        )
-          return yield* Effect.fail(
-            new Error(
-              "Initialized native ledger is missing its durable root marker; recovery is required",
-            ),
-          );
+        const marker = yield* Effect.tryPromise({
+          try: () => level.get(ROOT_KEY),
+          catch: (cause) => cause,
+        });
+        if (alreadyInitialized) {
+          if (marker === undefined)
+            return yield* Effect.fail(
+              new Error(
+                "Initialized native ledger is missing its durable root marker; recovery is required",
+              ),
+            );
+          return;
+        }
+        const storedRoot = yield* Effect.try({
+          try: () => parseStoredRootHex(marker).toString("hex"),
+          catch: (cause) => cause,
+        });
+        const snapshot = yield* stateQueueSnapshot;
+        const tailRoot = snapshot.tailCommitBase.roots.utxosRoot;
         // An initialized trie may legitimately become empty after its last
         // withdrawal. Replaying configured genesis would resurrect spent funds.
-        if (!alreadyInitialized && (yield* bootstrap.rootIsEmpty())) {
+        if (storedRoot === MPF_EMPTY_ROOT_HEX) {
           const genesisEntries = yield* Effect.forEach(
             nodeConfig.GENESIS_UTXOS,
             (utxo) =>
               utxoToLedgerInsertMaterial(utxo).pipe(
                 Effect.map(({ ledgerOp, outputCbor }) => ({
-                  op: ledgerOp,
-                  ledgerEntry: {
-                    [MempoolLedgerDB.Columns.TX_ID]: Buffer.from(
-                      utxo.txHash,
-                      "hex",
-                    ),
-                    [MempoolLedgerDB.Columns.OUTREF]: ledgerOp.key,
-                    [MempoolLedgerDB.Columns.OUTPUT]: outputCbor,
-                    [MempoolLedgerDB.Columns.ADDRESS]: utxo.address,
-                    [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
-                  } satisfies MempoolLedgerDB.EntryNoTimeStamp,
+                  [MempoolLedgerDB.Columns.TX_ID]: Buffer.from(
+                    utxo.txHash,
+                    "hex",
+                  ),
+                  [MempoolLedgerDB.Columns.OUTREF]: ledgerOp.key,
+                  [MempoolLedgerDB.Columns.OUTPUT]: outputCbor,
+                  [MempoolLedgerDB.Columns.ADDRESS]: utxo.address,
+                  [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
                 })),
               ),
-          );
-          const contracts = yield* MidgardContracts;
-          const snapshot = yield* landedStateQueueSnapshot(
-            contracts.stateQueue,
-            "startup",
           );
           if (snapshot.blockCount !== 0)
             return yield* Effect.fail(
@@ -146,58 +151,58 @@ export const initializeArchitectureGOwner = <R = never>(
                 "Native genesis bootstrap requires the authenticated clean state queue",
               ),
             );
-          // Empty genesis is valid only if it matches this deployment's actual
-          // committed root. The same equality also protects nonempty genesis.
-          const genesisRoot = yield* computeLedgerMpfRootFromLedgerEntries(
-            genesisEntries.map(({ ledgerEntry }) => ledgerEntry),
-          );
-          if (genesisRoot !== snapshot.tailCommitBase.roots.utxosRoot)
-            return yield* Effect.fail(
-              new Error(
-                "Configured native genesis does not match the committed state-queue root",
+          // Genesis, empty or not, must be this deployment's committed root.
+          yield* Effect.tryPromise({
+            try: () =>
+              writeGenesisLedger(
+                store,
+                genesisEntries.map((entry) => ({
+                  outRef: entry[MempoolLedgerDB.Columns.OUTREF],
+                  output: entry[MempoolLedgerDB.Columns.OUTPUT],
+                })),
+                tailRoot,
               ),
-            );
-          yield* bootstrap.applyBatch(genesisEntries.map(({ op }) => op));
-          yield* writeSql(
-            MempoolLedgerDB.insert(
-              genesisEntries.map(({ ledgerEntry }) => ledgerEntry),
-            ),
-          );
-        } else if (!alreadyInitialized) {
+            catch: (cause) =>
+              cause instanceof LedgerRootMismatchError
+                ? new Error(
+                    "Configured native genesis does not match the committed state-queue root",
+                    { cause },
+                  )
+                : cause,
+          });
+          yield* writeSql(MempoolLedgerDB.insert(genesisEntries));
+        } else if (storedRoot !== tailRoot) {
           // An unstamped nonempty trie is trusted only at the committed tail
           // root. A store left from an earlier run must not be stamped onto a
           // fresh database, where it would first fail at the next commit.
-          const contracts = yield* MidgardContracts;
-          const snapshot = yield* landedStateQueueSnapshot(
-            contracts.stateQueue,
-            "startup",
+          return yield* Effect.fail(
+            new Error(
+              `Stale native ledger store at LEDGER_MPF_DB_PATH: root=${storedRoot} differs from the committed state-queue root ${tailRoot}; wipe it before starting on a fresh database`,
+            ),
           );
-          const leftoverRoot = yield* bootstrap.rootHex();
-          if (leftoverRoot !== snapshot.tailCommitBase.roots.utxosRoot)
-            return yield* Effect.fail(
-              new Error(
-                `Stale native ledger store at LEDGER_MPF_DB_PATH: root=${leftoverRoot} differs from the committed state-queue root ${snapshot.tailCommitBase.roots.utxosRoot}; wipe it before starting on a fresh database`,
-              ),
-            );
         }
-        const root = yield* bootstrap.rootHex();
-        if (!alreadyInitialized)
-          yield* writeSql(MpfEngineStateDB.stampLedgerMigration(root));
-      }).pipe(
-        Effect.ensuring(
-          bootstrap.close().pipe(Effect.catchAll(() => Effect.void)),
-        ),
-      ),
-    );
-    if (initialized._tag === "Left")
-      return yield* Effect.fail(initialized.left);
+        yield* writeSql(MpfEngineStateDB.stampLedgerMigration(tailRoot));
+      });
 
     return yield* Effect.uninterruptibleMask((restore) =>
       Effect.gen(function* () {
+        // The ledger's one LevelDB handle and store; the owner takes them over.
+        const ledger = yield* Effect.tryPromise({
+          try: () => openNativeOwnerLedger(nodeConfig.LEDGER_MPF_DB_PATH),
+          catch: (cause) => cause,
+        });
+        yield* restore(initializeLedger(ledger)).pipe(
+          Effect.onExit((exit) =>
+            Exit.isFailure(exit)
+              ? Effect.promise(() =>
+                  ledger.level.close().catch(() => undefined),
+                )
+              : Effect.void,
+          ),
+        );
         const owner = yield* Effect.tryPromise({
           try: () =>
-            ProductionNativeMpfOwnerService.create({
-              levelPath: nodeConfig.LEDGER_MPF_DB_PATH,
+            ProductionNativeMpfOwnerService.create(ledger, {
               binaryPath: nodeConfig.MPF_NATIVE_OWNER_BINARY_PATH,
               binarySha256: nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
               maxFrameBytes: nodeConfig.MPF_NATIVE_OWNER_MAX_FRAME_BYTES,

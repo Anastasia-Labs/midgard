@@ -14,9 +14,10 @@ import {
 import { NativeMpfClosureIncomplete } from "../src/services/mpf-native-owner/service.encode-stored-node.js";
 import type { NativeMpfOwnerServiceOptions } from "../src/services/mpf-native-owner/service.js";
 import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
-import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
+import type { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { nativeOwnerBinaryPath } from "./helpers/native-owner-binary.js";
+import { createOwnerService } from "./helpers/native-owner-ledger.js";
 
 // This suite checks the native durable boundary with the actual pinned child.
 describe("native canonical root recovery", () => {
@@ -41,8 +42,10 @@ describe("native canonical root recovery", () => {
     );
   });
 
-  const open = async (options: NativeMpfOwnerServiceOptions) => {
-    const service = await ProductionNativeMpfOwnerService.create(options);
+  const open = async (
+    options: NativeMpfOwnerServiceOptions & { readonly levelPath: string },
+  ) => {
+    const service = await createOwnerService(options.levelPath, options);
     services.add(service);
     return service;
   };

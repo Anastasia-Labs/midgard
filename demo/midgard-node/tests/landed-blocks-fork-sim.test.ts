@@ -69,7 +69,6 @@ import { ledgerOutputToInsertBatchOp } from "../src/mpf/ledger-delta.js";
 import type { NodeConfig } from "../src/services/config.js";
 import type { Database } from "../src/services/database.js";
 import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
-import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { insertDeposits } from "./helpers/event-rows.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
@@ -87,6 +86,7 @@ import {
   type SimUniverse,
 } from "./helpers/landed-blocks-sim.universe.js";
 import { nativeOwnerBinaryPath } from "./helpers/native-owner-binary.js";
+import { createOwnerService } from "./helpers/native-owner-ledger.js";
 import { SIM_QUEUE_CONFIG } from "./helpers/state-queue-sim.fixtures.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
@@ -183,7 +183,7 @@ const openOwner = async (): Promise<
   await seed.open();
   await seed.put("__root__", SDK.EMPTY_MERKLE_TREE_ROOT);
   await seed.close();
-  const first = await ProductionNativeMpfOwnerService.create(options);
+  const first = await createOwnerService(options.levelPath, options);
   const handle = await first.fork(SDK.EMPTY_MERKLE_TREE_ROOT);
   const applied = await first.applyEvents(
     handle,
@@ -202,7 +202,7 @@ const openOwner = async (): Promise<
     current: first,
     reopen: async () => {
       await owner.current.close();
-      owner.current = await ProductionNativeMpfOwnerService.create(options);
+      owner.current = await createOwnerService(options.levelPath, options);
     },
     dispose: async () => {
       await owner.current.close();

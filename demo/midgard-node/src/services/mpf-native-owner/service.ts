@@ -23,5 +23,10 @@ export {
   type NativeOwnerCgroupMemoryBudget,
   parseNativeOwnerCgroupMemoryLimit,
 } from "./service.normalize-owner-options.js";
+export {
+  type NativeOwnerLedger,
+  openNativeOwnerLedger,
+  writeGenesisLedger,
+} from "./service.open-ledger.js";
 export { encodeNativeMpfEventLog } from "./service.parse-promotion-records.js";
 export { ProductionNativeMpfOwnerService } from "./service.production-native-mpf-owner-service.js";
