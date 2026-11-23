@@ -8,13 +8,9 @@ import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { canonicalCommittedWithdrawalTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Effect } from "effect";
 import { withdrawalDataToEntry } from "midgard-node/database/user-event-entries";
-import * as Ledger from "midgard-node/database/utils/ledger";
 import * as WithdrawalsDB from "midgard-node/database/withdrawals";
 import { withdrawalTraceEventKey } from "midgard-node/mpf/trace-events";
-import {
-  classifyWithdrawalsInOrder,
-  indexSelectedLedgerOutputs,
-} from "midgard-node/workers/utils/mpf/withdrawal-classification";
+import { classifyWithdrawalsInOrder } from "midgard-node/workers/utils/mpf/withdrawal-classification";
 import { expect } from "vitest";
 
 import type { LedgerEntry } from "../../../src/ledger-at.js";
@@ -146,11 +142,11 @@ export const commitChronologyWithdrawal = (
       });
       const [classified] = yield* classifyWithdrawalsInOrder({
         entries: [entry],
-        baseOutputs: yield* indexSelectedLedgerOutputs(
-          baseLedger.map((ledgerEntry) => ({
-            [Ledger.Columns.OUTREF]: ledgerEntry.outRef,
-            [Ledger.Columns.OUTPUT]: ledgerEntry.output,
-          })),
+        baseOutputs: new Map(
+          baseLedger.map((ledgerEntry) => [
+            ledgerEntry.outRef.toString("hex"),
+            ledgerEntry.output,
+          ]),
         ),
       });
       if (classified === undefined)
