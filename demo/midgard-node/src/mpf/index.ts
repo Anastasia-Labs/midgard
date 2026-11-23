@@ -63,7 +63,6 @@ export {
   computeLedgerMpfRootFromLedgerEntries,
   deleteMpfStore,
   encodeTransactionRootValue,
-  hydrateLedgerMpfFromLedgerEntries,
   utxoToLedgerInsertMaterial,
 } from "./ledger-hydration.js";
 export {

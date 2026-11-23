@@ -17,12 +17,13 @@ import {
   MpfEngineStateDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
+import type * as Ledger from "../src/database/utils/ledger.js";
 import {
   mergeAction,
   MergeIntentJournalUnavailable,
 } from "../src/fibers/merge.merge-action.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
-import { hydrateLedgerMpfFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
+import { ledgerEntryToInsertBatchOp } from "../src/mpf/ledger-delta.js";
 import type { NodeConfigDep } from "../src/services/config.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import {
@@ -57,7 +58,7 @@ import {
 } from "./deposit-flow-emulator-shared.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
-type LedgerEntries = Parameters<typeof hydrateLedgerMpfFromLedgerEntries>[1];
+type LedgerEntries = readonly Ledger.MinimalEntry[];
 
 /**
  * Actual public deposits and commits, each applied when it lands, under
@@ -280,9 +281,12 @@ it("audits the native MPF root at the committed tip, and merges only under an in
     const root = await Effect.runPromise(
       Effect.gen(function* () {
         const ledger = yield* MidgardMpf.create("ledger", path);
-        return yield* hydrateLedgerMpfFromLedgerEntries(ledger, entries).pipe(
-          Effect.ensuring(ledger.close().pipe(Effect.orDie)),
-        );
+        return yield* ledger
+          .applyBatch(entries.map(ledgerEntryToInsertBatchOp))
+          .pipe(
+            Effect.zipRight(ledger.rootHex()),
+            Effect.ensuring(ledger.close().pipe(Effect.orDie)),
+          );
       }),
     );
     return { path, root };

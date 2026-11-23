@@ -22,7 +22,7 @@ import {
   COMMIT_WORKER_WITHDRAWAL_UNCLASSIFIABLE,
   CONFIRMED_LEDGER_VERIFICATION_FAILED,
 } from "../fibers/block-commitment.worker-readiness.js";
-import { COMMIT_BASE_DIVERGENCE_CHECKS } from "../mpf/local-ledger-divergence.js";
+import { LEDGER_DIVERGENCE_CHECKS } from "../mpf/local-ledger-divergence.js";
 import { VALIDATION_TRACE_DEFENSE_STATES } from "../validation-trace-defense/decide.js";
 import type {
   CommitPlanningNotice,
@@ -80,10 +80,7 @@ export const COMMIT_READINESS_ROWS: readonly ReadinessRow[] = [
   reason(COMMIT_BASE_PENDING),
   reason(COMMIT_BASE_LEDGER_UNVERIFIED),
   reason(CONFIRMED_LEDGER_VERIFICATION_FAILED),
-  reason(
-    COMMIT_BASE_LEDGER_DIVERGENCE,
-    oneOf(...COMMIT_BASE_DIVERGENCE_CHECKS),
-  ),
+  reason(COMMIT_BASE_LEDGER_DIVERGENCE, oneOf(...LEDGER_DIVERGENCE_CHECKS)),
   reason(COMMIT_WINDOW_PENDING),
   reason(COMMIT_SCHEDULER_ALIGNMENT_FAILED),
   reason(COMMIT_WORKER_FAILED),

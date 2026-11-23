@@ -2,19 +2,14 @@ import "./listen-startup.ensure-protocol-initialized-on-startup.js";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk/core";
-import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option, Ref } from "effect";
 
-import {
-  ConfirmedLedgerDB,
-  PendingBlockFinalizationsDB,
-} from "../database/index.js";
+import { PendingBlockFinalizationsDB } from "../database/index.js";
 import { setUnresolvedBlockSubmission } from "../fibers/unresolved-block-submission.js";
 import { foldMerge } from "../landed-blocks/confirmed-merges.js";
 import { ownFoldRow } from "../landed-blocks/journal.js";
 import { Frontier } from "../landed-blocks/store.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
 import { Globals } from "../services/globals.globals.js";
 import { unboundJournalReason } from "../services/journal-header-binding.js";
 import {
@@ -56,11 +51,12 @@ const seededLocalBlockBoundary = (
  * Startup's one-time repair of a `confirmed_ledger` that no landed-block run
  * anchored yet (no frontier): the applied (or folded) journal chain from the
  * ledger's root up to `journal` is folded through the stored-delta fold,
- * with the frontier set at the chain's base header first, and the
- * result's root must be `journal`'s. Undefined when the chain does not reach
- * the ledger's root or a journal on it is not its own header's
- * (`unboundJournalReason`); a wrong fold rolls back and fails startup as
- * before.
+ * with the frontier set at the chain's base header first. Undefined
+ * when the chain does not reach the ledger's root or a journal on it is not
+ * its own header's (`unboundJournalReason`); a fold whose base is wrong
+ * rolls back and fails startup. Landed-block processing has the ledger
+ * store hold the frontier's root (`frontier-root.ts`), and the
+ * verification of `confirmed_ledger` checks the folded ledger against it.
  * Startup runs before any history writer, so nothing else holds the ledger.
  */
 const repairUnanchoredConfirmedLedger = (
@@ -103,18 +99,6 @@ const repairUnanchoredConfirmedLedger = (
           utxosRoot: confirmedRoot,
         });
         for (const record of chain) yield* foldMerge(ownFoldRow(record), null);
-        const root = yield* computeLedgerMpfRootFromLedgerEntries(
-          yield* ConfirmedLedgerDB.retrieve,
-        );
-        const expected = journal[Journals.Columns.EXPECTED_UTXOS_ROOT];
-        if (root !== expected)
-          return yield* Effect.fail(
-            new SDKStateQueue.StateQueueError({
-              message:
-                "Startup's journal-chain fold of confirmed_ledger does not reach the journal's root",
-              cause: `folded_root=${root},journal_root=${expected}`,
-            }),
-          );
         return chain.length;
       }),
     );
@@ -148,11 +132,10 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
     yield* Effect.logInfo(
       "Startup left the confirmed ledger to landed-block processing: its frontier is anchored.",
     );
+  // `confirmed_ledger` is written only in the transaction that sets or
+  // moves the frontier, so with no frontier it holds no row.
   if (!anchored && snapshot.blockCount === 0) {
-    const confirmedLedgerEntries = yield* ConfirmedLedgerDB.retrieve;
-    const confirmedLedgerRoot = yield* computeLedgerMpfRootFromLedgerEntries(
-      confirmedLedgerEntries,
-    );
+    const confirmedLedgerRoot = SDK.EMPTY_MERKLE_TREE_ROOT;
     const onChainUtxoRoot = snapshot.tailCommitBase.roots.utxosRoot;
     if (confirmedLedgerRoot === onChainUtxoRoot) {
       yield* Effect.logInfo(
@@ -178,14 +161,6 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
       if (repaired !== undefined) {
         yield* Effect.logInfo(
           `Startup repaired confirmed ledger by folding ${repaired.toString()} authenticated journal(s); native owner must recover the corresponding durable root before Ready.`,
-        );
-      } else if (confirmedLedgerEntries.length > 0) {
-        return yield* Effect.fail(
-          new SDKStateQueue.StateQueueError({
-            message:
-              "Startup clean-queue confirmed ledger root does not match the on-chain state queue root",
-            cause: `confirmed_ledger_entries=${confirmedLedgerEntries.length.toString()},confirmed_ledger_root=${confirmedLedgerRoot},on_chain_utxo_root=${onChainUtxoRoot},snapshot=${snapshot.snapshotId}`,
-          }),
         );
       } else {
         yield* Effect.logInfo(

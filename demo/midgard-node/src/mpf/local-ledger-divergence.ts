@@ -29,15 +29,6 @@ export const LEDGER_DIVERGENCE_CHECKS = [
 export type LedgerDivergenceCheck = (typeof LEDGER_DIVERGENCE_CHECKS)[number];
 
 /**
- * The checks whose divergence holds commits: the two of the full
- * verification of the landed ledger the landed commit base builds on.
- */
-export const COMMIT_BASE_DIVERGENCE_CHECKS = [
-  "confirmed_ledger",
-  "confirmed_ledger_tail",
-] as const satisfies readonly LedgerDivergenceCheck[];
-
-/**
  * The ledger at `headerHash` does not match the root `root` this node's
  * stores give that header: its entries derive `derivedRoot`, or, where the
  * check applies deltas instead of deriving a root, `fault` names the delta

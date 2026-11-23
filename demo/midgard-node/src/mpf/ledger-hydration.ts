@@ -1,5 +1,5 @@
 /**
- * Ledger trie hydration, ledger roots and transaction-root values from ledger entries.
+ * Ledger roots and transaction-root values from ledger entries.
  */
 
 import { encodeMidgardTxOutput, outRefToCbor } from "@al-ft/lucid-midgard";
@@ -16,7 +16,6 @@ import {
   ledgerEntryToInsertBatchOp,
   ledgerOutputToInsertBatchOp,
 } from "./ledger-delta.js";
-import { MidgardMpf } from "./store.js";
 import { type MpfInsertBatchOp } from "./types.js";
 
 export { encodeTransactionRootValue } from "@al-ft/midgard-fault-proofs/block-replay";
@@ -35,21 +34,6 @@ export const computeLedgerMpfRootFromLedgerEntries = (
       ),
     ),
   );
-
-export const hydrateLedgerMpfFromLedgerEntries = (
-  ledgerMpf: MidgardMpf,
-  entries: readonly Ledger.MinimalEntry[],
-): Effect.Effect<string, MpfError> =>
-  Effect.gen(function* () {
-    yield* ledgerMpf.resetToEmpty();
-    const ops = yield* Effect.try({
-      try: () => entries.map(ledgerEntryToInsertBatchOp),
-      catch: (cause) =>
-        MpfError.rootBuild("ledger descriptor hydration", cause),
-    });
-    yield* ledgerMpf.applyBatch(ops);
-    return yield* ledgerMpf.rootHex();
-  });
 
 export const utxoToLedgerInsertMaterial = (
   utxo: UTxO,
