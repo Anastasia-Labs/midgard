@@ -17,47 +17,47 @@ import { UNUSED_SCRIPT_WITNESS_ARTIFACT_FAMILY } from "../src/unused-script-witn
 const FAMILIES = [
   [
     "missingRedeemer",
-    "midgard-missing-redeemer-workflow-artifact-v1",
+    "midgard-missing-redeemer-workflow-artifact-v2",
     MISSING_REDEEMER_ARTIFACT_FAMILY,
   ],
   [
     "missingScriptSource",
-    "midgard-missing-script-source-workflow-artifact-v1",
+    "midgard-missing-script-source-workflow-artifact-v2",
     MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY,
   ],
   [
     "unusedRedeemer",
-    "midgard-unused-redeemer-workflow-artifact-v1",
+    "midgard-unused-redeemer-workflow-artifact-v2",
     UNUSED_REDEEMER_ARTIFACT_FAMILY,
   ],
   [
     "receivePurposeLanguage",
-    "midgard-receive-purpose-language-workflow-artifact-v1",
+    "midgard-receive-purpose-language-workflow-artifact-v2",
     RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY,
   ],
   [
     "executionSourceScriptDecoding",
-    "midgard-execution-source-script-decoding-workflow-artifact-v1",
+    "midgard-execution-source-script-decoding-workflow-artifact-v2",
     EXECUTION_SOURCE_SCRIPT_DECODING_ARTIFACT_FAMILY,
   ],
   [
     "distinctAssetAccumulationLimit",
-    "midgard-distinct-asset-accumulation-limit-workflow-artifact-v1",
+    "midgard-distinct-asset-accumulation-limit-workflow-artifact-v2",
     DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY,
   ],
   [
     "executionNativeScriptInvalid",
-    "midgard-execution-native-script-invalid-workflow-artifact-v1",
+    "midgard-execution-native-script-invalid-workflow-artifact-v2",
     EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY,
   ],
   [
     "scriptIntegrityHashMismatch",
-    "midgard-script-integrity-hash-mismatch-workflow-artifact-v1",
+    "midgard-script-integrity-hash-mismatch-workflow-artifact-v2",
     SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY,
   ],
   [
     "unusedScriptWitness",
-    "midgard-unused-script-witness-workflow-artifact-v1",
+    "midgard-unused-script-witness-workflow-artifact-v2",
     UNUSED_SCRIPT_WITNESS_ARTIFACT_FAMILY,
   ],
 ] as const;
@@ -77,7 +77,7 @@ describe.each(FAMILIES)("the %s artifact", (label, version, family) => {
         detectionId: "",
         coordinate: { sourceKind: 0, sourceIndex: 0 },
         payloadEnvelopeCbor: "00",
-        predecessorLedger: null,
+        predecessorWitness: null,
       }),
     ).rejects.toThrow(`${label} artifact shape changed`);
   });

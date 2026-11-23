@@ -166,7 +166,7 @@ export const detectUnusedScriptWitnessReplay = async ({
 export const UNUSED_SCRIPT_WITNESS_ARTIFACT_FAMILY =
   directPurposeArtifactFamily({
     label: "unusedScriptWitness",
-    artifactVersion: "midgard-unused-script-witness-workflow-artifact-v1",
+    artifactVersion: "midgard-unused-script-witness-workflow-artifact-v2",
     prepare: prepareUnusedScriptWitnessReplay,
     detect: detectUnusedScriptWitnessReplay,
     prove: (admitted, contracts, prover) =>

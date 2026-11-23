@@ -153,7 +153,7 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY =
   directPurposeArtifactFamily({
     label: "executionNativeScriptInvalid",
     artifactVersion:
-      "midgard-execution-native-script-invalid-workflow-artifact-v1",
+      "midgard-execution-native-script-invalid-workflow-artifact-v2",
     prepare: prepareExecutionNativeScriptInvalidReplay,
     detect: detectExecutionNativeScriptInvalidReplay,
     prove: (admitted, contracts, prover) =>

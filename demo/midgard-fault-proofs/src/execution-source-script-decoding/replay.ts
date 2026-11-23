@@ -126,7 +126,7 @@ export const EXECUTION_SOURCE_SCRIPT_DECODING_ARTIFACT_FAMILY =
   directPurposeArtifactFamily({
     label: "executionSourceScriptDecoding",
     artifactVersion:
-      "midgard-execution-source-script-decoding-workflow-artifact-v1",
+      "midgard-execution-source-script-decoding-workflow-artifact-v2",
     prepare: prepareExecutionSourceScriptDecodingReplay,
     detect: detectExecutionSourceScriptDecodingReplay,
     prove: (admitted, _contracts, prover) =>

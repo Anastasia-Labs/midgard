@@ -128,7 +128,7 @@ export const detectReceivePurposeLanguageReplay = async ({
 export const RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY =
   directPurposeArtifactFamily({
     label: "receivePurposeLanguage",
-    artifactVersion: "midgard-receive-purpose-language-workflow-artifact-v1",
+    artifactVersion: "midgard-receive-purpose-language-workflow-artifact-v2",
     prepare: prepareReceivePurposeLanguageReplay,
     detect: detectReceivePurposeLanguageReplay,
     prove: (admitted, contracts, prover) =>

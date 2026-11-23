@@ -131,7 +131,7 @@ export const detectMissingScriptSourceReplay = async ({
 export const MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY =
   directPurposeArtifactFamily({
     label: "missingScriptSource",
-    artifactVersion: "midgard-missing-script-source-workflow-artifact-v1",
+    artifactVersion: "midgard-missing-script-source-workflow-artifact-v2",
     prepare: prepareMissingScriptSourceReplay,
     detect: detectMissingScriptSourceReplay,
     prove: (admitted, contracts, prover) =>

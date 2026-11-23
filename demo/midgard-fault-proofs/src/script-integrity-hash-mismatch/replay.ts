@@ -139,7 +139,7 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY =
   directPurposeArtifactFamily({
     label: "scriptIntegrityHashMismatch",
     artifactVersion:
-      "midgard-script-integrity-hash-mismatch-workflow-artifact-v1",
+      "midgard-script-integrity-hash-mismatch-workflow-artifact-v2",
     prepare: prepareScriptIntegrityHashMismatchReplay,
     detect: detectScriptIntegrityHashMismatchReplay,
     prove: (admitted, contracts, prover) =>
