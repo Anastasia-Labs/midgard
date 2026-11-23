@@ -17,7 +17,7 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
+import { checkedPredecessorLedger } from "../checked-ledger-store.js";
 import {
   ledgerBeforeTraceStep,
   readingLedger,
@@ -250,13 +250,9 @@ export const detectNativeScriptDecodingReplay = async ({
   block: CanonicalBlockEvidence;
   predecessor?: CheckedLedger;
 }) => {
-  // The predecessor as a store ledger, converted once, for the first
-  // candidate that selects an input: a block with none converts nothing.
-  let ledger: Promise<Ledger> | undefined;
-  const predecessorLedger = async () =>
-    predecessor === undefined
-      ? undefined
-      : await (ledger ??= checkedLedgerAsLedger(predecessor));
+  // Converted only once a candidate selects an input: a block with none
+  // converts nothing.
+  const predecessorLedger = checkedPredecessorLedger(predecessor);
   const candidates: NativeScriptDecodingCoordinate[] = [];
   for (const sourceKind of [0, 1] as const) {
     const sources =

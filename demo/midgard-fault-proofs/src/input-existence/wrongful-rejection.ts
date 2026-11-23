@@ -202,9 +202,6 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
     predecessor?: CheckedLedger;
   }) => {
     const detections = [];
-    // The predecessor as a store ledger, converted once, for the first
-    // candidate: a block with none reads no ledger.
-    let ledger: Promise<Ledger> | undefined;
     for (const [
       forcedIndex,
       forced,
@@ -221,12 +218,13 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
       )
         continue;
       try {
-        if (predecessor !== undefined)
-          ledger ??= checkedLedgerAsLedger(predecessor);
+        // Converted only for a candidate: a block with none converts nothing.
         const prepared = await prepare({
           block,
           forcedIndex,
-          ...(ledger === undefined ? {} : { predecessor: await ledger }),
+          ...(predecessor === undefined
+            ? {}
+            : { predecessor: await checkedLedgerAsLedger(predecessor) }),
         });
         detections.push({
           ...forcedTransactionSubject(forced.key),
