@@ -2,16 +2,11 @@ import "./listen-startup.ensure-protocol-initialized-on-startup.js";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk/core";
-import { SqlClient } from "@effect/sql";
 import { Effect, Option, Ref } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
 import { setUnresolvedBlockSubmission } from "../fibers/unresolved-block-submission.js";
-import { foldMerge } from "../landed-blocks/confirmed-merges.js";
-import { ownFoldRow } from "../landed-blocks/journal.js";
-import { Frontier } from "../landed-blocks/store.js";
 import { Globals } from "../services/globals.globals.js";
-import { unboundJournalReason } from "../services/journal-header-binding.js";
 import {
   landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
@@ -48,63 +43,6 @@ const seededLocalBlockBoundary = (
   });
 
 /**
- * Startup's one-time repair of a `confirmed_ledger` that no landed-block run
- * anchored yet (no frontier): the applied (or folded) journal chain from the
- * ledger's root up to `journal` is folded through the stored-delta fold,
- * with the frontier set at the chain's base header first. Undefined
- * when the chain does not reach the ledger's root or a journal on it is not
- * its own header's (`unboundJournalReason`); a fold whose base is wrong
- * rolls back and fails startup. Landed-block processing has the ledger
- * store hold the frontier's root (`frontier-root.ts`), and the
- * verification of `confirmed_ledger` checks the folded ledger against it.
- * Startup runs before any history writer, so nothing else holds the ledger.
- */
-const repairUnanchoredConfirmedLedger = (
-  journal: PendingBlockFinalizationsDB.Record,
-  confirmedRoot: string,
-) =>
-  Effect.gen(function* () {
-    const Journals = PendingBlockFinalizationsDB;
-    const chain = [journal];
-    const seen = new Set<string>();
-    for (
-      let first = journal;
-      first[Journals.Columns.BASE_UTXOS_ROOT] !== confirmedRoot;
-      first = chain[0]!
-    ) {
-      const base = first[Journals.Columns.BASE_TAIL_HEADER_HASH];
-      if (seen.has(base.toString("hex"))) return undefined;
-      seen.add(base.toString("hex"));
-      const parent = yield* Journals.retrieveAppliedByHeaderHash(base);
-      if (Option.isNone(parent)) return undefined;
-      chain.unshift(parent.value);
-    }
-    // Each fold's base is its journal's: a journal whose header bytes do not
-    // bind that base and root is never folded, nor its base anchored.
-    for (const record of chain) {
-      const unbound = yield* unboundJournalReason(record);
-      if (unbound !== undefined) {
-        yield* Effect.logWarning(
-          `Startup leaves confirmed_ledger unrepaired: ${unbound}`,
-        );
-        return undefined;
-      }
-    }
-    const sql = yield* SqlClient.SqlClient;
-    return yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* Frontier.upsert({
-          headerHash:
-            chain[0]![Journals.Columns.BASE_TAIL_HEADER_HASH].toString("hex"),
-          utxosRoot: confirmedRoot,
-        });
-        for (const record of chain) yield* foldMerge(ownFoldRow(record), null);
-        return chain.length;
-      }),
-    );
-  });
-
-/**
  * Seeds the in-memory local block-boundary cache from the current state-queue
  * tip during startup.
  */
@@ -124,51 +62,6 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
   yield* Effect.logInfo(
     `Startup state-queue snapshot hydrated: tail=${snapshot.tailCommitBase.outRef},snapshot=${snapshot.snapshotId}`,
   );
-  // Once a landed-block run anchored `confirmed_ledger` (a frontier), it
-  // holds the ledger to the queue root itself, with a named hold for what it
-  // cannot do yet, so a lag here is no startup failure.
-  const anchored = (yield* Frontier.retrieve) !== undefined;
-  if (anchored && snapshot.blockCount === 0)
-    yield* Effect.logInfo(
-      "Startup left the confirmed ledger to landed-block processing: its frontier is anchored.",
-    );
-  // `confirmed_ledger` is written only in the transaction that sets or
-  // moves the frontier, so with no frontier it holds no row.
-  if (!anchored && snapshot.blockCount === 0) {
-    const confirmedLedgerRoot = SDK.EMPTY_MERKLE_TREE_ROOT;
-    const onChainUtxoRoot = snapshot.tailCommitBase.roots.utxosRoot;
-    if (confirmedLedgerRoot === onChainUtxoRoot) {
-      yield* Effect.logInfo(
-        "Startup verified confirmed ledger against the clean state queue; native owner will establish the durable MPF root before Ready.",
-      );
-    } else {
-      const finalizedJournal =
-        snapshot.tailCommitBase.headerHash === null
-          ? Option.none<PendingBlockFinalizationsDB.Record>()
-          : yield* PendingBlockFinalizationsDB.retrieveAppliedByHeaderHash(
-              Buffer.from(snapshot.tailCommitBase.headerHash, "hex"),
-            );
-      const repaired =
-        Option.isSome(finalizedJournal) &&
-        finalizedJournal.value[
-          PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
-        ] === onChainUtxoRoot
-          ? yield* repairUnanchoredConfirmedLedger(
-              finalizedJournal.value,
-              confirmedLedgerRoot,
-            )
-          : undefined;
-      if (repaired !== undefined) {
-        yield* Effect.logInfo(
-          `Startup repaired confirmed ledger by folding ${repaired.toString()} authenticated journal(s); native owner must recover the corresponding durable root before Ready.`,
-        );
-      } else {
-        yield* Effect.logInfo(
-          `Startup skipped clean-queue commit MPF synchronization because confirmed_ledger is empty and its root (${confirmedLedgerRoot}) does not match the on-chain root (${onChainUtxoRoot}).`,
-        );
-      }
-    }
-  }
   const latestHeaderHash =
     latestBlock.datum.key === "Empty"
       ? Option.none<Buffer>()

@@ -13,17 +13,14 @@
  *   moved), moves the spent rows aside verbatim, inserts the produced rows,
  *   drops the block's landed row and moves the frontier to the block. It
  *   reads no whole ledger, computes no root and locks only the frontier row.
- *   Its runtime callers hold the follower write (`follower-write-gate.ts`);
- *   the startup seed runs inside the driver's first recompute, before the
- *   hooks.
+ *   Its callers hold the follower write (`follower-write-gate.ts`).
  * - An unfold of the frontier reverses exactly that: the produced rows go,
  *   the spent rows come back, the events it moved reopen, the landed row is
  *   processed again with its stored flags, and the frontier is the parent.
  * - A row lives while its merge can roll back: once the follower's prune
  *   boundary reaches the slot of the merge that made its header the queue
- *   root, it is deleted. A fold whose merge point is not known yet (the
- *   startup seed's, which reads no queue history) keeps it null, and landed
- *   processing fills it in.
+ *   root, it is deleted. A fold whose merge point is not known yet keeps
+ *   it null, and landed processing fills it in.
  */
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
