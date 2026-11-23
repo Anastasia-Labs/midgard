@@ -1,9 +1,12 @@
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { checkLedgerJson, ledgerJson } from "../ledger-at.js";
+import { ledgerFromWitness, recordWitness } from "../ledger-store/witness.js";
+import {
+  ledgerWitnessJson,
+  parseLedgerWitnessJson,
+} from "../ledger-store/witness-json.js";
 import { reconstructDaPayload } from "../transition-trace/reconstruct.reconstruct-da-payload.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
-import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.replay-context-identity.js";
 import {
   normalizeWorkflowJson,
@@ -21,11 +24,12 @@ import {
 import {
   detectMintAuthorizationReplay,
   mintAuthorizationDetectionId,
+  mintAuthorizationInputProof,
   prepareMintAuthorizationReplay,
 } from "./replay.js";
 
 export const MINT_AUTHORIZATION_ARTIFACT =
-  "midgard-mint-authorization-workflow-artifact-v2";
+  "midgard-mint-authorization-workflow-artifact-v3";
 
 /** Serialized material is only a preimage; replay rederives the entire claim. */
 const deriveMintAuthorizationWorkflowArtifact = async (
@@ -39,7 +43,7 @@ const deriveMintAuthorizationWorkflowArtifact = async (
       "detectionId",
       "coordinate",
       "payloadEnvelopeCbor",
-      "predecessorLedger",
+      "predecessorWitness",
     ],
     "mint authorization artifact",
   );
@@ -61,15 +65,17 @@ const deriveMintAuthorizationWorkflowArtifact = async (
     ),
     expectedHeaderHash: headerHash,
   });
+  // The witness opens the root the authenticated header commits, never one
+  // the artifact names.
   const predecessor =
-    record.predecessorLedger === null
+    record.predecessorWitness === null
       ? undefined
-      : await checkedLedgerAsLedger(
-          await checkLedgerJson({
-            value: record.predecessorLedger,
-            utxosRoot: current.header.prevUtxosRoot,
-            label: "mint authorization predecessor ledger",
-          }),
+      : ledgerFromWitness(
+          current.header.prevUtxosRoot,
+          parseLedgerWitnessJson(
+            record.predecessorWitness,
+            "mint authorization predecessor witness",
+          ),
         );
   const raw = exactArtifactRecord(
     record.coordinate,
@@ -148,18 +154,12 @@ export const prepareMintAuthorizationWorkflowArtifact = async ({
   >;
   replayContext?: CompleteCanonicalReplayContext;
 }) => {
-  const predecessor = completeCanonicalReplayPredecessorLedger({
+  const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
     evidence,
     context: replayContext,
   });
   const finding = (
-    await detectMintAuthorizationReplay({
-      block: evidence,
-      predecessor:
-        predecessor === undefined
-          ? undefined
-          : await checkedLedgerAsLedger(predecessor),
-    })
+    await detectMintAuthorizationReplay({ block: evidence, predecessor })
   ).find((item) => item.detectionId === classification.selected.detectionId);
   if (
     finding === undefined ||
@@ -169,16 +169,32 @@ export const prepareMintAuthorizationWorkflowArtifact = async ({
     classification.selected.position !== finding.position
   )
     throw new Error("mint authorization: classification changed");
-  const artifact = normalizeWorkflowJson({
+  // Prepare the selected source again over a recording ledger, and prove
+  // every resolved input as step 04 does: the witness holds what admission
+  // and capture read.
+  const recording =
+    predecessor === undefined ? undefined : recordWitness(predecessor);
+  const prepared = (
+    await prepareMintAuthorizationReplay({
+      current: evidence.reconstruction,
+      predecessor: recording?.ledger,
+      sourceIndex: finding.prepared.coordinate.sourceIndex,
+    })
+  ).find(
+    (item) =>
+      item.coordinate.policyIndex === finding.prepared.coordinate.policyIndex,
+  );
+  if (recording !== undefined && prepared !== undefined)
+    for (const input of [...prepared.references, ...prepared.spends])
+      await mintAuthorizationInputProof(prepared, input);
+  return normalizeWorkflowJson({
     schemaVersion: MINT_AUTHORIZATION_ARTIFACT,
     headerHash: evidence.headerHash,
     detectionId: finding.detectionId,
     coordinate: finding.prepared.coordinate,
     payloadEnvelopeCbor:
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
-    predecessorLedger:
-      predecessor === undefined ? null : ledgerJson(predecessor),
+    predecessorWitness:
+      recording === undefined ? null : ledgerWitnessJson(recording.witness()),
   }) as WorkflowJsonObject;
-  await admitMintAuthorizationWorkflowArtifact(artifact);
-  return artifact;
 };

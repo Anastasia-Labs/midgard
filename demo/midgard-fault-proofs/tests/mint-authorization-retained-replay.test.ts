@@ -74,7 +74,7 @@ describe("mint authorization retained evidence", () => {
         coordinate: findings[0]!.coordinate,
         payloadEnvelopeCbor:
           block.reconstruction.payloadEnvelopeCbor.toString("hex"),
-        predecessorLedger: null,
+        predecessorWitness: null,
       };
       const restored = await admitMintAuthorizationWorkflowArtifact(
         JSON.parse(JSON.stringify(artifact)),
