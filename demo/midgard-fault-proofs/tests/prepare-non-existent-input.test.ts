@@ -9,21 +9,34 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
+import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
+import { EMPTY_MERKLE_TREE_ROOT, Proof } from "@al-ft/midgard-sdk/core";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { isReplayLocalFault } from "../src/block-replay.faults.js";
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import {
   LedgerRootMismatchError,
   predecessorLedger,
   singleLedgerAt,
 } from "../src/ledger-at.js";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  LedgerNodeMissing,
+} from "../src/ledger-store/index.js";
 import type { NodeTransactionPayload } from "../src/prepare-double-spend.encode-l2-transaction-source-value.js";
 import { prepareNonExistentInputFromTransactions } from "../src/prepare-non-existent-input.js";
-import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
+import {
+  keyValuePhasNonMembershipProof,
+  type KeyValuePhasRoot,
+  keyValuePhasRootWithCount,
+} from "../src/transition-trace/phas.js";
 
 const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_CBOR_NULL = encodeCbor(null);
@@ -117,6 +130,10 @@ const checkedPredecessor = async (ledger: LedgerPairs, root: string) =>
     ),
     label: "test predecessor ledger",
   });
+
+/** `checkedPredecessor` as the store ledger the preparer reads. */
+const storePredecessor = async (ledger: LedgerPairs, root: string) =>
+  await checkedLedgerAsLedger(await checkedPredecessor(ledger, root));
 
 // A ledger UTxO (present in the predecessor ledger) that is NOT the phantom
 // input the bad tx spends.
@@ -237,13 +254,47 @@ describe("prepare-non-existent-input", () => {
       headerHash: h28(0xaa),
       transactions: [badTxPayload],
       prevUtxosRoot: utxosRoot,
-      prevLedger: await checkedPredecessor(ledger, utxosRoot),
+      prevLedger: await storePredecessor(ledger, utxosRoot),
     });
 
     expect(output.prevUtxosRoot).toBe(utxosRoot);
     expect(output.missingInput.tx_id).toBe(PHANTOM_TX_ID);
     // A real ledger non-membership proof against the predecessor ledger's trie.
     expect(output.ledgerNonMembershipProofCbor.length).toBeGreaterThan(0);
+  });
+
+  it("submits the non-membership proof the whole predecessor ledger gives", async () => {
+    const ledger: LedgerPairs = [
+      [LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR],
+      [inputCbor(h32(0xdf), 1n).toString("hex"), LEDGER_OUTPUT_CBOR],
+      [inputCbor(h32(0x01), 0n).toString("hex"), LEDGER_OUTPUT_CBOR],
+    ];
+    const utxosRoot = await ledgerRoot(ledger);
+    const checked = await checkedPredecessor(ledger, utxosRoot);
+    const proof = async (trie: KeyValuePhasRoot) =>
+      Data.to(
+        await keyValuePhasNonMembershipProof(
+          trie,
+          Buffer.from(PHANTOM_LEDGER_KEY, "hex"),
+        ),
+        asLucidSchema(Proof),
+      );
+    const nonFirst = await prepareNonExistentInputFromTransactions({
+      headerHash: h28(0xaa),
+      transactions: [badTxPayload],
+      prevUtxosRoot: utxosRoot,
+      prevLedger: await checkedLedgerAsLedger(checked),
+    });
+    expect(nonFirst.ledgerNonMembershipProofCbor).toBe(
+      await proof(checked.trie),
+    );
+    const first = await prepareNonExistentInputFromTransactions({
+      headerHash: h28(0xaa),
+      transactions: [badTxPayload],
+    });
+    expect(first.ledgerNonMembershipProofCbor).toBe(
+      await proof(await keyValuePhasRootWithCount([])),
+    );
   });
 
   it("refuses a predecessor ledger with one wrong entry at the root check", async () => {
@@ -253,14 +304,14 @@ describe("prepare-non-existent-input", () => {
     ).rejects.toBeInstanceOf(LedgerRootMismatchError);
   });
 
-  it("refuses a checked ledger for a different root than the block's prev_utxos_root", async () => {
+  it("refuses a predecessor ledger for a different root than the block's prev_utxos_root", async () => {
     const ledger: LedgerPairs = [[LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR]];
     await expect(
       prepareNonExistentInputFromTransactions({
         headerHash: h28(0xaa),
         transactions: [badTxPayload],
         prevUtxosRoot: h32(0xbb),
-        prevLedger: await checkedPredecessor(ledger, await ledgerRoot(ledger)),
+        prevLedger: await storePredecessor(ledger, await ledgerRoot(ledger)),
       }),
     ).rejects.toBeInstanceOf(LedgerRootMismatchError);
   });
@@ -276,8 +327,32 @@ describe("prepare-non-existent-input", () => {
         headerHash: h28(0xaa),
         transactions: [badTxPayload],
         prevUtxosRoot: utxosRoot,
-        prevLedger: await checkedPredecessor(ledger, utxosRoot),
+        prevLedger: await storePredecessor(ledger, utxosRoot),
       }),
     ).rejects.toThrow(/present key/i);
+  });
+
+  it("names a predecessor ledger the store no longer holds this process's local fault", async () => {
+    const ledger: LedgerPairs = [[LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR]];
+    const utxosRoot = await ledgerRoot(ledger);
+    const store = createLedgerStore(createMemoryLedgerStorage());
+    const prevLedger = await store.admit(
+      ledger.map(([key, value]) => ({
+        outRef: Buffer.from(key, "hex"),
+        output: Buffer.from(value, "hex"),
+      })),
+      utxosRoot,
+    );
+    await store.retain(new Set());
+    const error: unknown = await prepareNonExistentInputFromTransactions({
+      headerHash: h28(0xaa),
+      transactions: [badTxPayload],
+      prevUtxosRoot: utxosRoot,
+      prevLedger,
+    }).catch((cause: unknown) => cause);
+    expect(isReplayLocalFault(error)).toBe(true);
+    expect((error as { cause: unknown }).cause).toBeInstanceOf(
+      LedgerNodeMissing,
+    );
   });
 });
