@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
+import { LedgerNotRetained } from "@al-ft/midgard-fault-proofs/ledger-store";
 import { Level } from "level";
 
 import {
@@ -130,12 +131,13 @@ export const buildOrReadFullIndex = async ({
 };
 
 /** Why a canonical restore cannot load `targetRoot`'s full index, by cause:
- * its closure is not all in the store (`NativeMpfRootNotRetained`), it is
- * but its index is over a full-index cap (`NativeMpfFullIndexCapExceeded`),
- * or a store read failed (`NativeMpfRestoreReadFailed`, which a later
- * restore retries). */
+ * the store does not retain it or its closure is not all in the store
+ * (`NativeMpfRootNotRetained`), it is but its index is over a full-index
+ * cap (`NativeMpfFullIndexCapExceeded`), or a store read failed
+ * (`NativeMpfRestoreReadFailed`, which a later restore retries). */
 export const restoreIndexRefusal = (targetRoot: string, cause: unknown) =>
-  cause instanceof NativeMpfClosureIncomplete
+  cause instanceof NativeMpfClosureIncomplete ||
+  cause instanceof LedgerNotRetained
     ? new NativeMpfRootNotRetained(targetRoot, { cause })
     : cause instanceof NativeMpfFullIndexOverCap
       ? new NativeMpfFullIndexCapExceeded(

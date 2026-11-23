@@ -4,7 +4,8 @@
  * and what it cannot do yet is the hold it returns. An unhealthy queue is
  * P1's own hold (`state_queue_unhealthy`), so this hook waits for it
  * quietly. The run passes the follower's prune boundary to the fold prune,
- * then publishes where `confirmed_ledger` stands, with its level.
+ * has the native MPF drop the ledgers it no longer needs, then publishes
+ * where `confirmed_ledger` stands, with its level.
  */
 import type { DepthParameters, FactStore } from "@al-ft/midgard-l1-follower";
 import { Effect } from "effect";
@@ -66,6 +67,8 @@ export const landedBlockHook =
     );
     if (options.ports.bindRetained !== undefined)
       await options.run(options.ports.bindRetained(read.queue));
+    if (options.ports.retainLedgers !== undefined)
+      await options.run(options.ports.retainLedgers(read.queue));
     const root = read.queue.root;
     if (options.publish !== undefined && root !== null) {
       const { depth, position } = options.publish;

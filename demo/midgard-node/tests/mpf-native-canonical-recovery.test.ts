@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { LedgerNotRetained } from "@al-ft/midgard-fault-proofs/ledger-store";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { Level } from "level";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -11,7 +12,6 @@ import {
   NativeMpfRestoreReadFailed,
   NativeMpfRootNotRetained,
 } from "../src/services/mpf-native-owner/protocol.js";
-import { NativeMpfClosureIncomplete } from "../src/services/mpf-native-owner/service.encode-stored-node.js";
 import type { NativeMpfOwnerServiceOptions } from "../src/services/mpf-native-owner/service.js";
 import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
 import type { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
@@ -221,8 +221,7 @@ describe("native canonical root recovery", () => {
     expect((refusal as Error).message).toBe(
       `Native MPF canonical recovery target root ${targetRoot} is not retained in full; refusing to restore`,
     );
-    expect((refusal as Error).cause).toBeInstanceOf(NativeMpfClosureIncomplete);
-    expect(String((refusal as Error).cause)).toMatch(/missing record/);
+    expect((refusal as Error).cause).toBeInstanceOf(LedgerNotRetained);
     expect((await service.diagnostics()).durableRoot).toBe(plan.expectedRoot);
     const generation = await service.fork(plan.expectedRoot);
     await service.discard(generation);
