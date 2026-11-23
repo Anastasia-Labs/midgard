@@ -1,17 +1,19 @@
 /** Complete replays that read the predecessor ledger once per block, however
  * many of its entries or events they visit: the ledger-relative input scan
  * admits the predecessor to a store once and walks the block's steps on it
- * for every event's pre-state, and the resolved-output prior view proves
- * every entry from one trie. Results are those of a one-off reconstruction. Work is
- * counted as in `helpers/trie-leaves.ts`. */
-import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
+ * for every event's pre-state, and the resolved-output prior view reads
+ * only the outputs the block names, with their proofs from the ledger.
+ * Results are those of a one-off reconstruction. Work is counted as in
+ * `helpers/trie-leaves.ts`. */
+import { decodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import { eventLedgerBefore } from "../src/event-ledger.js";
-import { deriveResolvedOutputPriorLedgerReplay } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
+import { readResolvedOutputPriorLedger } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
 import { keyValuePhasProof } from "../src/transition-trace/phas.js";
 import {
   completeCanonicalReplayPredecessorLedger,
+  completeCanonicalReplayPredecessorStoreLedger,
   detectLedgerRelativeMissingInputs,
   EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
 } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
@@ -164,7 +166,7 @@ describe("complete replay: the predecessor ledger is read once per block", () =>
     });
   });
 
-  it("proves every prior output from the one trie of the predecessor", async () => {
+  it("reads only the outputs the block names from the predecessor ledger", async () => {
     const [small, large] = await Promise.all([
       plutusExecutionEventsBlockFixture(["passing"], {
         predecessorFiller: filler(8),
@@ -173,34 +175,47 @@ describe("complete replay: the predecessor ledger is read once per block", () =>
         predecessorFiller: filler(8 + FILLER),
       }),
     ]);
-    const derive = async (block: Block) =>
-      await trieLeaves(() =>
-        deriveResolvedOutputPriorLedgerReplay({
+    const read = async (block: Block) => {
+      const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
+        evidence: block.evidence,
+        context: block.context,
+      });
+      return await trieLeaves(() =>
+        readResolvedOutputPriorLedger({
           block: block.evidence,
-          predecessor: predecessorOf(block),
+          predecessor,
         }),
       );
-    const [smallView, largeView] = [await derive(small), await derive(large)];
-    // One trie of the predecessor, built by insertion, proves every entry.
-    expect((largeView.leaves - smallView.leaves) / FILLER).toBe(1);
+    };
+    const [smallView, largeView] = [await read(small), await read(large)];
+    // No trie the size of the predecessor is built, however large it is.
+    expect(smallView.leaves).toBe(0);
+    expect(largeView.leaves).toBe(0);
 
     const predecessor = predecessorOf(small);
+    const fillerKeys = new Set(
+      filler(8).map(({ outRef }) => outRef.toString("hex")),
+    );
+    const named = predecessor.trie.entries.filter(
+      ({ key }) => !fillerKeys.has(key.toString("hex")),
+    );
+    expect(named.length).toBeGreaterThan(0);
     expect(smallView.result.priorRoot).toBe(predecessor.utxosRoot);
-    expect(smallView.result.outputs.size).toBe(predecessor.trie.entries.length);
-    for (const output of smallView.result.outputs.values()) {
-      const key = encodeMidgardSpendInputItem({
-        txId: Buffer.from(output.transactionId, "hex"),
-        outputIndex: output.outputIndex,
-      });
-      const entry = predecessor.trie.entries.find((candidate) =>
-        candidate.key.equals(key),
+    expect([...largeView.result.outputs.keys()]).toStrictEqual([
+      ...smallView.result.outputs.keys(),
+    ]);
+    expect(smallView.result.outputs.size).toBe(named.length);
+    for (const entry of named) {
+      const { txId, outputIndex } = decodeMidgardSpendInputItem(entry.key);
+      const output = smallView.result.outputs.get(
+        `${Buffer.from(txId).toString("hex")}#${outputIndex.toString()}`,
       );
-      expect(entry?.value.toString("hex")).toBe(output.descriptorCborHex);
-      expect(output.outputCborHex).toBe(
-        predecessor.outputs.get(key.toString("hex"))?.toString("hex"),
+      expect(output?.descriptorCborHex).toBe(entry.value.toString("hex"));
+      expect(output?.outputCborHex).toBe(
+        predecessor.outputs.get(entry.key.toString("hex"))?.toString("hex"),
       );
-      expect(output.membershipProof).toStrictEqual(
-        await keyValuePhasProof(predecessor.trie, key, entry!.value),
+      expect(output?.membershipProof).toStrictEqual(
+        await keyValuePhasProof(predecessor.trie, entry.key, entry.value),
       );
     }
   });

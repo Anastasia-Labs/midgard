@@ -10,6 +10,7 @@ import "./resolved-output-non-canonical.detect-resolved-output-non-canonical-com
 export {
   deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
+  readResolvedOutputPriorLedger,
 } from "./resolved-output-non-canonical.detect-resolved-output-non-canonical-complete-replay.js";
 export {
   type AuthenticatedPriorLedgerOutput,

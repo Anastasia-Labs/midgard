@@ -2,6 +2,7 @@ import {
   decodeMidgardInputFieldPreimage,
   decodeMidgardSpendInputItem,
   deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { EMPTY_MERKLE_TREE_ROOT, Proof } from "@al-ft/midgard-sdk/core";
@@ -12,13 +13,12 @@ import {
 } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
+import { readingLedger } from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { claimedIndex } from "../evidence/claimed-coordinate.js";
-import { type CheckedLedger } from "../ledger-at.js";
-import {
-  buildTrieView,
-  requireProof,
-} from "../prepare-double-spend.resolve-double-spend-pair.js";
+import { type CheckedLedger, ledgerEntryLeaf } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import {
   type AuthenticatedPriorLedgerOutput,
   fail,
@@ -30,19 +30,73 @@ import {
   type ResolvedOutputWorkflowEvidence,
 } from "./resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
 
+const PRIOR_LEDGER = "resolved-output prior ledger";
+
 /**
- * Reconstructs the complete predecessor view from the classifier-admitted
- * predecessor's public retained-DA payload. No caller-provided output or
- * proof can cross this boundary: descriptor membership and every raw output
- * are re-derived. A header committing the empty previous ledger has an empty
- * prior view and needs no predecessor.
+ * The ledger keys of the inputs in both input fields (spend and reference) of
+ * a transaction's `fieldPreimages`. A field that does not decode names none:
+ * a family that reads it decodes the same bytes and refuses them itself, and
+ * a refusal here would also stop the family that never reads that field.
+ * (Every transaction of authenticated evidence derives its field preimages.)
  */
-export const deriveResolvedOutputPriorLedgerReplay = async ({
+const inputKeys = (fieldPreimages: readonly Uint8Array[]): Buffer[] =>
+  [0, 1].flatMap((field) => {
+    try {
+      return decodeMidgardInputFieldPreimage(fieldPreimages[field]!).map(
+        encodeMidgardSpendInputItem,
+      );
+    } catch {
+      return [];
+    }
+  });
+
+/**
+ * Every out-ref whose output resolved-output-non-canonical or
+ * spend-input-signer-missing reads from the prior ledger: each spend and
+ * reference input of each accepted transaction, and each input of each forced
+ * transaction rejected for one of those two reasons.
+ */
+const resolvedInputKeys = (block: CanonicalBlockEvidence): Buffer[] => [
+  ...block.transactions.flatMap((transaction) =>
+    inputKeys(
+      deriveMidgardNativeTxFaultEvidenceMaterial(
+        Buffer.from(transaction.txCbor, "hex"),
+      ).fieldPreimages,
+    ),
+  ),
+  ...block.reconstruction.forcedTransactions.flatMap((transaction) => {
+    if (transaction.value.verdict === "ForcedTxValid") return [];
+    const reason = transaction.value.verdict.ForcedTxInvalid.reason;
+    if (
+      typeof reason === "string" ||
+      !(
+        "InputSpentOutputNonCanonical" in reason ||
+        "SpendInputSignerMissing" in reason
+      )
+    )
+      return [];
+    return inputKeys(
+      deriveMidgardForcedTxFaultEvidenceMaterial(
+        transaction.fullTransactionCbor,
+      ).fieldPreimages,
+    );
+  }),
+];
+
+/**
+ * The prior view of `block` from its predecessor ledger: the output, leaf
+ * descriptor and membership proof of every resolved input the two families
+ * read (`resolvedInputKeys`) that the ledger holds, each proof against the
+ * ledger's root. A header committing the empty previous ledger has an empty
+ * prior view and needs no predecessor. A ledger the store can no longer read
+ * is this process's own fault (`readingLedger`).
+ */
+export const readResolvedOutputPriorLedger = async ({
   block,
   predecessor,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly predecessor: CheckedLedger | undefined;
+  readonly predecessor: Ledger | undefined;
 }): Promise<ResolvedOutputPriorLedgerReplay> => {
   if (predecessor === undefined) {
     if (block.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT)
@@ -52,47 +106,34 @@ export const deriveResolvedOutputPriorLedgerReplay = async ({
       outputs: new Map(),
     });
   }
-  if (predecessor.utxosRoot !== block.header.prevUtxosRoot)
+  if (predecessor.root !== block.header.prevUtxosRoot)
     return fail("authenticated predecessor history is substituted");
-  // The checked ledger holds raw output bytes; the authenticated ledger root
-  // commits their descriptors. Use its descriptor view and pair it with the
-  // exact output by its canonical ledger key.
-  const descriptorEntries = predecessor.trie.entries;
-  const outputPreimages = new Map(
-    [...predecessor.outputs].map(([key, output]) => [
-      key,
-      output.toString("hex"),
-    ]),
+  const keys = new Map(
+    resolvedInputKeys(block).map((key) => [key.toString("hex"), key]),
   );
-  const trie = await buildTrieView(descriptorEntries);
-  if (trie.root !== block.header.prevUtxosRoot)
-    return fail("reconstructed predecessor trie root changed");
   const outputs = new Map<
     string,
     Omit<AuthenticatedPriorLedgerOutput, "priorRoot">
   >();
-  for (const entry of descriptorEntries) {
-    const decoded = decodeMidgardSpendInputItem(entry.key);
-    const transactionId = Buffer.from(decoded.txId).toString("hex");
-    const outputIndex = decoded.outputIndex;
-    const key = outRefKey(transactionId, outputIndex);
-    const outputCborHex = outputPreimages.get(entry.key.toString("hex"));
-    if (outputCborHex === undefined)
-      return fail("predecessor ledger omitted a live output preimage");
-    const membershipProofCborHex = requireProof(
-      trie,
-      entry.key,
-      `resolved output ${key}`,
-    );
-    outputs.set(key, {
-      transactionId,
-      outputIndex,
-      descriptorCborHex: entry.value.toString("hex"),
-      outputCborHex,
-      membershipProofCborHex,
-      membershipProof: Data.from(membershipProofCborHex, Proof),
-    });
-  }
+  await readingLedger(PRIOR_LEDGER, async () => {
+    const read = await predecessor.read([...keys.values()]);
+    for (const [hex, outRef] of keys) {
+      const { output, proof } = read.get(hex)!;
+      if (output === undefined) continue;
+      const { leaf } = ledgerEntryLeaf({ outRef, output }, PRIOR_LEDGER);
+      const membershipProofCborHex = (await proof()).toString("hex");
+      const { txId, outputIndex } = decodeMidgardSpendInputItem(outRef);
+      const transactionId = Buffer.from(txId).toString("hex");
+      outputs.set(outRefKey(transactionId, outputIndex), {
+        transactionId,
+        outputIndex,
+        descriptorCborHex: leaf.toString("hex"),
+        outputCborHex: output.toString("hex"),
+        membershipProofCborHex,
+        membershipProof: Data.from(membershipProofCborHex, Proof),
+      });
+    }
+  });
   return Object.freeze({
     priorRoot: block.header.prevUtxosRoot,
     outputs,
@@ -100,11 +141,31 @@ export const deriveResolvedOutputPriorLedgerReplay = async ({
 };
 
 /**
+ * `readResolvedOutputPriorLedger` from a predecessor still held as a
+ * `CheckedLedger`.
+ */
+export const deriveResolvedOutputPriorLedgerReplay = async ({
+  block,
+  predecessor,
+}: {
+  readonly block: CanonicalBlockEvidence;
+  readonly predecessor: CheckedLedger | undefined;
+}): Promise<ResolvedOutputPriorLedgerReplay> =>
+  await readResolvedOutputPriorLedger({
+    block,
+    predecessor:
+      predecessor === undefined
+        ? undefined
+        : await checkedLedgerAsLedger(predecessor),
+  });
+
+/**
  * Package-owned complete replay route. It visits every spend and reference
  * input of every accepted transaction, plus every forced rejection carrying
  * this exact reason. The supplied predecessor view is not an operator hint:
- * callers must pass the complete view reconstructed from retained predecessor
- * DA whose root is the challenged header's authenticated `prevUtxosRoot`.
+ * callers must pass the view `readResolvedOutputPriorLedger` reads from the
+ * predecessor ledger whose root is the challenged header's authenticated
+ * `prevUtxosRoot`.
  */
 export const detectResolvedOutputNonCanonicalCompleteReplay = ({
   block,
