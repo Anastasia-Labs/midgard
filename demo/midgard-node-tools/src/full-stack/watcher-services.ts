@@ -2,10 +2,6 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-import {
-  deploymentManifestHubOraclePolicyId,
-  verifyFinalizedDeploymentManifest,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { parse } from "dotenv";
 import {
@@ -17,7 +13,6 @@ import {
 import { buildWatcherConfig } from "../watcher-config.js";
 import { mountedFilesLabels } from "./compose-yaml.js";
 import { localUrl } from "./config.js";
-import { stackPaths } from "./deployment.js";
 import { readJsonIfPresent, writeDurableJson } from "./journal.js";
 import { nativeLedgerPaths } from "./native-ledger.js";
 import { runL1Origin } from "./origin.js";
@@ -44,17 +39,8 @@ export async function generateWatcherServices(
       .sourceMode !== "local_node"
   )
     throw new Error("Require local-node watcher chain sync");
-  const release = await prepareStackRelease(processes);
-  const manifest = verifyFinalizedDeploymentManifest(
-    await readJsonIfPresent(stackPaths(processes).manifest),
-  );
-  if (
-    release.deploymentIdentity.hubOraclePolicyId !==
-    deploymentManifestHubOraclePolicyId(manifest)
-  )
-    throw new Error(
-      "Watcher release artifacts must be signed for this exact deployment",
-    );
+  // Refuses a release whose signature covers another deployment manifest.
+  await prepareStackRelease(processes);
   const env = parse(await readFile(watcher.composeEnvFile));
   for (const key of [
     "WATCHER_ROLLBACK_KEY_FILE",

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import {
+  computeDeploymentManifestJsonDigest,
   type DeploymentManifest,
   deploymentManifestHubOraclePolicyId,
   verifyFinalizedDeploymentManifest,
@@ -138,12 +139,12 @@ export const loadAcceptanceNativeReadConfig = async (
   verifyFinalizedDeploymentManifest(releasedManifest);
   const hubOraclePolicyId = deploymentManifestHubOraclePolicyId(manifest);
   if (
-    deploymentManifestHubOraclePolicyId(releasedManifest) !==
-      hubOraclePolicyId ||
+    computeDeploymentManifestJsonDigest(releasedManifest) !==
+      computeDeploymentManifestJsonDigest(manifest) ||
     manifest.network !== watcherConfig.targetNetwork
   )
     throw new Error(
-      "acceptance native reader release belongs to another deployment",
+      "acceptance native reader release manifest differs from the deployment manifest",
     );
   // The public loader authenticates the signed identity/rules; it reads no key.
   const authority = await watcher.loadWatcherVerifiedDeploymentAuthority({
@@ -151,9 +152,14 @@ export const loadAcceptanceNativeReadConfig = async (
     ruleBundlePath: paths.rules,
   });
   scope.assertCurrent();
-  if (authority.deploymentIdentity.hubOraclePolicyId !== hubOraclePolicyId)
+  if (
+    !watcher.matchesWatcherSignedDeploymentManifest(
+      authority.deploymentIdentity,
+      manifest,
+    )
+  )
     throw new Error(
-      "acceptance native reader signed release belongs to another deployment",
+      "acceptance native reader signed release covers another deployment manifest",
     );
   await watcher.deriveWatcherNativeGenesisIdentity({ watcherConfig });
   const ogmiosEndpoint = `http://127.0.0.1:${readRunEnv(layout).ogmiosPort}`;

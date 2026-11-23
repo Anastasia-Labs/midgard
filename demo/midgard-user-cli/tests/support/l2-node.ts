@@ -1,6 +1,6 @@
 /**
  * An in-process L2 node behind lucid-midgard's provider interface. It serves
- * the wallet outputs it is given, reports the deployment marker of the
+ * the wallet outputs it is given, reports the hub-oracle policy id of the
  * manifest it serves, prices redeemers with the node's evaluator, and judges
  * every submission with the node's own validation (midgard-validation's
  * Phase A, then Phase B against its outputs), answering the verdict as the

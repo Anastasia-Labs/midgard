@@ -9,7 +9,6 @@ import {
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import {
   computeDeploymentManifestJsonDigest,
-  deploymentManifestHubOraclePolicyId,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { parseDeploymentReleaseProvenance } from "@al-ft/midgard-core/deployment-release";
@@ -19,6 +18,7 @@ import {
   createWatcherWorkflowFundingProfileBundle,
   loadWatcherVerifiedDeploymentAuthority,
   loadWatcherWorkflowFundingProfileOverlay,
+  matchesWatcherSignedDeploymentManifest,
   parseWatcherProcessConfig,
   type WatcherWorkflowFundingProfileBody,
 } from "midgard-watcher";
@@ -267,14 +267,19 @@ export async function verifyStackRelease(processes: StackProcesses) {
     path: paths.authority,
     ruleBundlePath: paths.rules,
   });
+  const manifestPath = stackPaths(processes).manifest;
   const manifest = verifyFinalizedDeploymentManifest(
-    await readJsonIfPresent(stackPaths(processes).manifest),
+    await readJsonIfPresent(manifestPath),
   );
   if (
-    release.deploymentIdentity.hubOraclePolicyId !==
-    deploymentManifestHubOraclePolicyId(manifest)
+    !matchesWatcherSignedDeploymentManifest(
+      release.deploymentIdentity,
+      manifest,
+    )
   )
-    throw new Error("Watcher release belongs to a different deployment");
+    throw new Error(
+      `Watcher release is signed for another deployment manifest than ${manifestPath}`,
+    );
   await loadWatcherWorkflowFundingProfileOverlay({
     bundlePath: paths.funding,
     deploymentIdentity: release.deploymentIdentity,
