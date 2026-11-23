@@ -116,7 +116,6 @@ export type NativeMpfEventOp =
   | { readonly type: "delete"; readonly key: Uint8Array };
 
 export type NativeMpfOwnerServiceOptions = {
-  readonly levelPath: string;
   readonly binaryPath: string;
   readonly binarySha256: string;
   readonly maxFrameBytes?: number;

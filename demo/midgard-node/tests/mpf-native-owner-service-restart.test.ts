@@ -14,13 +14,13 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import { Level } from "level";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import {
   nativeOwnerBinaryPath,
   nativeOwnerBinaryPresent,
   warnNativeOwnerBinaryAbsent,
 } from "./helpers/native-owner-binary.js";
+import { createOwnerService } from "./helpers/native-owner-ledger.js";
 
 // The service spawns the native owner binary; see the helper for the
 // build/skip contract (#642).
@@ -75,8 +75,7 @@ describe.skipIf(!binaryPresent)("native MPF owner child restarts", () => {
     await seed.put("__root__", SDK.EMPTY_MERKLE_TREE_ROOT);
     await seed.close();
     const childPids: number[] = [];
-    const service = await ProductionNativeMpfOwnerService.create({
-      levelPath,
+    const service = await createOwnerService(levelPath, {
       binaryPath,
       binarySha256,
       ...options,

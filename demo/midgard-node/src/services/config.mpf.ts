@@ -21,10 +21,6 @@ export const mpfConfig = Config.all({
     "insert",
     "fromlist",
   )("MPF_SCRATCH_BUILD").pipe(Config.withDefault("insert")),
-  MPF_OVERLAY_SPILL_BYTES: positiveSafeIntegerConfig(
-    "MPF_OVERLAY_SPILL_BYTES",
-    512 * 1024 * 1024,
-  ),
   MPF_PAYLOAD_ROOT_CHECK: Config.literal(
     "every_block",
     "periodic",

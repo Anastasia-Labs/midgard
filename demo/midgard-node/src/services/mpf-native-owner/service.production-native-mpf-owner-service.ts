@@ -2,7 +2,8 @@ import { timingSafeEqual } from "node:crypto";
 import { getHeapStatistics } from "node:v8";
 import { MessageChannel, type MessagePort } from "node:worker_threads";
 
-import { Level } from "level";
+import type { LedgerStore } from "@al-ft/midgard-fault-proofs/ledger-store";
+import type { Level } from "level";
 
 import {
   createEventFlatDigest,
@@ -50,6 +51,7 @@ import {
   type StoredValue,
   type WorkerGenerationLease,
 } from "./service.normalize-owner-options.js";
+import type { NativeOwnerLedger } from "./service.open-ledger.js";
 import {
   buildOrReadFullIndex,
   keyNibbles,
@@ -84,6 +86,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
 
   private constructor(
     private readonly db: Level<string, StoredValue>,
+    private readonly store: LedgerStore,
     private rpc: NativeChildRpc,
     private readonly binarySha256: string,
     private durableRoot: string,
@@ -93,26 +96,24 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     this.restartPolicy = new NativeOwnerRestartPolicy(options);
   }
 
+  /** Takes `ledger` over: it is closed when creation fails, and by `close`. */
   public static async create(
+    { level: db, store }: NativeOwnerLedger,
     options: NativeMpfOwnerServiceOptions,
   ): Promise<ProductionNativeMpfOwnerService> {
-    await prepareEventFlatDigest();
-    const normalized = normalizeOwnerOptions(options);
-    assertNativeOwnerRuntimeMemoryBudget({
-      cgroup: await readCgroupMemoryBudget(),
-      v8HeapLimitBytes: getHeapStatistics().heap_size_limit,
-    });
-    assertNativeMpfHashHex(normalized.binarySha256, "binarySha256");
-    await assertPinnedOwnerBinary(
-      normalized.binaryPath,
-      normalized.binarySha256,
-    );
-    const db = new Level<string, StoredValue>(normalized.levelPath, {
-      valueEncoding: "json",
-    });
-    await db.open();
     let rpc: NativeChildRpc | undefined;
     try {
+      await prepareEventFlatDigest();
+      const normalized = normalizeOwnerOptions(options);
+      assertNativeOwnerRuntimeMemoryBudget({
+        cgroup: await readCgroupMemoryBudget(),
+        v8HeapLimitBytes: getHeapStatistics().heap_size_limit,
+      });
+      assertNativeMpfHashHex(normalized.binarySha256, "binarySha256");
+      await assertPinnedOwnerBinary(
+        normalized.binaryPath,
+        normalized.binarySha256,
+      );
       const marker = assertStoredHash(await db.get("__root__"), "durableRoot");
       const fullIndex = await buildOrReadFullIndex({
         db,
@@ -123,6 +124,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
       rpc = await startNativeChild({ options: normalized, fullIndex, marker });
       const service = new ProductionNativeMpfOwnerService(
         db,
+        store,
         rpc,
         normalized.binarySha256,
         marker,
@@ -326,14 +328,10 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         throw breach;
       }
       await this.options.faultInjectionForTests?.("before_promotion_batch");
-      await this.db.batch([
-        ...records.map((record) => ({
-          type: "put" as const,
-          key: record.hashHex,
-          value: record.stored,
-        })),
-        { type: "put" as const, key: "__root__", value: candidateRoot },
-      ]);
+      // One write of nodes, counts, retained root and `__root__` marker.
+      await this.store.adopt(candidateRoot, {
+        nodes: new Map(records.map(({ hashHex, stored }) => [hashHex, stored])),
+      });
       await this.options.faultInjectionForTests?.(
         "after_promotion_batch_before_ack",
       );
@@ -558,6 +556,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
           "Native MPF canonical recovery marker changed before commit",
         );
       await this.options.faultInjectionForTests?.("before_root_restore_batch");
+      // Moving only the marker leaves the store's counts and retained roots
+      // as they are, which holds while the store retains the target root.
       await this.db.batch(
         [
           { type: "put", key: recordKey, value: record },

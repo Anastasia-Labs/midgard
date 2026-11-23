@@ -60,7 +60,7 @@ export const buildOrReadFullIndex = async ({
     try {
       fullIndex = decodeSidecar({
         bytes: await readFile(options.sidecarPath),
-        levelPath: options.levelPath,
+        levelPath: db.location,
         marker,
         binarySha256,
       });
@@ -119,7 +119,7 @@ export const buildOrReadFullIndex = async ({
     await writeSidecarAtomic(
       options.sidecarPath,
       encodeSidecar({
-        levelPath: options.levelPath,
+        levelPath: db.location,
         marker,
         binarySha256,
         payload: fullIndex,

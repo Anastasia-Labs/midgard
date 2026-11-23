@@ -30,6 +30,7 @@ export type {
 export {
   createLedgerStore,
   type LedgerAdoption,
+  type LedgerPersistOptions,
   type LedgerStore,
 } from "./store.js";
 export {

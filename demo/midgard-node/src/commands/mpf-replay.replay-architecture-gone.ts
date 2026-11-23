@@ -13,6 +13,7 @@ import { MidgardMpf } from "../mpf/store.midgard-mpf.js";
 import type { NativeMpfBuildContext } from "../mpf/transition-trace.apply-trace-ledger-ops-to-mpf.js";
 import { buildNativeRootProbe } from "../mpf/transition-trace.build-native-root-probe.js";
 import type { MpfBatchOp } from "../mpf/types.js";
+import { openNativeOwnerLedger } from "../services/mpf-native-owner/service.open-ledger.js";
 import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import {
   decodeEntry,
@@ -105,12 +106,14 @@ export const replayArchitectureGOne = (
           scratchBuild,
           levelPath,
         });
-        service = await ProductionNativeMpfOwnerService.create({
-          levelPath,
-          sidecarPath,
-          binaryPath: nativeOwner.binaryPath,
-          binarySha256: nativeOwner.binarySha256,
-        });
+        service = await ProductionNativeMpfOwnerService.create(
+          await openNativeOwnerLedger(levelPath),
+          {
+            sidecarPath,
+            binaryPath: nativeOwner.binaryPath,
+            binarySha256: nativeOwner.binarySha256,
+          },
+        );
         handle = await service.fork(baseRoot);
         const nativeMpf: NativeMpfBuildContext = {
           client: service,

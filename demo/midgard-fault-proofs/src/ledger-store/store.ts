@@ -53,8 +53,12 @@ export interface LedgerStore {
    * reaches a node or an output the store no longer holds (one derived from a
    * root a `retain` has since dropped) is refused with `LedgerNodeMissing` or
    * `LedgerOutputMissing`, and nothing is written.
+   *
+   * With `current`, the same write also moves the storage's current-root
+   * marker to `ledger.root` (see `LedgerStorageChange.currentRoot`), and
+   * persisting a retained root writes the marker alone.
    */
-  persist(ledger: Ledger): Promise<void>;
+  persist(ledger: Ledger, options?: LedgerPersistOptions): Promise<void>;
   /**
    * Takes in the ledger with `root` from nodes its caller already holds, and
    * moves the storage's current-root marker to `root` (see
@@ -90,6 +94,11 @@ export interface LedgerStore {
     roots: ReadonlySet<string>,
   ): Promise<{ readonly notRetained: ReadonlySet<string> }>;
 }
+
+export type LedgerPersistOptions = {
+  /** Move the storage's current-root marker to the persisted root. */
+  readonly current?: boolean;
+};
 
 /** What `adopt` takes the nodes and outputs the storage does not hold from. */
 export type LedgerAdoption = {
@@ -411,14 +420,15 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
       );
     },
 
-    persist: async (ledger) => {
+    persist: async (ledger, options) => {
       if (!(ledger instanceof LedgerValue) || ledger.owner !== owner)
         throw new Error("persist: the ledger does not belong to this store");
       const unheld: Unheld = {
         node: (hash) => overlayNode(ledger.overlay, hash),
         output: (outRef) => overlayOutput(ledger.overlay, outRef),
       };
-      await writeLock(() => writeRootLocked(ledger.root, unheld, false));
+      const moveMarker = options?.current === true;
+      await writeLock(() => writeRootLocked(ledger.root, unheld, moveMarker));
     },
 
     adopt: async (root, input) => {
