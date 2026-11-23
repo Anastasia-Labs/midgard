@@ -228,6 +228,7 @@ export const confirmedChainVerifier = (input: {
   return async (
     confirmed: { readonly headerHash: string; readonly utxosRoot: string },
     source: ReplayedLedgerSource,
+    retainTurn?: () => Promise<void>,
   ): Promise<boolean> => {
     const { headerHash, utxosRoot } = confirmed;
     const genesis = headerHash === SDK.GENESIS_HEADER_HASH;
@@ -286,6 +287,8 @@ export const confirmedChainVerifier = (input: {
         carry = outcome.held;
         await verifyThrough(block.headerHash);
         input.passedBy(block.headerHash);
+        // `carry` is pinned, so a `retain` run here keeps it.
+        await retainTurn?.();
         if (unknown !== undefined)
           onUnverified?.({ headerHash: unknown, cause: "header-not-held" });
         unknown = undefined;
