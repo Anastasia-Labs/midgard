@@ -33,12 +33,10 @@ export {
   applyValidationLedgerMutations,
   applyValidationMachineLedgerMutationStep,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   transitionEffectToLedgerOps,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
   type ValidationMachineLedgerOp,
-  validationMachineLedgerRoot,
   type ValidationMachineValueMutationStep,
 } from "./ledger-mutation.js";
 export { type ValidationMachineNativeScriptFrame } from "./native-script-frame.js";

@@ -2,7 +2,6 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 
 import {
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   MidgardRedeemerTag,
   type ValidationMachineReplayInput,
 } from "../../src/index.js";
@@ -17,6 +16,7 @@ import {
   outRefFromTxId,
   plutusV3ScriptWitness,
 } from "../validation-fixtures.js";
+import { mutationStepsOver } from "../validation-ledger-trie.js";
 import { context } from "../validation-machine.validate-boundary-abi-and-collect-auxiliary-kinds.js";
 
 /** The consensus profile's per-transaction execution-unit cap, as exUnits. */
@@ -65,7 +65,7 @@ export const plutusV3SpendInput = async (
       outputCbor: output,
     }),
   ];
-  const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
+  const ledgerMutationSteps = await mutationStepsOver({
     initialEntries: [{ outRef: spent, output: spentOutput }],
     operations: expectedLedgerOps,
   });

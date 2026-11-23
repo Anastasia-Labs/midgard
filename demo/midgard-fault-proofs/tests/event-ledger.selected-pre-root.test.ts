@@ -13,7 +13,6 @@ import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures"
 import { describe, expect, it } from "vitest";
 
 import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/material.js";
-import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import { prepareMintAuthorizationReplay } from "../src/mint-authorization/replay.js";
 import { prepareNoReferenceInputWrongfulRejection } from "../src/no-reference-input/wrongful-rejection.js";
 import { prepareNonExistentInputWrongfulRejection } from "../src/non-existent-input/wrongful-rejection.js";
@@ -27,6 +26,7 @@ import {
   SPENT,
 } from "./helpers/event-ledger-committed-steps.js";
 import { forcedRejection } from "./helpers/event-ledger-forced-step.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 import { ledgerAfter } from "./support/predecessor-ledger.js";
 import { withdrawalMistagRetainedFixture } from "./support/withdrawal-mistag-retained.js";
 
@@ -54,7 +54,7 @@ const mintingAfterMovedPreState = async () =>
         fee: 7n,
       },
       applied: true,
-      pre: await ledgerEntriesRoot([NATIVE, SPENT, OTHER]),
+      pre: await oracleLedgerRoot([NATIVE, SPENT, OTHER]),
     },
   ]);
 

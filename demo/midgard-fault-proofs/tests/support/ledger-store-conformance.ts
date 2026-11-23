@@ -1,17 +1,14 @@
 /**
  * Conformance cases every ledger storage adapter runs. Expected roots and
- * proofs come from the MPF library's in-memory trie (`Trie.fromList`) over
- * the whole entry set, never from the store under test.
+ * proofs come from the test-support oracle (`ledger-root-oracle.ts`), never
+ * from the store under test.
  */
-import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { describe, expect, it } from "vitest";
 
 import {
-  ledgerEntriesRoot,
   type LedgerEntry,
-  ledgerEntryLeaf,
   LedgerRootMismatchError,
 } from "../../src/ledger-at.js";
 import {
@@ -29,10 +26,7 @@ import {
   type NodeHash,
   type StoredNode,
 } from "../../src/ledger-store/index.js";
-import {
-  type KeyValuePhasRoot,
-  keyValuePhasRootWithCount,
-} from "../../src/transition-trace/phas.js";
+import { oracleLedgerProofs, oracleLedgerRoot } from "./ledger-root-oracle.js";
 import { describeLedgerStoreAdmitConformance } from "./ledger-store-conformance-admit.js";
 import { describeLedgerStoreCrashConformance } from "./ledger-store-conformance-crash.js";
 import { describeLedgerStoreRandomConformance } from "./ledger-store-conformance-random.js";
@@ -95,42 +89,6 @@ export const testOutputOf = (outRef: string): Buffer | undefined => {
 export const testLedgerEntries = (from: number, count: number): LedgerEntry[] =>
   Array.from({ length: count }, (_, index) => testLedgerEntry(from + index));
 
-/** Today's trie over `entries`, the reference the store must equal. */
-const referenceTrie = async (entries: readonly LedgerEntry[]) =>
-  await keyValuePhasRootWithCount(
-    entries.map((candidate) => {
-      const { entry, leaf } = ledgerEntryLeaf(candidate, "reference");
-      return { key: entry.outRef, value: leaf };
-    }),
-  );
-
-/** Each key's proof CBOR from a library trie of `reference`'s entries:
- * membership when held, absence otherwise. Absence proofs edit the trie they
- * are built on, so each takes a trie of its own. */
-const referenceProofs = async (
-  reference: KeyValuePhasRoot,
-  keys: readonly Buffer[],
-): Promise<Buffer[]> => {
-  const trieOf = async () =>
-    await Trie.fromList(
-      reference.entries.map(({ key, value }) => ({
-        key: Buffer.from(key),
-        value: Buffer.from(value),
-      })),
-    );
-  const held = new Set(reference.entries.map(({ key }) => key.toString("hex")));
-  const members = await trieOf();
-  const proofs: Buffer[] = [];
-  for (const key of keys) {
-    const member = held.has(key.toString("hex"));
-    const trie = member ? members : await trieOf();
-    proofs.push(
-      Buffer.from((await trie.prove(Buffer.from(key), !member)).toCBOR()),
-    );
-  }
-  return proofs;
-};
-
 const sortedHex = (entries: Iterable<{ outRef: Buffer; output: Buffer }>) =>
   [...entries]
     .map(({ outRef, output }) => [
@@ -141,18 +99,17 @@ const sortedHex = (entries: Iterable<{ outRef: Buffer; output: Buffer }>) =>
 
 /**
  * `ledger` holds exactly `entries`: its root, each held and each `absent`
- * out-ref's output and proof bytes, and its whole entry set equal today's
- * trie over `entries`.
+ * out-ref's output and proof bytes, and its whole entry set equal the
+ * oracle's over `entries`.
  */
 export const expectLedgerMatches = async (
   ledger: Ledger,
   entries: readonly LedgerEntry[],
   absent: readonly Buffer[] = [testOutRef(900_001), testOutRef(900_002)],
 ): Promise<void> => {
-  const reference = await referenceTrie(entries);
-  expect(ledger.root).toBe(reference.root);
+  expect(ledger.root).toBe(await oracleLedgerRoot(entries));
   const keys = [...entries.map(({ outRef }) => outRef), ...absent];
-  const expected = await referenceProofs(reference, keys);
+  const expected = await oracleLedgerProofs(entries, keys);
   const reads = await ledger.read(keys);
   const outputs = new Map(
     entries.map(({ outRef, output }) => [outRef.toString("hex"), output]),
@@ -234,7 +191,7 @@ export const countsOfOnly = async (
     const roots = new Set<string>();
     for (const entries of ledgers)
       roots.add(
-        (await store.admit(entries, await ledgerEntriesRoot(entries))).root,
+        (await store.admit(entries, await oracleLedgerRoot(entries))).root,
       );
     // Deletes what a snapshot written in several batches left unreferenced.
     await store.retain(roots);
@@ -279,9 +236,9 @@ export const describeLedgerStoreConformance = (
   };
 
   describe(`ledger store conformance: ${adapter}`, () => {
-    it("admits a snapshot with today's root and proofs, and retains it", async () => {
+    it("admits a snapshot with the oracle's root and proofs, and retains it", async () => {
       await withStore(async (store) => {
-        const root = await ledgerEntriesRoot(BASE);
+        const root = await oracleLedgerRoot(BASE);
         const admitted = await store.admit(BASE, root);
         await expectLedgerMatches(admitted, BASE);
         await expectLedgerMatches(await store.at(root), BASE);
@@ -292,7 +249,7 @@ export const describeLedgerStoreConformance = (
       });
     });
 
-    it("applies events with today's roots and proofs, persisted or not", async () => {
+    it("applies events with the oracle's roots and proofs, persisted or not", async () => {
       await withStore(async (store) => {
         let entries: LedgerEntry[] = [];
         let ledger = await store.at(EMPTY_LEDGER_ROOT);
@@ -318,7 +275,7 @@ export const describeLedgerStoreConformance = (
     it("deletes down to the empty ledger, which is always available", async () => {
       await withStore(async (store) => {
         await expectLedgerMatches(await store.at(EMPTY_LEDGER_ROOT), []);
-        const full = await store.admit(BASE, await ledgerEntriesRoot(BASE));
+        const full = await store.admit(BASE, await oracleLedgerRoot(BASE));
         const empty = await full.apply(
           BASE.map(({ outRef }) => ({ type: "delete" as const, outRef })),
         );
@@ -331,7 +288,7 @@ export const describeLedgerStoreConformance = (
 
     it("refuses a mutation as a typed value and leaves the ledger unchanged", async () => {
       await withStore(async (store) => {
-        const ledger = await store.admit(BASE, await ledgerEntriesRoot(BASE));
+        const ledger = await store.admit(BASE, await oracleLedgerRoot(BASE));
         const absent = await ledger
           .apply([{ type: "delete", outRef: testOutRef(500) }])
           .catch((error: unknown) => error);
@@ -352,7 +309,7 @@ export const describeLedgerStoreConformance = (
 
     it("refuses an entry with no trie leaf as a typed value, inserted or admitted", async () => {
       await withStore(async (store) => {
-        const ledger = await store.admit(BASE, await ledgerEntriesRoot(BASE));
+        const ledger = await store.admit(BASE, await oracleLedgerRoot(BASE));
         const leafless = {
           outRef: testOutRef(600),
           output: Buffer.from("00", "hex"),
@@ -373,7 +330,7 @@ export const describeLedgerStoreConformance = (
 
     it("refuses roots it does not retain and snapshots that do not open their root", async () => {
       await withStore(async (store, storage) => {
-        const ledger = await store.admit(BASE, await ledgerEntriesRoot(BASE));
+        const ledger = await store.admit(BASE, await oracleLedgerRoot(BASE));
         const next = await ledger.apply(event([0], [200]));
         await expect(store.at(next.root)).rejects.toBeInstanceOf(
           LedgerNotRetained,
@@ -395,7 +352,7 @@ export const describeLedgerStoreConformance = (
 
     it("keeps every earlier ledger value valid while later ones are built and proved", async () => {
       await withStore(async (store) => {
-        const base = await store.admit(BASE, await ledgerEntriesRoot(BASE));
+        const base = await store.admit(BASE, await oracleLedgerRoot(BASE));
         const first = await base.apply(event([0, 1], [300, 301]));
         const second = await first.apply(event([300, 2], [302]));
         const expectations = [
@@ -433,7 +390,7 @@ export const describeLedgerStoreConformance = (
         // `parent` is derived once; `deep` is eight more applies on it,
         // which fold `parent`'s in-memory records into new ones below its
         // own; `sibling` is one apply on `parent` after that.
-        const base = await store.admit(BASE, await ledgerEntriesRoot(BASE));
+        const base = await store.admit(BASE, await oracleLedgerRoot(BASE));
         const parentEvent = event([0, 1], [400, 401]);
         const parent = await base.apply(parentEvent);
         const parentEntries = appliedEntries(BASE, parentEvent);

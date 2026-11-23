@@ -13,8 +13,8 @@ import {
   makeOutput,
   outRefFromByte,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { ledgerRootOver } from "@al-ft/midgard-validation/tests/validation-ledger-trie";
 import { replayValidationMachineEvent } from "@al-ft/midgard-validation/tests/validation-machine-event-replay.trace";
-import { validationMachineLedgerRoot } from "@al-ft/midgard-validation/validation-machine";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -51,9 +51,7 @@ describe("forced submission under real order and settlement validators", () => {
       const entries = [
         { outRef: outRefFromByte(0x31), output: makeOutput(10_000_000n) },
       ];
-      const priorRoot = (await validationMachineLedgerRoot(entries)).toString(
-        "hex",
-      );
+      const priorRoot = (await ledgerRootOver(entries)).toString("hex");
       const replay = await Effect.runPromise(
         replayValidationMachineEvent({
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,

@@ -19,7 +19,6 @@ import {
   placeholderValidationTraceDescriptorV1,
   RejectCodes,
   validatePhaseASingle,
-  validationMachineLedgerRoot,
   validationTransactionCommitmentV1,
 } from "../src/index.js";
 import { resolveRejectionReason } from "../src/rejection-reason.js";
@@ -32,6 +31,7 @@ import {
   makeOutput,
   outRefFromByte,
 } from "./validation-fixtures.js";
+import { ledgerRootOver } from "./validation-ledger-trie.js";
 import { replayValidationMachineEvent } from "./validation-machine-event-replay.trace.js";
 
 // The ledger's Ed25519 check is libsodium's, which initialises
@@ -219,9 +219,7 @@ describe.each(["normal", "forced"] as const)(
             eventKeyCbor: eventKeyCbor(sourceKind, transaction.txId),
             canonicalTransactionCbor: transaction.txCbor,
             ledgerWitnessEntries: entries,
-            priorUtxosRoot: (
-              await validationMachineLedgerRoot(entries)
-            ).toString("hex"),
+            priorUtxosRoot: (await ledgerRootOver(entries)).toString("hex"),
           }),
         );
         if (expected.arm === "PlutusScriptUndecodable") {

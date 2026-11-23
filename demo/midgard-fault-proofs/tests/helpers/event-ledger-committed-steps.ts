@@ -9,12 +9,13 @@ import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures"
 import { Data } from "@lucid-evolution/lucid";
 
 import { ledgerBeforeStep } from "../../src/event-ledger.ledger.js";
-import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
+import { type LedgerEntry } from "../../src/ledger-at.js";
 import { classifyCanonicalBlockViolations } from "../../src/workflow/classification.classify-canonical-block-violations.js";
 import { completeCanonicalReplayPredecessorStoreLedger } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { createCompleteCanonicalReplayUnion } from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import type { CompleteCanonicalReplay } from "../../src/workflow/complete-replay.replay-context-identity.js";
 import { CanonicalReplayPrerequisiteError } from "../../src/workflow/replay-prerequisite.js";
+import { oracleLedgerRoot } from "../support/ledger-root-oracle.js";
 import {
   buildFixtureTransaction,
   type FixtureTransactionInput,
@@ -58,7 +59,7 @@ export const block = async (
   const ledger = new Map(
     predecessor.map((entry) => [hex(entry.outRef), entry]),
   );
-  const roots = [await ledgerEntriesRoot(predecessor)];
+  const roots = [await oracleLedgerRoot(predecessor)];
   for (const [index, { input, applied }] of steps.entries()) {
     if (applied) {
       for (const key of input.spendInputs) ledger.delete(hex(key));
@@ -67,7 +68,7 @@ export const block = async (
         ledger.set(hex(key), { outRef: key, output });
       }
     }
-    roots.push(await ledgerEntriesRoot([...ledger.values()]));
+    roots.push(await oracleLedgerRoot([...ledger.values()]));
   }
   const fixture = await committedL2BlockFixture({
     predecessorEntries: predecessor,

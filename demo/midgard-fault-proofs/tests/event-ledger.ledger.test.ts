@@ -17,7 +17,6 @@ import {
   EventLedgerReplayRefusal,
 } from "../src/event-ledger.steps.js";
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
-import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -42,6 +41,7 @@ import {
 import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
 import { hex, outRef } from "./helpers/event-ledger-seeded-blocks.js";
 import { entriesOf, memoryLedger } from "./support/fixture-ledger.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 
 /** Three applied steps over the predecessor `NATIVE, SPENT, OTHER`: the
  * first spends `SPENT` and pays one output, the second spends `OTHER`. */
@@ -218,7 +218,7 @@ describe("ledger store walk from a predecessor the block does not start from", (
     // The predecessor without `NATIVE`: a ledger with another root.
     const other = await memoryLedger(
       [SPENT, OTHER],
-      await ledgerEntriesRoot([SPENT, OTHER]),
+      await oracleLedgerRoot([SPENT, OTHER]),
     );
     const request = {
       block: fixture.evidence,

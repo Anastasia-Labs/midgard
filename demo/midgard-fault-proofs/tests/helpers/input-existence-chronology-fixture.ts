@@ -23,13 +23,14 @@ import type { CanonicalTransitionEffect } from "@al-ft/midgard-validation/transi
 import { Data } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
-import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
+import { type LedgerEntry } from "../../src/ledger-at.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
   completeCanonicalReplayPredecessorStoreLedger,
 } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { fixtureBlockSlot } from "../support/emulator/header-fixtures.js";
+import { oracleLedgerRoot } from "../support/ledger-root-oracle.js";
 import { singleLedgerAt } from "../support/predecessor-ledger.js";
 import {
   authenticatedHeaderObservation,
@@ -57,8 +58,7 @@ export const inputChronologies = [
   "rejected_creator",
   "forced_target",
   "prior_ledger_present_rejection",
-  // A deposit of this block creates the input; deposits apply after every
-  // transaction event.
+  // This block's deposit creates the input, applied after every transaction.
   "same_block_deposit",
   // The input is a prior block's deposit output, still unspent.
   "prior_deposit",
@@ -172,9 +172,9 @@ export const inputExistenceChronologyFixture = async (
     rejectionReason: SDK.RejectionReason = "EmptyInputs",
   ) => {
     const index = BigInt(trace.length);
-    const before = await ledgerEntriesRoot([...entries.values()]);
+    const before = await oracleLedgerRoot([...entries.values()]);
     effect();
-    const after = await ledgerEntriesRoot([...entries.values()]);
+    const after = await oracleLedgerRoot([...entries.values()]);
     trace.push([
       Data.to(index),
       Data.to(
@@ -423,7 +423,7 @@ export const inputExistenceChronologyFixture = async (
     // The header pins the validation-trace pair to the empty tree; the body
     // keeps the built members and their count.
     validationTraceCount: 0n,
-    utxosRoot: await ledgerEntriesRoot([...entries.values()]),
+    utxosRoot: await oracleLedgerRoot([...entries.values()]),
     depositsRoot: await root(SDK.ROOT_DOMAINS.deposits, deposits),
     withdrawalsRoot: await root(SDK.ROOT_DOMAINS.withdrawals, withdrawals),
     forcedTransactionsRoot: await root(

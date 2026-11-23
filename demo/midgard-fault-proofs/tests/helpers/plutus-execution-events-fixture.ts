@@ -12,8 +12,9 @@ import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
-import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
+import { type LedgerEntry } from "../../src/ledger-at.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { oracleLedgerRoot } from "../support/ledger-root-oracle.js";
 import { singleLedgerAt } from "../support/predecessor-ledger.js";
 import {
   authenticatedHeaderObservation,
@@ -84,13 +85,13 @@ export const plutusExecutionEventsBlockFixture = async (
     ];
     after.push(ledger);
   }
-  const prevUtxosRoot = await ledgerEntriesRoot(predecessorEntries);
+  const prevUtxosRoot = await oracleLedgerRoot(predecessorEntries);
   const roots = [prevUtxosRoot];
   for (const [index, entries] of after.entries())
     roots.push(
       index === foreignPostRootAt
         ? FOREIGN_UTXOS_ROOT
-        : await ledgerEntriesRoot(entries),
+        : await oracleLedgerRoot(entries),
     );
   const base = await buildCanonicalBlockFixture({
     transactions: txs,

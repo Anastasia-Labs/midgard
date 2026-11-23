@@ -24,12 +24,13 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
+import { type LedgerEntry } from "../../src/ledger-at.js";
 import {
   createLedgerStore,
   type LedgerMutation,
   type LedgerStorage,
 } from "../../src/ledger-store/index.js";
+import { oracleLedgerRoot } from "./ledger-root-oracle.js";
 import {
   testLedgerEntries,
   testLedgerEntry,
@@ -237,7 +238,7 @@ export const runLedgerStoreExitBench = async (input: {
       const store = createLedgerStore(counted.storage);
       const base: LedgerEntry[] = testLedgerEntries(0, input.entries);
       const admitted = await sampled(async () => {
-        const ledger = await store.admit(base, await ledgerEntriesRoot(base));
+        const ledger = await store.admit(base, await oracleLedgerRoot(base));
         return ledger.root;
       });
       // `admit` writes in batches: every write so far is the snapshot's.

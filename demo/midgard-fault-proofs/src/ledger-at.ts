@@ -8,8 +8,8 @@
  * is refused, so a substituted ledger never reaches a proof builder. Hashes
  * are checked where entries enter a store (`LedgerStore.admit`), not here.
  *
- * `ledgerEntriesRoot` computes the MPF root of entries' canonical ledger
- * descriptors (the same descriptor the node commits,
+ * `ledgerEntryLeaf` derives an entry's trie leaf: its canonical ledger
+ * descriptor (the same descriptor the node commits,
  * `buildCanonicalMidgardLedgerEntryOutputMaterial`).
  */
 
@@ -25,7 +25,6 @@ import {
   type Ledger,
   ledgerAt,
 } from "./ledger-store/index.js";
-import { keyValuePhasRootWithCount } from "./transition-trace/phas.js";
 
 /** One ledger entry: the §5.3 out-ref key bytes and the full output CBOR. */
 export type LedgerEntry = {
@@ -108,23 +107,6 @@ export const ledgerEntryLeaf = (
     return withDescriptor(entry);
   } catch (cause) {
     throw notCanonical(label, cause);
-  }
-};
-
-/** The root the entries' descriptor trie commits: the root a replay compares
- * with a header's `utxos_root`. */
-export const ledgerEntriesRoot = async (
-  entries: readonly LedgerEntry[],
-): Promise<string> => {
-  const leaves = entries.map((entry) => ledgerEntryLeaf(entry, "ledger root"));
-  try {
-    return (
-      await keyValuePhasRootWithCount(
-        leaves.map(({ entry, leaf }) => ({ key: entry.outRef, value: leaf })),
-      )
-    ).root;
-  } catch (cause) {
-    throw notCanonical("ledger root", cause);
   }
 };
 

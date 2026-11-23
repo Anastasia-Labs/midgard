@@ -7,7 +7,6 @@ import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
-import { ledgerEntriesRoot } from "../../src/ledger-at.js";
 import {
   buildCountedRoot,
   type CountedRoot,
@@ -20,6 +19,7 @@ import {
 } from "../helpers/canonical-block-evidence-fixture.js";
 import { withPlaceholderWithdrawalBlock } from "../helpers/canonical-block-evidence-fixture.with-placeholder-withdrawal.js";
 import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
+import { oracleLedgerRoot } from "./ledger-root-oracle.js";
 import { ledgerAtAfter } from "./predecessor-ledger.js";
 import {
   buildWithdrawalMistagEvidenceMaterial,
@@ -177,7 +177,7 @@ const traceFrom = async (
         Data.to(
           {
             ...material.args.transitionStep.value,
-            pre_utxos_root: await ledgerEntriesRoot(
+            pre_utxos_root: await oracleLedgerRoot(
               utxos.map(({ key, value }) => ({ outRef: key, output: value })),
             ),
           },

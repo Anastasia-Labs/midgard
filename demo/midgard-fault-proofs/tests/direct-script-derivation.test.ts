@@ -23,7 +23,6 @@ import {
   directResolvedSources,
   directWitnessSource,
 } from "../src/direct-script-derivation/sources.js";
-import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
@@ -31,6 +30,7 @@ import {
   buildFixtureTransaction,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { memoryLedger } from "./support/fixture-ledger.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 import { nativeDecodingFixture } from "./support/native-script-decoding-retained.js";
 
 const a = "22".repeat(28);
@@ -220,7 +220,7 @@ describe("direct script preparation", () => {
         outRef,
         output: output(hashes[index]!),
       }));
-      const root = await ledgerEntriesRoot(entries);
+      const root = await oracleLedgerRoot(entries);
       const predecessor = await memoryLedger(entries, root);
       const raw = order === "ascending" ? keys : [keys[2]!, keys[0]!, keys[1]!];
       const tx = buildFixtureTransaction({ spendInputs: raw, fee: 0n });
@@ -336,7 +336,7 @@ describe("direct script preparation", () => {
         script_ref: script,
       }),
     }));
-    const root = await ledgerEntriesRoot(entries);
+    const root = await oracleLedgerRoot(entries);
     const predecessor = await memoryLedger(entries, root);
     const item = encodeMidgardVersionedScript(script);
     const tx = buildFixtureTransaction({

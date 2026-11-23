@@ -18,8 +18,8 @@ import {
   type MidgardCekVerdictRequest,
 } from "@al-ft/midgard-validation/phase-b";
 import { outRefFromTxId } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { ledgerRootOver } from "@al-ft/midgard-validation/tests/validation-ledger-trie";
 import type { MidgardCommittedScriptRun } from "@al-ft/midgard-validation/types";
-import { validationMachineLedgerRoot } from "@al-ft/midgard-validation/validation-machine";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -61,7 +61,7 @@ const replay = async (
   const runs: MidgardCommittedScriptRun[] = [];
   const parentLedger = await createLedgerStore(
     createMemoryLedgerStorage(),
-  ).admit(parent, (await validationMachineLedgerRoot(parent)).toString("hex"));
+  ).admit(parent, (await ledgerRootOver(parent)).toString("hex"));
   const after = await Effect.runPromise(
     replayBlockEvents({
       header: block.payload.block_body.header,

@@ -30,7 +30,7 @@ import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
-import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
+import { type LedgerEntry } from "../../src/ledger-at.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
@@ -38,6 +38,7 @@ import {
 import { nodeForcedVerdict } from "./emulator/node-forced-verdict.js";
 import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { memoryLedger } from "./fixture-ledger.js";
+import { oracleLedgerRoot } from "./ledger-root-oracle.js";
 import {
   missingRedeemerPurposeFields,
   type MissingRedeemerPurposeScript,
@@ -267,7 +268,7 @@ const predecessorRoot = async (shape: IntegritySubjectShape) => {
   const entries = predecessorEntries(shape);
   return entries.length === 0
     ? SDK.EMPTY_MERKLE_TREE_ROOT
-    : await ledgerEntriesRoot(entries);
+    : await oracleLedgerRoot(entries);
 };
 
 /** The subject's committed block and derived material, without an L1

@@ -2,15 +2,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  ledgerEntriesRoot,
-  ledgerEntryLeaf,
-} from "@al-ft/midgard-fault-proofs/ledger-at";
+import { ledgerEntryLeaf } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
   type Ledger,
 } from "@al-ft/midgard-fault-proofs/ledger-store";
+import { oracleLedgerRoot } from "@al-ft/midgard-fault-proofs/test-support/ledger-root-oracle";
 import {
   appliedEntries,
   describeLedgerStoreConformance,
@@ -107,7 +105,7 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
     const path = await freshPath();
     const level = await openLevel(path);
     const store = createLedgerStore(levelStorage(level));
-    const a = await store.admit(base, await ledgerEntriesRoot(base));
+    const a = await store.admit(base, await oracleLedgerRoot(base));
     const b = await a.apply(event([0, 1], [100]));
     await store.persist(b);
     const c = await a.apply(event([2, 3], [101]));
@@ -194,7 +192,7 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
   const heldNodes = async () => {
     const memory = createMemoryLedgerStorage();
     const store = createLedgerStore(memory);
-    const a = await store.admit(base, await ledgerEntriesRoot(base));
+    const a = await store.admit(base, await oracleLedgerRoot(base));
     const b = await a.apply(event([0, 1], [100]));
     await store.persist(b);
     const c = await a.apply(event([2, 3], [101]));
@@ -276,7 +274,7 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
   });
 
   const genesis = async ({ store }: NativeOwnerLedger) =>
-    await writeGenesisLedger(store, base, await ledgerEntriesRoot(base));
+    await writeGenesisLedger(store, base, await oracleLedgerRoot(base));
 
   /**
    * Opens the node's ledger at `path` with every write after the first
@@ -300,7 +298,7 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
   };
 
   it("genesis killed at any write leaves an empty or whole store, and restarting completes it", async () => {
-    const root = await ledgerEntriesRoot(base);
+    const root = await oracleLedgerRoot(base);
     for (let survive = 0, killed = true; killed; survive += 1) {
       const path = await freshPath();
       const dying = await openDyingAfter(path, survive);

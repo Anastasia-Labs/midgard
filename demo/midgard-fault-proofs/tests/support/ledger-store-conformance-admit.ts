@@ -1,15 +1,14 @@
 /**
  * Conformance cases for `admit` on snapshots large enough to be written in
- * several batches. Expected roots come from today's whole-trie path
- * (`ledgerEntriesRoot`), which builds one in-memory trie from the whole
- * entry set and never reads the store. Run by every adapter through
+ * several batches. Expected roots come from the test-support oracle
+ * (`oracleLedgerRoot`), which builds one library trie from the whole entry
+ * set and never reads the store. Run by every adapter through
  * `describeLedgerStoreConformance`. The kit imports this module, so nothing
  * here reads the kit's exports while the module loads.
  */
 import { describe, expect, it } from "vitest";
 
 import {
-  ledgerEntriesRoot,
   type LedgerEntry,
   LedgerRootMismatchError,
 } from "../../src/ledger-at.js";
@@ -21,6 +20,7 @@ import {
   type LedgerStorage,
   type LedgerStore,
 } from "../../src/ledger-store/index.js";
+import { oracleLedgerRoot } from "./ledger-root-oracle.js";
 import {
   expectLedgerMatches,
   type OpenLedgerStorage,
@@ -83,8 +83,8 @@ export const describeLedgerStoreAdmitConformance = (
   describe(`ledger store admit of a large snapshot: ${adapter}`, () => {
     const entries = testLedgerEntries(0, LARGE_SNAPSHOT);
 
-    it("gives today's root for the entries in any order", async () => {
-      const root = await ledgerEntriesRoot(entries);
+    it("gives the oracle's root for the entries in any order", async () => {
+      const root = await oracleLedgerRoot(entries);
       for (const order of [entries, [...entries].reverse(), shuffled(entries)])
         await withStore(async (store) => {
           expect((await store.admit(order, root)).root).toBe(root);
@@ -100,8 +100,8 @@ export const describeLedgerStoreAdmitConformance = (
 
     it("refuses a root other than the expected one, retaining nothing, and the next retain deletes what it wrote", async () => {
       await withStore(async (store, storage) => {
-        const actual = await ledgerEntriesRoot(entries);
-        const expected = await ledgerEntriesRoot(entries.slice(1));
+        const actual = await oracleLedgerRoot(entries);
+        const expected = await oracleLedgerRoot(entries.slice(1));
         const refusal = await store
           .admit(entries, expected)
           .catch((error: unknown) => error);
@@ -126,7 +126,7 @@ export const describeLedgerStoreAdmitConformance = (
           const twice = [...entries];
           twice.splice(at, 0, testLedgerEntry(3));
           const refusal = await store
-            .admit(twice, await ledgerEntriesRoot(entries))
+            .admit(twice, await oracleLedgerRoot(entries))
             .catch((error: unknown) => error);
           expect(refusal).toBeInstanceOf(LedgerSnapshotRefused);
           expect((refusal as LedgerSnapshotRefused).outRef).toEqual(
@@ -135,7 +135,7 @@ export const describeLedgerStoreAdmitConformance = (
           await expectNothingLeft(
             store,
             storage,
-            await ledgerEntriesRoot(entries),
+            await oracleLedgerRoot(entries),
           );
         }),
       120_000,
@@ -147,7 +147,7 @@ export const describeLedgerStoreAdmitConformance = (
           EMPTY_LEDGER_ROOT,
         );
         await expect(
-          store.admit([], await ledgerEntriesRoot(entries.slice(0, 1))),
+          store.admit([], await oracleLedgerRoot(entries.slice(0, 1))),
         ).rejects.toBeInstanceOf(LedgerRootMismatchError);
         expect(await storage.counts()).toEqual(NOTHING_HELD);
       });

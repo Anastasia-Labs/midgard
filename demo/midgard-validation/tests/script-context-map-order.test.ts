@@ -20,7 +20,6 @@ import {
   buildMidgardScriptContext,
   buildPlutusV3ScriptContext,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   encodeMidgardCekPlutusData,
   MidgardRedeemerTag,
   RejectCodes,
@@ -57,6 +56,7 @@ import {
   outRefFromTxId,
   plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
+import { mutationStepsOver } from "./validation-ledger-trie.js";
 
 // A node evaluates a script over the context it builds; a fault proof
 // adjudicates it over the context the transaction commits, where datum and
@@ -319,7 +319,7 @@ const proofVerdict = async (
       outputCbor: output,
     }),
   ];
-  const steps = await buildValidationMachineLedgerMutationSteps({
+  const steps = await mutationStepsOver({
     initialEntries: [{ outRef: spent, output: spentOutput }],
     operations: ledgerOps,
   });

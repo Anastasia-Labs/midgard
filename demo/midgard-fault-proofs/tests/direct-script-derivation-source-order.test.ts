@@ -42,13 +42,13 @@ import {
   buildDirectSourceIndex,
   buildDirectSourceIndexEvidence,
 } from "../src/direct-script-derivation/source-index.js";
-import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import {
   buildCanonicalBlockFixture,
   fixtureTransactionFromCanonicalCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { memoryLedger } from "./support/fixture-ledger.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 
 /**
  * The direct source map selects, for each script hash, the first source the
@@ -101,7 +101,7 @@ const directMaterial = async (
   state: readonly (readonly [Buffer, Buffer])[],
 ) => {
   const entries = state.map(([outRef, output]) => ({ outRef, output }));
-  const root = await ledgerEntriesRoot(entries);
+  const root = await oracleLedgerRoot(entries);
   const predecessor = await memoryLedger(entries, root);
   const tx = fixtureTransactionFromCanonicalCbor({
     txId: txId.toString("hex"),

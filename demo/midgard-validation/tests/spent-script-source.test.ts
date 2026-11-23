@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
 } from "../src/index.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
@@ -19,6 +18,7 @@ import {
   outRefFromTxId,
   TEST_ADDRESS_BYTES,
 } from "./validation-fixtures.js";
+import { mutationStepsOver } from "./validation-ledger-trie.js";
 import { context } from "./validation-machine.validate-boundary-abi-and-collect-auxiliary-kinds.js";
 
 describe("resolved-output reference-script sources", () => {
@@ -53,12 +53,10 @@ describe("resolved-output reference-script sources", () => {
         outputCbor: output,
       }),
     ];
-    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
-      {
-        initialEntries: [{ outRef: spent, output: spentOutput }],
-        operations: expectedLedgerOps,
-      },
-    );
+    const ledgerMutationSteps = await mutationStepsOver({
+      initialEntries: [{ outRef: spent, output: spentOutput }],
+      operations: expectedLedgerOps,
+    });
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,

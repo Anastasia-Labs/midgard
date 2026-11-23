@@ -14,7 +14,6 @@ import { describe, expect, it } from "vitest";
 
 import { undecodableNativeOutputDescriptor } from "../src/evidence/retained-ledger-output.js";
 import {
-  ledgerEntriesRoot,
   ledgerEntryLeaf,
   LedgerRootMismatchError,
   predecessorLedger,
@@ -25,6 +24,7 @@ import {
 } from "../src/ledger-store/index.js";
 import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
 import { entriesOf, memoryLedger } from "./support/fixture-ledger.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 
 const outRef = encodeMidgardSpendInputItem({
   txId: Buffer.alloc(32, 0x55),
@@ -78,13 +78,12 @@ describe("ledger root of an output with an undecodable native script_ref", () =>
       { key: outRef, value: derived },
     ]);
     expect(ledgerEntryLeaf({ outRef, output }, "test").leaf).toEqual(derived);
-    expect(await ledgerEntriesRoot([{ outRef, output }])).toBe(root);
     // A source-supplied descriptor must be the output's own.
     const other = committedDescriptor(Buffer.from("820041", "hex"));
     expect(other.equals(derived)).toBe(false);
-    await expect(
-      ledgerEntriesRoot([{ outRef, output, descriptor: other }]),
-    ).rejects.toThrow("not a canonical ledger entry");
+    expect(() =>
+      ledgerEntryLeaf({ outRef, output, descriptor: other }, "test"),
+    ).toThrow("not a canonical ledger entry");
     // The derived descriptor still has to open the committed root.
     const otherRoot = await keyValuePhasRootWithCount([
       { key: outRef, value: other },
@@ -96,20 +95,21 @@ describe("ledger root of an output with an undecodable native script_ref", () =>
     ).rejects.toBeInstanceOf(LedgerRootMismatchError);
   });
 
-  it("refuses an output that is neither canonical nor an undecodable native script", async () => {
-    await expect(
-      ledgerEntriesRoot([{ outRef, output: Buffer.from("ff", "hex") }]),
-    ).rejects.toThrow("not a canonical ledger entry");
+  it("refuses an output that is neither canonical nor an undecodable native script", () => {
+    expect(() =>
+      ledgerEntryLeaf({ outRef, output: Buffer.from("ff", "hex") }, "test"),
+    ).toThrow("not a canonical ledger entry");
     // Even with a supplied descriptor.
-    await expect(
-      ledgerEntriesRoot([
+    expect(() =>
+      ledgerEntryLeaf(
         {
           outRef,
           output: Buffer.from("ff", "hex"),
           descriptor: committedDescriptor(script),
         },
-      ]),
-    ).rejects.toThrow("not a canonical ledger entry");
+        "test",
+      ),
+    ).toThrow("not a canonical ledger entry");
   });
 });
 
@@ -144,7 +144,7 @@ describe("predecessor ledger", () => {
         ledgerAt: async () =>
           await memoryLedger(
             [{ outRef, output: plainOutput }],
-            await ledgerEntriesRoot([{ outRef, output: plainOutput }]),
+            await oracleLedgerRoot([{ outRef, output: plainOutput }]),
           ),
         label: "test",
       }),

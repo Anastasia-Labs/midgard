@@ -29,7 +29,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { isReplayLocalFault } from "../src/block-replay.faults.js";
-import { ledgerEntriesRoot, type LedgerEntry } from "../src/ledger-at.js";
+import { type LedgerEntry } from "../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -67,6 +67,7 @@ import {
   outRef,
   undecodableNativeOutput,
 } from "./helpers/event-ledger-seeded-blocks.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 
 /** Spends `SPENT` (2 ADA) into 3 ADA: an accepted imbalance. */
 const inflation: Step = {
@@ -143,7 +144,7 @@ describe("value-not-preserved's event ledger", () => {
   it("is refused by the walk when the selected event's pre-state is not the earlier steps' result", async () => {
     const fixture = await block([
       { input: balanced, applied: true },
-      { ...inflation, pre: await ledgerEntriesRoot([NATIVE]) },
+      { ...inflation, pre: await oracleLedgerRoot([NATIVE]) },
     ]);
     await expect(fixture.replay([VNP])).rejects.toThrow(
       "event prior ledger changed",

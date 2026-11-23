@@ -16,7 +16,6 @@ import { directPurposeSpendDescriptorPresent } from "../src/direct-purpose-famil
 import { directSpendEvidence } from "../src/direct-script-derivation/claimed-purpose.js";
 import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/material.js";
 import { directResolvedSources } from "../src/direct-script-derivation/sources.js";
-import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import type { Ledger } from "../src/ledger-store/index.js";
 import { keyValuePhasProof } from "../src/transition-trace/phas.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
@@ -26,6 +25,7 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { referenceLedgerOf } from "./helpers/event-ledger-reference.js";
 import { memoryLedger } from "./support/fixture-ledger.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 
 const outRefAt = (byte: number, outputIndex: number) =>
   encodeMidgardSpendInputItem({ txId: Buffer.alloc(32, byte), outputIndex });
@@ -51,7 +51,7 @@ const materialFor = async ({
     outRef,
     output: scriptOutput(0x44 + index * 0x11),
   }));
-  const root = await ledgerEntriesRoot(entries);
+  const root = await oracleLedgerRoot(entries);
   const ledger = await memoryLedger(entries, root);
   const tx = buildFixtureTransaction({
     spendInputs: [...spent],

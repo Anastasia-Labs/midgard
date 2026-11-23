@@ -23,10 +23,10 @@ import {
   outRefFromByte,
   outRefFromTxId,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { ledgerRootOver } from "@al-ft/midgard-validation/tests/validation-ledger-trie";
 import {
   placeholderValidationTraceDescriptorV1,
   replayValidationVerdictEvent,
-  validationMachineLedgerRoot,
   validationTransactionCommitmentV1,
 } from "@al-ft/midgard-validation/validation-machine";
 import { CML, Data } from "@lucid-evolution/lucid";
@@ -120,7 +120,7 @@ export const producedOutRef = (
 
 const ledgerRoot = async (ledger: ReadonlyMap<string, Buffer>) =>
   (
-    await validationMachineLedgerRoot(
+    await ledgerRootOver(
       [...ledger].map(([key, output]) => ({
         outRef: Buffer.from(key, "hex"),
         output,

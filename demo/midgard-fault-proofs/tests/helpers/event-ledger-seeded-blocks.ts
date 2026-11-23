@@ -9,7 +9,8 @@ import { canonicalCommittedWithdrawalTransitionEffect } from "@al-ft/midgard-val
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../../src/evidence/canonical-block-evidence.js";
-import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
+import { type LedgerEntry } from "../../src/ledger-at.js";
+import { oracleLedgerRoot } from "../support/ledger-root-oracle.js";
 import {
   buildFixtureTransaction,
   type FixtureTransaction,
@@ -155,7 +156,7 @@ export const seededBlock = async (seed: number, fault: Fault) => {
   const ledger = new Map(
     predecessorEntries.map((entry) => [hex(entry.outRef), entry]),
   );
-  const roots = [await ledgerEntriesRoot(predecessorEntries)];
+  const roots = [await oracleLedgerRoot(predecessorEntries)];
   for (const { tx, inputs, outputs, valid } of planned) {
     if (valid) {
       for (const key of inputs) ledger.delete(hex(key));
@@ -165,7 +166,7 @@ export const seededBlock = async (seed: number, fault: Fault) => {
       }
     }
     roots.push(
-      await ledgerEntriesRoot([...ledger.values()]).catch(() =>
+      await oracleLedgerRoot([...ledger.values()]).catch(() =>
         hex(bytes(draw, 32)),
       ),
     );

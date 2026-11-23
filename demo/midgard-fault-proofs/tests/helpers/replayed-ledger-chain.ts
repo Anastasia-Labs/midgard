@@ -8,9 +8,10 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 
-import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
+import { type LedgerEntry } from "../../src/ledger-at.js";
 import type { ReplayedLedgerSource } from "../../src/replayed-ledger.js";
 import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import { oracleLedgerRoot } from "../support/ledger-root-oracle.js";
 import { reencodeFixturePayload } from "./canonical-block-evidence-fixture.js";
 import {
   depositSeed,
@@ -92,7 +93,7 @@ export const replayedLedgerChain = async (
   }
   return {
     base,
-    baseRoot: await ledgerEntriesRoot(base),
+    baseRoot: await oracleLedgerRoot(base),
     blocks,
     forks: forked,
   };

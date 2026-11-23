@@ -1,36 +1,14 @@
-import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import {
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   committedLedgerRoot,
-  exactTrieRoot,
-  validationMachineLedgerRoot,
 } from "../src/validation-machine/ledger-mutation.js";
 import { makeOutput, outRefFromByte } from "./validation-fixtures.js";
+import { ledgerRootOver, mutationStepsOver } from "./validation-ledger-trie.js";
 
 describe("validation ledger roots at the header boundary", () => {
-  it("uses the protocol genesis root for an empty ledger and an empty mutation", async () => {
-    const store = new Store(undefined);
-    await store.ready();
-    const trie = new Trie(store);
-    expect(exactTrieRoot(trie)).toEqual(Buffer.alloc(32));
-    expect(await validationMachineLedgerRoot([])).toEqual(
-      Buffer.from(EMPTY_MERKLE_TREE_ROOT, "hex"),
-    );
-    expect(await validationMachineLedgerRoot([])).not.toEqual(
-      exactTrieRoot(trie),
-    );
-    expect(
-      await buildValidationMachineLedgerMutationSteps({
-        initialEntries: [],
-        operations: [],
-      }),
-    ).toEqual([]);
-  });
-
   it("names the empty ledger by the committed root at both ends of a mutation, and by the MPF sentinel inside its proof fold", async () => {
     const entry = {
       outRef: outRefFromByte(0x41),
@@ -40,14 +18,14 @@ describe("validation ledger roots at the header boundary", () => {
       key: entry.outRef,
       outputCbor: entry.output,
     });
-    const steps = await buildValidationMachineLedgerMutationSteps({
+    const steps = await mutationStepsOver({
       initialEntries: [],
       operations: [insertion, { type: "delete", key: entry.outRef }],
     });
     expect(steps).toHaveLength(2);
     const [insert, remove] = steps;
     const emptyLedgerRoot = Buffer.from(EMPTY_MERKLE_TREE_ROOT, "hex");
-    const populatedRoot = await validationMachineLedgerRoot([entry]);
+    const populatedRoot = await ledgerRootOver([entry]);
     expect(insert!.preRoot).toEqual(emptyLedgerRoot);
     expect(insert!.postRoot).toEqual(populatedRoot);
     expect(insert!.proofFoldTrace.terminal).toMatchObject({
@@ -60,7 +38,7 @@ describe("validation ledger roots at the header boundary", () => {
       includingRoot: populatedRoot,
       excludingRoot: Buffer.alloc(32),
     });
-    expect(await validationMachineLedgerRoot([])).toEqual(emptyLedgerRoot);
+    expect(await ledgerRootOver([])).toEqual(emptyLedgerRoot);
   });
 
   it("translates only the MPF empty sentinel into the committed empty-ledger root", () => {

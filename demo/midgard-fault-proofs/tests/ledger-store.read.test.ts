@@ -1,9 +1,9 @@
 /**
  * The read-side helpers: `ledgerAt`, `ledgerTrie`, `ledgerProof`. Expected
- * proof bytes and mutation steps come from today's whole-trie functions
- * (`keyValuePhasProof`, `keyValuePhasNonMembershipProof`,
- * `buildValidationMachineLedgerMutationSteps`), which build a fresh trie from
- * the whole entry set and never read the store; proofs are also folded by
+ * proof bytes and mutation steps come from whole-trie functions
+ * (`keyValuePhasProof`, `keyValuePhasNonMembershipProof`, and the
+ * validation test support's `mutationStepsOver`), which build a fresh trie
+ * from the whole entry set and never read the store; proofs are also folded by
  * midgard-core's MPF proof fold, the TypeScript twin of the on-chain verifier.
  */
 import {
@@ -11,10 +11,10 @@ import {
   type MidgardMpfProofStep,
 } from "@al-ft/midgard-core/mpf-proof-fold";
 import * as SDK from "@al-ft/midgard-sdk/core";
+import { mutationStepsOver } from "@al-ft/midgard-validation/tests/validation-ledger-trie";
 import {
   applyValidationLedgerMutations,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   type ValidationMachineLedgerOp,
 } from "@al-ft/midgard-validation/validation-machine";
 import { Data } from "@lucid-evolution/lucid";
@@ -193,7 +193,7 @@ describe("ledgerTrie", () => {
       { type: "delete", key: testOutRef(101) },
       insert(entries[0]!),
     ];
-    const expected = await buildValidationMachineLedgerMutationSteps({
+    const expected = await mutationStepsOver({
       initialEntries: entries,
       operations,
     });

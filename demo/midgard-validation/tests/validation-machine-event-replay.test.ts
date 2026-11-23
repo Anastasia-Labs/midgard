@@ -21,7 +21,6 @@ import {
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
   type ValidationMachineLedgerEntry,
-  validationMachineLedgerRoot,
 } from "../src/index.js";
 import { UPLCConst } from "../src/uplc-constant.js";
 import { Application, Lambda, UPLCProgram, UPLCVar } from "../src/uplc-term.js";
@@ -40,6 +39,7 @@ import {
   outRefFromTxId,
   plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
+import { ledgerRootOver } from "./validation-ledger-trie.js";
 import { replayValidationMachineEvent } from "./validation-machine-event-replay.trace.js";
 
 const context = {
@@ -67,7 +67,7 @@ const replayInput = async (
   ),
   canonicalTransactionCbor: transaction.txCbor,
   ledgerWitnessEntries: entries,
-  priorUtxosRoot: (await validationMachineLedgerRoot(entries)).toString("hex"),
+  priorUtxosRoot: (await ledgerRootOver(entries)).toString("hex"),
 });
 
 const plainTransfer = () => {
@@ -109,7 +109,7 @@ describe("independent validation event replay", () => {
       ]),
     );
     applyUTxOStatePatch(state, result.statePatch);
-    const expectedRoot = await validationMachineLedgerRoot(
+    const expectedRoot = await ledgerRootOver(
       [...state].map(([outRef, output]) => ({
         outRef: Buffer.from(outRef, "hex"),
         output,
@@ -444,9 +444,7 @@ describe("independent validation event replay", () => {
           "hex",
         ),
         ledgerWitnessEntries: entries,
-        priorUtxosRoot: (await validationMachineLedgerRoot(entries)).toString(
-          "hex",
-        ),
+        priorUtxosRoot: (await ledgerRootOver(entries)).toString("hex"),
       }),
     );
     expect(result.trace.verdict).toBe("accepted");
@@ -456,7 +454,7 @@ describe("independent validation event replay", () => {
   it("refuses stale prior ledger context before deriving a transaction verdict", async () => {
     const fixture = plainTransfer();
     const input = await replayInput(fixture.transaction, fixture.entries);
-    const staleRoot = (await validationMachineLedgerRoot([])).toString("hex");
+    const staleRoot = (await ledgerRootOver([])).toString("hex");
     await expect(
       Effect.runPromise(
         replayValidationMachineEvent({ ...input, priorUtxosRoot: staleRoot }),

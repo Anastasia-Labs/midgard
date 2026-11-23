@@ -3,10 +3,7 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 
 import { encodeMidgardCekPlutusData } from "../../src/cek-constant.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
-import {
-  MidgardRedeemerTag,
-  validationMachineLedgerRoot,
-} from "../../src/index.js";
+import { MidgardRedeemerTag } from "../../src/index.js";
 import { UPLCConst } from "../../src/uplc-constant.js";
 import { type Data } from "../../src/uplc-data.js";
 import { UPLCProgram, type UPLCTerm } from "../../src/uplc-term.js";
@@ -27,6 +24,7 @@ import {
   plutusV3ScriptWitness,
   TEST_SIGNER_HASH,
 } from "../validation-fixtures.js";
+import { ledgerRootOver } from "../validation-ledger-trie.js";
 import type { ValidationMachineEventReplayInput } from "../validation-machine-event-replay.trace.js";
 import {
   cekStepFuzzProgram,
@@ -151,7 +149,7 @@ export const txFuzzScenario = async (seed: number): Promise<TxFuzzScenario> => {
     ...extraInputs,
     ...reference,
   ];
-  const priorRoot = await validationMachineLedgerRoot(
+  const priorRoot = await ledgerRootOver(
     [...ledgerWitnessEntries].sort((left, right) =>
       Buffer.compare(left.outRef, right.outRef),
     ),

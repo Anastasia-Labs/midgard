@@ -10,7 +10,7 @@ import {
   parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
 
-import { Store, Trie } from "#merkle-patricia-forestry";
+import { type Trie } from "#merkle-patricia-forestry";
 
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "../ledger-output-descriptor.js";
 import { type CanonicalTransitionEffect } from "../transition-effect.js";
@@ -90,34 +90,6 @@ export const buildValidationMachineLedgerInsertOp = ({
   }).descriptorCbor,
 });
 
-const createLedgerTrie = async (
-  entries: readonly ValidationMachineLedgerEntry[],
-): Promise<Trie> => {
-  const store = new Store(undefined);
-  await store.ready();
-  const trie = new Trie(store);
-  for (const entry of [...entries].sort((left, right) =>
-    Buffer.compare(left.outRef, right.outRef),
-  )) {
-    await trie.insert(
-      entry.outRef,
-      buildCanonicalMidgardLedgerEntryOutputMaterial({
-        outRef: entry.outRef,
-        outputCbor: entry.output,
-      }).descriptorCbor,
-    );
-  }
-  return trie;
-};
-
-/** Reconstructs the header's descriptor root from complete raw ledger preimages. */
-export const validationMachineLedgerRoot = async (
-  entries: readonly ValidationMachineLedgerEntry[],
-): Promise<Buffer> => {
-  const trie = await createLedgerTrie(entries);
-  return committedLedgerRoot(exactTrieRoot(trie));
-};
-
 /** The consensus ledger operations a transition effect implies, in order. */
 export const transitionEffectToLedgerOps = (
   effect: CanonicalTransitionEffect,
@@ -142,15 +114,6 @@ export const applyValidationLedgerMutations = async (
   }
   return steps;
 };
-
-export const buildValidationMachineLedgerMutationSteps = async (input: {
-  readonly initialEntries: readonly ValidationMachineLedgerEntry[];
-  readonly operations: readonly ValidationMachineLedgerOp[];
-}): Promise<readonly ValidationMachineLedgerMutationStep[]> =>
-  applyValidationLedgerMutations(
-    await createLedgerTrie(input.initialEntries),
-    input.operations,
-  );
 
 export const applyValidationMachineLedgerMutationStep = async (
   trie: Trie,

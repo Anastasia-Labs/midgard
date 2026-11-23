@@ -19,11 +19,9 @@ import {
   outRefFromByte,
   outRefFromTxId,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { mutationStepsOver } from "@al-ft/midgard-validation/tests/validation-ledger-trie";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
-import {
-  buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
-} from "@al-ft/midgard-validation/validation-machine";
+import { buildValidationMachineLedgerInsertOp } from "@al-ft/midgard-validation/validation-machine";
 import { CML, Data } from "@lucid-evolution/lucid";
 import {
   computeDaPayloadRoots,
@@ -129,7 +127,7 @@ export const fixture = async (
       }),
     ),
   ];
-  let ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
+  let ledgerMutationSteps = await mutationStepsOver({
     initialEntries: [{ outRef: spent, output }],
     operations: ledgerOps,
   });

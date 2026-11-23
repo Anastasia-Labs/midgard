@@ -13,7 +13,6 @@ import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   placeholderValidationTraceDescriptorV1,
   replayValidationVerdictEvent,
-  validationMachineLedgerRoot,
   validationTransactionCommitmentV1,
 } from "@al-ft/midgard-validation";
 import { CML, Data } from "@lucid-evolution/lucid";
@@ -35,6 +34,7 @@ vi.mock("@al-ft/midgard-validation", async (importOriginal) => {
   };
 });
 import { encodeTransitionStepCbor } from "@al-ft/midgard-fault-proofs/block-replay";
+import { ledgerRootOver } from "@al-ft/midgard-validation/tests/validation-ledger-trie";
 
 import { encodeForcedInclusionValueV1 } from "../src/database/forcedTransactions.encode-forced-inclusion-value-v1.js";
 import { fixture, rebind, verdict } from "./foreign-block-import.fixture.js";
@@ -102,9 +102,7 @@ it("replays a catch-up forced verdict at its authenticated commit clock instead 
     throw new Error("expired forced transaction had no rejection reason");
   const payload = await fixture();
   const body = payload.block_body;
-  const root = (
-    await validationMachineLedgerRoot(ledgerWitnessEntries)
-  ).toString("hex");
+  const root = (await ledgerRootOver(ledgerWitnessEntries)).toString("hex");
   const step = Data.from(body.transition_trace[0]![1], SDK.TransitionStep);
   const descriptor = SDKDa.validationTraceDescriptorDataFromCore(
     placeholderValidationTraceDescriptorV1(

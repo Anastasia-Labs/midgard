@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ledgerEntriesRoot, type LedgerEntry } from "../src/ledger-at.js";
+import { type LedgerEntry } from "../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -14,6 +14,7 @@ import {
   parseLedgerWitnessJson,
 } from "../src/ledger-store/witness-json.js";
 import { normalizeWorkflowJson } from "../src/workflow/identity.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 import {
   event,
   testLedgerEntries,
@@ -49,7 +50,7 @@ const recorded = async (
   steps: readonly Step[],
 ) => {
   const store = createLedgerStore(createMemoryLedgerStorage());
-  const admitted = await store.admit(entries, await ledgerEntriesRoot(entries));
+  const admitted = await store.admit(entries, await oracleLedgerRoot(entries));
   const ledger = await store.at(admitted.root);
   const recorder = recordWitness(ledger);
   const expected = await run(recorder.ledger, steps);

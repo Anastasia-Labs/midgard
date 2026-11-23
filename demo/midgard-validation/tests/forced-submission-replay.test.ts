@@ -12,11 +12,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  RejectCodes,
-  runPhaseAValidation,
-  validationMachineLedgerRoot,
-} from "../src/index.js";
+import { RejectCodes, runPhaseAValidation } from "../src/index.js";
 import {
   decodeMidgardLedgerTxFromCanonicalCbor,
   encodeMidgardLedgerTxToCanonicalCbor,
@@ -33,6 +29,7 @@ import {
   makeQueued,
   outRefFromByte,
 } from "./validation-fixtures.js";
+import { ledgerRootOver } from "./validation-ledger-trie.js";
 import { replayValidationMachineEvent } from "./validation-machine-event-replay.trace.js";
 
 const config = {
@@ -202,9 +199,7 @@ describe("forced submission validation boundary", () => {
       const entries = [
         { outRef: outRefFromByte(0x31), output: makeOutput(10_000_000n) },
       ];
-      const priorRoot = (await validationMachineLedgerRoot(entries)).toString(
-        "hex",
-      );
+      const priorRoot = (await ledgerRootOver(entries)).toString("hex");
       const replay = await Effect.runPromise(
         replayValidationMachineEvent({
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,

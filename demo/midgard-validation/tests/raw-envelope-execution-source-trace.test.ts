@@ -8,10 +8,7 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
-} from "../src/index.js";
+import { buildValidationMachineLedgerInsertOp } from "../src/index.js";
 import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   encodeRecomputedNativeTx,
@@ -23,6 +20,7 @@ import {
   outRefFromByte,
   outRefFromTxId,
 } from "./validation-fixtures.js";
+import { mutationStepsOver } from "./validation-ledger-trie.js";
 
 describe("raw-envelope execution-source validation trace", () => {
   it("retains malformed field-6 bytes and deterministically proves their Phase A native rejection", async () => {
@@ -63,7 +61,7 @@ describe("raw-envelope execution-source validation trace", () => {
         outputCbor: output,
       }),
     ];
-    const mutations = await buildValidationMachineLedgerMutationSteps({
+    const mutations = await mutationStepsOver({
       initialEntries: [{ outRef: spent, output: spentOutput }],
       operations: acceptedOps,
     });

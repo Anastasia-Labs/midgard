@@ -7,7 +7,7 @@ import { runInNewContext } from "node:vm";
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ledgerEntriesRoot, ledgerEntryLeaf } from "../src/ledger-at.js";
+import { ledgerEntryLeaf } from "../src/ledger-at.js";
 import { LedgerTrieStore } from "../src/ledger-store/engine.js";
 import {
   createLedgerStore,
@@ -15,6 +15,7 @@ import {
   type LedgerStorage,
 } from "../src/ledger-store/index.js";
 import { openSqliteLedgerStorage } from "../src/ledger-store/sqlite.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 import {
   appliedEntries,
   describeLedgerStoreConformance,
@@ -63,7 +64,7 @@ describe("sqlite ledger storage across reopen", () => {
     const path = await freshPath();
     const first = openSqliteLedgerStorage(path);
     const store = createLedgerStore(first);
-    const a = await store.admit(base, await ledgerEntriesRoot(base));
+    const a = await store.admit(base, await oracleLedgerRoot(base));
     const b = await a.apply(event([0, 1], [100, 101]));
     await store.persist(b);
     const c = await b.apply(event([2], [102]));
@@ -136,7 +137,7 @@ describe("sqlite ledger storage across reopen", () => {
     const storage = openSqliteLedgerStorage(path);
     try {
       const store = createLedgerStore(storage);
-      const a = await store.admit(base, await ledgerEntriesRoot(base));
+      const a = await store.admit(base, await oracleLedgerRoot(base));
       const before = await storage.counts();
       await expect(
         storage.write({
@@ -211,7 +212,7 @@ describe("sqlite admit of a large snapshot", () => {
   };
 
   it(`admits ${SIZE.toString()} streamed entries in a heap that does not grow with them`, async () => {
-    const root = await ledgerEntriesRoot(testLedgerEntries(0, SIZE));
+    const root = await oracleLedgerRoot(testLedgerEntries(0, SIZE));
 
     let baseline = heapInUse();
     let started = performance.now();
