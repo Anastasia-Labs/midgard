@@ -249,14 +249,12 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
     );
     // The store holds the parent's ledger.
     const store = createLedgerStore(createMemoryLedgerStorage());
-    await store.persist(
-      await store.admit(
-        BASE.map((row) => ({
-          outRef: row[LedgerUtils.Columns.OUTREF],
-          output: row[LedgerUtils.Columns.OUTPUT],
-        })),
-        root,
-      ),
+    await store.admit(
+      BASE.map((row) => ({
+        outRef: row[LedgerUtils.Columns.OUTREF],
+        output: row[LedgerUtils.Columns.OUTPUT],
+      })),
+      root,
     );
     const refusals: ReplayedLedgerRefusal[] = [];
     const ledger = createReplayedLedger({

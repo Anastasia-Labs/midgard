@@ -113,7 +113,7 @@ const followerOver = (
 const storedChain = async (length = 1) => {
   const chain = await replayedLedgerChain(length);
   const { store, control } = ledgerStore();
-  await store.persist(await store.admit(chain.base, chain.baseRoot));
+  await store.admit(chain.base, chain.baseRoot);
   const held = (root: string) =>
     store.at(root).then(
       () => true,

@@ -67,11 +67,9 @@ const scene = async (claimedRoot: (predecessorRoot: string) => string) => {
   };
   const { classifyInput } = await setup(fixture, "normal");
   const store = createLedgerStore(createMemoryLedgerStorage());
-  await store.persist(
-    await store.admit(
-      ledgerEntriesAfter(predecessor),
-      predecessor.header.utxosRoot,
-    ),
+  await store.admit(
+    ledgerEntriesAfter(predecessor),
+    predecessor.header.utxosRoot,
   );
   const refusals: ReplayedLedgerRefusal[] = [];
   const ledger = createReplayedLedger({

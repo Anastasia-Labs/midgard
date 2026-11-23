@@ -238,12 +238,14 @@ export const runLedgerStoreExitBench = async (input: {
       const base: LedgerEntry[] = testLedgerEntries(0, input.entries);
       const admitted = await sampled(async () => {
         const ledger = await store.admit(base, await ledgerEntriesRoot(base));
-        await store.persist(ledger);
         return ledger.root;
       });
-      const snapshotNodeBytes = counted.nodeBytes.pop()!;
-      const snapshotOutputBytes = counted.outputBytes.pop()!;
-      counted.refUpdates.pop();
+      // `admit` writes in batches: every write so far is the snapshot's.
+      const sum = (values: number[]) =>
+        values.splice(0).reduce((total, value) => total + value, 0);
+      const snapshotNodeBytes = sum(counted.nodeBytes);
+      const snapshotOutputBytes = sum(counted.outputBytes);
+      counted.refUpdates.splice(0);
       const diskAfterSnapshot = await opened.bytesOnDisk();
       const pick = picker(0x1ed9e7);
       const state = {

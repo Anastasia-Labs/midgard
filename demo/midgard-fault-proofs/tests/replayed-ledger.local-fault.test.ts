@@ -60,9 +60,7 @@ const scene = async (scenario: "passing" | "failing") => {
   const headerHash = payload.block_body.header_hash;
   const refusals: ReplayedLedgerRefusal[] = [];
   const store = createLedgerStore(createMemoryLedgerStorage());
-  await store.persist(
-    await store.admit(fixture.predecessorEntries, header.prevUtxosRoot),
-  );
+  await store.admit(fixture.predecessorEntries, header.prevUtxosRoot);
   const ledger = createReplayedLedger({
     store,
     onRefusal: (refusal) => refusals.push(refusal),

@@ -38,7 +38,7 @@ type Chain = Awaited<ReturnType<typeof replayedLedgerChain>>;
  */
 const scene = async (chain: Chain) => {
   const store = createLedgerStore(createMemoryLedgerStorage());
-  await store.persist(await store.admit(chain.base, chain.baseRoot));
+  await store.admit(chain.base, chain.baseRoot);
   const verifiedHead = memoryVerifiedHead();
   await verifiedHead.write(REPLAYED_LEDGER_CHAIN_PARENT);
   const refusals: ReplayedLedgerRefusal[] = [];
@@ -250,9 +250,7 @@ describe(
       ];
       const s = await scene(chain);
       // The store holds b0's ledger from an earlier run.
-      await s.store.persist(
-        await s.store.admit(b0.entries, b0.header.utxosRoot),
-      );
+      await s.store.admit(b0.entries, b0.header.utxosRoot);
       const asked: string[] = [];
       const source = replayedLedgerChainSource(chain.blocks, {
         asked,
@@ -281,9 +279,7 @@ describe(
         ReplayedLedgerChainBlock,
       ];
       const s = await scene(chain);
-      await s.store.persist(
-        await s.store.admit(b0.entries, b0.header.utxosRoot),
-      );
+      await s.store.admit(b0.entries, b0.header.utxosRoot);
       await expect(
         s
           .keeper()
@@ -300,9 +296,7 @@ describe(
         ReplayedLedgerChainBlock,
       ];
       const s = await scene(chain);
-      await s.store.persist(
-        await s.store.admit(b1.entries, b1.header.utxosRoot),
-      );
+      await s.store.admit(b1.entries, b1.header.utxosRoot);
       await expect(
         s
           .keeper()
@@ -328,7 +322,7 @@ describe(
       ];
       const store = createLedgerStore(createMemoryLedgerStorage());
       // The store holds b0's ledger, and not the one below it.
-      await store.persist(await store.admit(b0.entries, b0.header.utxosRoot));
+      await store.admit(b0.entries, b0.header.utxosRoot);
       const verifiedHead = memoryVerifiedHead();
       const unverified: ReplayedLedgerUnverified[] = [];
       const ledger = createReplayedLedger({
@@ -360,9 +354,7 @@ describe(
       const s = await scene(chain);
       // The store holds the head's ledger from an earlier run, and neither
       // ledger below it.
-      await s.store.persist(
-        await s.store.admit(b2.entries, b2.header.utxosRoot),
-      );
+      await s.store.admit(b2.entries, b2.header.utxosRoot);
       const asked: string[] = [];
       const source = replayedLedgerChainSource(chain.blocks, {
         asked,
@@ -394,9 +386,7 @@ describe(
       ];
       const s = await scene(chain);
       await s.verifiedHead.write(b0.headerHash);
-      await s.store.persist(
-        await s.store.admit(b2.entries, b2.header.utxosRoot),
-      );
+      await s.store.admit(b2.entries, b2.header.utxosRoot);
       expect(
         await s
           .keeper()

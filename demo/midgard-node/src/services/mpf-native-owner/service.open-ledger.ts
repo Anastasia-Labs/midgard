@@ -42,15 +42,14 @@ export const openNativeOwnerLedger = async (
 
 /**
  * Writes genesis: the ledger of `entries`, which must have `expectedRoot`
- * (`admit` refuses any other), with its counts, its retained root and the
- * `__root__` marker in one write, so a crash leaves the store empty or
- * holding all of genesis.
+ * (`admit` refuses any other). Its retained root and the `__root__` marker
+ * land in one write, so a crash leaves no retained root and no marker, or
+ * all of genesis; nodes of a crashed admit are deleted by the next `retain`.
  */
 export const writeGenesisLedger = async (
   store: LedgerStore,
   entries: Parameters<LedgerStore["admit"]>[0],
   expectedRoot: string,
-): Promise<void> =>
-  await store.persist(await store.admit(entries, expectedRoot), {
-    current: true,
-  });
+): Promise<void> => {
+  await store.admit(entries, expectedRoot, { current: true });
+};

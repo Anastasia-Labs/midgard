@@ -33,6 +33,7 @@ import {
   keyValuePhasResolutionProofs,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
+import { describeLedgerStoreAdmitConformance } from "./ledger-store-conformance-admit.js";
 import { describeLedgerStoreCrashConformance } from "./ledger-store-conformance-crash.js";
 import { describeLedgerStoreRandomConformance } from "./ledger-store-conformance-random.js";
 import { describeLedgerStoreRetainConformance } from "./ledger-store-conformance-retain.js";
@@ -203,10 +204,13 @@ export const countsOfOnly = async (
   const opened = await open();
   try {
     const store = createLedgerStore(opened.storage);
+    const roots = new Set<string>();
     for (const entries of ledgers)
-      await store.persist(
-        await store.admit(entries, await ledgerEntriesRoot(entries)),
+      roots.add(
+        (await store.admit(entries, await ledgerEntriesRoot(entries))).root,
       );
+    // Deletes what a snapshot written in several batches left unreferenced.
+    await store.retain(roots);
     return await opened.storage.counts();
   } finally {
     await opened.close();
@@ -248,12 +252,11 @@ export const describeLedgerStoreConformance = (
   };
 
   describe(`ledger store conformance: ${adapter}`, () => {
-    it("admits a snapshot with today's root and proofs, before and after persist", async () => {
+    it("admits a snapshot with today's root and proofs, and retains it", async () => {
       await withStore(async (store) => {
         const root = await ledgerEntriesRoot(BASE);
         const admitted = await store.admit(BASE, root);
         await expectLedgerMatches(admitted, BASE);
-        await store.persist(admitted);
         await expectLedgerMatches(await store.at(root), BASE);
         async function* streamed() {
           yield* BASE;
@@ -289,7 +292,6 @@ export const describeLedgerStoreConformance = (
       await withStore(async (store) => {
         await expectLedgerMatches(await store.at(EMPTY_LEDGER_ROOT), []);
         const full = await store.admit(BASE, await ledgerEntriesRoot(BASE));
-        await store.persist(full);
         const empty = await full.apply(
           BASE.map(({ outRef }) => ({ type: "delete" as const, outRef })),
         );
@@ -303,7 +305,6 @@ export const describeLedgerStoreConformance = (
     it("refuses a mutation as a typed value and leaves the ledger unchanged", async () => {
       await withStore(async (store) => {
         const ledger = await store.admit(BASE, await ledgerEntriesRoot(BASE));
-        await store.persist(ledger);
         const absent = await ledger
           .apply([{ type: "delete", outRef: testOutRef(500) }])
           .catch((error: unknown) => error);
@@ -346,10 +347,6 @@ export const describeLedgerStoreConformance = (
     it("refuses roots it does not retain and snapshots that do not open their root", async () => {
       await withStore(async (store, storage) => {
         const ledger = await store.admit(BASE, await ledgerEntriesRoot(BASE));
-        await expect(store.at(ledger.root)).rejects.toBeInstanceOf(
-          LedgerNotRetained,
-        );
-        await store.persist(ledger);
         const next = await ledger.apply(event([0], [200]));
         await expect(store.at(next.root)).rejects.toBeInstanceOf(
           LedgerNotRetained,
@@ -372,7 +369,6 @@ export const describeLedgerStoreConformance = (
     it("keeps every earlier ledger value valid while later ones are built and proved", async () => {
       await withStore(async (store) => {
         const base = await store.admit(BASE, await ledgerEntriesRoot(BASE));
-        await store.persist(base);
         const first = await base.apply(event([0, 1], [300, 301]));
         const second = await first.apply(event([300, 2], [302]));
         const expectations = [
@@ -413,6 +409,7 @@ export const describeLedgerStoreConformance = (
       });
     });
   });
+  describeLedgerStoreAdmitConformance(adapter, open);
   describeLedgerStoreRetainConformance(adapter, open);
   describeLedgerStoreRandomConformance(adapter, open, reference);
   describeLedgerStoreCrashConformance(adapter, open);

@@ -62,7 +62,6 @@ const persisted = async (entries: readonly LedgerEntry[]) => {
   const storage = createMemoryLedgerStorage();
   const store = createLedgerStore(storage);
   const ledger = await store.admit(entries, await ledgerEntriesRoot(entries));
-  await store.persist(ledger);
   return { storage, store, ledger: await store.at(ledger.root) };
 };
 

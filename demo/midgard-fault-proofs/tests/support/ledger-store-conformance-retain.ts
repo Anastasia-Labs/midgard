@@ -157,7 +157,6 @@ export const describeLedgerStoreRetainConformance = (
             entries,
             await ledgerEntriesRoot(entries),
           );
-          await store.persist(a);
           const mutations = event([0], [400]);
           const b = await a.apply(mutations);
           await store.persist(b);
@@ -182,7 +181,6 @@ export const describeLedgerStoreRetainConformance = (
             entries,
             await ledgerEntriesRoot(entries),
           );
-          await store.persist(a);
           const b = await a.apply(event([], [410, 411]));
           await store.persist(b);
           const again = await b.apply(event([410, 411], []));
@@ -213,7 +211,6 @@ export const describeLedgerStoreRetainConformance = (
       await withStore(async (store) => {
         const entries = base();
         const a = await store.admit(entries, await ledgerEntriesRoot(entries));
-        await store.persist(a);
         const bMutations = event([0], [450]);
         const b = await a.apply(bMutations);
         await store.persist(b);
@@ -235,7 +232,6 @@ export const describeLedgerStoreRetainConformance = (
       await withStore(async (store) => {
         const entries = base();
         const a = await store.admit(entries, await ledgerEntriesRoot(entries));
-        await store.persist(a);
         const b = await a.apply(event([0, 1], [460]));
         await store.persist(b);
         const pMutations = event([2], [461]);
@@ -266,7 +262,6 @@ export const describeLedgerStoreRetainConformance = (
           entries,
           await ledgerEntriesRoot(entries),
         );
-        await store.persist(parent);
         const [left, right] = [event([1], [420]), event([2], [421])];
         const l = await parent.apply(left);
         await store.persist(l);
@@ -298,7 +293,6 @@ export const describeLedgerStoreRetainConformance = (
       await withStore(async (store, storage) => {
         const entries = base();
         const a = await store.admit(entries, await ledgerEntriesRoot(entries));
-        await store.persist(a);
         const b = await a.apply(event([0, 1], [400, 401]));
         await store.persist(b);
         const c = await b.apply(event([2, 400], [402]));
@@ -338,7 +332,6 @@ export const describeLedgerStoreRetainConformance = (
       await withStore(async (store, storage) => {
         const entries = base();
         const a = await store.admit(entries, await ledgerEntriesRoot(entries));
-        await store.persist(a);
         const bMutations = event([0], [430, 431]);
         const b = await a.apply(bMutations);
         await store.persist(b);
@@ -360,7 +353,6 @@ export const describeLedgerStoreRetainConformance = (
       await withStore(async (store, storage) => {
         const entries = base();
         const x = await store.admit(entries, await ledgerEntriesRoot(entries));
-        await store.persist(x);
         const { y, z } = movingPair(baseNumbers());
         const s = await (await store.at(x.root)).apply(event([y], []));
         await store.persist(s);
@@ -402,7 +394,6 @@ export const describeLedgerStoreRetainConformance = (
         const store = createLedgerStore(storage);
         const entries = base();
         const a = await store.admit(entries, await ledgerEntriesRoot(entries));
-        await store.persist(a);
         const bMutations = event([0, 1], [710, 711]);
         const b = await a.apply(bMutations);
         await store.persist(b);
@@ -434,7 +425,6 @@ export const describeLedgerStoreRetainConformance = (
       await withStore(async (store, storage) => {
         const entries = base();
         const a = await store.admit(entries, await ledgerEntriesRoot(entries));
-        await store.persist(a);
         const bMutations = event([0, 1], [700]);
         const b = await a.apply(bMutations);
         await store.persist(b);

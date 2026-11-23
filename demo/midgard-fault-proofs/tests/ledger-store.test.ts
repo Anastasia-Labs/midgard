@@ -47,9 +47,7 @@ describe("ledger store over storage that never waits", () => {
     };
     const store = createLedgerStore(storage);
     const entries = testLedgerEntries(0, 40);
-    await store.persist(
-      await store.admit(entries, await ledgerEntriesRoot(entries)),
-    );
+    await store.admit(entries, await ledgerEntriesRoot(entries));
     let batchesBeforeTimer: number | undefined;
     setTimeout(() => {
       batchesBeforeTimer = batches;
@@ -83,7 +81,6 @@ describe("ledger store adopt", () => {
     const storage = createMemoryLedgerStorage();
     const store = createLedgerStore(storage);
     const a = await store.admit(base, await ledgerEntriesRoot(base));
-    await store.persist(a);
     const b = await a.apply(bMutations);
     await store.persist(b);
     const c = await a.apply(cMutations);
@@ -141,7 +138,6 @@ describe("ledger store adopt", () => {
     const storage = createMemoryLedgerStorage();
     const store = createLedgerStore(storage);
     const a = await store.admit(base, await ledgerEntriesRoot(base));
-    await store.persist(a);
     await store.persist(await a.apply(bMutations));
     return await storage.counts();
   };
