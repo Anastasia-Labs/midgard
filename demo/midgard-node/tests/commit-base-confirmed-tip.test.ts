@@ -14,8 +14,6 @@ import { Effect, Either } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { foldToRoot } from "../src/landed-blocks/fold.js";
-import type { LandedBlockPorts } from "../src/landed-blocks/ports.js";
-import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import {
   address,
   confirmedTipOf,
@@ -31,6 +29,7 @@ import {
   run,
   seed,
 } from "./commit-base-resolver.fixture.js";
+import { foldPorts } from "./helpers/fold-ports.js";
 import { simCommitAnchor } from "./helpers/landed-blocks-sim.own.js";
 import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import {
@@ -42,12 +41,6 @@ import { resetApplicationTables } from "./utils.js";
 beforeEach(async () => {
   await run(resetApplicationTables);
 });
-
-/** The production fold's ports with the view held. */
-const foldPorts = {
-  confirmView: () => Effect.succeed(true),
-  write: <A, E, R>(work: Effect.Effect<A, E, R>) => withFollowerWrite(work),
-} as unknown as LandedBlockPorts<never>;
 
 /** The confirmed state a merge of the block `headerHash` (on the frontier,
  * at root `utxoRoot`) leaves on L1. */

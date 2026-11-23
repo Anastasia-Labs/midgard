@@ -26,11 +26,9 @@ import {
 import { foldToRoot } from "../../src/landed-blocks/fold.js";
 import { CONFIRMED_LEDGER_BASE_MISMATCH } from "../../src/landed-blocks/holds.js";
 import { ownFoldRow } from "../../src/landed-blocks/journal.js";
-import type { LandedBlockPorts } from "../../src/landed-blocks/ports.js";
 import { Frontier, insertRow } from "../../src/landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/ledger-hydration.js";
 import { NodeConfig } from "../../src/services/config.js";
-import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 import { buildDaPayloadInsert } from "../../src/workers/commit-block-header/da-payload.build-da-payload-insert.js";
 import { resolvePendingJournalLedgerState } from "../../src/workers/commit-block-header/pending-journal.js";
 import {
@@ -38,15 +36,10 @@ import {
   makeOutRefCbor,
 } from ".././midgard-output-helpers.js";
 import { insertDeposits } from "../helpers/event-rows.js";
+import { foldPorts } from "../helpers/fold-ports.js";
 import { materializeJournalLedger } from "../helpers/materialize-journal-ledger.js";
 import { prepareUnderTestLease } from "../helpers/mutation-lease.js";
 import { address1, isolatedDb, makeDepositEntry } from "./fixtures.js";
-
-/** The production fold's ports with the view held. */
-const foldPorts = {
-  confirmView: () => Effect.succeed(true),
-  write: <A, E, R>(work: Effect.Effect<A, E, R>) => withFollowerWrite(work),
-} as unknown as LandedBlockPorts<never>;
 
 export const registerMpfTests = () => {
   describe("Phase 3 MPF durable state", () => {

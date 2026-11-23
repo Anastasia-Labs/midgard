@@ -36,18 +36,17 @@ import {
 import { setSettlementInfoForEventIds } from "../src/database/withdrawals.set-settlement-info-for-event-ids.js";
 import { foldToRoot } from "../src/landed-blocks/fold.js";
 import { applyOwnBlocks } from "../src/landed-blocks/own-blocks.js";
-import type { LandedBlockPorts } from "../src/landed-blocks/ports.js";
 import {
   Frontier,
   type LandedBlockRow,
   retrieveRows,
 } from "../src/landed-blocks/store.js";
-import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import type { Globals } from "../src/services/globals.js";
 import { MPF_CLOSURE_MISSING } from "../src/services/liveness-halt.js";
 import { makeHistoryWithdrawalEntry } from "./database.test/fixtures.events.js";
 import { testWrite } from "./helpers/driver-recompute.js";
 import { insertWithdrawals } from "./helpers/event-rows.js";
+import { foldPorts } from "./helpers/fold-ports.js";
 import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import { ownJournal } from "./landed-blocks-own-journal.fixture.js";
 import {
@@ -86,12 +85,6 @@ beforeAll(async () => {
   HEADER = journal.headerHash;
   OWN = HEADER.toString("hex");
 });
-
-/** The production fold's ports with the view held. */
-const foldPorts = {
-  confirmView: () => Effect.succeed(true),
-  write: <A, E, R>(work: Effect.Effect<A, E, R>) => withFollowerWrite(work),
-} as unknown as LandedBlockPorts<never>;
 
 /**
  * The processed own block `OWN` (the seeded block's place, spending E0 for

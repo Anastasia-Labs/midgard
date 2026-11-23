@@ -40,7 +40,6 @@ import {
 import { foldToRoot } from "../src/landed-blocks/fold.js";
 import { LANDED_BLOCK_REBASE_FAILED } from "../src/landed-blocks/holds.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
-import type { LandedBlockPorts } from "../src/landed-blocks/ports.js";
 import { REBASE_REJECTIONS } from "../src/landed-blocks/rebase.js";
 import { processRow, rollBackRows } from "../src/landed-blocks/settlements.js";
 import {
@@ -48,10 +47,10 @@ import {
   type LandedBlockRow,
   retrieveRows,
 } from "../src/landed-blocks/store.js";
-import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { selectCommitTxCandidates } from "../src/workers/utils/commit-block-planner.select-commit-tx-candidates.js";
 import { skippedSubmissionProgram } from "../src/workers/utils/commit-submission.js";
 import { testWrite } from "./helpers/driver-recompute.js";
+import { foldPorts } from "./helpers/fold-ports.js";
 import {
   admitPending,
   type SimPendingTx,
@@ -308,10 +307,6 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
     });
 
     // The production fold past O: its members stay marked until it is final.
-    const foldPorts = {
-      confirmView: () => Effect.succeed(true),
-      write: <A, E, R>(work: Effect.Effect<A, E, R>) => withFollowerWrite(work),
-    } as unknown as LandedBlockPorts<never>;
     await sqlRun(globals, () =>
       foldToRoot(
         foldPorts,

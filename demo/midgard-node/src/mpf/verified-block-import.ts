@@ -33,8 +33,10 @@ export type ImportedBlockReplayContext = Omit<
 >;
 
 /** A block's net delta on its parent's ledger: the out-refs it spent, and
- * the outputs at out-refs the parent does not hold or holds with other
- * bytes, each in out-ref order. The two never share an out-ref. */
+ * the outputs at out-refs the parent does not hold, each in out-ref order.
+ * An out-ref names one output (its transaction id hashes the body that
+ * carries it), so a touched out-ref the parent holds is either spent or
+ * unchanged, and in neither set. The two never share an out-ref. */
 export type LedgerDelta = Readonly<{
   spent: readonly Buffer[];
   produced: readonly LedgerRows.MinimalEntry[];
@@ -222,7 +224,7 @@ const byHex = (left: string, right: string) =>
  * (`firstRemoved`: whether it removed the out-ref) and last output
  * (`null`: removed). A first removal names an out-ref `parent` held, so one
  * removed first and last is spent unread; every other touched out-ref is
- * read from `parent`, for whether it held it and with which bytes. Nothing
+ * read from `parent`, for whether it held it. Nothing
  * the block did not touch is read.
  */
 const netDelta = (
@@ -245,8 +247,7 @@ const netDelta = (
       const before = held.get(key)?.output;
       if (output === null) {
         if (removed || before !== undefined) spent.push(key);
-      } else if (before === undefined || !before.equals(output))
-        produced.push([key, output]);
+      } else if (before === undefined) produced.push([key, output]);
     }
     return {
       spent: spent.sort(byHex).map((key) => Buffer.from(key, "hex")),
