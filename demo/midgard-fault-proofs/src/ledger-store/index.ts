@@ -15,8 +15,14 @@ export {
   LedgerOutputMissing,
   LedgerWitnessRefused,
 } from "./errors.js";
-export type { Ledger, LedgerMutation, LedgerRead } from "./ledger.js";
+export type {
+  Ledger,
+  LedgerMutation,
+  LedgerRead,
+  LedgerSource,
+} from "./ledger.js";
 export { createMemoryLedgerStorage } from "./memory.js";
+export { ledgerAt, ledgerProof, ledgerTrie } from "./read.js";
 export type {
   LedgerStorage,
   LedgerStorageChange,

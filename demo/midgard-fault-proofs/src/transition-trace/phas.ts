@@ -131,7 +131,7 @@ export const keyValuePhasRoot = async (
   entries: readonly KeyValuePhasEntry[],
 ): Promise<string> => (await keyValuePhasRootWithCount(entries)).root;
 
-const sdkProofFromCbor = (proofCbor: Uint8Array): SDK.Proof => {
+export const sdkProofFromCbor = (proofCbor: Uint8Array): SDK.Proof => {
   try {
     return Data.from(
       Buffer.from(proofCbor).toString("hex"),
