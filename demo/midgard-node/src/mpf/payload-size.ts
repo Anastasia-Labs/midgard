@@ -1,13 +1,8 @@
 /**
- * MPF value size estimates and the UTxO root over materialized entries.
+ * MPF value size estimates and the UTxO entries a batch materializes.
  */
 
-import { Effect } from "effect";
-
 import * as Ledger from "../database/utils/ledger.js";
-import { keyValuePhasRoot } from "../workers/utils/mpf/phas.key-value-phas-non-membership-proof.js";
-import { MpfError } from "./errors.js";
-import { ledgerOutputToInsertBatchOp } from "./ledger-delta.js";
 import {
   type MpfBatchOp,
   type MpfStoredValue,
@@ -96,27 +91,6 @@ export const materializeUtxoPayloadEntries = (
     compareBufferHex(left.outref, right.outref),
   );
 };
-
-export const computeUtxoPayloadRoot = (
-  entries: readonly UtxoPayloadEntry[],
-): Effect.Effect<string, MpfError> =>
-  Effect.try({
-    try: () =>
-      entries.map((entry) =>
-        ledgerOutputToInsertBatchOp({
-          outRef: entry.outref,
-          outputCbor: entry.output,
-        }),
-      ),
-    catch: (cause) => MpfError.rootBuild("DA UTxO descriptor root", cause),
-  }).pipe(
-    Effect.flatMap((ops) =>
-      keyValuePhasRoot(
-        ops.map((op) => op.key),
-        ops.map((op) => op.value),
-      ),
-    ),
-  );
 
 export const encodeUnsignedBigEndian = (value: bigint): Buffer => {
   if (value <= 0n) return Buffer.from([0]);

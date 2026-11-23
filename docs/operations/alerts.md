@@ -145,23 +145,17 @@ landed deltas) do not derive the root it stores for them
 come from the node's own stores, so the fault is this node's, never a
 block's. The `check` names where it was found:
 
-- `commit_base_landed`, `commit_base_confirmed_ledger`: the base a commit
-  builds on. The commit is refused on every tick, each refusal counted; the
-  node keeps running. A commit on a landed tail builds from the frontier at
-  which the verification below last passed. It applies each landed delta
-  after that frontier and checks it: the delta builds on the root before it,
-  names each outref once and none both spent and produced, every output it
-  spends is held, no output it produces is held already, and it changes the
-  root exactly when it is not empty. A delta that fails is a
-  `commit_base_landed` divergence.
 - `confirmed_ledger`, `confirmed_ledger_tail`: the node's verification of
-  the landed ledger, run off the commit path. It builds one trie from
+  the landed ledger, run off the commit path; a commit on a landed tail
+  builds from the frontier at which it last passed. It builds one trie from
   `confirmed_ledger` and checks its root against the frontier's stored root
   (`confirmed_ledger`). It then applies each processed landed delta up to
-  the queue tail, first checked with the commit's checks, and checks the
-  root it reaches against the tail's stored root (`confirmed_ledger_tail`;
-  a delta that fails the commit's checks is a `confirmed_ledger_tail`
-  divergence too). The two are checked and counted separately: a
+  the queue tail, each checked first (the delta builds on the root before
+  it, names each outref once and none both spent and produced, every output
+  it spends is held, no output it produces is held already, and it changes
+  the root exactly when it is not empty), and checks the root it reaches
+  against the tail's stored root (`confirmed_ledger_tail`; a delta that
+  fails its checks is a `confirmed_ledger_tail` divergence too). The two are checked and counted separately: a
   `confirmed_ledger` entry a later delta spends is covered only by the
   frontier's check, a delta byte only by the tail's. It runs at startup,
   after each fold or other write to `confirmed_ledger` (each draws a new
@@ -192,22 +186,20 @@ block's. The `check` names where it was found:
 
 The node exports every `check` series at 0 from startup, so the first
 divergence after a start shows as an increase. A fold, or an unfold on a
-rollback, landing while a check reads does not fire it: the commit-base checks
-read the ledger and its root on one database snapshot. A commit base on a
+rollback, landing while a run reads does not fire it: the run reads the
+ledger and its roots on one database snapshot. A commit base on a
 tail that landed-block processing has not processed yet waits as
 `commit_base_pending`, not this alert.
 
-**First checks.** `GET /readyz` names `commit_base_ledger_divergence:<check>`
-(commits), or
+**First checks.** `GET /readyz` names
 `commit_base_ledger_divergence:confirmed_ledger` or `:confirmed_ledger_tail`
 under `confirmed_ledger_verification` (the verification; when both diverge it
 names `confirmed_ledger`, the frontier's, and the log and the counter carry
 both). The node log carries
 `local ledger divergence (<check>): the ledger at <headerHash> derives root
 <derived>, its stored root is <stored>` (or, for a landed delta, `takes a
-delta that <fault>` in place of the derived root). It appears under a
-`Commit refused on its base` error line, one line per divergence a
-verification run found. Each verification
+delta that <fault>` in place of the derived root), one line per divergence
+a verification run found. Each verification
 run also logs `confirmed_ledger verification at frontier <headerHash>
 (generation <n>), tail <headerHash>: verified (entries=<count>, <ms> ms)` (or
 `diverged (<check>, ...)` in place of `verified`). A pass replayed over folds

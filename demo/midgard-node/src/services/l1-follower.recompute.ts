@@ -25,8 +25,10 @@
  *    the target, unheld orphans are deleted (`follower-orphan-repair.ts`) and,
  *    when any were, the events are ingested again and the working ledger
  *    recomputed again, so the transactions that spent them are rejected.
- *    The cache reloads; the gate then publishes the view as applied and
- *    opens, unless journal or foreign-landed orphans remain
+ *    The cache reloads (`l1-follower.recompute-repair.ts`: at the keys the
+ *    transaction changed, for the landed-block hook's run that found no
+ *    orphan; in full otherwise); the gate then publishes the view as
+ *    applied and opens, unless journal or foreign-landed orphans remain
  *    (`l1_events_orphan_recovery`, the gate stays pending).
  *
  * An own-landed orphan (a deposit or withdrawal of a landed own block whose
@@ -47,16 +49,8 @@ import { randomUUID } from "node:crypto";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Cause, Duration, Effect, Ref } from "effect";
 
-import { reconcileFollowerEvents } from "../database/follower-events.js";
-import {
-  countOrphansAwaitingRecovery,
-  deleteUnheldOrphans,
-  describeOrphansAwaitingRecovery,
-} from "../database/follower-orphan-repair.js";
-import {
-  MpfEngineStateDB,
-  PendingBlockFinalizationsDB,
-} from "../database/index.js";
+import { countOrphansAwaitingRecovery } from "../database/follower-orphan-repair.js";
+import { MpfEngineStateDB } from "../database/index.js";
 import {
   type DriverHold,
   type EventRefusal,
@@ -75,11 +69,9 @@ import {
   failureHold,
   followJournals,
   moveNativeRoot,
-  rebaseSql,
 } from "../landed-blocks/rebase.js";
 import {
   blockedRebaseHold,
-  deadJournalsFor,
   rebasePlan,
   rebasePlanOf,
   type RebaseTarget,
@@ -110,6 +102,10 @@ import {
   isTransientDriverFailure,
 } from "./l1-follower.failure-hold.js";
 import type { FollowerPlanRead } from "./l1-follower.readiness.js";
+import {
+  followerRepair,
+  type RepairFound,
+} from "./l1-follower.recompute-repair.js";
 import {
   clearLivenessIncident,
   NATIVE_MPF_RESTORE_READ_TRANSIENT,
@@ -185,7 +181,12 @@ export const makeDriverRecompute = <R = never>(options: {
     let prepared = options.startupPreparation === undefined;
     const initializeNative = options.initializeNativeOwner ?? true;
 
-    const once = (reason: string, given: IngestionPlan | undefined) =>
+    // `keyed`: the cache may reload at the keys the repair changed.
+    const once = (
+      reason: string,
+      given: IngestionPlan | undefined,
+      keyed: boolean,
+    ) =>
       Effect.gen(function* () {
         const globals = yield* Globals;
         const config = yield* NodeConfig;
@@ -273,82 +274,32 @@ export const makeDriverRecompute = <R = never>(options: {
             }),
           ),
         );
-        const ingested = { inserted: 0, refused: [] as EventRefusal[] };
-        let heldOrphans = 0;
-        let heldOrphansDetail = "";
-        // Held orphans keep the gate pending. One a foreign landed block
-        // holds is in a header that includes an event no longer on L1: the
-        // header is fault-provable and a block built on it shares the fault,
-        // so the node does not build on it until the header leaves the
-        // landed queue. That waits on another actor (a fault proof or an L1
-        // rollback), not on a retry here.
-        const describeHeld = Effect.gen(function* () {
-          if (heldOrphans > 0)
-            heldOrphansDetail =
-              yield* describeOrphansAwaitingRecovery(heldOrphans);
+        const found: RepairFound = {
+          inserted: 0,
+          refused: [],
+          heldOrphans: 0,
+          heldOrphansDetail: "",
+        };
+        const repair = followerRepair({
+          plan,
+          network: config.NETWORK,
+          slotToUnixTime: lucid.api.slotToUnixTime,
+          keyed,
+          found,
         });
-        const ingest = (dead: PendingBlockFinalizationsDB.DeadHeaders) =>
-          Effect.gen(function* () {
-            const outcome = yield* reconcileFollowerEvents(plan, {
-              network: config.NETWORK,
-              slotToUnixTime: lucid.api.slotToUnixTime,
-              cutoffMs: lucid.api.slotToUnixTime(view.point.slot),
-              dead,
-            });
-            if (outcome.kind === "stale")
-              return yield* Effect.fail(
-                followerWriteHeld(
-                  FOLLOWER_VIEW_STALE,
-                  "the follower view moved during the recompute",
-                ),
-              );
-            return outcome.ingestion;
-          });
-        const repair = (on: RebaseTarget | undefined) =>
-          Effect.gen(function* () {
-            const dead = yield* deadJournalsFor(on);
-            const first = yield* ingest(dead);
-            ingested.inserted = first.inserted;
-            ingested.refused = [...first.refused];
-            if (on === undefined) {
-              heldOrphans = first.orphans;
-              yield* describeHeld;
-              return undefined;
-            }
-            const rebased = yield* rebaseSql(on);
-            if ((yield* deleteUnheldOrphans(dead)) > 0) {
-              yield* ingest(dead);
-              const again = yield* rebaseTargetOf(
-                yield* retrieveRows,
-                on.journals,
-              );
-              if (again.kind !== "ready")
-                return yield* Effect.fail(
-                  new Error(
-                    `the rebase target became unready after the orphan repair: ${again.detail}`,
-                  ),
-                );
-              yield* rebaseSql(again.target);
-            }
-            // The rebase released its dead journals' events to awaiting;
-            // the due ones are projected again at once, for the next block
-            // to carry.
-            heldOrphans = (yield* ingest(dead)).orphans;
-            yield* describeHeld;
-            return rebased;
-          });
         const complete = (on: RebaseTarget | undefined) =>
           recovery.runRecovery(
             asDriver(withFollowerWrite(repair(on))),
             Effect.suspend(() =>
-              heldOrphans === 0
+              found.heldOrphans === 0
                 ? publishDriverView(epoch, view)
                 : holdDriverRecompute(
                     epoch,
                     EVENTS_ORPHAN_RECOVERY,
-                    heldOrphansDetail,
+                    found.heldOrphansDetail,
                   ),
             ),
+            (repaired) => repaired.changes,
           );
         const attempt = Effect.gen(function* () {
           if (target === undefined) {
@@ -429,24 +380,28 @@ export const makeDriverRecompute = <R = never>(options: {
             detail: "the rebase waits for the ledger store lease",
           });
         yield* clearLivenessIncident(globals, LANDED_BLOCK_REBASE_SOURCE);
-        if (result.right.outcome !== undefined)
-          yield* followJournals(globals, result.right.outcome);
-        if (heldOrphans > 0)
+        const rebased = result.right.outcome?.outcome;
+        if (rebased !== undefined) yield* followJournals(globals, rebased);
+        if (found.heldOrphans > 0)
           return heldOutcome({
             reason: EVENTS_ORPHAN_RECOVERY,
-            detail: heldOrphansDetail,
+            detail: found.heldOrphansDetail,
           });
         return {
           published: true,
           hold: undefined,
-          inserted: ingested.inserted,
-          refused: ingested.refused,
+          inserted: found.inserted,
+          refused: found.refused,
         } satisfies RecomputeOutcome;
       });
 
-    const run = (reason: string, plan?: IngestionPlan) =>
+    const runOnce = (
+      reason: string,
+      plan: IngestionPlan | undefined,
+      keyed: boolean,
+    ) =>
       serial
-        .withPermits(1)(once(reason, plan))
+        .withPermits(1)(once(reason, plan, keyed))
         .pipe(
           Effect.catchAllCause((cause) =>
             Effect.succeed(
@@ -461,6 +416,8 @@ export const makeDriverRecompute = <R = never>(options: {
           ),
           Effect.provide(runtime),
         );
+    const run = (reason: string, plan?: IngestionPlan) =>
+      runOnce(reason, plan, false);
 
     // From a commit's journal insert to the promotion after its worker, the
     // live journal's root is ahead of the native MPF's while the commit's
@@ -481,7 +438,7 @@ export const makeDriverRecompute = <R = never>(options: {
         )
           return undefined;
         if (due.kind === "blocked") return blockedRebaseHold(due);
-        return (yield* run(reason)).hold;
+        return (yield* runOnce(reason, undefined, true)).hold;
       }).pipe(
         Effect.catchAllCause((cause) =>
           Effect.succeed(

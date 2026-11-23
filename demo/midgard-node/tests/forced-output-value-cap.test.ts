@@ -39,7 +39,7 @@ import {
 } from "../../midgard-fault-proofs/tests/support/long-asset-name-value.js";
 import { ForcedTransactionsDB } from "../src/database/index.js";
 import { classifyForcedTransactions } from "../src/mpf/event-window.classify-forced-transactions.js";
-import { computeUtxoPayloadRoot } from "../src/mpf/payload-size.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import {
   forcedEntry,
@@ -327,7 +327,7 @@ describe("forced transaction output Value at the 5,000-byte cap", () => {
       expect(replay.rejection?.code ?? null).toBe(expectedCode);
 
       const priorRoot = await Effect.runPromise(
-        computeUtxoPayloadRoot(
+        computeLedgerMpfRootFromLedgerEntries(
           [...initialState.entries()].map(([key, value]) => ({
             outref: Buffer.from(key, "hex"),
             output: value,

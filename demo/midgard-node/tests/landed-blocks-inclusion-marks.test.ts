@@ -294,7 +294,8 @@ describe("inclusion marks on the pending tables", { concurrent: false }, () => {
   it("keeps the members of a folded own block out of a later rebuild that rejects another", async () => {
     // frontier (E0) -> own block O (E0 -> E1, includes b); a spends E1. O
     // lands, applied, and folds; foreign Y (E1 -> E2) on O then rejects a.
-    const b = nativeTx(21, [], 1);
+    // b is O's whole delta: it spends E0 and produces E1.
+    const b = { ...nativeTx(21, [E0.outref], 1), produced: [E1] };
     const a = nativeTx(22, [E1.outref], 2);
     const native: Native = freshNative();
     const globals = await processOf(native);

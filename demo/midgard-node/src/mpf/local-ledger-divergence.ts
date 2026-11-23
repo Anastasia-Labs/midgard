@@ -7,18 +7,13 @@
  * block's. Each check that compares them fails with
  * `LocalLedgerDivergenceError`, which names the check. The main thread
  * counts each divergence in `midgard_local_ledger_divergence_total`, the
- * series the Prometheus exporter reads and the alert rules select: a check
- * it runs counts as it fails, and a commit worker's check counts when the
- * worker's output reaches it. A worker thread's metrics stay in that
- * thread, so a worker never counts its own.
+ * series the Prometheus exporter reads and the alert rules select, as the
+ * check it runs fails.
  */
 import { Data, Effect, Metric } from "effect";
 
 /**
  * Where a divergence was found:
- * - `commit_base_landed`, `commit_base_confirmed_ledger`: the commit base;
- *   no check raises them, since the commit base reads the ledger store,
- *   whose reads this node trusts;
  * - `confirmed_ledger`: `confirmed_ledger` against the frontier's root, in
  *   the full verification the main thread runs off the commit path
  *   (`confirmed-ledger-verification.ts`);
@@ -27,8 +22,6 @@ import { Data, Effect, Metric } from "effect";
  *   or one of those deltas that does not apply to the ledger before it.
  */
 export const LEDGER_DIVERGENCE_CHECKS = [
-  "commit_base_landed",
-  "commit_base_confirmed_ledger",
   "confirmed_ledger",
   "confirmed_ledger_tail",
 ] as const;
@@ -36,13 +29,10 @@ export const LEDGER_DIVERGENCE_CHECKS = [
 export type LedgerDivergenceCheck = (typeof LEDGER_DIVERGENCE_CHECKS)[number];
 
 /**
- * The checks whose divergence holds commits: the commit base's two and
- * the two of the full verification of the landed ledger the landed commit
- * base builds on.
+ * The checks whose divergence holds commits: the two of the full
+ * verification of the landed ledger the landed commit base builds on.
  */
 export const COMMIT_BASE_DIVERGENCE_CHECKS = [
-  "commit_base_landed",
-  "commit_base_confirmed_ledger",
   "confirmed_ledger",
   "confirmed_ledger_tail",
 ] as const satisfies readonly LedgerDivergenceCheck[];
@@ -95,15 +85,7 @@ export const exportLedgerDivergenceSeries: Effect.Effect<void> = Effect.forEach(
   { discard: true },
 );
 
-/** Counts `divergence` under its check, in the main thread only (above). */
+/** Counts `divergence` under its check. */
 export const countLedgerDivergence = (
   divergence: Pick<LedgerDivergence, "check">,
 ): Effect.Effect<void> => Metric.increment(divergenceSeries(divergence.check));
-
-/** Fails with the divergence unless `derivedRoot` is `root`; counts nothing. */
-export const checkLedgerRoot = (
-  divergence: LedgerDivergence & Readonly<{ derivedRoot: string }>,
-): Effect.Effect<void, LocalLedgerDivergenceError> =>
-  divergence.derivedRoot === divergence.root
-    ? Effect.void
-    : Effect.fail(new LocalLedgerDivergenceError(divergence));

@@ -21,7 +21,10 @@ import {
   validationPhaseBLockWaitTimer,
   ValidationPipelineEpochError,
 } from "./mempool-ledger-cache.mempool-ledger-cache-service.js";
-import { makeSpendableView } from "./mempool-ledger-cache.spendable-view.js";
+import {
+  contiguousEntriesAfter,
+  makeSpendableView,
+} from "./mempool-ledger-cache.spendable-view.js";
 
 export const makeMempoolLedgerCacheService = (
   globals: Globals,
@@ -69,21 +72,8 @@ export const makeMempoolLedgerCacheService = (
       stateVersion = cachedVersion;
     };
 
-    const contiguousIncrementalEntries = (
-      journal: MempoolLedgerDeltaLog,
-      fromVersion: number = cachedVersion,
-    ): readonly MempoolLedgerDelta[] | undefined => {
-      const needed = journal.entries.filter(
-        (entry) => entry.version > fromVersion,
-      );
-      return needed.length === journal.version - fromVersion &&
-        needed.every(
-          (entry, index) => entry.version === fromVersion + index + 1,
-        ) &&
-        needed.every((entry) => !entry.full)
-        ? needed
-        : undefined;
-    };
+    const contiguousIncrementalEntries = (journal: MempoolLedgerDeltaLog) =>
+      contiguousEntriesAfter(journal, cachedVersion);
 
     const applyIncrementalEntries = (
       entries: readonly MempoolLedgerDelta[],
@@ -302,7 +292,7 @@ export const makeMempoolLedgerCacheService = (
       );
       return {
         epoch: retired.epoch,
-        runRecovery: (repairDurable, publishReady) =>
+        runRecovery: (repairDurable, publishReady, durableChanges) =>
           claimLock.withPermits(1)(
             withPhaseBLock(
               persistenceLock.withPermits(1)(
@@ -311,7 +301,18 @@ export const makeMempoolLedgerCacheService = (
                   const result = yield* repairDurable;
                   yield* requireCurrent;
                   speculativePatches.clear();
-                  yield* fullReload;
+                  const changes = durableChanges?.(result);
+                  if (changes === undefined) yield* fullReload;
+                  else {
+                    // The repair publishes no delta: the journal brings the
+                    // state to the repair's start, then its changed keys
+                    // are read again.
+                    yield* synchronize;
+                    for (const key of changes.keys) durableState.delete(key);
+                    for (const [key, output] of changes.spendable)
+                      durableState.set(key, Buffer.from(output));
+                    rebuildCombinedState();
+                  }
                   yield* requireCurrent;
                   // Parked retired Phase-A jobs retain old ordering tails.
                   // Their epoch checks fence writes; fresh work must not wait
@@ -346,7 +347,7 @@ export const makeMempoolLedgerCacheService = (
       pipeline: Ref.get(pipeline),
       journal: Ref.get(globals.MEMPOOL_LEDGER_DELTA_LOG),
       synced: () => ({ state, version: stateVersion }),
-      entriesAfter: contiguousIncrementalEntries,
+      entriesAfter: contiguousEntriesAfter,
     });
 
     const service: MempoolLedgerCacheService = {

@@ -30,7 +30,6 @@ import {
   applyTraceLedgerOpsToMpf,
   buildTransitionTraceResult,
   computeLedgerMpfRootFromLedgerEntries,
-  computeUtxoPayloadRoot,
   configureMpfArenaLimits,
   configureMpfPathHydration,
   deleteMpfStore,
@@ -442,12 +441,6 @@ describe("Midgard MPF wrapper", () => {
         mpf,
         entries,
       );
-      const payloadRoot = yield* computeUtxoPayloadRoot(
-        entries.map((entry) => ({
-          outref: entry[Ledger.Columns.OUTREF],
-          output: entry[Ledger.Columns.OUTPUT],
-        })),
-      );
       const obsoleteRawOutputRoot = yield* keyValuePhasRoot(
         entries.map((entry) => entry[Ledger.Columns.OUTREF]),
         entries.map((entry) => entry[Ledger.Columns.OUTPUT]),
@@ -460,7 +453,6 @@ describe("Midgard MPF wrapper", () => {
       }).value;
 
       expect(hydratedRoot).toBe(expectedRoot);
-      expect(payloadRoot).toBe(expectedRoot);
       expect(obsoleteRawOutputRoot).not.toBe(expectedRoot);
       expect(removedStaleEntry._tag).toBe("None");
       expect(hydratedDescriptor._tag).toBe("Some");

@@ -11,6 +11,22 @@ import {
 import type { MempoolLedgerDelta, MempoolLedgerDeltaLog } from "./globals.js";
 
 /**
+ * The journal entries after `fromVersion`, when they are contiguous and none
+ * is a full-reload marker; `undefined` otherwise.
+ */
+export const contiguousEntriesAfter = (
+  journal: MempoolLedgerDeltaLog,
+  fromVersion: number,
+): readonly MempoolLedgerDelta[] | undefined => {
+  const needed = journal.entries.filter((entry) => entry.version > fromVersion);
+  return needed.length === journal.version - fromVersion &&
+    needed.every((entry, index) => entry.version === fromVersion + index + 1) &&
+    needed.every((entry) => !entry.full)
+    ? needed
+    : undefined;
+};
+
+/**
  * Membership in the cache's `state`, with the journal entries published since
  * `state` was last synchronized laid over it, so a deposit projected while
  * validation is idle is already spendable. `state` changes only inside

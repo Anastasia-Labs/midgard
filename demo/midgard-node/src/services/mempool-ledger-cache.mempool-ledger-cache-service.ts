@@ -66,14 +66,26 @@ export type MempoolLedgerCacheService = {
   readonly spendableView: Effect.Effect<SpendableView>;
 };
 
+/**
+ * The working-ledger keys (hex outrefs) a repair changed, and the spendable
+ * outputs among them as it left them.
+ */
+export type DurableChanges = Readonly<{
+  keys: ReadonlySet<string>;
+  spendable: ReadonlyMap<string, Buffer>;
+}>;
+
 export type CanonicalCacheRecovery = {
   readonly epoch: number;
   /** Runs under claim -> Phase B -> persistence. Both callbacks may take the
    * SQL authority lock, but must not reacquire cache locks or publish deltas.
-   * The owner must first drain all external delta producers/worker sessions. */
+   * The owner must first drain all external delta producers/worker sessions.
+   * The cache then reloads in full, or, when `durableChanges` names the
+   * keys the repair changed, at those keys only. */
   readonly runRecovery: <A, E, R, E2, R2>(
     repairDurable: Effect.Effect<A, E, R>,
     publishReady: Effect.Effect<void, E2, R2>,
+    durableChanges?: (result: A) => DurableChanges | undefined,
   ) => Effect.Effect<
     A,
     E | E2 | DatabaseError | ValidationPipelineEpochError,

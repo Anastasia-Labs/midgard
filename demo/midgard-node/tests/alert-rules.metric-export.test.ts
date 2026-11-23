@@ -114,7 +114,7 @@ const exportedFamilies = () =>
           Metric.tagged(
             localLedgerDivergenceCounter,
             "check",
-            "commit_base_landed",
+            "confirmed_ledger",
           ),
         );
         yield* Metric.value(mergeFailureCounter);

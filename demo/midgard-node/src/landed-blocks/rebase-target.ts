@@ -14,10 +14,7 @@
  */
 import { Effect } from "effect";
 
-import {
-  ConfirmedLedgerDB,
-  PendingBlockFinalizationsDB,
-} from "../database/index.js";
+import { PendingBlockFinalizationsDB } from "../database/index.js";
 import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
 import { type DriverHold, notRetried } from "../l1-events/driver.js";
 import { followerWriteHeld } from "../services/follower-write-gate.js";
@@ -25,15 +22,7 @@ import type { NativeMpfOwnerService } from "../services/mpf-native-owner/protoco
 import { retrieveMergeLinks } from "./confirmed-merges.js";
 import { LANDED_BLOCK_REBASE_PENDING } from "./holds.js";
 import { liveJournal } from "./journal.js";
-import {
-  applyDelta,
-  type LandedChain,
-  landedChain,
-  type LandedLedger,
-  landedLedger,
-  type LedgerMap,
-  ledgerMap,
-} from "./ledger.js";
+import { type LandedChain, landedChain } from "./ledger.js";
 import {
   type OwnJournalDisposition,
   ownJournalDisposition,
@@ -53,15 +42,10 @@ export type TargetStep = Readonly<{
   row?: LandedBlockRow;
 }>;
 
-/** The landed chain with the ledger at its frontier, read only for a
- * rebase that runs. */
-export type RebaseLedger = LandedChain & Pick<LandedLedger, "confirmed">;
-
-/** `L`: the landed chain the target is over, with the ledger at its
- * frontier (`RebaseLedger`) once a rebase runs on it. */
-export type RebaseTarget<L extends LandedChain = RebaseLedger> = Readonly<{
+export type RebaseTarget = Readonly<{
   rows: readonly LandedBlockRow[];
-  landed: L;
+  /** The landed chain the target is over. */
+  landed: LandedChain;
   /** The processed chain then the live own block, in order. */
   steps: readonly TargetStep[];
   /** The processed tip `T`. */
@@ -74,7 +58,7 @@ export type RebaseTarget<L extends LandedChain = RebaseLedger> = Readonly<{
 /** The blocked detail while a block the target does not hold marks rows. */
 export const AWAITING_MARKING_BLOCK = "awaiting landed-block processing";
 
-export type RebasePlan<L extends LandedChain = RebaseLedger> =
+export type RebasePlan =
   | Readonly<{ kind: "none" }>
   | Readonly<{
       kind: "blocked";
@@ -84,7 +68,7 @@ export type RebasePlan<L extends LandedChain = RebaseLedger> =
     }>
   | Readonly<{
       kind: "ready";
-      target: RebaseTarget<L>;
+      target: RebaseTarget;
       /** Set when the native MPF's root is the only reason it is due. */
       drift?: NativeRootDrift;
     }>;
@@ -96,7 +80,7 @@ export type NativeRootDrift = Readonly<{
 }>;
 
 /** The root the target ends at: the live own block's, or the processed tip's. */
-export const targetRoot = (target: RebaseTarget<LandedChain>) =>
+export const targetRoot = (target: RebaseTarget) =>
   target.steps.at(-1)?.utxosRoot ?? target.landed.frontier.utxosRoot;
 
 /**
@@ -107,7 +91,7 @@ export const targetRoot = (target: RebaseTarget<LandedChain>) =>
  */
 export const nativeRootDrift = (
   owner: NativeMpfOwnerService,
-  target: RebaseTarget<LandedChain>,
+  target: RebaseTarget,
 ) =>
   Effect.map(
     Effect.tryPromise({
@@ -139,9 +123,9 @@ const NO_FRONTIER: Extract<RebasePlan, { kind: "blocked" }> = {
 const NOT_DUE: Extract<RebasePlan, { kind: "none" }> = { kind: "none" };
 
 /** The target over `rows` and their landed chain `landed`. */
-const targetOn = <L extends LandedChain>(
+const targetOn = (
   rows: readonly LandedBlockRow[],
-  landed: L,
+  landed: LandedChain,
   journals: OwnJournalDisposition,
 ) =>
   Effect.gen(function* () {
@@ -150,7 +134,7 @@ const targetOn = <L extends LandedChain>(
         kind: "blocked",
         reason: journals.held.reason,
         detail: journals.held.detail,
-      } satisfies RebasePlan<L>;
+      } satisfies RebasePlan;
     const onChain = new Set(landed.chain.map((row) => row.headerHash));
     const stray = rows.find(
       (row) => row.state === "processed" && !onChain.has(row.headerHash),
@@ -159,7 +143,7 @@ const targetOn = <L extends LandedChain>(
       return {
         kind: "blocked",
         detail: `processed block ${stray.headerHash} does not chain from the confirmed-ledger frontier ${landed.frontier.headerHash}`,
-      } satisfies RebasePlan<L>;
+      } satisfies RebasePlan;
     const last = landed.chain.at(-1);
     const tip: HeaderRoot = last ?? landed.frontier;
     const steps: TargetStep[] = landed.chain.map((row) => ({
@@ -174,7 +158,7 @@ const targetOn = <L extends LandedChain>(
       journals.dispose.map((disposal) => disposal.headerHash),
     );
     const active = yield* liveJournal(journals.dead);
-    let live: RebaseTarget<L>["live"];
+    let live: RebaseTarget["live"];
     if (active !== undefined) {
       if (
         active.baseTailHeaderHash !== tip.headerHash ||
@@ -183,7 +167,7 @@ const targetOn = <L extends LandedChain>(
         return {
           kind: "blocked",
           detail: `awaiting own journal resolution: live own block ${active.headerHash} is built on ${active.baseTailHeaderHash}, the processed landed tip is ${tip.headerHash}`,
-        } satisfies RebasePlan<L>;
+        } satisfies RebasePlan;
       live = active;
       steps.push({
         headerHash: active.headerHash,
@@ -205,11 +189,11 @@ const targetOn = <L extends LandedChain>(
       return {
         kind: "blocked",
         detail: `${AWAITING_MARKING_BLOCK}: block ${unheld} marks pending-table rows as included and the processed landed chain does not hold it`,
-      } satisfies RebasePlan<L>;
+      } satisfies RebasePlan;
     return {
       kind: "ready",
       target: { rows, landed, steps, tip, live, journals },
-    } satisfies RebasePlan<L>;
+    } satisfies RebasePlan;
   });
 
 /**
@@ -222,7 +206,7 @@ export const rebaseTargetOf = (
   journals: OwnJournalDisposition,
 ) =>
   Effect.gen(function* () {
-    const landed = yield* landedLedger(rows);
+    const landed = yield* landedChain(rows);
     if (landed === undefined) return NO_FRONTIER;
     return yield* targetOn(rows, landed, journals);
   });
@@ -234,7 +218,7 @@ export const rebaseTargetOf = (
  * over the landed chain; it reads no `confirmed_ledger` row. Without
  * `owner`, the native root is not read.
  */
-const chainPlanOf = (
+export const rebasePlanOf = (
   journals: OwnJournalDisposition,
   owner?: NativeMpfOwnerService,
 ) =>
@@ -247,41 +231,18 @@ const chainPlanOf = (
       rebaseNeeded(rows) ||
       journals.dispose.length > 0;
     if (!due && owner === undefined) return NOT_DUE;
-    const on: RebasePlan<LandedChain> = yield* targetOn(rows, landed, journals);
+    const on: RebasePlan = yield* targetOn(rows, landed, journals);
     if (due) return on;
     if (owner === undefined || on.kind !== "ready") return NOT_DUE;
     const drift = yield* nativeRootDrift(owner, on.target);
     return drift === undefined ? NOT_DUE : { ...on, drift };
   });
 
-/**
- * `chainPlanOf`, with the ledger at the frontier (`confirmed_ledger`) read
- * for a ready plan: the target the rebase runs on. The rebase reads it in
- * the follower write transaction, so no fold moves the frontier between
- * the two reads.
- */
-export const rebasePlanOf = (
-  journals: OwnJournalDisposition,
-  owner?: NativeMpfOwnerService,
-) =>
-  Effect.gen(function* () {
-    const plan = yield* chainPlanOf(journals, owner);
-    if (plan.kind !== "ready") return plan;
-    const confirmed = yield* ConfirmedLedgerDB.retrieve;
-    return {
-      ...plan,
-      target: {
-        ...plan.target,
-        landed: { ...plan.target.landed, confirmed },
-      },
-    } satisfies RebasePlan;
-  });
-
-/** Whether a rebase is due and can run (`chainPlanOf`), over the own-journal
- * disposition it reads first; it reads no `confirmed_ledger` row. */
+/** Whether a rebase is due and can run (`rebasePlanOf`), over the
+ * own-journal disposition it reads first. */
 export const rebasePlan = (owner?: NativeMpfOwnerService) =>
   Effect.flatMap(ownJournalDisposition, (journals) =>
-    chainPlanOf(journals, owner),
+    rebasePlanOf(journals, owner),
   );
 
 /**
@@ -311,14 +272,7 @@ export const deadJournalsFor = (target: RebaseTarget | undefined) =>
   });
 
 /** The root after each step of the target; index 0 is the frontier's. */
-export const targetRoots = (target: RebaseTarget<LandedChain>) => [
+export const targetRoots = (target: RebaseTarget) => [
   target.landed.frontier.utxosRoot,
   ...target.steps.map((step) => step.utxosRoot),
 ];
-
-/** The ledger at the target's end: the frontier's with every step's delta. */
-export const targetLedger = (target: RebaseTarget): LedgerMap => {
-  const ledger = ledgerMap(target.landed.confirmed);
-  for (const step of target.steps) applyDelta(ledger, step);
-  return ledger;
-};

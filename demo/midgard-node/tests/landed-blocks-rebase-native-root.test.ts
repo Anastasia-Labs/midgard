@@ -116,6 +116,17 @@ const commitWindow = (globals: Globals, native: Native, promote: boolean) =>
     ),
   );
 
+/** The follower prunes the own block's commit intent: its journal is dead. */
+const killOwn = (globals: Globals) =>
+  run(
+    globals,
+    Effect.flatMap(
+      SqlClient.SqlClient,
+      (sql) =>
+        sql`DELETE FROM l1_intents WHERE tx_hash = ${simCommitTxHash(Buffer.from(OWN, "hex"))}`,
+    ),
+  );
+
 describe("native MPF root drift", () => {
   it("a commit's producer between its journal insert and its promotion holds the drift", async () => {
     const native = freshNative();
@@ -171,14 +182,7 @@ describe("native MPF root drift", () => {
     expect(native.durableRoot).toBe(R2);
     // S6 pruned the commit's intent: its journal is dead, with no effect
     // pending for the rebase to dispose of.
-    await run(
-      globals,
-      Effect.flatMap(
-        SqlClient.SqlClient,
-        (sql) =>
-          sql`DELETE FROM l1_intents WHERE tx_hash = ${simCommitTxHash(Buffer.from(OWN, "hex"))}`,
-      ),
-    );
+    await killOwn(globals);
     expect(await run(globals, rebasePlan())).toEqual({ kind: "none" });
     const shown = await attempt(globals);
     expect(shown.hold).toBeUndefined();
@@ -186,5 +190,24 @@ describe("native MPF root drift", () => {
     expect(native.durableRoot).toBe(R1);
     expect(shown.working).toEqual([hex(E1.outref)]);
     expect(await run(globals, liveHeader)).toEqual(Option.none());
+  });
+
+  it("a live journal the working ledger took in that dies: the rebase takes its delta out again", async () => {
+    const native = freshNative();
+    const globals = await landed(native);
+    await commitWindow(globals, native, false);
+    // The rebase applies the live journal: the working ledger holds its
+    // output, which no transaction and no deposit row names.
+    const live = await attempt(globals);
+    expect(live.hold).toBeUndefined();
+    expect(live.working.sort()).toEqual(
+      [hex(E1.outref), hex(DEPOSIT.outref)].sort(),
+    );
+    await killOwn(globals);
+    const shown = await attempt(globals);
+    expect(shown.hold).toBeUndefined();
+    expect(shown.due).toBe("none");
+    expect(native.durableRoot).toBe(R1);
+    expect(shown.working).toEqual([hex(E1.outref)]);
   });
 });
