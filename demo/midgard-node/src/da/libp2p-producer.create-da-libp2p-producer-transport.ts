@@ -24,8 +24,8 @@ import {
   type DaProducerStream,
   type DaProducerTransport,
   type DaProducerTransportOptions,
-  type DaRetainedPayloadLookup,
   type DaRetainedPayloadServer,
+  type DaRetainedPayloadServerLookups,
 } from "./libp2p-producer.parse-committee-peers.js";
 import {
   loadDaProducerPublicationManifestFromEnv,
@@ -33,10 +33,9 @@ import {
 } from "./libp2p-producer.parse-da-producer-publication-manifest.js";
 
 export const startDaLibp2pRetainedPayloadServerFromEnv = async ({
-  retrieveByHeaderHash,
   env = process.env,
-}: {
-  readonly retrieveByHeaderHash: DaRetainedPayloadLookup;
+  ...lookups
+}: DaRetainedPayloadServerLookups & {
   readonly env?: NodeJS.ProcessEnv;
 }): Promise<DaRetainedPayloadServer> => {
   const manifest = await loadDaProducerPublicationManifestFromEnv(env);
@@ -48,7 +47,7 @@ export const startDaLibp2pRetainedPayloadServerFromEnv = async ({
   }
   const requestHandlers = createDaLibp2pRetainedPayloadRequestHandlers({
     manifest,
-    retrieveByHeaderHash,
+    ...lookups,
   });
   const transport = await createDaLibp2pProducerTransport(manifest, {
     mode: "bind-listen",

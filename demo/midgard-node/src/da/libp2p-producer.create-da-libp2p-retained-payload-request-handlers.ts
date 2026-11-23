@@ -6,20 +6,31 @@ import {
 import {
   computeDaSha256Hash,
   daDeploymentFingerprintFromHex,
+  daLedgerSnapshotPage,
+  type DaLedgerSnapshotRequest,
+  type DaLedgerSnapshotResponse,
   type DaPayloadChunkManifest,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
+  decodeDaLedgerSnapshotRequestCbor,
   decodeDaPayloadByHeaderRequestCbor,
   decodeDaPayloadChunkRequestCbor,
+  encodeDaLedgerSnapshotResponseCbor,
   encodeDaMetadataByHeaderResponseCbor,
   encodeDaPayloadByHeaderResponseCbor,
   encodeDaPayloadChunkResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
+import {
+  LedgerNodeMissing,
+  LedgerNotRetained,
+  LedgerOutputMissing,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 
 import {
+  type DaLedgerSnapshotLookup,
   type DaProducerPublicationManifest,
   type DaProducerStreamHandler,
-  type DaRetainedPayloadLookup,
+  type DaRetainedPayloadServerLookups,
 } from "./libp2p-producer.parse-committee-peers.js";
 import {
   emptyRetainedPayloadMetadataResponse,
@@ -30,12 +41,16 @@ import {
   type RetainedPayloadResolution,
 } from "./libp2p-producer.parse-da-producer-publication-manifest.js";
 
+/**
+ * The stream handlers of the retained-payload protocols, and of
+ * `ledger-snapshot` when `ledgerEntries` is given.
+ */
 export const createDaLibp2pRetainedPayloadRequestHandlers = ({
   manifest,
   retrieveByHeaderHash,
-}: {
+  ledgerEntries,
+}: DaRetainedPayloadServerLookups & {
   readonly manifest: DaProducerPublicationManifest;
-  readonly retrieveByHeaderHash: DaRetainedPayloadLookup;
 }): ReadonlyMap<string, DaProducerStreamHandler> => {
   const deploymentFingerprint = daDeploymentFingerprintFromHex(
     manifest.deploymentFingerprint,
@@ -234,7 +249,61 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
     },
   );
 
+  if (ledgerEntries !== undefined)
+    addHandler(
+      DaRequestResponseProtocol.ledgerSnapshot,
+      async (requestCbor) => {
+        const request = decodeRetainedPayloadRequest(
+          () => decodeDaLedgerSnapshotRequestCbor(requestCbor),
+          "ledger-snapshot request",
+        );
+        if (!request.deploymentFingerprint.equals(deploymentFingerprint)) {
+          return encodeDaLedgerSnapshotResponseCbor({ status: "rejected" });
+        }
+        return encodeDaLedgerSnapshotResponseCbor(
+          await ledgerSnapshotResponse(
+            ledgerEntries,
+            request,
+            manifest.maxInlineResponseBytes,
+          ),
+        );
+      },
+    );
+
   return handlerMap;
+};
+
+/**
+ * One page of the ledger `request` names, opened afresh at its root and
+ * read from its cursor: the server keeps nothing between pages. A root the
+ * store does not hold, or one whose node or output a read no longer finds
+ * (a `retain` dropped it, or a fold's spent rows were pruned), is
+ * `not_held`; the asker tries another peer.
+ */
+const ledgerSnapshotResponse = async (
+  ledgerEntries: DaLedgerSnapshotLookup,
+  request: DaLedgerSnapshotRequest,
+  maxResponseBytes: number,
+): Promise<DaLedgerSnapshotResponse> => {
+  try {
+    const entries = await ledgerEntries(
+      request.utxosRoot.toString("hex"),
+      request.after ?? undefined,
+    );
+    if (entries === undefined) return { status: "not_held" };
+    return {
+      status: "ok",
+      ...(await daLedgerSnapshotPage(entries, maxResponseBytes)),
+    };
+  } catch (error) {
+    if (
+      error instanceof LedgerNotRetained ||
+      error instanceof LedgerNodeMissing ||
+      error instanceof LedgerOutputMissing
+    )
+      return { status: "not_held" };
+    throw error;
+  }
 };
 
 export const loadAndValidateProducerIdentity = async (

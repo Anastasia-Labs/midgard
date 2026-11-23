@@ -5,6 +5,7 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { Effect, Option, pipe, Ref } from "effect";
 
+import type { DaLedgerSnapshotLookup } from "../da/libp2p-producer.parse-committee-peers.js";
 import { closeDaLibp2pPublicationTransport } from "../da/libp2p-producer.publication-transport.js";
 import {
   assertDaHardeningProviderStartup,
@@ -272,6 +273,17 @@ export const runNode = (
           ),
         ),
       );
+    // `ledger-snapshot` pages from the native MPF owner's ledger store; none
+    // until the follower's first recompute has started the owner.
+    const ledgerSnapshotEntries: DaLedgerSnapshotLookup = async (
+      utxosRoot,
+      after,
+    ) => {
+      const owner = Effect.runSync(Ref.get(globals.NATIVE_MPF_OWNER));
+      if (owner === undefined) return undefined;
+      const ledger = await owner.ledger(utxosRoot);
+      return ledger.entries(after === undefined ? {} : { after });
+    };
 
     // `/submit` and `/peer/txs` check on one pool.
     const publishHttp = Effect.flatMap(acquireSubmitCheckPool, (checkPool) =>
@@ -294,9 +306,10 @@ export const runNode = (
             nodeConfig,
             withMonitoring,
             startupFibers: {
-              retainedPayloadServer: retainedPayloadServerThread(
-                retrieveRetainedDaPayload,
-              ),
+              retainedPayloadServer: retainedPayloadServerThread({
+                retrieveByHeaderHash: retrieveRetainedDaPayload,
+                ledgerEntries: ledgerSnapshotEntries,
+              }),
             },
           }),
           {

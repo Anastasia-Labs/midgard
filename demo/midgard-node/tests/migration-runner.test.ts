@@ -114,6 +114,7 @@ describe("splitSqlStatements", () => {
       [37, "own_block_derived_status", true],
       [38, "confirmed_ledger_generation", true],
       [39, "landed_produced_outref_index", true],
+      [40, "confirmed_ledger_spent_outref_index", true],
     ]);
   });
 

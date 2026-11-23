@@ -131,6 +131,27 @@ export type DaRetainedPayloadLookup = (
   headerHash: Buffer,
 ) => Promise<DaPayloadsDB.Row | undefined>;
 
+/**
+ * The entries of the ledger whose root is `utxosRoot` (lowercase hex), in
+ * trie path order, strictly after the out-ref `after` when given; resolves
+ * to `undefined` while the node cannot open ledgers yet. A root the ledger
+ * store does not hold is refused with its `LedgerNotRetained`.
+ */
+export type DaLedgerSnapshotLookup = (
+  utxosRoot: string,
+  after: Buffer | undefined,
+) => Promise<
+  | AsyncIterable<{ readonly outRef: Buffer; readonly output: Buffer }>
+  | undefined
+>;
+
+/** What the retained-payload listener serves from. */
+export type DaRetainedPayloadServerLookups = {
+  readonly retrieveByHeaderHash: DaRetainedPayloadLookup;
+  /** Serves `ledger-snapshot` when given. */
+  readonly ledgerEntries?: DaLedgerSnapshotLookup;
+};
+
 export type DaRetainedPayloadServer = {
   readonly configured: boolean;
   readonly deploymentFingerprint?: string;

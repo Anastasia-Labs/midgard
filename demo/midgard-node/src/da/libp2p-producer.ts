@@ -28,6 +28,7 @@ export { createDaLibp2pRetainedPayloadRequestHandlers } from "./libp2p-producer.
 export {
   type DaEnvelopeCapabilityMode,
   type DaEnvelopeCapabilityPeerResult,
+  type DaLedgerSnapshotLookup,
   type DaLibp2pPreflightFailure,
   type DaLibp2pPreflightListenCheck,
   type DaLibp2pPreflightMode,
@@ -47,6 +48,7 @@ export {
   type DaProducerTransportOptions,
   type DaRetainedPayloadLookup,
   type DaRetainedPayloadServer,
+  type DaRetainedPayloadServerLookups,
 } from "./libp2p-producer.parse-committee-peers.js";
 export {
   loadDaProducerPublicationManifestFromEnv,

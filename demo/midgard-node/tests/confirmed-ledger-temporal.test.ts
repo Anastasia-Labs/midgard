@@ -9,11 +9,17 @@
  * only once the prune boundary reaches its merge, never when unfolded: the
  * pending-table rows a folded own or foreign block marked stay marked until
  * that release deletes them, and an unfold before it loses none of them.
+ * Until that release, the node's output reader still answers the outputs a
+ * fold spent, so the confirmed root before the fold stays enumerable.
  */
 
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
-import { Effect, Metric } from "effect";
+import { Effect, Metric, Runtime } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { fullScanCounter } from "../src/database/confirmedLedger.js";
@@ -25,6 +31,7 @@ import {
   retrieveMergeLinks,
 } from "../src/landed-blocks/confirmed-merges.js";
 import { CONFIRMED_LEDGER_BASE_MISMATCH } from "../src/landed-blocks/holds.js";
+import { readLedgerOutputs } from "../src/landed-blocks/ledger-outputs.js";
 import type { LandedBlockPorts } from "../src/landed-blocks/ports.js";
 import { processLandedQueue } from "../src/landed-blocks/process.js";
 import {
@@ -32,16 +39,19 @@ import {
   markApplied,
   retrieveRows,
 } from "../src/landed-blocks/store.js";
+import type { Database } from "../src/services/database.js";
 import { makeDepositEntry } from "./database.test/fixtures.events.js";
 import { insertDeposits } from "./helpers/event-rows.js";
 import { admitPending } from "./helpers/landed-blocks-sim.mempool.js";
 import { simDigest } from "./helpers/landed-blocks-sim.universe.js";
 import {
+  admitLedger,
   AFTER_A,
   block,
   confirmedAt,
   confirmedKeys,
   fixture,
+  G0,
   GENESIS,
   harness,
   hex,
@@ -312,6 +322,52 @@ describe("temporal confirmed_ledger on an own merged block", () => {
           }),
         ).toBeUndefined();
         expect((yield* Frontier.retrieve)?.headerHash).toBe(a.hash);
+      }),
+    );
+  }, 120_000);
+  it("reads the outputs a fold spent through the node's output reader until the fold is pruned, so the pre-fold root stays enumerable", async () => {
+    const { a, genesisRoot, genesisState, journalA } = await fixture();
+    const state = harness();
+    state.journals.set(a.hash, journalA);
+    const merged = queueOf(confirmedAt(a, ""), []);
+    const mergedAt7 = { ...merged, root: createdAt(merged.root!, 7) };
+    await inNode(
+      Effect.gen(function* () {
+        const runtime = yield* Effect.runtime<Database>();
+        const readOutputs = (outRefs: readonly string[]) =>
+          Runtime.runPromise(runtime)(readLedgerOutputs(outRefs));
+        // A ledger store that reads outputs as the node's does, holding the
+        // genesis ledger's trie.
+        const store = createLedgerStore({
+          ...createMemoryLedgerStorage(),
+          readOutputs,
+        });
+        yield* Effect.promise(() => admitLedger(store, GENESIS));
+        yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
+        yield* markApplied([a.hash]);
+        yield* processLandedQueue(ports(state), mergedAt7);
+        // `a` spent G0: the fold took it out of `confirmed_ledger`.
+        expect(yield* confirmedKeys).toEqual(sortedKeys(AFTER_A));
+
+        expect(
+          yield* Effect.promise(() => readOutputs([hex(G0.outref)])),
+        ).toEqual([G0.output]);
+        const genesisEntries = yield* Effect.promise(async () => {
+          const listed: { outref: Buffer; output: Buffer }[] = [];
+          for await (const { outRef, output } of (
+            await store.at(genesisRoot)
+          ).entries())
+            listed.push({ outref: outRef, output });
+          return listed;
+        });
+        expect(sortedKeys(genesisEntries)).toEqual(sortedKeys(GENESIS));
+
+        // The fold is final and its merge row pruned: its spent rows go.
+        const sql = yield* SqlClient.SqlClient;
+        expect(yield* sql.withTransaction(pruneMerges(7))).toEqual([a.hash]);
+        expect(
+          yield* Effect.promise(() => readOutputs([hex(G0.outref)])),
+        ).toEqual([undefined]);
       }),
     );
   }, 120_000);

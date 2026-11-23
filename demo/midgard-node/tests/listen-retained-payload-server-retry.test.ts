@@ -28,11 +28,14 @@ describe("retained-payload server start retries", () => {
       };
     });
     const fiber = Effect.runFork(
-      retainedPayloadServerThread(retrieve, {
-        start,
-        retryInitialMs: 10,
-        retryMaxMs: 20,
-      }),
+      retainedPayloadServerThread(
+        { retrieveByHeaderHash: retrieve },
+        {
+          start,
+          retryInitialMs: 10,
+          retryMaxMs: 20,
+        },
+      ),
     );
     await vi.waitFor(() => {
       const status = retainedPayloadServerStatus();
@@ -64,11 +67,14 @@ describe("retained-payload server start retries", () => {
       throw new Error("bind failed");
     });
     await Effect.runPromise(
-      retainedPayloadServerThread(retrieve, {
-        start,
-        retryInitialMs: 5,
-        retryMaxMs: 20,
-      }),
+      retainedPayloadServerThread(
+        { retrieveByHeaderHash: retrieve },
+        {
+          start,
+          retryInitialMs: 5,
+          retryMaxMs: 20,
+        },
+      ),
     );
     expect(delays).toEqual([5, 10, 20, 20, 20]);
     expect(retainedPayloadServerStatus()).toEqual({
