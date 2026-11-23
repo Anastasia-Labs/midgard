@@ -21,7 +21,7 @@ import { rebaseNeeded } from "../../src/landed-blocks/process.js";
 import { moveNativeRoot, rebaseSql } from "../../src/landed-blocks/rebase.js";
 import {
   rebasePlanOf,
-  walkTarget,
+  targetRoots,
 } from "../../src/landed-blocks/rebase-target.js";
 import { retrieveRows } from "../../src/landed-blocks/store.js";
 import type { NodeConfig } from "../../src/services/config.js";
@@ -155,7 +155,7 @@ export const simSettler = (
       stats.rebases += 1;
       if (plan.target.live !== undefined) stats.liveRebases += 1;
       const { durableRoot } = await env.owner.current.diagnostics();
-      if (!walkTarget(plan.target).roots.includes(durableRoot))
+      if (!targetRoots(plan.target).includes(durableRoot))
         stats.restoredRoots += 1;
       const preparation = { assertCurrent: Effect.void };
       await run(moveNativeRoot(env.owner.current, plan.target, preparation));

@@ -12,28 +12,14 @@ const NATIVE_MAX_FRAME_BYTES = 64 * 1024 * 1024;
 const NATIVE_MAX_CHUNK_BYTES = 16 * 1024 * 1024;
 
 /**
- * The ledger's Merkle Patricia forests: the root build and payload root
- * checks, the ledger database path and the native Architecture G owner
- * process that holds it.
+ * The ledger's Merkle Patricia forests: the root build, the ledger database
+ * path and the native Architecture G owner process that holds it.
  */
 export const mpfConfig = Config.all({
   MPF_SCRATCH_BUILD: Config.literal(
     "insert",
     "fromlist",
   )("MPF_SCRATCH_BUILD").pipe(Config.withDefault("insert")),
-  MPF_PAYLOAD_ROOT_CHECK: Config.literal(
-    "every_block",
-    "periodic",
-    "off",
-  )("MPF_PAYLOAD_ROOT_CHECK").pipe(Config.withDefault("every_block")),
-  MPF_PAYLOAD_AUDIT_INTERVAL_BLOCKS: positiveSafeIntegerConfig(
-    "MPF_PAYLOAD_AUDIT_INTERVAL_BLOCKS",
-    500,
-  ),
-  MPF_PAYLOAD_AUDIT_INTERVAL_MS: positiveSafeIntegerConfig(
-    "MPF_PAYLOAD_AUDIT_INTERVAL_MS",
-    6 * 60 * 60 * 1000,
-  ),
   MPF_PARALLEL_ROOTS: Config.boolean("MPF_PARALLEL_ROOTS").pipe(
     Config.withDefault(false),
   ),

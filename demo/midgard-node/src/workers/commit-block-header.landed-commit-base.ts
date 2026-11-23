@@ -1,23 +1,22 @@
 /**
- * The landed ledger a commit on a queue tail builds on, checked from the
- * verified frontier. The main thread verifies off the commit path that
+ * Where a commit on a queue tail builds, checked against the verified
+ * frontier. The main thread verifies off the commit path that
  * `confirmed_ledger` derives the frontier's root and, with the processed
- * deltas, the queue tail's (`confirmed-ledger-verification.ts`), and the
- * worker receives the frontier it verified at, with the frontier generation
- * it read (or the frontier a clean fold advanced it to,
- * `confirmed-ledger-advance.ts`). The tail's post-state is `confirmed_ledger` plus
- * the processed landed deltas from that frontier, so the commit checks only
- * those deltas: each row builds on the root before it, and its delta
- * applies cleanly (each outref once, none both spent and produced, every
- * output it spends held, none it produces held already, and the root
- * unchanged exactly when the delta is empty). Each row's own root was
- * derived when the row was processed, so the chain of roots ends at the
- * tail's root with no whole-ledger root derived here.
+ * deltas, the queue tail's (`confirmed-ledger-verification.ts`), each delta
+ * first checked to apply (`walkLandedLedger`), and the worker receives the
+ * frontier it verified at, with the frontier generation it read (or the
+ * frontier a clean fold advanced it to, `confirmed-ledger-advance.ts`). A
+ * commit on a landed tail builds while the landed frontier is that one, at
+ * that generation (`verifiedLandedRootAt`): the outputs it reads by out-ref
+ * come from `confirmed_ledger` and the processed rows after the frontier,
+ * which that run checked. The ledger itself is the ledger store's at the
+ * tail's root.
  */
 import { Data, Effect } from "effect";
 
 import {
   applyDelta,
+  type GeneratedLandedChain,
   type LandedLedger,
   type LedgerMap,
   ledgerMap,
@@ -150,32 +149,33 @@ export const walkLandedLedger = (
     return Effect.succeed(undefined);
   });
 
-type VerifiedLandedLedger = Effect.Effect<
-  LandedLedgerAt | undefined,
-  CommitBaseUnverifiedError | LocalLedgerDivergenceError
+/** Where a commit on a landed header builds: the header's post-state root
+ * and the row naming it (none at the frontier). */
+type LandedRootAt = { root: string; row?: LandedBlockRow };
+
+type VerifiedLandedRoot = Effect.Effect<
+  LandedRootAt | undefined,
+  CommitBaseUnverifiedError
 >;
 
 /**
- * The post-state of `headerHash` on `landed`: its ledger and root, and the
- * row naming it (none at the frontier), or undefined off the processed
- * chain, whatever the verification (the commit waits for processing, not
- * for it). Fails with `CommitBaseUnverifiedError` unless `landed`'s frontier
- * is `verified`, at the generation it was read at (the same header and root
- * at another generation is another ledger), and with a `commit_base_landed`
- * divergence on the first row up to `headerHash` whose delta does not
- * apply.
+ * Where a commit on `headerHash` builds on `landed`: its post-state root
+ * and the row naming it (none at the frontier), or undefined off the
+ * processed chain, whatever the verification (the commit waits for
+ * processing, not for it). Fails with `CommitBaseUnverifiedError` unless
+ * `landed`'s frontier is `verified`, at the generation it was read at (the
+ * same header and root at another generation is another ledger). It reads
+ * no ledger row.
  */
-export const verifiedLandedLedgerAt = (
-  landed: LandedLedger,
+export const verifiedLandedRootAt = (
+  landed: GeneratedLandedChain,
   headerHash: string,
   verified: VerifiedFrontier | undefined,
-): VerifiedLandedLedger =>
-  Effect.suspend((): VerifiedLandedLedger => {
+): VerifiedLandedRoot =>
+  Effect.suspend((): VerifiedLandedRoot => {
     const { frontier, generation } = landed;
-    if (
-      frontier.headerHash !== headerHash &&
-      !landed.chain.some((row) => row.headerHash === headerHash)
-    )
+    const row = landed.chain.find((each) => each.headerHash === headerHash);
+    if (frontier.headerHash !== headerHash && row === undefined)
       return Effect.succeed(undefined);
     if (
       verified?.headerHash !== frontier.headerHash ||
@@ -191,5 +191,9 @@ export const verifiedLandedLedgerAt = (
               : `confirmed_ledger was last verified at frontier ${verified.headerHash} (generation ${verified.generation}), the frontier is ${frontier.headerHash} (generation ${generation})`,
         }),
       );
-    return walkLandedLedger(landed, headerHash, "commit_base_landed");
+    return Effect.succeed(
+      row === undefined
+        ? { root: frontier.utxosRoot }
+        : { root: row.utxosRoot, row },
+    );
   });

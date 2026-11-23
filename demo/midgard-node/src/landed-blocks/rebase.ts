@@ -56,10 +56,13 @@ import {
   resetUnheldEvents,
   settleChainDeposits,
 } from "./rebase-events.js";
+import { stepEvents } from "./rebase-native-events.js";
 import {
   nativeRootDrift,
   type RebaseTarget,
-  walkTarget,
+  targetLedger,
+  targetRoot,
+  targetRoots,
 } from "./rebase-target.js";
 import {
   LandedChainRootNotRetained,
@@ -108,7 +111,7 @@ export const moveNativeRoot = (
     const drift = yield* nativeRootDrift(owner, target);
     if (drift === undefined) return;
     const { durableRoot } = drift;
-    const { roots, events } = walkTarget(target);
+    const roots = targetRoots(target);
     let from = roots.lastIndexOf(durableRoot);
     for (let index = roots.length - 1; from < 0 && index >= 0; index--) {
       yield* preparation.assertCurrent;
@@ -136,8 +139,9 @@ export const moveNativeRoot = (
     for (let index = from + 1; index < roots.length; index++) {
       const base = roots[index - 1]!;
       const expected = roots[index]!;
-      const stepEvents = events[index - 1]!;
-      if (stepEvents.length === 0) {
+      // The step's events, from point reads of its parent's ledger.
+      const events = yield* stepEvents(owner, target, index - 1);
+      if (events.length === 0) {
         if (base !== expected)
           return yield* Effect.fail(
             new Error(
@@ -155,10 +159,7 @@ export const moveNativeRoot = (
           const handle = yield* promise(() => owner.fork(base));
           yield* Effect.gen(function* () {
             const applied = yield* promise(() =>
-              owner.applyEvents(
-                handle,
-                encodeNativeMpfEventLog(base, stepEvents),
-              ),
+              owner.applyEvents(handle, encodeNativeMpfEventLog(base, events)),
             );
             if (applied.candidateRoot !== expected)
               return yield* Effect.fail(
@@ -181,7 +182,7 @@ export const moveNativeRoot = (
 /** Recomputes the working ledger and event statuses on the target. */
 export const rebaseSql = (target: RebaseTarget) =>
   Effect.gen(function* () {
-    const { ledger, roots } = walkTarget(target);
+    const ledger = targetLedger(target);
     const { dispose, dead, deadCommits } = target.journals;
     // Every processed row, foreign or this node's own: one path applies
     // both.
@@ -235,7 +236,7 @@ export const rebaseSql = (target: RebaseTarget) =>
       removed.map((row) => row.headerHash),
     );
     yield* markApplied(chained.map((row) => row.headerHash));
-    yield* MpfEngineStateDB.stampLedgerMigration(roots.at(-1)!);
+    yield* MpfEngineStateDB.stampLedgerMigration(targetRoot(target));
     return {
       ...rebuilt,
       landedCommits: new Set(landedCommits),

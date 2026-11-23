@@ -49,7 +49,6 @@ past the inclusion time of a live forced order the node has not yet written.
 | `tx-queue-processor`             | Drains the durable admission queue into validation and the mempool.                                                                                                                                                                                                                                                                                                           | None                                                |
 | `retention-sweeper`              | Removes retention-expired data, subject to the DA retention guards.                                                                                                                                                                                                                                                                                                           | None                                                |
 | `monitor-mempool`                | Emits mempool metrics. Started only with `--with-monitoring`.                                                                                                                                                                                                                                                                                                                 | None                                                |
-| `mpf-payload-audit`              | When MPF_PAYLOAD_ROOT_CHECK is enabled, audits the confirmed-ledger MPF root on its block/time schedule; divergence records the sticky commit halt.                                                                                                                                                                                                                           | `mpf-audit`                                         |
 | `native-mpf-owner-supervisor`    | Stops the node once the native MPF owner reports a terminal failure, so the process supervisor restarts it from its durable marker.                                                                                                                                                                                                                                           | None                                                |
 | `operator-watchdog`              | Strikes the scheduled operator when its shift is missed and hands the shift on; force-retires an operator at the strike limit once the patience window has passed. On by default (`OPERATOR_WATCHDOG_ENABLED`), successor acts at the threshold, other active nodes after `OPERATOR_WATCHDOG_PATIENCE_MS`. See [Operator Lifecycle](/docs/operators/node/operator-lifecycle). | `strike-inactive-operator`, `force-retire-operator` |
 
@@ -57,9 +56,7 @@ Each fiber runs on its own schedule, configured through the node's environment (
 example `WAIT_BETWEEN_MERGE_TXS` for `merge`). By default,
 `tx-queue-processor` polls every 250 ms and `admission-backlog-gauge` every 500 ms,
 `monitor-mempool` every second, and `da-publication-reconciler` every 30
-seconds. `mpf-payload-audit` wakes at the shorter of the MPF
-audit time interval and the block-commitment interval, then audits only when the
-configured block-or-time threshold is due.
+seconds.
 
 <Callout type="warn" title="attest-state-queue-once is not a fiber">
   DA attestation is not driven by a background fiber. `attest-state-queue-once`

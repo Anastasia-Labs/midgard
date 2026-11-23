@@ -24,7 +24,7 @@ import { classifyForcedTransactions } from "../src/mpf/event-window.classify-for
 import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import { forcedEntry } from "./forced-transactions.make-signed-effectful-transaction.js";
 import { fixture, rebind, verdict } from "./foreign-block-import.fixture.js";
-import { ledgerOf } from "./helpers/ledger-of.js";
+import { ledgerOf, ledgerOfOutputs } from "./helpers/ledger-of.js";
 
 /**
  * A forced transaction carrying a Plutus item whose stored program does not
@@ -120,8 +120,8 @@ describe.each(SHAPES)(
               },
             }),
           ],
-          initialState: new Map(
-            LEDGER.map((e) => [e.outRef.toString("hex"), e.output]),
+          ledger: await ledgerOfOutputs(
+            LEDGER.map((e) => [e.outRef, e.output] as const),
           ),
           blockTime: new Date(1_750_000_000_000),
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,

@@ -4,9 +4,8 @@ import {
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
-import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
+import { walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect, Logger } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -46,13 +45,18 @@ import {
  * or duplicated.
  */
 
-// Phase A accepts normal transactions; Phase B applies them in order over the
-// pre-state and rejects one whose input is missing, as the real one does.
+// Phase A accepts normal transactions with their input graphs; Phase B
+// applies them in order over the pre-state and rejects one whose input is
+// missing, as the real one does.
 const graphs = vi.hoisted(
   () =>
     new Map<
       string,
-      { spent: readonly string[]; produced: readonly LedgerUtils.Entry[] }
+      {
+        spentOutRefHexes: readonly string[];
+        referenceOutRefHexes: readonly string[];
+        produced: readonly LedgerUtils.Entry[];
+      }
     >(),
 );
 const phaseB = vi.hoisted(() => ({ accepted: [] as string[][] }));
@@ -73,7 +77,11 @@ vi.mock("@al-ft/midgard-validation", async () => {
               config,
             )
           : Effect.succeed({
-              accepted: txs.map((tx) => ({ ...tx, ledgerTx: tx })),
+              accepted: txs.map((tx) => ({
+                ...tx,
+                ledgerTx: tx,
+                graph: graphs.get(tx.txId.toString("hex"))!,
+              })),
               rejected: [],
             }),
     ),
@@ -88,20 +96,17 @@ vi.mock("@al-ft/midgard-validation", async () => {
           const rejected: unknown[] = [];
           for (const { txId } of txs) {
             const graph = graphs.get(txId.toString("hex"))!;
-            if (!graph.spent.every((outRef) => state.has(outRef))) {
+            const spent = graph.spentOutRefHexes;
+            if (!spent.every((outRef) => state.has(outRef))) {
               rejected.push({ txId, code: "E_MISSING_INPUT", detail: "" });
               continue;
             }
-            for (const outRef of graph.spent) state.delete(outRef);
+            for (const outRef of spent) state.delete(outRef);
             for (const entry of graph.produced)
               state.add(entry[LedgerUtils.Columns.OUTREF].toString("hex"));
             accepted.push({
               ledgerTx: { txId },
-              graph: {
-                spentOutRefHexes: graph.spent,
-                produced: graph.produced,
-                referenceOutRefHexes: [],
-              },
+              graph,
             });
           }
           phaseB.accepted.push(
@@ -131,7 +136,6 @@ const wallet = walletFromSeed(
   "test test test test test test test test test test test junk",
   { network: "Preprod" },
 );
-const privateKey = CML.PrivateKey.from_bech32(wallet.paymentKey);
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
 const at = (seconds: number) => new Date(T0 + seconds * 1_000);
 const outRef = (byte: number) =>
@@ -182,7 +186,11 @@ const T_D = tx(0x0e, 8, [U3]);
 const TXS = [T_A, T_R, T_B, T_C, T_D];
 const hex = (buffer: Buffer) => buffer.toString("hex");
 for (const { txId, spent, produced } of TXS)
-  graphs.set(hex(txId), { spent: spent.map(hex), produced });
+  graphs.set(hex(txId), {
+    spentOutRefHexes: spent.map(hex),
+    referenceOutRefHexes: [],
+    produced,
+  });
 
 const deposit = (label: string, seconds: number): DepositsDB.Entry => ({
   [DepositsDB.Columns.ID]: deterministicFixtureOutputReferenceId(label),
@@ -203,46 +211,6 @@ const D2 = deposit("step-down-persistence.d2", 6);
 // an output T_e already spent.
 const D0 = deposit("step-down-persistence.d0", 1);
 const T_E_ID = Buffer.alloc(32, 0x0f);
-
-const withdrawal = async (): Promise<WithdrawalsDB.Entry> => {
-  const value: SDK.Value = new Map([["", new Map([["", U_W_LOVELACE]])]]);
-  const body: SDK.WithdrawalBody = {
-    l2_outref: { transactionId: "aa".repeat(32), outputIndex: 0n },
-    l2_owner: privateKey.to_public().hash().to_hex(),
-    l2_value: value,
-    l1_address: await Effect.runPromise(
-      SDK.addressDataFromBech32(wallet.address),
-    ),
-    l1_datum: "NoDatum",
-  };
-  const info: SDK.WithdrawalInfo = {
-    body,
-    signature: SDK.signWithdrawalBody(privateKey, body),
-    validity: "WithdrawalIsValid",
-  };
-  return {
-    [WithdrawalsDB.Columns.ID]: Buffer.from("cc".repeat(32), "hex"),
-    raw_event_info: Buffer.from(Data.to(info, SDK.WithdrawalInfo), "hex"),
-    settlement_event_info: null,
-    inclusion_time: at(1),
-    withdrawal_l1_tx_hash: Buffer.from("dd".repeat(32), "hex"),
-    withdrawal_l1_output_index: 0,
-    asset_name: Buffer.from("ee".repeat(32), "hex"),
-    l2_outref: Buffer.from(Data.to(body.l2_outref, SDK.OutputReference), "hex"),
-    l2_owner: Buffer.from(body.l2_owner, "hex"),
-    l2_value: Buffer.from(Data.to(value, SDK.Value), "hex"),
-    l1_address: Buffer.from(Data.to(body.l1_address, SDK.AddressData), "hex"),
-    l1_datum: Buffer.from(Data.to(body.l1_datum, SDK.CardanoDatum), "hex"),
-    refund_address: Buffer.alloc(0),
-    refund_datum: Buffer.alloc(0),
-    validity: null,
-    validity_detail: {},
-    classification_revision: 0,
-    reopened_from_header_hash: null,
-    projected_header_hash: null,
-    status: WithdrawalsDB.Status.Awaiting,
-  };
-};
 
 const seed = (w: WithdrawalsDB.Entry) =>
   Effect.gen(function* () {
@@ -276,26 +244,33 @@ const seed = (w: WithdrawalsDB.Entry) =>
     }
   });
 
-const BASE_ROOT_REFUSAL =
-  "Refusing to build a block because the transition trace base UTxO snapshot root does not match the ledger MPF root";
+/** The native owner's refusal every build here stops at. */
+const NATIVE_STOP = new Error("native owner stop");
+
+const BASE_LEDGER = ledgerOf(BASE);
 
 /**
- * One block build by the real `processMpfs` over `txs`. It
- * runs every database write of the build, then stops at the base-root check
- * (the test's base root differs from the native one) before the native ledger
- * is needed. Returns the transactions Phase B accepted.
+ * One block build by the real `processMpfs` over `txs`. It runs every
+ * database write of the build, then stops where the native owner applies
+ * the block's events. Returns the transactions Phase B accepted.
  */
 const build = (txs: readonly EntryWithTimeStamp[]) =>
   Effect.gen(function* () {
     phaseB.accepted = [];
     const refused = yield* processMpfs(
-      { root: () => Effect.succeed("") } as unknown as MidgardMpf,
+      {
+        root: () => Effect.succeed(""),
+        applyBatch: () => Effect.void,
+        resetToRoot: () => Effect.void,
+      } as unknown as MidgardMpf,
       txs,
       {
         currentBlockStartTime: at(0),
-        initialLedgerEntries: BASE,
-        selectedBaseUtxoRoot: "11".repeat(32),
-        nativeMpf: { handle: { baseRoot: "22".repeat(32) } } as never,
+        baseLedger: yield* Effect.promise(() => BASE_LEDGER),
+        nativeMpf: {
+          handle: { baseRoot: "22".repeat(32) },
+          client: { applyEvents: () => Promise.reject(NATIVE_STOP) },
+        } as never,
         validationTraceBuilder: () => Effect.succeed([]),
         forcedValidation: {
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -307,7 +282,7 @@ const build = (txs: readonly EntryWithTimeStamp[]) =>
         },
       },
     ).pipe(Effect.flip);
-    expect(refused.message).toBe(BASE_ROOT_REFUSAL);
+    expect((refused as { cause?: unknown }).cause).toBe(NATIVE_STOP);
     const accepted = phaseB.accepted.flat();
     return {
       accepted,
@@ -350,13 +325,15 @@ const run = <A, E>(effect: Effect.Effect<A, E, unknown>) =>
 
 import { syntheticStepDownStateWriteMeasurement } from "./helpers/commit-da-frame-fixtures.js";
 import { insertDeposits, insertWithdrawals } from "./helpers/event-rows.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
+import { order } from "./process-mpfs-withdrawal.fixture.js";
 
 // Synthetic accounting selects two; production DB helpers persist projections.
 const NEXT_TX_COUNT = 2;
 
 describe("DA frame step-down persistence over Postgres", () => {
   it("leaves the state a refused block and a fresh next-tick selection leave, with no projection lost or duplicated", async () => {
-    const w = await withdrawal();
+    const w = await order(0xc);
     const steppedDown = await run(
       Effect.gen(function* () {
         yield* seed(w);

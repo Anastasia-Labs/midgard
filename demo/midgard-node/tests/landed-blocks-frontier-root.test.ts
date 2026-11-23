@@ -5,14 +5,19 @@
  * only the frontier's root and the newest processed one). An L1 rollback
  * that then removes every row after the frontier leaves a new block whose
  * parent is the frontier, with no processed row to rebuild its ledger
- * from: it is processed with no local fault. When the store lost the old
- * frontier's root too, so the new one cannot be rebuilt, the fold still
- * moves the frontier.
+ * from: it is processed with no local fault. The same holds for a frontier
+ * startup's repair folded before the store was open. When the store lost
+ * the old frontier's root too, so the new one cannot be rebuilt, the fold
+ * still moves the frontier.
  */
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 import { expect, it } from "vitest";
 
+import { ConfirmedLedgerDB } from "../src/database/index.js";
+import { foldMerge } from "../src/landed-blocks/confirmed-merges.js";
 import { LANDED_BLOCK_REBASE_PENDING } from "../src/landed-blocks/holds.js";
+import { ledgerRows } from "../src/landed-blocks/ledger.js";
 import { processLandedQueue } from "../src/landed-blocks/process.js";
 import {
   Frontier,
@@ -26,7 +31,9 @@ import {
   confirmedAt,
   entry,
   fixture,
+  G0,
   G1,
+  GENESIS,
   harness,
   inNode,
   localFaultAlarms,
@@ -112,6 +119,56 @@ it("processes a block on the frontier after a rollback removed every later row, 
       expect((yield* retrieveRows).map((row) => row.state)).toEqual([
         "removed",
       ]);
+
+      const alarms = yield* localFaultAlarms();
+      const held = yield* processLandedQueue(
+        ports(state),
+        queueOf(merged, [c]),
+      );
+      expect(held?.reason).toBe(LANDED_BLOCK_REBASE_PENDING);
+      expect(yield* retrieveRows).toContainEqual(
+        expect.objectContaining({ headerHash: c.hash, state: "processed" }),
+      );
+      expect((yield* localFaultAlarms()) - alarms).toBe(0n);
+    }),
+  );
+}, 120_000);
+
+it("processes a block on the frontier the startup fold of an own journal chain set, when the store retains only the chain's base", async () => {
+  const { a, c, genesisRoot, state, merged } = await setup();
+  await inNode(
+    Effect.gen(function* () {
+      // What startup's repair of an unanchored confirmed ledger writes:
+      // the frontier at the chain's base, then the stored-delta fold of
+      // `a`'s journal. The store retains the base ledger, not `a`'s.
+      yield* ConfirmedLedgerDB.insertMultiple([
+        ...(yield* ledgerRows(GENESIS, new Map())),
+      ]);
+      yield* Frontier.upsert({
+        headerHash: SDK.GENESIS_HEADER_HASH,
+        utxosRoot: genesisRoot,
+      });
+      yield* foldMerge(
+        {
+          headerHash: a.hash,
+          parentHeaderHash: SDK.GENESIS_HEADER_HASH,
+          parentUtxosRoot: genesisRoot,
+          utxosRoot: a.header.utxosRoot,
+          kind: "own",
+          state: "processed",
+          applied: true,
+          spent: [G0.outref],
+          produced: [A1],
+          depositIds: [],
+          withdrawals: [],
+          forcedIds: [],
+          txIds: [simDigest("own:tx-a")],
+        },
+        null,
+      );
+      expect(yield* opening(state, a.header.utxosRoot)).toBe(
+        "LedgerNotRetained",
+      );
 
       const alarms = yield* localFaultAlarms();
       const held = yield* processLandedQueue(

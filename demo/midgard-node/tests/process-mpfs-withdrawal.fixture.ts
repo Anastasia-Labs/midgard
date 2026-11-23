@@ -131,7 +131,7 @@ export const build = (
       {
         currentBlockStartTime: at(0),
         fixedBlockEndTime: at(10),
-        initialLedgerEntries: BASE,
+        baseLedger: yield* Effect.promise(() => ledgerOf(BASE)),
         nativeMpf: {
           handle: { baseRoot },
           ownerBinarySha256: "00".repeat(32),

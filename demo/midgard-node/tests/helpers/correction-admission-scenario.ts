@@ -21,7 +21,6 @@ import * as Pending from "../../src/database/pendingBlockFinalizations.js";
 import {
   applyDelta,
   landedLedger,
-  ledgerEntries,
   ledgerMap,
 } from "../../src/landed-blocks/ledger.js";
 import { retrieveRows } from "../../src/landed-blocks/store.js";
@@ -31,11 +30,16 @@ import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../../src/services/hist
 import {
   advanceHistoryAdmissionClock,
   alignCommitSchedulerBeforeTestWorker,
+  assetsToValue,
+  type CML,
   ensureSeparateCollateralUtxo,
   fetchLatestCommittedBlock,
+  type NodeUtxo,
+  paymentCredentialOf,
   runCommitWorker,
   runCommitWorkerUntilSubmitted,
   SDK,
+  submitWithdrawalWithDiagnostics,
 } from "../deposit-flow-emulator-shared.js";
 import type { ProductionLifecycle } from "./production-lifecycle.js";
 
@@ -120,6 +124,68 @@ export const submitDeposit = async (h: Lifecycle, lovelace: bigint) => {
   return built.metadata.inclusionTime;
 };
 
+/**
+ * Submit one withdrawal order of the depositor's L2 output `target`, signed
+ * by its owner `signer`, as the running node's users do, and follow the
+ * chain past its inclusion. Returns its event id.
+ */
+export const submitWithdrawal = async (
+  h: Lifecycle,
+  target: NodeUtxo,
+  signer: CML.PrivateKey,
+) => {
+  const { fixture, lucidService } = h;
+  const owner = await fixture.depositorLucid.wallet().address();
+  const credential = paymentCredentialOf(owner);
+  if (credential?.type !== "Key")
+    throw new Error("Expected the depositor to own its L2 output by key");
+  const ownerData = await Effect.runPromise(SDK.addressDataFromBech32(owner));
+  const body: SDK.WithdrawalBody = {
+    l2_outref: {
+      transactionId: target.txHash,
+      outputIndex: BigInt(target.outputIndex),
+    },
+    l2_owner: credential.hash,
+    l2_value: assetsToValue(target.assets),
+    l1_address: ownerData,
+    l1_datum: "NoDatum",
+  };
+  lucidService.api.clearUTxOOverride();
+  await ensureSeparateCollateralUtxo(fixture.depositorLucid);
+  await advanceHistoryAdmissionClock(fixture, "withdrawal");
+  await alignCommitSchedulerBeforeTestWorker({
+    fixture,
+    lucidService,
+    targetEndTimeMs:
+      fixture.emulator.now() + HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+  });
+  await h.synchronize();
+  const { withdrawalEventId } = await submitWithdrawalWithDiagnostics(fixture, {
+    body,
+    signature: SDK.signWithdrawalBody(signer, body),
+    refundAddress: ownerData,
+    refundDatum: "NoDatum",
+  });
+  const landed = (
+    await Effect.runPromise(
+      SDK.fetchWithdrawalUTxOsProgram(
+        fixture.depositorLucid,
+        SDK.eventHistoryDeploymentFromContracts(
+          SDK.requireEventHistoryContracts(fixture.contracts).withdrawal,
+        ),
+      ),
+    )
+  ).find(({ idCbor }) => idCbor.toString("hex") === withdrawalEventId);
+  if (landed === undefined)
+    throw new Error("Expected the submitted withdrawal order on L1");
+  await h.deployment.chain.awaitLedgerTime(
+    Number(landed.facts.inclusion_time) + 1000,
+  );
+  vi.setSystemTime(fixture.emulator.now());
+  await h.synchronize();
+  return Buffer.from(withdrawalEventId, "hex");
+};
+
 /** One production commit attempt on the landed tail, after synchronizing. */
 export const attemptAppend = async (h: Lifecycle) => {
   const { fixture, lucidService, globals, production } = h;
@@ -200,9 +266,12 @@ export const observe = async (
       const replay =
         landed === undefined
           ? undefined
-          : ledgerEntries(
-              landed.chain.reduce(applyDelta, ledgerMap(landed.confirmed)),
-            );
+          : [...landed.chain.reduce(applyDelta, ledgerMap(landed.confirmed))]
+              .sort(([left], [right]) => (left < right ? -1 : 1))
+              .map(([outref, output]) => ({
+                outref: Buffer.from(outref, "hex"),
+                output,
+              }));
       return {
         journal:
           journal[0] === undefined

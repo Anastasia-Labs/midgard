@@ -12,7 +12,6 @@ export * from "./l1-provider-readiness-refresher.js";
 export * from "./l2-tx-peer-forwarder.js";
 export * from "./merge.js";
 export * from "./monitor-mempool.js";
-export * from "./mpf-payload-audit.js";
 export * from "./native-mpf-owner-supervisor.js";
 export * from "./operator-watchdog.js";
 export * from "./operator-watchdog-policy.js";

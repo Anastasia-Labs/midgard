@@ -47,6 +47,7 @@ import {
   runBothPhases,
 } from "../native-transaction-integration.build-native-tx.js";
 import { provideDatabaseLayers, resetApplicationTables } from "../utils.js";
+import { ledgerOf } from "./ledger-of.js";
 import {
   nativeOwnerBinaryPath,
   nativeOwnerBinarySha256,
@@ -242,9 +243,7 @@ export const openNativeFrameFixture = async (
           currentBlockStartTime: new Date(time - 1_000),
           fixedBlockEndTime: new Date(time),
           fixedBlockTime: new Date(time),
-          initialLedgerEntries: base,
-          selectedBaseUtxoRoot: root,
-          payloadRootCheck: "off",
+          baseLedger: await ledgerOf(base),
           nativeMpf: {
             client: countedClient,
             handle,

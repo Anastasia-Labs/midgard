@@ -26,6 +26,7 @@ import {
   forcedEntry,
   type makeSignedEffectfulTransaction,
 } from "./forced-transactions.make-signed-effectful-transaction.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 
 const time = new Date("2026-07-23T12:01:00.000Z");
 
@@ -84,7 +85,7 @@ describe("forced admission at the tx-order mint", () => {
               >,
             }),
           ],
-          initialState: new Map(),
+          ledger: await ledgerOf([]),
           blockTime: time,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           validation: {

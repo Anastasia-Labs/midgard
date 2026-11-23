@@ -48,6 +48,7 @@ import {
   outputReferenceFromHash,
   TEST_ADDRESS,
 } from "./forced-transactions.make-signed-effectful-transaction.js";
+import { ledgerOf, ledgerOfOutputs } from "./helpers/ledger-of.js";
 
 describe("V1 forced transaction material", () => {
   it("keeps the submitted source and identity identical across operator verdicts", async () => {
@@ -355,7 +356,7 @@ describe("V1 forced transaction material", () => {
     const classified = await Effect.runPromise(
       classifyForcedTransactions({
         entries,
-        initialState: new Map([[initialInput.toString("hex"), output]]),
+        ledger: await ledgerOfOutputs([[initialInput, output]]),
         blockTime: new Date("2026-07-23T12:01:00.000Z"),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {
@@ -446,7 +447,7 @@ describe("V1 forced transaction material", () => {
     const [classified] = await Effect.runPromise(
       classifyForcedTransactions({
         entries: [await forcedEntry({ label: 3, transaction })],
-        initialState: new Map(),
+        ledger: await ledgerOf([]),
         blockTime: new Date("2026-07-23T12:01:00.000Z"),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {
@@ -512,7 +513,7 @@ describe("forced transaction references at their ledger position", () => {
     const [classified] = await Effect.runPromise(
       classifyForcedTransactions({
         entries: [await forcedEntry({ label: 9, transaction })],
-        initialState: new Map(initialState),
+        ledger: await ledgerOfOutputs(initialState),
         blockTime: new Date("2026-07-23T12:01:00.000Z"),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation,

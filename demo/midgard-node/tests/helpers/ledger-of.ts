@@ -47,3 +47,15 @@ export const ledgerWithoutOutputs = async (
   // Read back from the store, not from `ledger`'s in-memory outputs.
   return store.at(ledger.root);
 };
+
+/** The ledger holding exactly `outputs`, each an out-ref (hex or bytes) and
+ * its output. */
+export const ledgerOfOutputs = (
+  outputs: Iterable<readonly [string | Buffer, Buffer]>,
+): Promise<Ledger> =>
+  ledgerOf(
+    [...outputs].map(([outRef, output]) => ({
+      outref: Buffer.isBuffer(outRef) ? outRef : Buffer.from(outRef, "hex"),
+      output,
+    })),
+  );

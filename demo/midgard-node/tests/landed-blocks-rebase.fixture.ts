@@ -5,6 +5,7 @@
  * follower-change driver runs it (`rebaseIfDue` of its recompute) and what
  * the node shows after it.
  */
+import { LedgerNotRetained } from "@al-ft/midgard-fault-proofs/ledger-store";
 import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
 import { expect } from "vitest";
@@ -31,6 +32,7 @@ import {
 import type { WriteBehind } from "../src/services/write-behind.js";
 import { testDriverRecompute, testWrite } from "./helpers/driver-recompute.js";
 import { simDigest, simOutput } from "./helpers/landed-blocks-sim.universe.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
@@ -59,6 +61,8 @@ export type Native = {
   retainsNothing: boolean;
   /** The root an applied delta reaches, if not the expected one. */
   reaches: string | undefined;
+  /** The ledgers its store retains, by root. */
+  ledgers: Record<string, readonly Ledger.MinimalEntry[]>;
 };
 
 export const nativeOwner = (native: Native) =>
@@ -74,6 +78,11 @@ export const nativeOwner = (native: Native) =>
       native.durableRoot = native.reaches ?? R1;
     },
     discard: async () => undefined,
+    ledger: async (at: string) => {
+      const entries = native.ledgers[at];
+      if (entries === undefined) throw new LedgerNotRetained(at);
+      return ledgerOf(entries);
+    },
   }) as unknown as NativeMpfOwnerService;
 
 /** One node process: its globals, with the modelled native owner. */
@@ -192,6 +201,7 @@ export const freshNative = (): Native => ({
   durableRoot: R0,
   retainsNothing: false,
   reaches: undefined,
+  ledgers: { [R0]: [E0], [R1]: [E1] },
 });
 
 /** A pending transaction spending `spent`, admitted at `at` seconds. */

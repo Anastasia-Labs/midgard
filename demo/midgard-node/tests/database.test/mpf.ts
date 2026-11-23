@@ -501,135 +501,28 @@ export const registerMpfTests = () => {
     );
 
     it.effect(
-      "materializes a first-block journal across an implicit genesis base",
+      "journals a block's delta only on the base the state queue recorded",
       () =>
-        isolatedDb(
-          Effect.gen(function* () {
-            const address = CML.Address.from_bech32(address1);
-            const entry = (byte: number): LedgerUtils.Entry => ({
-              [LedgerUtils.Columns.TX_ID]: Buffer.alloc(32, byte),
-              [LedgerUtils.Columns.OUTREF]: makeOutRefCbor(byte, 0),
-              [LedgerUtils.Columns.OUTPUT]: Buffer.from(
-                makeMidgardTxOutput(
-                  address,
-                  CML.Value.from_coin(1_000_000n + BigInt(byte)),
-                ).to_cbor_bytes(),
-              ),
-              [LedgerUtils.Columns.ADDRESS]: address1,
-            });
-            const genesis = entry(21);
-            const deposit = entry(22);
-            const selectedBaseUtxosRoot =
-              yield* computeLedgerMpfRootFromLedgerEntries([genesis]);
-            const finalEntries = [genesis, deposit];
-            const expectedFinalUtxosRoot =
-              yield* computeLedgerMpfRootFromLedgerEntries(finalEntries);
-            const journalState = yield* resolvePendingJournalLedgerState({
-              recordedBaseUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-              selectedBaseUtxosRoot,
-              expectedFinalUtxosRoot,
-              implicitGenesisEntries: [genesis],
-              transitionDelta: {
-                spent: [],
-                produced: [
-                  {
-                    outref: deposit[LedgerUtils.Columns.OUTREF],
-                    output: deposit[LedgerUtils.Columns.OUTPUT],
-                  },
-                ],
-              },
-            });
-            expect(journalState.ledgerDelta.spent).toEqual([]);
-            expect(journalState.ledgerDelta.produced).toHaveLength(2);
-
-            const unexplainedDivergence =
-              yield* resolvePendingJournalLedgerState({
-                recordedBaseUtxosRoot: "ff".repeat(32),
-                selectedBaseUtxosRoot,
-                expectedFinalUtxosRoot,
-                implicitGenesisEntries: [genesis],
-                transitionDelta: {
-                  spent: [],
-                  produced: [],
-                },
-              }).pipe(Effect.either);
-            expect(unexplainedDivergence._tag).toBe("Left");
-
-            const headerHash = Buffer.alloc(28, 23);
-            yield* prepareUnderTestLease({
-              headerHash,
-              headerCbor: Buffer.from("d87980", "hex"),
-              metadata: {
-                hubOraclePolicyId: "de".repeat(28),
-                consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
-                stateQueueLeaseToken: "implicit-genesis-test",
-                baseSnapshotId: "implicit-genesis-test",
-                baseTailOutRef: "genesis#0",
-                baseTailHeaderHash: Buffer.alloc(28),
-                baseTailDatumCbor: "d87980",
-                baseRoots: {
-                  utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                  forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                  transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                  depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                  withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                },
-                blockStartTime: new Date(0),
-                expectedRoots: {
-                  utxosRoot: expectedFinalUtxosRoot,
-                  forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                  transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                  depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                  withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                  transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                  eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                  validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                },
-                expectedCounts: {
-                  withdrawalCount: 0n,
-                  forcedTransactionCount: 0n,
-                  l2TransactionCount: 0n,
-                  depositCount: 1n,
-                  totalEventCount: 1n,
-                  transitionStepCount: 1n,
-                  validationTraceCount: 0n,
-                },
-              },
-              blockEndTime: new Date(1_000),
-              blockTime: new Date(1_000),
-              depositEventIds: [],
-              depositEntries: [],
-              forcedTransactionEventIds: [],
-              forcedTransactionEntries: [],
-              withdrawalEventIds: [],
-              withdrawalEntries: [],
-              mempoolTxIds: [],
-              mempoolTxs: [],
-              mempoolTxSourceTable: "none",
-              transitionTraceMembers: [],
-              eventToStepMembers: [],
-              validationTraceMembers: [],
-              ledgerDelta: {
-                spent: journalState.ledgerDelta.spent,
-                produced: journalState.ledgerDelta.produced.map((produced) => ({
-                  [PendingBlockFinalizationsDB.UtxoColumns.OUTREF]:
-                    produced.outref,
-                  [PendingBlockFinalizationsDB.UtxoColumns.OUTPUT]:
-                    produced.output,
-                })),
-              },
-            });
-            const journal =
-              yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-                headerHash,
-              );
-            expect(journal._tag).toBe("Some");
-            if (journal._tag === "None") return;
-            const materialized = yield* materializeJournalLedger(journal.value);
-            expect(materialized.root).toBe(expectedFinalUtxosRoot);
-            expect(materialized.entries).toHaveLength(finalEntries.length);
-          }),
-        ),
+        Effect.gen(function* () {
+          const transitionDelta = {
+            spent: [makeOutRefCbor(31, 0)],
+            produced: [],
+          };
+          const journaled = yield* resolvePendingJournalLedgerState({
+            recordedBaseUtxosRoot: "aa".repeat(32),
+            selectedBaseUtxosRoot: "aa".repeat(32),
+            transitionDelta,
+          });
+          expect(journaled.ledgerDelta).toBe(transitionDelta);
+          const refused = yield* resolvePendingJournalLedgerState({
+            recordedBaseUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            selectedBaseUtxosRoot: "aa".repeat(32),
+            transitionDelta,
+          }).pipe(Effect.flip);
+          expect(refused.message).toBe(
+            "Refusing to journal ledger state whose selected MPF base differs from the recorded state-queue base",
+          );
+        }),
     );
   });
 };

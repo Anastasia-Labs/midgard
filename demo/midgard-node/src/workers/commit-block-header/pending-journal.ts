@@ -9,11 +9,7 @@ import {
   StateQueueMutationLeasesDB,
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
-import * as Ledger from "../../database/utils/ledger.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "../../mpf/index.js";
 import type { LedgerDelta } from "../../mpf/ledger-delta.js";
-import { computeUtxoPayloadRoot } from "../../mpf/payload-size.js";
-import type { UtxoPayloadEntry } from "../../mpf/types.js";
 import {
   type ContractDeploymentIdentityValue,
   type Database,
@@ -61,17 +57,18 @@ const baseRootsFromStateQueueTail = (
     };
   });
 
+/**
+ * The ledger delta a journal records: the block's transition delta, once its
+ * selected base is the base the state queue recorded. A block selected on
+ * another base is never journaled.
+ */
 export const resolvePendingJournalLedgerState = ({
   recordedBaseUtxosRoot,
   selectedBaseUtxosRoot,
-  expectedFinalUtxosRoot,
-  implicitGenesisEntries,
   transitionDelta,
 }: {
   readonly recordedBaseUtxosRoot: string;
   readonly selectedBaseUtxosRoot: string;
-  readonly expectedFinalUtxosRoot: string;
-  readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
   readonly transitionDelta: LedgerDelta;
 }): Effect.Effect<
   {
@@ -79,93 +76,16 @@ export const resolvePendingJournalLedgerState = ({
   },
   DatabaseError
 > =>
-  Effect.gen(function* () {
-    if (recordedBaseUtxosRoot === selectedBaseUtxosRoot) {
-      return { ledgerDelta: transitionDelta };
-    }
-    if (
-      recordedBaseUtxosRoot !== SDK.EMPTY_MERKLE_TREE_ROOT ||
-      implicitGenesisEntries.length === 0
-    ) {
-      return yield* Effect.fail(
+  recordedBaseUtxosRoot === selectedBaseUtxosRoot
+    ? Effect.succeed({ ledgerDelta: transitionDelta })
+    : Effect.fail(
         new DatabaseError({
           table: PendingBlockFinalizationsDB.tableName,
           message:
             "Refusing to journal ledger state whose selected MPF base differs from the recorded state-queue base",
-          cause: `recorded_base_root=${recordedBaseUtxosRoot},selected_base_root=${selectedBaseUtxosRoot},implicit_genesis_entries=${implicitGenesisEntries.length.toString()}`,
+          cause: `recorded_base_root=${recordedBaseUtxosRoot},selected_base_root=${selectedBaseUtxosRoot}`,
         }),
       );
-    }
-    const implicitGenesisRoot = yield* computeLedgerMpfRootFromLedgerEntries(
-      implicitGenesisEntries,
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new DatabaseError({
-            table: PendingBlockFinalizationsDB.tableName,
-            message:
-              "Failed to verify the implicit genesis ledger base before journaling",
-            cause,
-          }),
-      ),
-    );
-    if (implicitGenesisRoot !== selectedBaseUtxosRoot) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: PendingBlockFinalizationsDB.tableName,
-          message:
-            "Implicit genesis entries do not reproduce the selected commit base root",
-          cause: `implicit_genesis_root=${implicitGenesisRoot},selected_base_root=${selectedBaseUtxosRoot}`,
-        }),
-      );
-    }
-
-    const finalEntries = new Map<string, UtxoPayloadEntry>(
-      implicitGenesisEntries.map((entry) => [
-        entry[Ledger.Columns.OUTREF].toString("hex"),
-        {
-          outref: Buffer.from(entry[Ledger.Columns.OUTREF]),
-          output: Buffer.from(entry[Ledger.Columns.OUTPUT]),
-        },
-      ]),
-    );
-    for (const spent of transitionDelta.spent) {
-      finalEntries.delete(spent.toString("hex"));
-    }
-    for (const produced of transitionDelta.produced) {
-      finalEntries.set(produced.outref.toString("hex"), {
-        outref: Buffer.from(produced.outref),
-        output: Buffer.from(produced.output),
-      });
-    }
-    const produced = [...finalEntries.values()];
-    const recoveredRoot = yield* computeUtxoPayloadRoot(produced).pipe(
-      Effect.mapError(
-        (cause) =>
-          new DatabaseError({
-            table: PendingBlockFinalizationsDB.tableName,
-            message: "Failed to verify the first-block V1 ledger delta",
-            cause,
-          }),
-      ),
-    );
-    if (recoveredRoot !== expectedFinalUtxosRoot) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: PendingBlockFinalizationsDB.tableName,
-          message:
-            "First-block V1 ledger delta does not reproduce the expected UTxO root",
-          cause: `recovered_root=${recoveredRoot},expected_root=${expectedFinalUtxosRoot}`,
-        }),
-      );
-    }
-    return {
-      ledgerDelta: {
-        spent: [],
-        produced,
-      },
-    };
-  });
 
 export const buildPendingJournalMetadata = ({
   latestBlock,

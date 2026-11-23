@@ -9,7 +9,6 @@ import { awaitLedgerEd25519SignatureReady } from "@al-ft/midgard-validation/ledg
 import { Data, Effect, Option } from "effect";
 
 import { DatabaseError } from "../../../database/utils/common.js";
-import * as Ledger from "../../../database/utils/ledger.js";
 import * as WithdrawalsDB from "../../../database/withdrawals.js";
 import { heldBuildError } from "../../../mpf/commit-rejection.evict-uncommittable-normal-txs.js";
 import type { WithdrawalUnclassifiableCase } from "../commit-block-header.js";
@@ -75,31 +74,6 @@ export type ClassifiedWithdrawal = {
 
 export { LOVELACE_UNIT, normalizeAssets };
 
-export const indexSelectedLedgerOutputs = (
-  entries: readonly Ledger.MinimalEntry[],
-): Effect.Effect<ReadonlyMap<string, Buffer>, DatabaseError, never> =>
-  Effect.try({
-    try: () => {
-      const outputs = new Map<string, Buffer>();
-      for (const entry of entries) {
-        const outRef = entry[Ledger.Columns.OUTREF].toString("hex");
-        if (outputs.has(outRef)) {
-          throw new Error(
-            `selected ledger snapshot contains duplicate outref ${outRef}`,
-          );
-        }
-        outputs.set(outRef, Buffer.from(entry[Ledger.Columns.OUTPUT]));
-      }
-      return outputs;
-    },
-    catch: (cause) =>
-      new DatabaseError({
-        table: WithdrawalsDB.tableName,
-        message:
-          "Failed to index selected ledger snapshot for withdrawal classification",
-        cause,
-      }),
-  });
 export const classifyWithdrawal = ({
   entry,
   ledgerOutRef,

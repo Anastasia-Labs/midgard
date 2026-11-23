@@ -14,7 +14,7 @@ import { expect, vi } from "vitest";
 
 import * as Pending from "../../src/database/pendingBlockFinalizations.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../../src/services/history-commit-window.js";
-import { LANDED_COMMIT_BASE_PENDING } from "../../src/workers/commit-block-header.resolve-commit-base-ledger-entries.js";
+import { LANDED_COMMIT_BASE_PENDING } from "../../src/workers/commit-block-header.resolve-commit-base.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorToDueWork,

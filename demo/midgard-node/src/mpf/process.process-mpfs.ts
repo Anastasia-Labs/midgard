@@ -11,10 +11,9 @@ import {
   transitionEffectToLedgerOps,
 } from "@al-ft/midgard-validation";
 import type { PhaseAValidatedTx } from "@al-ft/midgard-validation/types";
-import { type Cause, Effect, Fiber, Metric } from "effect";
+import { type Cause, Effect, Fiber, Metric, Option } from "effect";
 import * as FS from "fs";
 
-import * as ConfirmedLedgerDB from "../database/confirmedLedger.js";
 import * as DepositsDB from "../database/deposits.js";
 import * as ForcedTransactionsDB from "../database/forcedTransactions.js";
 import * as MempoolDB from "../database/mempool.js";
@@ -31,7 +30,6 @@ import { type NativeMpfGenerationHandle } from "../services/mpf-native-owner/ind
 import {
   type ClassifiedWithdrawal,
   classifyWithdrawalsInOrder,
-  indexSelectedLedgerOutputs,
 } from "../workers/utils/mpf/withdrawal-classification.js";
 import {
   attempt,
@@ -69,15 +67,13 @@ import {
   ledgerOutputToInsertBatchOp,
 } from "./ledger-delta.js";
 import { encodeTransactionRootValue } from "./ledger-hydration.js";
+import { ledgerPointState } from "./ledger-point-state.js";
 import {
   type DecodedMempoolTxForCommit,
   establishEffectiveEndTimeFromDecodedMempool,
   refuseMalformedMempoolCandidates,
 } from "./mempool-order.js";
-import {
-  computeUtxoPayloadRoot,
-  materializeUtxoPayloadEntries,
-} from "./payload-size.js";
+import { materializeUtxoPayloadEntries } from "./payload-size.js";
 import { resolveMpfBlockTime } from "./process.commit-clock.js";
 import { evaluateNormalBlockCandidates } from "./process.evaluate-normal-block-candidates.js";
 import {
@@ -334,14 +330,6 @@ export const processMpfs = (
       includedForcedTransactionEntries.map((entry) =>
         Buffer.from(entry[ForcedTransactionsDB.Columns.TX_ORDER_ID]),
       );
-    const shouldCheckPayloadRoot =
-      (config.payloadRootCheck ?? "every_block") === "every_block";
-    const initialLedgerEntries =
-      config.initialLedgerEntries ??
-      (shouldCheckPayloadRoot ? yield* ConfirmedLedgerDB.retrieve : []);
-    const selectedLedgerOutputs =
-      yield* indexSelectedLedgerOutputs(initialLedgerEntries);
-
     let includedWithdrawalEntries: readonly WithdrawalsDB.Entry[] = [];
     let classifiedWithdrawals: readonly ClassifiedWithdrawal[] = [];
     if (
@@ -355,10 +343,23 @@ export const processMpfs = (
         });
 
       // Two orders may name one L2 outref; each is judged against the ledger
-      // the earlier payable ones leave, exactly as replay derives it.
+      // the earlier payable ones leave, exactly as replay derives it. The
+      // base is read at the outrefs the orders name; an order whose outref
+      // does not decode is classified by its own decode failure.
+      const withdrawalOutRefs = yield* Effect.forEach(
+        includedWithdrawalEntries,
+        (entry) => WithdrawalsDB.toLedgerOutRef(entry).pipe(Effect.option),
+      );
       classifiedWithdrawals = yield* classifyWithdrawalsInOrder({
         entries: includedWithdrawalEntries,
-        baseOutputs: selectedLedgerOutputs,
+        baseOutputs: yield* ledgerPointState(
+          config.baseLedger,
+          WithdrawalsDB.tableName,
+        ).read(
+          withdrawalOutRefs.flatMap((outRef) =>
+            Option.isSome(outRef) ? [outRef.value.toString("hex")] : [],
+          ),
+        ),
       });
 
       yield* WithdrawalsDB.setSettlementInfoForEventIds(
@@ -428,21 +429,27 @@ export const processMpfs = (
         }),
       );
     }
-    const forcedPreState = new Map(
-      initialLedgerEntries.map((entry) => [
-        entry[Ledger.Columns.OUTREF].toString("hex"),
-        Buffer.from(entry[Ledger.Columns.OUTPUT]),
-      ]),
-    );
-    for (const classifiedWithdrawal of validWithdrawalClassifications) {
-      forcedPreState.delete(classifiedWithdrawal.ledgerOutRef.toString("hex"));
-    }
     const classifiedForcedTransactions: readonly ClassifiedForcedTransaction[] =
       includedForcedTransactionEntries.length === 0
         ? []
         : yield* classifyForcedTransactions({
             entries: includedForcedTransactionEntries,
-            initialState: forcedPreState,
+            ledger: yield* Effect.tryPromise({
+              try: () =>
+                config.baseLedger.apply(
+                  validWithdrawalClassifications.map(({ ledgerOutRef }) => ({
+                    type: "delete" as const,
+                    outRef: ledgerOutRef,
+                  })),
+                ),
+              catch: (cause) =>
+                new DatabaseError({
+                  table: ForcedTransactionsDB.tableName,
+                  message:
+                    "Failed to apply the block's withdrawals to its base ledger",
+                  cause,
+                }),
+            }),
             blockTime: effectiveBlockTime!,
             consensusProfile,
             validation: config!.forcedValidation!,
@@ -629,12 +636,17 @@ export const processMpfs = (
       }),
     );
 
+    // The block's base ledger, read by key.
+    const baseState = ledgerPointState(
+      config.baseLedger,
+      MempoolLedgerDB.tableName,
+    );
     // A commit-stage rejection's inputs resolve against this block's
     // post-state: its revert restores exactly the inputs the block leaves
     // unspent. A block member the rejection closure reaches leaves the block.
     const commitPostState = (accepted: readonly PhaseAValidatedTx[]) =>
       commitStageInputPostState({
-        baseLedgerOutputs: selectedLedgerOutputs,
+        readBase: (outRefHexes) => baseState.read(outRefHexes),
         insertedOutputs: new Map([
           ...rawInsertedLedgerOutputsByOutRef,
           ...accepted.flatMap(({ graph }) =>
@@ -657,22 +669,18 @@ export const processMpfs = (
     if (processedMempoolTxs.length > 0) {
       const validation = config!.forcedValidation!;
       const phaseAInputs = processedMempoolTxs;
-      const proofPreState = new Map(
-        initialLedgerEntries.map((entry) => [
-          entry[Ledger.Columns.OUTREF].toString("hex"),
-          Buffer.from(entry[Ledger.Columns.OUTPUT]),
-        ]),
+      // The normal phase's ledger: the base after the block's withdrawals
+      // and forced transactions.
+      const normalState = ledgerPointState(
+        config.baseLedger,
+        MempoolDB.tableName,
       );
-      for (const classifiedWithdrawal of validWithdrawalClassifications) {
-        proofPreState.delete(classifiedWithdrawal.ledgerOutRef.toString("hex"));
-      }
+      for (const outRefHex of withdrawnOutRefHexes)
+        normalState.delete(outRefHex);
       for (const classified of classifiedForcedTransactions) {
         for (const op of classified.rawLedgerOps) {
-          if (op.type === "delete") {
-            proofPreState.delete(op.key.toString("hex"));
-          } else {
-            proofPreState.set(op.key.toString("hex"), Buffer.from(op.value));
-          }
+          if (op.type === "delete") normalState.delete(op.key.toString("hex"));
+          else normalState.insert(op.key.toString("hex"), op.value);
         }
       }
 
@@ -739,6 +747,13 @@ export const processMpfs = (
         yield* Effect.logWarning(
           `Leaving ${(breakerDeferredTxIds.size + leftPending.size).toString()} normal transaction(s) pending for a later block: past the commit-stage rejection limit.`,
         );
+      // Phase B resolves exactly the candidates' spent and reference inputs.
+      const proofPreState = yield* normalState.read(
+        proofPhaseA.accepted.flatMap(({ graph }) => [
+          ...graph.spentOutRefHexes,
+          ...graph.referenceOutRefHexes,
+        ]),
+      );
       const proofPhaseB = yield* settleCommitStageRejections({
         candidates: proofPhaseA.accepted.filter(
           (accepted) => !leftPending.has(accepted),
@@ -849,31 +864,6 @@ export const processMpfs = (
       });
 
     const transactionRootBeforeApply = yield* transactionsMpf.root();
-    const ledgerRootBeforeApplyHex = Buffer.from(
-      nativeMpf.handle.baseRoot,
-      "hex",
-    ).toString("hex");
-    const selectedBaseUtxoRoot =
-      config.selectedBaseUtxoRoot ??
-      (shouldCheckPayloadRoot
-        ? yield* computeUtxoPayloadRoot(
-            materializeUtxoPayloadEntries(
-              initialLedgerEntries,
-              [],
-              rawInsertedLedgerOutputsByOutRef,
-            ),
-          )
-        : ledgerRootBeforeApplyHex);
-    if (selectedBaseUtxoRoot !== ledgerRootBeforeApplyHex) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: MempoolLedgerDB.tableName,
-          message:
-            "Refusing to build a block because the transition trace base UTxO snapshot root does not match the ledger MPF root",
-          cause: `selected_base_utxos_root=${selectedBaseUtxoRoot},ledger_mpf_root=${ledgerRootBeforeApplyHex}`,
-        }),
-      );
-    }
     const withdrawalSourceEvents = yield* Effect.forEach(
       includedWithdrawalEntries,
       (entry) =>
@@ -1026,7 +1016,6 @@ export const processMpfs = (
       "transition_trace_build",
       transitionTraceStartedAtMs,
       {
-        base_entry_count: initialLedgerEntries.length,
         source_event_count: sourceEvents.length,
         ledger_op_count: transitionLedgerOps.length,
         prefetch_ms: transitionTraceBuild.pathHydration.prefetchMs,
@@ -1219,6 +1208,30 @@ export const processMpfs = (
 
     const recordCorpusPath = config.recordCorpusPath?.trim() ?? "";
     if (recordCorpusPath.length > 0) {
+      // The corpus records the whole base ledger by its purpose, in out-ref
+      // order.
+      const initialLedgerEntries: Ledger.MinimalEntry[] = [];
+      yield* Effect.tryPromise({
+        try: async () => {
+          for await (const { outRef, output } of config.baseLedger.entries())
+            initialLedgerEntries.push({
+              [Ledger.Columns.OUTREF]: outRef,
+              [Ledger.Columns.OUTPUT]: output,
+            });
+        },
+        catch: (cause) =>
+          new DatabaseError({
+            table: MempoolLedgerDB.tableName,
+            message: "Failed to read the base ledger for the replay corpus",
+            cause,
+          }),
+      });
+      initialLedgerEntries.sort((left, right) =>
+        Buffer.compare(
+          left[Ledger.Columns.OUTREF],
+          right[Ledger.Columns.OUTREF],
+        ),
+      );
       const finalUtxoEntries = materializeUtxoPayloadEntries(
         initialLedgerEntries,
         transitionLedgerOps,

@@ -125,22 +125,3 @@ export const pendingUserEventCountsUpTo = (
       withdrawals: withdrawalEntries.length,
     };
   });
-
-export const shouldHydrateCommitBaseEntries = ({
-  payloadRootCheck,
-  recordCorpus,
-  candidateTxCount,
-  pendingForcedTransactionCount,
-  pendingWithdrawalCount,
-}: {
-  readonly payloadRootCheck: string;
-  readonly recordCorpus: string;
-  readonly candidateTxCount: number;
-  readonly pendingForcedTransactionCount: number;
-  readonly pendingWithdrawalCount: number;
-}): boolean =>
-  payloadRootCheck === "every_block" ||
-  recordCorpus.trim().length > 0 ||
-  candidateTxCount > 0 ||
-  pendingForcedTransactionCount > 0 ||
-  pendingWithdrawalCount > 0;

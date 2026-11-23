@@ -34,6 +34,7 @@ import {
   openNativeFrameFixture,
   runNativeFrameDatabase,
 } from "./helpers/commit-additive-native-fixture.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 import { openPublishedLifecycle } from "./helpers/published-lifecycle.js";
 
 /** Real current validators admit the signed L1 order. The L2 supplier uses
@@ -140,9 +141,7 @@ it("admits a native-only order referencing a verified Flat script supplier", asy
         currentBlockStartTime: new Date(h.time - 1_000),
         fixedBlockEndTime: new Date(clock),
         fixedBlockTime: new Date(clock),
-        initialLedgerEntries: base,
-        selectedBaseUtxoRoot: supplied.processed.utxoRoot,
-        payloadRootCheck: "off",
+        baseLedger: await ledgerOf(base),
         nativeMpf: { client, handle, ownerBinarySha256: "00".repeat(32) },
         forcedValidation: {
           expectedNetworkId: 0n,

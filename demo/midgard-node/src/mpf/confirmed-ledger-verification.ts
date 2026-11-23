@@ -15,8 +15,8 @@
  * read on the same snapshot (migration 0038) and the digest of each delta
  * it checked, and every commit worker receives the frontier and generation
  * (`WorkerInput.verifiedFrontier`): a commit on a landed tail builds from
- * that frontier only, at that generation, applying the landed deltas after
- * it (`verifiedLandedLedgerAt`), and waits as
+ * that frontier only, at that generation (`verifiedLandedRootAt`), and
+ * waits as
  * `commit_base_ledger_unverified` while the frontier or its generation is
  * another. A clean fold advances the record to the folded block, and a
  * pass is replayed over the folds logged since its run read

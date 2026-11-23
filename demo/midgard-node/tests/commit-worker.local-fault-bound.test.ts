@@ -24,10 +24,7 @@ import { findTransientBudgetExhausted } from "../src/services/transient-exhausti
 import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import { takeCommitWorkerOutput } from "../src/workers/commit-worker-message.js";
 import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
-import {
-  classifyWithdrawalsInOrder,
-  indexSelectedLedgerOutputs,
-} from "../src/workers/utils/mpf/withdrawal-classification.js";
+import { classifyWithdrawalsInOrder } from "../src/workers/utils/mpf/withdrawal-classification.js";
 
 /**
  * This node's commit attempts while its Ed25519 verifier faults on a due
@@ -153,10 +150,15 @@ const attempt = async (
   const validities: string[] = [];
   const output = await Effect.runPromise(
     captureCommitWorkerFailure(
-      indexSelectedLedgerOutputs([U]).pipe(
-        Effect.flatMap((baseOutputs) =>
-          classifyWithdrawalsInOrder({ entries: [entry], baseOutputs }),
-        ),
+      classifyWithdrawalsInOrder({
+        entries: [entry],
+        baseOutputs: new Map([
+          [
+            U[LedgerUtils.Columns.OUTREF].toString("hex"),
+            U[LedgerUtils.Columns.OUTPUT],
+          ],
+        ]),
+      }).pipe(
         Effect.map((classified): WorkerOutput => {
           validities.push(...classified.map(({ validity }) => validity));
           return passed;

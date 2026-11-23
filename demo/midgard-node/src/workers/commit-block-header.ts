@@ -33,7 +33,7 @@ import "./utils/commit-block-planner.js";
 import "./utils/commit-end-time.js";
 import "./utils/scheduler-refresh.js";
 import "./commit-block-header.pending-user-event-counts-up-to.js";
-import "./commit-block-header.resolve-commit-base-ledger-entries.js";
+import "./commit-block-header.resolve-commit-base.js";
 import "./commit-block-header.commit-explicit-block-header-program.js";
 import "./commit-block-header.database-operations-program.js";
 import "./commit-block-header.run-commit-block-header-worker-program.js";
@@ -49,7 +49,6 @@ export {
   type CommitLucidFactory,
   followerCommitLucidFactory,
   provideCommitBlockWorkerServices,
-  shouldHydrateCommitBaseEntries,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
 export {
   captureCommitWorkerFailure,

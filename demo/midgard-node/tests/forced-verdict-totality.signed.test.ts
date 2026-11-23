@@ -16,6 +16,7 @@ import {
   makeSignedEffectfulTransaction,
   outputReferenceFromHash,
 } from "./forced-transactions.make-signed-effectful-transaction.js";
+import { ledgerOfOutputs } from "./helpers/ledger-of.js";
 
 /**
  * Forced verdict totality past the signature checks. Each order is signed by
@@ -84,9 +85,9 @@ const leafOf = (transaction: ReturnType<typeof signedOrder>, label: number) =>
     );
     const [classified] = yield* classifyForcedTransactions({
       entries: [entry],
-      initialState: new Map([
-        [SPEND.toString("hex"), makeOutput(INPUT_LOVELACE)],
-      ]),
+      ledger: yield* Effect.promise(() =>
+        ledgerOfOutputs([[SPEND, makeOutput(INPUT_LOVELACE)]]),
+      ),
       blockTime: BLOCK_TIME,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       validation: {

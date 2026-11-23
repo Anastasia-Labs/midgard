@@ -1,9 +1,12 @@
-import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeMidgardForcedTxProofCommitment,
   deriveMidgardForcedTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core/codec";
 import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
+import {
+  type Ledger,
+  ledgerTrie,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import type { ForcedRejectionStopped } from "@al-ft/midgard-fault-proofs/workflow/forced-rejection-reason";
 import type * as SDK from "@al-ft/midgard-sdk/core";
 import {
@@ -18,7 +21,6 @@ import {
   type ValidationMachineLedgerMutationStep,
 } from "@al-ft/midgard-validation";
 import { projectMidgardMalformedNativeWitnessEnvelopeV1 } from "@al-ft/midgard-validation/ledger-tx/codec";
-import { applyUTxOStatePatch } from "@al-ft/midgard-validation/phase-b";
 import type { RejectCode } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 
@@ -30,22 +32,28 @@ import {
   forcedRejectionVerdict,
   rejectedForcedTransactionLedgerWitnesses,
 } from "./event-window.forced-verdict-for-rejection.js";
-import {
-  ledgerOutputToInsertBatchOp,
-  transitionEffectToRawLedgerOps,
-} from "./ledger-delta.js";
+import { transitionEffectToRawLedgerOps } from "./ledger-delta.js";
+import { ledgerPointState } from "./ledger-point-state.js";
 import { type ProcessMpfsConfig } from "./process-config.js";
 import { type MpfBatchOp } from "./types.js";
 
+/**
+ * Classifies a block's forced transactions in order over `ledger`, the
+ * block's ledger before them (its base after the withdrawal phase). Each
+ * transaction's inputs are read by key from that ledger as the earlier
+ * forced transactions leave it, and an accepted one's ledger mutation steps
+ * come from a trie over the ledger's nodes, so nothing reads the whole
+ * ledger.
+ */
 export const classifyForcedTransactions = ({
   entries,
-  initialState,
+  ledger,
   blockTime,
   consensusProfile,
   validation,
 }: {
   readonly entries: readonly ForcedTransactionsDB.Entry[];
-  readonly initialState: Map<string, Buffer>;
+  readonly ledger: Ledger;
   readonly blockTime: Date;
   readonly consensusProfile: MidgardConsensusProfile;
   readonly validation: NonNullable<ProcessMpfsConfig["forcedValidation"]>;
@@ -54,28 +62,14 @@ export const classifyForcedTransactions = ({
   DatabaseError | ForcedRejectionStopped
 > =>
   Effect.gen(function* () {
-    const state = new Map(
-      [...initialState.entries()].map(([key, value]) => [
-        key,
-        Buffer.from(value),
-      ]),
-    );
+    const state = ledgerPointState(ledger, ForcedTransactionsDB.tableName);
     const mutationTrie = yield* Effect.tryPromise({
-      try: () =>
-        Trie.fromList(
-          [...state.entries()].map(([key, value]) =>
-            ledgerOutputToInsertBatchOp({
-              outRef: Buffer.from(key, "hex"),
-              outputCbor: value,
-            }),
-          ),
-          new Store(undefined),
-        ),
+      try: () => ledgerTrie(ledger),
       catch: (cause) =>
         new DatabaseError({
           table: ForcedTransactionsDB.tableName,
           message:
-            "Failed to construct the forced-transaction validation mutation trie",
+            "Failed to open the forced-transaction validation mutation trie",
           cause,
         }),
     });
@@ -156,20 +150,28 @@ export const classifyForcedTransactions = ({
             "forced",
           );
           if (raw !== null) {
+            const inputOutRefHexes = [
+              ...raw.projection.ledgerTx.spendInputs,
+              ...raw.projection.ledgerTx.referenceInputs,
+            ].map(midgardOutRefToCborHex);
             ledgerWitnessEntries = rejectedForcedTransactionLedgerWitnesses(
-              state,
-              [
-                ...raw.projection.ledgerTx.spendInputs,
-                ...raw.projection.ledgerTx.referenceInputs,
-              ].map(midgardOutRefToCborHex),
+              yield* state.read(inputOutRefHexes),
+              inputOutRefHexes,
             );
           }
         }
       } else {
         const acceptedCandidate = phaseA.accepted[0]!;
+        const inputOutRefHexes = [
+          ...acceptedCandidate.graph.spentOutRefHexes,
+          ...acceptedCandidate.graph.referenceOutRefHexes,
+        ];
+        // Phase B resolves exactly the transaction's spent and reference
+        // inputs.
+        const preState = yield* state.read(inputOutRefHexes);
         const phaseB = yield* runPhaseBValidationWithPatch(
           [acceptedCandidate],
-          state,
+          preState,
           {
             nowCardanoSlotNo: validation.slotForUnixTime(blockTime.getTime()),
             bucketConcurrency: validation.bucketConcurrency,
@@ -188,21 +190,17 @@ export const classifyForcedTransactions = ({
               }),
           ),
         );
-        const inputOutRefHexes = [
-          ...acceptedCandidate.graph.spentOutRefHexes,
-          ...acceptedCandidate.graph.referenceOutRefHexes,
-        ];
         if (phaseB.rejected.length > 0) {
           rejectionCode = phaseB.rejected[0]!.code;
           verdict = yield* forcedRejectionVerdict(phaseB.rejected[0]!);
           ledgerWitnessEntries = rejectedForcedTransactionLedgerWitnesses(
-            state,
+            preState,
             inputOutRefHexes,
           );
         } else {
           verdict = "ForcedTxValid";
           ledgerWitnessEntries = yield* acceptedTransactionLedgerWitnesses(
-            state,
+            preState,
             {
               table: ForcedTransactionsDB.tableName,
               txIdHex: txId.toString("hex"),
@@ -232,7 +230,7 @@ export const classifyForcedTransactions = ({
                 cause,
               }),
           });
-          applyUTxOStatePatch(state, phaseB.statePatch);
+          state.apply(phaseB.statePatch);
         }
       }
       const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({

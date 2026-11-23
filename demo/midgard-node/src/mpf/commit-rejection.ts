@@ -129,32 +129,46 @@ export type CommitStageTxEffects = {
 };
 
 /**
- * Resolves an outref (hex) against the block post-state: the output when it
- * is still unspent after the block, `null` when the block consumes it, and
- * `undefined` when the block's ledger never holds it.
+ * Resolves outrefs (hex) against the block post-state: each maps to its
+ * output when it is still unspent after the block, to `null` when the block
+ * consumes it, and is absent when the block's ledger never holds it.
  */
 export type CommitStageInputPostState = (
-  outRefHex: string,
-) => Buffer | null | undefined;
+  outRefHexes: readonly string[],
+) => Effect.Effect<ReadonlyMap<string, Buffer | null>, DatabaseError>;
 
 /**
- * The block post-state over its base ledger and the outputs it inserts. Every
- * input of a commit-stage rejection closure resolves here.
+ * The block post-state over its base ledger, read by key (`readBase`), and
+ * the outputs it inserts. Every input of a commit-stage rejection closure
+ * resolves here.
  */
 export const commitStageInputPostState =
   ({
-    baseLedgerOutputs,
+    readBase,
     insertedOutputs,
     spentOutRefHexes,
   }: {
-    readonly baseLedgerOutputs: ReadonlyMap<string, Buffer>;
+    readonly readBase: (
+      outRefHexes: readonly string[],
+    ) => Effect.Effect<ReadonlyMap<string, Buffer>, DatabaseError>;
     readonly insertedOutputs: ReadonlyMap<string, Buffer>;
     readonly spentOutRefHexes: ReadonlySet<string>;
   }): CommitStageInputPostState =>
-  (outRefHex) =>
-    spentOutRefHexes.has(outRefHex)
-      ? null
-      : (insertedOutputs.get(outRefHex) ?? baseLedgerOutputs.get(outRefHex));
+  (outRefHexes) =>
+    Effect.gen(function* () {
+      const resolved = new Map<string, Buffer | null>();
+      const fromBase: string[] = [];
+      for (const outRefHex of outRefHexes) {
+        const inserted = insertedOutputs.get(outRefHex);
+        if (spentOutRefHexes.has(outRefHex)) resolved.set(outRefHex, null);
+        else if (inserted !== undefined) resolved.set(outRefHex, inserted);
+        else fromBase.push(outRefHex);
+      }
+      if (fromBase.length > 0)
+        for (const [outRefHex, output] of yield* readBase(fromBase))
+          resolved.set(outRefHex, output);
+      return resolved;
+    });
 
 const hex = (value: Buffer) => value.toString("hex");
 
@@ -277,10 +291,16 @@ export const revertCommitStageRejectedLedgerEffects = ({
         ),
       ),
     );
+    const restorable = [...spentByReverted].filter(
+      (key) => !producerByOutRef.has(key) && !spentByRemaining.has(key),
+    );
+    const postStates =
+      restorable.length === 0
+        ? new Map<string, Buffer | null>()
+        : yield* resolveInputPostState(restorable);
     const restored: MempoolLedgerDB.EntryNoTimeStamp[] = [];
-    for (const key of spentByReverted) {
-      if (producerByOutRef.has(key) || spentByRemaining.has(key)) continue;
-      const postState = resolveInputPostState(key);
+    for (const key of restorable) {
+      const postState = postStates.get(key);
       const output =
         postState === undefined ? producedByRemaining.get(key) : postState;
       if (output === undefined || output === null) continue;

@@ -1405,26 +1405,20 @@ The cap becomes a compaction trigger, never a permanent error. That fixes K7.
 - A rolled-back merge is rewound like anything else, which makes rev-4
   "`confirmed_ledger` at settled depth" (ticket 25) unnecessary.
 
-### 10.6 The from-scratch cross-check
+### 10.6 No from-scratch cross-check
 
-`MPF_PAYLOAD_ROOT_CHECK=every_block` is a correctness net against a native
-trie defect. Correctness comes first, so this plan keeps it on by default,
-but its cost changes:
+A commit does not rebuild the base root from `confirmed_ledger` to compare
+with the native base root, and no background fiber audits it: that would
+re-check this node's own store, which the owner ruled out. There is no
+`MPF_PAYLOAD_ROOT_CHECK` and no periodic audit. A commit reads its base
+ledger by key:
 
-- one from-scratch root per commit, over the post-state;
-- not the k + 1 roots that hydration does today (NC8).
+- no hydration forced by any candidate tx;
+- no per-journal materialisation;
+- no full `confirmed_ledger` read on a commit.
 
-The rest goes:
-
-- the hydration forced by any candidate tx;
-- per-journal materialisation;
-- the full `confirmed_ledger` read on every commit.
-
-The commit base is the native root at the parent queue position.
-
-Ticket N8 measures the remaining check against the per-block budget at
-N = 10^6. If it does not fit, the numbers go to the owner then. That is a
-future question, not one asked now.
+The commit base is the native root at the parent queue position. The
+offline `mpf-audit` command still recomputes the root on demand.
 
 ## 11. Retention
 

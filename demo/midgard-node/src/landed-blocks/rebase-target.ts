@@ -20,10 +20,8 @@ import {
 } from "../database/index.js";
 import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
 import { type DriverHold, notRetried } from "../l1-events/driver.js";
-import { ledgerOutputToInsertBatchOp } from "../mpf/ledger-delta.js";
 import { followerWriteHeld } from "../services/follower-write-gate.js";
 import type { NativeMpfOwnerService } from "../services/mpf-native-owner/protocol.js";
-import type { NativeMpfEventOp } from "../services/mpf-native-owner/service.normalize-owner-options.js";
 import { retrieveMergeLinks } from "./confirmed-merges.js";
 import { LANDED_BLOCK_REBASE_PENDING } from "./holds.js";
 import { liveJournal } from "./journal.js";
@@ -312,41 +310,15 @@ export const deadJournalsFor = (target: RebaseTarget | undefined) =>
     return dead;
   });
 
-/** A step's MPF mutation: its spends and replaced outputs, then its outputs. */
-export type StepEvents = readonly (readonly NativeMpfEventOp[])[];
+/** The root after each step of the target; index 0 is the frontier's. */
+export const targetRoots = (target: RebaseTarget<LandedChain>) => [
+  target.landed.frontier.utxosRoot,
+  ...target.steps.map((step) => step.utxosRoot),
+];
 
-/**
- * Walks the target from the frontier: the root after each step (index 0 is
- * the frontier's), each step's MPF events against its parent's ledger, and
- * the ledger at the end.
- */
-export const walkTarget = (target: RebaseTarget) => {
-  const ledger: LedgerMap = ledgerMap(target.landed.confirmed);
-  const roots = [target.landed.frontier.utxosRoot];
-  const events: StepEvents[] = [];
-  for (const step of target.steps) {
-    const deletes = [
-      ...new Set([
-        ...step.spent.map((outRef) => outRef.toString("hex")),
-        ...step.produced
-          .map((entry) => entry.outref.toString("hex"))
-          .filter((key) => ledger.has(key)),
-      ]),
-    ]
-      .sort()
-      .map((key) => ({
-        type: "delete" as const,
-        key: Buffer.from(key, "hex"),
-      }));
-    const inserts = step.produced.map((entry) =>
-      ledgerOutputToInsertBatchOp({
-        outRef: entry.outref,
-        outputCbor: entry.output,
-      }),
-    );
-    events.push([deletes, inserts].filter((event) => event.length > 0));
-    applyDelta(ledger, step);
-    roots.push(step.utxosRoot);
-  }
-  return { ledger, roots, events };
+/** The ledger at the target's end: the frontier's with every step's delta. */
+export const targetLedger = (target: RebaseTarget): LedgerMap => {
+  const ledger = ledgerMap(target.landed.confirmed);
+  for (const step of target.steps) applyDelta(ledger, step);
+  return ledger;
 };

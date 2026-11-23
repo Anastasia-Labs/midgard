@@ -61,6 +61,7 @@ import {
   parsePromotionRecords,
   restoreIndexRefusal,
 } from "./service.parse-promotion-records.js";
+import { readWorkerNodes } from "./service.read-worker-nodes.js";
 import {
   type NativeOwnerRestartHealth,
   NativeOwnerRestartPolicy,
@@ -915,6 +916,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         const lease = this.assertWorkerLease(port, handle);
         lease.journalOwned = true;
         value = undefined;
+      } else if (request.method === "readNodes") {
+        value = await readWorkerNodes(this.db, request.hashes);
       } else {
         throw new Error(
           `Unknown native MPF worker method ${String(request.method)}`,

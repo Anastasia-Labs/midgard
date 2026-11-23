@@ -23,7 +23,6 @@ import {
 } from "../fibers/l1-provider-readiness-refresher.js";
 import { l2TxPeerForwarderFiber } from "../fibers/l2-tx-peer-forwarder.js";
 import { monitorMempoolFiber } from "../fibers/monitor-mempool.js";
-import { mpfPayloadAuditFiber } from "../fibers/mpf-payload-audit.js";
 import { nativeMpfOwnerSupervisorFiber } from "../fibers/native-mpf-owner-supervisor.js";
 import { retentionSweeperFiber } from "../fibers/retention-sweeper.js";
 import { settlementFiber } from "../fibers/settlement.js";
@@ -168,7 +167,6 @@ export const nodeFibers = ({
   validationTraceDefense: validationTraceDefenseFiber(
     mkSchedule(VALIDATION_TRACE_DEFENSE_TICK_MS),
   ),
-  mpfPayloadAudit: mpfPayloadAuditFiber,
   confirmedLedgerVerification: confirmedLedgerVerificationFiber({
     watchIntervalMs: nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
   }),

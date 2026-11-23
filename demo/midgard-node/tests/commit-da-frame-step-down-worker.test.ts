@@ -38,8 +38,8 @@ import {
 } from "./helpers/commit-da-frame-worker-fixture.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 
-// The worker reads its candidates, its confirmed_ledger base and the native
-// owner through these seams; the block build itself is faked below.
+// The worker reads its candidates and the native owner, its base ledger
+// with it, through these seams; the block build itself is faked below.
 const seams = vi.hoisted(() => ({
   candidates: [] as unknown[],
   owner: [] as string[],
@@ -165,18 +165,23 @@ vi.mock("../src/mpf/index.js", async () => {
   );
   return {
     ...actual,
-    // The confirmed_ledger base carries the durable root.
-    computeLedgerMpfRootFromLedgerEntries: vi.fn(() =>
-      Effect.succeed("33".repeat(32)),
-    ),
     configureCommitMpfRuntime: vi.fn(() => Effect.void),
     processMpfs: vi.fn(),
   };
 });
-// The native owner records every fork and discard in order.
+// The native owner records every fork and discard in order; the base
+// ledger at its durable root holds no entry.
 vi.mock("../src/services/mpf-native-owner/client.js", () => ({
   NativeMpfWorkerPortClient: class {
     private forks = 0;
+    readNodes = vi.fn(async (hashes: readonly string[]) =>
+      hashes.map(() => ({
+        __kind: "Branch" as const,
+        prefix: "",
+        children: Array.from({ length: 16 }, () => null),
+        size: 0,
+      })),
+    );
     fork = vi.fn(async (baseRoot: string) => {
       this.forks += 1;
       seams.owner.push(`fork:${this.forks.toString()}`);

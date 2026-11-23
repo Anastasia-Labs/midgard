@@ -110,13 +110,12 @@ describe("confirmed_ledger behind across a queue history outage", () => {
     const outcome = await resolve(
       await confirmedTipOf(confirmedAt(a, "")),
       a.header.utxosRoot,
+      { ledgers: [AFTER_A] },
     );
     expect(Either.isRight(outcome)).toBe(true);
     const base = Either.getOrThrow(outcome);
-    expect(base.source).toBe("confirmed_ledger");
+    expect(base.source).toBe(`confirmed:${a.hash}`);
     expect(base.root).toBe(a.header.utxosRoot);
-    expect(hexEntries(base.entries ?? []).sort()).toEqual(
-      hexEntries(AFTER_A).sort(),
-    );
+    expect(base.entries).toEqual(hexEntries(AFTER_A).sort());
   }, 120_000);
 });

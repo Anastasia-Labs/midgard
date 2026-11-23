@@ -10,7 +10,6 @@ import {
   PendingBlockFinalizationsDB,
   WithdrawalsDB,
 } from "../../database/index.js";
-import type * as Ledger from "../../database/utils/ledger.js";
 import { reachCommitCrashCheckpoint } from "../../e2e/commit-crash-checkpoint.js";
 import type { LedgerDelta } from "../../mpf/ledger-delta.js";
 import { emptyRootHexProgram } from "../../mpf/store.empty-root-hex-program.js";
@@ -85,7 +84,6 @@ export const submitDepositOnlyCommit = ({
   validationTraceCount,
   ledgerDelta,
   selectedBaseUtxosRoot,
-  implicitGenesisEntries,
   afterDaFrameAccepted,
   nativeMpfReplay,
 }: CommitSubmissionHooks & {
@@ -117,7 +115,6 @@ export const submitDepositOnlyCommit = ({
   readonly validationTraceCount: number;
   readonly ledgerDelta: LedgerDelta;
   readonly selectedBaseUtxosRoot: string;
-  readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
   readonly nativeMpfReplay: NativeMpfReplayBuild;
 }) =>
   Effect.gen(function* () {
@@ -313,8 +310,6 @@ export const submitDepositOnlyCommit = ({
                   yield* resolvePendingJournalLedgerState({
                     recordedBaseUtxosRoot: metadata.baseRoots.utxosRoot,
                     selectedBaseUtxosRoot,
-                    expectedFinalUtxosRoot: roots.utxoRoot,
-                    implicitGenesisEntries,
                     transitionDelta: ledgerDelta,
                   });
                 const beforeJournalInsert =

@@ -5,7 +5,6 @@ import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Fiber } from "effect";
 
 import { Database } from "../services/database.js";
-import { appliedOrFolded } from "./pendingBlockFinalizations.status-sql.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "mpf_engine_state";
@@ -117,22 +116,16 @@ export const releaseLedgerStoreLease = (
   );
 
 /** Owner prefixes of the ledger MPF leases only a node process takes: block
- * commitment (`node-commit:`), and the node's own
- * payload audit (`node-audit:`). The offline `reconcile` and `mpf-audit`
+ * commitment (`node-commit:`). The offline `reconcile` and `mpf-audit`
  * commands take theirs as `commit:` and `audit:`, so a live one may exist
  * beside the node and never carries these prefixes. */
 export const NODE_PROCESS_COMMIT_LEASE_OWNER_PREFIX = "node-commit:";
-export const NODE_PROCESS_AUDIT_LEASE_OWNER_PREFIX = "node-audit:";
 export const NODE_PROCESS_LEDGER_LEASE_OWNER_PREFIXES: readonly string[] = [
   NODE_PROCESS_COMMIT_LEASE_OWNER_PREFIX,
-  NODE_PROCESS_AUDIT_LEASE_OWNER_PREFIX,
 ];
 
 export const nodeProcessCommitLeaseOwner = (): string =>
   coreNodeProcessCommitLeaseOwner(randomUUID());
-
-export const nodeProcessAuditLeaseOwner = (): string =>
-  `${NODE_PROCESS_AUDIT_LEASE_OWNER_PREFIX}${randomUUID()}`;
 
 /** Clears the ledger MPF lease when its owner carries one of `prefixes`,
  * whoever took it, and returns the owner it cleared. Only a caller that proved
@@ -325,35 +318,4 @@ export const stampLedgerMigration = (
         updated_at = CURRENT_TIMESTAMP`;
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to stamp ledger MPF migration"),
-  );
-
-export const ledgerAuditIsDue = ({
-  intervalBlocks,
-  intervalMs,
-  now = new Date(),
-}: {
-  readonly intervalBlocks: number;
-  readonly intervalMs: number;
-  readonly now?: Date;
-}): Effect.Effect<boolean, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const [state] = yield* sql<{ readonly last_audit_at: Date | null }>`
-      SELECT last_audit_at FROM ${sql(tableName)} WHERE store_name = 'ledger'`;
-    const lastAuditAt = state?.last_audit_at ?? null;
-    if (
-      lastAuditAt === null ||
-      now.getTime() - lastAuditAt.getTime() >= intervalMs
-    ) {
-      return true;
-    }
-    // Own blocks built since the last audit that the working ledger took in.
-    const [row] = yield* sql<{
-      readonly applied_count: bigint | string;
-    }>`SELECT COUNT(*) AS applied_count
-       FROM pending_block_finalizations p
-       WHERE p.created_at > ${lastAuditAt} AND ${appliedOrFolded(sql, "p")}`;
-    return BigInt(row?.applied_count ?? 0) >= BigInt(intervalBlocks);
-  }).pipe(
-    sqlErrorToDatabaseError(tableName, "Failed to determine MPF audit cadence"),
   );

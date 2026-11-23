@@ -21,7 +21,6 @@ import {
   mergeAction,
   MergeIntentJournalUnavailable,
 } from "../src/fibers/merge.merge-action.js";
-import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { hydrateLedgerMpfFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import type { NodeConfigDep } from "../src/services/config.js";
@@ -118,6 +117,9 @@ it("audits the native MPF root at the committed tip, and merges only under an in
     if (owner === undefined) throw new Error("Expected live native owner");
     return (await owner.diagnostics()).durableRoot;
   };
+  // The ledger audit at the live native owner's durable root.
+  const auditNativeRoot = () =>
+    runMpfAudit({ readNativeDurableRoot: Effect.promise(nativeDurableRoot) });
   const auditHealthy = async () =>
     Either.isRight(
       await run(Effect.either(MpfEngineStateDB.assertLedgerAuditHealthy)),
@@ -347,7 +349,7 @@ it("audits the native MPF root at the committed tip, and merges only under an in
     );
     expect(tipSnapshot.root).toBe(tipRoot);
 
-    const clean: MpfAuditResult = await run(runLedgerPayloadAudit);
+    const clean: MpfAuditResult = await run(auditNativeRoot());
     expect(clean).toMatchObject({
       persistedRoot: tipRoot,
       recomputedRoot: tipRoot,
@@ -412,7 +414,7 @@ it("audits the native MPF root at the committed tip, and merges only under an in
     // --- A second finalized block: the tip walk spans two journals. --------
     const second = await depositCommitAndLand(7_000_000n);
     const twoBlockTip = await nativeDurableRoot();
-    expect(await run(runLedgerPayloadAudit)).toMatchObject({
+    expect(await run(auditNativeRoot())).toMatchObject({
       matchedPoint: "tip",
       unmergedJournalCount: 2,
       tipRoot: twoBlockTip,
@@ -626,7 +628,7 @@ it("audits the native MPF root at the committed tip, and merges only under an in
       nextAction: null,
     });
     // One merged, one (rebased) block still committed on top.
-    expect(await run(runLedgerPayloadAudit)).toMatchObject({
+    expect(await run(auditNativeRoot())).toMatchObject({
       matchedPoint: "tip",
       unmergedJournalCount: 1,
       tipRoot: twoBlockTip,
@@ -655,7 +657,7 @@ it("audits the native MPF root at the committed tip, and merges only under an in
     expect((await queue()).blockCount).toBe(0);
 
     // Fully merged: the confirmed ledger has caught up with the native tip.
-    expect(await run(runLedgerPayloadAudit)).toMatchObject({
+    expect(await run(auditNativeRoot())).toMatchObject({
       persistedRoot: twoBlockTip,
       confirmedRoot: twoBlockTip,
       tipRoot: twoBlockTip,
