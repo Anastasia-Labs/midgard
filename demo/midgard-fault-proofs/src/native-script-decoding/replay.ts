@@ -17,11 +17,15 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import { eventLedgerBeforeStep } from "../event-ledger.js";
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
+import {
+  ledgerBeforeTraceStep,
+  readingLedger,
+} from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { retainedOutputReferenceScript } from "../evidence/retained-ledger-output.js";
-import { type CheckedLedger } from "../ledger-at.js";
-import { keyValuePhasProof } from "../transition-trace/phas.js";
+import { type CheckedLedger, ledgerEntryLeaf } from "../ledger-at.js";
+import { type Ledger, ledgerProof } from "../ledger-store/index.js";
 import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
@@ -45,13 +49,15 @@ export const nativeScriptDecodingDetectionId = (
 ) =>
   `native-script-decoding:${c.sourceKind}:${c.sourceIndex}:${c.outpointSourceKind}:${c.outpointCursor}`;
 
-export const prepareNativeScriptDecodingReplay = async ({
+/** `prepareNativeScriptDecodingReplay`, asking for the predecessor only once
+ * the coordinate selects an input. */
+const replayCoordinate = async ({
   current,
   predecessor,
   coordinate,
 }: {
   current: TransitionTraceReconstruction;
-  predecessor?: CheckedLedger;
+  predecessor: () => Promise<Ledger | undefined>;
   coordinate: NativeScriptDecodingCoordinate;
 }) => {
   const forced =
@@ -149,16 +155,22 @@ export const prepareNativeScriptDecodingReplay = async ({
       ledgerTrie: null,
     };
   }
-  const ledger = await eventLedgerBeforeStep(
+  const ledger = await ledgerBeforeTraceStep(
     current,
     mapping.step_index,
-    predecessor,
+    await predecessor(),
   );
-  const output = ledger.outputs.get(selected.toString("hex"));
+  const output = await readingLedger(
+    "nativeScriptDecoding selected input",
+    async () =>
+      (await ledger.read([selected])).get(selected.toString("hex"))?.output,
+  );
   if (output === undefined) return null;
-  const descriptorCbor = ledger.trie.entries.find((entry) =>
-    entry.key.equals(selected),
-  )!.value;
+  // The output's trie leaf: the descriptor the ledger commits for it.
+  const { leaf: descriptorCbor } = ledgerEntryLeaf(
+    { outRef: selected, output },
+    "nativeScriptDecoding selected input",
+  );
   const descriptor = decodeMidgardLedgerOutputCommitment(descriptorCbor);
   const referenceScriptItemBytes = retainedOutputReferenceScript(output);
   let plan: ReturnType<typeof buildNativeScriptDecodingScanPlan> | null = null;
@@ -186,11 +198,14 @@ export const prepareNativeScriptDecodingReplay = async ({
     });
   }
   const ledgerTrie = {
-    rootHex: ledger.trie.root,
+    rootHex: ledger.root,
     prove: async (key: Buffer) =>
       Buffer.from(
         Data.to(
-          await keyValuePhasProof(ledger.trie, key, descriptorCbor),
+          await readingLedger(
+            "nativeScriptDecoding descriptor proof",
+            async () => await ledgerProof(ledger, key),
+          ),
           SDK.Proof,
         ),
         "hex",
@@ -212,6 +227,22 @@ export const prepareNativeScriptDecodingReplay = async ({
   };
 };
 
+export const prepareNativeScriptDecodingReplay = async ({
+  current,
+  predecessor,
+  coordinate,
+}: {
+  current: TransitionTraceReconstruction;
+  /** The ledger the block starts from; none when it starts from genesis. */
+  predecessor?: Ledger;
+  coordinate: NativeScriptDecodingCoordinate;
+}) =>
+  await replayCoordinate({
+    current,
+    predecessor: async () => predecessor,
+    coordinate,
+  });
+
 export const detectNativeScriptDecodingReplay = async ({
   block,
   predecessor,
@@ -219,6 +250,13 @@ export const detectNativeScriptDecodingReplay = async ({
   block: CanonicalBlockEvidence;
   predecessor?: CheckedLedger;
 }) => {
+  // The predecessor as a store ledger, converted once, for the first
+  // candidate that selects an input: a block with none converts nothing.
+  let ledger: Promise<Ledger> | undefined;
+  const predecessorLedger = async () =>
+    predecessor === undefined
+      ? undefined
+      : await (ledger ??= checkedLedgerAsLedger(predecessor));
   const candidates: NativeScriptDecodingCoordinate[] = [];
   for (const sourceKind of [0, 1] as const) {
     const sources =
@@ -274,9 +312,9 @@ export const detectNativeScriptDecodingReplay = async ({
     }
   }
   return collectReplayFindings(candidates, async (coordinate) => {
-    const prepared = await prepareNativeScriptDecodingReplay({
+    const prepared = await replayCoordinate({
       current: block.reconstruction,
-      predecessor,
+      predecessor: predecessorLedger,
       coordinate,
     });
     return prepared === null
