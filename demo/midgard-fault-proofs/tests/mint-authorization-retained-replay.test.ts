@@ -22,7 +22,10 @@ import {
   prepareMintAuthorizationReplay,
 } from "../src/mint-authorization/replay.js";
 import { keyValuePhasProof } from "../src/transition-trace/phas.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import {
+  completeCanonicalReplayPredecessorLedger,
+  completeCanonicalReplayPredecessorStoreLedger,
+} from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { buildFixtureTransaction } from "./helpers/canonical-block-evidence-fixture.js";
 import { block, OTHER, SPENT } from "./helpers/event-ledger-committed-steps.js";
 import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
@@ -140,7 +143,7 @@ describe("mint authorization policies sourced from spent outputs", () => {
       });
       const findings = await detectMintAuthorizationReplay({
         block: fixture.evidence,
-        predecessor: completeCanonicalReplayPredecessorLedger({
+        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
           evidence: fixture.evidence,
           context: fixture.context,
         }),

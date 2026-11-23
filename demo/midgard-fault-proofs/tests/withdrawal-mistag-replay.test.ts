@@ -2,6 +2,7 @@ import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import { isReplayLocalFault } from "../src/block-replay.faults.js";
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import type { CheckedLedger } from "../src/ledger-at.js";
 import {
@@ -118,7 +119,7 @@ describe("withdrawal mistag ledger evidence", () => {
       const predecessor = await checkedLedgerAfter(fixture.predecessor);
       const findings = await detectWithdrawalMistagReplay({
         block: fixture.evidence,
-        predecessor,
+        predecessor: await checkedLedgerAsLedger(predecessor),
       });
       expect(findings).toHaveLength(1);
       const expected = await expectedLedgerEvidence(
@@ -147,7 +148,7 @@ describe("withdrawal mistag ledger evidence", () => {
     const predecessor = await checkedLedgerAfter(fixture.predecessor);
     const findings = await detectWithdrawalMistagReplay({
       block: fixture.evidence,
-      predecessor,
+      predecessor: await checkedLedgerAsLedger(predecessor),
     });
     expect(findings.map(({ index }) => index)).toEqual([1]);
     const expected = await expectedLedgerEvidence(

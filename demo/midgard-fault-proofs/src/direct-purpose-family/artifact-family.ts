@@ -4,7 +4,7 @@
  * workflow modules that load it. */
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import type { CheckedLedger } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import type { DirectPurposeTransition } from "./custody.js";
 import type { DirectPurposeContracts } from "./family.js";
@@ -36,13 +36,13 @@ export type DirectPurposeArtifactAdmission<
   /** The finding at one coordinate; `null` when it does not convict. */
   prepare: (input: {
     readonly current: TransitionTraceReconstruction;
-    readonly predecessor?: CheckedLedger;
+    readonly predecessor?: Ledger;
     readonly coordinate: DirectPurposeSourceCoordinate;
   }) => Promise<Prepared | null>;
   /** Every finding of one block. */
   detect: (input: {
     readonly block: CanonicalBlockEvidence;
-    readonly predecessor?: CheckedLedger;
+    readonly predecessor?: Ledger;
   }) => Promise<
     readonly Readonly<{
       detectionId: string;

@@ -7,7 +7,6 @@
 import type * as SDKCore from "@al-ft/midgard-sdk/core";
 import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
   acceptedScriptSources,
@@ -20,7 +19,7 @@ import {
 import { prepareDirectScriptMaterial } from "../direct-script-derivation/material.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { claimedReasonReachesPhase } from "../evidence/claimed-coordinate.js";
-import type { CheckedLedger } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
 import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
@@ -66,7 +65,7 @@ export const prepareExecutionNativeScriptInvalidReplay = async ({
   coordinate,
 }: {
   readonly current: TransitionTraceReconstruction;
-  readonly predecessor?: CheckedLedger;
+  readonly predecessor?: Ledger;
   readonly coordinate: ExecutionNativeScriptInvalidCoordinate;
 }) => {
   const eventKey = directPurposeEventKey(current, coordinate);
@@ -75,9 +74,7 @@ export const prepareExecutionNativeScriptInvalidReplay = async ({
     const material = await prepareDirectScriptMaterial({
       current,
       eventKey,
-      ...(predecessor === undefined
-        ? {}
-        : { predecessor: await checkedLedgerAsLedger(predecessor) }),
+      ...(predecessor === undefined ? {} : { predecessor }),
     });
     const detection = await executionNativeScriptInvalidDetection(material);
     if (detection === null) return null;
@@ -100,7 +97,7 @@ export const detectExecutionNativeScriptInvalidReplay = async ({
   predecessor,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly predecessor?: CheckedLedger;
+  readonly predecessor?: Ledger;
 }) => {
   const current = block.reconstruction;
   const candidates: ExecutionNativeScriptInvalidCoordinate[] = [];

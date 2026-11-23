@@ -30,12 +30,3 @@ export const checkedLedgerAsLedger = (
   converted.set(checked, ledger);
   return ledger;
 };
-
-/** `predecessor` as a `Ledger`, converted when first asked for; none when the
- * block starts from genesis. */
-export const checkedPredecessorLedger =
-  (predecessor: CheckedLedger | undefined) =>
-  async (): Promise<Ledger | undefined> =>
-    predecessor === undefined
-      ? undefined
-      : await checkedLedgerAsLedger(predecessor);

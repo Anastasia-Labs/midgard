@@ -396,7 +396,7 @@ describe("input-existence ledger evidence", () => {
       expect(f.targetPreRoot).not.toBe(f.evidence.header.prevUtxosRoot);
       const detections = await detect({
         block: f.evidence,
-        predecessor: f.predecessor,
+        predecessor: await checkedLedgerAsLedger(f.predecessor),
       });
       expect(detections).toHaveLength(1);
       const { value, proof } = await referenceEvidence(

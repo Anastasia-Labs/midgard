@@ -5,7 +5,6 @@
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
   directPurposeEventKey,
@@ -14,7 +13,7 @@ import {
 } from "../direct-purpose-family/replay-support.js";
 import { prepareDirectScriptMaterial } from "../direct-script-derivation/material.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import type { CheckedLedger } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
 import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
@@ -56,7 +55,7 @@ export const prepareExecutionSourceScriptDecodingReplay = async ({
   coordinate,
 }: {
   readonly current: TransitionTraceReconstruction;
-  readonly predecessor?: CheckedLedger;
+  readonly predecessor?: Ledger;
   readonly coordinate: ExecutionSourceScriptDecodingCoordinate;
 }) => {
   if (coordinate.sourceKind !== 1) return null;
@@ -70,9 +69,7 @@ export const prepareExecutionSourceScriptDecodingReplay = async ({
     const material = await prepareDirectScriptMaterial({
       current,
       eventKey,
-      ...(predecessor === undefined
-        ? {}
-        : { predecessor: await checkedLedgerAsLedger(predecessor) }),
+      ...(predecessor === undefined ? {} : { predecessor }),
     });
     return executionSourceScriptDecodingDetection(material) === null
       ? null
@@ -94,7 +91,7 @@ export const detectExecutionSourceScriptDecodingReplay = async ({
   predecessor,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly predecessor?: CheckedLedger;
+  readonly predecessor?: Ledger;
 }) => {
   const current = block.reconstruction;
   const candidates: ExecutionSourceScriptDecodingCoordinate[] = [];

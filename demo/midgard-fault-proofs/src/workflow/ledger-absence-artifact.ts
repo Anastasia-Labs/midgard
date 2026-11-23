@@ -4,7 +4,6 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
   admitInputExistenceArtifact,
@@ -16,7 +15,7 @@ import {
 } from "../input-existence/prepare.js";
 import { ledgerKeyBytesHex } from "../step-support.js";
 import type { CanonicalBlockClassification } from "./classification.js";
-import { completeCanonicalReplayPredecessorLedger } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import type { CompleteCanonicalReplayContext } from "./complete-replay.replay-context-identity.js";
 import { normalizeWorkflowJson, type WorkflowJsonObject } from "./identity.js";
 import {
@@ -132,7 +131,7 @@ export const prepareLedgerAbsenceArtifact = async ({
   } else if (selected.violationId !== `${violation}-wrongful-rejection`) {
     throw new Error("input-existence classification names another rule");
   }
-  const predecessor = completeCanonicalReplayPredecessorLedger({
+  const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
     evidence,
     context: replayContext,
   });
@@ -141,9 +140,7 @@ export const prepareLedgerAbsenceArtifact = async ({
     eventKey,
     field,
     inputIndex: index,
-    ...(predecessor === undefined
-      ? {}
-      : { predecessor: await checkedLedgerAsLedger(predecessor) }),
+    ...(predecessor === undefined ? {} : { predecessor }),
     owner,
   });
   const wrongfulAcceptance =

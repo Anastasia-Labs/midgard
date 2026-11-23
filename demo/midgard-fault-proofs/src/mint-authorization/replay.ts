@@ -8,14 +8,13 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import { checkedPredecessorLedger } from "../checked-ledger-store.js";
 import {
   ledgerBeforeTraceStep,
   readingLedger,
 } from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { retainedOutputReferenceScript } from "../evidence/retained-ledger-output.js";
-import { type CheckedLedger, ledgerEntryLeaf } from "../ledger-at.js";
+import { ledgerEntryLeaf } from "../ledger-at.js";
 import { type Ledger, ledgerProof } from "../ledger-store/index.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.resolve-double-spend-pair.js";
@@ -36,15 +35,15 @@ export type MintAuthorizationCoordinate = Readonly<{
 export const mintAuthorizationDetectionId = (c: MintAuthorizationCoordinate) =>
   `${SDKFraudProof.MINT_AUTHORIZATION_VIOLATION_ID}:${c.sourceIndex}:${c.policyIndex}`;
 
-/** `prepareMintAuthorizationReplay`, asking for the predecessor only once
- * the transaction mints. */
-const replayTransaction = async ({
+/** Reconstruct every claim input from committed source and retained output bytes. */
+export const prepareMintAuthorizationReplay = async ({
   current,
   predecessor,
   sourceIndex,
 }: {
   current: TransitionTraceReconstruction;
-  predecessor: () => Promise<Ledger | undefined>;
+  /** The ledger the block starts from; none when it starts from genesis. */
+  predecessor?: Ledger;
   sourceIndex: number;
 }) => {
   const source = current.transactions[sourceIndex];
@@ -66,7 +65,7 @@ const replayTransaction = async ({
   const ledger = await ledgerBeforeTraceStep(
     current,
     event.value.step_index,
-    await predecessor(),
+    predecessor,
   );
   const referenceItems = decodeMidgardFieldPreimage(
     tx.body.referenceInputsPreimageCbor,
@@ -169,23 +168,6 @@ const replayTransaction = async ({
   }));
 };
 
-/** Reconstruct every claim input from committed source and retained output bytes. */
-export const prepareMintAuthorizationReplay = async ({
-  current,
-  predecessor,
-  sourceIndex,
-}: {
-  current: TransitionTraceReconstruction;
-  /** The ledger the block starts from; none when it starts from genesis. */
-  predecessor?: Ledger;
-  sourceIndex: number;
-}) =>
-  await replayTransaction({
-    current,
-    predecessor: async () => predecessor,
-    sourceIndex,
-  });
-
 type MintAuthorizationReplayItem = Awaited<
   ReturnType<typeof prepareMintAuthorizationReplay>
 >[number];
@@ -210,11 +192,8 @@ export const detectMintAuthorizationReplay = async ({
   predecessor,
 }: {
   block: CanonicalBlockEvidence;
-  predecessor?: CheckedLedger;
+  predecessor?: Ledger;
 }) => {
-  // Converted only once a transaction mints: a block with none converts
-  // nothing.
-  const predecessorLedger = checkedPredecessorLedger(predecessor);
   return collectReplayFindingBatches(
     block.reconstruction.transactions,
     async (source, sourceIndex) => {
@@ -226,9 +205,9 @@ export const detectMintAuthorizationReplay = async ({
           { L2TransactionEventKey: { tx_id: source.txId } },
           "representable_field_shape",
         );
-      const prepared = await replayTransaction({
+      const prepared = await prepareMintAuthorizationReplay({
         current: block.reconstruction,
-        predecessor: predecessorLedger,
+        predecessor,
         sourceIndex,
       });
       return prepared.map((item) => ({

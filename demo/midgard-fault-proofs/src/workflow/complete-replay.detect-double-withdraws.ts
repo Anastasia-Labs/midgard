@@ -15,7 +15,7 @@ import { decodeTransactionMaterial } from "../prepare-double-spend.resolve-doubl
 import { detectReferenceInputNoIdxViolationsFromTransactions } from "../prepare-reference-input-no-idx.decode-tx.js";
 import { type CanonicalViolationDetection } from "./classification.js";
 import {
-  completeCanonicalReplayPredecessorLedger,
+  completeCanonicalReplayPredecessorStoreLedger,
   detectDoubleSpends,
   detectLedgerRelativeMissingInputs,
   detectNetworkIds,
@@ -218,7 +218,7 @@ export const NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
     })),
     ...(await detectNonExistentInputWrongfulRejections({
       block: evidence,
-      predecessor: completeCanonicalReplayPredecessorLedger({
+      predecessor: await completeCanonicalReplayPredecessorStoreLedger({
         evidence,
         context,
       }),
@@ -255,7 +255,7 @@ export const NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
     })),
     ...(await detectNoReferenceInputWrongfulRejections({
       block: evidence,
-      predecessor: completeCanonicalReplayPredecessorLedger({
+      predecessor: await completeCanonicalReplayPredecessorStoreLedger({
         evidence,
         context,
       }),

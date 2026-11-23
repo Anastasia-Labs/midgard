@@ -10,13 +10,11 @@ import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
-import { checkedPredecessorLedger } from "../checked-ledger-store.js";
 import {
   ledgerBeforeTraceStep,
   readingLedger,
 } from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { type CheckedLedger } from "../ledger-at.js";
 import { type Ledger, ledgerProof } from "../ledger-store/index.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
@@ -65,16 +63,16 @@ const readsAsTransactionOutput = (output: Uint8Array): boolean => {
   }
 };
 
-/** `prepareValueConservationArtifact`, asking for the predecessor only once
- * the transaction passes the checks that need no ledger. */
-const replaySource = async ({
+/** Public retained-DA reconstruction, including earlier transactions in the block. */
+export const prepareValueConservationArtifact = async ({
   block,
   predecessor,
   sourceIndex,
   forced,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly predecessor: () => Promise<Ledger | undefined>;
+  /** The ledger the block starts from; none when it starts from genesis. */
+  readonly predecessor?: Ledger;
   readonly sourceIndex: number;
   readonly forced: boolean;
 }): Promise<ValueConservationArtifact | null> => {
@@ -143,7 +141,7 @@ const replaySource = async ({
   const ledger = await ledgerBeforeTraceStep(
     block.reconstruction,
     event.value.step_index,
-    await predecessor(),
+    predecessor,
   );
   const inputItems = decodeMidgardFieldPreimage(
     transaction.body.spendInputsPreimageCbor,
@@ -260,36 +258,13 @@ export const valueConservationInputs = async (
     })),
   );
 
-/** Public retained-DA reconstruction, including earlier transactions in the block. */
-export const prepareValueConservationArtifact = async ({
-  block,
-  predecessor,
-  sourceIndex,
-  forced,
-}: {
-  readonly block: CanonicalBlockEvidence;
-  /** The ledger the block starts from; none when it starts from genesis. */
-  readonly predecessor?: Ledger;
-  readonly sourceIndex: number;
-  readonly forced: boolean;
-}): Promise<ValueConservationArtifact | null> =>
-  await replaySource({
-    block,
-    predecessor: async () => predecessor,
-    sourceIndex,
-    forced,
-  });
-
 export const detectValueConservationFaults = async ({
   block,
   predecessor,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly predecessor?: CheckedLedger;
+  readonly predecessor?: Ledger;
 }) => {
-  // Converted only once a transaction reaches its spent inputs: a block with
-  // none converts nothing.
-  const predecessorLedger = checkedPredecessorLedger(predecessor);
   const candidates: { forced: boolean; index: number }[] = [];
   for (const forced of [false, true]) {
     const count = forced
@@ -299,9 +274,9 @@ export const detectValueConservationFaults = async ({
       candidates.push({ forced, index });
   }
   return collectReplayFindings(candidates, async ({ forced, index }) => {
-    const artifact = await replaySource({
+    const artifact = await prepareValueConservationArtifact({
       block,
-      predecessor: predecessorLedger,
+      predecessor,
       sourceIndex: index,
       forced,
     });
