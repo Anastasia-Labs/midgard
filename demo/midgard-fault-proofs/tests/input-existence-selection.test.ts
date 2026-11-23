@@ -16,6 +16,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { faultProofFieldOpening } from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import { inputExistenceArtifact } from "../src/input-existence/artifact.js";
@@ -246,11 +247,13 @@ describe("input-existence workflow field prerequisites", () => {
       field: 0,
       inputIndex: 0n,
       owner: OWNER,
-      predecessor: await checkLedgerAgainstRoot({
-        entries: [],
-        utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-        label: "field-plan source predecessor",
-      }),
+      predecessor: await checkedLedgerAsLedger(
+        await checkLedgerAgainstRoot({
+          entries: [],
+          utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          label: "field-plan source predecessor",
+        }),
+      ),
     });
     const artifact = {
       schemaVersion: LEDGER_ABSENCE_ARTIFACT,
@@ -393,11 +396,13 @@ describe("retained forced evidence on the current shared path", () => {
         ...sourceContext,
         field,
         owner: OWNER,
-        predecessor: await checkLedgerAgainstRoot({
-          entries: [],
-          utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          label: "retained forced predecessor",
-        }),
+        predecessor: await checkedLedgerAsLedger(
+          await checkLedgerAgainstRoot({
+            entries: [],
+            utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            label: "retained forced predecessor",
+          }),
+        ),
       });
       if (prepared.source.kind !== "forced")
         throw new Error("fixture source is not forced");

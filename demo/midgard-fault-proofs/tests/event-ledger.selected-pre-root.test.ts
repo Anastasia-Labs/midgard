@@ -12,6 +12,7 @@ import { encodeMidgardMintPolicyItem } from "@al-ft/midgard-core/codec";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { describe, expect, it } from "vitest";
 
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/material.js";
 import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import { prepareMintAuthorizationReplay } from "../src/mint-authorization/replay.js";
@@ -127,7 +128,9 @@ describe("the shared walk refuses a selected event's moved pre-state before its 
       prepare({
         block: fixture.evidence,
         forcedIndex: 0,
-        predecessor: completeCanonicalReplayPredecessorLedger(fixture)!,
+        predecessor: await checkedLedgerAsLedger(
+          completeCanonicalReplayPredecessorLedger(fixture)!,
+        ),
       }),
     ).rejects.toThrow(WALK_REFUSED);
   });

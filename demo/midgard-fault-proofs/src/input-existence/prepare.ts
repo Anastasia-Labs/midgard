@@ -4,13 +4,10 @@ import { computeHash32 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
-import { eventLedgerBefore } from "../event-ledger.js";
+import { ledgerBeforeStep, readingLedger } from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import type { CheckedLedger } from "../ledger-at.js";
-import {
-  keyValuePhasNonMembershipProof,
-  keyValuePhasProof,
-} from "../transition-trace/phas.js";
+import { ledgerEntryLeaf } from "../ledger-at.js";
+import { type Ledger, ledgerProof } from "../ledger-store/index.js";
 import { eventKeyPhase } from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   buildEventToStepMembershipProof,
@@ -56,7 +53,8 @@ export const prepareInputExistence = async ({
   readonly eventKey: SDK.EventKey;
   readonly field: 0 | 1;
   readonly inputIndex?: bigint;
-  readonly predecessor?: CheckedLedger;
+  /** The ledger the block starts from; none when it starts from genesis. */
+  readonly predecessor?: Ledger;
   readonly owner: string;
 }): Promise<PreparedInputExistence> => {
   const source = await openProofThreadSubjectFromCanonicalEvidence({
@@ -93,42 +91,35 @@ export const prepareInputExistence = async ({
   }
   // Replay even for an impossible WR index: absent ledger evidence cannot
   // waive the event/root linkage or the checked predecessor authority.
-  const ledger = await eventLedgerBefore({
+  const ledger = await ledgerBeforeStep({
     block,
     eventKey,
     stepIndex: step.step_index,
     predecessor,
   });
-  let ledgerEvidence: PreparedInputExistenceLedgerEvidence;
-  if (selectedItem === undefined) {
-    ledgerEvidence = "OutOfDomain";
-  } else {
-    const existing = ledger.trie.entries.find(({ key }) =>
-      key.equals(selectedItem),
-    );
-    if (existing !== undefined) {
-      ledgerEvidence = {
-        Present: {
-          value: existing.value.toString("hex"),
-          value_hash: computeHash32(existing.value).toString("hex"),
-          proof: await keyValuePhasProof(
-            ledger.trie,
-            selectedItem,
-            existing.value,
-          ),
-        },
-      };
-    } else {
-      ledgerEvidence = {
-        Absent: {
-          proof: await keyValuePhasNonMembershipProof(
-            ledger.trie,
-            selectedItem,
-          ),
-        },
-      };
-    }
-  }
+  const ledgerEvidence: PreparedInputExistenceLedgerEvidence =
+    selectedItem === undefined
+      ? "OutOfDomain"
+      : await readingLedger("input-existence ledger evidence", async () => {
+          const output = (await ledger.read([selectedItem])).get(
+            selectedItem.toString("hex"),
+          )?.output;
+          // Membership when the ledger holds the input, non-membership when
+          // it does not: the proof `output` calls for.
+          const proof = await ledgerProof(ledger, selectedItem);
+          if (output === undefined) return { Absent: { proof } };
+          const { leaf } = ledgerEntryLeaf(
+            { outRef: selectedItem, output },
+            "input-existence ledger evidence",
+          );
+          return {
+            Present: {
+              value: leaf.toString("hex"),
+              value_hash: computeHash32(leaf).toString("hex"),
+              proof,
+            },
+          };
+        });
   return {
     field,
     source,
