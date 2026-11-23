@@ -76,7 +76,9 @@ describe("the shared walk refuses a selected event's moved pre-state before its 
     await expect(
       prepareMintAuthorizationReplay({
         current: fixture.evidence.reconstruction,
-        predecessor: completeCanonicalReplayPredecessorLedger(fixture)!,
+        predecessor: await checkedLedgerAsLedger(
+          completeCanonicalReplayPredecessorLedger(fixture)!,
+        ),
         sourceIndex: Number(fixture.position(1)),
       }),
     ).rejects.toThrow(REFUSED);

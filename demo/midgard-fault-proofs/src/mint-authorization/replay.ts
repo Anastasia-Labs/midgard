@@ -8,10 +8,15 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import { eventLedgerBeforeStep } from "../event-ledger.js";
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
+import {
+  ledgerBeforeTraceStep,
+  readingLedger,
+} from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { retainedOutputReferenceScript } from "../evidence/retained-ledger-output.js";
-import { type CheckedLedger } from "../ledger-at.js";
+import { type CheckedLedger, ledgerEntryLeaf } from "../ledger-at.js";
+import { type Ledger, ledgerProof } from "../ledger-store/index.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.resolve-double-spend-pair.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
@@ -31,14 +36,15 @@ export type MintAuthorizationCoordinate = Readonly<{
 export const mintAuthorizationDetectionId = (c: MintAuthorizationCoordinate) =>
   `${SDKFraudProof.MINT_AUTHORIZATION_VIOLATION_ID}:${c.sourceIndex}:${c.policyIndex}`;
 
-/** Reconstruct every claim input from committed source and retained output bytes. */
-export const prepareMintAuthorizationReplay = async ({
+/** `prepareMintAuthorizationReplay`, asking for the predecessor only once
+ * the transaction mints. */
+const replayTransaction = async ({
   current,
   predecessor,
   sourceIndex,
 }: {
   current: TransitionTraceReconstruction;
-  predecessor?: CheckedLedger;
+  predecessor: () => Promise<Ledger | undefined>;
   sourceIndex: number;
 }) => {
   const source = current.transactions[sourceIndex];
@@ -57,10 +63,10 @@ export const prepareMintAuthorizationReplay = async ({
     reconstruction: current,
     eventKey: { L2TransactionEventKey: { tx_id: source.txId } },
   });
-  const ledger = await eventLedgerBeforeStep(
+  const ledger = await ledgerBeforeTraceStep(
     current,
     event.value.step_index,
-    predecessor,
+    await predecessor(),
   );
   const referenceItems = decodeMidgardFieldPreimage(
     tx.body.referenceInputsPreimageCbor,
@@ -68,21 +74,31 @@ export const prepareMintAuthorizationReplay = async ({
   const spendItems = decodeMidgardFieldPreimage(
     tx.body.spendInputsPreimageCbor,
   );
+  const outputs = new Map<string, Buffer>();
+  await readingLedger("mint authorization resolved inputs", async () => {
+    for (const [keyHex, { output }] of await ledger.read([
+      ...referenceItems,
+      ...spendItems,
+    ]))
+      if (output !== undefined) outputs.set(keyHex, output);
+  });
   // A missing reference belongs to the reference-input absence family, and a
   // missing spent input to the non-existent-input family.
   if (
     [...referenceItems, ...spendItems].some(
-      (key) => !ledger.outputs.has(key.toString("hex")),
+      (key) => !outputs.has(key.toString("hex")),
     )
   )
     return [];
   const nativeScriptBytesByHashHex: Record<string, string> = {};
   const resolve = (key: Buffer) => {
-    const output = ledger.outputs.get(key.toString("hex"))!;
-    const entry = ledger.trie.entries.find((entry) => entry.key.equals(key));
-    if (entry === undefined)
-      throw new Error("mint authorization: descriptor absent");
-    const descriptor = decodeMidgardLedgerOutputCommitment(entry.value);
+    const output = outputs.get(key.toString("hex"))!;
+    // The output's trie leaf: the descriptor the ledger commits for it.
+    const { leaf } = ledgerEntryLeaf(
+      { outRef: key, output },
+      "mint authorization resolved input",
+    );
+    const descriptor = decodeMidgardLedgerOutputCommitment(leaf);
     const scriptBytes = retainedOutputReferenceScript(output);
     if (descriptor.referenceScriptLanguage === 0) {
       if (scriptBytes === null)
@@ -101,7 +117,7 @@ export const prepareMintAuthorizationReplay = async ({
     }
     return {
       keyHex: key.toString("hex"),
-      descriptorCbor: entry.value.toString("hex"),
+      descriptorCbor: leaf.toString("hex"),
       referenceScriptLanguage: BigInt(descriptor.referenceScriptLanguage),
       referenceScriptHashHex: descriptor.referenceScriptHash.toString("hex"),
     };
@@ -149,9 +165,45 @@ export const prepareMintAuthorizationReplay = async ({
     spendInputItemCbors: items(tx.body.spendInputsPreimageCbor),
     references,
     spends,
-    referenceLedger: ledger.trie,
+    referenceLedger: ledger,
   }));
 };
+
+/** Reconstruct every claim input from committed source and retained output bytes. */
+export const prepareMintAuthorizationReplay = async ({
+  current,
+  predecessor,
+  sourceIndex,
+}: {
+  current: TransitionTraceReconstruction;
+  /** The ledger the block starts from; none when it starts from genesis. */
+  predecessor?: Ledger;
+  sourceIndex: number;
+}) =>
+  await replayTransaction({
+    current,
+    predecessor: async () => predecessor,
+    sourceIndex,
+  });
+
+type MintAuthorizationReplayItem = Awaited<
+  ReturnType<typeof prepareMintAuthorizationReplay>
+>[number];
+
+/** The membership proof of `input`, one of `prepared`'s resolved inputs, in
+ * the ledger before its transaction: what step 04 carries for it. */
+export const mintAuthorizationInputProof = async (
+  prepared: Pick<MintAuthorizationReplayItem, "referenceLedger">,
+  input: Readonly<{ keyHex: string }>,
+): Promise<SDK.Proof> =>
+  await readingLedger(
+    "mint authorization input proof",
+    async () =>
+      await ledgerProof(
+        prepared.referenceLedger,
+        Buffer.from(input.keyHex, "hex"),
+      ),
+  );
 
 export const detectMintAuthorizationReplay = async ({
   block,
@@ -160,6 +212,13 @@ export const detectMintAuthorizationReplay = async ({
   block: CanonicalBlockEvidence;
   predecessor?: CheckedLedger;
 }) => {
+  // The predecessor as a store ledger, converted once, for the first
+  // transaction that mints: a block with none converts nothing.
+  let ledger: Promise<Ledger> | undefined;
+  const predecessorLedger = async () =>
+    predecessor === undefined
+      ? undefined
+      : await (ledger ??= checkedLedgerAsLedger(predecessor));
   return collectReplayFindingBatches(
     block.reconstruction.transactions,
     async (source, sourceIndex) => {
@@ -171,9 +230,9 @@ export const detectMintAuthorizationReplay = async ({
           { L2TransactionEventKey: { tx_id: source.txId } },
           "representable_field_shape",
         );
-      const prepared = await prepareMintAuthorizationReplay({
+      const prepared = await replayTransaction({
         current: block.reconstruction,
-        predecessor,
+        predecessor: predecessorLedger,
         sourceIndex,
       });
       return prepared.map((item) => ({

@@ -1,3 +1,4 @@
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { checkLedgerJson, ledgerJson } from "../ledger-at.js";
 import { reconstructDaPayload } from "../transition-trace/reconstruct.reconstruct-da-payload.js";
@@ -63,11 +64,13 @@ const deriveMintAuthorizationWorkflowArtifact = async (
   const predecessor =
     record.predecessorLedger === null
       ? undefined
-      : await checkLedgerJson({
-          value: record.predecessorLedger,
-          utxosRoot: current.header.prevUtxosRoot,
-          label: "mint authorization predecessor ledger",
-        });
+      : await checkedLedgerAsLedger(
+          await checkLedgerJson({
+            value: record.predecessorLedger,
+            utxosRoot: current.header.prevUtxosRoot,
+            label: "mint authorization predecessor ledger",
+          }),
+        );
   const raw = exactArtifactRecord(
     record.coordinate,
     ["sourceIndex", "policyIndex"],
