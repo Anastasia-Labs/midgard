@@ -32,6 +32,8 @@ import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-id
 import { watcherDeploymentProtocolScriptAuthority } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 import { watcherDeploymentAvailabilityChallengeAuthority } from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import type { WatcherDecisionReadiness } from "../runtime/watcher-runtime.decision-driver.js";
+import type { WatcherLedgerSnapshotPeer } from "../storage/ledger-snapshot-fetch.js";
+import { createWatcherLedgerSnapshotBootstrap } from "./ledger-snapshot-bootstrap.js";
 import { replayLocalFaultHolds } from "./replay-local-fault-bound.js";
 import type { WatcherReplayLostRoots } from "./replay-lost-roots.js";
 import type {
@@ -45,9 +47,13 @@ export type WatcherReplayedLedger = Readonly<{
     sources: readonly RetainedDaPayloadSource[],
     retries?: number,
   ): LedgerAt;
+  /** `snapshotPeers` serve the confirmed head's ledger when there is no
+   * verified head, or when the head's parent ledger is neither held nor
+   * derivable (`ledger-snapshot-bootstrap.ts`). */
   advance(
     observation: WatcherAuthenticatedStateQueueObservation,
     sources: readonly RetainedDaPayloadSource[],
+    snapshotPeers?: readonly WatcherLedgerSnapshotPeer[],
   ): Promise<readonly WatcherDecisionReadiness[]>;
   /** The headers a replay asked a payload for whose ledger the store has not
    * been found to hold, while the follower still shows them
@@ -88,7 +94,10 @@ export const watcherReplayAvailabilityAuthority =
  *
  * `advance` verifies every confirmed block between `verifiedHead` and the
  * stable confirmed head by replaying it, whatever the store already holds
- * (`ReplayedLedger.ensure`).
+ * (`ReplayedLedger.ensure`). With no verified head it first asks its
+ * snapshot peers for the head's ledger, and it asks them when the walk can
+ * derive neither the head's ledger nor its parent's
+ * (`ledger-snapshot-bootstrap.ts`); at most once per `advance`.
  */
 export const createWatcherReplayedLedger = (
   input: Readonly<{
@@ -120,6 +129,13 @@ export const createWatcherReplayedLedger = (
   // found held, or once the follower no longer shows it (a rolled-back
   // header, or one pruned after it left the window).
   const asked = new Set<string>();
+  // The snapshot peers of the advance whose `ensure` asks for a bootstrap.
+  const snapshotPeers = new AsyncLocalStorage<
+    readonly WatcherLedgerSnapshotPeer[]
+  >();
+  const bootstrap = createWatcherLedgerSnapshotBootstrap({
+    store: input.store,
+  });
   const keeper = createReplayedLedger({
     store: input.store,
     verifiedHead: input.verifiedHead,
@@ -134,6 +150,8 @@ export const createWatcherReplayedLedger = (
       asked.delete(headerHash);
       lostRoots?.held(root);
     },
+    bootstrap: (utxosRoot) =>
+      bootstrap(snapshotPeers.getStore() ?? [], utxosRoot),
   });
   // Unbound copies a replay refused, kept across operations so a later fetch
   // asks past the peers that served them.
@@ -199,7 +217,7 @@ export const createWatcherReplayedLedger = (
         return entries;
       };
     },
-    advance: async (observation, sources) => {
+    advance: async (observation, sources, peers = []) => {
       let head: Readonly<{ headerHash: string; utxosRoot: string }> | undefined;
       try {
         const confirmed = await follower.confirmed(observation);
@@ -223,9 +241,11 @@ export const createWatcherReplayedLedger = (
         const confirmedHead = head;
         // The window is retained after each block the walk passes, so a
         // catch-up holds the window's ledgers, not every one it derived.
-        const held = await phase.run("confirmed", () =>
-          keeper.ensure(confirmedHead, source(sources), () =>
-            retain(confirmedHead.utxosRoot),
+        const held = await snapshotPeers.run(peers, () =>
+          phase.run("confirmed", () =>
+            keeper.ensure(confirmedHead, source(sources), () =>
+              retain(confirmedHead.utxosRoot),
+            ),
           ),
         );
         if (!confirmed.current())

@@ -155,6 +155,13 @@ export type ReplayedLedger = {
    * waited for. `confirmed` must be a stable head
    * (`replayed-ledger.confirmed.ts`).
    *
+   * A head that is not genesis is offered to `bootstrap`, at most once per
+   * call: before the walk when there is no verified head, and when the walk
+   * finds neither the head's ledger nor its parent's held or derivable. When
+   * it makes the store hold the head's ledger, the head is the verified head
+   * and is reported through `onUnverified` (`ledger-snapshot`), with no
+   * replay of it.
+   *
    * `retainTurn` is the caller's turn to retain, awaited after each block of
    * the walk is passed, so a walk over many blocks need not hold every
    * ledger it derives until it ends. The roots the walk holds are pinned, so
@@ -193,6 +200,7 @@ export const createReplayedLedger = ({
   onRefusal,
   onUnverified,
   onHeld,
+  bootstrap,
 }: {
   readonly store: LedgerStore;
   /** Where the verified head is kept; in this process only by default. */
@@ -203,6 +211,11 @@ export const createReplayedLedger = ({
   /** Told each header whose ledger the store is found to hold, with the
    * ledger's root. */
   readonly onHeld?: (headerHash: string, root: string) => void;
+  /** Makes the store hold the ledger of `utxosRoot` without replaying to
+   * it, true when it holds it afterwards; asked by `ensure` for the
+   * confirmed head when there is no verified head, or when the head's parent
+   * ledger is neither held nor derivable (`replayed-ledger.confirmed.ts`). */
+  readonly bootstrap?: (utxosRoot: string) => Promise<boolean>;
 }): ReplayedLedger => {
   const holds = createLedgerHolds(store);
   const refuse = (refusal: ReplayedLedgerRefusal) => onRefusal?.(refusal);
@@ -358,6 +371,7 @@ export const createReplayedLedger = ({
     refuse,
     ...(onUnverified === undefined ? {} : { onUnverified }),
     ...(onHeld === undefined ? {} : { onHeld }),
+    ...(bootstrap === undefined ? {} : { bootstrap }),
   });
 
   return {

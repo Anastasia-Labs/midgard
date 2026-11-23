@@ -13,6 +13,7 @@ import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-id
 import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 import { watcherDaFetchAlertSubject } from "../runtime/operations-observability.alert-book.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
+import type { WatcherLedgerSnapshotPeer } from "./ledger-snapshot-fetch.js";
 import {
   WatcherPublicDaLibp2pTransport,
   type WatcherPublicDaLibp2pTransportOptions,
@@ -176,6 +177,8 @@ export const bindWatcherRetainedDaOperations = (input: {
 export type WatcherRetainedDaRuntime = Readonly<{
   schemaVersion: typeof WATCHER_RETAINED_DA_RUNTIME;
   sources: readonly DaLibp2pRetainedDaSource[];
+  /** The same peers, asked for ledger snapshots (`ledger-snapshot-fetch.ts`). */
+  ledgerSnapshotPeers: readonly WatcherLedgerSnapshotPeer[];
   close(): Promise<void>;
 }>;
 

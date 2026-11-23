@@ -38,7 +38,11 @@ export const watcherReplayCheckpointAdvance = ({
     try {
       const retainedDa = await retainedDaOwner.createRuntime(watcherConfig);
       try {
-        return await replayedLedger.advance(observation, retainedDa.sources);
+        return await replayedLedger.advance(
+          observation,
+          retainedDa.sources,
+          retainedDa.ledgerSnapshotPeers,
+        );
       } finally {
         await retainedDa.close();
       }

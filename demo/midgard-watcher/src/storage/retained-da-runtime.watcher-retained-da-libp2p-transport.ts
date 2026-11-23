@@ -22,6 +22,7 @@ import {
 import { type WatcherConfig } from "../runtime/config.js";
 import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 import { watcherDaFetchAlertSubject } from "../runtime/operations-observability.alert-book.js";
+import { watcherLedgerSnapshotPeers } from "./ledger-snapshot-fetch.js";
 import type { WatcherPublicDaRequest } from "./public-da-client.js";
 import {
   createWatcherPublicDaLibp2pTransport,
@@ -291,18 +292,22 @@ export const createRuntimeFromAdmittedConfig = async (
       shared === undefined
         ? lifetime.signal
         : AbortSignal.any([lifetime.signal, shared.signal]);
+    const admission = Object.freeze({
+      watcherConfig: config,
+      deploymentIdentity: options.deploymentIdentity,
+    });
+    const acquireRequest =
+      shared?.acquireRequest ??
+      ((signal: AbortSignal) => permits.acquire(signal));
     const adapter = new WatcherRetainedDaLibp2pTransport(
       deploymentFingerprint,
       config.da.peers,
       transport,
       config.da.requestTimeoutMs,
       operationsByDeploymentIdentity.get(options.deploymentIdentity),
-      Object.freeze({
-        watcherConfig: config,
-        deploymentIdentity: options.deploymentIdentity,
-      }),
+      admission,
       signal,
-      shared?.acquireRequest ?? ((signal) => permits.acquire(signal)),
+      acquireRequest,
     );
     const l1Source = l1AvailabilitySourceByDeploymentIdentity.get(
       options.deploymentIdentity,
@@ -324,6 +329,15 @@ export const createRuntimeFromAdmittedConfig = async (
     return Object.freeze({
       schemaVersion: WATCHER_RETAINED_DA_RUNTIME,
       sources,
+      ledgerSnapshotPeers: watcherLedgerSnapshotPeers({
+        transport,
+        peers: config.da.peers,
+        deploymentFingerprint,
+        timeoutMs: config.da.requestTimeoutMs,
+        signal,
+        admission,
+        acquireRequest,
+      }),
       close: async (): Promise<void> => {
         if (closed) return;
         closed = true;
