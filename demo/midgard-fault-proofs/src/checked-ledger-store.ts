@@ -9,17 +9,33 @@ import {
   type Ledger,
 } from "./ledger-store/index.js";
 
+const converted = new WeakMap<CheckedLedger, Promise<Ledger>>();
+
 /**
  * `checked` admitted to a memory store of its own: the same root and
  * entries. The store is never retained against, so the ledger stays readable
- * while anything holds it. Every reader of a block from the one `Ledger`
- * shares the block's one walk (`event-ledger.ledger.ts`), so a caller
- * converts once per block and hands the same `Ledger` to every read.
+ * while anything holds it. One `checked` converts once: every family reading
+ * a block from it gets the same `Ledger`, so they share the block's one walk
+ * (`event-ledger.ledger.ts`).
  */
-export const checkedLedgerAsLedger = async (
+export const checkedLedgerAsLedger = (
   checked: CheckedLedger,
-): Promise<Ledger> =>
-  await createLedgerStore(createMemoryLedgerStorage()).admit(
+): Promise<Ledger> => {
+  const known = converted.get(checked);
+  if (known !== undefined) return known;
+  const ledger = createLedgerStore(createMemoryLedgerStorage()).admit(
     checked.entries,
     checked.utxosRoot,
   );
+  converted.set(checked, ledger);
+  return ledger;
+};
+
+/** `predecessor` as a `Ledger`, converted when first asked for; none when the
+ * block starts from genesis. */
+export const checkedPredecessorLedger =
+  (predecessor: CheckedLedger | undefined) =>
+  async (): Promise<Ledger | undefined> =>
+    predecessor === undefined
+      ? undefined
+      : await checkedLedgerAsLedger(predecessor);

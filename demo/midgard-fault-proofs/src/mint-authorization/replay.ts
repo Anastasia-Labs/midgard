@@ -8,7 +8,7 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
+import { checkedPredecessorLedger } from "../checked-ledger-store.js";
 import {
   ledgerBeforeTraceStep,
   readingLedger,
@@ -212,13 +212,9 @@ export const detectMintAuthorizationReplay = async ({
   block: CanonicalBlockEvidence;
   predecessor?: CheckedLedger;
 }) => {
-  // The predecessor as a store ledger, converted once, for the first
-  // transaction that mints: a block with none converts nothing.
-  let ledger: Promise<Ledger> | undefined;
-  const predecessorLedger = async () =>
-    predecessor === undefined
-      ? undefined
-      : await (ledger ??= checkedLedgerAsLedger(predecessor));
+  // Converted only once a transaction mints: a block with none converts
+  // nothing.
+  const predecessorLedger = checkedPredecessorLedger(predecessor);
   return collectReplayFindingBatches(
     block.reconstruction.transactions,
     async (source, sourceIndex) => {

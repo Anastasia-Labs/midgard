@@ -10,7 +10,7 @@ import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
+import { checkedPredecessorLedger } from "../checked-ledger-store.js";
 import {
   ledgerBeforeTraceStep,
   readingLedger,
@@ -287,14 +287,9 @@ export const detectValueConservationFaults = async ({
   readonly block: CanonicalBlockEvidence;
   readonly predecessor?: CheckedLedger;
 }) => {
-  // The predecessor as a store ledger, converted once, for the first
-  // transaction that reaches its spent inputs: a block with none converts
-  // nothing.
-  let ledger: Promise<Ledger> | undefined;
-  const predecessorLedger = async () =>
-    predecessor === undefined
-      ? undefined
-      : await (ledger ??= checkedLedgerAsLedger(predecessor));
+  // Converted only once a transaction reaches its spent inputs: a block with
+  // none converts nothing.
+  const predecessorLedger = checkedPredecessorLedger(predecessor);
   const candidates: { forced: boolean; index: number }[] = [];
   for (const forced of [false, true]) {
     const count = forced
