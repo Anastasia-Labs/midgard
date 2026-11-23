@@ -20,7 +20,7 @@ import { ownJournalDisposition } from "../../src/landed-blocks/own-journals.js";
 import { rebaseNeeded } from "../../src/landed-blocks/process.js";
 import { moveNativeRoot, rebaseSql } from "../../src/landed-blocks/rebase.js";
 import {
-  rebasePlan,
+  rebasePlanOf,
   walkTarget,
 } from "../../src/landed-blocks/rebase-target.js";
 import { retrieveRows } from "../../src/landed-blocks/store.js";
@@ -121,7 +121,11 @@ export const simSettler = (
         stats.transientHeld += 1;
         continue;
       }
-      const plan = await run(rebasePlan());
+      const plan = await run(
+        Effect.flatMap(ownJournalDisposition, (journals) =>
+          rebasePlanOf(journals),
+        ),
+      );
       if (plan.kind === "blocked")
         return { error: `rebase blocked: ${plan.detail}` };
       if (plan.kind === "none") {
