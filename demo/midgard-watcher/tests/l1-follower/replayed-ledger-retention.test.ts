@@ -303,4 +303,123 @@ describe("the follower's ledger window and tip time", () => {
       );
     });
   });
+
+  const timeOf = (slot: number) => 1_000_000 + (slot - origin) * 1000;
+  type Committed = {
+    utxosRoot: string;
+    prevUtxosRoot: string;
+    blockTimeMs: number;
+    mergedAt?: number;
+  };
+  /**
+   * Seven blocks as the chain allows them: each committed with block_time one
+   * second after its commit; each of the first five merged after the next
+   * block's commit has closed its first row, once maturity (five seconds) has
+   * passed since its block_time. The sixth stays queued behind the seventh,
+   * the open tail.
+   */
+  const queueOfSeven = async ({
+    chain,
+    forward,
+  }: {
+    chain: SimChain;
+    forward: (txs: Parameters<SimChain["forward"]>[0]) => Promise<void>;
+  }) => {
+    const maturityMs = 5000;
+    const blocks: Committed[] = [];
+    const settle = async () => {
+      for (let i = 0; i < 3; i++) await forward([]);
+    };
+    await forward([initTx(D)]);
+    for (let i = 0; i < 7; i++) {
+      const block = {
+        utxosRoot: (i + 1).toString(16).padStart(2, "0").repeat(32),
+        prevUtxosRoot: i.toString(16).padStart(2, "0").repeat(32),
+        blockTimeMs: timeOf(chain.nextSlot()) + 1000,
+      };
+      await forward([
+        commitTx(queueState(chain, D)!, D, undefined, {
+          endTime: BigInt(block.blockTimeMs),
+          utxosRoot: block.utxosRoot,
+          prevUtxosRoot: block.prevUtxosRoot,
+        }),
+      ]);
+      blocks.push(block);
+      await settle();
+      const merging = blocks[i - 1];
+      if (merging !== undefined && i < 6) {
+        while (timeOf(chain.nextSlot()) < merging.blockTimeMs + maturityMs)
+          await forward([]);
+        merging.mergedAt = chain.nextSlot();
+        await forward([mergeTx(queueState(chain, D)!, D)]);
+        await settle();
+      }
+    }
+    return { blocks, tipMs: timeOf(chain.tip.point.slot) };
+  };
+
+  it("reads exactly the blocks with tip < block_time + ledger_retention_ms, whatever slot the bound falls in", async () => {
+    await following(async (follow) => {
+      const { blocks, tipMs } = await queueOfSeven(follow);
+      const tail = blocks[6]!;
+      const retentions = [1, tipMs - timeOf(origin)];
+      for (const block of blocks) {
+        // tip == block_time + retention, then one millisecond inside.
+        retentions.push(
+          tipMs - block.blockTimeMs,
+          tipMs - block.blockTimeMs + 1,
+        );
+        if (block.mergedAt === undefined) continue;
+        // The bound at the slot that merged the block and one slot either
+        // side, at each slot's start and halfway through it.
+        for (const slot of [
+          block.mergedAt - 1,
+          block.mergedAt,
+          block.mergedAt + 1,
+        ])
+          retentions.push(tipMs - timeOf(slot), tipMs - timeOf(slot) - 500);
+      }
+      for (const ledgerRetentionMs of retentions) {
+        const read = await reader(follow.store, ledgerRetentionMs)();
+        expect({
+          ledgerRetentionMs,
+          newestRoot: read.newestRoot,
+          blocks: read.blocks.map(({ utxosRoot }) => utxosRoot).sort(),
+        }).toEqual({
+          ledgerRetentionMs,
+          newestRoot: tail.utxosRoot,
+          blocks: blocks
+            .filter(
+              ({ blockTimeMs }) => tipMs < blockTimeMs + ledgerRetentionMs,
+            )
+            .map(({ utxosRoot }) => utxosRoot)
+            .sort(),
+        });
+      }
+    });
+  });
+
+  it("names the newest root when every other row closed before the window's bound", async () => {
+    await following(async ({ store, chain, forward }) => {
+      await forward([initTx(D)]);
+      const tail = "b2".repeat(32);
+      await forward([
+        commitTx(queueState(chain, D)!, D, undefined, {
+          endTime: BigInt(timeOf(chain.nextSlot())),
+        }),
+      ]);
+      await forward([
+        commitTx(queueState(chain, D)!, D, undefined, {
+          endTime: BigInt(timeOf(chain.nextSlot())),
+          utxosRoot: tail,
+        }),
+      ]);
+      await forward([mergeTx(queueState(chain, D)!, D)]);
+      for (let i = 0; i < 3; i++) await forward([]);
+      expect(await reader(store, 1)()).toEqual({
+        blocks: [],
+        newestRoot: tail,
+      });
+    });
+  });
 });
