@@ -24,7 +24,6 @@ import {
   NativeMpfRpcKind,
   type PersistedNativeMpfReplay,
 } from "./protocol.js";
-import { assertStoredNode } from "./service.encode-stored-node.js";
 import {
   candidateFullIndexSize,
   type FullIndexSize,
@@ -32,15 +31,17 @@ import {
   promotionIndexCapBreach,
 } from "./service.full-index-accounting.js";
 import {
+  createOwnerLedgerLock,
+  type LedgerRetention,
+} from "./service.ledger-lock.js";
+import {
   assertPinnedOwnerBinary,
   NativeChildRpc,
 } from "./service.native-child-rpc.js";
 import {
   assertNativeOwnerRuntimeMemoryBudget,
   assertStoredHash,
-  type DecodedPromotionRecord,
   digest,
-  EMPTY_ROOT_HEX,
   EVENT_LOG_DIGEST_DOMAIN,
   HASH_BYTES,
   type NativeMpfOwnerServiceOptions,
@@ -54,7 +55,6 @@ import {
 import type { NativeOwnerLedger } from "./service.open-ledger.js";
 import {
   buildOrReadFullIndex,
-  keyNibbles,
   parsePromotionRecords,
   restoreIndexRefusal,
 } from "./service.parse-promotion-records.js";
@@ -64,6 +64,7 @@ import {
 } from "./service.restart-policy.js";
 import { startNativeChild } from "./service.start-native-child.js";
 import { validateEventLog } from "./service.validate-event-log.js";
+import { validatePromotionClosure } from "./service.validate-promotion-closure.js";
 
 export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   private readonly workerPorts = new Set<MessagePort>();
@@ -83,6 +84,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   private recoveryFailure: Error | undefined;
   private lastChildError: Error | undefined;
   private promotionRefusal: NativeMpfPromotionIndexCapExceeded | undefined;
+  private readonly ledgerLock: ReturnType<typeof createOwnerLedgerLock>;
 
   private constructor(
     private readonly db: Level<string, StoredValue>,
@@ -94,6 +96,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     private readonly options: NormalizedNativeMpfOwnerServiceOptions,
   ) {
     this.restartPolicy = new NativeOwnerRestartPolicy(options);
+    this.ledgerLock = createOwnerLedgerLock(store);
   }
 
   /** Takes `ledger` over: it is closed when creation fails, and by `close`. */
@@ -307,7 +310,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
           `Native MPF durable marker changed before promotion: expected=${handle.baseRoot},actual=${marker}`,
         );
       }
-      await this.validatePromotionClosure(
+      await validatePromotionClosure(
+        this.db,
         candidateRoot,
         handle.baseRoot,
         records,
@@ -327,26 +331,51 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         await this.discard(handle).catch(() => undefined);
         throw breach;
       }
-      await this.options.faultInjectionForTests?.("before_promotion_batch");
-      // One write of nodes, counts, retained root and `__root__` marker.
-      await this.store.adopt(candidateRoot, {
-        nodes: new Map(records.map(({ hashHex, stored }) => [hashHex, stored])),
+      // From the write to the durable root's move, under the ledger lock: a
+      // `retain` reads the durable root before the write or after the move.
+      await this.ledgerLock.run(async () => {
+        await this.options.faultInjectionForTests?.("before_promotion_batch");
+        // One write of nodes, counts, retained root and `__root__` marker.
+        await this.store.adopt(candidateRoot, {
+          nodes: new Map(
+            records.map(({ hashHex, stored }) => [hashHex, stored]),
+          ),
+        });
+        await this.options.faultInjectionForTests?.(
+          "after_promotion_batch_before_ack",
+        );
+        const committed = await rpc.request(
+          NativeMpfRpcKind.PromotionCommitted,
+          handle.generationId,
+          new Set([NativeMpfRpcKind.PromotionCommitted]),
+        );
+        if (Buffer.from(committed.payload).toString("hex") !== candidateRoot) {
+          throw new Error("Native MPF PromotionCommitted root mismatch");
+        }
+        this.durableRoot = candidateRoot;
+        this.fullIndexSize = candidateSize;
+        this.promotionRefusal = undefined;
+        this.workerGenerationLeases.delete(this.generationKey(handle));
       });
-      await this.options.faultInjectionForTests?.(
-        "after_promotion_batch_before_ack",
-      );
-      const committed = await rpc.request(
-        NativeMpfRpcKind.PromotionCommitted,
-        handle.generationId,
-        new Set([NativeMpfRpcKind.PromotionCommitted]),
-      );
-      if (Buffer.from(committed.payload).toString("hex") !== candidateRoot) {
-        throw new Error("Native MPF PromotionCommitted root mismatch");
-      }
-      this.durableRoot = candidateRoot;
-      this.fullIndexSize = candidateSize;
-      this.promotionRefusal = undefined;
-      this.workerGenerationLeases.delete(this.generationKey(handle));
+    });
+  }
+
+  /**
+   * Keeps the ledgers of `roots`, of the durable root, of the `__root__`
+   * marker (ahead of the durable root after a promotion or a restore whose
+   * acknowledgement failed) and of every worker's leased fork base, and drops
+   * every other one (`LedgerStore.retain`). It refuses only once the owner is
+   * closed: a refusing owner still keeps every root it could restart from.
+   */
+  public retain(roots: ReadonlySet<string>): Promise<LedgerRetention> {
+    const requested = new Set(roots);
+    return this.ledgerLock.retain(async () => {
+      if (this.closing) throw new Error("Native MPF owner service is closed");
+      requested.add(this.durableRoot);
+      requested.add(assertStoredHash(await this.db.get("__root__"), "marker"));
+      for (const { handle } of this.workerGenerationLeases.values())
+        requested.add(handle.baseRoot);
+      return requested;
     });
   }
 
@@ -472,8 +501,14 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         error instanceof Error ? error : new Error(String(error)),
       );
     }
+    // Under the ledger lock once every earlier `retain` has replaced the
+    // retained set: the target found retained stays so until the marker and
+    // the durable root name it, since a later `retain` reads them after.
     const restore = this.readsDrained().then(() =>
-      this.restoreRetainedRoot(captured),
+      this.ledgerLock.run(async () => {
+        await this.ledgerLock.deleted();
+        await this.restoreRetainedRoot(captured);
+      }),
     );
     this.restoration = restore;
     void restore
@@ -512,6 +547,11 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     }
     if (marker !== plan.expectedRoot || this.durableRoot !== plan.expectedRoot)
       throw new Error("Native MPF canonical recovery base changed");
+    // A root `retain` dropped is refused even while its nodes are still
+    // queued for deletion: the marker never names a root the store may delete.
+    await this.store.at(plan.targetRoot).catch((cause: unknown) => {
+      throw restoreIndexRefusal(plan.targetRoot, cause);
+    });
     const diagnostics = await rpc.request(
       NativeMpfRpcKind.Diagnostics,
       Buffer.alloc(0),
@@ -556,8 +596,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
           "Native MPF canonical recovery marker changed before commit",
         );
       await this.options.faultInjectionForTests?.("before_root_restore_batch");
-      // Moving only the marker leaves the store's counts and retained roots
-      // as they are, which holds while the store retains the target root.
+      // The store retains the target (checked above), so moving only the
+      // marker leaves its counts and retained roots consistent.
       await this.db.batch(
         [
           { type: "put", key: recordKey, value: record },
@@ -797,64 +837,6 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     if (!timingSafeEqual(Buffer.from(handle.ownerEpoch), rpc.epoch)) {
       throw new Error(
         "Native MPF generation handle belongs to a stale owner epoch",
-      );
-    }
-  }
-
-  private async validatePromotionClosure(
-    candidateRoot: string,
-    baseRoot: string,
-    records: readonly DecodedPromotionRecord[],
-  ): Promise<void> {
-    assertNativeMpfHashHex(candidateRoot, "candidateRoot");
-    const byHash = new Map(records.map((record) => [record.hashHex, record]));
-    if (candidateRoot === baseRoot || candidateRoot === EMPTY_ROOT_HEX) {
-      if (records.length !== 0) {
-        throw new Error(
-          "Empty or no-op native MPF promotion returned generated records",
-        );
-      }
-      return;
-    }
-    if (!byHash.has(candidateRoot)) {
-      throw new Error("Native MPF promotion closure is missing candidate root");
-    }
-    const visited = new Set<string>();
-    const visit = async (hash: string, path: string): Promise<void> => {
-      const record = byHash.get(hash);
-      if (record === undefined) {
-        try {
-          assertStoredNode(await this.db.get(hash), hash);
-          return;
-        } catch (error) {
-          throw new Error(
-            `Native MPF promotion references missing durable child ${hash}: ${String(error)}`,
-          );
-        }
-      }
-      if (visited.has(hash)) return;
-      visited.add(hash);
-      const nodePath = path + record.stored.prefix;
-      if (record.stored.__kind === "Leaf") {
-        if (keyNibbles(record.stored.key) !== nodePath) {
-          throw new Error(
-            `Native MPF promoted leaf ${hash} is linked at the wrong path`,
-          );
-        }
-        return;
-      }
-      await Promise.all(
-        record.stored.children.map((child, branch) =>
-          child === null
-            ? undefined
-            : visit(child, nodePath + branch.toString(16)),
-        ),
-      );
-    };
-    await visit(candidateRoot, "");
-    if (visited.size !== records.length) {
-      throw new Error(
-        `Native MPF promotion contains unreachable generated records: reachable=${visited.size.toString()},records=${records.length.toString()}`,
       );
     }
   }

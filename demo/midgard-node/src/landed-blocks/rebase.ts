@@ -125,9 +125,9 @@ export const moveNativeRoot = (
       else if (!(restored.left instanceof NativeMpfRootNotRetained))
         return yield* Effect.fail(restored.left);
     }
-    // The store only ever adds the nodes of a root it promotes, and every
-    // block folded into `confirmed_ledger` was applied natively first, so
-    // the frontier's root is retained unless the store lost it.
+    // Every retention keeps the frontier's root and the processed chain's
+    // roots inside the window, so none is retained only when the chain
+    // reaches back past the window or the store lost them.
     if (from < 0)
       return yield* Effect.fail(
         new LandedChainRootNotRetained(durableRoot, roots[0]!),

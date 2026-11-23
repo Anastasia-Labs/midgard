@@ -114,8 +114,9 @@ export type NativeMpfCanonicalRootRecovery = Readonly<{
 }>;
 
 /** `restoreCanonicalRoot` refused a target whose node closure is not in the
- * native MPF store: a record the target root reaches is absent, or is not a
- * well-formed node. Raised for nothing else; the restore changed nothing. */
+ * native MPF store: the store does not retain the target root, or a record
+ * the root reaches is absent or is not a well-formed node. Raised for nothing
+ * else; the restore changed nothing. */
 export class NativeMpfRootNotRetained extends Error {
   readonly _tag = "NativeMpfRootNotRetained";
   constructor(
@@ -214,6 +215,15 @@ export interface NativeMpfOwnerService extends NativeMpfOwnerClient {
   promote(handle: NativeMpfGenerationHandle): Promise<void>;
   recover(replay: PersistedNativeMpfReplay): Promise<void>;
   restoreCanonicalRoot(plan: NativeMpfCanonicalRootRecovery): Promise<void>;
+  /**
+   * Keeps the ledgers of `roots` and of the roots the owner needs itself
+   * (its durable root, its `__root__` marker and every leased fork base),
+   * and drops every other one. Resolves once the store's deletion has
+   * ended, to the roots of `roots` the store does not retain.
+   */
+  retain(
+    roots: ReadonlySet<string>,
+  ): Promise<{ readonly notRetained: ReadonlySet<string> }>;
   diagnostics(): Promise<NativeMpfOwnerDiagnostics>;
   /** Why the owner refuses work, while it does: failed restarts exhaust the
    * restart window, or a committed recovery is not installed yet. Each call

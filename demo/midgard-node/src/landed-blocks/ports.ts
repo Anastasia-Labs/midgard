@@ -66,6 +66,14 @@ export type LandedBlockPorts<R> = Readonly<{
   bindRetained?: (
     queue: LandedStateQueue,
   ) => Effect.Effect<void, never, R | Database>;
+  /**
+   * Has the native MPF keep the ledgers the node may still read or restore
+   * at `queue`'s view and drop every other one (`ledger-retention.ts`); it
+   * never fails.
+   */
+  retainLedgers?: (
+    queue: LandedStateQueue,
+  ) => Effect.Effect<void, never, R | Database>;
   /** This node's journal of `headerHash`, if it committed that block. */
   ownJournal: (
     headerHash: string,

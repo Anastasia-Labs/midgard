@@ -2,13 +2,14 @@
  * The node's landed-block ports: the follower-change driver's write
  * capability (the hook's run provides it) for writes, the follower store
  * for the view check, the foreign replay, the node's block journals, and
- * the driver's recompute for the rebase, and the advance of the node's
- * confirmed-ledger verification over each committed fold.
+ * the driver's recompute for the rebase, the advance of the node's
+ * confirmed-ledger verification over each committed fold, and the native
+ * MPF's ledger retention.
  */
-import type { FactStore, OriginConfig } from "@al-ft/midgard-l1-follower";
+import type { FactStore, OriginConfig, View } from "@al-ft/midgard-l1-follower";
 import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 import type * as SDK from "@al-ft/midgard-sdk/da";
-import { Effect } from "effect";
+import { Effect, Ref } from "effect";
 
 import { followerViewValid } from "../database/follower-schema.js";
 import type { ForcedOrderConfig } from "../forced-orders/index.js";
@@ -22,6 +23,7 @@ import type { Globals } from "../services/globals.js";
 import { readQueueHistory } from "./history.js";
 import { ownJournal } from "./journal.js";
 import { ledgerRows } from "./ledger.js";
+import { retainLandedLedgers } from "./ledger-retention.js";
 import type { CommittedFold, LandedBlockPorts } from "./ports.js";
 import {
   foreignBlockReplayer,
@@ -49,8 +51,8 @@ const genesis = Effect.gen(function* () {
  * configs (with its origin's `hubOracleOneShot`, which the protocol-init tx
  * spends), the driver's recompute as the rebase, and the deployment's
  * availability commitment authority; each fold processing commits advances
- * `verified`, the node's verified confirmed ledger
- * (`advanceVerifiedConfirmedLedger`).
+ * `globals`' verified confirmed ledger (`advanceVerifiedConfirmedLedger`),
+ * and each run has `globals`' native owner keep the ledgers the node needs.
  */
 export const nodeLandedBlockPorts = (
   store: FactStore,
@@ -62,9 +64,11 @@ export const nodeLandedBlockPorts = (
   },
   rebase: (reason: string) => Effect.Effect<DriverHold | undefined>,
   availability: () => SDK.DaPayloadAvailabilityAuthority,
-  verified: Pick<
+  globals: Pick<
     Globals,
-    "VERIFIED_CONFIRMED_LEDGER" | "CONFIRMED_LEDGER_FOLD_LOG"
+    | "VERIFIED_CONFIRMED_LEDGER"
+    | "CONFIRMED_LEDGER_FOLD_LOG"
+    | "NATIVE_MPF_OWNER"
   >,
 ) => {
   const replayer = foreignBlockReplayer({
@@ -74,17 +78,23 @@ export const nodeLandedBlockPorts = (
     availability,
     hubOracleOneShot: plan.origin?.hubOracleOneShot,
   });
+  const queueHistory = (view: View) =>
+    readQueueHistory(store, plan.stateQueue, view);
   return {
     confirmView,
-    queueHistory: (view) => readQueueHistory(store, plan.stateQueue, view),
+    queueHistory,
     write: (work) => withFollowerWrite(work),
     replay: heldReplays(replayer.replay),
     bindRetained: replayer.bind,
+    retainLedgers: retainLandedLedgers(
+      queueHistory,
+      Ref.get(globals.NATIVE_MPF_OWNER),
+    ),
     ownJournal,
     genesis,
     rebase,
     folded: (fold: CommittedFold) =>
-      advanceVerifiedConfirmedLedger(verified, fold),
+      advanceVerifiedConfirmedLedger(globals, fold),
   } satisfies LandedBlockPorts<NodeLandedBlockContext>;
 };
 

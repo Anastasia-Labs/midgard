@@ -332,7 +332,9 @@ export const restartedAcrossHalts = <A, E, R>(
  * changes nothing: the rebase holds with native MPF, the SQL root and the
  * journals as they are and the follower write gate closed, and the
  * follower-change driver retries it on its backoff; the next rebase evaluation that runs, or
- * finds no rebase due, clears it. The node cannot put the root's closure back
+ * finds no rebase due, clears it. The store keeps only the roots inside the
+ * ledger retention window and the node's own, so a rollback past the window
+ * or a lost store raises it. The node cannot put the root's closure back
  * itself: the operator stops it, installs a native MPF store that retains
  * the root in full, and restarts it (plan §7.5, R6). */
 export const MPF_CLOSURE_MISSING = "mpf_closure_missing";
