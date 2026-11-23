@@ -401,6 +401,39 @@ export const describeLedgerStoreConformance = (
       });
     });
 
+    it("reads, proves and persists ledgers derived from one parent at different depths", async () => {
+      await withStore(async (store) => {
+        // `parent` is derived once; `deep` is eight more applies on it,
+        // which fold `parent`'s in-memory records into new ones below its
+        // own; `sibling` is one apply on `parent` after that.
+        const base = await store.admit(BASE, await ledgerEntriesRoot(BASE));
+        const parentEvent = event([0, 1], [400, 401]);
+        const parent = await base.apply(parentEvent);
+        const parentEntries = appliedEntries(BASE, parentEvent);
+        let deep = parent;
+        let deepEntries = parentEntries;
+        for (let step = 0; step < 8; step += 1) {
+          const mutations = event([2 + step], [410 + step]);
+          deep = await deep.apply(mutations);
+          deepEntries = appliedEntries(deepEntries, mutations);
+        }
+        const siblingEvent = event([400, 20], [0, 450]);
+        const sibling = await parent.apply(siblingEvent);
+        const siblingEntries = appliedEntries(parentEntries, siblingEvent);
+        const expectations = [
+          [parent, parentEntries],
+          [deep, deepEntries],
+          [sibling, siblingEntries],
+        ] as const;
+        for (const [ledger, entries] of expectations)
+          await expectLedgerMatches(ledger, entries);
+        for (const [ledger, entries] of [...expectations].reverse()) {
+          await store.persist(ledger);
+          await expectLedgerMatches(await store.at(ledger.root), entries);
+        }
+      });
+    });
+
     it("refuses a second store over the same storage", async () => {
       await withStore(async (_store, storage) => {
         expect(() => createLedgerStore(storage)).toThrow(
