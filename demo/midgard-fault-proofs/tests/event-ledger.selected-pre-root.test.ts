@@ -12,7 +12,6 @@ import { encodeMidgardMintPolicyItem } from "@al-ft/midgard-core/codec";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { describe, expect, it } from "vitest";
 
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/material.js";
 import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import { prepareMintAuthorizationReplay } from "../src/mint-authorization/replay.js";
@@ -20,7 +19,7 @@ import { prepareNoReferenceInputWrongfulRejection } from "../src/no-reference-in
 import { prepareNonExistentInputWrongfulRejection } from "../src/non-existent-input/wrongful-rejection.js";
 import type { TransitionTraceReconstruction } from "../src/transition-trace/reconstruct.js";
 import { prepareWithdrawalMistagReplay } from "../src/withdrawal-mistag/replay.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   block,
   NATIVE,
@@ -65,9 +64,7 @@ describe("the shared walk refuses a selected event's moved pre-state before its 
     await expect(
       prepareDirectScriptMaterial({
         current: fixture.evidence.reconstruction,
-        predecessor: await checkedLedgerAsLedger(
-          completeCanonicalReplayPredecessorLedger(fixture)!,
-        ),
+        predecessor: completeCanonicalReplayPredecessorStoreLedger(fixture)!,
         eventKey: fixture.key(1),
       }),
     ).rejects.toThrow(REFUSED);
@@ -78,9 +75,7 @@ describe("the shared walk refuses a selected event's moved pre-state before its 
     await expect(
       prepareMintAuthorizationReplay({
         current: fixture.evidence.reconstruction,
-        predecessor: await checkedLedgerAsLedger(
-          completeCanonicalReplayPredecessorLedger(fixture)!,
-        ),
+        predecessor: completeCanonicalReplayPredecessorStoreLedger(fixture)!,
         sourceIndex: Number(fixture.position(1)),
       }),
     ).rejects.toThrow(REFUSED);
@@ -132,9 +127,7 @@ describe("the shared walk refuses a selected event's moved pre-state before its 
       prepare({
         block: fixture.evidence,
         forcedIndex: 0,
-        predecessor: await checkedLedgerAsLedger(
-          completeCanonicalReplayPredecessorLedger(fixture)!,
-        ),
+        predecessor: completeCanonicalReplayPredecessorStoreLedger(fixture)!,
       }),
     ).rejects.toThrow(WALK_REFUSED);
   });

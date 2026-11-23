@@ -13,6 +13,7 @@ import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/comp
 import { createCompleteCanonicalReplayUnion } from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import type { CompleteCanonicalReplay } from "../../src/workflow/complete-replay.replay-context-identity.js";
 import { buildDecodingBlockFixture } from "../support/native-script-decoding-emulator.build-decoding-block-fixture.js";
+import { singleLedgerAt } from "../support/predecessor-ledger.js";
 import {
   authenticatedHeaderObservation,
   buildFixtureTransaction,
@@ -63,8 +64,11 @@ export const forcedRejection = async ({
   const context = {
     predecessor: await admitCompleteCanonicalReplayPredecessor({
       currentEvidence: evidence,
-      ledgerAt: async (hash) =>
-        hash === fixture.header.prevHeaderHash ? predecessor : undefined,
+      ledgerAt: singleLedgerAt(
+        fixture.header.prevHeaderHash,
+        predecessor,
+        fixture.header.prevUtxosRoot,
+      ),
     }),
   };
   return {

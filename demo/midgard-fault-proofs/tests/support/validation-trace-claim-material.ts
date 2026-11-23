@@ -43,7 +43,7 @@ export const eventAndLedger = async (
     block: evidence,
     eventKey: event.eventKey,
     stepIndex: opening.value.step_index,
-    predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+    predecessor: completeCanonicalReplayPredecessorStoreLedger({
       evidence,
       context,
     }),

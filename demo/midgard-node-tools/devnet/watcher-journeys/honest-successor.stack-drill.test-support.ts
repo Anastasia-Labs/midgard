@@ -171,22 +171,19 @@ export const stackDrill = async (options: { startSlot?: number } = {}) => {
    */
   const replayedPredecessor = {
     ...predecessor,
-    ledger: {
-      entries: [
-        {
-          outRef: makeOutRefCbor(ownerOutput, 0),
-          output: outputOf(owner, 50_000_000n),
-        },
-        {
-          outRef: makeOutRefCbor("45".repeat(32), 0),
-          output: outputOf(
-            walletFromSeed(generateSeedPhrase(), { network: "Preprod" })
-              .address,
-            7_000_000n,
-          ),
-        },
-      ],
-    },
+    ledgerEntries: [
+      {
+        outRef: makeOutRefCbor(ownerOutput, 0),
+        output: outputOf(owner, 50_000_000n),
+      },
+      {
+        outRef: makeOutRefCbor("45".repeat(32), 0),
+        output: outputOf(
+          walletFromSeed(generateSeedPhrase(), { network: "Preprod" }).address,
+          7_000_000n,
+        ),
+      },
+    ],
   } satisfies ReplayedPredecessor;
   /** What readying the transfer reported. */
   const stages: string[] = [];

@@ -16,7 +16,7 @@ import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { ledgerEntriesRoot, type LedgerEntry } from "../src/ledger-at.js";
+import type { Ledger } from "../src/ledger-store/index.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -33,6 +33,7 @@ import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.admi
 import { RetainedDaPayloadUnavailableError } from "../src/transition-trace/fetch.retained-da-payload-unavailable.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import { plutusExecutionBlockFixture } from "./helpers/plutus-execution-block-fixture.js";
+import { entriesRoot } from "./support/fixture-ledger.js";
 
 const AUTHORITY: SDKDa.DaPayloadAvailabilityAuthority = {
   deploymentIdentity: "c7".repeat(28),
@@ -185,10 +186,10 @@ const setup = async (
 };
 
 /** The root of the ledger a read served. */
-const rootOf = async (read: Promise<readonly LedgerEntry[] | undefined>) => {
-  const entries = await read;
-  if (entries === undefined) throw new Error("the read served no ledger");
-  return await ledgerEntriesRoot(entries);
+const rootOf = async (read: Promise<Ledger | undefined>) => {
+  const ledger = await read;
+  if (ledger === undefined) throw new Error("the read served no ledger");
+  return await entriesRoot(ledger);
 };
 
 const UNBOUND =

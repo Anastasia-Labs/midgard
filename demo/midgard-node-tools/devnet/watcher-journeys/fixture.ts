@@ -1,11 +1,9 @@
-import type {
-  CheckedLedger,
-  LedgerAt,
-} from "@al-ft/midgard-fault-proofs/ledger-at";
+import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
 import type { InstalledFraudProofCategory } from "@al-ft/midgard-fault-proofs/workflow/installed-categories";
 import type * as SDK from "@al-ft/midgard-sdk/core";
 import type { createPublishedWatcherBlockActor } from "midgard-watcher/tests/support/published-block-actor";
 
+import type { JourneyLedger } from "./journey-ledger.js";
 import type { StackShiftCoverInput } from "./journey-timing.js";
 import type { loadJourneyContext } from "./live-context.js";
 import type { SignedCommitReconciliationPorts } from "./signed-commit-reconciliation.js";
@@ -82,7 +80,7 @@ export type JourneyFixtureStage = {
    * there.
    */
   beforeFaultCommit?(
-    predecessor: JourneyBlock & Readonly<{ ledger: CheckedLedger }>,
+    predecessor: JourneyBlock & Readonly<JourneyLedger>,
   ): Promise<() => Promise<void>>;
   /** Creates the drill's block actor; the published one when absent. */
   createBlockActor?: typeof createPublishedWatcherBlockActor;

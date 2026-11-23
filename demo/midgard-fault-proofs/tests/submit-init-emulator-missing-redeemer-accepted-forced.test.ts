@@ -16,7 +16,6 @@ import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { singleLedgerAt } from "../src/ledger-at.js";
 import { MISSING_REDEEMER_DIRECT_WALK } from "../src/missing-redeemer/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
@@ -44,6 +43,7 @@ import {
   redeemerMissingVerdict,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 
 /** A spend of an output locked by a Plutus script sourced only from a
  * reference input, with no script witness and no redeemer. */
@@ -84,10 +84,11 @@ const replayUnder = async (verdict: SDKCore.OperatorVerdict) => {
     evidence,
     {
       predecessor: await admitCompleteCanonicalReplayPredecessor({
-        ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-          ...(SHAPE.spend ?? []),
-          ...(SHAPE.reference ?? []),
-        ]),
+        ledgerAt: singleLedgerAt(
+          evidence.header.prevHeaderHash,
+          [...(SHAPE.spend ?? []), ...(SHAPE.reference ?? [])],
+          evidence.header.prevUtxosRoot,
+        ),
         currentEvidence: evidence,
       }),
     },

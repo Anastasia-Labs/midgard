@@ -8,7 +8,7 @@ import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
-import { type LedgerEntry, singleLedgerAt } from "../../src/ledger-at.js";
+import { type LedgerEntry } from "../../src/ledger-at.js";
 import type { StateQueueMutationLeaseCoordinator } from "../../src/remove-fraudulent-block.js";
 import { classifyCanonicalBlockViolations } from "../../src/workflow/classification.classify-canonical-block-violations.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
@@ -32,6 +32,7 @@ import type { DirectWalkCategory } from "./direct-walk-emulator.js";
 import type { FaultProofEmulatorHarness } from "./emulator/harness.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
+import { singleLedgerAt } from "./predecessor-ledger.js";
 import { recordStepSubmissions, sha256 } from "./step-transcript.js";
 
 /** The installed lifecycle's bound on cursor actions. */
@@ -154,6 +155,7 @@ export const driveDirectWalkLifecycle = async <
             ledgerAt: singleLedgerAt(
               evidence.header.prevHeaderHash,
               scene.predecessor,
+              evidence.header.prevUtxosRoot,
             ),
             currentEvidence: evidence,
           }),

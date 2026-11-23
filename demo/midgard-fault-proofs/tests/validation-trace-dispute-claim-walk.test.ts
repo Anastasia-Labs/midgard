@@ -9,7 +9,6 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { describe, expect, it } from "vitest";
 
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { encodeValidationTraceDisputeArtifact } from "../src/validation-trace-dispute/artifact.js";
 import { buildValidationTraceClaimMaterial } from "../src/validation-trace-dispute/claim-material.js";
 import {
@@ -17,7 +16,7 @@ import {
   validateValidationTraceArtifact,
 } from "../src/validation-trace-dispute/detected-claim.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   createValidationTraceDisputeCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
@@ -25,6 +24,7 @@ import {
 import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
 import { plutusExecutionEventsBlockFixture } from "./helpers/plutus-execution-events-fixture.js";
 import { filler, trieLeaves } from "./helpers/trie-leaves.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
 
 const l1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
 
@@ -133,7 +133,7 @@ describe("validation-trace dispute claim: the detector's walk serves the claim",
     });
     const classification = await detect(block);
     expect(classification.detections).toHaveLength(2);
-    const predecessor = completeCanonicalReplayPredecessorLedger({
+    const predecessor = completeCanonicalReplayPredecessorStoreLedger({
       evidence: block.evidence,
       context: block.context,
     })!;
@@ -165,7 +165,7 @@ describe("validation-trace dispute claim: the detector's walk serves the claim",
           material: await buildValidationTraceClaimMaterial({
             evidence: block.evidence,
             event,
-            ledger: await checkedLedgerAsLedger(oneOff),
+            ledger: await memoryLedger(oneOff.entries, oneOff.utxosRoot),
             l1SlotConfig,
           }),
         }),

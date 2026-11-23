@@ -24,10 +24,9 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import { ledgerBeforeStep } from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import type { CheckedLedger } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import {
   acceptedLedgerMutation,
   eventRunsPlutus,
@@ -137,7 +136,7 @@ export const buildPortableValidationTraceDefenseMaterial = async ({
   l1SlotConfig,
 }: {
   readonly evidence: CanonicalBlockEvidence;
-  readonly predecessor: CheckedLedger | undefined;
+  readonly predecessor: Ledger | undefined;
   readonly eventKey: SDK.EventKey;
   readonly stepCount: number;
   readonly l1SlotConfig: L1SlotConfig;
@@ -161,10 +160,7 @@ export const buildPortableValidationTraceDefenseMaterial = async ({
     block: evidence,
     eventKey: event.eventKey,
     stepIndex: opening.value.step_index,
-    predecessor:
-      predecessor === undefined
-        ? undefined
-        : await checkedLedgerAsLedger(predecessor),
+    predecessor,
   });
   const replay = {
     header: evidence.header,

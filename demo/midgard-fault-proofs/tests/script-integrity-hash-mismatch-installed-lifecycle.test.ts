@@ -16,7 +16,6 @@ import {
   type DirectWalkReferenceScripts,
 } from "../src/direct-purpose-family/transaction-port.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { singleLedgerAt } from "../src/ledger-at.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK } from "../src/script-integrity-hash-mismatch/workflow.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
@@ -41,6 +40,7 @@ import {
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 import {
   expectedHash,
   honestForcedShape,
@@ -330,10 +330,11 @@ describe("scriptIntegrityHashMismatch installed cursor actuator", () => {
         evidence,
         {
           predecessor: await admitCompleteCanonicalReplayPredecessor({
-            ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-              ...(shape.spend ?? []),
-              ...(shape.reference ?? []),
-            ]),
+            ledgerAt: singleLedgerAt(
+              evidence.header.prevHeaderHash,
+              [...(shape.spend ?? []), ...(shape.reference ?? [])],
+              evidence.header.prevUtxosRoot,
+            ),
             currentEvidence: evidence,
           }),
         },

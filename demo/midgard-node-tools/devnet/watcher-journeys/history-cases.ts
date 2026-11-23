@@ -53,7 +53,7 @@ export type HistoryTransactionInput = {
   honest?: boolean;
 };
 
-const ledgerEntries = (block: HistoryPredecessor) => block.ledger.entries;
+const ledgerEntries = (block: HistoryPredecessor) => block.ledgerEntries;
 
 /** Select only outputs spendable by the retained ledger owner. */
 export const ownedHistoryLedgerEntries = (
@@ -108,7 +108,7 @@ export const retainHistoryTransactions = async (
     });
     retained.push(block);
     ledger = (await checkedJourneyConstruction(block, block.postLedgerEntries))
-      .ledger.entries;
+      .ledgerEntries;
     priorRoot = block.header.utxosRoot;
   }
   const base = await buildCanonicalBlockFixture({

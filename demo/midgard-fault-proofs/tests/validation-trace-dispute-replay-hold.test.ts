@@ -14,7 +14,7 @@ import {
 } from "@al-ft/midgard-validation/validation-machine";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { EventLedgerReplayRefusal } from "../src/event-ledger.js";
+import { EventLedgerReplayRefusal } from "../src/event-ledger.steps.js";
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import {
   prepareValidationTraceArtifact,

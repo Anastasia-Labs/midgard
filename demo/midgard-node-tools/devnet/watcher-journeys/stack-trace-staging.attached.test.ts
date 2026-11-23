@@ -1,3 +1,4 @@
+import { emptyLedger } from "@al-ft/midgard-fault-proofs/ledger-at";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import * as SDKUsers from "@al-ft/midgard-sdk/users";
@@ -75,7 +76,7 @@ it("reads the attached stack's tail from the replay before onboarding operator-2
       liveTail: {
         ledgerAt: async (headerHash) => {
           events.push(`replay read ${headerHash}`);
-          return onboarded() ? undefined : [];
+          return onboarded() ? undefined : emptyLedger();
         },
       },
     }),
@@ -169,7 +170,7 @@ it("builds the trace deposit no earlier than operator-2's floor when a predecess
         builtMs = chain.now();
         throw new Error("Stopped once the trace deposit was built");
       },
-      liveTail: { ledgerAt: async () => [] },
+      liveTail: { ledgerAt: async () => emptyLedger() },
     }),
   ).rejects.toThrow(/Stopped once the trace deposit was built/u);
   expect(stages).not.toContain("honest predecessor deposit publication");

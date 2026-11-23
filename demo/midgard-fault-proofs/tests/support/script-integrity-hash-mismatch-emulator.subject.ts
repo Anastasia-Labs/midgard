@@ -29,19 +29,15 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { checkedLedgerAsLedger } from "../../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
-import {
-  checkLedgerAgainstRoot,
-  ledgerEntriesRoot,
-  type LedgerEntry,
-} from "../../src/ledger-at.js";
+import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
 } from "./emulator/emulator-context.js";
 import { nodeForcedVerdict } from "./emulator/node-forced-verdict.js";
 import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
+import { memoryLedger } from "./fixture-ledger.js";
 import {
   missingRedeemerPurposeFields,
   type MissingRedeemerPurposeScript,
@@ -293,13 +289,7 @@ export const buildIntegrityBlock = async ({
   const entries = predecessorEntries(shape);
   const root = await predecessorRoot(shape);
   const predecessor =
-    entries.length === 0
-      ? undefined
-      : await checkLedgerAgainstRoot({
-          entries,
-          utxosRoot: root,
-          label: "script-integrity-hash-mismatch predecessor",
-        });
+    entries.length === 0 ? undefined : await memoryLedger(entries, root);
   const block = await buildDecodingBlockFixture({
     operatorVkey,
     startTime,
@@ -323,9 +313,7 @@ export const buildIntegrityBlock = async ({
   const material = await prepareDirectScriptMaterial({
     current: block.reconstruction,
     eventKey,
-    ...(predecessor === undefined
-      ? {}
-      : { predecessor: await checkedLedgerAsLedger(predecessor) }),
+    ...(predecessor === undefined ? {} : { predecessor: predecessor }),
   });
   return {
     nativeTx,

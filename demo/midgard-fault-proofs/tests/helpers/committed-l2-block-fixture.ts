@@ -10,6 +10,7 @@ import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
 import type { LedgerEntry } from "../../src/ledger-at.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { singleLedgerAt } from "../support/predecessor-ledger.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -64,8 +65,11 @@ export const committedL2BlockFixture = async ({
   const context = {
     predecessor: await admitCompleteCanonicalReplayPredecessor({
       currentEvidence: evidence,
-      ledgerAt: async (hash) =>
-        hash === header.prevHeaderHash ? predecessorEntries : undefined,
+      ledgerAt: singleLedgerAt(
+        header.prevHeaderHash,
+        predecessorEntries,
+        header.prevUtxosRoot,
+      ),
     }),
   };
   return { evidence, context };

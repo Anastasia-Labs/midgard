@@ -18,7 +18,7 @@
  */
 import { MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS } from "@al-ft/midgard-core";
 import {
-  completeCanonicalReplayPredecessorLedger,
+  completeCanonicalReplayPredecessorStoreLedger,
   failingClaim,
   failingMaterial,
   type FalseClaim,
@@ -169,7 +169,7 @@ describe("the validation-trace defense survey", () => {
     expect(answered.priorDefenders).toStrictEqual([]);
     const direct = await buildValidationTraceDefenseMaterial({
       evidence: scene.passing.evidence,
-      predecessor: completeCanonicalReplayPredecessorLedger(scene.passing),
+      predecessor: completeCanonicalReplayPredecessorStoreLedger(scene.passing),
       eventKey: answered.datum.event_key,
       stepCount: falseClaim.stepCount,
       l1SlotConfig,

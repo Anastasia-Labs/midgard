@@ -1,8 +1,9 @@
-import type {
-  CheckedLedger,
-  LedgerAt,
-} from "@al-ft/midgard-fault-proofs/ledger-at";
-import { fixtureLedgerEntriesByRoot } from "@al-ft/midgard-fault-proofs/test-support/fixture-ledger";
+import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
+import type { Ledger } from "@al-ft/midgard-fault-proofs/ledger-store";
+import {
+  fixtureLedgerEntriesByRoot,
+  memoryLedger,
+} from "@al-ft/midgard-fault-proofs/test-support/fixture-ledger";
 import { depositEventsRetainedBlock as buildDeposit } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 
 import type { VerifiableJourneyBlock } from "./fixture-verification.js";
@@ -26,14 +27,18 @@ export const depositEventsRetainedBlock = async (
 
 export const fixtureJourneyLedgerAt =
   (
-    blocks: readonly (VerifiableJourneyBlock & { ledger?: CheckedLedger })[],
+    blocks: readonly (VerifiableJourneyBlock & { ledger?: Ledger })[],
   ): LedgerAt =>
   async (headerHash) => {
     const block = blocks.find(
       (candidate) => candidate.headerHash === headerHash,
     );
-    return block === undefined
-      ? undefined
-      : (block.ledger?.entries ??
-          fixtureLedgerEntriesByRoot(block.header.utxosRoot));
+    if (block === undefined) return undefined;
+    return (
+      block.ledger ??
+      (await memoryLedger(
+        fixtureLedgerEntriesByRoot(block.header.utxosRoot),
+        block.header.utxosRoot,
+      ))
+    );
   };

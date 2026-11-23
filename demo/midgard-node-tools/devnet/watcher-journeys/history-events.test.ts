@@ -324,7 +324,7 @@ it.each([false, true])(
       f.order.infoCbor.toString("hex"),
     );
     expect(
-      block.ledger.entries.some(({ output }) =>
+      block.ledgerEntries.some(({ output }) =>
         output.toString("hex").includes(rawDatum),
       ),
     ).toBe(true);

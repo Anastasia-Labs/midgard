@@ -69,7 +69,7 @@ export const detectedValidationTraceClaim = async ({
     throw new Error(
       "validation claim: the detected event has no committed event-to-step opening",
     );
-  const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
+  const predecessor = completeCanonicalReplayPredecessorStoreLedger({
     evidence,
     context,
   });

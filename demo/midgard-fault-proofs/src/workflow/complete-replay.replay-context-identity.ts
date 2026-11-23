@@ -1,7 +1,7 @@
 import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { type CheckedLedger } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import {
   requireTransitionTraceL1Events,
   type TransitionTraceL1Events,
@@ -17,7 +17,7 @@ export const COMPLETE_CANONICAL_REPLAY_PREDECESSOR =
 
 /**
  * The ledger the challenged block starts from: the ledger after its
- * `prev_header_hash`, checked against its `prev_utxos_root`.
+ * `prev_header_hash`, bound to its `prev_utxos_root`.
  */
 export type CompleteCanonicalReplayPredecessor = Readonly<{
   schemaVersion: typeof COMPLETE_CANONICAL_REPLAY_PREDECESSOR;
@@ -28,7 +28,7 @@ export type CompleteCanonicalReplayPredecessor = Readonly<{
 
 export type CompleteCanonicalReplayContext = Readonly<{
   /**
-   * The root-checked predecessor ledger. Required by ledger-relative detectors
+   * The root-bound predecessor ledger. Required by ledger-relative detectors
    * unless the current header commits the empty genesis ledger.
    */
   predecessor?: CompleteCanonicalReplayPredecessor;
@@ -64,10 +64,7 @@ export const admittedReplayers = new WeakSet<object>();
 
 export const admittedDecisions = new WeakSet<object>();
 
-export const predecessorLedgerByAuthority = new WeakMap<
-  object,
-  CheckedLedger
->();
+export const predecessorLedgerByAuthority = new WeakMap<object, Ledger>();
 
 export const replayContextIdentity = ({
   evidence,
@@ -100,7 +97,7 @@ export const replayContextIdentity = ({
       ? {}
       : {
           predecessorHeaderHash: evidence.header.prevHeaderHash,
-          predecessorUtxosRoot: predecessor.utxosRoot,
+          predecessorUtxosRoot: predecessor.root,
         }),
   });
 };
@@ -115,7 +112,7 @@ export const requireReplayPredecessorLedger = ({
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly context: CompleteCanonicalReplayContext | undefined;
-}): CheckedLedger | undefined => {
+}): Ledger | undefined => {
   if (context?.predecessor === undefined) return undefined;
   const authority = context.predecessor;
   const ledger = predecessorLedgerByAuthority.get(authority);
@@ -125,7 +122,7 @@ export const requireReplayPredecessorLedger = ({
     authority.challengedHeaderHash !== evidence.headerHash ||
     authority.headerHash !== evidence.header.prevHeaderHash ||
     authority.utxosRoot !== evidence.header.prevUtxosRoot ||
-    ledger.utxosRoot !== evidence.header.prevUtxosRoot
+    ledger.root !== evidence.header.prevUtxosRoot
   ) {
     throw new Error(
       "complete replay predecessor was not admitted for this challenged header",

@@ -76,7 +76,7 @@ const buildJourneyPlutusMintBlock = async (
   const block = await retainedTransactionFixture({
     canonicalTransactionCbor: transaction.canonicalCbor,
     predecessor: input.predecessor,
-    ledgerEntries: input.predecessor.ledger.entries,
+    ledgerEntries: input.predecessor.ledgerEntries,
     operatorVkey: input.operatorVkey,
     endTime: input.endTime,
     blockSlot: input.blockSlot,

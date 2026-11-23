@@ -22,17 +22,14 @@ import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { describe, expect, it } from "vitest";
 
-import {
-  checkLedgerAgainstRoot,
-  LedgerRootMismatchError,
-} from "../src/ledger-at.js";
+import { LedgerRootMismatchError } from "../src/ledger-at.js";
 import {
   admitNativeScriptInvalidArtifact,
   nativeScriptInvalidDetectionId,
   prepareNativeScriptInvalidArtifact,
 } from "../src/native-script-invalid/artifact.js";
 import { prepareNativeScriptInvalidFromCanonicalEvidence } from "../src/native-script-invalid/prepare.js";
-import { deriveResolvedOutputPriorLedgerReplay } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
+import { readResolvedOutputPriorLedger } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
 import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
 import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
 import { buildCanonicalBlockFixture } from "./helpers/canonical-block-evidence-fixture.js";
@@ -43,7 +40,8 @@ import {
   nativeScript,
   nativeTx,
 } from "./native-script-family-evidence.retained-source.js";
-import { checkedLedgerAfter } from "./support/predecessor-ledger.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
+import { ledgerAfter } from "./support/predecessor-ledger.js";
 
 /** A canonical ledger entry for the predecessor output 0x55..55#0. */
 const ledgerEntry = (lovelace: bigint) => ({
@@ -127,7 +125,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
       });
       const block = await evidenceFromFixture(fixture);
       await expect(
-        deriveResolvedOutputPriorLedgerReplay({
+        readResolvedOutputPriorLedger({
           block,
           predecessor: undefined,
         }),
@@ -137,9 +135,9 @@ describe("Q33/Q34 retained-DA evidence", () => {
       });
       // A ledger for any root other than the committed empty one is substituted.
       await expect(
-        deriveResolvedOutputPriorLedgerReplay({
+        readResolvedOutputPriorLedger({
           block,
-          predecessor: await checkedLedgerAfter(
+          predecessor: await ledgerAfter(
             await evidenceFromFixture(
               await buildCanonicalBlockFixture({
                 transactions: [],
@@ -160,7 +158,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
       prevUtxosRoot: "00".repeat(32),
     });
     await expect(
-      deriveResolvedOutputPriorLedgerReplay({
+      readResolvedOutputPriorLedger({
         block: await evidenceFromFixture(fixture),
         predecessor: undefined,
       }),
@@ -179,15 +177,13 @@ describe("Q33/Q34 retained-DA evidence", () => {
     });
     const block = await evidenceFromFixture(named);
     await expect(
-      deriveResolvedOutputPriorLedgerReplay({ block, predecessor: undefined }),
+      readResolvedOutputPriorLedger({ block, predecessor: undefined }),
     ).rejects.toThrow(/absent/u);
     // The named predecessor's ledger root differs from prev_utxos_root.
     await expect(
-      deriveResolvedOutputPriorLedgerReplay({
+      readResolvedOutputPriorLedger({
         block,
-        predecessor: await checkedLedgerAfter(
-          await evidenceFromFixture(predecessor),
-        ),
+        predecessor: await ledgerAfter(await evidenceFromFixture(predecessor)),
       }),
     ).rejects.toThrow(/substituted/u);
   });
@@ -226,9 +222,9 @@ describe("Q33/Q34 retained-DA evidence", () => {
       prevUtxosRoot: previousFixture.header.utxosRoot,
     });
     const challenged = await evidenceFromFixture(challengedFixture);
-    const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
+    const priorLedger = await readResolvedOutputPriorLedger({
       block: challenged,
-      predecessor: await checkedLedgerAfter(
+      predecessor: await ledgerAfter(
         await evidenceFromFixture(previousFixture),
       ),
     });
@@ -254,21 +250,18 @@ describe("Q33/Q34 retained-DA evidence", () => {
       endTime: 40n,
     });
     await expect(
-      deriveResolvedOutputPriorLedgerReplay({
+      readResolvedOutputPriorLedger({
         block: challenged,
-        predecessor: await checkedLedgerAfter(
-          await evidenceFromFixture(lookalike),
-        ),
+        predecessor: await ledgerAfter(await evidenceFromFixture(lookalike)),
       }),
     ).resolves.toMatchObject({ priorRoot: previousRoot.root });
     // One wrong entry and the ledger no longer opens the prior root.
     const wrong = ledgerEntry(2_000_001n);
     await expect(
-      checkLedgerAgainstRoot({
-        entries: [{ outRef: wrong.key, output: wrong.value }],
-        utxosRoot: challenged.header.prevUtxosRoot,
-        label: "prior ledger",
-      }),
+      memoryLedger(
+        [{ outRef: wrong.key, output: wrong.value }],
+        challenged.header.prevUtxosRoot,
+      ),
     ).rejects.toBeInstanceOf(LedgerRootMismatchError);
   });
 });

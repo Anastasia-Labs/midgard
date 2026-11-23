@@ -9,7 +9,6 @@ import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures"
 import { describe, expect, it } from "vitest";
 
 import { isReplayLocalFault } from "../src/block-replay.faults.js";
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/material.js";
 import {
   createLedgerStore,
@@ -17,7 +16,7 @@ import {
   LedgerNodeMissing,
 } from "../src/ledger-store/index.js";
 import { keyValuePhasProof } from "../src/transition-trace/phas.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   buildFixtureTransaction,
   type FixtureTransactionInput,
@@ -67,17 +66,17 @@ const twoSteps = async () => {
 describe("a direct script derivation's resolved inputs", () => {
   it("are the transaction's inputs as the ledger before its step holds them", async () => {
     const { fixture, created, spent, referenced } = await twoSteps();
-    const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+    const predecessor = completeCanonicalReplayPredecessorStoreLedger(fixture)!;
     const before = await referenceLedgerBefore({
       block: fixture.evidence,
       predecessor,
       eventKey: fixture.key(1),
       stepIndex: 1n,
     });
-    expect(before.utxosRoot).not.toBe(predecessor.utxosRoot);
+    expect(before.utxosRoot).not.toBe(predecessor.root);
     const material = await prepareDirectScriptMaterial({
       current: fixture.evidence.reconstruction,
-      predecessor: await checkedLedgerAsLedger(predecessor),
+      predecessor,
       eventKey: fixture.key(1),
     });
     expect(material.bound.event_pre_root).toBe(before.utxosRoot);
@@ -152,12 +151,10 @@ describe("a direct script derivation's resolved inputs", () => {
       // Step 0 resolves its inputs in the predecessor itself, which `retain`
       // of nothing deletes.
       const { fixture } = await twoSteps();
-      const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+      const predecessor =
+        completeCanonicalReplayPredecessorStoreLedger(fixture)!;
       const store = createLedgerStore(createMemoryLedgerStorage());
-      const ledger = await store.admit(
-        predecessor.entries,
-        predecessor.utxosRoot,
-      );
+      const ledger = await store.admit(predecessor.entries(), predecessor.root);
       const error: unknown = await run(
         async () => {
           await store.retain(new Set());

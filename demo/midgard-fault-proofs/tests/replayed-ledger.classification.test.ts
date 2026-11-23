@@ -5,7 +5,6 @@ import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -21,6 +20,7 @@ import {
   setup,
   transport,
 } from "./support/catalogue-retained-classification.setup.js";
+import { entriesRoot } from "./support/fixture-ledger.js";
 import { ledgerEntriesAfter } from "./support/predecessor-ledger.js";
 import { buildRetainedPlutusIdentityFixture } from "./support/retained-reason-classifier.build-retained-plutus-fixture.js";
 
@@ -104,7 +104,7 @@ describe(
       const derived = await ledgerAt(fixture.block.headerHash);
       if (derived === undefined)
         throw new Error("the valid fixture replay was refused");
-      expect(await ledgerEntriesRoot(derived)).not.toBe(
+      expect(await entriesRoot(derived)).not.toBe(
         fixture.block.header.utxosRoot,
       );
       expect(refusals).toMatchObject([
@@ -136,9 +136,7 @@ describe(
       );
       const served = await ledgerAt(fixture.block.headerHash);
       if (served === undefined) throw new Error("the held root was not served");
-      expect(await ledgerEntriesRoot(served)).toBe(
-        predecessor.header.utxosRoot,
-      );
+      expect(await entriesRoot(served)).toBe(predecessor.header.utxosRoot);
       const decision = await classifyHeader({
         ...classifyInput,
         predecessorLedgerAt: ledgerAt,

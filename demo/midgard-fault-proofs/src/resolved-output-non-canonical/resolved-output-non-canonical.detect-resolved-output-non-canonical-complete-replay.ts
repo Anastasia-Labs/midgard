@@ -13,11 +13,10 @@ import {
 } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import { readingLedger } from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { claimedIndex } from "../evidence/claimed-coordinate.js";
-import { type CheckedLedger, ledgerEntryLeaf } from "../ledger-at.js";
+import { ledgerEntryLeaf } from "../ledger-at.js";
 import type { Ledger } from "../ledger-store/index.js";
 import {
   type AuthenticatedPriorLedgerOutput,
@@ -139,25 +138,6 @@ export const readResolvedOutputPriorLedger = async ({
     outputs,
   });
 };
-
-/**
- * `readResolvedOutputPriorLedger` from a predecessor still held as a
- * `CheckedLedger`.
- */
-export const deriveResolvedOutputPriorLedgerReplay = async ({
-  block,
-  predecessor,
-}: {
-  readonly block: CanonicalBlockEvidence;
-  readonly predecessor: CheckedLedger | undefined;
-}): Promise<ResolvedOutputPriorLedgerReplay> =>
-  await readResolvedOutputPriorLedger({
-    block,
-    predecessor:
-      predecessor === undefined
-        ? undefined
-        : await checkedLedgerAsLedger(predecessor),
-  });
 
 /**
  * Package-owned complete replay route. It visits every spend and reference

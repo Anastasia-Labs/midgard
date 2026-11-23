@@ -1,13 +1,22 @@
 /**
  * Test ledger source. DA payloads carry no UTxO set, so fixture builders
  * record the ledger each block commits to, keyed by that block's
- * `utxos_root`, and tests read it back by root or by header. Production code
- * under test admits any ledger only through `checkLedgerAgainstRoot`.
+ * `utxos_root`, and tests read it back by root or by header, admitted to a
+ * memory ledger store against that root.
  */
 import * as SDK from "@al-ft/midgard-sdk/core";
 import type * as SDKDa from "@al-ft/midgard-sdk/da";
 
-import type { LedgerAt, LedgerEntry } from "../../src/ledger-at.js";
+import {
+  type LedgerAt,
+  ledgerEntriesRoot,
+  type LedgerEntry,
+} from "../../src/ledger-at.js";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  type Ledger,
+} from "../../src/ledger-store/index.js";
 import type { RetainedDaPayloadSource } from "../../src/transition-trace/fetch.admit-retained-da-provenance.js";
 import { fetchRetainedDaPayloadByHeaderHash } from "../../src/transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
 import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
@@ -25,6 +34,24 @@ const hexEntry = (entry: FixtureLedgerEntry): SDKDa.DaPayloadEntry =>
         Buffer.from((entry as { key: Uint8Array }).key).toString("hex"),
         Buffer.from((entry as { value: Uint8Array }).value).toString("hex"),
       ];
+
+/** `entries` admitted against `root` to a memory store of their own. */
+export const memoryLedger = async (
+  entries: Iterable<LedgerEntry>,
+  root: string,
+): Promise<Ledger> =>
+  await createLedgerStore(createMemoryLedgerStorage()).admit(entries, root);
+
+/** Every entry `ledger` lists, in key order. */
+export const entriesOf = async (ledger: Ledger): Promise<LedgerEntry[]> => {
+  const entries: LedgerEntry[] = [];
+  for await (const entry of ledger.entries()) entries.push(entry);
+  return entries;
+};
+
+/** The root of the entries `ledger` lists, hashed afresh. */
+export const entriesRoot = async (ledger: Ledger): Promise<string> =>
+  await ledgerEntriesRoot(await entriesOf(ledger));
 
 /** Records `entries` as the ledger whose root is `utxosRoot`. */
 export const recordFixtureLedger = (
@@ -85,5 +112,5 @@ export const fixtureLedgerAt =
     const root = block.header.utxosRoot;
     if (root !== SDK.EMPTY_MERKLE_TREE_ROOT && !ledgersByRoot.has(root))
       return undefined;
-    return fixtureLedgerEntriesByRoot(root);
+    return await memoryLedger(fixtureLedgerEntriesByRoot(root), root);
   };

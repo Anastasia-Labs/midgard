@@ -273,7 +273,7 @@ const tailHoldsLedgerOwnerOutput = (
   tail: JourneyLedgerPredecessor,
   owner: StackLedgerOwner,
 ) =>
-  tail.ledger.entries.some(
+  tail.ledgerEntries.some(
     ({ output }) =>
       encodeMidgardAddressText(decodeMidgardTxOutput(output).address) ===
       stackLedgerOwnerDepositAddress(owner),

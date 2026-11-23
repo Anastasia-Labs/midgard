@@ -6,7 +6,6 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import type { Script, UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { checkedLedgerAsLedger } from "../../src/checked-ledger-store.js";
 import { inputExistenceWithPublishedFields } from "../../src/input-existence/field-carriage.js";
 import {
   type PreparedInputExistence,
@@ -100,7 +99,7 @@ export const startChronologyJourney = async ({
     startTime,
     predecessorHeaderHash: prior.headerHash,
   });
-  expect(history.predecessor.utxosRoot).toBe(prior.header.utxosRoot);
+  expect(history.predecessor.root).toBe(prior.header.utxosRoot);
   await submitSetupTx({
     lucid: h.funderLucid,
     contracts: h.contracts,
@@ -122,7 +121,7 @@ export const startChronologyJourney = async ({
     eventKey: history.targetEvent,
     field,
     inputIndex: rejected ? undefined : 0n,
-    predecessor: await checkedLedgerAsLedger(history.predecessor),
+    predecessor: history.predecessor,
     owner: h.proverSigner.paymentKeyHash,
   });
   const fieldCarriage = publishedFieldCarriage

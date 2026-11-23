@@ -9,8 +9,7 @@ import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { ValidationTraceStopped } from "@al-ft/midgard-validation/validation-machine";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
-import { EventLedgerReplayRefusal } from "../src/event-ledger.js";
+import { EventLedgerReplayRefusal } from "../src/event-ledger.steps.js";
 import { encodeValidationTraceDisputeArtifact } from "../src/validation-trace-dispute/artifact.js";
 import {
   buildValidationTraceClaimMaterial,
@@ -21,7 +20,7 @@ import {
   type CanonicalBlockClassification,
   classifyCanonicalBlockViolations,
 } from "../src/workflow/classification.classify-canonical-block-violations.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   createValidationTraceDisputeCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
@@ -29,6 +28,7 @@ import {
 import { WorkflowArtifactPendingError } from "../src/workflow/workflow-artifact-pending.js";
 import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
 import { plutusExecutionEventsBlockFixture } from "./helpers/plutus-execution-events-fixture.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
 
 const injected = vi.hoisted(() => ({
   next: undefined as Error | undefined,
@@ -116,7 +116,7 @@ describe("validation-trace claim build: held only when it ends without a result"
     if (event?.phase !== "L2Transaction") throw new Error("not a transaction");
     const ledger = await referenceLedgerBefore({
       block: block.evidence,
-      predecessor: completeCanonicalReplayPredecessorLedger(block),
+      predecessor: completeCanonicalReplayPredecessorStoreLedger(block),
       eventKey: event.eventKey,
       stepIndex: block.evidence.reconstruction.eventToStepByFingerprint.get(
         event.fingerprint,
@@ -128,7 +128,7 @@ describe("validation-trace claim build: held only when it ends without a result"
         material: await buildValidationTraceClaimMaterial({
           evidence: block.evidence,
           event,
-          ledger: await checkedLedgerAsLedger(ledger),
+          ledger: await memoryLedger(ledger.entries, ledger.utxosRoot),
           l1SlotConfig,
         }),
       }),

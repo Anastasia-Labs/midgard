@@ -2,7 +2,7 @@ import type { UTxO } from "@lucid-evolution/lucid";
 
 import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   createTransitionTraceCompleteCanonicalReplayFromRetainedHistory,
   requireCompleteCanonicalReplayDecision,
@@ -172,13 +172,13 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
     sources,
     minimumConfirmationDepth: 1,
   });
-  const predecessor = completeCanonicalReplayPredecessorLedger({
+  const predecessor = completeCanonicalReplayPredecessorStoreLedger({
     evidence,
     context: workflow.config.replayContext,
   });
   if (
     cell.evidence !== undefined &&
-    cell.predecessor?.utxosRoot !== predecessor?.utxosRoot
+    cell.predecessor?.root !== predecessor?.root
   )
     throw new Error(
       "Transition authenticated predecessor changed across resume",

@@ -4,14 +4,13 @@ import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
-import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import { deriveTransitionTraceReplayEvidence } from "../src/transition-trace/replay.js";
 import { corpus } from "./cardano-capability-retained-da.reconstruct-authenticated-canonical-transaction-from-field-chunks.js";
 import { buildStrictRetainedDaPairFixture } from "./helpers/cardano-capability-retained-da.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
 import { buildL2ReplayBlock } from "./transition-trace-challenger.build-l2-replay-fixture.js";
 
 type Block = {
@@ -207,14 +206,13 @@ describe("validation-trace pair pinned to the empty tree", () => {
     expect(pinned.payload.block_body.transactions).toHaveLength(1);
 
     const current = await reconstruct(pinned);
-    const predecessor = await checkLedgerAgainstRoot({
-      entries: predecessorEntries,
-      utxosRoot: current.header.prevUtxosRoot,
-      label: "predecessor",
-    });
+    const predecessor = await memoryLedger(
+      predecessorEntries,
+      current.header.prevUtxosRoot,
+    );
     const evidence = await deriveTransitionTraceReplayEvidence({
       current,
-      predecessor: await checkedLedgerAsLedger(predecessor),
+      predecessor: predecessor,
       deposits: [],
       network: "Custom",
       depositPolicyId: "34".repeat(28),

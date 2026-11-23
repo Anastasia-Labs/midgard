@@ -1,7 +1,7 @@
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 import { type AuthenticatedStateQueueHeaderObservation } from "@al-ft/midgard-sdk/fraud-proof";
 
-import type { LedgerAt } from "../../src/ledger-at.js";
+import { emptyLedger, type LedgerAt } from "../../src/ledger-at.js";
 import { retainedPayloadReplaySource } from "../../src/retained-payload-replay-source.js";
 import type { RetainedDaPayloadSource } from "../../src/transition-trace/fetch.js";
 import type {
@@ -107,7 +107,7 @@ export const classifyRetainedReasonFixture = async ({
               predecessor === undefined &&
               headerHash === observation.header.prevHeaderHash &&
               observation.header.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT
-                ? []
+                ? emptyLedger()
                 : await fixtureLedgerAt({ sources: replaySource.sources })(
                     headerHash,
                   )),

@@ -11,9 +11,8 @@ import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import { Proof } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
-import { checkedLedgerAsLedger } from "./checked-ledger-store.js";
 import { readingLedger } from "./event-ledger.ledger.js";
-import { LedgerRootMismatchError, requireLedgerOpening } from "./ledger-at.js";
+import { requireLedgerOpening } from "./ledger-at.js";
 import type { Ledger } from "./ledger-store/index.js";
 import { transitionTraceError } from "./transition-trace/errors.js";
 import { sdkProofFromCbor } from "./transition-trace/phas.js";
@@ -36,13 +35,7 @@ export const predecessorNonMembershipProof = async ({
   readonly key: Buffer;
   readonly label: string;
 }): Promise<string> => {
-  if (ledger !== undefined && ledger.root !== utxosRoot)
-    throw new LedgerRootMismatchError(label, utxosRoot, ledger.root);
-  const opened =
-    ledger ??
-    (await checkedLedgerAsLedger(
-      requireLedgerOpening({ ledger: undefined, utxosRoot, label }),
-    ));
+  const opened = requireLedgerOpening({ ledger, utxosRoot, label });
   const proof = await readingLedger(label, async () => {
     const read = (await opened.read([key])).get(key.toString("hex"))!;
     if (read.output !== undefined)

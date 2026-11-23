@@ -58,7 +58,7 @@ import "./complete-replay.resolved-output-non-canonical-complete-canonical-repla
 import "./complete-replay.create-complete-canonical-replay-union.js";
 export {
   admitCompleteCanonicalReplayPredecessor,
-  completeCanonicalReplayPredecessorLedger,
+  completeCanonicalReplayPredecessorStoreLedger,
 } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 export {
   completeCanonicalReplayDecisionDigest,

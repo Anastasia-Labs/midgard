@@ -30,9 +30,9 @@ export const seeded = (seed: number) => {
     return ((t ^ (t >>> 14)) >>> 0) % bound >>> 0;
   };
 };
-export type Draw = ReturnType<typeof seeded>;
+type Draw = ReturnType<typeof seeded>;
 
-export const bytes = (draw: Draw, length: number) =>
+const bytes = (draw: Draw, length: number) =>
   Buffer.from(Array.from({ length }, () => draw(256)));
 export const shuffled = <T>(draw: Draw, items: readonly T[]): T[] => {
   const out = [...items];

@@ -14,13 +14,17 @@ import { describe, expect, it } from "vitest";
 
 import { undecodableNativeOutputDescriptor } from "../src/evidence/retained-ledger-output.js";
 import {
-  checkLedgerAgainstRoot,
-  checkLedgerJson,
-  ledgerJson,
+  ledgerEntriesRoot,
+  ledgerEntryLeaf,
   LedgerRootMismatchError,
   predecessorLedger,
 } from "../src/ledger-at.js";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "../src/ledger-store/index.js";
 import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
+import { entriesOf, memoryLedger } from "./support/fixture-ledger.js";
 
 const outRef = encodeMidgardSpendInputItem({
   txId: Buffer.alloc(32, 0x55),
@@ -67,69 +71,49 @@ const committedDescriptor = (scriptBytes: Buffer) => {
   }).descriptorCbor;
 };
 
-describe("ledger root check for an output with an undecodable native script_ref", () => {
-  it("derives the descriptor from the output bytes and checks it against the root", async () => {
+describe("ledger root of an output with an undecodable native script_ref", () => {
+  it("derives the descriptor from the output bytes, and a store admits it only at that root", async () => {
     const derived = undecodableNativeOutputDescriptor({ key: outRef, output });
     const { root } = await keyValuePhasRootWithCount([
       { key: outRef, value: derived },
     ]);
-    const ledger = await checkLedgerAgainstRoot({
-      entries: [{ outRef, output }],
-      utxosRoot: root,
-      label: "test",
-    });
-    expect(ledger.entries[0]!.descriptor).toEqual(derived);
-    const json = ledgerJson(ledger);
-    expect(json[0]).toHaveLength(3);
-    expect(
-      (await checkLedgerJson({ value: json, utxosRoot: root, label: "test" }))
-        .utxosRoot,
-    ).toBe(root);
+    expect(ledgerEntryLeaf({ outRef, output }, "test").leaf).toEqual(derived);
+    expect(await ledgerEntriesRoot([{ outRef, output }])).toBe(root);
     // A source-supplied descriptor must be the output's own.
     const other = committedDescriptor(Buffer.from("820041", "hex"));
     expect(other.equals(derived)).toBe(false);
     await expect(
-      checkLedgerAgainstRoot({
-        entries: [{ outRef, output, descriptor: other }],
-        utxosRoot: root,
-        label: "test",
-      }),
+      ledgerEntriesRoot([{ outRef, output, descriptor: other }]),
     ).rejects.toThrow("not a canonical ledger entry");
     // The derived descriptor still has to open the committed root.
     const otherRoot = await keyValuePhasRootWithCount([
       { key: outRef, value: other },
     ]);
+    const store = createLedgerStore(createMemoryLedgerStorage());
+    expect((await store.admit([{ outRef, output }], root)).root).toBe(root);
     await expect(
-      checkLedgerAgainstRoot({
-        entries: [{ outRef, output }],
-        utxosRoot: otherRoot.root,
-        label: "test",
-      }),
+      store.admit([{ outRef, output }], otherRoot.root),
     ).rejects.toBeInstanceOf(LedgerRootMismatchError);
   });
 
   it("refuses an output that is neither canonical nor an undecodable native script", async () => {
     await expect(
-      checkLedgerAgainstRoot({
-        entries: [{ outRef, output: Buffer.from("ff", "hex") }],
-        utxosRoot: EMPTY_MERKLE_TREE_ROOT,
-        label: "test",
-      }),
+      ledgerEntriesRoot([{ outRef, output: Buffer.from("ff", "hex") }]),
     ).rejects.toThrow("not a canonical ledger entry");
-    // Even with a supplied descriptor that the root commits.
-    const descriptor = committedDescriptor(script);
-    const { root } = await keyValuePhasRootWithCount([
-      { key: outRef, value: descriptor },
-    ]);
+    // Even with a supplied descriptor.
     await expect(
-      checkLedgerAgainstRoot({
-        entries: [{ outRef, output: Buffer.from("ff", "hex"), descriptor }],
-        utxosRoot: root,
-        label: "test",
-      }),
+      ledgerEntriesRoot([
+        {
+          outRef,
+          output: Buffer.from("ff", "hex"),
+          descriptor: committedDescriptor(script),
+        },
+      ]),
     ).rejects.toThrow("not a canonical ledger entry");
   });
+});
 
+describe("predecessor ledger", () => {
   it("uses the known genesis ledger without fetching a predecessor payload", async () => {
     const source = async () => {
       throw new Error("the empty ledger was asked of the source");
@@ -140,7 +124,8 @@ describe("ledger root check for an output with an undecodable native script_ref"
       ledgerAt: source,
       label: "test",
     });
-    expect(empty.entries).toEqual([]);
+    expect(empty.root).toBe(EMPTY_MERKLE_TREE_ROOT);
+    expect(await entriesOf(empty)).toEqual([]);
     await expect(
       predecessorLedger({
         prevHeaderHash: "22".repeat(28),
@@ -156,7 +141,11 @@ describe("ledger root check for an output with an undecodable native script_ref"
       predecessorLedger({
         prevHeaderHash: "22".repeat(28),
         prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
-        ledgerAt: async () => [{ outRef, output: plainOutput }],
+        ledgerAt: async () =>
+          await memoryLedger(
+            [{ outRef, output: plainOutput }],
+            await ledgerEntriesRoot([{ outRef, output: plainOutput }]),
+          ),
         label: "test",
       }),
     ).rejects.toBeInstanceOf(LedgerRootMismatchError);

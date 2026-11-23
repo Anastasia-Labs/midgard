@@ -8,7 +8,6 @@ import "../transition-trace/phas.js";
 import "./resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
 import "./resolved-output-non-canonical.detect-resolved-output-non-canonical-complete-replay.js";
 export {
-  deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
   readResolvedOutputPriorLedger,
 } from "./resolved-output-non-canonical.detect-resolved-output-non-canonical-complete-replay.js";

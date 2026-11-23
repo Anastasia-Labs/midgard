@@ -19,7 +19,6 @@ import {
 } from "../src/direct-purpose-family/transaction-port.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/workflow.js";
-import { singleLedgerAt } from "../src/ledger-at.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
@@ -53,6 +52,7 @@ import {
   setupNativeScenario,
   sig,
 } from "./support/execution-native-script-invalid-emulator.subject.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 
 /** Signed by the payer, valid only from slot 100. */
 const NOT_YET = native({
@@ -153,10 +153,14 @@ describe("executionNativeScriptInvalid installed cursor actuator", () => {
       // The predecessor ledger the subject's inputs resolve against.
       const replayContext = {
         predecessor: await admitCompleteCanonicalReplayPredecessor({
-          ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-            ...(scenarioCase.shape.spend ?? []),
-            ...(scenarioCase.shape.reference ?? []),
-          ]),
+          ledgerAt: singleLedgerAt(
+            evidence.header.prevHeaderHash,
+            [
+              ...(scenarioCase.shape.spend ?? []),
+              ...(scenarioCase.shape.reference ?? []),
+            ],
+            evidence.header.prevUtxosRoot,
+          ),
           currentEvidence: evidence,
         }),
       };
@@ -349,10 +353,11 @@ describe("executionNativeScriptInvalid installed cursor actuator", () => {
         evidence,
         {
           predecessor: await admitCompleteCanonicalReplayPredecessor({
-            ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-              ...(shape.spend ?? []),
-              ...(shape.reference ?? []),
-            ]),
+            ledgerAt: singleLedgerAt(
+              evidence.header.prevHeaderHash,
+              [...(shape.spend ?? []), ...(shape.reference ?? [])],
+              evidence.header.prevUtxosRoot,
+            ),
             currentEvidence: evidence,
           }),
         },

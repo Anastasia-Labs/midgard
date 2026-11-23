@@ -6,14 +6,13 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { describe, expect, it } from "vitest";
 
-import {
-  eventLedgerBefore,
-  EventLedgerReplayRefusal,
-} from "../src/event-ledger.js";
+import { ledgerBeforeStep } from "../src/event-ledger.ledger.js";
+import { EventLedgerReplayRefusal } from "../src/event-ledger.steps.js";
+import type { LedgerEntry } from "../src/ledger-at.js";
 import { prepareValidationTraceArtifact } from "../src/validation-trace-dispute/detected-claim.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import {
-  completeCanonicalReplayPredecessorLedger,
+  completeCanonicalReplayPredecessorStoreLedger,
   EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
 } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
@@ -25,6 +24,7 @@ import {
   type EventSpend,
   plutusExecutionEventsBlockFixture,
 } from "./helpers/plutus-execution-events-fixture.js";
+import { entriesOf } from "./support/fixture-ledger.js";
 
 const l1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
 
@@ -55,7 +55,7 @@ const eventKey = (block: Block, step: number) => ({
 });
 
 const predecessorOf = (block: Block) =>
-  completeCanonicalReplayPredecessorLedger({
+  completeCanonicalReplayPredecessorStoreLedger({
     evidence: block.evidence,
     context: block.context,
   })!;
@@ -69,10 +69,13 @@ const request = (block: Block, step: number) => ({
 
 /** The block's walk's ledger before step `step`. */
 const walked = async (block: Block, step: number) =>
-  await eventLedgerBefore(request(block, step));
+  await ledgerBeforeStep(request(block, step));
 
 const oneOff = async (block: Block, step: number) =>
   await referenceLedgerBefore(request(block, step));
+
+const byOutRef = (entries: readonly LedgerEntry[]) =>
+  [...entries].sort((left, right) => Buffer.compare(left.outRef, right.outRef));
 
 const SPENDS: readonly EventSpend[] = [
   "failing",
@@ -114,8 +117,10 @@ describe("validation-trace dispute replay: one walk per block", () => {
         await walked(block, step),
         await oneOff(block, step),
       ];
-      expect(ledger.utxosRoot).toBe(expected.utxosRoot);
-      expect(ledger.entries).toStrictEqual(expected.entries);
+      expect(ledger.root).toBe(expected.utxosRoot);
+      expect(byOutRef(await entriesOf(ledger))).toStrictEqual(
+        byOutRef(expected.entries),
+      );
     }
   });
 
@@ -150,7 +155,7 @@ describe("validation-trace dispute replay: one walk per block", () => {
     await expect(walked(block, 2)).rejects.toBeInstanceOf(
       EventLedgerReplayRefusal,
     );
-    expect((await walked(block, 1)).utxosRoot).toBe(
+    expect((await walked(block, 1)).root).toBe(
       (await oneOff(block, 1)).utxosRoot,
     );
   });

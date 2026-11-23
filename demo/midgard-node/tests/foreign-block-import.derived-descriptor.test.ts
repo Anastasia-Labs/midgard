@@ -1,6 +1,5 @@
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { ledgerEntriesRoot } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -10,6 +9,7 @@ import {
   type ReplayedLedgerRefusal,
   type ReplayedLedgerSource,
 } from "@al-ft/midgard-fault-proofs/replayed-ledger";
+import { entriesRoot } from "@al-ft/midgard-fault-proofs/test-support/fixture-ledger";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { placeholderValidationTraceDescriptorV1 } from "@al-ft/midgard-validation/validation-machine";
@@ -372,14 +372,10 @@ describe("the replayed ledger over derived validation descriptors", () => {
     const w = await watcherLedger(payload);
     const after = await w.at(payload);
     expect(after).toBeDefined();
-    expect(await ledgerEntriesRoot(after!)).toBe(
-      payload.block_body.header.utxosRoot,
-    );
+    expect(await entriesRoot(after!)).toBe(payload.block_body.header.utxosRoot);
     const above = await w.at(w.child);
     expect(above).toBeDefined();
-    expect(await ledgerEntriesRoot(above!)).toBe(
-      payload.block_body.header.utxosRoot,
-    );
+    expect(await entriesRoot(above!)).toBe(payload.block_body.header.utxosRoot);
     expect(w.refusals).toEqual([]);
   });
   it("refuses a block whose descriptor verdict differs from the replay, and derives nothing above it", async () => {

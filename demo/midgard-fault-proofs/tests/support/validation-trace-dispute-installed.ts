@@ -44,6 +44,7 @@ import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js"
 import { network } from "./emulator/blueprints.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import { emulatorManifestProtocolParameters } from "./emulator-protocol-parameters.js";
+import { singleLedgerAt } from "./predecessor-ledger.js";
 import {
   fixtureLeaseCoordinator,
   FixtureRetainedDaSource,
@@ -207,10 +208,11 @@ export const installValidationTraceApplication = async ({
           minimumConfirmationDepth: releaseFinality.policy.confirmationDepth,
         }),
       sources,
-      predecessorLedgerAt: async (hash) =>
-        hash === block.evidence.header.prevHeaderHash
-          ? block.predecessorEntries
-          : undefined,
+      predecessorLedgerAt: singleLedgerAt(
+        block.evidence.header.prevHeaderHash,
+        block.predecessorEntries,
+        block.evidence.header.prevUtxosRoot,
+      ),
     });
   };
   const decision = await classify(scene.failing);

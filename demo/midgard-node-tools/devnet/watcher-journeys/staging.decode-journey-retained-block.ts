@@ -2,7 +2,6 @@ import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
-  type CheckedLedger,
   ledgerAfter,
   type LedgerAt,
 } from "@al-ft/midgard-fault-proofs/ledger-at";
@@ -18,16 +17,17 @@ import type {
   JourneyFixtureStage,
   JourneySuccessor,
 } from "./fixture.js";
+import { type JourneyLedger, journeyLedger } from "./journey-ledger.js";
 import type { StackShiftCoverInput } from "./journey-timing.js";
 import type {
   StackDaDelivery,
   StackDaRefused,
 } from "./stack-da-publication.js";
 
-export type JourneyRetainedBlock = JourneyBlock & {
-  payload: SDK.DaPayload;
-  ledger: CheckedLedger;
-};
+export type JourneyRetainedBlock = JourneyBlock &
+  JourneyLedger & {
+    payload: SDK.DaPayload;
+  };
 
 export type JourneyFaultBuildInput = {
   /** The slot mapping of the chain the block commits on. */
@@ -94,12 +94,14 @@ export const decodeJourneyRetainedBlock = async (
   return {
     ...block,
     payload: SDK.decodeDaPayload(Buffer.from(envelope.innerBytes)),
-    ledger: await ledgerAfter({
-      ledgerAt,
-      headerHash: block.headerHash,
-      utxosRoot: block.header.utxosRoot,
-      label: "journey retained predecessor",
-    }),
+    ...(await journeyLedger(
+      await ledgerAfter({
+        ledgerAt,
+        headerHash: block.headerHash,
+        utxosRoot: block.header.utxosRoot,
+        label: "journey retained predecessor",
+      }),
+    )),
   };
 };
 

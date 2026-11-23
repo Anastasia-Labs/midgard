@@ -361,7 +361,7 @@ export const createManifestBoundValueConservationWorkflow = async (
         throw new Error("value conservation: noncanonical source coordinate");
       const artifact = await prepareValueConservationArtifact({
         block: evidence,
-        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+        predecessor: completeCanonicalReplayPredecessorStoreLedger({
           evidence,
           context: replayContext,
         }),

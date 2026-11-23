@@ -40,7 +40,7 @@ import {
   type ValidationTraceThreadHolder,
   type ValidationTraceThreadStanding,
 } from "../src/validation-trace-dispute/threads.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { l1SlotConfig } from "./support/validation-trace-claim-material.js";
@@ -151,7 +151,9 @@ describe("validation-trace dispute defender moves", () => {
       const opened = await openFalseClaim(scene, claim, stepCount);
       const material = await buildValidationTraceDefenseMaterial({
         evidence: scene.passing.evidence,
-        predecessor: completeCanonicalReplayPredecessorLedger(scene.passing),
+        predecessor: completeCanonicalReplayPredecessorStoreLedger(
+          scene.passing,
+        ),
         eventKey: scene.passing.eventKey,
         stepCount,
         l1SlotConfig,

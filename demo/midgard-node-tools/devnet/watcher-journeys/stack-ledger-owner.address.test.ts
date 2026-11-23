@@ -79,12 +79,10 @@ const tailHolding = async (
   outputs: readonly ReturnType<typeof nodeOutput>[],
 ) => ({
   ...(await headerOn("00".repeat(28), honestOperator, 1n)),
-  ledger: {
-    entries: outputs.map(({ outrefCbor, outputCbor }) => ({
-      outRef: outrefCbor,
-      output: outputCbor,
-    })),
-  },
+  ledgerEntries: outputs.map(({ outrefCbor, outputCbor }) => ({
+    outRef: outrefCbor,
+    output: outputCbor,
+  })),
 });
 
 describe("the ledger owner's funding deposit on an attached stack", () => {

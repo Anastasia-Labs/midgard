@@ -1,6 +1,5 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
-import { ledgerEntriesRoot } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -9,6 +8,7 @@ import {
   createReplayedLedger,
   type ReplayedLedgerRefusal,
 } from "@al-ft/midgard-fault-proofs/replayed-ledger";
+import { entriesRoot } from "@al-ft/midgard-fault-proofs/test-support/fixture-ledger";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
@@ -288,7 +288,7 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
     fault.on = false;
     const entries = await ledgerAt(payload.block_body.header_hash);
     expect(entries).toBeDefined();
-    expect(await ledgerEntriesRoot(entries!)).toBe(header.utxosRoot);
+    expect(await entriesRoot(entries!)).toBe(header.utxosRoot);
     expect(refusals).toEqual([]);
   });
 

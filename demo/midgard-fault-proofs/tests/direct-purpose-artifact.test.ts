@@ -13,7 +13,7 @@ import {
 } from "../src/direct-purpose-family/artifact.js";
 import type { DirectPurposeReplay } from "../src/direct-purpose-family/artifact-family.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { type LedgerEntry, singleLedgerAt } from "../src/ledger-at.js";
+import { type LedgerEntry } from "../src/ledger-at.js";
 import { MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY } from "../src/missing-script-source/replay.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import {
@@ -30,6 +30,7 @@ import {
   type MissingRedeemerSubjectShape,
   plutusScript,
 } from "./support/missing-redeemer-emulator.subject.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 import {
   droppedWitnesses,
   expectWitnessRefused,
@@ -90,7 +91,11 @@ const scene = async (
   });
   const context = {
     predecessor: await admitCompleteCanonicalReplayPredecessor({
-      ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, ledger),
+      ledgerAt: singleLedgerAt(
+        evidence.header.prevHeaderHash,
+        ledger,
+        evidence.header.prevUtxosRoot,
+      ),
       currentEvidence: evidence,
     }),
   };
@@ -146,7 +151,7 @@ describe("direct purpose artifact predecessor witness", () => {
       const expected = await FAMILY.prepare({
         current: evidence.reconstruction,
         coordinate: admitted.coordinate,
-        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+        predecessor: completeCanonicalReplayPredecessorStoreLedger({
           evidence,
           context,
         }),

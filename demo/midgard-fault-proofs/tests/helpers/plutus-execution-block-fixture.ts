@@ -22,6 +22,7 @@ import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/ca
 import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { singleLedgerAt } from "../support/predecessor-ledger.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -344,8 +345,11 @@ export const plutusExecutionBlockFixture = async (
   const context = {
     predecessor: await admitCompleteCanonicalReplayPredecessor({
       currentEvidence: evidence,
-      ledgerAt: async (hash) =>
-        hash === header.prevHeaderHash ? predecessorEntries : undefined,
+      ledgerAt: singleLedgerAt(
+        header.prevHeaderHash,
+        predecessorEntries,
+        header.prevUtxosRoot,
+      ),
     }),
   };
   return {

@@ -1,9 +1,11 @@
 /** The ledger before one event of a block, rebuilt from scratch:
  * the predecessor's entries, each earlier step's effects applied to a plain
- * map, and every intermediate ledger root-checked with a fresh trie. A
+ * map, and every intermediate ledger root-checked with a fresh PHAS trie of
+ * its entries, independent of the ledger store. A
  * rejected normal transaction changes nothing. It refuses in the order, and
  * at the step, an event-ledger walk must, so a walk's result for any
  * request, in any request order, can be compared with it. */
+import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   decodeMidgardFieldPreimage,
   decodeMidgardForcedTxFullFromCanonicalCbor,
@@ -15,14 +17,14 @@ import { Data } from "@lucid-evolution/lucid";
 import {
   EventLedgerOutputNotCanonical,
   EventLedgerReplayRefusal,
-} from "../../src/event-ledger.js";
+} from "../../src/event-ledger.steps.js";
 import type { CanonicalBlockEvidence } from "../../src/evidence/canonical-block-evidence.js";
+import { type LedgerEntry, ledgerEntryLeaf } from "../../src/ledger-at.js";
+import type { Ledger } from "../../src/ledger-store/index.js";
 import {
-  type CheckedLedger,
-  checkLedgerAgainstRoot,
-  type LedgerEntry,
-  LedgerRootMismatchError,
-} from "../../src/ledger-at.js";
+  type KeyValuePhasRoot,
+  keyValuePhasRootWithCount,
+} from "../../src/transition-trace/phas.js";
 import {
   eventKeyFingerprint,
   eventKeyPhase,
@@ -41,6 +43,70 @@ const refuse = (
   throw new EventLedgerReplayRefusal(reason, step);
 };
 
+/** A ledger as the reference rebuilds it: its root, its entries, its
+ * outputs by out-ref hex and a PHAS trie of them. */
+export type ReferenceLedger = Readonly<{
+  utxosRoot: string;
+  entries: readonly LedgerEntry[];
+  outputs: ReadonlyMap<string, Buffer>;
+  trie: KeyValuePhasRoot;
+}>;
+
+/** `entries` with a fresh trie of their descriptors; a non-canonical output
+ * throws. */
+const referenceLedger = async (
+  entries: readonly LedgerEntry[],
+): Promise<ReferenceLedger> => {
+  const trie = await keyValuePhasRootWithCount(
+    entries.map((entry) => ({
+      key: entry.outRef,
+      value: ledgerEntryLeaf(entry, "reference ledger").leaf,
+    })),
+  );
+  return {
+    utxosRoot: trie.root,
+    entries,
+    outputs: new Map(
+      entries.map(({ outRef, output }) => [outRef.toString("hex"), output]),
+    ),
+    trie,
+  };
+};
+
+const listed = async (ledger: Ledger): Promise<LedgerEntry[]> => {
+  const entries: LedgerEntry[] = [];
+  for await (const entry of ledger.entries()) entries.push(entry);
+  return entries;
+};
+
+/** Every entry of `ledger`, rebuilt as the reference holds a ledger. */
+export const referenceLedgerOf = async (
+  ledger: Ledger,
+): Promise<ReferenceLedger> => await referenceLedger(await listed(ledger));
+
+/** Each key's MPF proof CBOR against `ledger`'s trie, built by the MPF
+ * library from the ledger's entries: membership for a key it holds, absence
+ * for one it does not. */
+export const referenceProofs = async (
+  ledger: ReferenceLedger,
+  keys: readonly Buffer[],
+): Promise<Buffer[]> => {
+  const proofs: Buffer[] = [];
+  for (const key of keys) {
+    const trie = await Trie.fromList(
+      ledger.trie.entries.map(({ key: entryKey, value }) => ({
+        key: Buffer.from(entryKey),
+        value: Buffer.from(value),
+      })),
+    );
+    const held = ledger.outputs.has(key.toString("hex"));
+    proofs.push(
+      Buffer.from((await trie.prove(Buffer.from(key), !held)).toCBOR()),
+    );
+  }
+  return proofs;
+};
+
 export const referenceLedgerBefore = async ({
   block,
   predecessor,
@@ -48,21 +114,25 @@ export const referenceLedgerBefore = async ({
   stepIndex,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly predecessor: CheckedLedger | undefined;
+  readonly predecessor: Ledger | undefined;
   readonly eventKey: SDK.EventKey;
   readonly stepIndex: bigint;
-}): Promise<CheckedLedger> => {
+}): Promise<ReferenceLedger> => {
   if ("DepositEventKey" in eventKey)
     throw new Error(
       "event ledger: subject is not a withdrawal or transaction event",
     );
   if (stepIndex < 0n || stepIndex >= block.header.transitionStepCount)
     refuse("step_out_of_range", stepIndex);
-  let ledger = requireReplayPredecessorLedger({
-    block,
-    predecessor,
-    label: "input-existence",
-  });
+  let ledger = await referenceLedger(
+    await listed(
+      requireReplayPredecessorLedger({
+        block,
+        predecessor,
+        label: "input-existence",
+      }),
+    ),
+  );
   const entries = new Map<string, LedgerEntry>(
     ledger.entries.map((entry) => [entry.outRef.toString("hex"), entry]),
   );
@@ -148,17 +218,13 @@ export const referenceLedgerBefore = async ({
       }
     }
     try {
-      ledger = await checkLedgerAgainstRoot({
-        entries: [...entries.values()],
-        utxosRoot: step!.post_utxos_root,
-        label: `event ledger earlier event ${index.toString()}`,
-      });
+      ledger = await referenceLedger([...entries.values()]);
     } catch (cause) {
-      if (cause instanceof LedgerRootMismatchError)
-        refuse("post_root_changed", index);
       // Every entry the steps did not create was checked before them.
       throw new EventLedgerOutputNotCanonical(index, cause as Error);
     }
+    if (ledger.utxosRoot !== step!.post_utxos_root)
+      refuse("post_root_changed", index);
   }
   const target = block.reconstruction.traceByStepIndex.get(stepIndex);
   if (

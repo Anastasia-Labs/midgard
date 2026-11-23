@@ -1,28 +1,35 @@
 /**
- * The event-ledger walk against a from-scratch replay of the same block
- * (`referenceLedgerBefore`), which rebuilds every intermediate ledger and
- * root-checks it with a fresh trie. For every transaction event of a block
- * and every step, the ledger the walk gives before it, or its refusal, must
- * be the reference's: whatever was asked of the walk before, and however its
- * requests interleave. Seeded blocks carry one fault each at a seeded step;
- * the input-existence chronologies add forced transactions, withdrawals and
+ * The ledger store walk (`ledgerBeforeStep`, `ledgerBeforeTraceStep`)
+ * against a from-scratch replay of the same block (`referenceLedgerBefore`),
+ * which rebuilds every intermediate ledger and root-checks it with a fresh
+ * trie, and proves from the MPF library's own trie. For every transaction
+ * event of a block and every step, the ledger the walk gives before it, or
+ * its refusal, must be the reference's: the same root, outputs and proofs,
+ * whatever was asked of the walk before, and however its requests
+ * interleave. Seeded blocks carry one fault each at a seeded step; the
+ * input-existence chronologies add forced transactions, withdrawals and
  * deposits.
  */
 import { describe, expect, it } from "vitest";
 
-import { eventLedgerBefore } from "../src/event-ledger.js";
-import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
-import { type CheckedLedger, checkedLedgerPreState } from "../src/ledger-at.js";
 import {
-  keyValuePhasRoot,
-  mutableKeyValuePhasTrie,
-} from "../src/transition-trace/phas.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+  ledgerBeforeStep,
+  ledgerBeforeTraceStep,
+} from "../src/event-ledger.ledger.js";
+import { traceRelative } from "../src/event-ledger.steps.js";
+import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
+import type { Ledger } from "../src/ledger-store/index.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { outRefCbor } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  ledgerSnapshot,
+  type Outcome,
+  outcome,
+  referenceSnapshot,
+} from "./helpers/event-ledger-ledger-snapshots.js";
 import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
 import {
   afresh,
-  bytes,
   FAULTS,
   hex,
   type Request,
@@ -39,85 +46,12 @@ import {
   type RefusedInputChronology,
 } from "./helpers/input-existence-chronology-fixture.js";
 
-type Outcome =
-  | Readonly<{ ledger: unknown }>
-  | Readonly<{
-      refused: Readonly<{
-        name: string;
-        message: string;
-        reason: unknown;
-        step: unknown;
-      }>;
-    }>;
-
-const ledgerSnapshot = async (
-  ledger: CheckedLedger,
-  probes: readonly Buffer[],
-) => {
-  const each: [string, string][] = [];
-  ledger.outputs.forEach((output, key) => each.push([key, hex(output)]));
-  return {
-    utxosRoot: ledger.utxosRoot,
-    entries: ledger.entries.map(({ outRef: key, output, descriptor }) => [
-      hex(key),
-      hex(output),
-      descriptor === undefined ? undefined : hex(descriptor),
-    ]),
-    trie: {
-      root: ledger.trie.root,
-      count: ledger.trie.count,
-      entries: ledger.trie.entries.map(({ key, value }) => [
-        hex(key),
-        hex(value),
-      ]),
-    },
-    outputs: [...ledger.outputs].map(([key, output]) => [key, hex(output)]),
-    keys: [...ledger.outputs.keys()],
-    values: [...ledger.outputs.values()].map(hex),
-    each,
-    size: ledger.outputs.size,
-    probes: probes.map((key) => [
-      ledger.outputs.has(hex(key)),
-      ledger.outputs.get(hex(key)) === undefined
-        ? undefined
-        : hex(ledger.outputs.get(hex(key))!),
-    ]),
-    proofs: (await checkedLedgerPreState(ledger).proveResolution(probes)).map(
-      hex,
-    ),
-  };
-};
-
-const outcome = async (
-  run: () => Promise<CheckedLedger>,
-  probes: readonly Buffer[],
-): Promise<Outcome> => {
-  let ledger: CheckedLedger;
-  try {
-    ledger = await run();
-  } catch (error) {
-    if (!(error instanceof Error)) throw error;
-    const { reason, step } = error as Error & {
-      reason?: unknown;
-      step?: unknown;
-    };
-    return {
-      refused: {
-        name: error.constructor.name,
-        message: error.message,
-        reason,
-        step,
-      },
-    };
-  }
-  return { ledger: await ledgerSnapshot(ledger, probes) };
-};
-
 /**
  * Compares, for every request: the reference; one fresh walk asked every
  * request in drawn order, some of them concurrently; the block's own walk,
  * whatever was asked of it before, asked them in that order; and a fresh
- * walk per request.
+ * walk per request. Then, for every step, the trace-relative form. Returns
+ * the refusal reasons met.
  */
 const compareWithReference = async ({
   block,
@@ -126,96 +60,80 @@ const compareWithReference = async ({
   seed,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly predecessor: CheckedLedger | undefined;
+  readonly predecessor: Ledger | undefined;
   readonly probes: readonly Buffer[];
   readonly seed: number;
 }) => {
   const draw = seeded(seed);
   const asked = shuffled(draw, requests(block, draw));
-  const ask = (walked: CanonicalBlockEvidence, request: Request) => () =>
-    eventLedgerBefore({ block: walked, ...request, predecessor });
+  const walk = (walked: CanonicalBlockEvidence, request: Request) =>
+    outcome(
+      () => ledgerBeforeStep({ block: walked, ...request, predecessor }),
+      (found) => ledgerSnapshot(found, probes),
+    );
   const concurrent = afresh(block);
   const shared = new Map<Request, Promise<Outcome>>();
   for (let start = 0; start < asked.length; ) {
     const batch = asked.slice(start, (start += 1 + draw(4)));
-    const settled = batch.map((request) =>
-      outcome(ask(concurrent, request), probes),
-    );
+    const settled = batch.map((request) => walk(concurrent, request));
     for (const [index, request] of batch.entries())
       shared.set(request, settled[index]!);
     await Promise.all(settled);
   }
   const own = new Map<Request, Outcome>();
-  for (const request of asked)
-    own.set(request, await outcome(ask(block, request), probes));
+  for (const request of asked) own.set(request, await walk(block, request));
   const refusals = new Set<string>();
   for (const request of asked) {
     const expected = await outcome(
       () => referenceLedgerBefore({ block, predecessor, ...request }),
-      probes,
+      (reference) => referenceSnapshot(reference, probes),
     );
     expect(await shared.get(request)).toStrictEqual(expected);
     expect(own.get(request)).toStrictEqual(expected);
-    expect(await outcome(ask(afresh(block), request), probes)).toStrictEqual(
-      expected,
-    );
+    expect(await walk(afresh(block), request)).toStrictEqual(expected);
     refusals.add(
       "refused" in expected
         ? String(expected.refused.reason ?? expected.refused.message)
         : "ledger",
     );
   }
+  const { reconstruction } = block;
+  for (
+    let step = 0n;
+    step <= reconstruction.header.transitionStepCount;
+    step += 1n
+  )
+    expect(
+      await outcome(
+        () =>
+          ledgerBeforeTraceStep(
+            afresh(block).reconstruction,
+            step,
+            predecessor,
+          ),
+        (found) => ledgerSnapshot(found, probes),
+      ),
+    ).toStrictEqual(
+      await outcome(
+        () =>
+          traceRelative(
+            reconstruction,
+            step,
+            async (eventKey) =>
+              await referenceLedgerBefore({
+                block,
+                predecessor,
+                eventKey,
+                stepIndex: step,
+              }),
+          ),
+        (reference) => referenceSnapshot(reference, probes),
+      ),
+    );
   return refusals;
 };
 
-describe("mutableKeyValuePhasTrie", () => {
-  it("opens the root of the entries it holds after every edit", async () => {
-    const draw = seeded(894);
-    const keys = Array.from({ length: 48 }, () => bytes(draw, 1 + draw(40)));
-    const held = new Map<string, Buffer>();
-    const trie = await mutableKeyValuePhasTrie([]);
-    let emptied = 0;
-    for (let edit = 0; edit < 600; edit += 1) {
-      // Drain to empty every so often, so the trie grows from empty again.
-      const draining = Math.floor(edit / 100) % 2 === 1 && held.size > 0;
-      const key = draining
-        ? Buffer.from([...held.keys()][0]!, "hex")
-        : keys[draw(keys.length)]!;
-      if (held.has(hex(key))) {
-        await trie.delete(key);
-        held.delete(hex(key));
-      } else {
-        const value = bytes(draw, 1 + draw(64));
-        await trie.insert(key, value);
-        held.set(hex(key), value);
-      }
-      if (held.size === 0) emptied += 1;
-      expect(trie.root()).toBe(
-        await keyValuePhasRoot(
-          [...held].map(([held, value]) => ({
-            key: Buffer.from(held, "hex"),
-            value,
-          })),
-        ),
-      );
-    }
-    expect(emptied).toBeGreaterThan(1);
-  });
-
-  it("starts from the entries it is given", async () => {
-    const draw = seeded(895);
-    const entries = Array.from({ length: 20 }, () => ({
-      key: bytes(draw, 32),
-      value: bytes(draw, 8),
-    }));
-    const trie = await mutableKeyValuePhasTrie(entries);
-    expect(trie.root()).toBe(await keyValuePhasRoot(entries));
-    for (const { key } of entries) await trie.delete(key);
-    expect(trie.root()).toBe(await keyValuePhasRoot([]));
-  });
-});
-
-describe("event-ledger walk against a fresh replay", () => {
+describe("ledger store walk against a fresh replay", () => {
   it.each(FAULTS)("seeded blocks with %s", async (fault) => {
     const seen = new Set<string>();
     for (let seed = 1; seed <= 6; seed += 1) {
@@ -223,24 +141,28 @@ describe("event-ledger walk against a fresh replay", () => {
       const block = await seededBlock(blockSeed, fault);
       for (const reason of await compareWithReference({
         block: block.evidence,
-        predecessor: completeCanonicalReplayPredecessorLedger(block),
+        predecessor: completeCanonicalReplayPredecessorStoreLedger(block),
         probes: block.probes,
         seed: blockSeed,
       }))
         seen.add(reason);
     }
-    // Each fault's own refusal is met, so its comparisons are not vacuous.
+    // Each fault's own refusals are met, so its comparisons are not vacuous.
     const met = {
-      none: "ledger",
-      absent_input: "transaction_input_absent",
-      repeated_input: "transaction_input_absent",
-      rejected: "ledger",
-      output_present: "transaction_output_already_present",
-      foreign_post_root: "post_root_changed",
-      foreign_pre_root: "transition_link_changed",
-      non_canonical_output: "not a canonical ledger entry",
+      none: ["ledger", "selected_pre_root_changed", "step_out_of_range"],
+      absent_input: ["transaction_input_absent"],
+      repeated_input: ["transaction_input_absent"],
+      rejected: ["ledger"],
+      output_present: ["transaction_output_already_present"],
+      foreign_post_root: ["post_root_changed"],
+      foreign_pre_root: [
+        "transition_link_changed",
+        "selected_pre_root_changed",
+      ],
+      non_canonical_output: ["not a canonical ledger entry"],
     }[fault];
-    expect([...seen].some((reason) => reason.includes(met))).toBe(true);
+    for (const reason of met)
+      expect([...seen].some((found) => found.includes(reason))).toBe(true);
   });
 
   /** Each chronology, the scenario it builds, its committed withdrawal, and

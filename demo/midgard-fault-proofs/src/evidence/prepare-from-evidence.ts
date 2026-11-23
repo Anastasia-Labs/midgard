@@ -18,8 +18,7 @@
  */
 import { assertTransactionSourceInclusionRootAuthenticated } from "@al-ft/midgard-sdk/fraud-proof";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
-import { type CheckedLedger } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import type { PreparedDoubleSpendOutput } from "../prepare-double-spend.encode-l2-transaction-source-value.js";
 import { prepareDoubleSpendFromTransactions } from "../prepare-double-spend.prepare-double-spend-from-transactions.js";
 import { prepareInputNoIdxFromCanonicalEvidence } from "../prepare-input-no-idx.prepare-input-no-idx-from-canonical-evidence.js";
@@ -174,7 +173,7 @@ export const prepareMinFeeFromCanonicalEvidence = async ({
 
 /**
  * Builds a non-existent-input proof solely from admitted block evidence. A
- * non-genesis predecessor ledger is a checked ledger, bound to the admitted
+ * non-genesis predecessor ledger is a store ledger, bound to the admitted
  * header's `prev_utxos_root` before any proof is built.
  */
 export const prepareNonExistentInputFromCanonicalEvidence = async ({
@@ -184,7 +183,7 @@ export const prepareNonExistentInputFromCanonicalEvidence = async ({
   badInputIndex,
   outputDir,
 }: CanonicalEvidenceBuilderInput & {
-  readonly prevLedger?: CheckedLedger;
+  readonly prevLedger?: Ledger;
   readonly badTxId?: string;
   readonly badInputIndex?: string | number;
 }): Promise<PreparedNonExistentInputOutput> => {
@@ -193,10 +192,7 @@ export const prepareNonExistentInputFromCanonicalEvidence = async ({
     headerHash: admitted.headerHash,
     transactions: admitted.transactions,
     prevUtxosRoot: evidence.header.prevUtxosRoot,
-    prevLedger:
-      prevLedger === undefined
-        ? undefined
-        : await checkedLedgerAsLedger(prevLedger),
+    ...(prevLedger === undefined ? {} : { prevLedger }),
     expectedTransactionsRoot: admitted.expectedTransactionsRoot,
     ...(badTxId === undefined ? {} : { badTxId }),
     ...(badInputIndex === undefined ? {} : { badInputIndex }),
@@ -206,7 +202,7 @@ export const prepareNonExistentInputFromCanonicalEvidence = async ({
 
 /**
  * Builds a no-reference-input proof from the same admitted current evidence
- * and checked predecessor ledger as non-existent-input.
+ * and predecessor ledger as non-existent-input.
  */
 export const prepareNoReferenceInputFromCanonicalEvidence = async ({
   evidence,
@@ -215,7 +211,7 @@ export const prepareNoReferenceInputFromCanonicalEvidence = async ({
   badReferenceInputIndex,
   outputDir,
 }: CanonicalEvidenceBuilderInput & {
-  readonly prevLedger?: CheckedLedger;
+  readonly prevLedger?: Ledger;
   readonly badTxId?: string;
   readonly badReferenceInputIndex?: string | number;
 }): Promise<PreparedNoReferenceInputOutput> => {
@@ -224,10 +220,7 @@ export const prepareNoReferenceInputFromCanonicalEvidence = async ({
     headerHash: admitted.headerHash,
     transactions: admitted.transactions,
     prevUtxosRoot: evidence.header.prevUtxosRoot,
-    prevLedger:
-      prevLedger === undefined
-        ? undefined
-        : await checkedLedgerAsLedger(prevLedger),
+    ...(prevLedger === undefined ? {} : { prevLedger }),
     expectedTransactionsRoot: admitted.expectedTransactionsRoot,
     ...(badTxId === undefined ? {} : { badTxId }),
     ...(badReferenceInputIndex === undefined ? {} : { badReferenceInputIndex }),
@@ -286,8 +279,8 @@ export const executeCanonicalPrepareCommand = async ({
 }: {
   readonly request: CanonicalPrepareCommand;
   readonly evidence: CanonicalBlockEvidence;
-  /** The checked predecessor ledger for ledger-relative verbs. */
-  readonly prevLedger?: CheckedLedger;
+  /** The predecessor ledger for ledger-relative verbs. */
+  readonly prevLedger?: Ledger;
 }) => {
   switch (request.command) {
     case "prepare-double-spend":

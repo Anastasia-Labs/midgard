@@ -5,7 +5,6 @@ import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures"
 import { describe, expect, it } from "vitest";
 
 import { isReplayLocalFault } from "../src/block-replay.faults.js";
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -22,10 +21,7 @@ import {
   prepareMintAuthorizationReplay,
 } from "../src/mint-authorization/replay.js";
 import { keyValuePhasProof } from "../src/transition-trace/phas.js";
-import {
-  completeCanonicalReplayPredecessorLedger,
-  completeCanonicalReplayPredecessorStoreLedger,
-} from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { buildFixtureTransaction } from "./helpers/canonical-block-evidence-fixture.js";
 import { block, OTHER, SPENT } from "./helpers/event-ledger-committed-steps.js";
 import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
@@ -143,7 +139,7 @@ describe("mint authorization policies sourced from spent outputs", () => {
       });
       const findings = await detectMintAuthorizationReplay({
         block: fixture.evidence,
-        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+        predecessor: completeCanonicalReplayPredecessorStoreLedger({
           evidence: fixture.evidence,
           context: fixture.context,
         }),
@@ -191,14 +187,14 @@ describe("mint authorization resolved inputs", () => {
       { input: creator, applied: true },
       { input: unauthorizedMint(OTHER.outRef, [created]), applied: true },
     ]);
-    const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+    const predecessor = completeCanonicalReplayPredecessorStoreLedger(fixture)!;
     const before = await referenceLedgerBefore({
       block: fixture.evidence,
       predecessor,
       eventKey: fixture.key(1),
       stepIndex: 1n,
     });
-    expect(before.utxosRoot).not.toBe(predecessor.utxosRoot);
+    expect(before.utxosRoot).not.toBe(predecessor.root);
     const expected = async (key: Buffer) => {
       const { value } = before.trie.entries.find((entry) =>
         entry.key.equals(key),
@@ -211,7 +207,7 @@ describe("mint authorization resolved inputs", () => {
     };
     const findings = await prepareMintAuthorizationReplay({
       current: fixture.evidence.reconstruction,
-      predecessor: await checkedLedgerAsLedger(predecessor),
+      predecessor,
       sourceIndex: Number(fixture.position(1)),
     });
     expect(findings.map(({ finding }) => finding.direction)).toEqual([0n]);
@@ -257,12 +253,10 @@ describe("mint authorization resolved inputs", () => {
       const fixture = await block([
         { input: unauthorizedMint(OTHER.outRef), applied: true },
       ]);
-      const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+      const predecessor =
+        completeCanonicalReplayPredecessorStoreLedger(fixture)!;
       const store = createLedgerStore(createMemoryLedgerStorage());
-      const ledger = await store.admit(
-        predecessor.entries,
-        predecessor.utxosRoot,
-      );
+      const ledger = await store.admit(predecessor.entries(), predecessor.root);
       const error: unknown = await run(
         async () => {
           await store.retain(new Set());

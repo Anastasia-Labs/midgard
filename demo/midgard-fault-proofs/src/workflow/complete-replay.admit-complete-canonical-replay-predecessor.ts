@@ -4,16 +4,11 @@ import {
 } from "@al-ft/midgard-core";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
-import { EventLedgerReplayRefusal } from "../event-ledger.js";
 import { ledgerBeforeStep, readingLedger } from "../event-ledger.ledger.js";
+import { EventLedgerReplayRefusal } from "../event-ledger.steps.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { openProofThreadSubjectFromCanonicalEvidence } from "../input-existence/source.js";
-import {
-  type CheckedLedger,
-  type LedgerAt,
-  predecessorLedger,
-} from "../ledger-at.js";
+import { type LedgerAt, predecessorLedger } from "../ledger-at.js";
 import type { Ledger } from "../ledger-store/index.js";
 import { detectNetworkIdAcceptedForced } from "../network-id/accepted-forced.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
@@ -62,42 +57,26 @@ export const admitCompleteCanonicalReplayPredecessor = async ({
     schemaVersion: COMPLETE_CANONICAL_REPLAY_PREDECESSOR,
     challengedHeaderHash: currentEvidence.headerHash,
     headerHash: currentEvidence.header.prevHeaderHash,
-    utxosRoot: ledger.utxosRoot,
+    utxosRoot: ledger.root,
   });
   predecessorLedgerByAuthority.set(authority, ledger);
   return authority;
 };
 
 /**
- * The checked ledger the challenged block starts from, or `undefined` when the
- * context admitted no predecessor (then only the empty genesis ledger is
- * available, see `requireLedgerOpening`). Production family preparers use this
- * instead of accepting a caller-supplied ledger.
+ * The ledger the challenged block starts from, or `undefined` when the context
+ * admitted no predecessor (then only the empty genesis ledger is available,
+ * see `requireLedgerOpening`). Production family preparers use this instead of
+ * accepting a caller-supplied ledger. Every family replaying the block reads
+ * the one admitted `Ledger`, so they share the block's one walk.
  */
-export const completeCanonicalReplayPredecessorLedger = ({
+export const completeCanonicalReplayPredecessorStoreLedger = ({
   evidence,
   context,
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly context: CompleteCanonicalReplayContext | undefined;
-}): CheckedLedger | undefined =>
-  requireReplayPredecessorLedger({ evidence, context });
-
-/**
- * The ledger the challenged block starts from as a ledger store `Ledger`, or
- * `undefined` when the context admitted no predecessor. The admitted checked
- * ledger converts once (`checkedLedgerAsLedger`), so every family replaying
- * the block reads the same `Ledger` and shares the block's one walk.
- */
-export const completeCanonicalReplayPredecessorStoreLedger = async (admitted: {
-  readonly evidence: CanonicalBlockEvidence;
-  readonly context: CompleteCanonicalReplayContext | undefined;
-}): Promise<Ledger | undefined> => {
-  const predecessor = completeCanonicalReplayPredecessorLedger(admitted);
-  return predecessor === undefined
-    ? undefined
-    : await checkedLedgerAsLedger(predecessor);
-};
+}): Ledger | undefined => requireReplayPredecessorLedger({ evidence, context });
 
 type CanonicalReplayJson =
   | null
@@ -209,7 +188,7 @@ export const detectLedgerRelativeMissingInputs = async ({
   readonly context: CompleteCanonicalReplayContext | undefined;
   readonly kind: "spend" | "reference";
 }): Promise<readonly CanonicalViolationDetection[]> => {
-  const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
+  const predecessor = completeCanonicalReplayPredecessorStoreLedger({
     evidence,
     context,
   });

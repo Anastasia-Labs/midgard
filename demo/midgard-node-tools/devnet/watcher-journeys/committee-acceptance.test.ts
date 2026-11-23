@@ -378,7 +378,7 @@ const buildFaultBlock = async (
         blockSlot: input.blockSlot,
         prevHeaderHash: input.predecessor.headerHash,
         prevUtxosRoot: input.predecessor.header.utxosRoot,
-        priorLedger: journeyLedgerPairs(input.predecessor.ledger),
+        priorLedger: journeyLedgerPairs(input.predecessor.ledgerEntries),
         events: [
           {
             event: order.event,

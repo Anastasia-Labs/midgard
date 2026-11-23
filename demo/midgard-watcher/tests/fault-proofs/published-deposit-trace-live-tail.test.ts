@@ -1,3 +1,4 @@
+import { memoryLedger } from "@al-ft/midgard-fault-proofs/test-support/fixture-ledger";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import * as SDKUsers from "@al-ft/midgard-sdk/users";
@@ -69,7 +70,13 @@ it("stages the transition trace after a live queue tail", async () => {
   await expect(
     stagePublishedDepositTrace(deployment, {
       daSignerConfig,
-      liveTail: { ledgerAt: async () => tail.predecessor.postLedgerEntries },
+      liveTail: {
+        ledgerAt: async () =>
+          await memoryLedger(
+            tail.predecessor.postLedgerEntries,
+            tail.predecessor.header.utxosRoot,
+          ),
+      },
     }),
   ).rejects.toThrow(/differs from the predecessor root/u);
   await expect(
@@ -84,7 +91,10 @@ it("stages the transition trace after a live queue tail", async () => {
     liveTail: {
       ledgerAt: async (headerHash) =>
         headerHash === tail.current.headerHash
-          ? tail.current.postLedgerEntries
+          ? await memoryLedger(
+              tail.current.postLedgerEntries,
+              tail.current.header.utxosRoot,
+            )
           : undefined,
     },
   });
@@ -150,7 +160,10 @@ it("stages the transition trace on an attached stack through its committee", asy
   };
   const ledgerAt = async (headerHash: string) =>
     headerHash === tail.current.headerHash
-      ? tail.current.postLedgerEntries
+      ? await memoryLedger(
+          tail.current.postLedgerEntries,
+          tail.current.header.utxosRoot,
+        )
       : undefined;
 
   await expect(

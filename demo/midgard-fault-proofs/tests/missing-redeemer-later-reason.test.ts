@@ -29,7 +29,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { ledgerEntriesRoot, singleLedgerAt } from "../src/ledger-at.js";
+import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { CanonicalReplayPrerequisiteError } from "../src/workflow/replay-prerequisite.js";
@@ -48,6 +48,7 @@ import {
 } from "./support/missing-redeemer-emulator.subject.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { decodingSubjectTransaction } from "./support/native-script-decoding-emulator.build-decoding-ledger-fixture.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 
 const daProvenance = {
   trustClass: "public_or_permissionless_da",
@@ -106,7 +107,11 @@ const replayOf = async (
     evidence,
     {
       predecessor: await admitCompleteCanonicalReplayPredecessor({
-        ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, entries),
+        ledgerAt: singleLedgerAt(
+          evidence.header.prevHeaderHash,
+          entries,
+          evidence.header.prevUtxosRoot,
+        ),
         currentEvidence: evidence,
       }),
     },

@@ -1,5 +1,5 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { type CheckedLedger } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import {
   normalizeWorkflowJson,
   type WorkflowJsonObject,
@@ -23,7 +23,7 @@ export const createTransitionTraceWorkflowArtifact = ({
   depositOpening,
 }: {
   evidence: CanonicalBlockEvidence;
-  predecessor: CheckedLedger | undefined;
+  predecessor: Ledger | undefined;
   proof: TransitionProofInput;
   detectionId: string;
   l1Snapshot: FraudProofRawL1Snapshot;
@@ -33,7 +33,7 @@ export const createTransitionTraceWorkflowArtifact = ({
 }): WorkflowJsonObject => {
   if (
     predecessor !== undefined &&
-    predecessor.utxosRoot !== evidence.header.prevUtxosRoot
+    predecessor.root !== evidence.header.prevUtxosRoot
   )
     throw new Error(
       "Transition artifact predecessor is not the challenged header's predecessor",
@@ -44,7 +44,7 @@ export const createTransitionTraceWorkflowArtifact = ({
     detectionId,
     payloadEnvelopeCbor:
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
-    predecessorUtxosRoot: predecessor?.utxosRoot ?? null,
+    predecessorUtxosRoot: predecessor?.root ?? null,
     proofCbor: transitionProofCbor(proof),
     eventIdentity,
     depositOpening,

@@ -1,4 +1,5 @@
 import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
+import { entriesOf } from "@al-ft/midgard-fault-proofs/test-support/fixture-ledger";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
@@ -88,12 +89,12 @@ export const publishedDepositTraceQueue = ({
     headerHash: string,
   ): Promise<readonly SDKDa.DaPayloadEntry[]> => {
     if (liveTail === undefined) return [];
-    const entries = await liveTail.ledgerAt(headerHash);
-    if (entries === undefined)
+    const ledger = await liveTail.ledgerAt(headerHash);
+    if (ledger === undefined)
       throw new Error(
         `Live tail ${headerHash} has no independently replayed ledger`,
       );
-    return entries.map(({ outRef, output }) => [
+    return (await entriesOf(ledger)).map(({ outRef, output }) => [
       outRef.toString("hex"),
       output.toString("hex"),
     ]);

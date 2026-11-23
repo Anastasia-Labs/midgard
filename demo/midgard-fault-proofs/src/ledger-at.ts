@@ -3,12 +3,14 @@
  *
  * DA payloads carry no UTxO set: every party derives the ledger by replaying
  * blocks. A `LedgerAt` source returns the ledger after the block a header hash
- * names, and nothing it returns is trusted. `checkLedgerAgainstRoot` recomputes
- * the MPF root of the entries' canonical ledger descriptors (the same
- * descriptor the node commits, `buildCanonicalMidgardLedgerEntryOutputMaterial`)
- * and refuses a ledger that does not open the header's `utxos_root`. A family
- * takes only a `CheckedLedger`, which only this module constructs, so an
- * unchecked or substituted ledger never reaches a proof builder.
+ * names, as a ledger store `Ledger`. `ledgerAfter` binds the answer to the
+ * authenticated header: a ledger whose root is not the header's `utxos_root`
+ * is refused, so a substituted ledger never reaches a proof builder. Hashes
+ * are checked where entries enter a store (`LedgerStore.admit`), not here.
+ *
+ * `ledgerEntriesRoot` computes the MPF root of entries' canonical ledger
+ * descriptors (the same descriptor the node commits,
+ * `buildCanonicalMidgardLedgerEntryOutputMaterial`).
  */
 
 import {
@@ -16,15 +18,14 @@ import {
   GENESIS_HEADER_HASH,
 } from "@al-ft/midgard-sdk/core";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
-import type { PreStateLedger } from "@al-ft/midgard-validation/validation-machine";
 
 import { undecodableNativeOutputDescriptor } from "./evidence/retained-ledger-output.js";
-import { parseHex } from "./json-file.js";
 import {
-  keyValuePhasResolutionProofs,
-  type KeyValuePhasRoot,
-  keyValuePhasRootWithCount,
-} from "./transition-trace/phas.js";
+  EMPTY_LEDGER_ROOT,
+  type Ledger,
+  ledgerAt,
+} from "./ledger-store/index.js";
+import { keyValuePhasRootWithCount } from "./transition-trace/phas.js";
 
 /** One ledger entry: the §5.3 out-ref key bytes and the full output CBOR. */
 export type LedgerEntry = {
@@ -39,25 +40,9 @@ export type LedgerEntry = {
 
 /**
  * The ledger after the block `headerHash`, or `undefined` when the source does
- * not hold it. The result is untrusted until `checkLedgerAgainstRoot` admits it.
+ * not hold it. The result is bound to the block only by `ledgerAfter`.
  */
-export type LedgerAt = (
-  headerHash: string,
-) => Promise<readonly LedgerEntry[] | undefined>;
-
-declare const checkedLedgerBrand: unique symbol;
-
-/** A ledger whose descriptor trie opens `utxosRoot`. */
-export type CheckedLedger = {
-  readonly [checkedLedgerBrand]: true;
-  readonly utxosRoot: string;
-  /** Ascending by out-ref key bytes. */
-  readonly entries: readonly LedgerEntry[];
-  /** Out-ref key to canonical descriptor: the trie the root commits. */
-  readonly trie: KeyValuePhasRoot;
-  /** Out-ref key (hex) to full output CBOR. */
-  readonly outputs: ReadonlyMap<string, Buffer>;
-};
+export type LedgerAt = (headerHash: string) => Promise<Ledger | undefined>;
 
 export class LedgerRootMismatchError extends Error {
   constructor(
@@ -126,69 +111,28 @@ export const ledgerEntryLeaf = (
   }
 };
 
-const ledgerTrie = async (
+/** The root the entries' descriptor trie commits: the root a replay compares
+ * with a header's `utxos_root`. */
+export const ledgerEntriesRoot = async (
   entries: readonly LedgerEntry[],
-  label: string,
-): Promise<{ copied: LedgerEntry[]; trie: KeyValuePhasRoot }> => {
-  const leaves = entries.map((entry) => ledgerEntryLeaf(entry, label));
+): Promise<string> => {
+  const leaves = entries.map((entry) => ledgerEntryLeaf(entry, "ledger root"));
   try {
-    return {
-      copied: leaves.map(({ entry }) => entry),
-      trie: await keyValuePhasRootWithCount(
+    return (
+      await keyValuePhasRootWithCount(
         leaves.map(({ entry, leaf }) => ({ key: entry.outRef, value: leaf })),
-      ),
-    };
+      )
+    ).root;
   } catch (cause) {
-    throw notCanonical(label, cause);
+    throw notCanonical("ledger root", cause);
   }
 };
 
-/**
- * The root the entries' descriptor trie commits: the root a replay compares
- * with a header's `utxos_root`. Admits nothing; see `checkLedgerAgainstRoot`.
- */
-export const ledgerEntriesRoot = async (
-  entries: readonly LedgerEntry[],
-): Promise<string> => (await ledgerTrie(entries, "ledger root")).trie.root;
-
-/** Refuses `entries` unless their descriptor trie opens `utxosRoot`. */
-export const checkLedgerAgainstRoot = async ({
-  entries,
-  utxosRoot,
-  label,
-}: {
-  readonly entries: readonly LedgerEntry[];
-  readonly utxosRoot: string;
-  readonly label: string;
-}): Promise<CheckedLedger> => {
-  const { copied, trie } = await ledgerTrie(entries, label);
-  if (trie.root !== utxosRoot)
-    throw new LedgerRootMismatchError(label, utxosRoot, trie.root);
-  const sorted = copied.sort((left, right) =>
-    Buffer.compare(left.outRef, right.outRef),
-  );
-  return Object.freeze({
-    utxosRoot,
-    entries: Object.freeze(sorted),
-    trie,
-    outputs: new Map(
-      sorted.map(({ outRef, output }) => [outRef.toString("hex"), output]),
-    ),
-  }) as unknown as CheckedLedger;
-};
-
-/** `ledger` as the pre-state a validation trace proves input resolution
- * against: its checked descriptor trie, shared by every opening of it. */
-export const checkedLedgerPreState = (
-  ledger: CheckedLedger,
-): PreStateLedger => ({
-  proveResolution: async (keys) =>
-    await keyValuePhasResolutionProofs(ledger.trie, keys),
-});
-
-/** The ledger after the authenticated header `{ headerHash, utxosRoot }`. */
+/** The ledger after the authenticated header `{ headerHash, utxosRoot }`:
+ * refused when the source does not hold it or holds a ledger with another
+ * root. */
 export const ledgerAfter = async ({
-  ledgerAt,
+  ledgerAt: source,
   headerHash,
   utxosRoot,
   label,
@@ -197,34 +141,28 @@ export const ledgerAfter = async ({
   readonly headerHash: string;
   readonly utxosRoot: string;
   readonly label: string;
-}): Promise<CheckedLedger> => {
-  const entries = await ledgerAt(headerHash);
-  if (entries === undefined)
+}): Promise<Ledger> => {
+  const ledger = await source(headerHash);
+  if (ledger === undefined)
     throw new Error(`${label}: the ledger after ${headerHash} is unavailable`);
-  return await checkLedgerAgainstRoot({
-    entries,
-    utxosRoot,
-    label,
-  });
+  if (ledger.root !== utxosRoot)
+    throw new LedgerRootMismatchError(label, utxosRoot, ledger.root);
+  return ledger;
 };
 
-const emptyLedger = Object.freeze({
-  utxosRoot: EMPTY_MERKLE_TREE_ROOT,
-  entries: Object.freeze([]),
-  trie: Object.freeze({
-    root: EMPTY_MERKLE_TREE_ROOT,
-    count: 0n,
-    entries: Object.freeze([]),
-  }),
-  outputs: new Map(),
-}) as unknown as CheckedLedger;
+/** The empty genesis ledger: nothing to read, nothing to persist. */
+export const emptyLedger = (): Ledger =>
+  ledgerAt(EMPTY_LEDGER_ROOT, {
+    node: async () => undefined,
+    outputs: async (outRefs) => outRefs.map(() => undefined),
+  });
 
-const genesisLedger = (prevUtxosRoot: string, label: string): CheckedLedger => {
+const genesisLedger = (prevUtxosRoot: string, label: string): Ledger => {
   if (prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT)
     throw new Error(
       `${label}: the block starts from a non-empty ledger (root ${prevUtxosRoot}); supply the ledger after its predecessor`,
     );
-  return emptyLedger;
+  return emptyLedger();
 };
 
 /**
@@ -236,27 +174,27 @@ const genesisLedger = (prevUtxosRoot: string, label: string): CheckedLedger => {
 export const predecessorLedger = async ({
   prevHeaderHash,
   prevUtxosRoot,
-  ledgerAt,
+  ledgerAt: source,
   label,
 }: {
   readonly prevHeaderHash?: string;
   readonly prevUtxosRoot: string;
   readonly ledgerAt?: LedgerAt;
   readonly label: string;
-}): Promise<CheckedLedger> => {
+}): Promise<Ledger> => {
   if (
     prevHeaderHash === GENESIS_HEADER_HASH &&
     prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT
   )
-    return emptyLedger;
-  if (ledgerAt !== undefined && prevHeaderHash !== undefined)
+    return emptyLedger();
+  if (source !== undefined && prevHeaderHash !== undefined)
     return await ledgerAfter({
-      ledgerAt,
+      ledgerAt: source,
       headerHash: prevHeaderHash,
       utxosRoot: prevUtxosRoot,
       label,
     });
-  if (ledgerAt !== undefined)
+  if (source !== undefined)
     throw new Error(
       `${label}: a ledger source needs the predecessor's header hash`,
     );
@@ -264,98 +202,20 @@ export const predecessorLedger = async ({
 };
 
 /**
- * Binds a checked ledger to the root a block commits as its starting ledger.
- * With no ledger, only the empty genesis root is satisfied.
+ * Binds a ledger to the root a block commits as its starting ledger. With no
+ * ledger, only the empty genesis root is satisfied.
  */
 export const requireLedgerOpening = ({
   ledger,
   utxosRoot,
   label,
 }: {
-  readonly ledger: CheckedLedger | undefined;
+  readonly ledger: Ledger | undefined;
   readonly utxosRoot: string;
   readonly label: string;
-}): CheckedLedger => {
+}): Ledger => {
   if (ledger === undefined) return genesisLedger(utxosRoot, label);
-  if (ledger.utxosRoot !== utxosRoot)
-    throw new LedgerRootMismatchError(label, utxosRoot, ledger.utxosRoot);
+  if (ledger.root !== utxosRoot)
+    throw new LedgerRootMismatchError(label, utxosRoot, ledger.root);
   return ledger;
 };
-
-/** A source holding exactly one block's ledger. */
-export const singleLedgerAt =
-  (headerHash: string, entries: readonly LedgerEntry[]): LedgerAt =>
-  async (requested) =>
-    requested === headerHash ? entries : undefined;
-
-/**
- * A ledger as JSON: `[[<out-ref hex>, <output CBOR hex>], ...]`; an entry
- * whose leaf is not canonical carries its descriptor hex third.
- */
-export type LedgerJson = readonly (
-  | readonly [string, string]
-  | readonly [string, string, string]
-)[];
-
-export const ledgerJson = (ledger: CheckedLedger): LedgerJson =>
-  ledger.entries.map(({ outRef, output, descriptor }) =>
-    descriptor === undefined
-      ? ([outRef.toString("hex"), output.toString("hex")] as const)
-      : ([
-          outRef.toString("hex"),
-          output.toString("hex"),
-          descriptor.toString("hex"),
-        ] as const),
-  );
-
-/** Parses `LedgerJson` into (unchecked) ledger entries. */
-export const parseLedgerJson = (
-  value: unknown,
-  label: string,
-): LedgerEntry[] => {
-  if (!Array.isArray(value))
-    throw new Error(`${label}: entries must be an array`);
-  return value.map((entry: unknown, index) => {
-    if (!Array.isArray(entry) || (entry.length !== 2 && entry.length !== 3))
-      throw new Error(
-        `${label}: entry ${index.toString()} must be a pair or a triple`,
-      );
-    return {
-      ...(entry.length === 3
-        ? {
-            descriptor: Buffer.from(
-              parseHex(
-                entry[2],
-                `${label} entry ${index.toString()} descriptor`,
-              ),
-              "hex",
-            ),
-          }
-        : {}),
-      outRef: Buffer.from(
-        parseHex(entry[0], `${label} entry ${index.toString()} out-ref`),
-        "hex",
-      ),
-      output: Buffer.from(
-        parseHex(entry[1], `${label} entry ${index.toString()} output`),
-        "hex",
-      ),
-    };
-  });
-};
-
-/** Re-admits a persisted `LedgerJson` against the root it must open. */
-export const checkLedgerJson = async ({
-  value,
-  utxosRoot,
-  label,
-}: {
-  readonly value: unknown;
-  readonly utxosRoot: string;
-  readonly label: string;
-}): Promise<CheckedLedger> =>
-  await checkLedgerAgainstRoot({
-    entries: parseLedgerJson(value, label),
-    utxosRoot,
-    label,
-  });

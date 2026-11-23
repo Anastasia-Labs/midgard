@@ -1,32 +1,33 @@
-/** Complete replays that read the predecessor ledger once per block, however
- * many of its entries or events they visit: the ledger-relative input scan
- * admits the predecessor to a store once and walks the block's steps on it
- * for every event's pre-state, and the resolved-output prior view reads
- * only the outputs the block names, with their proofs from the ledger.
- * Results are those of a one-off reconstruction. Work is counted as in
+/** Complete replays that do no work the size of the predecessor ledger,
+ * however many of its entries or events they visit: the ledger-relative
+ * input scan walks the block's steps on the stored predecessor for every
+ * event's pre-state, and the resolved-output prior view reads only the
+ * outputs the block names, with their proofs from the ledger. Results are
+ * those of a one-off reconstruction. Work is counted as in
  * `helpers/trie-leaves.ts`. */
 import { decodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { eventLedgerBefore } from "../src/event-ledger.js";
+import { ledgerBeforeStep } from "../src/event-ledger.ledger.js";
 import { readResolvedOutputPriorLedger } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
 import { keyValuePhasProof } from "../src/transition-trace/phas.js";
 import {
-  completeCanonicalReplayPredecessorLedger,
   completeCanonicalReplayPredecessorStoreLedger,
   detectLedgerRelativeMissingInputs,
   EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
 } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { referenceLedgerOf } from "./helpers/event-ledger-reference.js";
 import { inputExistenceChronologyFixture } from "./helpers/input-existence-chronology-fixture.js";
 import { plutusExecutionEventsBlockFixture } from "./helpers/plutus-execution-events-fixture.js";
 import { filler, trieLeaves } from "./helpers/trie-leaves.js";
+import { entriesOf } from "./support/fixture-ledger.js";
 
 type Block = Awaited<ReturnType<typeof plutusExecutionEventsBlockFixture>>;
 
 const FILLER = 300;
 
 const predecessorOf = (block: Block) =>
-  completeCanonicalReplayPredecessorLedger({
+  completeCanonicalReplayPredecessorStoreLedger({
     evidence: block.evidence,
     context: block.context,
   })!;
@@ -38,7 +39,7 @@ const spendScan = async (block: Block) =>
     kind: "spend",
   });
 
-describe("complete replay: the predecessor ledger is read once per block", () => {
+describe("complete replay: no work the size of the predecessor ledger", () => {
   it("walks the block's steps once for every event's input scan", async () => {
     const spends = ["passing", "passing", "passing", "passing"] as const;
     const [small, large] = await Promise.all([
@@ -53,12 +54,12 @@ describe("complete replay: the predecessor ledger is read once per block", () =>
     ];
     expect(smallScan.result).toStrictEqual([]);
     expect(largeScan.result).toStrictEqual([]);
-    // Events at steps 0 to 3: one admission of the predecessor serves the
-    // walk to each of them.
-    expect((largeScan.leaves - smallScan.leaves) / FILLER).toBe(1);
+    // Events at steps 0 to 3: the walk to each of them builds no trie the
+    // size of the predecessor, however large it is.
+    expect(largeScan.leaves).toBe(smallScan.leaves);
   });
 
-  it("builds one trie of the predecessor for the ledger before a single event, however many steps precede it", async () => {
+  it("builds no trie of the predecessor for the ledger before a single event, however many steps precede it", async () => {
     const spends = ["passing", "passing", "passing", "passing"] as const;
     const [small, large] = await Promise.all([
       plutusExecutionEventsBlockFixture(spends),
@@ -68,7 +69,7 @@ describe("complete replay: the predecessor ledger is read once per block", () =>
     ]);
     const lastBefore = async (block: Block) =>
       await trieLeaves(() =>
-        eventLedgerBefore({
+        ledgerBeforeStep({
           block: block.evidence,
           eventKey: {
             L2TransactionEventKey: { tx_id: block.txs.at(-1)!.txId },
@@ -81,10 +82,10 @@ describe("complete replay: the predecessor ledger is read once per block", () =>
       await lastBefore(small),
       await lastBefore(large),
     ];
-    expect(largeLedger.result.entries).toHaveLength(
-      smallLedger.result.entries.length + FILLER,
+    expect(await entriesOf(largeLedger.result)).toHaveLength(
+      (await entriesOf(smallLedger.result)).length + FILLER,
     );
-    expect((largeLedger.leaves - smallLedger.leaves) / FILLER).toBe(1);
+    expect(largeLedger.leaves).toBe(smallLedger.leaves);
   });
 
   it("holds every event after a step whose committed root its ledger does not open, in source order", async () => {
@@ -176,7 +177,7 @@ describe("complete replay: the predecessor ledger is read once per block", () =>
       }),
     ]);
     const read = async (block: Block) => {
-      const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
+      const predecessor = completeCanonicalReplayPredecessorStoreLedger({
         evidence: block.evidence,
         context: block.context,
       });
@@ -192,7 +193,7 @@ describe("complete replay: the predecessor ledger is read once per block", () =>
     expect(smallView.leaves).toBe(0);
     expect(largeView.leaves).toBe(0);
 
-    const predecessor = predecessorOf(small);
+    const predecessor = await referenceLedgerOf(predecessorOf(small));
     const fillerKeys = new Set(
       filler(8).map(({ outRef }) => outRef.toString("hex")),
     );

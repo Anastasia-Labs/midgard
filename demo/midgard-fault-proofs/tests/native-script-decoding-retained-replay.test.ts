@@ -4,8 +4,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { isReplayLocalFault } from "../src/block-replay.faults.js";
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
-import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -19,7 +17,7 @@ import { prepareNativeScriptDecodingReplay } from "../src/native-script-decoding
 import { keyValuePhasProof } from "../src/transition-trace/phas.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { reencodeFixturePayload } from "./helpers/canonical-block-evidence-fixture.js";
 import {
@@ -30,6 +28,7 @@ import {
   type Step,
 } from "./helpers/event-ledger-committed-steps.js";
 import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
 import { nativeDecodingFixture } from "./support/native-script-decoding-retained.js";
 import { ledgerEntriesAfter } from "./support/predecessor-ledger.js";
 
@@ -176,14 +175,12 @@ it.each(["key", "raw-script", "root"] as const)(
         },
       ];
     await expect(
-      checkLedgerAgainstRoot({
+      memoryLedger(
         entries,
-        utxosRoot:
-          mutation === "root"
-            ? "00".repeat(32)
-            : fixture.predecessor.header.utxosRoot,
-        label: "predecessor ledger",
-      }),
+        mutation === "root"
+          ? "00".repeat(32)
+          : fixture.predecessor.header.utxosRoot,
+      ),
     ).rejects.toThrow();
   },
 );
@@ -216,20 +213,20 @@ describe("nativeScriptDecoding resolved descriptor", () => {
       { input: { spendInputs: [SPENT.outRef], fee: 7n }, applied: true },
       nativeFault(OTHER.outRef),
     ]);
-    const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+    const predecessor = completeCanonicalReplayPredecessorStoreLedger(fixture)!;
     const before = await referenceLedgerBefore({
       block: fixture.evidence,
       predecessor,
       eventKey: fixture.key(1),
       stepIndex: 1n,
     });
-    expect(before.utxosRoot).not.toBe(predecessor.utxosRoot);
+    expect(before.utxosRoot).not.toBe(predecessor.root);
     const { value } = before.trie.entries.find((entry) =>
       entry.key.equals(NATIVE.outRef),
     )!;
     const prepared = await prepareNativeScriptDecodingReplay({
       current: fixture.evidence.reconstruction,
-      predecessor: await checkedLedgerAsLedger(predecessor),
+      predecessor,
       coordinate: referenceCoordinate(fixture.position(1)),
     });
     expect(prepared?.descriptorCbor).toStrictEqual(value);
@@ -268,12 +265,10 @@ describe("nativeScriptDecoding resolved descriptor", () => {
       // The transaction is step 0, so it reads the predecessor itself, which
       // `retain` of nothing deletes.
       const fixture = await block([nativeFault(SPENT.outRef)]);
-      const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+      const predecessor =
+        completeCanonicalReplayPredecessorStoreLedger(fixture)!;
       const store = createLedgerStore(createMemoryLedgerStorage());
-      const ledger = await store.admit(
-        predecessor.entries,
-        predecessor.utxosRoot,
-      );
+      const ledger = await store.admit(predecessor.entries(), predecessor.root);
       const error: unknown = await run(
         async () => {
           await store.retain(new Set());

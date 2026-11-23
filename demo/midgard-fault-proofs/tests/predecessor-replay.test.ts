@@ -3,7 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { LedgerRootMismatchError, singleLedgerAt } from "../src/ledger-at.js";
+import { LedgerRootMismatchError } from "../src/ledger-at.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
@@ -16,6 +16,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 
 const evidenceFor = async () => {
   const transaction = buildFixtureTransaction({
@@ -70,7 +71,11 @@ describe("production predecessor-relative complete replay V1", () => {
     });
     const context = {
       predecessor: await admitCompleteCanonicalReplayPredecessor({
-        ledgerAt: singleLedgerAt(predecessor.headerHash, []),
+        ledgerAt: singleLedgerAt(
+          predecessor.headerHash,
+          [],
+          predecessor.header.utxosRoot,
+        ),
         currentEvidence: evidence,
       }),
     };
@@ -109,26 +114,41 @@ describe("production predecessor-relative complete replay V1", () => {
         grade: "security",
       },
     });
-    const admit = (entries: { outRef: Buffer; output: Buffer }[]) =>
+    const admit = (
+      entries: { outRef: Buffer; output: Buffer }[],
+      root: string,
+    ) =>
       admitCompleteCanonicalReplayPredecessor({
-        ledgerAt: singleLedgerAt(predecessor.headerHash, entries),
+        ledgerAt: singleLedgerAt(predecessor.headerHash, entries, root),
         currentEvidence,
       });
     await expect(
-      admit([{ outRef, output: output(2_000_000n) }]),
+      admit(
+        [{ outRef, output: output(2_000_000n) }],
+        predecessor.header.utxosRoot,
+      ),
     ).resolves.toMatchObject({
       schemaVersion: COMPLETE_CANONICAL_REPLAY_PREDECESSOR,
       headerHash: predecessor.headerHash,
       utxosRoot: predecessor.header.utxosRoot,
     });
-    // One wrong entry is refused at the root check.
+    // A ledger opening another root, one wrong entry, is refused at the root
+    // check.
+    const other = await buildCanonicalBlockFixture({
+      transactions: [],
+      utxos: [{ key: outRef, value: output(2_000_001n) }],
+    });
     await expect(
-      admit([{ outRef, output: output(2_000_001n) }]),
+      admit([{ outRef, output: output(2_000_001n) }], other.header.utxosRoot),
     ).rejects.toBeInstanceOf(LedgerRootMismatchError);
     // A source without the ledger after prev_header_hash is refused.
     await expect(
       admitCompleteCanonicalReplayPredecessor({
-        ledgerAt: singleLedgerAt(current.headerHash, []),
+        ledgerAt: singleLedgerAt(
+          current.headerHash,
+          [],
+          current.header.utxosRoot,
+        ),
         currentEvidence,
       }),
     ).rejects.toThrow("is unavailable");
@@ -193,9 +213,11 @@ describe("production predecessor-relative complete replay V1", () => {
       evidence,
       {
         predecessor: await admitCompleteCanonicalReplayPredecessor({
-          ledgerAt: singleLedgerAt(predecessor.headerHash, [
-            { outRef: held, output },
-          ]),
+          ledgerAt: singleLedgerAt(
+            predecessor.headerHash,
+            [{ outRef: held, output }],
+            predecessor.header.utxosRoot,
+          ),
           currentEvidence: evidence,
         }),
       },

@@ -30,10 +30,7 @@ import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  checkLedgerAgainstRoot,
-  LedgerRootMismatchError,
-} from "../src/ledger-at.js";
+import { LedgerRootMismatchError } from "../src/ledger-at.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
@@ -43,6 +40,7 @@ import {
   reconstructAuthenticatedCanonicalTransactionFromFieldChunks,
 } from "./cardano-capability-retained-da.reconstruct-authenticated-canonical-transaction-from-field-chunks.js";
 import { buildStrictRetainedDaPairFixture } from "./helpers/cardano-capability-retained-da.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
 
 describe("Cardano capability P2 production retained-DA boundary", () => {
   it("strictly authenticates every established maximum before bounded field/item chunk reconstruction", async () => {
@@ -297,16 +295,15 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
     });
     expect(fixture.ledger.length).toBeGreaterThan(0);
     const check = (entries: readonly SDKDa.DaPayloadEntry[]) =>
-      checkLedgerAgainstRoot({
-        entries: entries.map(([outRef, output]) => ({
+      memoryLedger(
+        entries.map(([outRef, output]) => ({
           outRef: Buffer.from(outRef, "hex"),
           output: Buffer.from(output, "hex"),
         })),
-        utxosRoot: fixture.header.utxosRoot,
-        label: "reference ledger",
-      });
+        fixture.header.utxosRoot,
+      );
     await expect(check(fixture.ledger)).resolves.toMatchObject({
-      utxosRoot: fixture.header.utxosRoot,
+      root: fixture.header.utxosRoot,
     });
     await expect(check([])).rejects.toBeInstanceOf(LedgerRootMismatchError);
 

@@ -10,9 +10,8 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data, paymentCredentialOf } from "@lucid-evolution/lucid";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { type CheckedLedger } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import { requireReplayPredecessorLedger } from "../workflow/replay-predecessor-ledger.js";
 import {
   CanonicalReplayPrerequisiteError,
@@ -330,7 +329,7 @@ export const replayTransitionTraceFromRetainedHistory = async ({
   l1Events,
 }: {
   evidence: CanonicalBlockEvidence;
-  predecessor: CheckedLedger | undefined;
+  predecessor: Ledger | undefined;
   l1Events: TransitionTraceL1Events;
 }) => {
   if (l1Events.headerHash !== evidence.headerHash)
@@ -371,13 +370,11 @@ export const replayTransitionTraceFromRetainedHistory = async ({
   const completeEvidence: TransitionTraceDetectionEvidence = {
     ...(await deriveTransitionTraceReplayEvidence({
       current,
-      predecessor: await checkedLedgerAsLedger(
-        requireReplayPredecessorLedger({
-          block: evidence,
-          predecessor,
-          label: "Transition replay",
-        }),
-      ),
+      predecessor: requireReplayPredecessorLedger({
+        block: evidence,
+        predecessor,
+        label: "Transition replay",
+      }),
       deposits: l1.events.flatMap((entry) =>
         entry.kind === "deposit"
           ? [

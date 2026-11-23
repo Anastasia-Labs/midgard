@@ -102,7 +102,7 @@ export const prepareNativeScriptDecodingWorkflowArtifact = async ({
     { decision: "fault_detected" }
   >;
 }) => {
-  const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
+  const predecessor = completeCanonicalReplayPredecessorStoreLedger({
     evidence,
     context: replayContext,
   });

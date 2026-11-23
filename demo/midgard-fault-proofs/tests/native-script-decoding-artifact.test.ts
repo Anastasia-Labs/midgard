@@ -109,7 +109,7 @@ describe("native script decoding artifact predecessor witness", () => {
         await admitNativeScriptDecodingWorkflowArtifact(artifact);
       const expected = await prepareNativeScriptDecodingReplay({
         current: fixture.evidence.reconstruction,
-        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+        predecessor: completeCanonicalReplayPredecessorStoreLedger({
           evidence: fixture.evidence,
           context: fixture.context,
         }),

@@ -11,7 +11,6 @@ import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { isReplayLocalFault } from "../src/block-replay.faults.js";
-import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -23,6 +22,7 @@ import {
 } from "../src/replayed-ledger.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import { plutusExecutionBlockFixture } from "./helpers/plutus-execution-block-fixture.js";
+import { entriesRoot } from "./support/fixture-ledger.js";
 
 /** The injected evaluator failure, and how often the evaluator ran. */
 const evaluator = vi.hoisted(() => ({
@@ -117,7 +117,7 @@ describe("the replayed ledger over a script run with no verdict", () => {
     evaluator.fault = undefined;
     const entries = await s.ledger.ledgerAt(s.source)(s.headerHash);
     if (entries === undefined) throw new Error("the block was not derived");
-    expect(await ledgerEntriesRoot(entries)).toBe(s.head.utxosRoot);
+    expect(await entriesRoot(entries)).toBe(s.head.utxosRoot);
     expect(s.refusals).toEqual([]);
   });
 

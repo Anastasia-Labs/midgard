@@ -3,7 +3,6 @@ import {
   ledgerAfter,
   ledgerEntriesRoot,
   LedgerRootMismatchError,
-  singleLedgerAt,
 } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
   createLedgerStore,
@@ -15,6 +14,10 @@ import {
   type ReplayedLedgerRefusal,
   type ReplayedLedgerSource,
 } from "@al-ft/midgard-fault-proofs/replayed-ledger";
+import {
+  entriesOf,
+  entriesRoot,
+} from "@al-ft/midgard-fault-proofs/test-support/fixture-ledger";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { CML } from "@lucid-evolution/lucid";
@@ -109,7 +112,7 @@ describe("the watcher's replayed ledger", { timeout: 60_000 }, () => {
       f.payload.block_body.header_hash,
     );
     expect(entries).toBeDefined();
-    const root = await ledgerEntriesRoot(entries!);
+    const root = await entriesRoot(entries!);
     expect(root).toBe(node.right.after.root);
     expect(root).toBe(f.payload.block_body.header.utxosRoot);
     const pairs = (rows: readonly (readonly [Buffer, Buffer])[]) =>
@@ -123,7 +126,12 @@ describe("the watcher's replayed ledger", { timeout: 60_000 }, () => {
     for await (const { outRef, output } of node.right.after.entries())
       imported.push([outRef, output]);
     expect(
-      pairs(entries!.map(({ outRef, output }) => [outRef, output])),
+      pairs(
+        (await entriesOf(entries!)).map(({ outRef, output }) => [
+          outRef,
+          output,
+        ]),
+      ),
     ).toEqual(pairs(imported));
   });
 
@@ -138,7 +146,9 @@ describe("the watcher's replayed ledger", { timeout: 60_000 }, () => {
 
     // Restart: a new ledger over the same store asks for no payload.
     const second = createReplayedLedger({ store });
-    expect(await second.ledgerAt(live)(headerHash)).toEqual(before);
+    expect(await entriesOf((await second.ledgerAt(live)(headerHash))!)).toEqual(
+      await entriesOf(before!),
+    );
     expect(asked).toEqual([headerHash]);
 
     // The block merges: its ledger is held, and a restart then needs no
@@ -151,7 +161,9 @@ describe("the watcher's replayed ledger", { timeout: 60_000 }, () => {
       ...source([], none),
       headerAt: live.headerAt,
     };
-    expect(await third.ledgerAt(headerOnly)(headerHash)).toEqual(before);
+    expect(
+      await entriesOf((await third.ledgerAt(headerOnly)(headerHash))!),
+    ).toEqual(await entriesOf(before!));
     expect(none).toEqual([]);
   });
 
@@ -175,7 +187,7 @@ describe("the watcher's replayed ledger", { timeout: 60_000 }, () => {
     const entries = await ledger.ledgerAt(source([replaced], asked))(
       replacement,
     );
-    expect(await ledgerEntriesRoot(entries!)).toBe(
+    expect(await entriesRoot(entries!)).toBe(
       replaced.block_body.header.utxosRoot,
     );
     expect(asked).toEqual([]);
@@ -204,9 +216,7 @@ describe("the watcher's replayed ledger", { timeout: 60_000 }, () => {
     // The mismatching block's own replayed ledger is served unchecked, so the
     // classifier records the post-ledger mismatch; it is never admitted.
     const served = await ledger.ledgerAt(blocks)(wrong.block_body.header_hash);
-    expect(await ledgerEntriesRoot(served!)).toBe(
-      block.block_body.header.utxosRoot,
-    );
+    expect(await entriesRoot(served!)).toBe(block.block_body.header.utxosRoot);
     await expect(
       ledgerAfter({
         ledgerAt: ledger.ledgerAt(blocks),
@@ -232,7 +242,12 @@ describe("the watcher's replayed ledger", { timeout: 60_000 }, () => {
     const tampered = parentEntries(3_000_001n);
     await expect(
       ledgerAfter({
-        ledgerAt: singleLedgerAt(confirmed.headerHash, tampered),
+        // A source serving the tampered ledger at the root it really has.
+        ledgerAt: async () =>
+          await createLedgerStore(createMemoryLedgerStorage()).admit(
+            tampered,
+            await ledgerEntriesRoot(tampered),
+          ),
         headerHash: confirmed.headerHash,
         utxosRoot: confirmed.utxosRoot,
         label: "predecessor ledger",

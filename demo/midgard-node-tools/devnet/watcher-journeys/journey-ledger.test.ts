@@ -21,7 +21,7 @@ const emptyBlock = () =>
 it("admits a constructed header the node would commit", async () => {
   const block = await emptyBlock();
   await expect(
-    checkedJourneyConstruction(block, block.ledger.entries),
+    checkedJourneyConstruction(block, block.ledgerEntries),
   ).resolves.toMatchObject({ headerHash: block.headerHash });
 });
 
@@ -30,7 +30,7 @@ it("refuses a constructed header whose validation-trace pair the node would refu
   await expect(
     checkedJourneyConstruction(
       { ...block, header: { ...block.header, validationTraceCount: 1n } },
-      block.ledger.entries,
+      block.ledgerEntries,
     ),
   ).rejects.toThrow(
     "Header validation-trace pair must be the empty tree with count zero",
@@ -42,7 +42,7 @@ it("refuses a constructed header whose event counts do not add up", async () => 
   await expect(
     checkedJourneyConstruction(
       { ...block, header: { ...block.header, totalEventCount: 1n } },
-      block.ledger.entries,
+      block.ledgerEntries,
     ),
   ).rejects.toThrow(
     "Header transition total_event_count does not match source event counts",
