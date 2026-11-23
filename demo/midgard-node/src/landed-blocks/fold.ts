@@ -23,7 +23,6 @@ import { Effect, Either } from "effect";
 import { ConfirmedLedgerDB } from "../database/index.js";
 import type { ForcedAdmissionDivergences } from "../forced-orders/admission-divergence.js";
 import { type DriverHold, notRetried } from "../l1-events/driver.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
 import type { Database } from "../services/database.js";
 import {
   ConfirmedLedgerBaseMismatch,
@@ -49,21 +48,20 @@ import { Frontier, type HeaderRoot, retrieveRows } from "./store.js";
 const behind = (detail: string): DriverHold =>
   notRetried({ reason: CONFIRMED_LEDGER_BEHIND, detail });
 
-const confirmedRoot = Effect.gen(function* () {
-  const entries = yield* ConfirmedLedgerDB.retrieve;
-  return {
-    entries,
-    root: yield* computeLedgerMpfRootFromLedgerEntries(entries),
-  };
-});
-
 /**
  * Sets the frontier when there is none, on the merged root's lineage: at
- * the root if `confirmed_ledger` is there already; else at the latest
- * header of the lineage (`history.ts`) whose post-state root
- * `confirmed_ledger` holds, or at genesis (`confirmed_ledger` holding the
- * configured genesis ledger, or empty and written in). Processing then
+ * the root if it is the empty ledger's; else at the latest header of the
+ * lineage (`history.ts`) whose post-state root is the empty ledger's, or at
+ * genesis, with the configured genesis ledger written into
+ * `confirmed_ledger` at the lineage's first parent root. Processing then
  * walks forward from it.
+ *
+ * `confirmed_ledger` is written only in the transaction that sets or moves
+ * the frontier (here, `foldMerge`, `unfoldFrontier`), so with no frontier
+ * it holds no row and its root is the empty ledger's. The node admits the
+ * configured genesis into the ledger store at startup, checked against the
+ * clean queue's root, so the configured genesis ledger has the chain's
+ * genesis root and is not hashed again here.
  */
 export const bootstrapFrontier = <R>(
   ports: LandedBlockPorts<R>,
@@ -73,8 +71,8 @@ export const bootstrapFrontier = <R>(
 ) =>
   Effect.gen(function* () {
     if ((yield* Frontier.retrieve) !== undefined) return undefined;
-    const confirmed = yield* confirmedRoot;
-    if (confirmed.root === root.utxosRoot) {
+    const empty = SDK.EMPTY_MERKLE_TREE_ROOT;
+    if (root.utxosRoot === empty) {
       yield* viewChecked(ports, view, Frontier.upsert(root));
       return undefined;
     }
@@ -88,7 +86,7 @@ export const bootstrapFrontier = <R>(
             root.headerHash,
             (hash) =>
               hash === SDK.GENESIS_HEADER_HASH ||
-              walked.headers.get(hash)?.utxosRoot === confirmed.root,
+              walked.headers.get(hash)?.utxosRoot === empty,
           );
     if (lineage !== undefined && lineage.anchor !== SDK.GENESIS_HEADER_HASH) {
       yield* viewChecked(
@@ -96,38 +94,31 @@ export const bootstrapFrontier = <R>(
         view,
         Frontier.upsert({
           headerHash: lineage.anchor,
-          utxosRoot: confirmed.root,
+          utxosRoot: empty,
         }),
       );
       return undefined;
     }
     if (lineage !== undefined) {
-      const genesis = yield* ports.genesis;
-      const genesisRoot = yield* computeLedgerMpfRootFromLedgerEntries(genesis);
-      const expected =
+      const genesisRoot =
         lineage.headers[0]?.header.prevUtxosRoot ?? root.utxosRoot;
-      const frontier = {
-        headerHash: SDK.GENESIS_HEADER_HASH,
-        utxosRoot: genesisRoot,
-      };
-      if (genesisRoot === expected && confirmed.root === genesisRoot) {
-        yield* viewChecked(ports, view, Frontier.upsert(frontier));
-        return undefined;
-      }
-      if (genesisRoot === expected && confirmed.entries.length === 0) {
-        yield* viewChecked(
-          ports,
-          view,
-          Effect.gen(function* () {
-            yield* ConfirmedLedgerDB.insertMultiple([...genesis]);
-            yield* Frontier.upsert(frontier);
-          }),
-        );
-        return undefined;
-      }
+      const rows = yield* ports.genesis;
+      yield* viewChecked(
+        ports,
+        view,
+        Effect.gen(function* () {
+          if (rows.length > 0)
+            yield* ConfirmedLedgerDB.insertMultiple([...rows]);
+          yield* Frontier.upsert({
+            headerHash: SDK.GENESIS_HEADER_HASH,
+            utxosRoot: genesisRoot,
+          });
+        }),
+      );
+      return undefined;
     }
     return behind(
-      `confirmed_ledger (root ${confirmed.root}) is not at the merged queue root ${root.headerHash} (${root.utxosRoot}) and no header on its retained lineage, nor genesis, reaches it`,
+      `confirmed_ledger is empty and the merged queue root ${root.headerHash} (${root.utxosRoot}) is not on a retained lineage from genesis or from a header whose ledger is empty`,
     );
   });
 

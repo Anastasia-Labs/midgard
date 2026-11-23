@@ -21,7 +21,6 @@ import { Effect } from "effect";
 import { Level } from "level";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 
-import * as Ledger from "../src/database/utils/ledger.js";
 import {
   acceptedTransactionLedgerWitnesses,
   rejectedForcedTransactionLedgerWitnesses,
@@ -29,7 +28,6 @@ import {
 import {
   applyTraceLedgerOpsToMpf,
   buildTransitionTraceResult,
-  computeLedgerMpfRootFromLedgerEntries,
   configureMpfArenaLimits,
   configureMpfPathHydration,
   deleteMpfStore,
@@ -39,12 +37,10 @@ import {
   encodeTransitionPhaseCbor,
   encodeTransitionStepCbor,
   estimateMpfStoredValueBytes,
-  hydrateLedgerMpfFromLedgerEntries,
   keyValuePhasNonMembershipProof,
   keyValuePhasProof,
   keyValuePhasRoot,
   keyValuePhasRootWithCount,
-  ledgerOutputToInsertBatchOp,
   MidgardMpf,
   MpfBatchOp,
   refuseMalformedMempoolCandidates,
@@ -55,7 +51,6 @@ import {
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
 } from "../src/mpf/index.js";
-import { makeOutRefCbor } from "./midgard-output-helpers.js";
 import {
   BATCH_PERSIST_DB,
   buildDeepSharedMpfDag,
@@ -408,57 +403,6 @@ describe("Midgard MPF wrapper", () => {
       expect(rootHex).not.toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
       expect(reopenedRootHex).toBe(rootHex);
       expect(reopenedValue._tag).toBe("Some");
-    }),
-  );
-
-  it.effect("hydrates a ledger MPF from durable ledger entries", () =>
-    Effect.gen(function* () {
-      const mpf = yield* MidgardMpf.createScratch("test-mpf");
-      yield* mpf.applyBatch([
-        { type: "insert", key: key1, value: value1 },
-        { type: "insert", key: key3, value: value3 },
-      ]);
-
-      const firstOutRef = makeOutRefCbor(0x11);
-      const secondOutRef = makeOutRefCbor(0x22);
-      const outputCbor = Buffer.from(
-        "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
-        "hex",
-      );
-      const entries: Ledger.MinimalEntry[] = [
-        {
-          [Ledger.Columns.OUTREF]: firstOutRef,
-          [Ledger.Columns.OUTPUT]: outputCbor,
-        },
-        {
-          [Ledger.Columns.OUTREF]: secondOutRef,
-          [Ledger.Columns.OUTPUT]: outputCbor,
-        },
-      ];
-      const expectedRoot =
-        yield* computeLedgerMpfRootFromLedgerEntries(entries);
-      const hydratedRoot = yield* hydrateLedgerMpfFromLedgerEntries(
-        mpf,
-        entries,
-      );
-      const obsoleteRawOutputRoot = yield* keyValuePhasRoot(
-        entries.map((entry) => entry[Ledger.Columns.OUTREF]),
-        entries.map((entry) => entry[Ledger.Columns.OUTPUT]),
-      );
-      const removedStaleEntry = yield* mpf.get(key3);
-      const hydratedDescriptor = yield* mpf.get(firstOutRef);
-      const expectedDescriptor = ledgerOutputToInsertBatchOp({
-        outRef: firstOutRef,
-        outputCbor,
-      }).value;
-
-      expect(hydratedRoot).toBe(expectedRoot);
-      expect(obsoleteRawOutputRoot).not.toBe(expectedRoot);
-      expect(removedStaleEntry._tag).toBe("None");
-      expect(hydratedDescriptor._tag).toBe("Some");
-      if (hydratedDescriptor._tag === "Some") {
-        expect(hydratedDescriptor.value).toEqual(expectedDescriptor);
-      }
     }),
   );
 

@@ -34,6 +34,12 @@
  * the frontier's root (`equalRootUnfolds`) is counted but not required: the
  * corpus does not reliably build one, so the deterministic
  * `confirmed-ledger-temporal.test.ts` pins it.
+ *
+ * None of this node work reads `confirmed_ledger` in full
+ * (`confirmed_ledger_full_scan_total` is unchanged across every scenario):
+ * deposits, transfers, own commits, merges and their folds, unfolds, the
+ * rebase and restarts all read the ledger by key. The simulator has no
+ * withdrawals.
  */
 
 import { createHash } from "node:crypto";
@@ -54,11 +60,12 @@ import {
   runForkScenario,
 } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk/core";
-import { Effect, Runtime } from "effect";
+import { Effect, Metric, Runtime } from "effect";
 import fc from "fast-check";
 import { Level } from "level";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { fullScanCounter } from "../src/database/confirmedLedger.js";
 import {
   MempoolLedgerDB,
   type PendingBlockFinalizationsDB,
@@ -224,6 +231,10 @@ const openOwner = async (
   return owner;
 };
 
+const fullScans = Metric.value(fullScanCounter).pipe(
+  Effect.map(({ count }) => count),
+);
+
 const runScenario = (
   runtime: Runtime.Runtime<Database | NodeConfig>,
   scenario: ForkScenario,
@@ -248,6 +259,7 @@ const runScenario = (
     yield* MempoolLedgerDB.insert([
       ...(yield* ledgerRows(universe.genesis, new Map())),
     ]);
+    const scans = yield* fullScans;
     const outcome = yield* Effect.acquireUseRelease(
       Effect.promise(() => openOwner(runtime)),
       (owner) =>
@@ -280,6 +292,10 @@ const runScenario = (
       return yield* Effect.die(
         new Error(`${label} step ${outcome.step}: ${outcome.reason}`),
       );
+    expect({ label, fullScans: (yield* fullScans) - scans }).toEqual({
+      label,
+      fullScans: 0,
+    });
     return outcome.stats.prunes;
   });
 

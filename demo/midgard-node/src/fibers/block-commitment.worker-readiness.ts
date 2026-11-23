@@ -50,9 +50,9 @@ export const COMMIT_BASE_PENDING = "commit_base_pending";
 /**
  * The landed ledger commits build on does not derive the root this node
  * stores for it, named `commit_base_ledger_divergence:<check>` by the check
- * that found it (`COMMIT_BASE_DIVERGENCE_CHECKS`). The verification of
- * `confirmed_ledger` raises it under `confirmed_ledger_verification`
- * (`confirmed-ledger-verification.ts`).
+ * that found it (`LEDGER_DIVERGENCE_CHECKS`; a divergence any of them finds
+ * holds commits). The verification of `confirmed_ledger` raises it under
+ * `confirmed_ledger_verification` (`confirmed-ledger-verification.ts`).
  */
 export const COMMIT_BASE_LEDGER_DIVERGENCE = "commit_base_ledger_divergence";
 /**
