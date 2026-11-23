@@ -16,10 +16,7 @@ import {
   reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
-import {
-  checkedLedgerAfter,
-  ledgerAtAfter,
-} from "./support/predecessor-ledger.js";
+import { ledgerAfter, ledgerAtAfter } from "./support/predecessor-ledger.js";
 import {
   buildValueNotPreservedFixture,
   vnpOutput,
@@ -98,7 +95,7 @@ const fixture = async (forced: boolean, balanced: boolean) => {
       currentEvidence: evidence,
     }),
   };
-  const predecessor = await checkedLedgerAfter(predecessorEvidence);
+  const predecessor = await ledgerAfter(predecessorEvidence);
   return { evidence, predecessor, context };
 };
 describe("value conservation installed canonical replay", () => {
@@ -200,7 +197,7 @@ it.each([true, false])(
           }
         : { kind: "normal", nativeTx: next.nativeTx },
     });
-    const predecessor = await checkedLedgerAfter(
+    const predecessor = await ledgerAfter(
       await canonicalBlockEvidenceFromVerifiedPayload({
         observation: authenticatedHeaderObservation(before),
         payloadEnvelopeCbor: before.payloadEnvelopeCbor,

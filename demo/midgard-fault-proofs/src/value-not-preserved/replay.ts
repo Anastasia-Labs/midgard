@@ -10,9 +10,14 @@ import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
-import { eventLedgerBeforeStep } from "../event-ledger.js";
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
+import {
+  ledgerBeforeTraceStep,
+  readingLedger,
+} from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { type CheckedLedger, ledgerEntryLeaf } from "../ledger-at.js";
+import { type CheckedLedger } from "../ledger-at.js";
+import { type Ledger, ledgerProof } from "../ledger-store/index.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
 import {
@@ -60,15 +65,16 @@ const readsAsTransactionOutput = (output: Uint8Array): boolean => {
   }
 };
 
-/** Public retained-DA reconstruction, including earlier transactions in the block. */
-export const prepareValueConservationArtifact = async ({
+/** `prepareValueConservationArtifact`, asking for the predecessor only once
+ * the transaction passes the checks that need no ledger. */
+const replaySource = async ({
   block,
   predecessor,
   sourceIndex,
   forced,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly predecessor?: CheckedLedger;
+  readonly predecessor: () => Promise<Ledger | undefined>;
   readonly sourceIndex: number;
   readonly forced: boolean;
 }): Promise<ValueConservationArtifact | null> => {
@@ -134,23 +140,25 @@ export const prepareValueConservationArtifact = async ({
     reconstruction: block.reconstruction,
     stepIndex: event.value.step_index,
   });
-  const { trie: ledger, outputs } = await eventLedgerBeforeStep(
+  const ledger = await ledgerBeforeTraceStep(
     block.reconstruction,
     event.value.step_index,
-    predecessor,
+    await predecessor(),
   );
   const inputItems = decodeMidgardFieldPreimage(
     transaction.body.spendInputsPreimageCbor,
   );
-  if (inputItems.some((key) => !outputs.has(key.toString("hex")))) return null;
-  const resolvedInputs = inputItems.map((key) => {
-    const output = outputs.get(key.toString("hex"));
-    if (output === undefined)
-      throw new Error(
-        "value conservation: unresolved spent input belongs to input absence proof",
-      );
-    return { key, output };
-  });
+  const read = await readingLedger(
+    "value conservation spent inputs",
+    async () => await ledger.read(inputItems),
+  );
+  const resolvedInputs: { key: Buffer; output: Buffer }[] = [];
+  for (const key of inputItems) {
+    const output = read.get(key.toString("hex"))?.output;
+    // A missing spent input belongs to the non-existent-input family.
+    if (output === undefined) return null;
+    resolvedInputs.push({ key, output });
+  }
   // A spent output that does not read as a transaction output was created by
   // an accepted step before this one, whose output reference script proof
   // convicts it, or the predecessor ledger holds it, and the resolved output
@@ -229,21 +237,48 @@ export const prepareValueConservationArtifact = async ({
           ),
     eventCbor: Data.to(event, SDK.EventToStepMembershipProof),
     transitionCbor: Data.to(transition, SDK.IndexedTraceProof),
-    inputs: await Promise.all(
-      resolvedInputs.map(async ({ key, output }) => ({
-        outputCbor: output.toString("hex"),
-        proofCbor: Data.to(
-          await keyValuePhasProof(
-            ledger,
-            key,
-            ledgerEntryLeaf({ outRef: key, output }, "value conservation").leaf,
-          ),
-          SDK.Proof,
-        ),
-      })),
-    ),
+    inputs: await valueConservationInputs(ledger, resolvedInputs),
   };
 };
+
+/** Each spent input's output and its membership proof in `ledger`, the
+ * ledger before the transaction: what the artifact carries for it. */
+export const valueConservationInputs = async (
+  ledger: Ledger,
+  resolvedInputs: readonly { key: Buffer; output: Buffer }[],
+): Promise<ValueConservationArtifact["inputs"]> =>
+  await Promise.all(
+    resolvedInputs.map(async ({ key, output }) => ({
+      outputCbor: output.toString("hex"),
+      proofCbor: Data.to(
+        await readingLedger(
+          "value conservation spent input proof",
+          async () => await ledgerProof(ledger, key),
+        ),
+        SDK.Proof,
+      ),
+    })),
+  );
+
+/** Public retained-DA reconstruction, including earlier transactions in the block. */
+export const prepareValueConservationArtifact = async ({
+  block,
+  predecessor,
+  sourceIndex,
+  forced,
+}: {
+  readonly block: CanonicalBlockEvidence;
+  /** The ledger the block starts from; none when it starts from genesis. */
+  readonly predecessor?: Ledger;
+  readonly sourceIndex: number;
+  readonly forced: boolean;
+}): Promise<ValueConservationArtifact | null> =>
+  await replaySource({
+    block,
+    predecessor: async () => predecessor,
+    sourceIndex,
+    forced,
+  });
 
 export const detectValueConservationFaults = async ({
   block,
@@ -252,6 +287,14 @@ export const detectValueConservationFaults = async ({
   readonly block: CanonicalBlockEvidence;
   readonly predecessor?: CheckedLedger;
 }) => {
+  // The predecessor as a store ledger, converted once, for the first
+  // transaction that reaches its spent inputs: a block with none converts
+  // nothing.
+  let ledger: Promise<Ledger> | undefined;
+  const predecessorLedger = async () =>
+    predecessor === undefined
+      ? undefined
+      : await (ledger ??= checkedLedgerAsLedger(predecessor));
   const candidates: { forced: boolean; index: number }[] = [];
   for (const forced of [false, true]) {
     const count = forced
@@ -261,9 +304,9 @@ export const detectValueConservationFaults = async ({
       candidates.push({ forced, index });
   }
   return collectReplayFindings(candidates, async ({ forced, index }) => {
-    const artifact = await prepareValueConservationArtifact({
+    const artifact = await replaySource({
       block,
-      predecessor,
+      predecessor: predecessorLedger,
       sourceIndex: index,
       forced,
     });
