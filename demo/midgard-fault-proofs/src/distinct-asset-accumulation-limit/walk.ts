@@ -12,7 +12,6 @@ import {
 } from "../direct-purpose-family/custody.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import type { FittedPage } from "../page-fit.js";
-import { keyValuePhasMembershipProofs } from "../transition-trace/phas.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_LABEL } from "./contracts.js";
 import { countOutput, outputValueStart, spentDescriptor } from "./fold.js";
 import {
@@ -142,19 +141,17 @@ const inputWitnesses = async (
   material: DirectScriptMaterial,
 ): Promise<readonly SDK.DistinctAssetInputWitness[]> => {
   const descriptors = material.fields[0]!.map((item) => {
-    const entry = spentDescriptor(material, item);
-    if (entry === undefined)
+    const descriptor = spentDescriptor(material, item);
+    if (descriptor === undefined)
       throw new Error(`${LABEL}: spent descriptor absent`);
-    return entry;
+    return { item, descriptor };
   });
-  const proofs = await keyValuePhasMembershipProofs(
-    material.ledger.root,
-    descriptors,
+  return await Promise.all(
+    descriptors.map(async ({ item, descriptor }) => ({
+      descriptor_cbor: descriptor.toString("hex"),
+      proof: await material.resolvedInputs.proof(item),
+    })),
   );
-  return descriptors.map((entry, index) => ({
-    descriptor_cbor: entry.value.toString("hex"),
-    proof: proofs[index]!,
-  }));
 };
 
 export const distinctAssetAccumulationLimitWalkTransitions = async ({

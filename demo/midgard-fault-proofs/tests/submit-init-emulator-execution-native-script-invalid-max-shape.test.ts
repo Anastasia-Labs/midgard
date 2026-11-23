@@ -26,7 +26,6 @@ import {
 } from "../src/execution-native-script-invalid/prover.js";
 import type { ExecutionNativeScriptInvalidEntry } from "../src/execution-native-script-invalid/routes.js";
 import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/workflow.js";
-import { keyValuePhasMembershipProofs } from "../src/transition-trace/phas.js";
 import { clusterPadding, intoCluster } from "./support/deep-ledger-trie.js";
 import {
   DIRECT_WALK_STEP_BOUNDS,
@@ -369,12 +368,10 @@ const walkSteps = (steps: readonly StepMeasurement[], role: string) =>
 const ledgerDepths = async (
   material: Awaited<ReturnType<typeof setupNativeScenario>>["material"],
 ) => {
-  const { ledger } = material;
   return (
-    await keyValuePhasMembershipProofs(
-      ledger.root,
-      [...material.fields[0]!, ...material.fields[1]!].map(
-        (item) => ledger.root.entries.find((entry) => entry.key.equals(item))!,
+    await Promise.all(
+      [...material.fields[0]!, ...material.fields[1]!].map((item) =>
+        material.resolvedInputs.proof(item),
       ),
     )
   ).map((proof) => proof.length);

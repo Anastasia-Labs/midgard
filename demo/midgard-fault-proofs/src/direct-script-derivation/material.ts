@@ -10,6 +10,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { eventLedgerBeforeStep } from "../event-ledger.js";
 import type { CheckedLedger } from "../ledger-at.js";
 import { forcedTxFromCoreCompact } from "../step-support.js";
+import { keyValuePhasProof } from "../transition-trace/phas.js";
 import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
@@ -18,6 +19,47 @@ import {
   buildEventToStepMembershipProof,
   buildIndexedTraceProof,
 } from "../transition-trace/witnesses.build-source-membership-proof.js";
+
+/** A spent or referenced input as the ledger before its transaction holds
+ * it: its output, and the leaf the ledger commits for it. */
+export type ResolvedInput = Readonly<{ output: Buffer; leaf: Buffer }>;
+
+/** The transaction's spent and referenced inputs resolved in the ledger
+ * before its step: each one that ledger holds, by out-ref key hex, and its
+ * membership proof there. */
+export type TransactionResolvedInputs = Readonly<{
+  byKey: ReadonlyMap<string, ResolvedInput>;
+  /** The membership proof of `key`, which must be one `byKey` holds. */
+  proof: (key: Buffer) => Promise<SDK.Proof>;
+}>;
+
+const resolvedInputsAt = (
+  ledger: CheckedLedger,
+  keys: readonly Buffer[],
+): TransactionResolvedInputs => {
+  const byKey = new Map<string, ResolvedInput>();
+  for (const key of keys) {
+    const leaf = ledger.trie.entries.find((entry) =>
+      entry.key.equals(key),
+    )?.value;
+    if (leaf !== undefined)
+      byKey.set(key.toString("hex"), {
+        output: ledger.outputs.get(key.toString("hex"))!,
+        leaf,
+      });
+  }
+  return {
+    byKey,
+    proof: async (key) => {
+      const input = byKey.get(key.toString("hex"));
+      if (input === undefined)
+        throw new Error(
+          "direct script derivation: proof of an input the ledger does not hold",
+        );
+      return await keyValuePhasProof(ledger.trie, key, input.leaf);
+    },
+  };
+};
 
 /** Preparation authority is the committed source plus its root-checked event
  * ledger. The on-chain custody stages reauthenticate both counted openings;
@@ -110,6 +152,9 @@ export const prepareDirectScriptMaterial = async ({
   }
   if (material.fieldPreimages.length !== 9)
     throw new Error("direct script derivation: exact field roster differs");
+  const fields = material.fieldPreimages.map((preimage) =>
+    decodeMidgardFieldPreimage(preimage),
+  );
   const bound: SDKFraudProof.DirectScriptBound = {
     subject,
     compact_cbor: compactCbor,
@@ -128,14 +173,11 @@ export const prepareDirectScriptMaterial = async ({
     sourceBound,
     bound,
     material,
-    // Its readers, the direct-walk families among them, take the trie as `root`.
-    ledger: { root: ledger.trie, outputs: ledger.outputs },
+    resolvedInputs: resolvedInputsAt(ledger, [...fields[0]!, ...fields[1]!]),
     eventKey,
     eventMembership,
     transitionMembership,
-    fields: material.fieldPreimages.map((preimage) =>
-      decodeMidgardFieldPreimage(preimage),
-    ),
+    fields,
     eventKeyCbor: Data.to(eventKey, SDK.EventKey),
   };
 };

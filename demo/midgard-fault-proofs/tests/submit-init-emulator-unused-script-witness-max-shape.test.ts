@@ -21,7 +21,6 @@ import { computeHash32 } from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
 
 import type { LedgerEntry } from "../src/ledger-at.js";
-import { keyValuePhasMembershipProofs } from "../src/transition-trace/phas.js";
 import {
   prepareUnusedScriptWitnessProof,
   requireConvictingUnusedScriptWitnessProof,
@@ -377,13 +376,10 @@ describe("unused-script-witness consensus-maximum shape", () => {
     expect(run.prepared.scriptIndex).toBe(scriptIndex);
     expect(run.prepared.unused).toBe(true);
     expect(run.prepared.convicts).toBe(true);
-    const { ledger } = scenario.material;
     const ledgerDepths = (
-      await keyValuePhasMembershipProofs(
-        ledger.root,
-        scenario.material.fields[0]!.map(
-          (item) =>
-            ledger.root.entries.find((entry) => entry.key.equals(item))!,
+      await Promise.all(
+        scenario.material.fields[0]!.map((item) =>
+          scenario.material.resolvedInputs.proof(item),
         ),
       )
     ).map((proof) => proof.length);

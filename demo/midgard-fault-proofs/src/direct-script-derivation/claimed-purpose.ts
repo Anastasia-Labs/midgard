@@ -1,7 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import { keyValuePhasMembershipProofs } from "../transition-trace/phas.js";
 import { createDirectFieldPlan } from "./field-plan.js";
 import type { DirectScriptMaterial } from "./material.js";
 import { directSpendInputAt } from "./purposes.js";
@@ -16,21 +15,16 @@ export const directSpendEvidence = async (
 ) => {
   const selected = directSpendInputAt(material, index);
   if (selected === null) return null;
-  const descriptor = material.ledger.root.entries.find((entry) =>
-    entry.key.equals(selected.item),
+  const input = material.resolvedInputs.byKey.get(
+    selected.item.toString("hex"),
   );
-  if (descriptor === undefined)
+  if (input === undefined)
     throw new Error("claimed purpose evidence: spent descriptor absent");
-  const [proof] = await keyValuePhasMembershipProofs(material.ledger.root, [
-    descriptor,
-  ]);
-  if (proof === undefined)
-    throw new Error("claimed purpose evidence: spent membership absent");
   return {
     item: selected.item,
     rawItemIndex: BigInt(selected.rawItemIndex),
-    descriptorCbor: descriptor.value.toString("hex"),
-    proof,
+    descriptorCbor: input.leaf.toString("hex"),
+    proof: await material.resolvedInputs.proof(selected.item),
   };
 };
 

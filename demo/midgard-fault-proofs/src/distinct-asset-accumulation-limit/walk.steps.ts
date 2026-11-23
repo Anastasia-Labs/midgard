@@ -36,10 +36,10 @@ export const spentEntries = (
   material: DirectScriptMaterial,
 ): readonly bigint[] =>
   material.fields[0]!.map((item) => {
-    const entry = spentDescriptor(material, item);
-    if (entry === undefined)
+    const descriptor = spentDescriptor(material, item);
+    if (descriptor === undefined)
       throw new Error(`${LABEL}: spent descriptor absent`);
-    return BigInt(decodeMidgardLedgerOutputCommitment(entry.value).assetCount);
+    return BigInt(decodeMidgardLedgerOutputCommitment(descriptor).assetCount);
   });
 
 /** `resolve_inputs_v1` over the items `[start, start + size)`. A crossing

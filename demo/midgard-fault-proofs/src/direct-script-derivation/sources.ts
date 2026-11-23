@@ -10,7 +10,6 @@ import { encodeCborUnsigned } from "@al-ft/midgard-core/codec/cbor";
 import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import { retainedOutputReferenceScript } from "../evidence/retained-ledger-output.js";
-import { keyValuePhasMembershipProofs } from "../transition-trace/phas.js";
 import type { DirectScriptMaterial } from "./material.js";
 
 export type DirectScriptSourceMaterial = Readonly<{
@@ -50,28 +49,20 @@ export const directResolvedSources = async (
   material: DirectScriptMaterial,
   fieldIndex: 0 | 1,
 ) => {
-  const descriptors = new Map(
-    material.ledger.root.entries.map((entry) => [
-      entry.key.toString("hex"),
-      entry.value,
-    ]),
-  );
+  const { byKey, proof } = material.resolvedInputs;
   const openings = material.fields[fieldIndex]!.map((key) => {
-    const value = descriptors.get(key.toString("hex"));
-    if (value === undefined)
+    const input = byKey.get(key.toString("hex"));
+    if (input === undefined)
       throw new Error("direct script derivation: resolved descriptor absent");
-    return { key, value };
+    return { key, ...input };
   });
-  const proofs = await keyValuePhasMembershipProofs(
-    material.ledger.root,
-    openings,
-  );
-  return openings.map(({ key, value }, index) => {
+  const proofs = await Promise.all(openings.map(({ key }) => proof(key)));
+  return openings.map(({ key, leaf, output }, index) => {
     const witness: SDK.DirectResolvedSourceWitness = {
-      descriptor_cbor: value.toString("hex"),
+      descriptor_cbor: leaf.toString("hex"),
       proof: proofs[index]!,
     };
-    const descriptor = decodeMidgardLedgerOutputCommitment(value);
+    const descriptor = decodeMidgardLedgerOutputCommitment(leaf);
     const outref = decodeMidgardSpendInputItem(key);
     if (descriptor.outputIndex !== outref.outputIndex)
       throw new Error(
@@ -79,11 +70,6 @@ export const directResolvedSources = async (
       );
     if (descriptor.referenceScriptLanguage === -1)
       return { witness, source: null };
-    const output = material.ledger.outputs.get(key.toString("hex"));
-    if (output === undefined)
-      throw new Error(
-        "direct script derivation: retained resolved output absent",
-      );
     const item = retainedOutputReferenceScript(output);
     if (item === null)
       throw new Error("direct script derivation: retained script absent");
