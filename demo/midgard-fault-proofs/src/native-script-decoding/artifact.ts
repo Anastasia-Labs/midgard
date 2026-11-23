@@ -1,9 +1,14 @@
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { checkLedgerJson, ledgerJson } from "../ledger-at.js";
+import { ledgerFromWitness, recordWitness } from "../ledger-store/witness.js";
+import {
+  ledgerWitnessJson,
+  parseLedgerWitnessJson,
+} from "../ledger-store/witness-json.js";
 import { reconstructDaPayload } from "../transition-trace/reconstruct.reconstruct-da-payload.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
-import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.replay-context-identity.js";
 import {
   normalizeWorkflowJson,
@@ -17,13 +22,13 @@ import {
 } from "./replay.js";
 
 export const NATIVE_SCRIPT_DECODING_ARTIFACT =
-  "midgard-native-script-decoding-workflow-artifact-v2";
+  "midgard-native-script-decoding-workflow-artifact-v3";
 export const admitNativeScriptDecodingWorkflowArtifact = async (
   value: WorkflowJsonObject,
 ) => {
   if (
     Object.keys(value).sort().join(",") !==
-      "coordinate,detectionId,headerHash,payloadEnvelopeCbor,predecessorLedger,schemaVersion" ||
+      "coordinate,detectionId,headerHash,payloadEnvelopeCbor,predecessorWitness,schemaVersion" ||
     value.schemaVersion !== NATIVE_SCRIPT_DECODING_ARTIFACT
   )
     throw new Error("nativeScriptDecoding artifact shape changed");
@@ -40,15 +45,17 @@ export const admitNativeScriptDecodingWorkflowArtifact = async (
     ),
     expectedHeaderHash: value.headerHash as string,
   });
+  // The witness opens the root the authenticated header commits, never one
+  // the artifact names.
   const predecessor =
-    value.predecessorLedger === null
+    value.predecessorWitness === null
       ? undefined
-      : await checkedLedgerAsLedger(
-          await checkLedgerJson({
-            value: value.predecessorLedger,
-            utxosRoot: current.header.prevUtxosRoot,
-            label: "nativeScriptDecoding predecessor ledger",
-          }),
+      : ledgerFromWitness(
+          current.header.prevUtxosRoot,
+          parseLedgerWitnessJson(
+            value.predecessorWitness,
+            "nativeScriptDecoding predecessor witness",
+          ),
         );
   const rawCoordinate = value.coordinate;
   const c = rawCoordinate as WorkflowJsonObject;
@@ -95,16 +102,13 @@ export const prepareNativeScriptDecodingWorkflowArtifact = async ({
     { decision: "fault_detected" }
   >;
 }) => {
-  const predecessor = completeCanonicalReplayPredecessorLedger({
+  const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
     evidence,
     context: replayContext,
   });
   const findings = await detectNativeScriptDecodingReplay({
     block: evidence,
-    predecessor:
-      predecessor === undefined
-        ? undefined
-        : await checkedLedgerAsLedger(predecessor),
+    predecessor,
   });
   const finding = findings.find(
     (item) => item.detectionId === classification.selected.detectionId,
@@ -115,16 +119,38 @@ export const prepareNativeScriptDecodingWorkflowArtifact = async ({
     classification.headerHash !== evidence.headerHash
   )
     throw new Error("nativeScriptDecoding classification mismatch");
-  const artifact = normalizeWorkflowJson({
+  // Prepare the selected finding again over a recording ledger, and prove
+  // the selected input's descriptor as the bind step does: the witness holds
+  // what admission and capture read.
+  const recording =
+    predecessor === undefined ? undefined : recordWitness(predecessor);
+  const prepared = await prepareNativeScriptDecodingReplay({
+    current: evidence.reconstruction,
+    predecessor: recording?.ledger,
+    coordinate: finding.prepared.coordinate,
+  });
+  if (
+    recording !== undefined &&
+    prepared !== null &&
+    prepared.ledgerTrie !== null
+  )
+    await prepared.ledgerTrie.prove(
+      Buffer.from(
+        SDKFraudProof.encodeMidgardTxInputCanonical(
+          prepared.subjectFieldInputs[
+            Number(prepared.coordinate.outpointCursor)
+          ]!,
+        ),
+      ),
+    );
+  return normalizeWorkflowJson({
     schemaVersion: NATIVE_SCRIPT_DECODING_ARTIFACT,
     headerHash: evidence.headerHash,
     detectionId: finding.detectionId,
     coordinate: finding.prepared.coordinate,
     payloadEnvelopeCbor:
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
-    predecessorLedger:
-      predecessor === undefined ? null : ledgerJson(predecessor),
+    predecessorWitness:
+      recording === undefined ? null : ledgerWitnessJson(recording.witness()),
   }) as WorkflowJsonObject;
-  await admitNativeScriptDecodingWorkflowArtifact(artifact);
-  return artifact;
 };
