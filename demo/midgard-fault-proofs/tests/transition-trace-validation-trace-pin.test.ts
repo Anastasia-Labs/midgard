@@ -4,6 +4,7 @@ import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
@@ -213,7 +214,7 @@ describe("validation-trace pair pinned to the empty tree", () => {
     });
     const evidence = await deriveTransitionTraceReplayEvidence({
       current,
-      predecessor,
+      predecessor: await checkedLedgerAsLedger(predecessor),
       deposits: [],
       network: "Custom",
       depositPolicyId: "34".repeat(28),

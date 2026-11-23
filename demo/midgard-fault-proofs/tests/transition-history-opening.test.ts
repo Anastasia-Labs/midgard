@@ -12,6 +12,7 @@ import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-v
 import { Data, datumToHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
 import {
   reopenTransitionDeposit,
@@ -139,7 +140,7 @@ describe("transition deposit retained opening", () => {
         );
       const replay = await deriveTransitionTraceReplayEvidence({
         current,
-        predecessor,
+        predecessor: await checkedLedgerAsLedger(predecessor),
         deposits: [{ history }],
         network: "Custom",
         depositPolicyId: policy,

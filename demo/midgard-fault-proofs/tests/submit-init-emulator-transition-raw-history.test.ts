@@ -11,6 +11,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, expect, it } from "vitest";
 
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "../src/ledger-store/index.js";
 import { transitionDepositOpening } from "../src/transition-trace/history-opening.js";
 import {
   transitionTraceByteChunks,
@@ -298,6 +302,10 @@ it.each(RAW_HISTORY_ROWS)(
     });
     const replay = await deriveTransitionTraceReplayEvidence({
       current,
+      predecessor: await createLedgerStore(createMemoryLedgerStorage()).admit(
+        [],
+        current.header.prevUtxosRoot,
+      ),
       deposits: [{ history: opening }],
       network: "Custom",
       depositPolicyId: applied.policyId,
