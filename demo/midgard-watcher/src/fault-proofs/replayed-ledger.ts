@@ -221,8 +221,12 @@ export const createWatcherReplayedLedger = (
         const waiting = localFaults.pass()(head.headerHash);
         if (waiting !== undefined) return [waiting];
         const confirmedHead = head;
+        // The window is retained after each block the walk passes, so a
+        // catch-up holds the window's ledgers, not every one it derived.
         const held = await phase.run("confirmed", () =>
-          keeper.ensure(confirmedHead, source(sources)),
+          keeper.ensure(confirmedHead, source(sources), () =>
+            retain(confirmedHead.utxosRoot),
+          ),
         );
         if (!confirmed.current())
           throw new FraudProofL1CheckpointChangedError(

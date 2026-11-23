@@ -154,10 +154,16 @@ export type ReplayedLedger = {
    * passed and reported through `onUnverified`. The head's payload is always
    * waited for. `confirmed` must be a stable head
    * (`replayed-ledger.confirmed.ts`).
+   *
+   * `retainTurn` is the caller's turn to retain, awaited after each block of
+   * the walk is passed, so a walk over many blocks need not hold every
+   * ledger it derives until it ends. The roots the walk holds are pinned, so
+   * a `retain` run from it never drops the ledger the walk continues from.
    */
   readonly ensure: (
     confirmed: { readonly headerHash: string; readonly utxosRoot: string },
     source: ReplayedLedgerSource,
+    retainTurn?: () => Promise<void>,
   ) => Promise<boolean>;
   /**
    * Keeps every window block's `utxos_root` and `prev_utxos_root`, the newest
