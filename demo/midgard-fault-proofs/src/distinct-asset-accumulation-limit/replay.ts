@@ -140,7 +140,7 @@ export const DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY =
   directPurposeArtifactFamily({
     label: "distinctAssetAccumulationLimit",
     artifactVersion:
-      "midgard-distinct-asset-accumulation-limit-workflow-artifact-v1",
+      "midgard-distinct-asset-accumulation-limit-workflow-artifact-v2",
     prepare: prepareDistinctAssetAccumulationLimitReplay,
     detect: detectDistinctAssetAccumulationLimitReplay,
     prove: (admitted, contracts, prover) =>

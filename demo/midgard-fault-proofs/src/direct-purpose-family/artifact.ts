@@ -1,13 +1,16 @@
 /** The direct purpose workflow artifact: the retained payload, the
- * predecessor ledger and the coordinate, re-planned on every admission; and
+ * predecessor ledger witness and the coordinate, re-planned on every admission; and
  * the admitted artifact's whole custody plan, kept per family, artifact,
  * deployment and prover. */
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { checkLedgerJson, ledgerJson } from "../ledger-at.js";
+import { ledgerFromWitness, recordWitness } from "../ledger-store/witness.js";
+import {
+  ledgerWitnessJson,
+  parseLedgerWitnessJson,
+} from "../ledger-store/witness-json.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
@@ -15,7 +18,7 @@ import {
 import { keyValuePhasProof } from "../transition-trace/phas.js";
 import { reconstructDaPayload } from "../transition-trace/reconstruct.reconstruct-da-payload.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
-import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.replay-context-identity.js";
 import {
   normalizeWorkflowJson,
@@ -64,7 +67,7 @@ export const admitDirectPurposeArtifact = async <
   const { label } = family;
   if (
     Object.keys(value).sort().join(",") !==
-      "coordinate,detectionId,headerHash,payloadEnvelopeCbor,predecessorLedger,schemaVersion" ||
+      "coordinate,detectionId,headerHash,payloadEnvelopeCbor,predecessorWitness,schemaVersion" ||
     value.schemaVersion !== family.artifactVersion
   )
     throw new Error(`${label} artifact shape changed`);
@@ -78,15 +81,17 @@ export const admitDirectPurposeArtifact = async <
     ),
     expectedHeaderHash: value.headerHash as string,
   });
+  // The witness opens the root the authenticated header commits, never one
+  // the artifact names.
   const predecessor =
-    value.predecessorLedger === null
+    value.predecessorWitness === null
       ? undefined
-      : await checkedLedgerAsLedger(
-          await checkLedgerJson({
-            value: value.predecessorLedger,
-            utxosRoot: current.header.prevUtxosRoot,
-            label: `${label} predecessor ledger`,
-          }),
+      : ledgerFromWitness(
+          current.header.prevUtxosRoot,
+          parseLedgerWitnessJson(
+            value.predecessorWitness,
+            `${label} predecessor witness`,
+          ),
         );
   const prepared = await family.prepare({
     current,
@@ -117,15 +122,13 @@ export const prepareDirectPurposeArtifact = async <
     >;
   },
 ): Promise<WorkflowJsonObject> => {
-  const predecessor = completeCanonicalReplayPredecessorLedger({
+  const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
     evidence,
     context: replayContext,
   });
   const findings = await family.detect({
     block: evidence,
-    ...(predecessor === undefined
-      ? {}
-      : { predecessor: await checkedLedgerAsLedger(predecessor) }),
+    ...(predecessor === undefined ? {} : { predecessor }),
   });
   const finding = findings.find(
     (item) => item.detectionId === classification.selected.detectionId,
@@ -136,18 +139,31 @@ export const prepareDirectPurposeArtifact = async <
     classification.headerHash !== evidence.headerHash
   )
     throw new Error(`${family.label} classification mismatch`);
-  const artifact = normalizeWorkflowJson({
+  // Prepare the selected finding again over a recording ledger, and prove
+  // every input it resolved, the only ledger reads a family's convicting
+  // proof makes: the witness holds what admission and capture read. A node
+  // the witness lacks fails capture, so the proofs are taken here even where
+  // the reads of preparation already loaded every node they need.
+  const recording =
+    predecessor === undefined ? undefined : recordWitness(predecessor);
+  const prepared = await family.prepare({
+    current: evidence.reconstruction,
+    coordinate: finding.prepared.coordinate,
+    ...(recording === undefined ? {} : { predecessor: recording.ledger }),
+  });
+  if (recording !== undefined && prepared !== null)
+    for (const key of prepared.material.resolvedInputs.byKey.keys())
+      await prepared.material.resolvedInputs.proof(Buffer.from(key, "hex"));
+  return normalizeWorkflowJson({
     schemaVersion: family.artifactVersion,
     headerHash: evidence.headerHash,
     detectionId: finding.detectionId,
     coordinate: finding.prepared.coordinate,
     payloadEnvelopeCbor:
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
-    predecessorLedger:
-      predecessor === undefined ? null : ledgerJson(predecessor),
+    predecessorWitness:
+      recording === undefined ? null : ledgerWitnessJson(recording.witness()),
   }) as WorkflowJsonObject;
-  await admitDirectPurposeArtifact(family, artifact);
-  return artifact;
 };
 
 export type DirectPurposePlannedArtifact<

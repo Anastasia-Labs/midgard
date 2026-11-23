@@ -129,7 +129,7 @@ export const detectMissingRedeemerReplay = async ({
  * predecessor ledger and the coordinate, re-planned on every admission. */
 export const MISSING_REDEEMER_ARTIFACT_FAMILY = directPurposeArtifactFamily({
   label: "missingRedeemer",
-  artifactVersion: "midgard-missing-redeemer-workflow-artifact-v1",
+  artifactVersion: "midgard-missing-redeemer-workflow-artifact-v2",
   prepare: prepareMissingRedeemerReplay,
   detect: detectMissingRedeemerReplay,
   prove: (admitted, contracts, prover) =>

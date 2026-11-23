@@ -153,7 +153,7 @@ export const detectUnusedRedeemerReplay = async ({
  * predecessor ledger and the coordinate, re-planned on every admission. */
 export const UNUSED_REDEEMER_ARTIFACT_FAMILY = directPurposeArtifactFamily({
   label: "unusedRedeemer",
-  artifactVersion: "midgard-unused-redeemer-workflow-artifact-v1",
+  artifactVersion: "midgard-unused-redeemer-workflow-artifact-v2",
   prepare: prepareUnusedRedeemerReplay,
   detect: detectUnusedRedeemerReplay,
   prove: (admitted, contracts, prover) =>

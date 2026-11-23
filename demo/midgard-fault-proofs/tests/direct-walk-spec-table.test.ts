@@ -76,7 +76,7 @@ const ROWS: readonly Row[] = [
     fields: [0, 1, 2, 3, 5, 6, 8],
     proofChunk: true,
     terminal: "verdict",
-    artifactVersion: "midgard-missing-redeemer-workflow-artifact-v1",
+    artifactVersion: "midgard-missing-redeemer-workflow-artifact-v2",
     categoryId: "0000002e",
   },
   {
@@ -87,7 +87,7 @@ const ROWS: readonly Row[] = [
     fields: [0, 1, 2, 3, 5, 6, 8],
     proofChunk: true,
     terminal: "verdict",
-    artifactVersion: "midgard-missing-script-source-workflow-artifact-v1",
+    artifactVersion: "midgard-missing-script-source-workflow-artifact-v2",
     categoryId: "0000002d",
   },
   {
@@ -98,7 +98,7 @@ const ROWS: readonly Row[] = [
     fields: [0, 1, 2, 3, 5, 6, 8],
     proofChunk: true,
     terminal: "verdict",
-    artifactVersion: "midgard-unused-redeemer-workflow-artifact-v1",
+    artifactVersion: "midgard-unused-redeemer-workflow-artifact-v2",
     categoryId: "00000030",
   },
   {
@@ -109,7 +109,7 @@ const ROWS: readonly Row[] = [
     fields: [0, 1, 2, 3, 5, 6, 8],
     proofChunk: true,
     terminal: "verdict",
-    artifactVersion: "midgard-receive-purpose-language-workflow-artifact-v1",
+    artifactVersion: "midgard-receive-purpose-language-workflow-artifact-v2",
     categoryId: "00000034",
   },
   {
@@ -121,7 +121,7 @@ const ROWS: readonly Row[] = [
     proofChunk: false,
     terminal: "verdict",
     artifactVersion:
-      "midgard-execution-source-script-decoding-workflow-artifact-v1",
+      "midgard-execution-source-script-decoding-workflow-artifact-v2",
     categoryId: "00000031",
   },
   {
@@ -133,7 +133,7 @@ const ROWS: readonly Row[] = [
     proofChunk: true,
     terminal: "verdict",
     artifactVersion:
-      "midgard-distinct-asset-accumulation-limit-workflow-artifact-v1",
+      "midgard-distinct-asset-accumulation-limit-workflow-artifact-v2",
     categoryId: "00000035",
   },
   {
@@ -145,7 +145,7 @@ const ROWS: readonly Row[] = [
     proofChunk: true,
     terminal: "verdict",
     artifactVersion:
-      "midgard-execution-native-script-invalid-workflow-artifact-v1",
+      "midgard-execution-native-script-invalid-workflow-artifact-v2",
     categoryId: "00000032",
   },
   {
@@ -157,7 +157,7 @@ const ROWS: readonly Row[] = [
     proofChunk: true,
     terminal: "derived",
     artifactVersion:
-      "midgard-script-integrity-hash-mismatch-workflow-artifact-v1",
+      "midgard-script-integrity-hash-mismatch-workflow-artifact-v2",
     categoryId: "00000033",
   },
   {
@@ -168,7 +168,7 @@ const ROWS: readonly Row[] = [
     fields: [0, 1, 2, 3, 5, 6],
     proofChunk: true,
     terminal: "derived",
-    artifactVersion: "midgard-unused-script-witness-workflow-artifact-v1",
+    artifactVersion: "midgard-unused-script-witness-workflow-artifact-v2",
     categoryId: "0000002f",
   },
 ];
