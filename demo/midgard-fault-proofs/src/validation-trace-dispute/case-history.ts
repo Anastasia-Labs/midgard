@@ -90,11 +90,13 @@ export const createValidationTraceCaseHistory = ({
   readonly authority: FraudProofRawL1SnapshotAuthority;
   readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
 }): ValidationTraceCaseHistory => {
-  /** The transactions admitted under each header, by hash. A history only
-   * grows, by a transaction or two per move over hundreds of moves, so each
-   * capture reads and decodes only the transactions the header's earlier
-   * ones did not hold in the same bytes at the same point. */
-  const held = new Map<string, Map<string, FraudProofRawL1Transaction>>();
+  /** The transactions this history's captures admitted, by hash. A history
+   * only grows, by a transaction or two per move over hundreds of moves, so
+   * each capture reads and decodes only the transactions the earlier ones
+   * did not hold in the same bytes at the same point. A workflow is built
+   * for one run over one header, so this holds one dispute's history and
+   * goes with the run. */
+  const admitted = new Map<string, FraudProofRawL1Transaction>();
   const snapshot: NonNullable<ValidationTraceCaseHistory["snapshot"]> = async (
     input,
   ) => {
@@ -104,10 +106,6 @@ export const createValidationTraceCaseHistory = ({
       finalityPolicyDigest: releaseFinality.policyDigest,
       ...input,
     };
-    const admitted =
-      held.get(input.headerHash) ??
-      new Map<string, FraudProofRawL1Transaction>();
-    held.set(input.headerHash, admitted);
     const { snapshot: value, pending } = await authority.capture(
       request,
       admitted,

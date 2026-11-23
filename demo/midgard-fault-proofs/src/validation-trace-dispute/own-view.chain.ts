@@ -113,8 +113,9 @@ const sameClaim = (
 /**
  * The own view read from the chain. Each view captures the dispute once, on
  * its first read, and reads every answer from that capture; the units the
- * captures find are kept per header for the process, and so are our resolve
- * moves decoded from the current capture, which a long resolution confirms
+ * captures find are kept per header for the run (a workflow, and this view
+ * with it, is built per run), and so are our resolve moves decoded from the
+ * latest capture, which a long resolution confirms
  * hundreds of, with what each read: every hop of a long staged step reads
  * every staging output of the step, each hundreds of kilobytes, so each is
  * decoded once.
@@ -134,21 +135,19 @@ export const validationTraceChainOwnView = ({
   const captureOf = validationTraceDisputeCapture({
     caseHistory,
     deployment,
-    named: new Map(),
   });
-  const decoded = new Map<string, Map<string, Reader | null>>();
-  const read = new Map<string, Map<string, ValidationTraceReferenced>>();
+  let decoded: ReadonlyMap<string, Reader | null> = new Map();
+  let read: ReadonlyMap<string, ValidationTraceReferenced> = new Map();
   const stagingAddress = signer.proofMaterialsAddress;
 
   /** Our resolve moves in `capture`, oldest first. */
   const readersOf = ({
-    snapshot,
     history,
     threads,
     outputsOf,
   }: ValidationTraceDisputeCapture): readonly Reader[] => {
-    const known = decoded.get(snapshot.headerHash) ?? new Map();
-    const knownRead = read.get(snapshot.headerHash) ?? new Map();
+    const known = decoded;
+    const knownRead = read;
     const current = new Map<string, Reader | null>();
     const currentRead = new Map<string, ValidationTraceReferenced>();
     const referenced = (raw: FraudProofRawL1Utxo) => {
@@ -188,8 +187,8 @@ export const validationTraceChainOwnView = ({
           if (!currentRead.has(entry.raw.outRef))
             currentRead.set(entry.raw.outRef, entry);
       }
-    decoded.set(snapshot.headerHash, current);
-    read.set(snapshot.headerHash, currentRead);
+    decoded = current;
+    read = currentRead;
     return readers;
   };
   /** `transaction` as a resolve move of ours of the thread `unit`, or null

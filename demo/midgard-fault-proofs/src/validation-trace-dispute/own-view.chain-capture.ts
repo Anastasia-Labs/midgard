@@ -6,8 +6,9 @@
  * thread token of those cases and of each receipt their closes mint. Each
  * unit past the thread token is found in the histories of the units before
  * it, so a capture that finds a unit it did not name is taken again with
- * it, and every unit found stays named under the header for the process's
- * life: naming a unit in a capture is what holds its history.
+ * it, and every unit found stays named under the header for the run (a
+ * workflow, and this capture with it, is built per run): naming a unit in
+ * a capture is what holds its history.
  *
  * Every read is of the next view (workflow/next-state.ts): the scopes with
  * our node's mempool applied, and each unit's history with the mempool
@@ -289,17 +290,15 @@ export const ownStepOutputs = ({
 export const validationTraceDisputeCapture = ({
   caseHistory,
   deployment,
-  named,
 }: {
   readonly caseHistory: ValidationTraceCaseHistory;
   readonly deployment: ValidationTraceDisputeDeployment;
-  /** The units found under each header so far, kept for the process. */
-  readonly named: Map<string, Set<string>>;
 }) => {
-  /** The outputs the reads of each header's latest capture decoded, by
-   * transaction hash. Each read replaces its header's entry, so it holds
-   * no more than that read does. */
-  const latest = new Map<string, ReadonlyMap<string, Paid>>();
+  /** The units found under each header so far. */
+  const named = new Map<string, Set<string>>();
+  /** The outputs the latest read decoded, by transaction hash. Each read
+   * replaces it, so it holds no more than that read does. */
+  let latest: ReadonlyMap<string, Paid> = new Map();
   if (caseHistory.snapshot === undefined)
     throw new Error("validation-trace chain view needs the raw L1 capture");
   const capture = caseHistory.snapshot.bind(caseHistory);
@@ -371,12 +370,12 @@ export const validationTraceDisputeCapture = ({
     const units = named.get(headerHash) ?? new Set<string>();
     named.set(headerHash, units);
     units.add(validationTraceThreadUnit(deployment, headerHash));
-    const prior = latest.get(headerHash);
+    const prior = latest;
     const paid = new Map<string, Paid>();
     const outputsOf: ValidationTraceCapturedOutputs = (transaction) => {
       let entry = paid.get(transaction.txHash);
       if (entry?.bodyCbor !== transaction.bodyCbor) {
-        const known = prior?.get(transaction.txHash);
+        const known = prior.get(transaction.txHash);
         entry =
           known?.bodyCbor === transaction.bodyCbor
             ? known
@@ -385,7 +384,7 @@ export const validationTraceDisputeCapture = ({
       }
       return entry.outputs.map((output) => ({ ...output, transaction }));
     };
-    latest.set(headerHash, paid);
+    latest = paid;
     let found: ValidationTraceDisputeCapture | undefined;
     for (let round = 0; round < ROUNDS; round += 1) {
       const { snapshot, pending } = await capture({
