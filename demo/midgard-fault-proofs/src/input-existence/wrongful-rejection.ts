@@ -9,10 +9,9 @@ import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import { ledgerBeforeStep, readingLedger } from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { type CheckedLedger, ledgerEntryLeaf } from "../ledger-at.js";
+import { ledgerEntryLeaf } from "../ledger-at.js";
 import { type Ledger, ledgerProof } from "../ledger-store/index.js";
 import {
   buildEventToStepMembershipProof,
@@ -199,7 +198,7 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
     predecessor,
   }: {
     block: CanonicalBlockEvidence;
-    predecessor?: CheckedLedger;
+    predecessor?: Ledger;
   }) => {
     const detections = [];
     for (const [
@@ -218,13 +217,10 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
       )
         continue;
       try {
-        // Converted only for a candidate: a block with none converts nothing.
         const prepared = await prepare({
           block,
           forcedIndex,
-          ...(predecessor === undefined
-            ? {}
-            : { predecessor: await checkedLedgerAsLedger(predecessor) }),
+          ...(predecessor === undefined ? {} : { predecessor }),
         });
         detections.push({
           ...forcedTransactionSubject(forced.key),

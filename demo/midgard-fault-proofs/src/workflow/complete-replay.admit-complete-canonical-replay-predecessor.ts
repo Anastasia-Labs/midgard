@@ -4,10 +4,9 @@ import {
 } from "@al-ft/midgard-core";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 
-import {
-  eventLedgerBefore,
-  EventLedgerReplayRefusal,
-} from "../event-ledger.js";
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
+import { EventLedgerReplayRefusal } from "../event-ledger.js";
+import { ledgerBeforeStep, readingLedger } from "../event-ledger.ledger.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { openProofThreadSubjectFromCanonicalEvidence } from "../input-existence/source.js";
 import {
@@ -15,6 +14,7 @@ import {
   type LedgerAt,
   predecessorLedger,
 } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import { detectNetworkIdAcceptedForced } from "../network-id/accepted-forced.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
 import { detectNetworkIdWrongfulRejections } from "../network-id/wrongful-rejection.js";
@@ -82,6 +82,22 @@ export const completeCanonicalReplayPredecessorLedger = ({
   readonly context: CompleteCanonicalReplayContext | undefined;
 }): CheckedLedger | undefined =>
   requireReplayPredecessorLedger({ evidence, context });
+
+/**
+ * The ledger the challenged block starts from as a ledger store `Ledger`, or
+ * `undefined` when the context admitted no predecessor. The admitted checked
+ * ledger converts once (`checkedLedgerAsLedger`), so every family replaying
+ * the block reads the same `Ledger` and shares the block's one walk.
+ */
+export const completeCanonicalReplayPredecessorStoreLedger = async (admitted: {
+  readonly evidence: CanonicalBlockEvidence;
+  readonly context: CompleteCanonicalReplayContext | undefined;
+}): Promise<Ledger | undefined> => {
+  const predecessor = completeCanonicalReplayPredecessorLedger(admitted);
+  return predecessor === undefined
+    ? undefined
+    : await checkedLedgerAsLedger(predecessor);
+};
 
 type CanonicalReplayJson =
   | null
@@ -193,7 +209,10 @@ export const detectLedgerRelativeMissingInputs = async ({
   readonly context: CompleteCanonicalReplayContext | undefined;
   readonly kind: "spend" | "reference";
 }): Promise<readonly CanonicalViolationDetection[]> => {
-  const predecessor = requireReplayPredecessorLedger({ evidence, context });
+  const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
+    evidence,
+    context,
+  });
   const field = kind === "spend" ? 0 : 1;
   const violationId = field === 0 ? "non-existent-input" : "no-reference-input";
   const steps = evidence.reconstruction.eventToStepByFingerprint;
@@ -246,9 +265,9 @@ export const detectLedgerRelativeMissingInputs = async ({
         EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
         "input classification requires the exact committed event-to-step opening",
       );
-    let ledger: CheckedLedger;
+    let ledger: Ledger;
     try {
-      ledger = await eventLedgerBefore({
+      ledger = await ledgerBeforeStep({
         block: evidence,
         eventKey: event.eventKey,
         stepIndex: eventOpening.value.step_index,
@@ -261,13 +280,20 @@ export const detectLedgerRelativeMissingInputs = async ({
         `input classification event-pre-state hold: ${cause.reason}`,
       );
     }
-    return items.flatMap((item, inputIndex) => {
+    const inputKeys = items.map((item) => {
       const decoded = decodeMidgardSpendInputItem(item);
-      const inputKey = ledgerKeyBytesHex({
+      return ledgerKeyBytesHex({
         tx_id: Buffer.from(decoded.txId).toString("hex"),
         output_index: BigInt(decoded.outputIndex),
       });
-      if (ledger.outputs.has(inputKey)) return [];
+    });
+    const held = await readingLedger(
+      "input classification event pre-state",
+      async () =>
+        await ledger.read(inputKeys.map((key) => Buffer.from(key, "hex"))),
+    );
+    return inputKeys.flatMap((inputKey, inputIndex) => {
+      if (held.get(inputKey)?.output !== undefined) return [];
       return [
         {
           ...subject,

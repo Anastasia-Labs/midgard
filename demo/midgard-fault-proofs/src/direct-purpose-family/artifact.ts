@@ -5,6 +5,7 @@
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { checkLedgerJson, ledgerJson } from "../ledger-at.js";
 import {
@@ -80,11 +81,13 @@ export const admitDirectPurposeArtifact = async <
   const predecessor =
     value.predecessorLedger === null
       ? undefined
-      : await checkLedgerJson({
-          value: value.predecessorLedger,
-          utxosRoot: current.header.prevUtxosRoot,
-          label: `${label} predecessor ledger`,
-        });
+      : await checkedLedgerAsLedger(
+          await checkLedgerJson({
+            value: value.predecessorLedger,
+            utxosRoot: current.header.prevUtxosRoot,
+            label: `${label} predecessor ledger`,
+          }),
+        );
   const prepared = await family.prepare({
     current,
     coordinate: admitCoordinate(label, value.coordinate),
@@ -120,7 +123,9 @@ export const prepareDirectPurposeArtifact = async <
   });
   const findings = await family.detect({
     block: evidence,
-    ...(predecessor === undefined ? {} : { predecessor }),
+    ...(predecessor === undefined
+      ? {}
+      : { predecessor: await checkedLedgerAsLedger(predecessor) }),
   });
   const finding = findings.find(
     (item) => item.detectionId === classification.selected.detectionId,

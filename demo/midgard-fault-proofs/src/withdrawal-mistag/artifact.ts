@@ -81,7 +81,10 @@ export const prepareWithdrawalMistagWorkflowArtifact = async ({
   });
   const findings = await detectWithdrawalMistagReplay({
     block: evidence,
-    predecessor,
+    predecessor:
+      predecessor === undefined
+        ? undefined
+        : await checkedLedgerAsLedger(predecessor),
   });
   const finding = findings.find(
     (item) => item.detectionId === classification.selected.detectionId,

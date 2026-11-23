@@ -1,11 +1,10 @@
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import { Data, type UTxO, validatorToScriptHash } from "@lucid-evolution/lucid";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import { buildInit } from "../submit-init.submit-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { captureCursorRemoval } from "../workflow/cursor-family-runtime.js";
 import {
   assertManifestBoundWorkflowSigner,
@@ -360,16 +359,12 @@ export const createManifestBoundValueConservationWorkflow = async (
         `${prefix}:${sourceIndex}` !== classification.selected.detectionId
       )
         throw new Error("value conservation: noncanonical source coordinate");
-      const predecessor = completeCanonicalReplayPredecessorLedger({
-        evidence,
-        context: replayContext,
-      });
       const artifact = await prepareValueConservationArtifact({
         block: evidence,
-        predecessor:
-          predecessor === undefined
-            ? undefined
-            : await checkedLedgerAsLedger(predecessor),
+        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+          evidence,
+          context: replayContext,
+        }),
         sourceIndex,
         forced,
       });

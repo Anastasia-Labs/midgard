@@ -1,13 +1,11 @@
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk/core";
 
-import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import {
   ledgerBeforeTraceStep,
   readingLedger,
 } from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import type { CheckedLedger } from "../ledger-at.js";
 import { type Ledger, ledgerProof } from "../ledger-store/index.js";
 import {
   type CountedRoot,
@@ -132,18 +130,14 @@ export const detectWithdrawalMistagReplay = async ({
   predecessor,
 }: {
   block: CanonicalBlockEvidence;
-  predecessor?: CheckedLedger;
-}) => {
-  const ledger =
-    predecessor === undefined
-      ? undefined
-      : await checkedLedgerAsLedger(predecessor);
-  return collectReplayFindings(
+  predecessor?: Ledger;
+}) =>
+  await collectReplayFindings(
     block.reconstruction.withdrawals,
     async (_, index) => {
       const prepared = await prepareWithdrawalMistagReplay({
         current: block.reconstruction,
-        predecessor: ledger,
+        predecessor,
         index,
       });
       return prepared === null
@@ -159,4 +153,3 @@ export const detectWithdrawalMistagReplay = async ({
           };
     },
   );
-};

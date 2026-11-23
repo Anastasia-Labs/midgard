@@ -150,6 +150,65 @@ describe("production predecessor-relative complete replay V1", () => {
     });
   });
 
+  it("detects only the spend input the predecessor ledger does not hold", async () => {
+    const held = outRefCbor(14, 0n);
+    const absent = outRefCbor(15, 1n);
+    const output = encodeMidgardTxOutput({
+      address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x44)]),
+      value: { lovelace: 2_000_000n, assets: new Map() },
+    });
+    const predecessor = await buildCanonicalBlockFixture({
+      transactions: [],
+      utxos: [{ key: held, value: output }],
+    });
+    const transaction = buildFixtureTransaction({
+      spendInputs: [held, absent],
+      fee: 1n,
+    });
+    const current = await buildCanonicalBlockFixture({
+      transactions: [transaction],
+      prevHeaderHash: predecessor.headerHash,
+      prevUtxosRoot: predecessor.header.utxosRoot,
+      transitionSteps: [
+        {
+          schema_version: 1n,
+          step_index: 0n,
+          event_key: { L2TransactionEventKey: { tx_id: transaction.txId } },
+          phase: "L2Transaction",
+          pre_utxos_root: predecessor.header.utxosRoot,
+          post_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+        },
+      ],
+    });
+    const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(current),
+      payloadEnvelopeCbor: current.payloadEnvelopeCbor,
+      daProvenance: {
+        trustClass: "public_or_permissionless_da",
+        sourceId: "libp2p/predecessor-replay-test",
+        grade: "security",
+      },
+    });
+    const decision = await NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY.replay(
+      evidence,
+      {
+        predecessor: await admitCompleteCanonicalReplayPredecessor({
+          ledgerAt: singleLedgerAt(predecessor.headerHash, [
+            { outRef: held, output },
+          ]),
+          currentEvidence: evidence,
+        }),
+      },
+    );
+    // The identity names the violation, the transaction's position and the
+    // absent input's index.
+    expect(
+      decision.detections.map(({ detectionId }) =>
+        detectionId.split(":").slice(0, 3),
+      ),
+    ).toEqual([["non-existent-input", "0", "1"]]);
+  });
+
   it("emits an explicit unprovable gap when a non-empty predecessor is unavailable", async () => {
     const base = await evidenceFor();
     const evidence = {

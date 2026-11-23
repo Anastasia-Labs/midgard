@@ -33,6 +33,7 @@ import {
 import {
   canonicalizeReplayJson,
   completeCanonicalReplayPredecessorLedger,
+  completeCanonicalReplayPredecessorStoreLedger,
   detectDoubleSpends,
   detectNetworkIds,
   replayDecisionJson,
@@ -286,7 +287,7 @@ export const VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   async (evidence, context) =>
     detectValueConservationFaults({
       block: evidence,
-      predecessor: completeCanonicalReplayPredecessorLedger({
+      predecessor: await completeCanonicalReplayPredecessorStoreLedger({
         evidence,
         context,
       }),
@@ -298,7 +299,7 @@ export const WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   async (evidence, context) =>
     await detectWithdrawalMistagReplay({
       block: evidence,
-      predecessor: completeCanonicalReplayPredecessorLedger({
+      predecessor: await completeCanonicalReplayPredecessorStoreLedger({
         evidence,
         context,
       }),
@@ -310,7 +311,7 @@ export const MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   async (evidence, context) =>
     await detectMintAuthorizationReplay({
       block: evidence,
-      predecessor: completeCanonicalReplayPredecessorLedger({
+      predecessor: await completeCanonicalReplayPredecessorStoreLedger({
         evidence,
         context,
       }),

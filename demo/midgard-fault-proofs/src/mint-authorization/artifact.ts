@@ -153,7 +153,13 @@ export const prepareMintAuthorizationWorkflowArtifact = async ({
     context: replayContext,
   });
   const finding = (
-    await detectMintAuthorizationReplay({ block: evidence, predecessor })
+    await detectMintAuthorizationReplay({
+      block: evidence,
+      predecessor:
+        predecessor === undefined
+          ? undefined
+          : await checkedLedgerAsLedger(predecessor),
+    })
   ).find((item) => item.detectionId === classification.selected.detectionId);
   if (
     finding === undefined ||
