@@ -29,10 +29,7 @@ import {
   reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
-import {
-  checkedLedgerAfter,
-  ledgerAtAfter,
-} from "./support/predecessor-ledger.js";
+import { ledgerAfter, ledgerAtAfter } from "./support/predecessor-ledger.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 
 const provenance = {
@@ -247,7 +244,7 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
       currentEvidence: evidence,
     }),
   };
-  const predecessor = await checkedLedgerAfter(predecessorEvidence);
+  const predecessor = await ledgerAfter(predecessorEvidence);
   return { evidence, context, predecessor };
 };
 

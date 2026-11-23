@@ -9,10 +9,11 @@ import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import { eventLedgerBefore } from "../event-ledger.js";
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
+import { ledgerBeforeStep, readingLedger } from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { type CheckedLedger } from "../ledger-at.js";
-import { keyValuePhasProof } from "../transition-trace/phas.js";
+import { type CheckedLedger, ledgerEntryLeaf } from "../ledger-at.js";
+import { type Ledger, ledgerProof } from "../ledger-store/index.js";
 import {
   buildEventToStepMembershipProof,
   buildForcedTransactionLeafMembershipProof,
@@ -113,7 +114,8 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
   }: {
     block: CanonicalBlockEvidence;
     forcedIndex: number;
-    predecessor?: CheckedLedger;
+    /** The ledger the block starts from; none when it starts from genesis. */
+    predecessor?: Ledger;
   }): Promise<PreparedInputExistenceWrongfulRejection> => {
     const forced = block.reconstruction.forcedTransactions[forcedIndex];
     if (forced === undefined)
@@ -154,21 +156,30 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
     let ledgerMembership: PreparedInputExistenceWrongfulRejection["ledgerMembership"] =
       null;
     if (material.selectedInput !== null) {
-      const ledger = (
-        await eventLedgerBefore({
-          block,
-          eventKey,
-          stepIndex: eventMembership.value.step_index,
-          predecessor,
-        })
-      ).trie;
+      const ledger = await ledgerBeforeStep({
+        block,
+        eventKey,
+        stepIndex: eventMembership.value.step_index,
+        predecessor,
+      });
       const key = material.inputItems[Number(material.inputIndex)]!;
-      const entry = ledger.entries.find((item) => item.key.equals(key));
-      if (entry === undefined) throw new Error(honest);
-      ledgerMembership = {
-        value: entry.value.toString("hex"),
-        proof: await keyValuePhasProof(ledger, key, entry.value),
-      };
+      ledgerMembership = await readingLedger(
+        `${category} ledger membership`,
+        async () => {
+          const output = (await ledger.read([key])).get(
+            key.toString("hex"),
+          )?.output;
+          if (output === undefined) throw new Error(honest);
+          const { leaf } = ledgerEntryLeaf(
+            { outRef: key, output },
+            `${category} ledger membership`,
+          );
+          return {
+            value: leaf.toString("hex"),
+            proof: await ledgerProof(ledger, key),
+          };
+        },
+      );
     }
     return {
       headerHash: computeHash28(SDK.encodeHeaderCbor(block.header)).toString(
@@ -191,6 +202,9 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
     predecessor?: CheckedLedger;
   }) => {
     const detections = [];
+    // The predecessor as a store ledger, converted once, for the first
+    // candidate: a block with none reads no ledger.
+    let ledger: Promise<Ledger> | undefined;
     for (const [
       forcedIndex,
       forced,
@@ -207,10 +221,12 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
       )
         continue;
       try {
+        if (predecessor !== undefined)
+          ledger ??= checkedLedgerAsLedger(predecessor);
         const prepared = await prepare({
           block,
           forcedIndex,
-          ...(predecessor === undefined ? {} : { predecessor }),
+          ...(ledger === undefined ? {} : { predecessor: await ledger }),
         });
         detections.push({
           ...forcedTransactionSubject(forced.key),

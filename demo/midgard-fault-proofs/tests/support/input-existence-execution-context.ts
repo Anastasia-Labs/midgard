@@ -4,6 +4,7 @@ import type { MidgardNativeTxFull } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 
+import { checkedLedgerAsLedger } from "../../src/checked-ledger-store.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
 import type { InputExistenceDeploymentStepArguments } from "../../src/input-existence/deployment-step.js";
 import {
@@ -153,7 +154,7 @@ export const inputExistenceExecutionContext = async ({
     eventKey: material.eventKey,
     field,
     inputIndex: material.inputIndex,
-    predecessor: material.predecessor,
+    predecessor: await checkedLedgerAsLedger(material.predecessor),
     owner: h.proverSigner.paymentKeyHash,
   });
   const category = field === 0 ? "nonExistentInput" : "noReferenceInput";

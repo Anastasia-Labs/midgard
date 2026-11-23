@@ -6,6 +6,7 @@ import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
 import { buildInputExistenceStep } from "../src/input-existence/submit.js";
@@ -74,11 +75,13 @@ describe("non-existent-input steps under the watcher's restricted wallet", () =>
       eventKey: { L2TransactionEventKey: { tx_id: block.nativeTxId } },
       field: 0,
       inputIndex: 0n,
-      predecessor: await checkLedgerAgainstRoot({
-        entries: [],
-        utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-        label: "restricted-wallet prior-block ledger",
-      }),
+      predecessor: await checkedLedgerAsLedger(
+        await checkLedgerAgainstRoot({
+          entries: [],
+          utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          label: "restricted-wallet prior-block ledger",
+        }),
+      ),
       owner: h.proverSigner.paymentKeyHash,
     });
     let checked = 0;

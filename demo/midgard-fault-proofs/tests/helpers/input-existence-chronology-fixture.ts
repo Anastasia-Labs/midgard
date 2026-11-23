@@ -1,7 +1,8 @@
 /** Small canonical source/event chronology. Roots are computed from actual
- * full outputs; no validation-machine acceptance is claimed. A withdrawal
- * scenario commits the caller's withdrawal event, root entry and ledger
- * effect exactly as given; it builds none of them itself. */
+ * full outputs; no validation-machine acceptance is claimed. Given a
+ * withdrawal, any scenario commits the caller's withdrawal event, root entry
+ * and ledger effect exactly as given, in a step just before the target's;
+ * it builds none of them itself. A withdrawal scenario needs one. */
 import {
   computeHash28,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -313,12 +314,9 @@ export const inputExistenceChronologyFixture = async (
       [],
     );
   }
-  if (
-    scenario === "withdrawal_consumed" ||
-    scenario === "withdrawal_untouched"
-  ) {
-    if (withdrawal === undefined)
-      throw new Error("withdrawal chronology needs a committed withdrawal");
+  if (scenario.startsWith("withdrawal_") && withdrawal === undefined)
+    throw new Error("withdrawal chronology needs a committed withdrawal");
+  if (withdrawal !== undefined) {
     withdrawals.push([
       withdrawal.rootKey.toString("hex"),
       withdrawal.rootValue.toString("hex"),

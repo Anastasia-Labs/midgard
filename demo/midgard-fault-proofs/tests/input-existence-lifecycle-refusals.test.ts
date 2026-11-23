@@ -8,6 +8,7 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import type { Script, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import {
   type PreparedInputExistence,
@@ -130,11 +131,13 @@ const startHonestRejectionJourney = async (field: 0 | 1) => {
     },
     field,
     inputIndex: undefined,
-    predecessor: await checkLedgerAgainstRoot({
-      entries: [],
-      utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-      label: "registered prior-block ledger",
-    }),
+    predecessor: await checkedLedgerAsLedger(
+      await checkLedgerAgainstRoot({
+        entries: [],
+        utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        label: "registered prior-block ledger",
+      }),
+    ),
     owner: h.proverSigner.paymentKeyHash,
   });
   expect(prepared.source.subject.direction).toBe(1n);

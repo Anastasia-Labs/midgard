@@ -1,13 +1,35 @@
+import { computeHash32 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import { isReplayLocalFault } from "../src/block-replay.faults.js";
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
+import {
+  type CanonicalBlockEvidence,
+  canonicalBlockEvidenceFromVerifiedPayload,
+} from "../src/evidence/canonical-block-evidence.js";
 import {
   admitInputExistenceArtifact,
   inputExistenceArtifact,
 } from "../src/input-existence/artifact.js";
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
+import type { CheckedLedger } from "../src/ledger-at.js";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  type Ledger,
+  LedgerNodeMissing,
+} from "../src/ledger-store/index.js";
+import { detectNoReferenceInputWrongfulRejections } from "../src/no-reference-input/wrongful-rejection.js";
+import {
+  detectNonExistentInputWrongfulRejections,
+  prepareNonExistentInputWrongfulRejection,
+} from "../src/non-existent-input/wrongful-rejection.js";
+import {
+  keyValuePhasNonMembershipProof,
+  keyValuePhasProof,
+} from "../src/transition-trace/phas.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import { detectLedgerRelativeMissingInputs } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
@@ -25,12 +47,16 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
+import { withdrawalOf } from "./helpers/event-ledger-seeded-blocks.js";
 import {
   type InputChronology,
   inputExistenceChronologyFixture,
 } from "./helpers/input-existence-chronology-fixture.js";
 
 const OWNER = "91".repeat(28);
+
+type Fixture = Awaited<ReturnType<typeof inputExistenceChronologyFixture>>;
 
 const context = async () => {
   const transaction = buildFixtureTransaction({
@@ -233,7 +259,7 @@ describe("input-existence event chronology", () => {
           eventKey: f.targetEvent,
           field,
           inputIndex: 0n,
-          predecessor: f.predecessor,
+          predecessor: await checkedLedgerAsLedger(f.predecessor),
           owner: OWNER,
         });
         expect(prepared.eventMembership.value.step_index).toBe(f.targetStep);
@@ -274,4 +300,164 @@ describe("input-existence event chronology", () => {
       },
     );
   }
+});
+
+/**
+ * The leaf and proof of `key` in the ledger before `eventKey`, step
+ * `stepIndex` of `block`: the ledger a from-scratch replay of the block's
+ * earlier steps gives (the test reference, not the family's walk), proved
+ * from its trie.
+ */
+const referenceEvidence = async (
+  block: CanonicalBlockEvidence,
+  predecessor: CheckedLedger,
+  eventKey: SDK.EventKey,
+  stepIndex: bigint,
+  key: Buffer,
+) => {
+  const { trie } = await referenceLedgerBefore({
+    block,
+    predecessor,
+    eventKey,
+    stepIndex,
+  });
+  const leaf = trie.entries.find((entry) => entry.key.equals(key));
+  return leaf === undefined
+    ? { proof: await keyValuePhasNonMembershipProof(trie, key) }
+    : {
+        value: leaf.value,
+        proof: await keyValuePhasProof(trie, key, leaf.value),
+      };
+};
+
+describe("input-existence ledger evidence", () => {
+  it.each([
+    // Step 0 withdraws the seed 0x51…51#0; the target names 0x53…53#0,
+    // which no step touches.
+    ["withdrawal_untouched", 0, withdrawalOf(0x51, true), "Present"],
+    // Step 0 spends the input the target names.
+    ["normal_spend", 0, undefined, "Absent"],
+    // Step 0 creates the output the target references.
+    ["normal_creator", 1, undefined, "Present"],
+  ] as const)(
+    "proves the %s target's field %s input against the ledger before its step",
+    async (scenario, field, withdrawal, variant) => {
+      const f = await inputExistenceChronologyFixture(
+        scenario,
+        field,
+        undefined,
+        withdrawal?.committed,
+      );
+      expect(f.targetPreRoot).not.toBe(f.evidence.header.prevUtxosRoot);
+      const prepared = await prepareInputExistence({
+        block: f.evidence,
+        eventKey: f.targetEvent,
+        field,
+        inputIndex: 0n,
+        predecessor: await checkedLedgerAsLedger(f.predecessor),
+        owner: OWNER,
+      });
+      const { value, proof } = await referenceEvidence(
+        f.evidence,
+        f.predecessor,
+        f.targetEvent,
+        f.targetStep,
+        f.selected,
+      );
+      expect(prepared.ledgerEvidence).toStrictEqual(
+        value === undefined
+          ? { Absent: { proof } }
+          : {
+              Present: {
+                value: value.toString("hex"),
+                value_hash: computeHash32(value).toString("hex"),
+                proof,
+              },
+            },
+      );
+      expect(prepared.ledgerEvidence).toHaveProperty(variant);
+    },
+  );
+
+  it.each([
+    [0, detectNonExistentInputWrongfulRejections],
+    [1, detectNoReferenceInputWrongfulRejections],
+  ] as const)(
+    "proves the field %s input of a wrongful rejection present at the ledger before its step",
+    async (field, detect) => {
+      // Step 0 withdraws the seed 0x52…52#0; the forced target, rejected
+      // as InputNotFound, names 0x51…51#0, which no step touches.
+      const f = await inputExistenceChronologyFixture(
+        "prior_ledger_present_rejection",
+        field,
+        undefined,
+        withdrawalOf(0x52, true).committed,
+      );
+      expect(f.targetPreRoot).not.toBe(f.evidence.header.prevUtxosRoot);
+      const detections = await detect({
+        block: f.evidence,
+        predecessor: f.predecessor,
+      });
+      expect(detections).toHaveLength(1);
+      const { value, proof } = await referenceEvidence(
+        f.evidence,
+        f.predecessor,
+        f.targetEvent,
+        f.targetStep,
+        f.selected,
+      );
+      expect(value).toBeDefined();
+      expect(detections[0]!.prepared.ledgerMembership).toStrictEqual({
+        value: value!.toString("hex"),
+        proof,
+      });
+    },
+  );
+
+  it.each([
+    [
+      "an input",
+      "later_creator",
+      async (f: Fixture, predecessor: Ledger) =>
+        await prepareInputExistence({
+          block: f.evidence,
+          eventKey: f.targetEvent,
+          field: 0,
+          inputIndex: 0n,
+          predecessor,
+          owner: OWNER,
+        }),
+    ],
+    [
+      "a wrongful rejection",
+      "prior_ledger_present_rejection",
+      async (f: Fixture, predecessor: Ledger) =>
+        await prepareNonExistentInputWrongfulRejection({
+          block: f.evidence,
+          forcedIndex: 0,
+          predecessor,
+        }),
+    ],
+  ] as const)(
+    "is this process's local fault for %s when the store no longer holds the predecessor",
+    async (_, scenario, prepare) => {
+      // The target is step 0, so its evidence reads the predecessor itself,
+      // which `retain` of nothing deletes.
+      const f = await inputExistenceChronologyFixture(scenario, 0);
+      expect(f.targetStep).toBe(0n);
+      const store = createLedgerStore(createMemoryLedgerStorage());
+      const predecessor = await store.admit(
+        f.predecessorEntries,
+        f.predecessor.utxosRoot,
+      );
+      await store.retain(new Set());
+      const error: unknown = await prepare(f, predecessor).catch(
+        (cause: unknown) => cause,
+      );
+      expect(isReplayLocalFault(error)).toBe(true);
+      expect((error as { cause: unknown }).cause).toBeInstanceOf(
+        LedgerNodeMissing,
+      );
+    },
+  );
 });

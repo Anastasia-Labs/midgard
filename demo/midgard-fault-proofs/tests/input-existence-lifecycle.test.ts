@@ -15,6 +15,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
 import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
@@ -272,7 +273,7 @@ describe("registered event-relative input-existence lifecycle", () => {
           eventKey: selected.eventKey,
           field,
           inputIndex: rejected ? undefined : 0n,
-          predecessor: selected.predecessor,
+          predecessor: await checkedLedgerAsLedger(selected.predecessor),
           owner: h.proverSigner.paymentKeyHash,
         });
         expect(prepared.source.subject.direction).toBe(rejected ? 1n : 0n);

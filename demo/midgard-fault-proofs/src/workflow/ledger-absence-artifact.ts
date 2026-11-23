@@ -4,6 +4,7 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
   admitInputExistenceArtifact,
@@ -131,15 +132,18 @@ export const prepareLedgerAbsenceArtifact = async ({
   } else if (selected.violationId !== `${violation}-wrongful-rejection`) {
     throw new Error("input-existence classification names another rule");
   }
+  const predecessor = completeCanonicalReplayPredecessorLedger({
+    evidence,
+    context: replayContext,
+  });
   const prepared = await prepareInputExistence({
     block: evidence,
     eventKey,
     field,
     inputIndex: index,
-    predecessor: completeCanonicalReplayPredecessorLedger({
-      evidence,
-      context: replayContext,
-    }),
+    ...(predecessor === undefined
+      ? {}
+      : { predecessor: await checkedLedgerAsLedger(predecessor) }),
     owner,
   });
   const wrongfulAcceptance =

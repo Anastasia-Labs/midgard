@@ -8,6 +8,10 @@ import {
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "@al-ft/midgard-fault-proofs/evidence";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import { prepareDoubleWithdrawFromCommittedLeaves } from "@al-ft/midgard-fault-proofs/prepare-double-withdraw";
 import { resolveProverSigner } from "@al-ft/midgard-fault-proofs/runtime";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
@@ -304,7 +308,10 @@ it.each([
         eventKey: block.targetEventKey,
         field,
         inputIndex: 0n,
-        predecessor: predecessor.ledger,
+        predecessor: await createLedgerStore(createMemoryLedgerStorage()).admit(
+          predecessor.ledger.entries,
+          predecessor.ledger.utxosRoot,
+        ),
         owner: stage.ownerKey.to_public().hash().to_hex(),
       });
       expect(prepared.ledgerEvidence).toHaveProperty(
