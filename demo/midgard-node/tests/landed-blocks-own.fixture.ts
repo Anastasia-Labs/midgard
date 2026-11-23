@@ -3,8 +3,14 @@
  * ledger, an own block A on it with its journal and a foreign block F on A,
  * their landed queue, and stub landed-block ports over the node database
  * that record replays and rebases (held pending: the driver's recompute
- * never runs here) and serve a set queue history.
+ * never runs here), serve a set queue history, and read ledgers from a
+ * memory ledger store retaining the genesis ledger.
  */
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  type LedgerStore,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
@@ -62,6 +68,27 @@ export const AFTER_F = [A1, F1];
 
 export const rootOf = (entries: readonly Ledger.MinimalEntry[]) =>
   Effect.runPromise(computeLedgerMpfRootFromLedgerEntries([...entries]));
+
+/** A memory ledger store retaining the ledger of `entries`, if given, and
+ * otherwise only the empty ledger. */
+export const ledgerStoreOf = async (
+  entries?: readonly Ledger.MinimalEntry[],
+): Promise<LedgerStore> => {
+  const store = createLedgerStore(createMemoryLedgerStorage());
+  if (entries !== undefined) await admitLedger(store, entries);
+  return store;
+};
+
+/** Has `store` retain the ledger of `entries`. */
+export const admitLedger = async (
+  store: LedgerStore,
+  entries: readonly Ledger.MinimalEntry[],
+): Promise<void> => {
+  await store.admit(
+    entries.map((item) => ({ outRef: item.outref, output: item.output })),
+    await rootOf(entries),
+  );
+};
 
 export const sortedKeys = (entries: readonly Ledger.MinimalEntry[]) =>
   entries.map((item) => `${hex(item.outref)}=${hex(item.output)}`).sort();
@@ -178,6 +205,8 @@ export type Harness = {
   replayEnds: Effect.Effect<ReplayOutcome, unknown> | undefined;
   /** Whether the follower is still at the run's view when it writes. */
   viewHeld: boolean;
+  /** The ledger store `retainedLedger` reads. */
+  ledgers: Promise<LedgerStore>;
 };
 
 export const harness = (): Harness => ({
@@ -188,6 +217,7 @@ export const harness = (): Harness => ({
   replayRoot: undefined,
   replayEnds: undefined,
   viewHeld: true,
+  ledgers: ledgerStoreOf(GENESIS),
 });
 
 export const ports = (state: Harness): LandedBlockPorts<never> => ({
@@ -226,6 +256,11 @@ export const ports = (state: Harness): LandedBlockPorts<never> => ({
           outputs: new Map(),
         },
       } as const;
+    }),
+  retainedLedger: (root) =>
+    Effect.tryPromise({
+      try: async () => (await state.ledgers).at(root),
+      catch: (cause) => cause,
     }),
   ownJournal: (headerHash) => Effect.succeed(state.journals.get(headerHash)),
   genesis: ledgerRows(GENESIS, new Map()),

@@ -3,7 +3,8 @@
  * environment a scenario runs in, the stub ports processing runs on (honest,
  * exactly-once-checked replays with late DA and transient faults, foreign
  * blocks that include pending transactions; own blocks read from the node's
- * journals) and the canonical queue read from the canonical blocks.
+ * journals and checked on the native owner's ledger store) and the
+ * canonical queue read from the canonical blocks.
  */
 import { type BlockSummary, type FactStore } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
@@ -319,6 +320,11 @@ export const simPorts = (
           outputs: new Map(),
         },
       } as const;
+    }),
+  retainedLedger: (root) =>
+    Effect.tryPromise({
+      try: () => env.owner.current.ledger(root),
+      catch: (cause) => cause,
     }),
   ownJournal,
   genesis: ledgerRows(env.universe.genesis, new Map()),

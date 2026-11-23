@@ -7,26 +7,33 @@
  * and the runner's progress watching that block says it passed. A block
  * naming an event the facts lack, short of covering its range, is held as a
  * local fault on it too, and so is a block whose admitted forced order the
- * facts cannot read back.
+ * facts cannot read back. An own block whose parent root the ledger store
+ * does not retain is held as a local fault on it, with the alarm, and
+ * committed once the store retains that root.
  */
 
-import { Effect } from "effect";
+import { Effect, Metric } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { localFaultSubject } from "../src/l1-events/driver.js";
+import { isRetriedHold, localFaultSubject } from "../src/l1-events/driver.js";
 import {
   LANDED_BLOCK_EVENT_UNKNOWN,
   LANDED_BLOCK_FORCED_ORDER_PENDING,
+  LANDED_BLOCK_LOCAL_FAULT,
   LANDED_BLOCK_VERIFIER_UNAVAILABLE,
 } from "../src/landed-blocks/holds.js";
 import { processLandedQueue } from "../src/landed-blocks/process.js";
+import { landedBlockLocalFaultCounter } from "../src/landed-blocks/replay-outcome-hold.js";
 import { retrieveRows } from "../src/landed-blocks/store.js";
 import { localFaultProgress } from "../src/services/l1-follower.coalesced-runner.js";
 import {
+  admitLedger,
   type Block,
   fixture,
+  GENESIS,
   harness,
   inNode,
+  ledgerStoreOf,
   ports,
   queueOf,
 } from "./landed-blocks-own.fixture.js";
@@ -122,6 +129,42 @@ describe("processing reports the blocks it commits", () => {
         );
         expect(held?.reason).toBe(LANDED_BLOCK_FORCED_ORDER_PENDING);
         expect(localFaultSubject(held!)).toBe(f.hash);
+      }),
+    );
+  }, 120_000);
+
+  it("holds an own block whose parent root the ledger store does not retain as a local fault on it, with the alarm, and commits it once the store retains the root", async () => {
+    const { a, genesisState, journalA } = await fixture();
+    const state = harness();
+    state.journals.set(a.hash, journalA);
+    const store = await ledgerStoreOf();
+    state.ledgers = Promise.resolve(store);
+    const committed: string[] = [];
+    await inNode(
+      Effect.gen(function* () {
+        const alarms = Metric.value(
+          Metric.tagged(landedBlockLocalFaultCounter, "kind", "local_fault"),
+        ).pipe(Effect.map(({ count }) => count));
+        const before = yield* alarms;
+        const process = () =>
+          processLandedQueue(ports(state), queueOf(genesisState, [a]), {
+            committed: (headerHash) => committed.push(headerHash),
+          });
+        const held = yield* process();
+        expect(held?.reason).toBe(LANDED_BLOCK_LOCAL_FAULT);
+        expect(isRetriedHold(held!)).toBe(true);
+        expect(localFaultSubject(held!)).toBe(a.hash);
+        expect(held?.detail).toContain(genesisState.utxoRoot);
+        expect((yield* alarms) - before).toBe(1n);
+        expect(committed).toEqual([]);
+        expect(yield* retrieveRows).toHaveLength(0);
+
+        yield* Effect.promise(() => admitLedger(store, GENESIS));
+        yield* process();
+        expect(committed).toEqual([a.hash]);
+        expect(
+          (yield* retrieveRows).map((row) => [row.headerHash, row.kind]),
+        ).toEqual([[a.hash, "own"]]);
       }),
     );
   }, 120_000);

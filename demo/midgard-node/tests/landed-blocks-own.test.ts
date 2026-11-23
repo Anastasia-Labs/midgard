@@ -5,8 +5,9 @@
  * is, and the rebase is asked to apply it (the rebase applies own and
  * foreign blocks alike; an abandoned journal's block is revived by that
  * rebase, with nothing held after it); a journal that does not describe the
- * landed block, or whose delta misses its header's root, holds the local
- * fault by name and records nothing; a merged own block folds into
+ * landed block, or whose delta misses its header's root or does not apply
+ * to the parent's ledger in the ledger store, holds the local fault by name
+ * and records nothing; a merged own block folds into
  * `confirmed_ledger` once the rebase applied it (N5), once, whether the
  * merge fiber folded it first or not, and waits for that rebase until then;
  * a foreign block after it replays on the journal's post-state, and one
@@ -68,8 +69,10 @@ import {
   type Block,
   confirmedAt,
   confirmedKeys,
+  entry,
   fixture,
   G0,
+  G1,
   GENESIS,
   harness,
   hex,
@@ -232,6 +235,27 @@ describe("own landed blocks", () => {
         expect(held?.detail).not.toContain(LANDED_BLOCK_INVALID);
         expect(yield* retrieveRows).toHaveLength(0);
         expect(state.replays).toHaveLength(0);
+        // Edits the parent's ledger refuses (a delete of an out-ref it does
+        // not hold, an insert over one it holds) hold the same fault and
+        // write nothing, even where the rest of the delta reaches the root.
+        for (const refused of [
+          { spent: [G0.outref, entry("absent", 1_000_000n).outref] },
+          { produced: [A1, G1] },
+        ]) {
+          state.journals.set(a.hash, { ...journalA, ...refused });
+          const unapplied = yield* processLandedQueue(
+            ports(state),
+            queueOf(genesisState, [a, f]),
+          );
+          expect([unapplied?.reason, isRetriedHold(unapplied!)]).toEqual([
+            LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
+            false,
+          ]);
+          expect(unapplied?.detail).toContain(
+            `own block ${a.hash}'s journal delta does not apply to its parent's ledger`,
+          );
+          expect(yield* retrieveRows).toHaveLength(0);
+        }
         // The journal's delta reaches the root: adopted, as in the first case.
         state.journals.set(a.hash, journalA);
         yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));

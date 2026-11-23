@@ -3,6 +3,7 @@
  * processing runs under the follower-change driver's write capability in
  * production and under the fork simulator in tests.
  */
+import type { Ledger as RetainedLedger } from "@al-ft/midgard-fault-proofs/ledger-store";
 import type { View } from "@al-ft/midgard-l1-follower";
 import { Data, Effect } from "effect";
 
@@ -74,6 +75,13 @@ export type LandedBlockPorts<R> = Readonly<{
   retainLedgers?: (
     queue: LandedStateQueue,
   ) => Effect.Effect<void, never, R | Database>;
+  /**
+   * The ledger with `root` from the node's ledger store; fails with
+   * `LedgerNotRetained` when the store does not retain `root`.
+   */
+  retainedLedger: (
+    root: string,
+  ) => Effect.Effect<RetainedLedger, unknown, R | Database>;
   /** This node's journal of `headerHash`, if it committed that block. */
   ownJournal: (
     headerHash: string,

@@ -1,13 +1,12 @@
 /**
  * Landed-block processing on a `confirmed_ledger` that does not derive the
- * frontier's root (`local-ledger-divergence.ts`): the parent ledger a landed
- * block is adopted on is this node's, so a block on it, foreign and honest
- * or this node's own with a matching journal, is held as a local fault on
- * its header (retried within the runner's bound, with the alarm), never
- * `landed_block_invalid` or `landed_block_own_journal_mismatch`. Once the
- * ledger derives the root again, the same block is adopted. An attested
- * foreign block's replay keeps the local fault: only `invalid` is demoted
- * for an unbound copy.
+ * frontier's root (`local-ledger-divergence.ts`): the parent ledger a foreign
+ * landed block is replayed on is this node's, so an honest foreign block on
+ * it is held as a local fault on its header (retried within the runner's
+ * bound, with the alarm), never `landed_block_invalid`. Once the ledger
+ * derives the root again, the same block is adopted. An attested foreign
+ * block's replay keeps the local fault: only `invalid` is demoted for an
+ * unbound copy.
  */
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk/core";
@@ -20,7 +19,6 @@ import { isRetriedHold, localFaultSubject } from "../src/l1-events/driver.js";
 import {
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_LOCAL_FAULT,
-  LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
   LANDED_BLOCK_REBASE_PENDING,
 } from "../src/landed-blocks/holds.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
@@ -32,10 +30,7 @@ import { simDigest, simOutput } from "./helpers/landed-blocks-sim.universe.js";
 import { NODE_PREFIX, nodeDatum } from "./helpers/state-queue-sim.fixtures.js";
 import {
   element,
-  fixture,
-  GENESIS,
   harness,
-  inNode as inOwnNode,
   ports,
   queueOf,
 } from "./landed-blocks-own.fixture.js";
@@ -75,39 +70,6 @@ const seed = (
 const dropStray = withFollowerWrite(
   ConfirmedLedgerDB.clearUTxOs([Buffer.from(STRAY.outref)]),
 );
-
-describe("an own landed block on a parent ledger that does not derive the parent's root", () => {
-  it("is held as a local fault on it, not a journal mismatch, and adopted once the ledger derives the root", async () => {
-    const { a, genesisRoot, genesisState, journalA } = await fixture();
-    const state = harness();
-    state.journals.set(a.hash, journalA);
-    await inOwnNode(
-      Effect.gen(function* () {
-        yield* seed([...GENESIS, STRAY], {
-          headerHash: SDK.GENESIS_HEADER_HASH,
-          utxosRoot: genesisRoot,
-        });
-        const process = () =>
-          processLandedQueue(ports(state), queueOf(genesisState, [a]));
-        const held = yield* process();
-        expect(held?.reason).toBe(LANDED_BLOCK_LOCAL_FAULT);
-        expect(held?.reason).not.toBe(LANDED_BLOCK_OWN_JOURNAL_MISMATCH);
-        expect(isRetriedHold(held!)).toBe(true);
-        expect(localFaultSubject(held!)).toBe(a.hash);
-        expect(held?.detail).toContain(
-          `local ledger divergence (own_parent): the ledger at ${SDK.GENESIS_HEADER_HASH}`,
-        );
-        expect(yield* retrieveRows).toHaveLength(0);
-
-        yield* dropStray;
-        expect((yield* process())?.reason).toBe(LANDED_BLOCK_REBASE_PENDING);
-        expect((yield* retrieveRows).map((row) => row.headerHash)).toEqual([
-          a.hash,
-        ]);
-      }),
-    );
-  }, 120_000);
-});
 
 describe("an honest foreign landed block on a parent ledger that does not derive the parent's root", () => {
   const opened: FactStore[] = [];
