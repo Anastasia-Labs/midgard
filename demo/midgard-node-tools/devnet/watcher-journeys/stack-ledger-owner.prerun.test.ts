@@ -429,7 +429,7 @@ describe("the ledger owner's deposit in a live operator's shift", () => {
 describe("a family on a stack whose ledger owner is unfunded", () => {
   it("refuses, by name, rather than funding the owner itself", () => {
     const tail = {
-      ledger: { entries: [] },
+      ledgerEntries: [],
     } as unknown as JourneyLedgerPredecessor;
     let refusal: unknown;
     try {
