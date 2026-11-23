@@ -227,11 +227,17 @@ export interface NativeMpfOwnerService extends NativeMpfOwnerClient {
     roots: ReadonlySet<string>,
   ): Promise<{ readonly notRetained: ReadonlySet<string> }>;
   /**
-   * The ledger with `root` from the owner's ledger store, read-only for the
-   * caller (`LedgerStore.at`): refused with `LedgerNotRetained` when the
-   * store does not retain `root`.
+   * The ledger with `root` from the owner's ledger store (`LedgerStore.at`):
+   * refused with `LedgerNotRetained` when the store does not retain `root`.
+   * The caller may apply to it and keep the result with `persistLedger`.
    */
   ledger(root: string): Promise<Ledger>;
+  /**
+   * Keeps `ledger`, one `ledger` returned and applied to, in the owner's
+   * ledger store and retains its root (`LedgerStore.persist`); the durable
+   * root does not move. Keeping a retained root changes nothing.
+   */
+  persistLedger(ledger: Ledger): Promise<void>;
   diagnostics(): Promise<NativeMpfOwnerDiagnostics>;
   /** Why the owner refuses work, while it does: failed restarts exhaust the
    * restart window, or a committed recovery is not installed yet. Each call

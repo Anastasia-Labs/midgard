@@ -214,10 +214,10 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
 
   it("holds an honest foreign block as a local fault, then imports it once it clears", async () => {
     const orders = [await order(0x02)];
-    const { root, payload } = await honestBlock(orders);
+    const { payload } = await honestBlock(orders);
 
     fault.on = true;
-    const faulted = await replay(payload, orders, root);
+    const faulted = await replay(payload, orders);
     expect(faulted.result).toMatchObject({
       _tag: "Left",
       left: { reason: "local_fault" },
@@ -225,7 +225,7 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
     expect(faulted.memberships).toEqual([]);
 
     fault.on = false;
-    const imported = await replay(payload, orders, root);
+    const imported = await replay(payload, orders);
     expect(imported.result._tag).toBe("Right");
     expect(imported.memberships.map(({ validity }) => validity)).toEqual([
       "WithdrawalIsValid",
@@ -298,13 +298,13 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
       "00".repeat(10),
     ];
     const orders = [await order(0x04, malformed)];
-    const { root, produced, payload } = await honestBlock(orders);
+    const { produced, payload } = await honestBlock(orders);
     expect(
       produced.includedWithdrawalEntries.map(
         (row) => row[WithdrawalsDB.Columns.VALIDITY],
       ),
     ).toEqual(["IncorrectWithdrawalSignature"]);
-    expect((await replay(payload, orders, root)).result._tag).toBe("Right");
+    expect((await replay(payload, orders)).result._tag).toBe("Right");
 
     const info = Data.from(
       hex(orders[0]![WithdrawalsDB.Columns.RAW_EVENT_INFO]),
@@ -323,7 +323,7 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
         ]),
       },
     });
-    expect((await replay(tampered, orders, root)).result).toMatchObject({
+    expect((await replay(tampered, orders)).result).toMatchObject({
       _tag: "Left",
       left: {
         kind: "invalid",
@@ -347,8 +347,8 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
     });
 
     // A block whose verdict on the row is another refuses as invalid.
-    const { root, payload } = await honestBlock([honest]);
-    expect((await replay(payload, [deep], root)).result).toMatchObject({
+    const { payload } = await honestBlock([honest]);
+    expect((await replay(payload, [deep])).result).toMatchObject({
       _tag: "Left",
       left: {
         kind: "invalid",
@@ -363,7 +363,7 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
         (row) => row[WithdrawalsDB.Columns.VALIDITY],
       ),
     ).toEqual(["IncorrectWithdrawalSignature"]);
-    const imported = await replay(own.payload, [deep], own.root);
+    const imported = await replay(own.payload, [deep]);
     expect(imported.result._tag).toBe("Right");
     expect(imported.memberships.map(({ validity }) => validity)).toEqual([
       "IncorrectWithdrawalSignature",
@@ -371,7 +371,7 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
 
     // A throw on an info that reads is this node's own fault.
     fault.on = true;
-    expect((await replay(payload, [deep], root)).result).toMatchObject({
+    expect((await replay(payload, [deep])).result).toMatchObject({
       _tag: "Left",
       left: { reason: "local_fault" },
     });
@@ -392,13 +392,13 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
     expect(held._tag === "Left" && heldBuildStage(held.left)).toBe(
       WITHDRAWAL_CLASSIFICATION_STAGE,
     );
-    expect((await replay(payload, [row], root)).result).toMatchObject({
+    expect((await replay(payload, [row])).result).toMatchObject({
       _tag: "Left",
       left: { reason: "local_fault" },
     });
 
     fault.on = false;
-    const imported = await replay(payload, [row], root);
+    const imported = await replay(payload, [row]);
     expect(imported.result._tag).toBe("Right");
     expect(imported.memberships.map(({ validity }) => validity)).toEqual([
       "IncorrectWithdrawalSignature",
@@ -416,7 +416,7 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
     "keeps the input's verdict on $name, whether or not the classifier throws",
     async ({ info }) => {
       const honest = await order(0x07);
-      const { root, payload } = await honestBlock([honest]);
+      const { payload } = await honestBlock([honest]);
       const row: WithdrawalsDB.Entry = {
         ...honest,
         raw_event_info: Buffer.from(
@@ -424,12 +424,12 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
           "hex",
         ),
       };
-      expect((await replay(payload, [row], root)).result).toMatchObject({
+      expect((await replay(payload, [row])).result).toMatchObject({
         _tag: "Left",
         left: { _tag: "WithdrawalValidationError" },
       });
       fault.on = true;
-      expect((await replay(payload, [row], root)).result).toMatchObject({
+      expect((await replay(payload, [row])).result).toMatchObject({
         _tag: "Left",
         left: { reason: "invalid" },
       });

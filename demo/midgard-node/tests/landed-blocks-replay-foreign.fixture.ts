@@ -60,6 +60,7 @@ import {
 import { openNodeFollowerStore } from "./helpers/forced-orders-node-store.js";
 import { EVENTS_CONFIG, listOf } from "./helpers/l1-events-chain.js";
 import { ChainDriver } from "./helpers/l1-events-store.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 import {
   attested,
   AVAILABILITY,
@@ -452,8 +453,7 @@ export const inputFor = async (
     daAvailability: daAvailability ?? (await attested(payload)),
     enteredSlot: view.point.slot,
     parentHeaderHash: header.prevHeaderHash,
-    parentUtxosRoot: header.prevUtxosRoot,
-    parentEntries: [],
+    parent: await ledgerOf([]),
     view,
   };
 };

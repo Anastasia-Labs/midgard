@@ -54,32 +54,6 @@ export const applyDelta = (
 };
 
 /**
- * The net delta from `parent` to `after`: the outrefs that went, and the
- * outputs at outrefs `parent` does not hold or holds with other bytes. The
- * two never share an outref. A replay never changes the output at a held
- * outref (an outref names one output), so a changed one appears only as
- * produced, and the walk a commit base takes (`deltaFault`,
- * `commit-block-header.landed-commit-base.ts`) refuses it: the ledger
- * before the row already holds it.
- */
-export const netDelta = (
-  parent: LedgerMap,
-  after: readonly Ledger.MinimalEntry[],
-): Pick<LandedBlockRow, "spent" | "produced"> => {
-  const next = ledgerMap(after);
-  const spent = [...parent.keys()]
-    .filter((key) => !next.has(key))
-    .sort()
-    .map((key) => Buffer.from(key, "hex"));
-  const produced = ledgerEntries(
-    new Map(
-      [...next].filter(([key, output]) => !parent.get(key)?.equals(output)),
-    ),
-  );
-  return { spent, produced };
-};
-
-/**
  * The processed rows that chain from `from` by parent links, in order. The
  * unique processed-parent index makes the chain a path.
  */
@@ -243,29 +217,3 @@ export const landedStart = (
           };
     }),
   );
-
-/**
- * `confirmed_ledger` after `rows`' deltas in order: the whole-ledger read
- * only new processing (a replay or an adoption) needs.
- */
-export const ledgerAfter = (rows: readonly LandedBlockRow[]) =>
-  ConfirmedLedgerDB.retrieve.pipe(
-    Effect.map((confirmed) => {
-      const ledger = ledgerMap(confirmed);
-      for (const row of rows) applyDelta(ledger, row);
-      return ledger;
-    }),
-  );
-
-/** The post-state of `headerHash` on the landed ledger, if it is on it. */
-export const ledgerAt = (landed: LandedLedger, headerHash: string) => {
-  const ledger = ledgerMap(landed.confirmed);
-  if (landed.frontier.headerHash === headerHash)
-    return { ledger, root: landed.frontier.utxosRoot };
-  for (const row of landed.chain) {
-    applyDelta(ledger, row);
-    if (row.headerHash === headerHash)
-      return { ledger, root: row.utxosRoot, row };
-  }
-  return undefined;
-};

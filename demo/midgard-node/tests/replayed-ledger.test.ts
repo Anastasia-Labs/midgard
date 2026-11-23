@@ -110,7 +110,7 @@ describe("the watcher's replayed ledger", { timeout: 60_000 }, () => {
     );
     expect(entries).toBeDefined();
     const root = await ledgerEntriesRoot(entries!);
-    expect(root).toBe(node.right.root);
+    expect(root).toBe(node.right.after.root);
     expect(root).toBe(f.payload.block_body.header.utxosRoot);
     const pairs = (rows: readonly (readonly [Buffer, Buffer])[]) =>
       rows
@@ -119,9 +119,12 @@ describe("the watcher's replayed ledger", { timeout: 60_000 }, () => {
             `${outRef.toString("hex")}:${output.toString("hex")}`,
         )
         .sort();
+    const imported: (readonly [Buffer, Buffer])[] = [];
+    for await (const { outRef, output } of node.right.after.entries())
+      imported.push([outRef, output]);
     expect(
       pairs(entries!.map(({ outRef, output }) => [outRef, output])),
-    ).toEqual(pairs(node.right.entries.map((row) => [row.outref, row.output])));
+    ).toEqual(pairs(imported));
   });
 
   it("answers from its store after a restart", async () => {

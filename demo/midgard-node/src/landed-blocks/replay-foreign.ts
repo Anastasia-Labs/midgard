@@ -401,8 +401,7 @@ export const foreignBlockReplayer = (deps: {
         header,
         headerHash,
         parentHeaderHash: input.parentHeaderHash,
-        parentUtxosRoot: input.parentUtxosRoot,
-        parentEntries: input.parentEntries,
+        parent: input.parent,
         payload,
         expectedNetworkId: config.NETWORK === "Mainnet" ? 1n : 0n,
         minFeeA: config.MIN_FEE_A,
@@ -430,8 +429,9 @@ export const foreignBlockReplayer = (deps: {
         keepUnbound(unbound, headerHash, acquired);
       return {
         kind: "replayed",
-        entries: imported.entries,
-        root: imported.root,
+        after: imported.after,
+        spent: imported.spent,
+        produced: imported.produced,
         depositIds: body.deposits.map(([key]) => Buffer.from(key, "hex")),
         withdrawals: memberships,
         forcedIds: body.forced_transactions.map(([key]) =>

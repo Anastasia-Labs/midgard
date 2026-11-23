@@ -60,7 +60,6 @@ const exported = async () => {
 const counts = (
   values: Partial<Record<LedgerDivergenceCheck, number>> = {},
 ): Record<LedgerDivergenceCheck, number> => ({
-  landed_parent: 0,
   commit_base_landed: 0,
   commit_base_confirmed_ledger: 0,
   confirmed_ledger: 0,

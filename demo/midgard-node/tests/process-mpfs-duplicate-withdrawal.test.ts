@@ -109,7 +109,7 @@ describe("duplicate-outref withdrawals in one block window", () => {
     // Foreign replay derives the same verdicts, transitions and root.
     const honest = await payloadOf(produced, baseRoot);
     expect(honest.block_body.header.utxosRoot).toBe(produced.utxoRoot);
-    const accepted = await replay(honest, orders, baseRoot);
+    const accepted = await replay(honest, orders);
     expect(accepted.result._tag).toBe("Right");
     expect(
       accepted.memberships.map(({ id, validity }) => [id, validity]),
@@ -139,7 +139,7 @@ describe("duplicate-outref withdrawals in one block window", () => {
         ]),
       },
     });
-    const refused = await replay(tampered, orders, baseRoot);
+    const refused = await replay(tampered, orders);
     expect(refused.result).toMatchObject({
       _tag: "Left",
       left: {

@@ -52,8 +52,8 @@ const genesis = Effect.gen(function* () {
  * spends), the driver's recompute as the rebase, and the deployment's
  * availability commitment authority; each fold processing commits advances
  * `globals`' verified confirmed ledger (`advanceVerifiedConfirmedLedger`),
- * and each run reads ledgers from `globals`' native owner's store and has
- * the owner keep the ledgers the node needs.
+ * and each run reads and persists ledgers in `globals`' native owner's
+ * store and has the owner keep the ledgers the node needs.
  */
 export const nodeLandedBlockPorts = (
   store: FactStore,
@@ -81,6 +81,17 @@ export const nodeLandedBlockPorts = (
   });
   const queueHistory = (view: View) =>
     readQueueHistory(store, plan.stateQueue, view);
+  const ledgerOwner = Effect.flatMap(
+    Ref.get(globals.NATIVE_MPF_OWNER),
+    (owner) =>
+      owner === undefined
+        ? Effect.fail(
+            new Error(
+              "The native MPF owner, which holds the ledger store, is not started",
+            ),
+          )
+        : Effect.succeed(owner),
+  );
   return {
     confirmView,
     queueHistory,
@@ -92,19 +103,19 @@ export const nodeLandedBlockPorts = (
       Ref.get(globals.NATIVE_MPF_OWNER),
     ),
     retainedLedger: (root: string) =>
-      Effect.gen(function* () {
-        const owner = yield* Ref.get(globals.NATIVE_MPF_OWNER);
-        if (owner === undefined)
-          return yield* Effect.fail(
-            new Error(
-              "The native MPF owner, which holds the ledger store, is not started",
-            ),
-          );
-        return yield* Effect.tryPromise({
+      Effect.flatMap(ledgerOwner, (owner) =>
+        Effect.tryPromise({
           try: () => owner.ledger(root),
           catch: (cause) => cause,
-        });
-      }),
+        }),
+      ),
+    persistLedger: (ledger) =>
+      Effect.flatMap(ledgerOwner, (owner) =>
+        Effect.tryPromise({
+          try: () => owner.persistLedger(ledger),
+          catch: (cause) => cause,
+        }),
+      ),
     ownJournal,
     genesis,
     rebase,

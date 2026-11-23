@@ -65,6 +65,7 @@ import {
 } from "../src/database/index.js";
 import { queueTerminalProjection } from "../src/l1-queue-terminals/projection.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
+import { readLedgerOutputs } from "../src/landed-blocks/ledger-outputs.js";
 import { ledgerOutputToInsertBatchOp } from "../src/mpf/ledger-delta.js";
 import type { NodeConfig } from "../src/services/config.js";
 import type { Database } from "../src/services/database.js";
@@ -166,10 +167,13 @@ const openPostgres: ForkRunOptions["open"] = async (
     connection: { connectionString: await databases.create() },
   });
 
-/** A native owner at the genesis root, in a fresh directory. */
-const openOwner = async (): Promise<
-  SimOwner & { dispose: () => Promise<void> }
-> => {
+/** A native owner at the genesis root, in a fresh directory, reading
+ * ledger outputs from the node's database as the node does. */
+const openOwner = async (
+  runtime: Runtime.Runtime<Database | NodeConfig>,
+): Promise<SimOwner & { dispose: () => Promise<void> }> => {
+  const readOutputs = (outRefs: readonly string[]) =>
+    Runtime.runPromise(runtime)(readLedgerOutputs(outRefs));
   const directory = await mkdtemp(join(tmpdir(), "midgard-landed-sim-"));
   const options = {
     levelPath: join(directory, "ledger"),
@@ -183,7 +187,11 @@ const openOwner = async (): Promise<
   await seed.open();
   await seed.put("__root__", SDK.EMPTY_MERKLE_TREE_ROOT);
   await seed.close();
-  const first = await createOwnerService(options.levelPath, options);
+  const first = await createOwnerService(
+    options.levelPath,
+    options,
+    readOutputs,
+  );
   const handle = await first.fork(SDK.EMPTY_MERKLE_TREE_ROOT);
   const applied = await first.applyEvents(
     handle,
@@ -202,7 +210,11 @@ const openOwner = async (): Promise<
     current: first,
     reopen: async () => {
       await owner.current.close();
-      owner.current = await createOwnerService(options.levelPath, options);
+      owner.current = await createOwnerService(
+        options.levelPath,
+        options,
+        readOutputs,
+      );
     },
     dispose: async () => {
       await owner.current.close();
@@ -237,7 +249,7 @@ const runScenario = (
       ...(yield* ledgerRows(universe.genesis, new Map())),
     ]);
     const outcome = yield* Effect.acquireUseRelease(
-      Effect.promise(openOwner),
+      Effect.promise(() => openOwner(runtime)),
       (owner) =>
         Effect.promise(() =>
           runForkScenario(scenario, {

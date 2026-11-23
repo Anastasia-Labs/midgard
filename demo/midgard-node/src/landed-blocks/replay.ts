@@ -8,12 +8,15 @@
  * store (`origin_after_frontier`). A replayer throws
  * only for faults it cannot classify; the hook holds on those too.
  */
+import type { Ledger } from "@al-ft/midgard-fault-proofs/ledger-store";
 import type { View } from "@al-ft/midgard-l1-follower";
 import type * as SDK from "@al-ft/midgard-sdk/core";
 
 import type { NamedEvents } from "../database/follower-events.named.js";
-import type * as Ledger from "../database/utils/ledger.js";
-import type { ImportBlockChecks } from "../mpf/verified-block-import.js";
+import type {
+  ImportBlockChecks,
+  LedgerDelta,
+} from "../mpf/verified-block-import.js";
 import type { WithdrawalMembership } from "./store.js";
 
 export type ReplayInput = Readonly<{
@@ -34,27 +37,28 @@ export type ReplayInput = Readonly<{
    */
   enteredSlot: number | null;
   parentHeaderHash: string;
-  parentUtxosRoot: string;
-  parentEntries: readonly Ledger.MinimalEntry[];
+  /** The parent's ledger, from the node's ledger store by the parent's root. */
+  parent: Ledger;
   /** The follower view the queue was read at. */
   view: View;
 }>;
 
-export type Replayed = Readonly<{
-  kind: "replayed";
-  entries: readonly Ledger.MinimalEntry[];
-  root: string;
-  depositIds: readonly Buffer[];
-  withdrawals: readonly WithdrawalMembership[];
-  forcedIds: readonly Buffer[];
-  txIds: readonly Buffer[];
-  /** The transactions the replay applied by their committed verdicts, for
-   * the import checker. */
-  scriptChecks: ImportBlockChecks;
-  /** The events the block names, as the follower facts the replay checked
-   * them against, for the node's rows (`recordNamedEvents`). */
-  named: NamedEvents;
-}>;
+export type Replayed = LedgerDelta &
+  Readonly<{
+    kind: "replayed";
+    /** The ledger after the block, not persisted. */
+    after: Ledger;
+    depositIds: readonly Buffer[];
+    withdrawals: readonly WithdrawalMembership[];
+    forcedIds: readonly Buffer[];
+    txIds: readonly Buffer[];
+    /** The transactions the replay applied by their committed verdicts, for
+     * the import checker. */
+    scriptChecks: ImportBlockChecks;
+    /** The events the block names, as the follower facts the replay checked
+     * them against, for the node's rows (`recordNamedEvents`). */
+    named: NamedEvents;
+  }>;
 
 /**
  * - `missing`: the DA payload is not available yet, or the block ends past

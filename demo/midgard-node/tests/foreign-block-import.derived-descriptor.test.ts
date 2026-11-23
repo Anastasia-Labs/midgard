@@ -111,7 +111,7 @@ const refusal = (result: ImportResult) =>
 /** The imported ledger root; the refusal is named on failure. */
 const importedRoot = (result: ImportResult) => {
   expect(refusal(result)).toBe("imported");
-  return result._tag === "Right" ? result.right.root : undefined;
+  return result._tag === "Right" ? result.right.after.root : undefined;
 };
 
 /** Refused as the block's fault, over its validation descriptors. */

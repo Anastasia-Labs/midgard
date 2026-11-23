@@ -198,7 +198,7 @@ const replaysWithdrawal = async (order: ReturnType<typeof withdrawalOrder>) => {
   );
   expect(await replayedBy(replayerFor(store), store, block)).toMatchObject({
     kind: "replayed",
-    root: SDK.EMPTY_MERKLE_TREE_ROOT,
+    after: expect.objectContaining({ root: SDK.EMPTY_MERKLE_TREE_ROOT }),
     withdrawals: [
       { id: idCbor, validity: "NonExistentWithdrawalUtxo", settlement },
     ],

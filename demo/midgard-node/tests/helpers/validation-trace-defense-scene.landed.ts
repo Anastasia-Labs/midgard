@@ -12,16 +12,27 @@ import { Effect } from "effect";
 
 import { foreignRetainedDaInsert } from "../../src/da/foreign-retained-da.js";
 import { ConfirmedLedgerDB, DaPayloadsDB } from "../../src/database/index.js";
-import {
-  ledgerMap,
-  ledgerRows,
-  netDelta,
-} from "../../src/landed-blocks/ledger.js";
+import { ledgerMap, ledgerRows } from "../../src/landed-blocks/ledger.js";
 import { Frontier, insertRow } from "../../src/landed-blocks/store.js";
 
 type Entry = Readonly<{ outRef: Buffer; output: Buffer }>;
 const minimal = (entries: readonly Entry[]) =>
   entries.map(({ outRef, output }) => ({ outref: outRef, output }));
+
+/** The landed row's delta from the ledger of `before` to that of `after`. */
+const delta = (before: readonly Entry[], after: readonly Entry[]) => {
+  const parent = ledgerMap(minimal(before));
+  const next = ledgerMap(minimal(after));
+  return {
+    spent: [...parent.keys()]
+      .filter((key) => !next.has(key))
+      .map((key) => Buffer.from(key, "hex")),
+    produced: minimal(after).filter(
+      ({ outref, output }) =>
+        !parent.get(outref.toString("hex"))?.equals(output),
+    ),
+  };
+};
 
 /** The node's wallet configuration with `seed` as its operator seed. */
 export const operatorConfig = (seed: string) => ({
@@ -82,10 +93,7 @@ export const seedLanded = (scene: Scene) =>
         kind: "own",
         state: "processed",
         applied: true,
-        ...netDelta(
-          ledgerMap(minimal(block.predecessorEntries)),
-          minimal(block.postEntries),
-        ),
+        ...delta(block.predecessorEntries, block.postEntries),
         depositIds: [],
         withdrawals: [],
         forcedIds: [],

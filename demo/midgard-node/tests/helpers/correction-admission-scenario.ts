@@ -19,9 +19,10 @@ import { expect, vi } from "vitest";
 import * as MempoolLedger from "../../src/database/mempoolLedger.js";
 import * as Pending from "../../src/database/pendingBlockFinalizations.js";
 import {
+  applyDelta,
   landedLedger,
-  ledgerAfter,
   ledgerEntries,
+  ledgerMap,
 } from "../../src/landed-blocks/ledger.js";
 import { retrieveRows } from "../../src/landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/ledger-hydration.js";
@@ -199,7 +200,9 @@ export const observe = async (
       const replay =
         landed === undefined
           ? undefined
-          : ledgerEntries(yield* ledgerAfter(landed.chain));
+          : ledgerEntries(
+              landed.chain.reduce(applyDelta, ledgerMap(landed.confirmed)),
+            );
       return {
         journal:
           journal[0] === undefined

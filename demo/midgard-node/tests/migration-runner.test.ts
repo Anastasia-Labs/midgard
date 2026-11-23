@@ -113,6 +113,7 @@ describe("splitSqlStatements", () => {
       [36, "own_landed_blocks_unapplied", true],
       [37, "own_block_derived_status", true],
       [38, "confirmed_ledger_generation", true],
+      [39, "landed_produced_outref_index", true],
     ]);
   });
 

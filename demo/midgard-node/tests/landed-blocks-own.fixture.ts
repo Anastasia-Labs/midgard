@@ -3,8 +3,8 @@
  * ledger, an own block A on it with its journal and a foreign block F on A,
  * their landed queue, and stub landed-block ports over the node database
  * that record replays and rebases (held pending: the driver's recompute
- * never runs here), serve a set queue history, and read ledgers from a
- * memory ledger store retaining the genesis ledger.
+ * never runs here), serve a set queue history, and read and persist ledgers
+ * in a memory ledger store retaining the genesis ledger.
  */
 import {
   createLedgerStore,
@@ -15,7 +15,7 @@ import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Metric } from "effect";
 
 import { ConfirmedLedgerDB } from "../src/database/index.js";
 import type * as Ledger from "../src/database/utils/ledger.js";
@@ -33,6 +33,7 @@ import type {
   ReplayInput,
   ReplayOutcome,
 } from "../src/landed-blocks/replay.js";
+import { landedBlockLocalFaultCounter } from "../src/landed-blocks/replay-outcome-hold.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import type { Database } from "../src/services/database.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
@@ -89,6 +90,24 @@ export const admitLedger = async (
     await rootOf(entries),
   );
 };
+
+/** What opening `root` in the harness's ledger store ends in: "opened", or
+ * the refusal's name. */
+export const opening = (state: Pick<Harness, "ledgers">, root: string) =>
+  Effect.promise(async () =>
+    (await state.ledgers).at(root).then(
+      () => "opened",
+      (error: unknown) => (error as Error).name,
+    ),
+  );
+
+/** `landed_block_local_fault` alarms of `kind` raised so far. */
+export const localFaultAlarms = (
+  kind: "local_fault" | "incomplete" = "local_fault",
+) =>
+  Metric.value(Metric.tagged(landedBlockLocalFaultCounter, "kind", kind)).pipe(
+    Effect.map(({ count }) => count),
+  );
 
 export const sortedKeys = (entries: readonly Ledger.MinimalEntry[]) =>
   entries.map((item) => `${hex(item.outref)}=${hex(item.output)}`).sort();
@@ -200,12 +219,14 @@ export type Harness = {
   history: LandedStateQueueElement[];
   replays: ReplayInput[];
   rebaseRequests: number;
-  replayRoot: string | undefined;
+  /** When set, every replay also inserts this entry, ending at another
+   * root than its header's. */
+  replayExtra: Ledger.MinimalEntry | undefined;
   /** When set, what every replay ends with instead of replaying. */
   replayEnds: Effect.Effect<ReplayOutcome, unknown> | undefined;
   /** Whether the follower is still at the run's view when it writes. */
   viewHeld: boolean;
-  /** The ledger store `retainedLedger` reads. */
+  /** The ledger store `retainedLedger` reads and `persistLedger` writes. */
   ledgers: Promise<LedgerStore>;
 };
 
@@ -214,7 +235,7 @@ export const harness = (): Harness => ({
   history: [],
   replays: [],
   rebaseRequests: 0,
-  replayRoot: undefined,
+  replayExtra: undefined,
   replayEnds: undefined,
   viewHeld: true,
   ledgers: ledgerStoreOf(GENESIS),
@@ -228,16 +249,25 @@ export const ports = (state: Harness): LandedBlockPorts<never> => ({
     Effect.gen(function* () {
       state.replays.push(input);
       if (state.replayEnds !== undefined) return yield* state.replayEnds;
-      const entries = [
-        ...input.parentEntries.filter((item) => !item.outref.equals(G1.outref)),
+      const produced = [
         F1,
+        ...(state.replayExtra === undefined ? [] : [state.replayExtra]),
       ];
+      const after = yield* Effect.promise(() =>
+        input.parent.apply([
+          { type: "delete", outRef: G1.outref },
+          ...produced.map(({ outref, output }) => ({
+            type: "insert" as const,
+            outRef: outref,
+            output,
+          })),
+        ]),
+      );
       return {
         kind: "replayed",
-        entries,
-        root:
-          state.replayRoot ??
-          (yield* computeLedgerMpfRootFromLedgerEntries(entries)),
+        after,
+        spent: [G1.outref],
+        produced,
         depositIds: [],
         withdrawals: [],
         forcedIds: [],
@@ -260,6 +290,11 @@ export const ports = (state: Harness): LandedBlockPorts<never> => ({
   retainedLedger: (root) =>
     Effect.tryPromise({
       try: async () => (await state.ledgers).at(root),
+      catch: (cause) => cause,
+    }),
+  persistLedger: (ledger) =>
+    Effect.tryPromise({
+      try: async () => (await state.ledgers).persist(ledger),
       catch: (cause) => cause,
     }),
   ownJournal: (headerHash) => Effect.succeed(state.journals.get(headerHash)),

@@ -141,7 +141,9 @@ describe("foreign replay: deposits", () => {
     const outcome = await replayed(store, block);
     expect(outcome).toMatchObject({
       kind: "replayed",
-      root: block.block_body.header.utxosRoot,
+      after: expect.objectContaining({
+        root: block.block_body.header.utxosRoot,
+      }),
       depositIds: [Buffer.from(inWindow!.entry.idCbor, "hex")],
     });
   });

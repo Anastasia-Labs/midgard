@@ -57,7 +57,9 @@ describe("foreign import by committed verdict", () => {
     contexts.built = 0;
     const result = await block.imported();
     if (result._tag === "Left") throw result.left;
-    expect(result.right.root).toBe(block.payload.block_body.header.utxosRoot);
+    expect(result.right.after.root).toBe(
+      block.payload.block_body.header.utxosRoot,
+    );
     expect(result.right.scriptChecks.checks).toHaveLength(parent.length);
     expect(contexts.built).toBe(0);
   });
