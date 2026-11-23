@@ -29,6 +29,7 @@ import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { checkedLedgerAsLedger } from "../../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
 import {
   checkLedgerAgainstRoot,
@@ -304,7 +305,7 @@ export const buildDistinctAssetBlock = async ({
   const material = await prepareDirectScriptMaterial({
     current: block.reconstruction,
     eventKey,
-    predecessor,
+    predecessor: await checkedLedgerAsLedger(predecessor),
   });
   return {
     nativeTx,

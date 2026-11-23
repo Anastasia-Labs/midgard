@@ -15,6 +15,7 @@ import {
 import { Effect } from "effect";
 import { expect, it } from "vitest";
 
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import {
   directBindEventRedeemer,
   directBindingStates,
@@ -59,10 +60,12 @@ const materialFor = async (direction: "A-N" | "A-F" | "R-F") => {
             fixture.evidence.reconstruction.forcedTransactions[0]!.key,
         },
       },
-      predecessor: completeCanonicalReplayPredecessorLedger({
-        evidence: fixture.evidence,
-        context: fixture.context,
-      }),
+      predecessor: await checkedLedgerAsLedger(
+        completeCanonicalReplayPredecessorLedger({
+          evidence: fixture.evidence,
+          context: fixture.context,
+        })!,
+      ),
     });
   }
   const tx = buildFixtureTransaction({ spendInputs: [], fee: 0n });

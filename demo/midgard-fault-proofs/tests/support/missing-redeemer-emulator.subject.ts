@@ -27,6 +27,7 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { checkedLedgerAsLedger } from "../../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
 import {
   checkLedgerAgainstRoot,
@@ -429,7 +430,9 @@ export const buildMissingRedeemerBlock = async ({
   const material = await prepareDirectScriptMaterial({
     current: block.reconstruction,
     eventKey,
-    ...(predecessor === undefined ? {} : { predecessor }),
+    ...(predecessor === undefined
+      ? {}
+      : { predecessor: await checkedLedgerAsLedger(predecessor) }),
   });
   return {
     subject,

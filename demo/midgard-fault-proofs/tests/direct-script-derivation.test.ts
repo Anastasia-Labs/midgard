@@ -11,6 +11,7 @@ import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/material.js";
 import {
   directPurposeAt,
@@ -173,10 +174,12 @@ describe("direct script preparation", () => {
       const prepared = await prepareDirectScriptMaterial({
         current,
         eventKey: { ForcedTransactionEventKey: { tx_order_id: eventKey.key } },
-        predecessor: completeCanonicalReplayPredecessorLedger({
-          evidence: fixture.evidence,
-          context: fixture.context,
-        }),
+        predecessor: await checkedLedgerAsLedger(
+          completeCanonicalReplayPredecessorLedger({
+            evidence: fixture.evidence,
+            context: fixture.context,
+          })!,
+        ),
       });
       expect(prepared.bound.subject.direction).toBe(BigInt(direction));
       expect(prepared.bound.subject.source_kind).toBe(1n);
@@ -250,7 +253,7 @@ describe("direct script preparation", () => {
       const prepared = await prepareDirectScriptMaterial({
         current,
         eventKey,
-        predecessor,
+        predecessor: await checkedLedgerAsLedger(predecessor),
       });
       expect(
         [0n, 1n, 2n].map((index) =>
@@ -374,7 +377,7 @@ describe("direct script preparation", () => {
         payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
       }),
       eventKey,
-      predecessor,
+      predecessor: await checkedLedgerAsLedger(predecessor),
     });
     const indexed = await buildDirectSourceIndexEvidence(material);
     const hash = directWitnessSource(item, 0).descriptor.script_hash;

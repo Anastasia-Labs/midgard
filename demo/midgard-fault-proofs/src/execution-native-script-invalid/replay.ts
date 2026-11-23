@@ -7,6 +7,7 @@
 import type * as SDKCore from "@al-ft/midgard-sdk/core";
 import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
   acceptedScriptSources,
@@ -74,7 +75,9 @@ export const prepareExecutionNativeScriptInvalidReplay = async ({
     const material = await prepareDirectScriptMaterial({
       current,
       eventKey,
-      ...(predecessor === undefined ? {} : { predecessor }),
+      ...(predecessor === undefined
+        ? {}
+        : { predecessor: await checkedLedgerAsLedger(predecessor) }),
     });
     const detection = await executionNativeScriptInvalidDetection(material);
     if (detection === null) return null;
