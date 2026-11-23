@@ -139,8 +139,8 @@ describe("DA transport full message vectors", () => {
       traceStepByIndex: "trace-step-by-index",
       eventToStepByEvent: "event-to-step-by-event",
       attestationsByHeader: "attestations-by-header",
+      ledgerSnapshot: "ledger-snapshot",
     });
-
     const fingerprint = h("01", 28);
     expect(
       Object.values(DaGossipTopic).map((topic) =>
@@ -165,8 +165,8 @@ describe("DA transport full message vectors", () => {
       `/midgard/${fingerprint}/da/trace-step-by-index/1`,
       `/midgard/${fingerprint}/da/event-to-step-by-event/1`,
       `/midgard/${fingerprint}/da/attestations-by-header/1`,
+      `/midgard/${fingerprint}/da/ledger-snapshot/1`,
     ]);
-
     assertVector(
       "DaCapabilitiesRequestV1",
       encodeDaCapabilitiesRequestCbor,

@@ -29,6 +29,7 @@ import {
 import { oracleLedgerProofs, oracleLedgerRoot } from "./ledger-root-oracle.js";
 import { describeLedgerStoreAdmitConformance } from "./ledger-store-conformance-admit.js";
 import { describeLedgerStoreCrashConformance } from "./ledger-store-conformance-crash.js";
+import { describeLedgerStoreEntriesConformance } from "./ledger-store-conformance-entries.js";
 import { describeLedgerStoreRandomConformance } from "./ledger-store-conformance-random.js";
 import { describeLedgerStoreRetainConformance } from "./ledger-store-conformance-retain.js";
 
@@ -66,13 +67,31 @@ export const testOutRef = (n: number): Buffer => {
 /** The entry whose output has the bytes-only fallback descriptor. */
 export const UNDECODABLE_ENTRY = 1_000;
 
-/** Entry `n`: a one-coin output, except `UNDECODABLE_ENTRY`. */
+/**
+ * Entries from `SIZED_ENTRIES_FROM` on hold `n % 6` native-asset policies,
+ * each with one asset whose name is `n % 4` times 8 bytes, so their outputs
+ * differ in size.
+ */
+export const SIZED_ENTRIES_FROM = 3_000_000;
+
+const sizedAssets = (n: number) =>
+  new Map(
+    Array.from({ length: n % 6 }, (_, policy) => [
+      Buffer.alloc(28, 0x10 + policy).toString("hex"),
+      new Map([[Buffer.alloc((n % 4) * 8, 0x61).toString("hex"), BigInt(n)]]),
+    ]),
+  );
+
+/** Entry `n`: a one-coin output, except `UNDECODABLE_ENTRY` and the sized
+ * entries. */
 export const testLedgerEntry = (n: number): LedgerEntry => ({
   outRef: testOutRef(n),
   output:
     n === UNDECODABLE_ENTRY
       ? undecodableScriptRefOutput
-      : makeOutput(BigInt(2_000_000 + n)),
+      : n >= SIZED_ENTRIES_FROM
+        ? makeOutput(BigInt(2_000_000 + n), undefined, sizedAssets(n))
+        : makeOutput(BigInt(2_000_000 + n)),
 });
 
 /**
@@ -427,6 +446,7 @@ export const describeLedgerStoreConformance = (
     });
   });
   describeLedgerStoreAdmitConformance(adapter, open);
+  describeLedgerStoreEntriesConformance(adapter, open);
   describeLedgerStoreRetainConformance(adapter, open);
   describeLedgerStoreRandomConformance(adapter, open, reference);
   describeLedgerStoreCrashConformance(adapter, open);

@@ -165,6 +165,9 @@ export const DaRequestResponseProtocol = {
   traceStepByIndex: "trace-step-by-index",
   eventToStepByEvent: "event-to-step-by-event",
   attestationsByHeader: "attestations-by-header",
+  /** Served by nodes, not by the DA committee; not a public retained-DA
+   * protocol. */
+  ledgerSnapshot: "ledger-snapshot",
 } as const;
 
 export type DaRequestResponseProtocol =

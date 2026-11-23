@@ -14,6 +14,7 @@ import "./da-transport.decode-metadata-by-header-response-value.js";
 import "./da-transport.encode-attestation-gossip-value.js";
 import "./da-transport.validate-conflicting-signature-header-evidence.js";
 import "./da-transport.decode-capabilities-response-value.js";
+import "./da-transport.ledger-snapshot.js";
 export {
   DA_DEPLOYMENT_FINGERPRINT_LENGTH,
   DA_GOSSIP_SIGNATURE_LENGTH,
@@ -110,6 +111,18 @@ export {
   type DaTraceStepByIndexRequest,
   type DaTraceStepByIndexResponse,
 } from "./da-transport.enum-label.js";
+export {
+  type DaLedgerSnapshotEntry,
+  type DaLedgerSnapshotPage,
+  daLedgerSnapshotPage,
+  type DaLedgerSnapshotRequest,
+  type DaLedgerSnapshotResponse,
+  DaLedgerSnapshotStatus,
+  decodeDaLedgerSnapshotRequestCbor,
+  decodeDaLedgerSnapshotResponseCbor,
+  encodeDaLedgerSnapshotRequestCbor,
+  encodeDaLedgerSnapshotResponseCbor,
+} from "./da-transport.ledger-snapshot.js";
 export {
   daDeploymentFingerprintFromHex,
   ensureDaDeploymentFingerprint,

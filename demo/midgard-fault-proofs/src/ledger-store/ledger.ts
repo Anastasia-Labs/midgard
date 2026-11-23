@@ -6,6 +6,7 @@
 import { type LedgerEntry, ledgerEntryLeaf } from "../ledger-at.js";
 import {
   EMPTY_LEDGER_ROOT,
+  keyPath,
   LedgerTrieStore,
   loadTrie,
   rootOf,
@@ -46,8 +47,14 @@ export interface Ledger {
    * entry with no trie leaf. Cost is proportional to the mutated keys.
    */
   apply(mutations: readonly LedgerMutation[]): Promise<Ledger>;
-  /** Every entry, in trie path order (not out-ref order). */
-  entries(): AsyncIterable<{
+  /**
+   * Every entry, in trie path order (not out-ref order). With `after`, only
+   * the entries whose trie path comes after the path of the out-ref `after`,
+   * in the same order; `after` need not be held, and is never yielded. The
+   * iteration descends to that path first, so the subtrees wholly before it
+   * are not read.
+   */
+  entries(options?: { readonly after?: Buffer }): AsyncIterable<{
     readonly outRef: Buffer;
     readonly output: Buffer;
   }>;
@@ -240,12 +247,50 @@ export class LedgerValue implements Ledger {
     );
   }
 
-  async *entries(): AsyncIterable<{
+  /**
+   * The subtrees that hold exactly the entries whose path comes after
+   * `path`, as a stack with the first of them on top. Descends from the root
+   * along `path`: at a branch on it, the children after `path`'s next nibble
+   * are kept and the child at that nibble is descended into. A node whose
+   * prefix leaves `path` holds paths that are all before it or all after it,
+   * so it is kept whole or dropped, and the descent ends there.
+   */
+  private async subtreesAfter(path: string): Promise<NodeHash[]> {
+    const pending: NodeHash[] = [];
+    let hash: NodeHash = this.root;
+    let cursor = 0;
+    for (;;) {
+      const node = await this.readNode(hash);
+      if (node === undefined) throw new LedgerNodeMissing(hash);
+      const along = path.slice(cursor, cursor + node.prefix.length);
+      if (node.prefix !== along) {
+        if (node.prefix > along) pending.push(hash);
+        return pending;
+      }
+      // A leaf whose prefix runs along `path` is the entry at `path`.
+      if (node.__kind === "Leaf") return pending;
+      cursor += node.prefix.length;
+      const nibble = Number.parseInt(path[cursor]!, 16);
+      for (let index = node.children.length - 1; index > nibble; index -= 1) {
+        const child = node.children[index];
+        if (child !== null && child !== undefined) pending.push(child);
+      }
+      const next = node.children[nibble];
+      if (next === null || next === undefined) return pending;
+      hash = next;
+      cursor += 1;
+    }
+  }
+
+  async *entries(options: { readonly after?: Buffer } = {}): AsyncIterable<{
     readonly outRef: Buffer;
     readonly output: Buffer;
   }> {
     if (this.root === EMPTY_LEDGER_ROOT) return;
-    const pending: NodeHash[] = [this.root];
+    const pending: NodeHash[] =
+      options.after === undefined
+        ? [this.root]
+        : await this.subtreesAfter(keyPath(options.after));
     let leaves: OutRefHex[] = [];
     const flush = async function* (
       ledger: LedgerValue,
