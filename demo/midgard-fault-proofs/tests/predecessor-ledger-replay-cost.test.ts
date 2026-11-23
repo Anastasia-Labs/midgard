@@ -1,8 +1,8 @@
 /** Complete replays that read the predecessor ledger once per block, however
  * many of its entries or events they visit: the ledger-relative input scan
- * walks the block's steps once for every event's pre-state, editing one trie
- * of the predecessor, and the resolved-output prior view proves every entry
- * from one trie. Results are those of a one-off reconstruction. Work is
+ * admits the predecessor to a store once and walks the block's steps on it
+ * for every event's pre-state, and the resolved-output prior view proves
+ * every entry from one trie. Results are those of a one-off reconstruction. Work is
  * counted as in `helpers/trie-leaves.ts`. */
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
@@ -51,8 +51,8 @@ describe("complete replay: the predecessor ledger is read once per block", () =>
     ];
     expect(smallScan.result).toStrictEqual([]);
     expect(largeScan.result).toStrictEqual([]);
-    // Events at steps 0 to 3: one walk applies steps 0, 1 and 2 to one trie
-    // of the predecessor.
+    // Events at steps 0 to 3: one admission of the predecessor serves the
+    // walk to each of them.
     expect((largeScan.leaves - smallScan.leaves) / FILLER).toBe(1);
   });
 
@@ -181,7 +181,8 @@ describe("complete replay: the predecessor ledger is read once per block", () =>
         }),
       );
     const [smallView, largeView] = [await derive(small), await derive(large)];
-    expect((largeView.leaves - smallView.leaves) / FILLER).toBe(0);
+    // One trie of the predecessor, built by insertion, proves every entry.
+    expect((largeView.leaves - smallView.leaves) / FILLER).toBe(1);
 
     const predecessor = predecessorOf(small);
     expect(smallView.result.priorRoot).toBe(predecessor.utxosRoot);

@@ -42,10 +42,15 @@ export type ValidationMachineReplayInput = {
   readonly sourceKind: "normal" | "forced";
   readonly priorUtxosRoot: string;
   readonly postUtxosRoot: string;
+  /**
+   * The pre-state entries the replay reads: those at every out-ref the
+   * transaction spends or references. Without `preStateLedger`, the whole
+   * pre-state ledger.
+   */
   readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
   /**
-   * The ledger input resolution proves against, holding exactly
-   * `ledgerWitnessEntries`. Without it, one is built from them.
+   * The ledger input resolution proves against, the one `priorUtxosRoot`
+   * commits. Without it, one is built from `ledgerWitnessEntries`.
    */
   readonly preStateLedger?: PreStateLedger;
   readonly expectedLedgerOps: readonly ValidationMachineLedgerOp[];

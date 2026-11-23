@@ -24,7 +24,8 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { eventLedgerBefore } from "../event-ledger.js";
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
+import { ledgerBeforeStep } from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CheckedLedger } from "../ledger-at.js";
 import {
@@ -113,7 +114,7 @@ export const validationTraceDefenseFromPortable = (
  * Our defense material for a case on `evidence`'s event `eventKey` at
  * `stepCount` steps, over the event's pre-state ledger walked from
  * `predecessor` (our landed ledger at the parent header, already checked
- * against its root).
+ * against its root), which the walk reads as a ledger store `Ledger`.
  *
  * Only a deterministic outcome is returned. Anything else throws, including
  * a trace build stopped as `unavailable`, so the caller retries.
@@ -156,11 +157,14 @@ export const buildPortableValidationTraceDefenseMaterial = async ({
     throw new Error(
       "validation defense: the case's event has no committed event-to-step opening",
     );
-  const ledger = await eventLedgerBefore({
+  const ledger = await ledgerBeforeStep({
     block: evidence,
     eventKey: event.eventKey,
     stepIndex: opening.value.step_index,
-    predecessor,
+    predecessor:
+      predecessor === undefined
+        ? undefined
+        : await checkedLedgerAsLedger(predecessor),
   });
   const replay = {
     header: evidence.header,
@@ -169,11 +173,11 @@ export const buildPortableValidationTraceDefenseMaterial = async ({
     l1SlotConfig,
   } as const;
   const verdict = await replayPlutusVerdict(
-    plutusReplayInput({ ...replay, verdict: { verdict: "rejected" } }),
+    await plutusReplayInput({ ...replay, verdict: { verdict: "rejected" } }),
   );
   if (verdict.verdict !== "accepted")
     return { kind: "operator_fault", rejection: verdict.rejection };
-  const input = plutusReplayInput({
+  const input = await plutusReplayInput({
     ...replay,
     verdict: {
       verdict: "accepted",

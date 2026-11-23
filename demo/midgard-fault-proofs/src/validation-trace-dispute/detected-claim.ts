@@ -6,20 +6,16 @@ import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  eventLedgerBefore,
-  EventLedgerReplayRefusal,
-} from "../event-ledger.js";
+import { ledgerBeforeStep } from "../event-ledger.ledger.js";
+import { EventLedgerReplayRefusal } from "../event-ledger.steps.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type {
   CanonicalBlockClassification,
   CanonicalViolationDetection,
 } from "../workflow/classification.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { VALIDATION_TRACE_VIOLATION_ID } from "../workflow/complete-replay.detect-accepted-transaction-faults.js";
-import {
-  type CompleteCanonicalReplayContext,
-  requireReplayPredecessorLedger,
-} from "../workflow/complete-replay.replay-context-identity.js";
+import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.replay-context-identity.js";
 import { sameJson } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import type { WorkflowJsonObject } from "../workflow/identity.js";
 import {
@@ -73,8 +69,11 @@ export const detectedValidationTraceClaim = async ({
     throw new Error(
       "validation claim: the detected event has no committed event-to-step opening",
     );
-  const predecessor = requireReplayPredecessorLedger({ evidence, context });
-  const ledger = await eventLedgerBefore({
+  const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
+    evidence,
+    context,
+  });
+  const ledger = await ledgerBeforeStep({
     block: evidence,
     eventKey: event.eventKey,
     stepIndex: opening.value.step_index,

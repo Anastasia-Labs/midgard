@@ -31,7 +31,7 @@ export const passingTrace = async (scene: Scene) => {
     l1SlotConfig,
   } as const;
   const verdict = await replayPlutusVerdict(
-    plutusReplayInput({ ...replay, verdict: { verdict: "rejected" } }),
+    await plutusReplayInput({ ...replay, verdict: { verdict: "rejected" } }),
   );
   expect(verdict.verdict).toBe("accepted");
   const mutation = await acceptedLedgerMutation(ledger, verdict.statePatch);
@@ -45,7 +45,7 @@ export const passingTrace = async (scene: Scene) => {
   ]);
   const leaves = await Effect.runPromise(
     openValidationTraceV1(
-      plutusReplayInput({
+      await plutusReplayInput({
         ...replay,
         verdict: { verdict: "accepted", mutation },
       }),

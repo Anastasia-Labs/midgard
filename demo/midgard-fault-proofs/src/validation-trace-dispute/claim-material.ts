@@ -23,7 +23,7 @@ import {
 import { Effect } from "effect";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import type { CheckedLedger } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import {
   buildEventToStepMembershipProof,
@@ -246,10 +246,10 @@ export const buildValidationTraceClaimMaterial = async ({
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly event: CommittedL2Event;
-  readonly ledger: CheckedLedger;
+  readonly ledger: Ledger;
   readonly l1SlotConfig: L1SlotConfig;
 }): Promise<ValidationTraceClaimMaterial> => {
-  const input = plutusReplayInput({
+  const input = await plutusReplayInput({
     header: evidence.header,
     event,
     ledger,
@@ -345,7 +345,7 @@ export const buildValidationTraceClaimMaterial = async ({
     }),
     scriptItem: selectedScriptItemReader({
       transactionCbor: event.entry.fullTransactionCbor,
-      ledger,
+      resolved: input.ledgerWitnessEntries,
     }),
     fieldSource: fieldSourceOf(event.entry.fullTransactionCbor),
     fieldPreimage: fieldPreimageOf(event.entry.fullTransactionCbor),
