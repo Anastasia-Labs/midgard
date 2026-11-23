@@ -27,7 +27,7 @@ import {
   SPENT,
 } from "./helpers/event-ledger-committed-steps.js";
 import { forcedRejection } from "./helpers/event-ledger-forced-step.js";
-import { checkedLedgerAfter } from "./support/predecessor-ledger.js";
+import { ledgerAfter } from "./support/predecessor-ledger.js";
 import { withdrawalMistagRetainedFixture } from "./support/withdrawal-mistag-retained.js";
 
 const REFUSED = "event ledger: event prior ledger changed";
@@ -102,7 +102,7 @@ describe("the shared walk refuses a selected event's moved pre-state before its 
     await expect(
       prepareWithdrawalMistagReplay({
         current: moved,
-        predecessor: await checkedLedgerAfter(fixture.predecessor),
+        predecessor: await ledgerAfter(fixture.predecessor),
         index: 0,
       }),
     ).rejects.toThrow(REFUSED);
