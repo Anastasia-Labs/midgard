@@ -1,14 +1,35 @@
+import * as SDK from "@al-ft/midgard-sdk/core";
+import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { isReplayLocalFault } from "../src/block-replay.faults.js";
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  LedgerNodeMissing,
+} from "../src/ledger-store/index.js";
 import {
   admitNativeScriptDecodingWorkflowArtifact,
   prepareNativeScriptDecodingWorkflowArtifact,
 } from "../src/native-script-decoding/artifact.js";
+import { prepareNativeScriptDecodingReplay } from "../src/native-script-decoding/replay.js";
+import { keyValuePhasProof } from "../src/transition-trace/phas.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { reencodeFixturePayload } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  block,
+  NATIVE,
+  OTHER,
+  SPENT,
+  type Step,
+} from "./helpers/event-ledger-committed-steps.js";
+import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
 import { nativeDecodingFixture } from "./support/native-script-decoding-retained.js";
 import { ledgerEntriesAfter } from "./support/predecessor-ledger.js";
 
@@ -166,3 +187,108 @@ it.each(["key", "raw-script", "root"] as const)(
     ).rejects.toThrow();
   },
 );
+
+/** An accepted transaction spending `spent` whose reference input is
+ * `NATIVE`, a native script that does not decode: a wrongful acceptance. */
+const nativeFault = (spent: Buffer): Step => ({
+  input: {
+    spendInputs: [spent],
+    referenceInputs: [NATIVE.outRef],
+    outputs: [makeOutput(1_000_000n)],
+    fee: 7n,
+  },
+  applied: true,
+});
+
+/** The coordinate of reference input 0 of the transaction at `position`. */
+const referenceCoordinate = (position: bigint) => ({
+  sourceKind: 0 as const,
+  sourceIndex: Number(position),
+  outpointSourceKind: "1",
+  outpointCursor: "0",
+});
+
+describe("nativeScriptDecoding resolved descriptor", () => {
+  it("reads and proves the selected input against the ledger before its transaction", async () => {
+    // Step 0 spends `SPENT`: the ledger before step 1 differs from the
+    // predecessor in an entry other than the one step 1 reads.
+    const fixture = await block([
+      { input: { spendInputs: [SPENT.outRef], fee: 7n }, applied: true },
+      nativeFault(OTHER.outRef),
+    ]);
+    const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+    const before = await referenceLedgerBefore({
+      block: fixture.evidence,
+      predecessor,
+      eventKey: fixture.key(1),
+      stepIndex: 1n,
+    });
+    expect(before.utxosRoot).not.toBe(predecessor.utxosRoot);
+    const { value } = before.trie.entries.find((entry) =>
+      entry.key.equals(NATIVE.outRef),
+    )!;
+    const prepared = await prepareNativeScriptDecodingReplay({
+      current: fixture.evidence.reconstruction,
+      predecessor: await checkedLedgerAsLedger(predecessor),
+      coordinate: referenceCoordinate(fixture.position(1)),
+    });
+    expect(prepared?.descriptorCbor).toStrictEqual(value);
+    expect(prepared?.ledgerTrie?.rootHex).toBe(before.utxosRoot);
+    expect(await prepared?.ledgerTrie?.prove(NATIVE.outRef)).toStrictEqual(
+      Buffer.from(
+        Data.to(
+          await keyValuePhasProof(before.trie, NATIVE.outRef, value),
+          SDK.Proof,
+        ),
+        "hex",
+      ),
+    );
+  });
+
+  type Prepare = () => ReturnType<typeof prepareNativeScriptDecodingReplay>;
+  it.each([
+    [
+      "reading the selected input",
+      async (dropLedger: () => Promise<void>, prepare: Prepare) => {
+        await dropLedger();
+        await prepare();
+      },
+    ],
+    [
+      "proving the selected input",
+      async (dropLedger: () => Promise<void>, prepare: Prepare) => {
+        const prepared = await prepare();
+        await dropLedger();
+        await prepared?.ledgerTrie?.prove(NATIVE.outRef);
+      },
+    ],
+  ] as const)(
+    "is this process's local fault %s when the store no longer holds the ledger",
+    async (_, run) => {
+      // The transaction is step 0, so it reads the predecessor itself, which
+      // `retain` of nothing deletes.
+      const fixture = await block([nativeFault(SPENT.outRef)]);
+      const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+      const store = createLedgerStore(createMemoryLedgerStorage());
+      const ledger = await store.admit(
+        predecessor.entries,
+        predecessor.utxosRoot,
+      );
+      const error: unknown = await run(
+        async () => {
+          await store.retain(new Set());
+        },
+        async () =>
+          await prepareNativeScriptDecodingReplay({
+            current: fixture.evidence.reconstruction,
+            predecessor: ledger,
+            coordinate: referenceCoordinate(fixture.position(0)),
+          }),
+      ).catch((cause: unknown) => cause);
+      expect(isReplayLocalFault(error)).toBe(true);
+      expect((error as { cause: unknown }).cause).toBeInstanceOf(
+        LedgerNodeMissing,
+      );
+    },
+  );
+});

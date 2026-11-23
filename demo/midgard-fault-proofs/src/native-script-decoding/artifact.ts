@@ -1,3 +1,4 @@
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { checkLedgerJson, ledgerJson } from "../ledger-at.js";
 import { reconstructDaPayload } from "../transition-trace/reconstruct.reconstruct-da-payload.js";
@@ -42,11 +43,13 @@ export const admitNativeScriptDecodingWorkflowArtifact = async (
   const predecessor =
     value.predecessorLedger === null
       ? undefined
-      : await checkLedgerJson({
-          value: value.predecessorLedger,
-          utxosRoot: current.header.prevUtxosRoot,
-          label: "nativeScriptDecoding predecessor ledger",
-        });
+      : await checkedLedgerAsLedger(
+          await checkLedgerJson({
+            value: value.predecessorLedger,
+            utxosRoot: current.header.prevUtxosRoot,
+            label: "nativeScriptDecoding predecessor ledger",
+          }),
+        );
   const rawCoordinate = value.coordinate;
   const c = rawCoordinate as WorkflowJsonObject;
   if (
