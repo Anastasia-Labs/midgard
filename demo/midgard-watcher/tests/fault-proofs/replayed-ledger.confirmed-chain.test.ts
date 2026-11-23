@@ -3,8 +3,9 @@
  * confirmed head whose events do not replay to the root it commits holds the
  * checkpoint and is recorded as the confirmed head's root mismatch even when
  * the store already holds that root, a confirmed block that can no longer
- * be replayed is passed and reported, and a catch-up over many blocks holds
- * the follower's window, not every ledger it derived.
+ * be replayed is passed and reported, a catch-up over many blocks holds
+ * the follower's window, not every ledger it derived, and a watcher with no
+ * verified head starts from a DA peer's ledger of the confirmed head.
  */
 import { DaRequestResponseProtocol } from "@al-ft/midgard-core/da-transport";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
@@ -32,6 +33,7 @@ import { createWatcherReplayLostRoots } from "../../src/fault-proofs/replay-lost
 import { createWatcherReplayRefusals } from "../../src/fault-proofs/replay-refusals.js";
 import { createWatcherReplayedLedger } from "../../src/fault-proofs/replayed-ledger.js";
 import type { WatcherFollowerReplaySource } from "../../src/l1-follower/replay-source.js";
+import type { WatcherLedgerSnapshotPeer } from "../../src/storage/ledger-snapshot-fetch.js";
 import { observation } from "./fault-decision-bridge.observation.js";
 
 const availabilityAuthority = () => ({
@@ -257,6 +259,62 @@ describe(
         );
       expect(logged).toEqual([]);
       expect(await verifiedHead.read()).toBe(tip.headerHash);
+    });
+
+    it("starts a watcher with no verified head from a DA peer's ledger of the confirmed head, where no old payload is served", async () => {
+      const chain = await replayedLedgerChain(3);
+      const tip = chain.blocks[2]!;
+      const peer: WatcherLedgerSnapshotPeer = {
+        identity: "node",
+        entries: async function* (utxosRoot) {
+          if (utxosRoot === tip.header.utxosRoot) yield* tip.entries;
+        },
+      };
+      /** A fresh watcher; each `advance` is one turn with `peers`. */
+      const start = () => {
+        const store = createLedgerStore(createMemoryLedgerStorage());
+        const verifiedHead = memoryVerifiedHead();
+        const durable: bigint[] = [];
+        const unverified: ReplayedLedgerUnverified[] = [];
+        const keeper = createWatcherReplayedLedger({
+          follower: followerAt(chain.blocks, tip, durable),
+          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+          availabilityAuthority,
+          store,
+          verifiedHead,
+          onUnverified: (block) => unverified.push(block),
+        });
+        return {
+          store,
+          verifiedHead,
+          durable,
+          unverified,
+          advance: (peers?: readonly WatcherLedgerSnapshotPeer[]) =>
+            keeper.advance(observation([]), [sourceOf([])], peers),
+        };
+      };
+
+      const started = start();
+      expect(await started.advance([peer])).toEqual([]);
+      expect(await started.verifiedHead.read()).toBe(tip.headerHash);
+      expect(started.durable).toEqual([1000n]);
+      expect(started.unverified).toEqual([
+        { headerHash: tip.headerHash, cause: "ledger-snapshot" },
+      ]);
+      expect((await started.store.at(tip.header.utxosRoot)).root).toBe(
+        tip.header.utxosRoot,
+      );
+
+      // A first turn no peer serves holds the checkpoint; a later one with a
+      // serving peer starts the watcher.
+      const late = start();
+      expect(await late.advance()).toMatchObject([
+        { reason: "replayed_ledger_checkpoint_pending" },
+      ]);
+      expect(late.durable).toEqual([]);
+      expect(await late.advance([peer])).toEqual([]);
+      expect(await late.verifiedHead.read()).toBe(tip.headerHash);
+      expect(late.durable).toEqual([1000n]);
     });
   },
 );

@@ -13,6 +13,13 @@
  * The confirmed head handed in must be stable. One that is not above the
  * verified head on the same chain is verified from the lowest block the
  * source still knows.
+ *
+ * A `bootstrap` port may make the store hold the confirmed head's ledger by
+ * its root (a snapshot checked against that root) instead: before the walk
+ * when there is no verified head, and when the walk reaches a head whose
+ * own ledger is not held and whose parent's ledger is neither held nor
+ * derivable. It is asked at most once per call. The head becomes the
+ * verified head with no replay of it, and is reported unverified once.
  */
 import * as SDK from "@al-ft/midgard-sdk/core";
 
@@ -58,14 +65,17 @@ export const memoryVerifiedHead = (): ReplayedLedgerVerifiedHead => {
  * the block. `parent-ledger-not-held`: the ledger the block starts from is
  * neither held nor derivable. `header-not-held`: the source no longer knows
  * the block, so neither it nor any confirmed block below it down to the
- * verified head was replayed.
+ * verified head was replayed. `ledger-snapshot`: the block is the confirmed
+ * head, whose ledger the store took in by its root (`bootstrap`) instead of
+ * replaying it.
  */
 export type ReplayedLedgerUnverified = {
   readonly headerHash: string;
   readonly cause:
     | "payload-not-retained"
     | "parent-ledger-not-held"
-    | "header-not-held";
+    | "header-not-held"
+    | "ledger-snapshot";
 };
 
 export type ChainBlock = {
@@ -75,6 +85,10 @@ export type ChainBlock = {
 
 /** One confirmed block's ledger, when the store holds it; or `ensure` stops. */
 type Outcome = { readonly held: HeldLedger | undefined } | "stop";
+
+/** Asks `bootstrap` for the confirmed head's ledger, unless this call asked
+ * already; true when the store holds it afterwards. */
+type TakeIn = () => Promise<boolean>;
 
 /** Every source answered, and none holds the payload. */
 const isPayloadNotRetained = (error: unknown): boolean =>
@@ -109,6 +123,11 @@ export const confirmedChainVerifier = (input: {
   readonly refuse: (refusal: ReplayedLedgerRefusal) => void;
   readonly onUnverified?: (block: ReplayedLedgerUnverified) => void;
   readonly onHeld?: (headerHash: string, root: string) => void;
+  /** Makes the store hold the ledger of `utxosRoot` without replaying to it;
+   * true when the store holds it afterwards. Asked for the confirmed head
+   * only, at most once per call: before the walk when there is no verified
+   * head, and when the head's parent ledger is neither held nor derivable. */
+  readonly bootstrap?: (utxosRoot: string) => Promise<boolean>;
 }) => {
   const { holds, refuse, onUnverified, onHeld } = input;
   /** The verified head as last read or written; `null` before the read. */
@@ -128,14 +147,20 @@ export const confirmedChainVerifier = (input: {
   };
 
   /** A block that cannot be replayed is passed and reported; the head only
-   * when the store holds the ledger it commits. */
+   * when the store holds the ledger it commits, or `takeIn` makes it. */
   const pass = async (
     { headerHash, header }: ChainBlock,
-    cause: ReplayedLedgerUnverified["cause"],
-    head: boolean,
+    passed: ReplayedLedgerUnverified["cause"],
+    takeIn?: TakeIn,
   ): Promise<Outcome> => {
-    const own = await holds.open(header.utxosRoot);
-    if (own === undefined && head) return "stop";
+    let own = await holds.open(header.utxosRoot);
+    let cause = passed;
+    if (own === undefined && takeIn !== undefined) {
+      if (!(await takeIn())) return "stop";
+      own = await holds.open(header.utxosRoot);
+      if (own === undefined) return "stop";
+      cause = "ledger-snapshot";
+    }
     try {
       onUnverified?.({ headerHash, cause });
       if (own !== undefined) onHeld?.(headerHash, header.utxosRoot);
@@ -169,15 +194,20 @@ export const confirmedChainVerifier = (input: {
   /**
    * Verifies the confirmed block `block`. `parentRoot` is the root its
    * parent's header commits, when the source knows the parent; `below` is
-   * the ledger after the parent, when the block under it left one.
+   * the ledger after the parent, when the block under it left one. Only the
+   * head gets `takeIn`.
    */
   const verifyBlock = async (
     block: ChainBlock,
     parentRoot: string | undefined,
     below: HeldLedger | undefined,
     source: ReplayedLedgerSource,
-    { head, lowest }: { readonly head: boolean; readonly lowest: boolean },
+    {
+      lowest,
+      takeIn,
+    }: { readonly lowest: boolean; readonly takeIn: TakeIn | undefined },
   ): Promise<Outcome> => {
+    const head = takeIn !== undefined;
     const { headerHash, header } = block;
     if (parentRoot !== undefined && parentRoot !== header.prevUtxosRoot) {
       refuse({
@@ -205,8 +235,10 @@ export const confirmedChainVerifier = (input: {
         : undefined;
     try {
       const parent = below ?? opened;
+      // The head's ledger cannot be derived here: the store may take it in
+      // by its root. A head over a held parent waits for its payload.
       if (parent === undefined)
-        return await pass(block, "parent-ledger-not-held", head);
+        return await pass(block, "parent-ledger-not-held", takeIn);
       let replayed: HeldLedger | "refused" | "absent";
       try {
         replayed = await holds.exclusive(headerHash, () =>
@@ -219,7 +251,7 @@ export const confirmedChainVerifier = (input: {
       }
       if (replayed === "refused") return "stop";
       if (replayed !== "absent") return { held: replayed };
-      return head ? "stop" : await pass(block, "payload-not-retained", false);
+      return head ? "stop" : await pass(block, "payload-not-retained");
     } finally {
       opened?.release();
     }
@@ -245,13 +277,31 @@ export const confirmedChainVerifier = (input: {
       });
       return false;
     }
-    // Walk back by headers to the verified head.
     const verified = await verifiedThrough();
-    if (header === undefined || headerHash === verified) {
+    const headHeld = async (): Promise<boolean> => {
       const held = await input.ledgerAfter(headerHash, source);
       held?.release();
       return held !== undefined;
+    };
+    if (header === undefined || headerHash === verified) return headHeld();
+    const { bootstrap } = input;
+    let asked = false;
+    const takeIn: TakeIn = async () => {
+      if (asked || bootstrap === undefined) return false;
+      asked = true;
+      return await storeCall("take in the confirmed head's ledger", () =>
+        bootstrap(utxosRoot),
+      );
+    };
+    // With no verified head the store may take in the head's ledger by its
+    // root: where the source no longer serves old payloads, the walk below
+    // can never derive it.
+    if (verified === undefined && (await takeIn())) {
+      await verifyThrough(headerHash);
+      onUnverified?.({ headerHash, cause: "ledger-snapshot" });
+      return await headHeld();
     }
+    // Walk back by headers to the verified head.
     const chain: ChainBlock[] = [{ headerHash, header }];
     /** The root the lowest block's parent commits, when it is known. */
     let parentRoot: string | undefined;
@@ -279,8 +329,8 @@ export const confirmedChainVerifier = (input: {
       const lowest = chain[chain.length - 1]!.headerHash;
       for (const block of chain.reverse()) {
         const outcome = await verifyBlock(block, parentRoot, carry, source, {
-          head: block.headerHash === headerHash,
           lowest: block.headerHash === lowest,
+          takeIn: block.headerHash === headerHash ? takeIn : undefined,
         });
         if (outcome === "stop") return false;
         carry?.release();
