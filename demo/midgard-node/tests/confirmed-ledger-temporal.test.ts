@@ -104,7 +104,15 @@ describe("temporal confirmed_ledger on an own merged block", () => {
     await inNode(
       Effect.gen(function* () {
         yield* insertDeposits([deposit]);
-        yield* processLandedQueue(ports(state), unmerged);
+        // The frontier's bootstrap, then the own block, which is checked on
+        // the ledger store and reads no whole ledger: O(delta).
+        yield* processLandedQueue(ports(state), queueOf(genesisState, []));
+        expect(
+          (yield* scansOf(processLandedQueue(ports(state), unmerged))).scans,
+        ).toBe(0);
+        expect((yield* retrieveRows).map((row) => row.headerHash)).toEqual([
+          a.hash,
+        ]);
         // The rebase applied `a` (its own suites cover the rebase).
         yield* markApplied([a.hash]);
         // The fold and the unfold below read no whole ledger: O(delta).

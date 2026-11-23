@@ -1,5 +1,7 @@
 import type { MessagePort } from "node:worker_threads";
 
+import type { Ledger } from "@al-ft/midgard-fault-proofs/ledger-store";
+
 export const NATIVE_MPF_RPC_MAGIC = "MGRP" as const;
 export const NATIVE_MPF_RPC_SCHEMA = 1 as const;
 export const NATIVE_MPF_RPC_DIGEST_DOMAIN = "MIDGARD-MPF-OWNER-RPC-V1" as const;
@@ -224,6 +226,12 @@ export interface NativeMpfOwnerService extends NativeMpfOwnerClient {
   retain(
     roots: ReadonlySet<string>,
   ): Promise<{ readonly notRetained: ReadonlySet<string> }>;
+  /**
+   * The ledger with `root` from the owner's ledger store, read-only for the
+   * caller (`LedgerStore.at`): refused with `LedgerNotRetained` when the
+   * store does not retain `root`.
+   */
+  ledger(root: string): Promise<Ledger>;
   diagnostics(): Promise<NativeMpfOwnerDiagnostics>;
   /** Why the owner refuses work, while it does: failed restarts exhaust the
    * restart window, or a committed recovery is not installed yet. Each call

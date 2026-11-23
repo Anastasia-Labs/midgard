@@ -145,9 +145,12 @@ landed deltas) do not derive the root it stores for them
 come from the node's own stores, so the fault is this node's, never a
 block's. The `check` names where it was found:
 
-- `landed_parent`, `own_parent`: the parent ledger a landed block (foreign or
-  this node's own) is adopted on. The block is held as
-  `landed_block_local_fault`, not judged invalid. After
+- `landed_parent`: the parent ledger a foreign landed block is replayed on.
+  The block is held as `landed_block_local_fault`, not judged invalid. (This
+  node's own landed block is checked on the ledger its MPF store retains at
+  the parent's root, so it raises no divergence; a parent root the store does
+  not retain holds it under the same reason and raises the
+  `LandedBlockLocalFault` event, with no increase here.) After
   `LOCAL_FAULT_RUN_LIMIT` attempts in a row the node exits non-zero under that
   reason.
 - `commit_base_landed`, `commit_base_confirmed_ledger`: the base a commit

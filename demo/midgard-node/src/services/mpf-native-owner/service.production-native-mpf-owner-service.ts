@@ -2,7 +2,10 @@ import { timingSafeEqual } from "node:crypto";
 import { getHeapStatistics } from "node:v8";
 import { MessageChannel, type MessagePort } from "node:worker_threads";
 
-import type { LedgerStore } from "@al-ft/midgard-fault-proofs/ledger-store";
+import type {
+  Ledger,
+  LedgerStore,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import type { Level } from "level";
 
 import {
@@ -377,6 +380,10 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         requested.add(handle.baseRoot);
       return requested;
     });
+  }
+
+  public ledger(root: string): Promise<Ledger> {
+    return this.store.at(root);
   }
 
   public async recover(replay: PersistedNativeMpfReplay): Promise<void> {
