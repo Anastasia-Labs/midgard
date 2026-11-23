@@ -1,6 +1,5 @@
 import "./index.registration-5.js";
 
-import { Effect } from "effect";
 import {
   collectStringOption,
   failCli,
@@ -10,11 +9,9 @@ import {
   tapJson,
   writeJson,
 } from "midgard-node/commands/cli-runtime";
-import * as Services from "midgard-node/services/index";
 
 import * as E2EFinalizeSummaryCommand from "./commands/e2e-finalize-summary.js";
 import type { StackRunInputs } from "./commands/e2e-finalize-summary.stack-inputs.js";
-import * as Phase4GenesisLedgerCommand from "./commands/phase4-genesis-ledger.js";
 import * as StressCorpusCommand from "./commands/stress-corpus-generate.js";
 import { l1KupmiosEnvironment } from "./environment.js";
 import { program } from "./index.registration.js";
@@ -109,32 +106,6 @@ program
     } catch (error) {
       failCli("stress-corpus-verify", error);
     }
-  });
-
-program
-  .command("phase4-genesis-ledger")
-  .description(
-    "Explicitly seed or verify the complete configured L2 genesis set and A/B funding in an isolated Phase 4 local-devnet database",
-  )
-  .option("--seed", "Seed an empty run-scoped mempool ledger")
-  .option(
-    "--verify-only",
-    "Require the complete byte-identical configured genesis ledger without mutating it",
-  )
-  .action((opts) => {
-    const seed = opts.seed === true;
-    const verifyOnly = opts.verifyOnly === true;
-    if (seed === verifyOnly) {
-      failCli(
-        "phase4-genesis-ledger",
-        new Error("Specify exactly one of --seed or --verify-only"),
-      );
-      return;
-    }
-    const mainEffect = Phase4GenesisLedgerCommand.phase4GenesisLedgerProgram({
-      mode: seed ? "seed" : "verify",
-    }).pipe(Effect.provide(Services.Database.layerWithNodeConfig), tapJson());
-    runCliEffect(mainEffect);
   });
 
 program

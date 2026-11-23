@@ -31,10 +31,6 @@ export const commitConfig = Config.all({
     "MIN_QUEUE_LENGTH_FOR_MERGING",
     8,
   ),
-  RUN_GENESIS_ON_STARTUP: Config.string("RUN_GENESIS_ON_STARTUP").pipe(
-    Config.withDefault("false"),
-    Config.map((value) => value.trim().toLowerCase() === "true"),
-  ),
   OPERATOR_WATCHDOG_ENABLED: Config.boolean("OPERATOR_WATCHDOG_ENABLED").pipe(
     Config.withDefault(true),
   ),

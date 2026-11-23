@@ -7,20 +7,15 @@ import {
   requiredIsolatedChildEnv,
 } from "./e2e-journal-kill-recovery-acceptance.decode-phase4-reset-attestation.js";
 import { activeProcessIsolation } from "./e2e-journal-kill-recovery-acceptance.load-phase4-process-isolation.js";
-import { toolsCli } from "./e2e-journal-kill-recovery-acceptance.validate-phase4-phas-registration-transaction-body.js";
 import { requiredEnv } from "./e2e-journal-kill-recovery-acceptance.validate-phase4-process-isolation-values.js";
 import {
-  assertExactGenesisPreflightOutput,
   assertPositivePreflightOutput,
   positiveIntegerEnv,
   runRequiredProcess,
   validatePhase4ResetAttestation,
 } from "./e2e-journal-kill-recovery-acceptance.validate-phase4-reset-attestation.js";
-import {
-  PHASE4_GENESIS_BOOTSTRAP_ENV,
-  PHASE4_GENESIS_BOOTSTRAP_TOKEN,
-  PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE,
-} from "./phase4-genesis-ledger.js";
+
+const PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE = 50_000n;
 
 const scenarioProcessEnv = ({
   port,
@@ -160,25 +155,6 @@ export const resetAndPreflight = async ({
   });
   const dist = resolve(cwd, "dist/index.js");
   const env = isolatedChildEnv();
-  const genesisOutput = await runRequiredProcess(
-    {
-      command: process.execPath,
-      // The genesis gate is tooling, so it runs through this package's own
-      // binary; the node under test still runs from the operator dist.
-      args: [toolsCli(), "phase4-genesis-ledger", "--verify-only"],
-      cwd,
-      env: {
-        ...env,
-        [PHASE4_GENESIS_BOOTSTRAP_ENV]: PHASE4_GENESIS_BOOTSTRAP_TOKEN,
-        MIDGARD_PHASE4_PROCESS_TARGET: "local-devnet",
-      },
-    },
-    `${label}: A/B genesis ledger`,
-  );
-  assertExactGenesisPreflightOutput(
-    `${label}: A/B genesis ledger`,
-    genesisOutput,
-  );
   const preflights: readonly [string, readonly string[]][] = [
     ["deployment status", [dist, "deployment-status"]],
     ["local Kupmios", [dist, "l1-provider-preflight", "--json"]],

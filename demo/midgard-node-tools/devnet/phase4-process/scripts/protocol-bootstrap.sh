@@ -70,7 +70,7 @@ export MIDGARD_REAL_BLUEPRINT_PATH="$blueprint"
 cd "$node_root"
 pnpm build
 # The snapshot binds both distributions; build the tooling CLI from the same
-# tree before it seeds the isolated genesis ledger.
+# tree.
 pnpm --dir "$tools_root" build
 # The node follows L1 through the run's own node: the transport binary and a
 # host-path node config go into the run before anything is spent on L1.
@@ -83,9 +83,6 @@ transport_binary=$(node "$follower_inputs" install-transport "$MIDGARD_PHASE4_RU
 host_config=$(node "$follower_inputs" host-config "$MIDGARD_PHASE4_RUN_DIR")
 cardano_socket=$(node "$follower_inputs" socket-path "$MIDGARD_PHASE4_RUN_DIR")
 node dist/index.js db:migrate
-MIDGARD_PHASE4_GENESIS_BOOTSTRAP=phase4-local-devnet-l2-genesis-v1 \
-MIDGARD_PHASE4_PROCESS_TARGET=local-devnet \
-  node "$tools_root/dist/index.js" phase4-genesis-ledger --seed
 nonce_output="$MIDGARD_PHASE4_RUN_DIR/work/hub-oracle-nonce.json"
 # The nonce command reads the deployment's L1 origin from the run's own node
 # before it signs, so it gets the local node settings; node.env gets them only

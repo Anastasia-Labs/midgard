@@ -457,13 +457,12 @@ export const publicHttpTransport = (
     profile,
   );
   if (
-    config.RUN_GENESIS_ON_STARTUP ||
     config.VALIDATION_WORKER_POOL_SIZE < 2 ||
     config.DEPLOYMENT_ECONOMICS_PROFILE !== profile.economics.profile ||
     profile.economics.requiredBondLovelace <= 0
   )
     return fail(
-      "public runtime requires strict economics, empty genesis and reserved validation capacity",
+      "public runtime requires strict economics and reserved validation capacity",
     );
   assertPublicReleaseIdentity(env);
   if (env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH === undefined)

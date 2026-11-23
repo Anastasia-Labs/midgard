@@ -15,7 +15,6 @@ import "midgard-node/services/database";
 import "../e2e/journal-kill-process-harness.js";
 import "../e2e/process-ownership.js";
 import "../e2e/service-supervisor.js";
-import "./phase4-genesis-ledger.js";
 import "./e2e-journal-kill-recovery-acceptance.validate-phase4-process-isolation-values.js";
 import "./e2e-journal-kill-recovery-acceptance.validate-phase4-phas-registration-proof.js";
 import "./e2e-journal-kill-recovery-acceptance.validate-phase4-phas-registration-transaction-body.js";

@@ -9,25 +9,6 @@ afterEach(() => vi.unstubAllEnvs());
 const loadConfig = () =>
   Effect.runPromise(NodeConfig.pipe(Effect.provide(NodeConfig.layer)));
 
-describe("production genesis configuration", () => {
-  it("starts the compiled profile's network with the empty ledger committed by atomic initialization", async () => {
-    vi.stubEnv("NETWORK", SELECTED_DEPLOYMENT_PROFILE.network);
-    const config = await loadConfig();
-    // Test defaults contain the old genesis wallets. Their presence must
-    // never grant an unauthenticated L2 balance.
-    expect(config.GENESIS_UTXOS).toEqual([]);
-    expect(config.GENESIS_UTXOS_BY_WALLET).toEqual({ A: [], B: [], C: [] });
-  });
-
-  it("does not require synthetic genesis wallet credentials", async () => {
-    for (const wallet of ["A", "B", "C"]) {
-      vi.stubEnv(`TESTNET_GENESIS_WALLET_SEED_PHRASE_${wallet}`, undefined);
-    }
-    const config = await loadConfig();
-    expect(config.GENESIS_UTXOS).toEqual([]);
-  });
-});
-
 describe("compiled network binding", () => {
   // The compiled deployment profile fixes the network before any ledger is
   // configured, so no other network's genesis is reachable.

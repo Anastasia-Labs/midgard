@@ -1,22 +1,18 @@
 /**
- * The node's in-process list inserts (`list_insert`) as real emulator
- * flows run them, replayed onto a production follower of the same chain
- * (`replayJournaledOnFollower`):
+ * The node's in-process list insert (`list_insert`) as the real emulator
+ * flow runs it, replayed onto a production follower of the same chain
+ * (`replayJournaledOnFollower`): the atomic protocol initialization through
+ * `completeAndSubmit`, keyed by the one-shot nonce it spends
+ * (`list_insert:protocol_init:<nonce>`).
  *
- * - the atomic protocol initialization through `completeAndSubmit`, keyed by
- *   the one-shot nonce it spends (`list_insert:protocol_init:<nonce>`);
- * - the genesis deposit through `submitGenesisDeposits`, keyed by its event
- *   key (`list_insert:deposit:<event key>`).
- *
- * Each is journaled as `list_insert` and sent; replayed, it is recorded
+ * It is journaled as `list_insert` and sent; replayed, it is recorded
  * through the production journal at the block before it landed, where its
  * §8.4 predicate reads its target unreached on the real projections (no
- * state-queue policy output; the event key not in the key set) and S6
- * resends it, and the landing block lands it. The flows run where no
- * follower runs, so both went out unjournaled (`no_follower`).
+ * state-queue policy output) and S6 resends it, and the landing block lands
+ * it. The flow runs where no follower runs, so it went out unjournaled
+ * (`no_follower`).
  */
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk/state-queue";
-import * as SDK from "@al-ft/midgard-sdk/users";
 import {
   Emulator,
   generateEmulatorAccount,
@@ -26,14 +22,10 @@ import {
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { submitGenesisDeposits } from "../src/genesis.js";
-import { NodeConfig } from "../src/services/config.make-config.js";
 import {
   IntentJournalWithoutFollower,
   openPlan,
 } from "../src/services/intent-journal.js";
-import { Lucid as LucidService } from "../src/services/lucid.js";
-import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { ensureAtomicProtocolInitReferenceScriptsProgram } from "../src/transactions/initialization.derive-operator-da-params.js";
 import { completeAndSubmit } from "../src/transactions/initialization.fetch-configured-nonce-utxo.js";
 import { buildAtomicProtocolInitTxProgram } from "../src/transactions/initialization.fetch-protocol-deployment-status.js";
@@ -48,7 +40,6 @@ import {
 } from "./helpers/intent-journal-replay.expect.js";
 import { replayJournaledOnFollower } from "./helpers/intent-journal-replay.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
-import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import {
   EMULATOR_PROTOCOL_PARAMETERS,
   EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
@@ -60,14 +51,8 @@ afterEach(() => {
 
 const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
 
-/** Moves the emulator (and the fake clock the builders read) past `unixMs`. */
-const advancePast = (emulator: Emulator, unixMs: number) => {
-  while (emulator.now() <= unixMs) emulator.awaitSlot(1);
-  vi.setSystemTime(new Date(emulator.now()));
-};
-
 describe("the node's list inserts on a follower of the real flow's chain", () => {
-  it("the protocol initialization and the genesis deposit are journaled as list inserts, wanted before they land, and landed", async () => {
+  it("the protocol initialization is journaled as a list insert, wanted before it lands, and landed", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const operator = generateEmulatorAccount({ lovelace: 30_000_000_000n });
     const referenceScripts = generateEmulatorAccount({
@@ -103,7 +88,7 @@ describe("the node's list inserts on a follower of the real flow's chain", () =>
         contracts,
       ),
     );
-    // Only the two list inserts replay: the deployment's own intents are
+    // Only the list insert replays: the deployment's own intents are
     // other families' subjects.
     drainJournaledWithoutFollower();
 
@@ -137,51 +122,7 @@ describe("the node's list inserts on a follower of the real flow's chain", () =>
     );
     expect(await lucid.awaitTx(initHash)).toBe(true);
 
-    // The deposit list admits once its root's protection has passed.
-    const deposit = SDK.eventHistoryDeploymentFromContracts(
-      SDK.requireEventHistoryContracts(contracts).deposit,
-    );
-    const nodes = SDK.authenticateHistoryNodes(
-      await lucid.utxosAt(deposit.address),
-      deposit,
-    );
-    advancePast(
-      emulator,
-      Number(
-        nodes.reduce(
-          (latest, { node }) =>
-            node.protected_until > latest ? node.protected_until : latest,
-          0n,
-        ),
-      ) + 60_000,
-    );
     const operatorAddress = await lucid.wallet().address();
-    await runWithoutFollower(
-      submitGenesisDeposits.pipe(
-        Effect.provideService(LucidService, {
-          api: lucid,
-          switchToOperatorsMainWallet: Effect.sync(() =>
-            lucid.selectWallet.fromSeed(operator.seedPhrase),
-          ),
-        } as never),
-        Effect.provideService(MidgardContracts, contracts as never),
-        Effect.provideService(
-          NodeConfig,
-          makeTestNodeConfig({
-            // The genesis deposit reads only the first entry's address.
-            GENESIS_UTXOS: [
-              {
-                txHash: "00".repeat(32),
-                outputIndex: 0,
-                address: operatorAddress,
-                assets: {},
-              },
-            ],
-          }),
-        ),
-      ),
-    );
-
     const credential = paymentCredentialOf(operatorAddress);
     const families = expectReplayedFamilies(
       await replayJournaledOnFollower({
@@ -200,19 +141,10 @@ describe("the node's list inserts on a follower of the real flow's chain", () =>
       ["list_insert"],
     );
     const inserts = families.list_insert!;
-    expect(inserts).toHaveLength(2);
-    const [init, genesis] = inserts;
-    expect(init).toMatchObject({
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]).toMatchObject({
       txHash: initHash,
       workflowKey: `list_insert:protocol_init:${nonce.txHash}#${nonce.outputIndex.toString()}`,
     });
-    const deposits = SDK.authenticateHistoryNodes(
-      await lucid.utxosAt(deposit.address),
-      deposit,
-    ).filter(({ key }) => key !== null);
-    expect(deposits).toHaveLength(1);
-    expect(genesis!.workflowKey).toBe(
-      `list_insert:deposit:${deposits[0]!.key!}`,
-    );
   }, 600_000);
 });

@@ -30,7 +30,6 @@ import "./commands/e2e-journal-kill-recovery-acceptance.js";
 import "./commands/e2e-process-cleanup.js";
 import "./commands/e2e-service.js";
 import "./commands/e2e-stress-l2-throughput/index.js";
-import "./commands/phase4-genesis-ledger.js";
 import "./commands/stress-corpus-generate.js";
 import "./commands/stress-db-metrics.js";
 import "./commands/stress-environment-fingerprint.js";

@@ -96,7 +96,6 @@ export const GATES = {
     [
       "midgard-node",
       [
-        "tests/startup-policy.test.ts",
         "tests/retention-policy.test.ts",
         "tests/submit-timing.test.ts",
       ],

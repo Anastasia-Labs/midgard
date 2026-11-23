@@ -15,7 +15,6 @@ import {
   validatePhase4ProcessIsolationValues,
   validatePhase4ResetAttestation,
 } from "../src/commands/e2e-journal-kill-recovery-acceptance.js";
-import { PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE } from "../src/commands/phase4-genesis-ledger.js";
 
 const values = (): Record<string, string> => ({
   POSTGRES_HOST: "127.0.0.1",
@@ -178,13 +177,6 @@ const snapshotIdentity = () => ({
 });
 
 describe("Phase 4 process isolation", () => {
-  it("keeps the fixed transfer below the configured wallet-B genesis total", () => {
-    expect(PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE).toBe(50_000n);
-    expect(PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE).toBeLessThanOrEqual(
-      126_943n,
-    );
-  });
-
   it("builds a frozen child env without mutable controller leakage", () => {
     const child = buildPhase4IsolatedChildEnv({
       values: { ...values(), EXPLICIT_PHASE4_VALUE: "kept" },

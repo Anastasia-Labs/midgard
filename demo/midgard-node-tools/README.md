@@ -10,8 +10,8 @@ options still require their explicit configuration gates.
 - `src/index.ts`: the `midgard-node-tools` CLI (`dist/index.js`).
 - `src/commands/`: the e2e finalizer and state-correction acceptance, the
   managed-service commands, stress wallets, the corpus
-  generator/verifier, the bounded L2 stress harness, the Phase 4 genesis-ledger
-  gate, and the Phase 4 journal-kill recovery acceptance controller.
+  generator/verifier, the bounded L2 stress harness, and the Phase 4
+  journal-kill recovery acceptance controller.
 - `src/e2e/`: the process supervisor, structured step runner, run summary,
   owned-process-group records, DA gates, and the journal-kill process
   harness.
@@ -64,7 +64,6 @@ This is the only live acceptance flow; the operating runbook is
 | `e2e-stress-l2-throughput`                           | Opt-in bounded L2 transfer stress with SQL-grounded stage metrics                                  |
 | `create-l2-wallet`, `stress-wallets:*`               | Persisted stress wallets: create, prepare, fan-out, consolidate, drain                             |
 | `stress-corpus-generate`, `stress-corpus-verify`     | Signed NDJSON transaction corpus for repeatable benchmarks                                         |
-| `phase4-genesis-ledger`                              | Gated Phase 4 local-devnet genesis command                                                         |
 | `e2e-journal-kill-recovery-acceptance`               | The Phase 4 two-node journal-before-submit SIGKILL recovery acceptance                             |
 
 `e2e-stack` records every command it runs through the structured step runner

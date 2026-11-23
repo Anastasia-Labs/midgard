@@ -11,7 +11,7 @@ import {
 } from "@al-ft/midgard-fault-proofs/ledger-store";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
-import { getAddressDetails, toUnit, type UTxO } from "@lucid-evolution/lucid";
+import { getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 import { expect } from "vitest";
 
@@ -210,11 +210,9 @@ export const resolve = async (
   tail: Awaited<ReturnType<typeof tailOf>>["tail"],
   nativeMpfRoot: string,
   {
-    genesisUtxos,
     ledgers = [[E0], [E1]],
     verified = "verify",
   }: Readonly<{
-    genesisUtxos?: readonly UTxO[];
     ledgers?: readonly (readonly Ledger.MinimalEntry[])[];
     verified?: HeaderRoot | VerifiedFrontier | "none" | "verify";
   }> = {},
@@ -247,16 +245,7 @@ export const resolve = async (
       ),
     ),
   );
-  return run(
-    genesisUtxos === undefined
-      ? resolved
-      : Effect.flatMap(NodeConfig, (config) =>
-          Effect.provideService(resolved, NodeConfig, {
-            ...config,
-            GENESIS_UTXOS: [...genesisUtxos],
-          }),
-        ),
-  );
+  return run(resolved);
 };
 
 export const expectPending = (

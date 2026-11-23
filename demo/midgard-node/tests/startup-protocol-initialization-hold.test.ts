@@ -215,8 +215,6 @@ const runCheck = async (
           HUB_ORACLE_ONE_SHOT_TX_HASH: NONCE.txHash,
           HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: NONCE.outputIndex,
           DEPLOYMENT_ECONOMICS_PROFILE: manifest.economics.profile,
-          // A bootstrapping node: it still never deploys.
-          RUN_GENESIS_ON_STARTUP: true,
           STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS: MAX_ATTEMPTS,
           STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS: 0,
         }),

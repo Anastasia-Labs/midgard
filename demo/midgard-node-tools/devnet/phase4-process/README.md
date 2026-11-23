@@ -165,13 +165,10 @@ devnet/phase4-process/scripts/capture-snapshot.sh
 
 Bootstrap funds the seven test-only wallets (each with a separate collateral output) from the genesis UTxO, publishes the
 node-runtime reference scripts, initializes the protocol, and registers the
-operator. It explicitly seeds the complete configured L2 genesis set into the
-otherwise-empty run-scoped `mempool_ledger`, byte-matching commit fallback, and
-separately proves the A/B gate wallets are funded. It does not enable startup
-genesis or submit an L1 deposit. The seed command refuses public networks,
-non-loopback services, missing authorization, and partial/non-genesis ledger
-state. It also
-writes a mode-0600 `secrets/acceptance.env` by combining the
+operator. The L2 ledger starts empty, as on every network, and bootstrap
+submits no L1 deposit, so the A/B gate wallets hold no L2 funds: the
+acceptance's transfers cannot be funded until bootstrap deposits to them. It
+also writes a mode-0600 `secrets/acceptance.env` by combining the
 run's node and wallet inputs; this immutable child-env source is distinct from
 the repository `.env`, and all Phase 4 node commands disable checkout dotenv
 loading. Snapshot capture records a canonical Cardano tip hash
@@ -180,8 +177,7 @@ Postgres. Every reset must restore that exact identity. Never mix an archive,
 manifest, acceptance env, or snapshot identity from a different run.
 The identity binds the source and distribution trees of both the operator
 package (`midgard-node`, the node under test) and this tooling package
-(`midgard-node-tools`, whose binary runs the acceptance controller and the
-gated genesis-ledger seed).
+(`midgard-node-tools`, whose binary runs the acceptance controller).
 The snapshot set includes every archive, the optional deployment run-state
 when present, the exact `aiken build --env testnet` blueprint checksum, and a
 pinned `cardano-cli stake-address-info` proof of the PHAS registration and its

@@ -1,7 +1,6 @@
 import type {
   Ledger,
   LedgerSource,
-  OutRefHex,
 } from "@al-ft/midgard-fault-proofs/ledger-store";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
@@ -14,9 +13,7 @@ import {
 } from "../landed-blocks/ledger.js";
 import { readLedgerOutputs } from "../landed-blocks/ledger-outputs.js";
 import { retrieveRows } from "../landed-blocks/store.js";
-import { utxoToLedgerInsertMaterial } from "../mpf/ledger-hydration.js";
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
-import { NodeConfig } from "../services/config.make-config.js";
 import { Database } from "../services/database.js";
 import { verifiedLandedRootAt } from "./commit-block-header.landed-commit-base.js";
 import {
@@ -54,25 +51,6 @@ const pending = (headerHash: string) =>
   );
 
 /**
- * The outputs of `outRefs`, in order: from `confirmed_ledger` and the
- * produced outputs of landed blocks (`readLedgerOutputs`), then from the
- * configured genesis UTxOs, which no table holds while nothing has folded
- * them into `confirmed_ledger`. An out-ref names its output, so each source
- * answers truthfully for any ledger that holds the out-ref.
- */
-const commitBaseOutputs = (outRefs: readonly OutRefHex[]) =>
-  Effect.gen(function* () {
-    const found = yield* readLedgerOutputs(outRefs);
-    if (found.every((output) => output !== undefined)) return found;
-    const genesis = new Map<OutRefHex, Buffer>();
-    for (const utxo of (yield* NodeConfig).GENESIS_UTXOS) {
-      const { ledgerOp, outputCbor } = yield* utxoToLedgerInsertMaterial(utxo);
-      genesis.set(Buffer.from(ledgerOp.key).toString("hex"), outputCbor);
-    }
-    return found.map((output, index) => output ?? genesis.get(outRefs[index]!));
-  });
-
-/**
  * The ledger a commit builds on: the ledger store's at the native owner's
  * durable root `nativeMpfRoot`, once that root is the one the state queue
  * tip names. A confirmed-state tip names the state's root (at genesis, the
@@ -94,7 +72,7 @@ export const resolveCommitBase = ({
   readonly nativeMpfRoot: string;
   readonly openLedger: OpenCommitBaseLedger;
   readonly verifiedFrontier: VerifiedFrontier | undefined;
-}): Effect.Effect<ResolvedCommitBase, unknown, Database | NodeConfig> =>
+}): Effect.Effect<ResolvedCommitBase, unknown, Database> =>
   Effect.gen(function* () {
     // A live, unlanded own block is never a base, and the tail it builds on
     // is not one either while it is in flight: the next block waits for it
@@ -107,12 +85,12 @@ export const resolveCommitBase = ({
           PendingBlockFinalizationsDB.Columns.HEADER_HASH
         ].toString("hex"),
       );
-    const runtime = yield* Effect.runtime<Database | NodeConfig>();
+    const runtime = yield* Effect.runtime<Database>();
     const base = (source: string): ResolvedCommitBase => ({
       source,
       root: nativeMpfRoot,
       ledger: openLedger(nativeMpfRoot, (outRefs) =>
-        Runtime.runPromise(runtime)(commitBaseOutputs(outRefs)),
+        Runtime.runPromise(runtime)(readLedgerOutputs(outRefs)),
       ),
     });
     if (availableConfirmedBlock === "") return base("native");

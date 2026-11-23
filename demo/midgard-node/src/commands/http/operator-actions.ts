@@ -2,7 +2,6 @@ import { HttpServerResponse } from "@effect/platform";
 import { Effect } from "effect";
 
 import { blockCommitmentAction } from "../../fibers/block-commitment.block-commitment-action.js";
-import * as Genesis from "../../genesis.js";
 import { formatLandedStateQueue } from "../../l1-state-queue/landed.js";
 import { readLandedStateQueue } from "../../services/landed-state-queue.js";
 import { MidgardContracts } from "../../services/midgard-contracts.make-midgard-contract-runtime.js";
@@ -55,7 +54,6 @@ export const getInitHandler = Effect.gen(function* () {
   }
 
   const txHash = yield* Initialization.program();
-  yield* Genesis.program;
   yield* Effect.logInfo(
     `GET /${INIT_ENDPOINT} - Initialization successful: ${txHash}`,
   );

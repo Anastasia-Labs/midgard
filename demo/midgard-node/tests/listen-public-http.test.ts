@@ -65,7 +65,6 @@ const settings = {
   NETWORK: "Preprod",
   PORT: 3000,
   DEPLOYMENT_ECONOMICS_PROFILE: "public-preprod-launch-v1",
-  RUN_GENESIS_ON_STARTUP: false,
   VALIDATION_WORKER_POOL_SIZE: 2,
   HTTP_SOCKET_PATH: socketPath,
   HTTP_TRUSTED_PROXY_PEERS: [],
