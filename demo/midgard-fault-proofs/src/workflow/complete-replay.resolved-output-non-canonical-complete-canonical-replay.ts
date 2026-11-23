@@ -21,8 +21,8 @@ import { detectProtectedOutputSignerMissingCompleteReplay } from "../protected-o
 import { protectedOutputSignerEvidenceIdentity } from "../protected-output-signer-missing/workflow.js";
 import { detectReceivePurposeLanguageReplay } from "../receive-purpose-language/replay.js";
 import {
-  deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
+  readResolvedOutputPriorLedger,
   resolvedOutputEvidenceIdentity,
 } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
 import { detectScriptIntegrityHashMismatchReplay } from "../script-integrity-hash-mismatch/replay.js";
@@ -33,10 +33,7 @@ import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transactio
 import { detectUnusedRedeemerReplay } from "../unused-redeemer/replay.js";
 import { detectUnusedScriptWitnessReplay } from "../unused-script-witness/replay.js";
 import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.detect-witness-script-decoding-complete-replay.js";
-import {
-  completeCanonicalReplayPredecessorLedger,
-  completeCanonicalReplayPredecessorStoreLedger,
-} from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   detectL2TxMistags,
   detectMinFees,
@@ -359,9 +356,9 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(
     ["resolvedOutputNonCanonical"],
     async (evidence, context) => {
-      const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
+      const priorLedger = await readResolvedOutputPriorLedger({
         block: evidence,
-        predecessor: completeCanonicalReplayPredecessorLedger({
+        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
           evidence,
           context,
         }),
@@ -413,9 +410,9 @@ const verdictSubjectReplayPosition = (
 /** Complete spend-signature scan against the classifier-admitted predecessor ledger. */
 export const SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["spendInputSignerMissing"], async (evidence, context) => {
-    const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
+    const priorLedger = await readResolvedOutputPriorLedger({
       block: evidence,
-      predecessor: completeCanonicalReplayPredecessorLedger({
+      predecessor: await completeCanonicalReplayPredecessorStoreLedger({
         evidence,
         context,
       }),
