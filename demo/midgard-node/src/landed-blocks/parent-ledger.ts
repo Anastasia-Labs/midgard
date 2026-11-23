@@ -6,7 +6,8 @@
  * relands after a rollback took it out of every retained window, or an old
  * processed row a later block built on. Then the parent's ledger is rebuilt
  * from the newest root the store retains on the processed chain to it, by
- * the rows' deltas (each proportional to its block). A ledger this node
+ * the rows' deltas (each proportional to its block). The fold has the store
+ * hold each new frontier's root the same way (`fold.ts`). A ledger this node
  * cannot give is its own fault, never the block's: a retried local fault on
  * the block (`landed_block_local_fault`, with its alarm).
  */
@@ -64,29 +65,30 @@ const replayDeltas = (ledger: Ledger, rows: readonly LandedBlockRow[]) =>
     catch: (cause) => cause,
   });
 
+/** The ledger at a root: the store's, rebuilt, or why this node cannot give
+ * it. */
+export type LedgerAt =
+  | Readonly<{ kind: "retained"; ledger: Ledger }>
+  /** Rebuilt by processed deltas; the store does not hold it yet. */
+  | Readonly<{ kind: "rebuilt"; ledger: Ledger }>
+  | Readonly<{ kind: "unavailable"; detail: string }>;
+
 /**
- * The ledger at `parent`'s root, or the local-fault hold on `node` when this
- * node cannot give it. `lineage` is the processed chain to `parent`, in
- * order, each row's parent root that of the row before it; the newest root on
- * it the store retains, the parent's own first, is where a rebuild starts.
+ * The ledger at `root`. `lineage` is the processed chain to `root`, in order,
+ * each row's parent root that of the row before it and the last row's root
+ * `root`; the newest root on it the store retains, `root` itself first, is
+ * where a rebuild starts. A delta the rebuilt ledger refuses, or one that
+ * reaches another root, makes it unavailable; any other failure fails.
  */
-export const parentLedger = <R>(
+export const ledgerAt = <R>(
   ports: LandedBlockPorts<R>,
-  node: LandedNode,
-  parent: Readonly<{ utxosRoot: string }>,
+  root: string,
   lineage: readonly LandedBlockRow[],
 ) =>
   Effect.gen(function* () {
-    const held = (detail: string) =>
-      replayOutcomeAlarm(node.headerHash, "local_fault", detail).pipe(
-        Effect.as<ParentLedger>({
-          kind: "held",
-          hold: replayOutcomeHold("local_fault", detail, node.headerHash),
-        }),
-      );
-    const found = yield* retained(ports, parent.utxosRoot);
+    const found = yield* retained(ports, root);
     if (found !== undefined)
-      return { kind: "ledger", ledger: found } satisfies ParentLedger;
+      return { kind: "retained", ledger: found } satisfies LedgerAt;
     for (let from = lineage.length - 1; from >= 0; from--) {
       const base = yield* retained(ports, lineage[from]!.parentUtxosRoot);
       if (base === undefined) continue;
@@ -96,17 +98,43 @@ export const parentLedger = <R>(
       if (rebuilt._tag === "Left") {
         if (!(rebuilt.left instanceof LedgerMutationRefused))
           return yield* Effect.fail(rebuilt.left);
-        return yield* held(
-          `block ${node.headerHash}: the processed deltas to its parent's root ${parent.utxosRoot} do not apply to the retained ledger at ${base.root}: ${rebuilt.left.message}`,
-        );
+        return {
+          kind: "unavailable",
+          detail: `the processed deltas to root ${root} do not apply to the retained ledger at ${base.root}: ${rebuilt.left.message}`,
+        } satisfies LedgerAt;
       }
-      if (rebuilt.right.root !== parent.utxosRoot)
-        return yield* held(
-          `block ${node.headerHash}: the processed deltas from the retained ledger at ${base.root} reach root ${rebuilt.right.root}, not its parent's root ${parent.utxosRoot}`,
-        );
-      return { kind: "ledger", ledger: rebuilt.right } satisfies ParentLedger;
+      if (rebuilt.right.root !== root)
+        return {
+          kind: "unavailable",
+          detail: `the processed deltas from the retained ledger at ${base.root} reach root ${rebuilt.right.root}, not ${root}`,
+        } satisfies LedgerAt;
+      return { kind: "rebuilt", ledger: rebuilt.right } satisfies LedgerAt;
     }
-    return yield* held(
-      `block ${node.headerHash}: the ledger store retains neither its parent's root ${parent.utxosRoot} nor any root on the processed chain to it`,
-    );
+    return {
+      kind: "unavailable",
+      detail: `the ledger store retains neither root ${root} nor any root on the processed chain to it`,
+    } satisfies LedgerAt;
+  });
+
+/**
+ * The ledger at `parent`'s root, or the local-fault hold on `node` when this
+ * node cannot give it; `lineage` is the processed chain to `parent`
+ * (`ledgerAt`).
+ */
+export const parentLedger = <R>(
+  ports: LandedBlockPorts<R>,
+  node: LandedNode,
+  parent: Readonly<{ utxosRoot: string }>,
+  lineage: readonly LandedBlockRow[],
+) =>
+  Effect.gen(function* () {
+    const at = yield* ledgerAt(ports, parent.utxosRoot, lineage);
+    if (at.kind !== "unavailable")
+      return { kind: "ledger", ledger: at.ledger } satisfies ParentLedger;
+    const detail = `block ${node.headerHash}: its parent's ledger: ${at.detail}`;
+    yield* replayOutcomeAlarm(node.headerHash, "local_fault", detail);
+    return {
+      kind: "held",
+      hold: replayOutcomeHold("local_fault", detail, node.headerHash),
+    } satisfies ParentLedger;
   });

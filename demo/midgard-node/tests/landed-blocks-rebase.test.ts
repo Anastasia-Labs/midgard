@@ -22,16 +22,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { foldToRoot } from "../src/landed-blocks/fold.js";
 import { LANDED_BLOCK_REBASE_FAILED } from "../src/landed-blocks/holds.js";
-import type { LandedBlockPorts } from "../src/landed-blocks/ports.js";
 import { REBASE_REJECTIONS } from "../src/landed-blocks/rebase.js";
 import { rollBackRows } from "../src/landed-blocks/settlements.js";
 import { insertRow, retrieveRows } from "../src/landed-blocks/store.js";
-import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { currentLivenessReasons } from "../src/services/globals.liveness-reasons.js";
 import { MPF_CLOSURE_MISSING } from "../src/services/liveness-halt.js";
 import { failure as recomputeFailure } from "../src/services/working-ledger-recompute.pending-txs.js";
 import * as RejectClosure from "../src/services/working-ledger-recompute.reject-closure.js";
 import { testWrite } from "./helpers/driver-recompute.js";
+import { foldPorts } from "./helpers/fold-ports.js";
 import { admitPending } from "./helpers/landed-blocks-sim.mempool.js";
 import { simDigest } from "./helpers/landed-blocks-sim.universe.js";
 import {
@@ -63,11 +62,6 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
-/** The production fold's ports with the view held. */
-const foldPorts = {
-  confirmView: () => Effect.succeed(true),
-  write: <A, E, R>(work: Effect.Effect<A, E, R>) => withFollowerWrite(work),
-} as unknown as LandedBlockPorts<never>;
 afterEach(() => {
   vi.restoreAllMocks();
 });

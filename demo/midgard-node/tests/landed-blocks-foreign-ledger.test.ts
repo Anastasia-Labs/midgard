@@ -127,7 +127,10 @@ describe("foreign landed blocks on the node's ledger store", () => {
     );
   }, 120_000);
 
-  it("processes a block spending an output a landed block not yet folded produced, read from that block's row", async () => {
+  /** Processes a block spending the output its parent, a landed block not
+   * yet folded, produced; the store retains the parent's ledger or only the
+   * frontier's (the empty ledger) before it. */
+  const onUnfoldedParent = async (parentLedger: "retained" | "rebuilt") => {
     const { store: follower } = await followChain();
     opened.push(follower);
     const rootHash = "22".repeat(28);
@@ -173,7 +176,13 @@ describe("foreign landed blocks on the node's ledger store", () => {
           }),
         );
         const { store } = yield* nodeLedgers;
-        yield* Effect.promise(() => retainLedgerOf(store, [block.spent]));
+        if (parentLedger === "retained")
+          yield* Effect.promise(() => retainLedgerOf(store, [block.spent]));
+        else
+          expect(yield* Effect.promise(() => opening(store, block.prior))).toBe(
+            "LedgerNotRetained",
+          );
+        const alarms = yield* localFaultAlarms();
         const held = yield* processLandedQueue(
           foreignPorts(follower, store),
           queue,
@@ -183,8 +192,20 @@ describe("foreign landed blocks on the node's ledger store", () => {
         expect(rows).toHaveLength(2);
         expect(rows).toContainEqual([parentHash, "foreign", "processed"]);
         expect(rows).toContainEqual([block.hash, "foreign", "processed"]);
+        expect((yield* localFaultAlarms()) - alarms).toBe(0n);
+        expect(
+          yield* Effect.promise(() => opening(store, block.header.utxosRoot)),
+        ).toBe("opened");
       }),
     );
+  };
+
+  it("processes a block spending an output a landed block not yet folded produced, read from that block's row", async () => {
+    await onUnfoldedParent("retained");
+  }, 120_000);
+
+  it("processes a block on a parent whose ledger the store does not hold, rebuilt from the frontier's ledger by the parent row's delta", async () => {
+    await onUnfoldedParent("rebuilt");
   }, 120_000);
 
   it("holds a block whose parent ledger holds an output no table has as a retried local fault with the alarm, recording nothing", async () => {

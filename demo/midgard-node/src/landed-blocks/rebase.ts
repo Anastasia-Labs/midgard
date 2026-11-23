@@ -125,9 +125,10 @@ export const moveNativeRoot = (
       else if (!(restored.left instanceof NativeMpfRootNotRetained))
         return yield* Effect.fail(restored.left);
     }
-    // Every retention keeps the frontier's root and the processed chain's
-    // roots inside the window, so none is retained only when the chain
-    // reaches back past the window or the store lost them.
+    // Each fold has the store hold the new frontier's root and every
+    // retention keeps it, so none is retained only when an L1 rollback
+    // deeper than the window unfolded the frontier back to a root the store
+    // had dropped, or the store lost them.
     if (from < 0)
       return yield* Effect.fail(
         new LandedChainRootNotRetained(durableRoot, roots[0]!),

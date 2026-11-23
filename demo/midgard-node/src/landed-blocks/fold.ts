@@ -41,8 +41,14 @@ import {
   CONFIRMED_LEDGER_BEHIND,
 } from "./holds.js";
 import { processedChain } from "./ledger.js";
+import { ledgerAt } from "./parent-ledger.js";
 import { type LandedBlockPorts, viewChecked } from "./ports.js";
-import { Frontier, type HeaderRoot, retrieveRows } from "./store.js";
+import {
+  Frontier,
+  type HeaderRoot,
+  type LandedBlockRow,
+  retrieveRows,
+} from "./store.js";
 
 /** A verdict on the view: the next follower change re-reads it, no timer. */
 const behind = (detail: string): DriverHold =>
@@ -160,6 +166,28 @@ const checkedFold = <R, A>(
     );
   });
 
+/**
+ * Has the ledger store hold `next`'s root before `next` becomes the
+ * frontier. Retention names the roots of the blocks inside the window, the
+ * frontier's and the newest processed one, so a block that left the window
+ * before it merged may have lost its root; a rollback that later removes
+ * every row after it leaves the frontier's root the only base a new block
+ * can be checked on. It is rebuilt from the frontier's ledger by `next`'s
+ * delta and persisted. When this node cannot give it (the store lost the
+ * frontier's root too), the fold goes ahead with a warning: the confirmed
+ * ledger does not read the store, and a block built on that root then holds
+ * its own local fault.
+ */
+const holdNextRoot = <R>(ports: LandedBlockPorts<R>, next: LandedBlockRow) =>
+  Effect.gen(function* () {
+    const at = yield* ledgerAt(ports, next.utxosRoot, [next]);
+    if (at.kind === "rebuilt") yield* ports.persistLedger(at.ledger);
+    else if (at.kind === "unavailable")
+      yield* Effect.logWarning(
+        `the ledger store will not hold the confirmed-ledger frontier ${next.headerHash}'s root: ${at.detail}`,
+      );
+  });
+
 export type FoldOutcome =
   | Readonly<{ kind: "at_root" }>
   /** The root is not on the processed chain from the frontier. */
@@ -209,6 +237,7 @@ export const foldToRoot = <R>(
       if (!next.applied)
         return { kind: "awaiting_rebase" } satisfies FoldOutcome;
       const point = yield* mergePoint(next.headerHash);
+      yield* holdNextRoot(ports, next);
       const folded = yield* checkedFold(ports, view, foldMerge(next, point));
       if (Either.isLeft(folded))
         return { kind: "held", hold: folded.left } satisfies FoldOutcome;
