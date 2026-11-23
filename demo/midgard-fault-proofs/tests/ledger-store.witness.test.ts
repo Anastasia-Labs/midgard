@@ -209,15 +209,23 @@ describe("ledgerFromWitness refuses what does not open the root", () => {
   it("fails replay with LedgerNodeMissing when a read node is left out", async () => {
     const { root, witness } = await witnessed();
     const nodes = [...witness.nodes];
-    const leaf = nodes.findIndex(({ __kind }) => __kind === "Leaf");
-    nodes.splice(leaf, 1);
+    // The leaf of out-ref 0, which the replay deletes: it must read it, and
+    // no witnessed output rests on it. Chosen by key, not by position: nodes
+    // are listed by hash, and leaf hashes vary from run to run with the test
+    // address.
+    const deleted = testOutRef(0).toString("hex");
+    const leaf = nodes.findIndex(
+      (node) => node.__kind === "Leaf" && node.key === deleted,
+    );
+    expect(leaf).toBeGreaterThanOrEqual(0);
+    const [left] = nodes.splice(leaf, 1);
     const partial = ledgerFromWitness(root, { ...witness, nodes });
-    await expect(
-      run(partial, {
-        mutations: [event([0, 1], [200])],
-        keys: [testOutRef(2), testOutRef(800)],
-      }),
-    ).rejects.toBeInstanceOf(LedgerNodeMissing);
+    const refusal = await run(partial, {
+      mutations: [event([0, 1], [200])],
+      keys: [testOutRef(2), testOutRef(800)],
+    }).catch((error: unknown) => error);
+    expect(refusal).toBeInstanceOf(LedgerNodeMissing);
+    expect((refusal as LedgerNodeMissing).hash).toBe(hashOf(left!));
   });
 
   it("refuses a node not reachable from the root", async () => {
