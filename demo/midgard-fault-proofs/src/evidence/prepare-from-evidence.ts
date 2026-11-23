@@ -18,6 +18,7 @@
  */
 import { assertTransactionSourceInclusionRootAuthenticated } from "@al-ft/midgard-sdk/fraud-proof";
 
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import type { PreparedDoubleSpendOutput } from "../prepare-double-spend.encode-l2-transaction-source-value.js";
 import { prepareDoubleSpendFromTransactions } from "../prepare-double-spend.prepare-double-spend-from-transactions.js";
@@ -192,7 +193,10 @@ export const prepareNonExistentInputFromCanonicalEvidence = async ({
     headerHash: admitted.headerHash,
     transactions: admitted.transactions,
     prevUtxosRoot: evidence.header.prevUtxosRoot,
-    prevLedger,
+    prevLedger:
+      prevLedger === undefined
+        ? undefined
+        : await checkedLedgerAsLedger(prevLedger),
     expectedTransactionsRoot: admitted.expectedTransactionsRoot,
     ...(badTxId === undefined ? {} : { badTxId }),
     ...(badInputIndex === undefined ? {} : { badInputIndex }),
@@ -220,7 +224,10 @@ export const prepareNoReferenceInputFromCanonicalEvidence = async ({
     headerHash: admitted.headerHash,
     transactions: admitted.transactions,
     prevUtxosRoot: evidence.header.prevUtxosRoot,
-    prevLedger,
+    prevLedger:
+      prevLedger === undefined
+        ? undefined
+        : await checkedLedgerAsLedger(prevLedger),
     expectedTransactionsRoot: admitted.expectedTransactionsRoot,
     ...(badTxId === undefined ? {} : { badTxId }),
     ...(badReferenceInputIndex === undefined ? {} : { badReferenceInputIndex }),

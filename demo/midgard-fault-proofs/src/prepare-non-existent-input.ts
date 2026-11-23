@@ -22,20 +22,17 @@ import {
   formatUnknownError,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   commitCountedRootProgram,
   EMPTY_MERKLE_TREE_ROOT,
   type MidgardTxInput,
   type NativeTxCompact as NativeTxCompactData,
-  Proof,
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk/core";
-import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { parseHex, stringifyJson } from "./json-file.js";
-import { type CheckedLedger, requireLedgerOpening } from "./ledger-at.js";
+import type { Ledger } from "./ledger-store/index.js";
 import {
   buildMembershipProof,
   buildNonMembershipProof,
@@ -46,13 +43,13 @@ export type NeInputPreimageEntry = {
   readonly txId: string;
   readonly index: bigint;
 };
+import { predecessorNonMembershipProof } from "./predecessor-non-membership.js";
 import {
   deriveL2TransactionSourceCbor,
   type NodeTransactionPayload,
 } from "./prepare-double-spend.encode-l2-transaction-source-value.js";
 import { spendInputsWitnessFromCbors } from "./spend-input-witness.js";
 import { ledgerKeyBytesHex, nativeTxFromCoreCompact } from "./step-support.js";
-import { keyValuePhasNonMembershipProof } from "./transition-trace/phas.js";
 
 /** step-01 material: the bad tx and its membership proof in the txs trie. */
 export type PreparedNeTxInclusionJson = {
@@ -152,27 +149,6 @@ const parseBadInputIndex = (value: string | number | undefined): number => {
 };
 
 /**
- * Ledger non-membership proof CBOR for the missing input against the
- * block's predecessor ledger, which `predecessorLedger` has already checked
- * against the block's `prev_utxos_root`. Throws if the input is present.
- *
- * The `utxos_root` is a raw PHAS/MPF root (unlike the counted `transactions_root`),
- * so this exclusion proof verifies directly against `prev_utxos_root` on-chain via
- * `plutarch_pexcludes_raw`.
- */
-const ledgerNonMembershipProof = async (
-  ledger: CheckedLedger,
-  missingInput: MidgardTxInput,
-): Promise<string> =>
-  Data.to(
-    await keyValuePhasNonMembershipProof(
-      ledger.trie,
-      Buffer.from(ledgerKeyBytesHex(missingInput), "hex"),
-    ),
-    asLucidSchema(Proof),
-  );
-
-/**
  * Builds the four non-existent-input submit-step artifacts from a block the node
  * actually committed. The transactions trie is reconstructed with the node's
  * exact canonical `Data(L2TransactionSourceV1)` values keyed by raw tx id, so
@@ -195,7 +171,7 @@ export const prepareNonExistentInputFromTransactions = async ({
   /** The challenged header's `prev_utxos_root`. */
   readonly prevUtxosRoot?: string;
   /** The ledger the block starts from; omitted over the empty genesis ledger. */
-  readonly prevLedger?: CheckedLedger;
+  readonly prevLedger?: Ledger;
   readonly expectedTransactionsRoot?: string;
   readonly outputDir?: string;
 }): Promise<PreparedNonExistentInputOutput> => {
@@ -257,14 +233,12 @@ export const prepareNonExistentInputFromTransactions = async ({
 
   // step-03 ledger non-membership: the missing input is absent from the block's
   // prev-utxos ledger trie (keyed by the Cardano `TransactionInput` CBOR).
-  const ledgerNonMembershipProofCbor = await ledgerNonMembershipProof(
-    requireLedgerOpening({
-      ledger: prevLedger,
-      utxosRoot: normalizedPrevUtxosRoot,
-      label: "non-existent-input predecessor ledger",
-    }),
-    missingInput,
-  );
+  const ledgerNonMembershipProofCbor = await predecessorNonMembershipProof({
+    ledger: prevLedger,
+    utxosRoot: normalizedPrevUtxosRoot,
+    key: Buffer.from(ledgerKeyBytesHex(missingInput), "hex"),
+    label: "non-existent-input predecessor ledger",
+  });
 
   const committedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
