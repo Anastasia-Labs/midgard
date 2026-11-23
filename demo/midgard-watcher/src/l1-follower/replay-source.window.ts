@@ -1,9 +1,17 @@
 /**
  * The follower facts the replayed ledger's retention reads (DS-3): the L1
  * time at the follower's tip, and the state-queue blocks whose ledgers stay
- * readable then. A block is inside the window while the tip's time is below
- * `block_time + ledger_retention_ms`; a merged block stays inside it for as
- * long as the follower keeps one of its node rows (`replay-retention.ts`).
+ * readable then, so a block that can still be classified or replayed finds
+ * its ledgers. A block is inside the window while the tip's time is below
+ * `block_time + ledger_retention_ms`; only blocks with a node row open, or
+ * closed since the slot of `tip - ledger_retention_ms` (rows that
+ * `replay-retention.ts` keeps from pruning), are read. That is exact for
+ * merged blocks: a merge cannot precede `block_time + maturity`.
+ * A block removed by a fault proof or pruned as a descendant can leave up to
+ * its commit's validity range early, which loses nothing: no one reads the
+ * ledger after it, and a rollback that undoes the removal reopens its row,
+ * so its ledger is replayed again from the nearest ledger still held (its
+ * parent's, while the parent is queued or confirmed).
  */
 import {
   type L1SlotConfig,
@@ -31,6 +39,11 @@ const tipTimeIn = async (
     ? undefined
     : Number(l1SlotToPosixTimeMs(slotConfig, BigInt(String(cursor.slot))));
 };
+
+/** The slot holding the L1 time `timeMs`, rounded down. */
+const slotAtOrBefore = (slotConfig: L1SlotConfig, timeMs: number): number =>
+  slotConfig.zeroSlot +
+  Math.floor((timeMs - slotConfig.zeroTime) / slotConfig.slotLength);
 
 /** The L1 time at the follower's tip, in ms; `undefined` before its first
  * block. */
@@ -80,7 +93,8 @@ export const createWatcherLedgerWindowReader = (
       const tipMs = await tipTimeIn(tx, input.slotConfig);
       if (tipMs === undefined) return { blocks: [], newestRoot: undefined };
       const rows = await tx.query(
-        `SELECT DISTINCT header_hash FROM ${WATCHER_QUEUE_OUTPUTS_TABLE} WHERE kind = 'node' AND header_hash IS NOT NULL`,
+        `SELECT header_hash FROM ${WATCHER_QUEUE_OUTPUTS_TABLE} WHERE kind = 'node' AND header_hash IS NOT NULL AND to_slot IS NULL UNION SELECT header_hash FROM ${WATCHER_QUEUE_OUTPUTS_TABLE} WHERE kind = 'node' AND header_hash IS NOT NULL AND to_slot >= ?`,
+        [slotAtOrBefore(input.slotConfig, tipMs - input.ledgerRetentionMs)],
       );
       const next = new Map<string, WindowBlock>();
       for (const row of rows) {
