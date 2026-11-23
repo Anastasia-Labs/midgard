@@ -9,7 +9,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   RejectCodes,
 } from "../src/index.js";
 import {
@@ -28,6 +27,7 @@ import {
   TEST_SIGNER_SEED,
 } from "./ed25519-ledger-vectors.js";
 import { outRefFromTxId } from "./validation-fixtures.js";
+import { mutationStepsOver } from "./validation-ledger-trie.js";
 
 /**
  * Whole-transaction rows: Phase A and the trace builder verify each address
@@ -93,12 +93,10 @@ describe("Ed25519 witness verdicts end to end", { timeout: 120_000 }, () => {
         outputCbor: producedOutput,
       }),
     ];
-    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
-      {
-        initialEntries: [{ outRef: spentOutRef, output: producedOutput }],
-        operations: expectedLedgerOps,
-      },
-    );
+    const ledgerMutationSteps = await mutationStepsOver({
+      initialEntries: [{ outRef: spentOutRef, output: producedOutput }],
+      operations: expectedLedgerOps,
+    });
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
         ...traceContext,

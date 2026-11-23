@@ -11,7 +11,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
 } from "../src/index.js";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "../src/ledger-output-descriptor.js";
 import {
@@ -21,6 +20,7 @@ import {
   outRefFromByte,
   outRefFromTxId,
 } from "./validation-fixtures.js";
+import { mutationStepsOver } from "./validation-ledger-trie.js";
 import { context } from "./validation-machine.validate-boundary-abi-and-collect-auxiliary-kinds.js";
 
 /**
@@ -56,7 +56,7 @@ const replayTrace = async () => {
       outputCbor: output,
     }),
   ];
-  const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
+  const ledgerMutationSteps = await mutationStepsOver({
     initialEntries: entries,
     operations: expectedLedgerOps,
   });

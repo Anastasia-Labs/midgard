@@ -1,7 +1,7 @@
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { describe, expect, it } from "vitest";
 
-import { ledgerEntriesRoot, type LedgerEntry } from "../src/ledger-at.js";
+import { type LedgerEntry } from "../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -13,6 +13,7 @@ import {
   type LedgerStorage,
   type LedgerStorageChange,
 } from "../src/ledger-store/index.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 import {
   appliedEntries,
   describeLedgerStoreConformance,
@@ -49,7 +50,7 @@ describe("ledger store over storage that never waits", () => {
     };
     const store = createLedgerStore(storage);
     const entries = testLedgerEntries(0, 40);
-    await store.admit(entries, await ledgerEntriesRoot(entries));
+    await store.admit(entries, await oracleLedgerRoot(entries));
     let batchesBeforeTimer: number | undefined;
     setTimeout(() => {
       batchesBeforeTimer = batches;
@@ -94,7 +95,7 @@ describe("ledgers derived by many applies", () => {
     async (_, mutationsOf) => {
       const store = createLedgerStore(createMemoryLedgerStorage());
       const base = testLedgerEntries(0, 200);
-      let ledger = await store.admit(base, await ledgerEntriesRoot(base));
+      let ledger = await store.admit(base, await oracleLedgerRoot(base));
       // One apply first, so the reads below also pass a record in memory.
       ledger = await ledger.apply(event([0], []));
       let entries: readonly LedgerEntry[] = appliedEntries(
@@ -126,7 +127,7 @@ describe("ledgers derived by many applies", () => {
     const outRef = testOutRef(500);
     const first = { outRef, output: makeOutput(7_000_000n) };
     const second = { outRef, output: makeOutput(9_000_000n) };
-    let ledger = await store.admit(base, await ledgerEntriesRoot(base));
+    let ledger = await store.admit(base, await oracleLedgerRoot(base));
     const steps = [
       [{ type: "insert" as const, ...first }],
       [{ type: "delete" as const, outRef }],
@@ -165,7 +166,7 @@ describe("ledger store adopt", () => {
   const held = async () => {
     const storage = createMemoryLedgerStorage();
     const store = createLedgerStore(storage);
-    const a = await store.admit(base, await ledgerEntriesRoot(base));
+    const a = await store.admit(base, await oracleLedgerRoot(base));
     const b = await a.apply(bMutations);
     await store.persist(b);
     const c = await a.apply(cMutations);
@@ -222,7 +223,7 @@ describe("ledger store adopt", () => {
   const persistedCounts = async () => {
     const storage = createMemoryLedgerStorage();
     const store = createLedgerStore(storage);
-    const a = await store.admit(base, await ledgerEntriesRoot(base));
+    const a = await store.admit(base, await oracleLedgerRoot(base));
     await store.persist(await a.apply(bMutations));
     return await storage.counts();
   };

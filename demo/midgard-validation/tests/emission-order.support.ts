@@ -18,7 +18,6 @@ import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-f
 import {
   buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
   DirectValidationTraceUnavailable,
   placeholderValidationTraceDescriptorV1,
@@ -26,7 +25,6 @@ import {
   rejectionReasonOfSubject,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
-  validationMachineLedgerRoot,
   validationTransactionCommitmentV1,
 } from "../src/index.js";
 import type { RejectCode } from "../src/types.js";
@@ -47,6 +45,7 @@ import {
   outRefFromTxId,
   plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
+import { ledgerRootOver, mutationStepsOver } from "./validation-ledger-trie.js";
 
 /**
  * Shared harness of the emission-order rows. A row is one transaction against
@@ -320,16 +319,14 @@ export const machineTraceEffect = async (row: Row) => {
       ]
     : [];
   const ledgerMutationSteps = accepted
-    ? await buildValidationMachineLedgerMutationSteps({
+    ? await mutationStepsOver({
         initialEntries: entries,
         operations: expectedLedgerOps,
       })
     : [];
   // A rejection leaves the ledger as it is: input resolution proves each
   // lookup against this root.
-  const unchangedRoot = (await validationMachineLedgerRoot(entries)).toString(
-    "hex",
-  );
+  const unchangedRoot = (await ledgerRootOver(entries)).toString("hex");
   return buildDeterministicValidationMachineTrace({
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,

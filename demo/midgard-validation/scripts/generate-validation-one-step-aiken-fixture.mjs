@@ -40,10 +40,10 @@ import {
   buildDeterministicValidationMachineTrace,
   buildValidationOneStepArgument,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   encodeValidationBoundaryEvidenceCbor,
   encodeScriptDiscoveryControlCbor,
 } from "../dist/index.js";
+import { mutationStepsOver } from "./generate-validation-one-step-aiken-fixture.ledger-steps.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const scriptDir = path.dirname(scriptPath);
@@ -150,7 +150,7 @@ const expectedLedgerOps = [
     outputCbor: output,
   }),
 ];
-const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
+const ledgerMutationSteps = await mutationStepsOver({
   initialEntries: [{ outRef: spent, output }],
   operations: expectedLedgerOps,
 });
@@ -259,7 +259,7 @@ const buildTraceForScriptItem = async (itemBytes) => {
       outputCbor: output,
     }),
   ];
-  const vectorSteps = await buildValidationMachineLedgerMutationSteps({
+  const vectorSteps = await mutationStepsOver({
     initialEntries: [{ outRef: spent, output: vectorSpentOutput }],
     operations: vectorOps,
   });

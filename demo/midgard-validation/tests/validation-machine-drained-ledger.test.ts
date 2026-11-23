@@ -5,7 +5,6 @@ import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 import { Effect, Exit } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { buildValidationMachineLedgerMutationSteps } from "../src/index.js";
 import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
@@ -13,6 +12,7 @@ import {
   makeOutput,
   outRefFromByte,
 } from "./validation-fixtures.js";
+import { mutationStepsOver } from "./validation-ledger-trie.js";
 
 // A transaction that spends the ledger's only entry and produces nothing
 // drains the ledger. A Midgard header commits the drained ledger as
@@ -28,7 +28,7 @@ const buildDrainTrace = async (postUtxosRoot: string) => {
     fee: FUNDED_OUTPUT_LOVELACE,
   });
   const expectedLedgerOps = [{ type: "delete" as const, key: spent }];
-  const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
+  const ledgerMutationSteps = await mutationStepsOver({
     initialEntries: [{ outRef: spent, output }],
     operations: expectedLedgerOps,
   });

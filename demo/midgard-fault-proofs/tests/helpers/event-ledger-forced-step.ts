@@ -8,10 +8,11 @@ import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core"
 import type * as SDK from "@al-ft/midgard-sdk/core";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
-import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
+import { type LedgerEntry } from "../../src/ledger-at.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { createCompleteCanonicalReplayUnion } from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import type { CompleteCanonicalReplay } from "../../src/workflow/complete-replay.replay-context-identity.js";
+import { oracleLedgerRoot } from "../support/ledger-root-oracle.js";
 import { buildDecodingBlockFixture } from "../support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { singleLedgerAt } from "../support/predecessor-ledger.js";
 import {
@@ -37,7 +38,7 @@ export const forcedRejection = async ({
   readonly pre?: string;
   readonly predecessor?: readonly LedgerEntry[];
 }) => {
-  const root = await ledgerEntriesRoot(predecessor);
+  const root = await oracleLedgerRoot(predecessor);
   const fixture = await buildDecodingBlockFixture({
     operatorVkey: "aa".repeat(28),
     startTime: 1_000_000n,

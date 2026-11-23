@@ -7,13 +7,13 @@ import { expect } from "vitest";
 
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
 import { buildDirectSourceIndexEvidence } from "../../src/direct-script-derivation/source-index.js";
-import { ledgerEntriesRoot } from "../../src/ledger-at.js";
 import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
 } from "../helpers/canonical-block-evidence-fixture.js";
 import { memoryLedger } from "./fixture-ledger.js";
+import { oracleLedgerRoot } from "./ledger-root-oracle.js";
 
 /** Exactly 100 deterministic genuine leaves, not opaque sibling/model roots.
  * Follows direct-source-fixture.ts's canonical output -> descriptor -> MPF
@@ -36,7 +36,7 @@ export const prepareDirectSourceResourceFixture = async () => {
       }),
     };
   });
-  const root = await ledgerEntriesRoot(entries);
+  const root = await oracleLedgerRoot(entries);
   const predecessor = await memoryLedger(entries, root);
   const transaction = buildFixtureTransaction({
     spendInputs: entries.map((entry) => entry.outRef),

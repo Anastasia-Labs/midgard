@@ -13,7 +13,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   buildTraceAtStepCountV1,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   decideValidationChallengeV1,
   openValidationTraceV1,
   type ValidationMachineReplayInput,
@@ -28,6 +27,7 @@ import {
   outRefFromByte,
   outRefFromTxId,
 } from "./validation-fixtures.js";
+import { mutationStepsOver } from "./validation-ledger-trie.js";
 import {
   buildAcceptingUnitProgram,
   context,
@@ -54,7 +54,7 @@ const nativeSpendInput = async (): Promise<ValidationMachineReplayInput> => {
       outputCbor: output,
     }),
   ];
-  const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
+  const ledgerMutationSteps = await mutationStepsOver({
     initialEntries: [{ outRef: spent, output }],
     operations: expectedLedgerOps,
   });

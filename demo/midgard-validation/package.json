@@ -15,6 +15,9 @@
     "./tests/validation-fixtures": {
       "midgard-source": "./tests/validation-fixtures.ts"
     },
+    "./tests/validation-ledger-trie": {
+      "midgard-source": "./tests/validation-ledger-trie.ts"
+    },
     "./tests/validation-machine-event-replay.trace": {
       "midgard-source": "./tests/validation-machine-event-replay.trace.ts"
     },

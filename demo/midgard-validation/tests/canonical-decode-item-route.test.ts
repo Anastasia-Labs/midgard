@@ -13,7 +13,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
   validationSemanticResolverIndex,
 } from "../src/index.js";
@@ -29,6 +28,7 @@ import {
   outRefFromTxId,
   TEST_SIGNER_HASH,
 } from "./validation-fixtures.js";
+import { mutationStepsOver } from "./validation-ledger-trie.js";
 import { context } from "./validation-machine.validate-boundary-abi-and-collect-auxiliary-kinds.js";
 
 /**
@@ -141,7 +141,7 @@ const buildAcceptedTrace = async (
       }),
     ),
   ];
-  const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
+  const ledgerMutationSteps = await mutationStepsOver({
     initialEntries: [{ outRef: spent, output: spentOutput }],
     operations: expectedLedgerOps,
   });

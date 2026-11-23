@@ -10,7 +10,6 @@ import { Effect } from "effect";
 
 import {
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
   type RejectCode,
   type RejectedTx,
@@ -18,10 +17,10 @@ import {
   type UTxOStatePatch,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerOp,
-  validationMachineLedgerRoot,
   type ValidationMachineReplayInput,
 } from "../src/index.js";
 import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
+import { ledgerRootOver, mutationStepsOver } from "./validation-ledger-trie.js";
 
 export type ValidationMachineEventReplayInput = Readonly<{
   consensusProfile: MidgardConsensusProfile;
@@ -72,7 +71,7 @@ export const replayValidationMachineEvent = (
       return sorted;
     });
     const priorRoot = yield* Effect.tryPromise(() =>
-      validationMachineLedgerRoot(ledgerWitnessEntries),
+      ledgerRootOver(ledgerWitnessEntries),
     );
     if (priorRoot.toString("hex") !== input.priorUtxosRoot) {
       return yield* Effect.fail(
@@ -102,7 +101,7 @@ export const replayValidationMachineEvent = (
       ),
     ];
     const ledgerMutationSteps = yield* Effect.tryPromise(() =>
-      buildValidationMachineLedgerMutationSteps({
+      mutationStepsOver({
         initialEntries: ledgerWitnessEntries,
         operations: expectedLedgerOps,
       }),

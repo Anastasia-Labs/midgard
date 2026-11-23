@@ -7,11 +7,7 @@
 import * as SDK from "@al-ft/midgard-sdk/core";
 import type * as SDKDa from "@al-ft/midgard-sdk/da";
 
-import {
-  type LedgerAt,
-  ledgerEntriesRoot,
-  type LedgerEntry,
-} from "../../src/ledger-at.js";
+import { type LedgerAt, type LedgerEntry } from "../../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -20,6 +16,7 @@ import {
 import type { RetainedDaPayloadSource } from "../../src/transition-trace/fetch.admit-retained-da-provenance.js";
 import { fetchRetainedDaPayloadByHeaderHash } from "../../src/transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
 import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import { oracleLedgerRoot } from "./ledger-root-oracle.js";
 
 type FixtureLedgerEntry =
   | SDKDa.DaPayloadEntry
@@ -49,9 +46,9 @@ export const entriesOf = async (ledger: Ledger): Promise<LedgerEntry[]> => {
   return entries;
 };
 
-/** The root of the entries `ledger` lists, hashed afresh. */
+/** The root of the entries `ledger` lists, hashed afresh by the oracle. */
 export const entriesRoot = async (ledger: Ledger): Promise<string> =>
-  await ledgerEntriesRoot(await entriesOf(ledger));
+  await oracleLedgerRoot(await entriesOf(ledger));
 
 /** Records `entries` as the ledger whose root is `utxosRoot`. */
 export const recordFixtureLedger = (

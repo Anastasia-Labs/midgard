@@ -8,9 +8,9 @@
  */
 import type { UTxOStatePatch } from "@al-ft/midgard-validation/phase-b";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { mutationStepsOver } from "@al-ft/midgard-validation/tests/validation-ledger-trie";
 import { canonicalTransitionEffectFromStatePatch } from "@al-ft/midgard-validation/transition-effect";
 import {
-  buildValidationMachineLedgerMutationSteps,
   commitValidationTraceV1,
   ledgerEntriesPreState,
   transitionEffectToLedgerOps,
@@ -20,11 +20,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { isReplayLocalFault } from "../src/block-replay.faults.js";
-import {
-  ledgerEntriesRoot,
-  type LedgerEntry,
-  ledgerEntryLeaf,
-} from "../src/ledger-at.js";
+import { type LedgerEntry, ledgerEntryLeaf } from "../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -45,6 +41,7 @@ import {
   plutusExecutionBlockFixture,
 } from "./helpers/plutus-execution-block-fixture.js";
 import { keyCredential } from "./helpers/plutus-execution-seeds.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 import {
   eventAndLedger,
   l1SlotConfig,
@@ -70,7 +67,7 @@ const stored = async (
     readonly output?: (output: Buffer) => Buffer | undefined;
   } = {},
 ): Promise<Ledger> => {
-  const root = await ledgerEntriesRoot(entries);
+  const root = await oracleLedgerRoot(entries);
   const storage = createMemoryLedgerStorage();
   await createLedgerStore(storage).admit(entries, root);
   return ledgerAt(root, {
@@ -94,7 +91,7 @@ const wholeLedgerSteps = async (
   entries: readonly LedgerEntry[],
   patch: UTxOStatePatch,
 ) =>
-  await buildValidationMachineLedgerMutationSteps({
+  await mutationStepsOver({
     initialEntries: entries,
     operations: transitionEffectToLedgerOps(
       canonicalTransitionEffectFromStatePatch(patch),
@@ -180,7 +177,7 @@ describe("a validation-trace replay over its event pre-state", () => {
       expect(mutation.ledgerMutationSteps).toStrictEqual(steps);
       expect(mutation.postUtxosRoot).toBe(
         steps.at(-1)?.postRoot.toString("hex") ??
-          (await ledgerEntriesRoot(entries)),
+          (await oracleLedgerRoot(entries)),
       );
     },
   );

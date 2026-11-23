@@ -9,10 +9,7 @@ import { EventKey } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  validatePhaseASingle,
-  validationMachineLedgerRoot,
-} from "../src/index.js";
+import { validatePhaseASingle } from "../src/index.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   makeMintPreimageCbor,
@@ -20,6 +17,7 @@ import {
   makeOutput,
   outRefFromByte,
 } from "./validation-fixtures.js";
+import { ledgerRootOver } from "./validation-ledger-trie.js";
 import { replayValidationMachineEvent } from "./validation-machine-event-replay.trace.js";
 
 export const nativeFaultContext = {
@@ -138,9 +136,7 @@ export async function nativeFaultFixture(
       ),
       canonicalTransactionCbor,
       ledgerWitnessEntries: entries,
-      priorUtxosRoot: (await validationMachineLedgerRoot(entries)).toString(
-        "hex",
-      ),
+      priorUtxosRoot: (await ledgerRootOver(entries)).toString("hex"),
     }),
   );
   return {

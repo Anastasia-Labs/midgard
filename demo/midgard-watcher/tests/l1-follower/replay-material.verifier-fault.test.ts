@@ -15,11 +15,11 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import { ledgerEntriesRoot } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
 } from "@al-ft/midgard-fault-proofs/ledger-store";
+import { oracleLedgerRoot } from "@al-ft/midgard-fault-proofs/test-support/ledger-root-oracle";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
@@ -71,7 +71,7 @@ const ledgerOf = async (
 ) =>
   createLedgerStore(createMemoryLedgerStorage()).admit(
     entries,
-    await ledgerEntriesRoot(entries),
+    await oracleLedgerRoot(entries),
   );
 
 /** A withdrawal event, the ledger it spends from, and its committed verdict. */

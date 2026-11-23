@@ -7,13 +7,13 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { ledgerEntriesRoot } from "../../src/ledger-at.js";
 import {
   createLedgerStore,
   LedgerNotRetained,
   type LedgerStorage,
   type LedgerStore,
 } from "../../src/ledger-store/index.js";
+import { oracleLedgerRoot } from "./ledger-root-oracle.js";
 import {
   appliedEntries,
   countsOfOnly,
@@ -54,7 +54,7 @@ const failingAt = (storage: LedgerStorage, n: number) => {
  */
 const persistChain = async (store: LedgerStore) => {
   const entries = testLedgerEntries(0, 40);
-  const a = await store.admit(entries, await ledgerEntriesRoot(entries));
+  const a = await store.admit(entries, await oracleLedgerRoot(entries));
   const bMutations = event([0, 1], [440, 441]);
   const b = await a.apply(bMutations);
   await store.persist(b);
@@ -148,7 +148,7 @@ export const describeLedgerStoreCrashConformance = (
     it("leaves a ledger whose persist failed unretained, and persists it again", async () => {
       await withFailingStore(1, async (store, failing, storage) => {
         const entries = testLedgerEntries(0, 40);
-        const a = await store.admit(entries, await ledgerEntriesRoot(entries));
+        const a = await store.admit(entries, await oracleLedgerRoot(entries));
         const bMutations = event([0, 1], [440, 441]);
         const b = await a.apply(bMutations);
         failing.arm();
@@ -173,7 +173,7 @@ export const describeLedgerStoreCrashConformance = (
       async (n) =>
         await withFailingStore(n, async (store, failing, storage) => {
           const entries = testLedgerEntries(0, LARGE_SNAPSHOT);
-          const root = await ledgerEntriesRoot(entries);
+          const root = await oracleLedgerRoot(entries);
           failing.arm();
           await expectFailed(store.admit(entries, root));
           await expect(store.at(root)).rejects.toBeInstanceOf(

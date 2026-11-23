@@ -20,6 +20,7 @@ import {
   outRefFromByte,
   plutusV3ScriptWitness,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { ledgerRootOver } from "@al-ft/midgard-validation/tests/validation-ledger-trie";
 import {
   Application,
   Lambda,
@@ -30,7 +31,6 @@ import {
 import {
   placeholderValidationTraceDescriptorV1,
   replayValidationVerdictEvent,
-  validationMachineLedgerRoot,
   validationTransactionCommitmentV1,
 } from "@al-ft/midgard-validation/validation-machine";
 import { CML, Data } from "@lucid-evolution/lucid";
@@ -128,9 +128,9 @@ export const normalFixture = async (
   const sourceKey = alias ? "a7".repeat(32) : tx.txId.toString("hex");
   const event: SDK.EventKey = { L2TransactionEventKey: { tx_id: sourceKey } };
   const eventCbor = Data.to(event, SDK.EventKey);
-  const prior = (
-    await validationMachineLedgerRoot([{ outRef: spent, output }])
-  ).toString("hex");
+  const prior = (await ledgerRootOver([{ outRef: spent, output }])).toString(
+    "hex",
+  );
   const replay = await Effect.runPromise(
     replayValidationVerdictEvent({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -148,7 +148,7 @@ export const normalFixture = async (
   if (replay.verdict !== "accepted")
     throw new Error(`normal fixture was rejected: ${replay.rejection?.code}`);
   const post = (
-    await validationMachineLedgerRoot(
+    await ledgerRootOver(
       replay.statePatch.upsertedOutRefs.map(([key, value]) => ({
         outRef: Buffer.from(key, "hex"),
         output: value,

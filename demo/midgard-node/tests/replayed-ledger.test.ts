@@ -1,7 +1,6 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   ledgerAfter,
-  ledgerEntriesRoot,
   LedgerRootMismatchError,
 } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
@@ -18,6 +17,7 @@ import {
   entriesOf,
   entriesRoot,
 } from "@al-ft/midgard-fault-proofs/test-support/fixture-ledger";
+import { oracleLedgerRoot } from "@al-ft/midgard-fault-proofs/test-support/ledger-root-oracle";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { CML } from "@lucid-evolution/lucid";
@@ -246,7 +246,7 @@ describe("the watcher's replayed ledger", { timeout: 60_000 }, () => {
         ledgerAt: async () =>
           await createLedgerStore(createMemoryLedgerStorage()).admit(
             tampered,
-            await ledgerEntriesRoot(tampered),
+            await oracleLedgerRoot(tampered),
           ),
         headerHash: confirmed.headerHash,
         utxosRoot: confirmed.utxosRoot,

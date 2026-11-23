@@ -1,11 +1,7 @@
 import { midgardBlake2b } from "@al-ft/midgard-core/codec/hash";
 import { describe, expect, it } from "vitest";
 
-import {
-  ledgerEntriesRoot,
-  type LedgerEntry,
-  ledgerEntryLeaf,
-} from "../src/ledger-at.js";
+import { type LedgerEntry, ledgerEntryLeaf } from "../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -21,6 +17,7 @@ import {
   type WitnessBranch,
   type WitnessNode,
 } from "../src/ledger-store/index.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 import {
   event,
   testLedgerEntries,
@@ -61,7 +58,7 @@ const run = async (ledger: Ledger, replay: Replay): Promise<Observed> => {
 const persisted = async (entries: readonly LedgerEntry[]) => {
   const storage = createMemoryLedgerStorage();
   const store = createLedgerStore(storage);
-  const ledger = await store.admit(entries, await ledgerEntriesRoot(entries));
+  const ledger = await store.admit(entries, await oracleLedgerRoot(entries));
   return { storage, store, ledger: await store.at(ledger.root) };
 };
 
@@ -133,7 +130,7 @@ describe("ledger witnesses replay exactly as the full store", () => {
       keys: [testOutRef(0), testOutRef(1)],
     });
     expect(expected.roots[0]).toBe(
-      await ledgerEntriesRoot([testLedgerEntry(1)]),
+      await oracleLedgerRoot([testLedgerEntry(1)]),
     );
     expect(ledger.root).not.toBe(expected.roots[0]);
   });
@@ -286,7 +283,7 @@ describe("ledgerFromWitness refuses what does not open the root", () => {
     const b = Number.parseInt(keyPath(right!)[0]!, 16);
     const honest = branch({ [a]: l, [b]: r });
     // The two-entry root opens with the honest shape.
-    expect(hashOf(honest)).toBe(await ledgerEntriesRoot([left!, right!]));
+    expect(hashOf(honest)).toBe(await oracleLedgerRoot([left!, right!]));
     const spare = [...Array(16).keys()].find((n) => n !== a && n !== b)!;
     return { left: left!, right: right!, l, r, a, b, spare, honest, branch };
   };
@@ -316,7 +313,7 @@ describe("ledgerFromWitness refuses what does not open the root", () => {
       nodes: [honest, l, r],
       outputs: [],
     }).apply([{ type: "delete", outRef: left.outRef }]);
-    expect(after.root).toBe(await ledgerEntriesRoot([right]));
+    expect(after.root).toBe(await oracleLedgerRoot([right]));
   });
 
   it("refuses a leaf away from its key's path and a node at two paths", async () => {

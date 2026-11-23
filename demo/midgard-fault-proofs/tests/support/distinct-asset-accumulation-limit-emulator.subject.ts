@@ -30,9 +30,10 @@ import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
-import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
+import { type LedgerEntry } from "../../src/ledger-at.js";
 import { nodeForcedVerdict } from "./emulator/node-forced-verdict.js";
 import { memoryLedger } from "./fixture-ledger.js";
+import { oracleLedgerRoot } from "./ledger-root-oracle.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { setupFraudulentBlock } from "./submit-init/removal.js";
 import {
@@ -272,7 +273,7 @@ export const buildDistinctAssetBlock = async ({
 }) => {
   const nativeTx = buildDistinctAssetSubject(shape);
   const entries = predecessorEntries(shape);
-  const root = await ledgerEntriesRoot(entries);
+  const root = await oracleLedgerRoot(entries);
   const predecessor = await memoryLedger(entries, root);
   const block = await buildDecodingBlockFixture({
     operatorVkey,
@@ -328,7 +329,7 @@ export const setupDistinctAssetScenario = async ({
   readonly shape: DistinctAssetSubjectShape;
   readonly source: DistinctAssetSource;
 }) => {
-  const root = await ledgerEntriesRoot(predecessorEntries(shape));
+  const root = await oracleLedgerRoot(predecessorEntries(shape));
   const anchor = await setupFraudulentBlock({
     funderLucid: harness.funderLucid,
     emulator: harness.emulator,

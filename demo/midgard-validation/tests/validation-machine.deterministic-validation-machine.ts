@@ -24,7 +24,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildOpaqueNativeReferenceScriptLedgerOutputMaterial,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
   encodeValidationAuxiliaryWitnessCbor,
@@ -50,6 +49,7 @@ import {
   TEST_ADDRESS_BYTES,
   TEST_SIGNER_HASH,
 } from "./validation-fixtures.js";
+import { mutationStepsOver } from "./validation-ledger-trie.js";
 import {
   expectCekAndValueAndMintTotality,
   root,
@@ -83,12 +83,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         outputCbor: output,
       }),
     ];
-    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
-      {
-        initialEntries: [{ outRef: spent, output }],
-        operations: expectedLedgerOps,
-      },
-    );
+    const ledgerMutationSteps = await mutationStepsOver({
+      initialEntries: [{ outRef: spent, output }],
+      operations: expectedLedgerOps,
+    });
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -407,12 +405,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         outputCbor: output,
       }),
     ];
-    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
-      {
-        initialEntries: [{ outRef: spent, output: spentOutput }],
-        operations: expectedLedgerOps,
-      },
-    );
+    const ledgerMutationSteps = await mutationStepsOver({
+      initialEntries: [{ outRef: spent, output: spentOutput }],
+      operations: expectedLedgerOps,
+    });
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -649,7 +645,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       ]),
       scriptLanguages: ["PlutusV3"],
     });
-    const rootPreparation = await buildValidationMachineLedgerMutationSteps({
+    const rootPreparation = await mutationStepsOver({
       initialEntries: [{ outRef: spent, output: spentOutput }],
       operations: [
         { type: "delete", key: spent },
@@ -733,15 +729,13 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         outputCbor: output,
       }),
     ];
-    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
-      {
-        initialEntries: [
-          { outRef: spent, output: spentOutput },
-          { outRef: reference, output: referenceOutput },
-        ],
-        operations: expectedLedgerOps,
-      },
-    );
+    const ledgerMutationSteps = await mutationStepsOver({
+      initialEntries: [
+        { outRef: spent, output: spentOutput },
+        { outRef: reference, output: referenceOutput },
+      ],
+      operations: expectedLedgerOps,
+    });
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -859,11 +853,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           outputCbor: output,
         }),
       ];
-      const ledgerMutationSteps =
-        await buildValidationMachineLedgerMutationSteps({
-          initialEntries: [{ outRef: spent, output: spentOutput }],
-          operations: expectedLedgerOps,
-        });
+      const ledgerMutationSteps = await mutationStepsOver({
+        initialEntries: [{ outRef: spent, output: spentOutput }],
+        operations: expectedLedgerOps,
+      });
       const trace = await Effect.runPromise(
         buildDeterministicValidationMachineTrace({
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -940,12 +933,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         outputCbor: output,
       }),
     ];
-    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
-      {
-        initialEntries: [{ outRef: spent, output: spentOutput }],
-        operations: expectedLedgerOps,
-      },
-    );
+    const ledgerMutationSteps = await mutationStepsOver({
+      initialEntries: [{ outRef: spent, output: spentOutput }],
+      operations: expectedLedgerOps,
+    });
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -1035,12 +1026,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         outputCbor: output,
       }),
     ];
-    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
-      {
-        initialEntries: [{ outRef: spent, output: spentOutput }],
-        operations: expectedLedgerOps,
-      },
-    );
+    const ledgerMutationSteps = await mutationStepsOver({
+      initialEntries: [{ outRef: spent, output: spentOutput }],
+      operations: expectedLedgerOps,
+    });
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -1210,12 +1199,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         outputCbor: mintedOutput,
       }),
     ];
-    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
-      {
-        initialEntries: [{ outRef: spent, output: spentOutput }],
-        operations: expectedLedgerOps,
-      },
-    );
+    const ledgerMutationSteps = await mutationStepsOver({
+      initialEntries: [{ outRef: spent, output: spentOutput }],
+      operations: expectedLedgerOps,
+    });
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -1337,12 +1324,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         outputCbor: burnedOutput,
       }),
     ];
-    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
-      {
-        initialEntries: [{ outRef: spent, output: spentOutput }],
-        operations: expectedLedgerOps,
-      },
-    );
+    const ledgerMutationSteps = await mutationStepsOver({
+      initialEntries: [{ outRef: spent, output: spentOutput }],
+      operations: expectedLedgerOps,
+    });
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -1499,12 +1484,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         outputCbor: output,
       }),
     ];
-    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
-      {
-        initialEntries: [{ outRef: spent, output }],
-        operations: expectedLedgerOps,
-      },
-    );
+    const ledgerMutationSteps = await mutationStepsOver({
+      initialEntries: [{ outRef: spent, output }],
+      operations: expectedLedgerOps,
+    });
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -1832,12 +1815,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         outputCbor: fundedOutput,
       }),
     ];
-    const fundedMutationSteps = await buildValidationMachineLedgerMutationSteps(
-      {
-        initialEntries: [{ outRef: spent, output: fundedOutput }],
-        operations: fundedLedgerOps,
-      },
-    );
+    const fundedMutationSteps = await mutationStepsOver({
+      initialEntries: [{ outRef: spent, output: fundedOutput }],
+      operations: fundedLedgerOps,
+    });
     const fundedTrace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,

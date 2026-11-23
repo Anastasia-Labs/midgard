@@ -15,12 +15,13 @@ import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-v
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { ledgerEntriesRoot, type LedgerEntry } from "../src/ledger-at.js";
+import { type LedgerEntry } from "../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
 } from "../src/ledger-store/index.js";
 import { createTransitionTraceLedgerReplay } from "../src/transition-trace/ledger-replay.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 
 const outRef = (index: number) =>
   encodeMidgardSpendInputItem({
@@ -49,7 +50,7 @@ const descriptor = ({ outRef, output }: LedgerEntry) =>
 
 /** The transition replay over the pre-state ledger of `entries`. */
 const replayOver = async (entries: readonly LedgerEntry[]) => {
-  const root = await ledgerEntriesRoot(entries);
+  const root = await oracleLedgerRoot(entries);
   return await createTransitionTraceLedgerReplay({
     ledger: await createLedgerStore(createMemoryLedgerStorage()).admit(
       entries,

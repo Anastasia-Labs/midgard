@@ -487,6 +487,10 @@
       "midgard-source": "./tests/support/predecessor-ledger.ts",
       "types": "./tests/support/predecessor-ledger.ts"
     },
+    "./test-support/ledger-root-oracle": {
+      "midgard-source": "./tests/support/ledger-root-oracle.ts",
+      "types": "./tests/support/ledger-root-oracle.ts"
+    },
     "./test-support/retained-reason-classifier": {
       "midgard-source": "./tests/support/retained-reason-classifier.ts",
       "types": "./tests/support/retained-reason-classifier.ts"

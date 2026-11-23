@@ -22,7 +22,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   RejectCodes,
 } from "../src/index.js";
 import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
@@ -36,6 +35,7 @@ import {
   outRefFromTxId,
 } from "./validation-fixtures.js";
 import { TEST_PRIVATE_KEY } from "./validation-fixtures.make-min-ada-funded-exact-size-output-item.js";
+import { mutationStepsOver } from "./validation-ledger-trie.js";
 const context = {
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
@@ -123,11 +123,10 @@ describe("deterministic signature consume order", { timeout: 60_000 }, () => {
           outputCbor: output,
         }),
       ];
-      const ledgerMutationSteps =
-        await buildValidationMachineLedgerMutationSteps({
-          initialEntries: [{ outRef: spent, output }],
-          operations: expectedLedgerOps,
-        });
+      const ledgerMutationSteps = await mutationStepsOver({
+        initialEntries: [{ outRef: spent, output }],
+        operations: expectedLedgerOps,
+      });
       const started = performance.now();
       const trace = await Effect.runPromise(
         buildDeterministicValidationMachineTrace({
@@ -232,17 +231,16 @@ describe("source-bound FIWI witness-order oracle", () => {
       );
       expect(validateMidgardConsensusTxCbor(bytes)).toBeNull();
       expect(screenMidgardForcedTxAdmission(transaction)).toBeNull();
-      const ledgerMutationSteps =
-        await buildValidationMachineLedgerMutationSteps({
-          initialEntries: [{ outRef: spent, output }],
-          operations: [
-            { type: "delete" as const, key: spent },
-            buildValidationMachineLedgerInsertOp({
-              key: outRefFromTxId(transactionId),
-              outputCbor: output,
-            }),
-          ],
-        });
+      const ledgerMutationSteps = await mutationStepsOver({
+        initialEntries: [{ outRef: spent, output }],
+        operations: [
+          { type: "delete" as const, key: spent },
+          buildValidationMachineLedgerInsertOp({
+            key: outRefFromTxId(transactionId),
+            outputCbor: output,
+          }),
+        ],
+      });
       const priorUtxosRoot = ledgerMutationSteps[0]!.preRoot.toString("hex");
       const trace = await Effect.runPromise(
         buildDeterministicValidationMachineTrace({

@@ -19,9 +19,10 @@ import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
-import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
+import { type LedgerEntry } from "../../src/ledger-at.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { oracleLedgerRoot } from "../support/ledger-root-oracle.js";
 import { singleLedgerAt } from "../support/predecessor-ledger.js";
 import {
   authenticatedHeaderObservation,
@@ -211,7 +212,7 @@ export const plutusExecutionBlockFixture = async (
     ? "ForcedTransaction"
     : "L2Transaction";
 
-  const prevUtxosRoot = await ledgerEntriesRoot(predecessorEntries);
+  const prevUtxosRoot = await oracleLedgerRoot(predecessorEntries);
   const createdEntries: readonly LedgerEntry[] = scenarioOutputs(
     BigInt(spent.length),
     nativeMint,
@@ -234,7 +235,7 @@ export const plutusExecutionBlockFixture = async (
           ),
           ...createdEntries,
         ];
-  const utxosRoot = await ledgerEntriesRoot(postEntries);
+  const utxosRoot = await oracleLedgerRoot(postEntries);
 
   const forcedRows: SDKDa.DaPayloadEntry[] = [];
   const forcedPreimages: SDKDa.DaPayloadEntry[] = [];

@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
   midgardEnvelopeDataFromCborIterative,
   MidgardRedeemerTag,
@@ -25,6 +24,7 @@ import {
   outRefFromTxId,
   plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
+import { mutationStepsOver } from "./validation-ledger-trie.js";
 import {
   buildAcceptingUnitProgram,
   context,
@@ -91,7 +91,7 @@ const acceptedTrace = async (
       outputCbor: output,
     }),
   ];
-  const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
+  const ledgerMutationSteps = await mutationStepsOver({
     initialEntries: [{ outRef: spent, output: spentOutput }],
     operations: expectedLedgerOps,
   });

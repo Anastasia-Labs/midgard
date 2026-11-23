@@ -29,11 +29,11 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { CanonicalReplayPrerequisiteError } from "../src/workflow/replay-prerequisite.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
+import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 import {
   protectedScriptAddress,
   redeemerItem,
@@ -81,7 +81,7 @@ const replayOf = async (
     ...(subjectShape.spend ?? []),
     ...(subjectShape.reference ?? []),
   ];
-  const root = await ledgerEntriesRoot(entries);
+  const root = await oracleLedgerRoot(entries);
   const block = await buildDecodingBlockFixture({
     operatorVkey: "aa".repeat(28),
     startTime: 1_000_000n,

@@ -21,7 +21,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildValidationDisputeEvidenceBundle,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
   RejectCodes,
 } from "../src/index.js";
@@ -33,6 +32,7 @@ import {
   outRefFromByte,
   outRefFromTxId,
 } from "./validation-fixtures.js";
+import { mutationStepsOver } from "./validation-ledger-trie.js";
 
 const blueprint = JSON.parse(
   readFileSync(
@@ -146,12 +146,10 @@ const buildAcceptedForcedTrace =
         outputCbor: output,
       }),
     ];
-    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
-      {
-        initialEntries: [{ outRef: spent, output }],
-        operations: expectedLedgerOps,
-      },
-    );
+    const ledgerMutationSteps = await mutationStepsOver({
+      initialEntries: [{ outRef: spent, output }],
+      operations: expectedLedgerOps,
+    });
     return await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,

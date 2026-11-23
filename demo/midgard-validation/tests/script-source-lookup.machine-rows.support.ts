@@ -16,11 +16,9 @@ import { Effect } from "effect";
 import {
   buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
   RejectCodes,
   runPhaseBValidationWithPatch,
-  validationMachineLedgerRoot,
 } from "../src/index.js";
 import {
   buildValidationOneStepArgument,
@@ -32,6 +30,7 @@ import {
   nativeScriptWitness,
   outRefFromTxId,
 } from "./validation-fixtures.js";
+import { ledgerRootOver, mutationStepsOver } from "./validation-ledger-trie.js";
 
 // A fixed key: the shared fixtures' key is fresh on every run, and these rows
 // are exported as checked-in vectors.
@@ -118,16 +117,14 @@ export const machineTrace = async (traceCase: TraceCase) => {
       ]
     : [];
   const ledgerMutationSteps = accepted
-    ? await buildValidationMachineLedgerMutationSteps({
+    ? await mutationStepsOver({
         initialEntries: entries,
         operations: expectedLedgerOps,
       })
     : [];
   // A rejected trace leaves the ledger unchanged; its stage-3 replays still
   // open each resolved input against this root.
-  const unchangedRoot = (await validationMachineLedgerRoot(entries)).toString(
-    "hex",
-  );
+  const unchangedRoot = (await ledgerRootOver(entries)).toString("hex");
   return await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,

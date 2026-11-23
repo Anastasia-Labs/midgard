@@ -14,7 +14,7 @@ import {
   makeOutput,
   outRefFromByte,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
-import { validationMachineLedgerRoot } from "@al-ft/midgard-validation/validation-machine";
+import { ledgerRootOver } from "@al-ft/midgard-validation/tests/validation-ledger-trie";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -176,7 +176,7 @@ describe.each(SHAPES)(
       });
       // The block spends from a ledger holding `SPENT`; a rejected forced
       // transaction leaves that ledger unchanged.
-      const root = (await validationMachineLedgerRoot(LEDGER)).toString("hex");
+      const root = (await ledgerRootOver(LEDGER)).toString("hex");
       const body = payload.block_body;
       const step = Data.from(body.transition_trace[0]![1], SDK.TransitionStep);
       const funded = await rebind({

@@ -7,7 +7,7 @@
 import { midgardBlake2b } from "@al-ft/midgard-core/codec/hash";
 import { describe, expect, it } from "vitest";
 
-import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
+import { type LedgerEntry } from "../../src/ledger-at.js";
 import {
   createLedgerStore,
   EMPTY_LEDGER_ROOT,
@@ -19,6 +19,7 @@ import {
   type LedgerStore,
   recordWitness,
 } from "../../src/ledger-store/index.js";
+import { oracleLedgerRoot } from "./ledger-root-oracle.js";
 import {
   appliedEntries,
   countsOfOnly,
@@ -128,7 +129,7 @@ export const describeLedgerStoreRetainConformance = (
   ) => {
     for (const entries of kept)
       await expectLedgerMatches(
-        await store.at(await ledgerEntriesRoot(entries)),
+        await store.at(await oracleLedgerRoot(entries)),
         entries,
       );
     for (const root of dropped)
@@ -153,10 +154,7 @@ export const describeLedgerStoreRetainConformance = (
       async (dropped) =>
         await withStore(async (store, storage) => {
           const entries = base();
-          const a = await store.admit(
-            entries,
-            await ledgerEntriesRoot(entries),
-          );
+          const a = await store.admit(entries, await oracleLedgerRoot(entries));
           const mutations = event([0], [400]);
           const b = await a.apply(mutations);
           await store.persist(b);
@@ -177,10 +175,7 @@ export const describeLedgerStoreRetainConformance = (
       async (dropped) =>
         await withStore(async (store, storage) => {
           const entries = base();
-          const a = await store.admit(
-            entries,
-            await ledgerEntriesRoot(entries),
-          );
+          const a = await store.admit(entries, await oracleLedgerRoot(entries));
           const b = await a.apply(event([], [410, 411]));
           await store.persist(b);
           const again = await b.apply(event([410, 411], []));
@@ -210,7 +205,7 @@ export const describeLedgerStoreRetainConformance = (
     it("reads the requested roots when retain is called", async () => {
       await withStore(async (store) => {
         const entries = base();
-        const a = await store.admit(entries, await ledgerEntriesRoot(entries));
+        const a = await store.admit(entries, await oracleLedgerRoot(entries));
         const bMutations = event([0], [450]);
         const b = await a.apply(bMutations);
         await store.persist(b);
@@ -231,7 +226,7 @@ export const describeLedgerStoreRetainConformance = (
     it("lists the requested roots not retained when the deletion ends", async () => {
       await withStore(async (store) => {
         const entries = base();
-        const a = await store.admit(entries, await ledgerEntriesRoot(entries));
+        const a = await store.admit(entries, await oracleLedgerRoot(entries));
         const b = await a.apply(event([0, 1], [460]));
         await store.persist(b);
         const pMutations = event([2], [461]);
@@ -260,7 +255,7 @@ export const describeLedgerStoreRetainConformance = (
         const entries = base();
         const parent = await store.admit(
           entries,
-          await ledgerEntriesRoot(entries),
+          await oracleLedgerRoot(entries),
         );
         const [left, right] = [event([1], [420]), event([2], [421])];
         const l = await parent.apply(left);
@@ -292,7 +287,7 @@ export const describeLedgerStoreRetainConformance = (
     it("drops every root, earlier persisted chains and forks included", async () => {
       await withStore(async (store, storage) => {
         const entries = base();
-        const a = await store.admit(entries, await ledgerEntriesRoot(entries));
+        const a = await store.admit(entries, await oracleLedgerRoot(entries));
         const b = await a.apply(event([0, 1], [400, 401]));
         await store.persist(b);
         const c = await b.apply(event([2, 400], [402]));
@@ -331,7 +326,7 @@ export const describeLedgerStoreRetainConformance = (
     it("refuses, or keeps complete, a ledger derived from a dropped root", async () => {
       await withStore(async (store, storage) => {
         const entries = base();
-        const a = await store.admit(entries, await ledgerEntriesRoot(entries));
+        const a = await store.admit(entries, await oracleLedgerRoot(entries));
         const bMutations = event([0], [430, 431]);
         const b = await a.apply(bMutations);
         await store.persist(b);
@@ -352,7 +347,7 @@ export const describeLedgerStoreRetainConformance = (
     it("refuses, or keeps complete, a ledger whose moved leaf's output a retain deleted", async () => {
       await withStore(async (store, storage) => {
         const entries = base();
-        const x = await store.admit(entries, await ledgerEntriesRoot(entries));
+        const x = await store.admit(entries, await oracleLedgerRoot(entries));
         const { y, z } = movingPair(baseNumbers());
         const s = await (await store.at(x.root)).apply(event([y], []));
         await store.persist(s);
@@ -393,7 +388,7 @@ export const describeLedgerStoreRetainConformance = (
         };
         const store = createLedgerStore(storage);
         const entries = base();
-        const a = await store.admit(entries, await ledgerEntriesRoot(entries));
+        const a = await store.admit(entries, await oracleLedgerRoot(entries));
         const bMutations = event([0, 1], [710, 711]);
         const b = await a.apply(bMutations);
         await store.persist(b);
@@ -424,7 +419,7 @@ export const describeLedgerStoreRetainConformance = (
     it("keeps a root persisted right after a retain is called, with the dropped nodes it reuses", async () => {
       await withStore(async (store, storage) => {
         const entries = base();
-        const a = await store.admit(entries, await ledgerEntriesRoot(entries));
+        const a = await store.admit(entries, await oracleLedgerRoot(entries));
         const bMutations = event([0, 1], [700]);
         const b = await a.apply(bMutations);
         await store.persist(b);

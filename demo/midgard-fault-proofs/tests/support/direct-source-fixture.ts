@@ -10,13 +10,13 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
 import { buildDirectSourceIndexEvidence } from "../../src/direct-script-derivation/source-index.js";
-import { ledgerEntriesRoot } from "../../src/ledger-at.js";
 import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
 } from "../helpers/canonical-block-evidence-fixture.js";
 import { memoryLedger } from "./fixture-ledger.js";
+import { oracleLedgerRoot } from "./ledger-root-oracle.js";
 
 /** Genuine sixteen-entry predecessor trie, eight actual items in each input
  * field, authenticated no-script None cases, duplicate reference/witness
@@ -43,7 +43,7 @@ export const directSourceBatchFixture = async (
       ...(index % 8 === 0 ? {} : { script_ref: scripts[index % 8]! }),
     }),
   }));
-  const root = await ledgerEntriesRoot(entries);
+  const root = await oracleLedgerRoot(entries);
   const predecessor = await memoryLedger(entries, root);
   // One field array head + one outer bstr head + the versioned-script array,
   // tag and inner bstr head use nine bytes at this actual payload width.
