@@ -5,13 +5,12 @@
  *
  * Retention names the roots of the blocks inside the window, the frontier's
  * and the newest processed one. A block that left the window before it
- * merged may have lost its root by the time a fold makes it the frontier,
- * and startup's repair of an unanchored confirmed ledger folds journals
- * before the store is open. Either way the frontier's root is rebuilt from
- * the newest root the store retains on the retained folds to the frontier,
- * by their stored deltas, and persisted. When this node cannot give it, the
- * fold goes on with a warning: the confirmed ledger does not read the store,
- * and a block built on that root then holds its own local fault.
+ * merged may have lost its root by the time a fold makes it the frontier.
+ * The frontier's root is then rebuilt from the newest root the store retains
+ * on the retained folds to the frontier, by their stored deltas, and
+ * persisted. When this node cannot give it, the fold goes on with a warning:
+ * the confirmed ledger does not read the store, and a block built on that
+ * root then holds its own local fault.
  */
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
