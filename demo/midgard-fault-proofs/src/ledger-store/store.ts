@@ -7,11 +7,14 @@
  * `persist` and `adopt` never look below a held node.
  */
 import { type LedgerEntry, LedgerRootMismatchError } from "../ledger-at.js";
-import { buildTrie, EMPTY_LEDGER_ROOT, LedgerTrieStore } from "./engine.js";
+import { snapshotBatches } from "./batches.js";
+import { EMPTY_LEDGER_ROOT } from "./engine.js";
 import {
+  LedgerMutationRefused,
   LedgerNodeMissing,
   LedgerNotRetained,
   LedgerOutputMissing,
+  LedgerSnapshotRefused,
 } from "./errors.js";
 import {
   type Ledger,
@@ -19,7 +22,6 @@ import {
   LedgerValue,
   overlayNode,
   overlayOutput,
-  storedEntryLeaf,
 } from "./ledger.js";
 import type {
   LedgerStorage,
@@ -36,13 +38,20 @@ export interface LedgerStore {
    */
   at(root: string): Promise<Ledger>;
   /**
-   * The ledger of a snapshot, checked against `expectedRoot`
-   * (`LedgerRootMismatchError` otherwise; `LedgerEntryNotCanonical` for an
-   * entry with no trie leaf). It is held in memory until `persist`.
+   * Writes the ledger of a snapshot and retains its root, once that root is
+   * `expectedRoot`. `entries` is read as a stream and written in bounded
+   * batches, so memory is bounded by one batch and the trie's depth. Refuses
+   * with `LedgerRootMismatchError`, `LedgerSnapshotRefused` (an out-ref
+   * listed twice) or `LedgerEntryNotCanonical`, retaining nothing: earlier
+   * batches' roots were written unreferenced and queued dead, so no retained
+   * root reaches them and the next `retain` deletes them. With `current`, the
+   * retaining write also moves the current-root marker, as `persist` does.
+   * Every other write waits until `admit` ends.
    */
   admit(
     entries: Iterable<LedgerEntry> | AsyncIterable<LedgerEntry>,
     expectedRoot: string,
+    options?: LedgerPersistOptions,
   ): Promise<Ledger>;
   /**
    * Writes the nodes reachable from `ledger.root` that the store does not
@@ -113,6 +122,12 @@ type Unheld = {
   readonly output: (outRef: OutRefHex) => Buffer | undefined;
 };
 
+/** Takes what a write does not hold from `ledger`'s overlay. */
+const overlayOf = (ledger: LedgerValue): Unheld => ({
+  node: (hash) => overlayNode(ledger.overlay, hash),
+  output: (outRef) => overlayOutput(ledger.overlay, outRef),
+});
+
 const READ_BATCH = 1024;
 /** Dead-queue hashes one deletion batch takes. */
 const DRAIN_BATCH = 1024;
@@ -176,12 +191,6 @@ const readCounts = async (
   return counts;
 };
 
-async function* allEntries(
-  entries: Iterable<LedgerEntry> | AsyncIterable<LedgerEntry>,
-): AsyncIterable<LedgerEntry> {
-  yield* entries;
-}
-
 /** Every storage object a store has been created over. */
 const ownedStorages = new WeakSet<LedgerStorage>();
 
@@ -220,9 +229,11 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
   /**
    * The change that writes the nodes reachable from `root` that the storage
    * does not hold, and the outputs of the new leaves, taking each from
-   * `unheld`, and retains `root`.
+   * `unheld`, and retains `root`. With `retain` false, `root` must not be
+   * held: it is written with no reference and queued dead instead, so it is
+   * stored for reading but the next drain deletes it.
    */
-  const rootChange = async (root: NodeHash, unheld: Unheld) => {
+  const rootChange = async (root: NodeHash, unheld: Unheld, retain = true) => {
     const change = newChange();
     /** Stored counts read so far; `undefined` for a node not held. */
     const stored = new Map<NodeHash, number | undefined>();
@@ -278,7 +289,11 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
       if (output === undefined) throw new LedgerOutputMissing(outRef);
       change.putOutputs.set(outRef, { output, refs: 1 });
     }
-    change.addRoots.push(root);
+    if (retain) change.addRoots.push(root);
+    else {
+      change.putNodes.get(root)!.refs -= 1;
+      change.queueDead.push(root);
+    }
     return change;
   };
 
@@ -387,48 +402,60 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
     return true;
   };
 
+  /**
+   * Inserts each batch into the last batch's ledger read back from storage,
+   * so no batch's nodes outlive its write. A batch before the last writes
+   * its root unretained (nothing when storage holds it), kept from drains by
+   * the write lock; the last batch's root is checked, then written and
+   * retained. The event loop gets a turn between batches, as in `retain`.
+   */
+  const admitLocked = async (
+    entries: Iterable<LedgerEntry> | AsyncIterable<LedgerEntry>,
+    expectedRoot: string,
+    moveMarker: boolean,
+  ): Promise<Ledger> => {
+    let root = EMPTY_LEDGER_ROOT;
+    for await (const batch of snapshotBatches(entries)) {
+      const built = (await new LedgerValue(root, owner, undefined, source)
+        .apply(batch.entries.map((entry) => ({ type: "insert", ...entry })))
+        .catch((error: unknown) => {
+          if (error instanceof LedgerMutationRefused)
+            throw new LedgerSnapshotRefused(error.outRef);
+          throw error;
+        })) as LedgerValue;
+      root = built.root;
+      if (batch.last && root !== expectedRoot)
+        throw new LedgerRootMismatchError(
+          "ledger snapshot",
+          expectedRoot,
+          root,
+        );
+      if (batch.last) await writeRootLocked(root, overlayOf(built), moveMarker);
+      else if ((await storage.nodeRefs([root]))[0] === undefined)
+        await storage.write(await rootChange(root, overlayOf(built), false));
+      if (!batch.last) await nextTurn();
+    }
+    return new LedgerValue(root, owner, undefined, source);
+  };
+
   return {
     at: async (root) => {
       if (!(await retained(root))) throw new LedgerNotRetained(root);
       return new LedgerValue(root, owner, undefined, source);
     },
 
-    admit: async (entries, expectedRoot) => {
-      const pairs: { key: Buffer; value: Buffer }[] = [];
-      const outputs = new Map<OutRefHex, Buffer>();
-      for await (const candidate of allEntries(entries)) {
-        const { entry, leaf } = storedEntryLeaf(candidate);
-        const outRef = entry.outRef.toString("hex");
-        if (outputs.has(outRef))
-          throw new Error(`ledger snapshot: duplicate out-ref ${outRef}`);
-        outputs.set(outRef, Buffer.from(entry.output));
-        pairs.push({ key: Buffer.from(entry.outRef), value: leaf });
-      }
-      const store = new LedgerTrieStore(async () => undefined);
-      const root = await buildTrie(store, pairs);
-      if (root !== expectedRoot)
-        throw new LedgerRootMismatchError(
-          "ledger snapshot",
-          expectedRoot,
-          root,
-        );
-      return new LedgerValue(
-        root,
-        owner,
-        { nodes: store.writes, outputs, parent: undefined },
-        source,
-      );
-    },
+    admit: async (entries, expectedRoot, options) =>
+      await writeLock(() =>
+        admitLocked(entries, expectedRoot, options?.current === true),
+      ),
 
     persist: async (ledger, options) => {
       if (!(ledger instanceof LedgerValue) || ledger.owner !== owner)
         throw new Error("persist: the ledger does not belong to this store");
-      const unheld: Unheld = {
-        node: (hash) => overlayNode(ledger.overlay, hash),
-        output: (outRef) => overlayOutput(ledger.overlay, outRef),
-      };
       const moveMarker = options?.current === true;
-      await writeLock(() => writeRootLocked(ledger.root, unheld, moveMarker));
+      await writeLock(() =>
+        writeRootLocked(ledger.root, overlayOf(ledger), moveMarker),
+      );
     },
 
     adopt: async (root, input) => {

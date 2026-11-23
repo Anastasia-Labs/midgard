@@ -126,8 +126,8 @@ const scene = async (
 ) => {
   const first = chain.blocks[0]!;
   const store = createLedgerStore(createMemoryLedgerStorage());
-  await store.persist(await store.admit(chain.base, chain.baseRoot));
-  await store.persist(await store.admit(first.entries, first.header.utxosRoot));
+  await store.admit(chain.base, chain.baseRoot);
+  await store.admit(first.entries, first.header.utxosRoot);
   const verifiedHead = memoryVerifiedHead();
   await verifiedHead.write(first.header.prevHeaderHash);
   return { store, verifiedHead };

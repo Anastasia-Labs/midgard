@@ -58,7 +58,7 @@ export const replayKeeper = async (
   shown: () => readonly Block[] = () => [...chain.blocks, ...chain.forks],
 ) => {
   const store = createLedgerStore(createMemoryLedgerStorage());
-  await store.persist(await store.admit(chain.base, chain.baseRoot));
+  await store.admit(chain.base, chain.baseRoot);
   return createWatcherReplayedLedger({
     verifiedHead: memoryVerifiedHead(),
     follower: {

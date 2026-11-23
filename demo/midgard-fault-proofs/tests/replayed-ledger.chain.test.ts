@@ -25,7 +25,7 @@ const storeOver = async (
   chain: Awaited<ReturnType<typeof replayedLedgerChain>>,
 ) => {
   const store = createLedgerStore(createMemoryLedgerStorage());
-  await store.persist(await store.admit(chain.base, chain.baseRoot));
+  await store.admit(chain.base, chain.baseRoot);
   return store;
 };
 

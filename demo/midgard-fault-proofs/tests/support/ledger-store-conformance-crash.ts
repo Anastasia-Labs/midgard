@@ -22,6 +22,7 @@ import {
   type OpenLedgerStorage,
   testLedgerEntries,
 } from "./ledger-store-conformance.js";
+import { LARGE_SNAPSHOT } from "./ledger-store-conformance-admit.js";
 
 const FAILED = "the storage write failed";
 
@@ -54,7 +55,6 @@ const failingAt = (storage: LedgerStorage, n: number) => {
 const persistChain = async (store: LedgerStore) => {
   const entries = testLedgerEntries(0, 40);
   const a = await store.admit(entries, await ledgerEntriesRoot(entries));
-  await store.persist(a);
   const bMutations = event([0, 1], [440, 441]);
   const b = await a.apply(bMutations);
   await store.persist(b);
@@ -149,7 +149,6 @@ export const describeLedgerStoreCrashConformance = (
       await withFailingStore(1, async (store, failing, storage) => {
         const entries = testLedgerEntries(0, 40);
         const a = await store.admit(entries, await ledgerEntriesRoot(entries));
-        await store.persist(a);
         const bMutations = event([0, 1], [440, 441]);
         const b = await a.apply(bMutations);
         failing.arm();
@@ -168,6 +167,27 @@ export const describeLedgerStoreCrashConformance = (
         );
       });
     });
+
+    it.each([1, 2, 3])(
+      "admits a large snapshot again after its write %i failed, and the next retain deletes what the failed admit left",
+      async (n) =>
+        await withFailingStore(n, async (store, failing, storage) => {
+          const entries = testLedgerEntries(0, LARGE_SNAPSHOT);
+          const root = await ledgerEntriesRoot(entries);
+          failing.arm();
+          await expectFailed(store.admit(entries, root));
+          await expect(store.at(root)).rejects.toBeInstanceOf(
+            LedgerNotRetained,
+          );
+          expect((await store.admit(entries, root)).root).toBe(root);
+          await expectLedgerMatches(await store.at(root), entries);
+          await store.retain(new Set([root]));
+          expect(await storage.counts()).toEqual(
+            await countsOfOnly(open, [entries]),
+          );
+        }),
+      120_000,
+    );
 
     it("keeps serving every retained root after a retain whose replacement failed", async () => {
       await withFailingStore(1, async (store, failing, storage) => {

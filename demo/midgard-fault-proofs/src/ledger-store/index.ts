@@ -13,6 +13,7 @@ export {
   LedgerNodeMissing,
   LedgerNotRetained,
   LedgerOutputMissing,
+  LedgerSnapshotRefused,
   LedgerWitnessRefused,
 } from "./errors.js";
 export type {

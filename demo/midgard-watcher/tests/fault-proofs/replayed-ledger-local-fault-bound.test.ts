@@ -69,7 +69,7 @@ const scene = async () => {
   const chain = await replayedLedgerChain(1);
   const block = chain.blocks[0]!;
   const store = createLedgerStore(createMemoryLedgerStorage());
-  await store.persist(await store.admit(chain.base, chain.baseRoot));
+  await store.admit(chain.base, chain.baseRoot);
   const state = { faulting: true, nowMs: 0, replays: 0 };
   /** Whether the store holds the head's ledger. */
   const persisted = () =>

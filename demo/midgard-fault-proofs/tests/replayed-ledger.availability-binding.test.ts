@@ -148,9 +148,7 @@ const setup = async (
     },
   }));
   const store = createLedgerStore(createMemoryLedgerStorage());
-  await store.persist(
-    await store.admit(b.predecessorEntries, b.header.prevUtxosRoot),
-  );
+  await store.admit(b.predecessorEntries, b.header.prevUtxosRoot);
   const ledger = createReplayedLedger({
     store,
     onRefusal: (refusal) => refusals.push(refusal),

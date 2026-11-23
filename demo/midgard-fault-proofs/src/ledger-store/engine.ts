@@ -100,12 +100,3 @@ export const rootOf = (trie: Trie): string => {
   const hex = Buffer.from(hash).toString("hex");
   return hex === NULL_ROOT_HEX ? EMPTY_LEDGER_ROOT : hex;
 };
-
-/** Builds the trie of `pairs` into `store`; returns its root. */
-export const buildTrie = async (
-  store: LedgerTrieStore,
-  pairs: readonly { readonly key: Buffer; readonly value: Buffer }[],
-): Promise<string> =>
-  pairs.length === 0
-    ? EMPTY_LEDGER_ROOT
-    : rootOf(await Trie.fromList([...pairs], store));

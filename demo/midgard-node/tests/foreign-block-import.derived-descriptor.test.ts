@@ -335,7 +335,7 @@ const watcherLedger = async (block: SDKDa.DaPayload) => {
   const header = block.block_body.header;
   // The store holds the parent's ledger.
   const store = createLedgerStore(createMemoryLedgerStorage());
-  await store.persist(await store.admit(parentEntries(), header.prevUtxosRoot));
+  await store.admit(parentEntries(), header.prevUtxosRoot);
   const refusals: ReplayedLedgerRefusal[] = [];
   const ledger = createReplayedLedger({
     store,

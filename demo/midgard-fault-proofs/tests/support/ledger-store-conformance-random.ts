@@ -62,11 +62,9 @@ const countsOfOnly = async (
   try {
     const store = createLedgerStore(opened.storage);
     for (const [root, keys] of model)
-      await store.persist(
-        await store.admit(
-          [...keys].map((n) => testLedgerEntry(n)),
-          root,
-        ),
+      await store.admit(
+        [...keys].map((n) => testLedgerEntry(n)),
+        root,
       );
     return await opened.storage.counts();
   } finally {

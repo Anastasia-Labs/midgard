@@ -1,13 +1,18 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 
+import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ledgerEntriesRoot } from "../src/ledger-at.js";
+import { ledgerEntriesRoot, ledgerEntryLeaf } from "../src/ledger-at.js";
+import { LedgerTrieStore } from "../src/ledger-store/engine.js";
 import {
   createLedgerStore,
   LedgerNotRetained,
+  type LedgerStorage,
 } from "../src/ledger-store/index.js";
 import { openSqliteLedgerStorage } from "../src/ledger-store/sqlite.js";
 import {
@@ -17,6 +22,7 @@ import {
   expectLedgerMatches,
   type OpenedLedgerStorage,
   testLedgerEntries,
+  testLedgerEntry,
 } from "./support/ledger-store-conformance.js";
 
 const directories: string[] = [];
@@ -58,7 +64,6 @@ describe("sqlite ledger storage across reopen", () => {
     const first = openSqliteLedgerStorage(path);
     const store = createLedgerStore(first);
     const a = await store.admit(base, await ledgerEntriesRoot(base));
-    await store.persist(a);
     const b = await a.apply(event([0, 1], [100, 101]));
     await store.persist(b);
     const c = await b.apply(event([2], [102]));
@@ -90,7 +95,7 @@ describe("sqlite ledger storage across reopen", () => {
       const only = openSqliteLedgerStorage(await freshPath());
       try {
         const fresh = createLedgerStore(only);
-        await fresh.persist(await fresh.admit(base, a.root));
+        await fresh.admit(base, a.root);
         expect(await second.counts()).toEqual(await only.counts());
       } finally {
         only.close();
@@ -132,7 +137,6 @@ describe("sqlite ledger storage across reopen", () => {
     try {
       const store = createLedgerStore(storage);
       const a = await store.admit(base, await ledgerEntriesRoot(base));
-      await store.persist(a);
       const before = await storage.counts();
       await expect(
         storage.write({
@@ -167,4 +171,95 @@ describe("sqlite ledger storage across reopen", () => {
       storage.close();
     }
   });
+});
+
+describe("sqlite admit of a large snapshot", () => {
+  const SIZE = 50_000;
+  const EARLY = 10_000;
+  const SAMPLE_EVERY = 2_500;
+  const MB = 2 ** 20;
+  /** The heap the last half's peak may exceed the early peak by. A path
+   * holding the snapshot grows by more than half the whole-snapshot path's
+   * footprint over the same stretch. */
+  const BOUND_MB = 16;
+
+  setFlagsFromString("--expose-gc");
+  const gc = runInNewContext("gc") as () => void;
+  /** The heap in use after a collection, with the array buffers held
+   * outside it. */
+  const heapInUse = () => {
+    gc();
+    const { heapUsed, arrayBuffers } = process.memoryUsage();
+    return heapUsed + arrayBuffers;
+  };
+
+  /**
+   * What the whole-snapshot path left in memory: every entry's output, and
+   * every node of the trie the library builds from the whole entry set.
+   */
+  const wholeSnapshot = async () => {
+    const outputs = new Map<string, Buffer>();
+    const pairs: { key: Buffer; value: Buffer }[] = [];
+    for (let n = 0; n < SIZE; n += 1) {
+      const { entry, leaf } = ledgerEntryLeaf(testLedgerEntry(n), "reference");
+      outputs.set(entry.outRef.toString("hex"), entry.output);
+      pairs.push({ key: entry.outRef, value: leaf });
+    }
+    const store = new LedgerTrieStore(async () => undefined);
+    await Trie.fromList(pairs, store);
+    return { outputs, nodes: store.writes };
+  };
+
+  it(`admits ${SIZE.toString()} streamed entries in a heap that does not grow with them`, async () => {
+    const root = await ledgerEntriesRoot(testLedgerEntries(0, SIZE));
+
+    let baseline = heapInUse();
+    let started = performance.now();
+    let whole: Awaited<ReturnType<typeof wholeSnapshot>> | undefined =
+      await wholeSnapshot();
+    const wholeHeap = heapInUse() - baseline;
+    const wholeMs = performance.now() - started;
+    expect(whole.nodes.size).toBeGreaterThan(SIZE);
+    whole = undefined;
+
+    const sqlite = openSqliteLedgerStorage(await freshPath());
+    try {
+      baseline = heapInUse();
+      let read = 0;
+      let early = baseline;
+      let late = baseline;
+      const sample = () => {
+        const used = heapInUse();
+        if (read <= EARLY) early = Math.max(early, used);
+        else if (read > SIZE / 2) late = Math.max(late, used);
+      };
+      // Sampled at each write, while the batch it writes is in memory, and
+      // while the stream is read.
+      const storage: LedgerStorage = {
+        ...sqlite,
+        write: async (change) => {
+          sample();
+          await sqlite.write(change);
+        },
+      };
+      async function* streamed() {
+        for (; read < SIZE; read += 1) {
+          if (read % SAMPLE_EVERY === 0) sample();
+          yield testLedgerEntry(read);
+        }
+      }
+      started = performance.now();
+      const admitted = await createLedgerStore(storage).admit(streamed(), root);
+      const admitMs = performance.now() - started;
+      expect(admitted.root).toBe(root);
+      const peak = Math.max(early, late) - baseline;
+      console.log(
+        `${SIZE.toString()} entries: the whole-snapshot path held ${(wholeHeap / MB).toFixed(1)} MB (${wholeMs.toFixed(0)} ms, in memory); streamed admit peaked ${(peak / MB).toFixed(1)} MB above its baseline, ${((early - baseline) / MB).toFixed(1)} MB over the first ${EARLY.toString()} entries and ${((late - baseline) / MB).toFixed(1)} MB over the last half (${admitMs.toFixed(0)} ms into SQLite, with a collection at each sample)`,
+      );
+      expect(late - early).toBeLessThan(BOUND_MB * MB);
+      expect(peak).toBeLessThan(wholeHeap);
+    } finally {
+      sqlite.close();
+    }
+  }, 600_000);
 });

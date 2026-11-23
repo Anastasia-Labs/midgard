@@ -31,6 +31,14 @@ export class LedgerMutationRefused extends Error {
   }
 }
 
+/** `admit` refused a snapshot that lists `outRef` more than once. */
+export class LedgerSnapshotRefused extends Error {
+  constructor(readonly outRef: Buffer) {
+    super(`ledger snapshot lists out-ref ${outRef.toString("hex")} twice`);
+    this.name = "LedgerSnapshotRefused";
+  }
+}
+
 /** `apply` or `admit` refused an entry with no trie leaf: neither the
  * canonical descriptor nor the undecodable-script fallback derives from its
  * output. Never a fault of the store's records. */

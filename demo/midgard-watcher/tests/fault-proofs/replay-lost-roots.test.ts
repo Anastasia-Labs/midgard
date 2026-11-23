@@ -32,7 +32,7 @@ describe("the replayed ledger's lost-root alert", { timeout: 120_000 }, () => {
       (typeof chain.blocks)[number],
     ];
     const store = createLedgerStore(createMemoryLedgerStorage());
-    await store.persist(await store.admit(chain.base, chain.baseRoot));
+    await store.admit(chain.base, chain.baseRoot);
     // b2 is in the window, but its ledger is never derived.
     let window = {
       blocks: [b0.header, b1.header, b2.header],

@@ -95,9 +95,7 @@ describe("the watcher's replayed ledger", { timeout: 60_000 }, () => {
       utxosRoot: header.prevUtxosRoot,
     };
     const store = createLedgerStore(createMemoryLedgerStorage());
-    await store.persist(
-      await store.admit(parentEntries(), confirmed.utxosRoot),
-    );
+    await store.admit(parentEntries(), confirmed.utxosRoot);
     return { block, confirmed, store };
   };
 

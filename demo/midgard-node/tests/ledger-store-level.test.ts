@@ -107,7 +107,6 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
     const level = await openLevel(path);
     const store = createLedgerStore(levelStorage(level));
     const a = await store.admit(base, await ledgerEntriesRoot(base));
-    await store.persist(a);
     const b = await a.apply(event([0, 1], [100]));
     await store.persist(b);
     const c = await a.apply(event([2, 3], [101]));
@@ -195,7 +194,6 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
     const memory = createMemoryLedgerStorage();
     const store = createLedgerStore(memory);
     const a = await store.admit(base, await ledgerEntriesRoot(base));
-    await store.persist(a);
     const b = await a.apply(event([0, 1], [100]));
     await store.persist(b);
     const c = await a.apply(event([2, 3], [101]));
