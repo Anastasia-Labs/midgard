@@ -191,6 +191,11 @@ allowed retrieval protocols, with per-peer and global request limits. Exact
 schemas, route constructors, and bounds live in
 `@al-ft/midgard-core/da-transport`. See [DA transport rules](/docs/watchers/da-transport).
 
+`/midgard/{deployment_fingerprint}/da/ledger-snapshot/1` uses the same
+transport but is served by nodes only: it returns the ledger with a given UTxO
+root, in pages, so a watcher can start from the confirmed state. A committee
+node holds no ledger and does not serve it.
+
 A watcher must authenticate the L1 header and its availability state, retrieve
 matching retained bytes, and reconstruct the committed roots. Missing or
 inconsistent DA remains non-actionable evidence and can prevent a supported

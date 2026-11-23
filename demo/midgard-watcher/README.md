@@ -454,10 +454,20 @@ the L1 order authenticates the immutable submission and the operator's
 `OperatorVerdictV1` is the sole committed classification.
 
 A watcher that joins late, or restarts after its local state is lost, does not
-replay history from genesis. It bootstraps from the `ConfirmedState` datum at
-the root of the L1 state queue (confirmed header hash, UTxO root, end time), the
-DA payload of that confirmed head, and the DA payloads of every header still
-live in the L1 queue, then classifies from the confirmed state to the tip. The
+replay history from genesis. It reads the `ConfirmedState` datum at the root of
+the L1 state queue (confirmed header hash, UTxO root, end time) and asks its
+configured `da.peers`, in order, for the ledger with that UTxO root
+(`ledger-snapshot`, served by nodes; a DA committee peer does not serve it and
+is passed over). The ledger arrives in pages and is checked as a whole against
+the UTxO root from L1 before the watcher keeps it, so the serving peer need not
+be trusted; a peer whose ledger fails the check is not asked again until the
+watcher restarts. At least one `da.peers` entry must therefore be a node for a
+late start to work. With none answering, the watcher can only replay from
+genesis, which succeeds only while every payload since genesis is still
+retained; otherwise it reports `replayed_ledger_checkpoint_pending` and asks
+again on each pass. From the
+confirmed state it replays the DA payloads of every header still live in the
+L1 queue and classifies to the tip. The
 committee and the node never prune those payloads: their retention is exactly
 the L1 confirmed head, the headers live in the L1 queue, and payloads still
 inside the challengeability horizon. Merged blocks older than the horizon can no

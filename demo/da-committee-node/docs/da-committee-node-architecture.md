@@ -392,6 +392,12 @@ single-response limit. `payload-chunk` returns byte ranges or content-addressed
 chunks from that manifest. Metadata, proof bundle, and attestation payloads use
 canonical CBOR, not JSON.
 
+One more request-response protocol exists on the same transport and is not a
+committee protocol: `/midgard/{deployment_fingerprint}/da/ledger-snapshot/1`.
+A node's listener serves it (the ledger with a given UTxO root, in pages) so a
+watcher can start from the confirmed state. A committee node holds no ledger
+and registers no handler for it.
+
 ## Deployment Manifest Fields
 
 Watchers and committee nodes need the same DA discovery data in the signed deployment manifest.
