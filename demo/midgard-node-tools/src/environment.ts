@@ -3,7 +3,7 @@
  *
  * Almost everything in this package already takes the environment as an
  * injected `env` parameter defaulting to `process.env` — `stress-wallets`,
- * `stress-open-loop`, `phase4-genesis-ledger`, `e2e-process-cleanup` and the
+ * `stress-open-loop`, `e2e-process-cleanup` and the
  * rest — which is the shape to keep: it is what makes their parsing testable
  * without mutating the real process. The exceptions were a handful of reads
  * inlined into `src/index.ts` where the command wiring is assembled, far from

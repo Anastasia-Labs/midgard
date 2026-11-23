@@ -16,13 +16,10 @@ import type { ForcedOrderConfig } from "../forced-orders/index.js";
 import type { DriverHold } from "../l1-events/driver.js";
 import type { StateQueueProjectionConfig } from "../l1-state-queue/index.js";
 import { advanceVerifiedConfirmedLedger } from "../mpf/confirmed-ledger-advance.js";
-import { utxoToLedgerInsertMaterial } from "../mpf/ledger-hydration.js";
-import { NodeConfig } from "../services/config.js";
 import { withFollowerWrite } from "../services/follower-write-gate.js";
 import type { Globals } from "../services/globals.js";
 import { readQueueHistory } from "./history.js";
 import { ownJournal } from "./journal.js";
-import { ledgerRows } from "./ledger.js";
 import { retainLandedLedgers } from "./ledger-retention.js";
 import type { CommittedFold, LandedBlockPorts } from "./ports.js";
 import {
@@ -32,19 +29,6 @@ import {
 import { heldReplays } from "./replay-held.js";
 
 const confirmView = followerViewValid;
-
-const genesis = Effect.gen(function* () {
-  const config = yield* NodeConfig;
-  const entries = [];
-  for (const utxo of config.GENESIS_UTXOS) {
-    const material = yield* utxoToLedgerInsertMaterial(utxo);
-    entries.push({
-      outref: material.ledgerOp.key,
-      output: material.outputCbor,
-    });
-  }
-  return yield* ledgerRows(entries, new Map());
-});
 
 /**
  * The node's landed-block ports over `store`, with the follower plan's
@@ -117,7 +101,7 @@ export const nodeLandedBlockPorts = (
         }),
       ),
     ownJournal,
-    genesis,
+    genesis: Effect.succeed([]),
     rebase,
     folded: (fold: CommittedFold) =>
       advanceVerifiedConfirmedLedger(globals, fold),

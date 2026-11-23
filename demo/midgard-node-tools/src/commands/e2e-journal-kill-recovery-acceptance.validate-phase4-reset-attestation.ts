@@ -20,7 +20,6 @@ import {
   type Phase4ResetAttestation,
   RESET_ATTESTATION_SCHEMA,
 } from "./e2e-journal-kill-recovery-acceptance.validate-phase4-process-isolation-values.js";
-import { decodePhase4GenesisLedgerReport } from "./phase4-genesis-ledger.js";
 
 export const validatePhase4ResetAttestation = ({
   output,
@@ -214,22 +213,6 @@ export const assertPositivePreflightOutput = (
     /"(?:status|verdict)"\s*:\s*"(?:failed|failure|missing|unsatisfied|blocked|unhealthy|not_ready)"/i;
   if (negativeBoolean.test(output) || negativeStatus.test(output)) {
     throw new Error(`${label} reported an unsatisfied preflight:\n${output}`);
-  }
-};
-
-export const assertExactGenesisPreflightOutput = (
-  label: string,
-  output: string,
-): void => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(output.trim()) as unknown;
-  } catch (cause) {
-    throw new Error(`${label} must emit exactly one JSON V1 report`, { cause });
-  }
-  const report = decodePhase4GenesisLedgerReport(parsed);
-  if (report.mode !== "verify" || report.status !== "already_present") {
-    throw new Error(`${label} did not verify the exact existing genesis state`);
   }
 };
 

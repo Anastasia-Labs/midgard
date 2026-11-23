@@ -6,21 +6,16 @@
  * processing folds the merge into `confirmed_ledger` and from
  * `confirmed_ledger` after; resolving it reads no whole `confirmed_ledger`.
  * While the native root is another, the commit waits
- * (`LANDED_COMMIT_BASE_PENDING`). At genesis the state's root is the
- * deployment's genesis root, and the configured genesis UTxOs give the
- * outputs no table holds.
+ * (`LANDED_COMMIT_BASE_PENDING`).
  */
 import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk/core";
-import type { UTxO } from "@lucid-evolution/lucid";
 import { Effect, Either, Metric } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { fullScanCounter } from "../src/database/confirmedLedger.js";
 import { foldToRoot } from "../src/landed-blocks/fold.js";
-import { utxoToLedgerInsertMaterial } from "../src/mpf/ledger-hydration.js";
 import {
-  address,
   confirmedTipOf,
   E0,
   E1,
@@ -29,9 +24,7 @@ import {
   FRONTIER_HASH,
   hexEntries,
   resolve,
-  rootOf,
   run,
-  seed,
 } from "./commit-base-resolver.fixture.js";
 import { foldPorts } from "./helpers/fold-ports.js";
 import { simCommitAnchor } from "./helpers/landed-blocks-sim.own.js";
@@ -134,37 +127,5 @@ describe("commit base on a confirmed-state tip", { concurrent: false }, () => {
       OWN,
       r1,
     );
-  });
-
-  it("builds at genesis on the genesis root, the configured genesis UTxOs giving the outputs no table holds", async () => {
-    const genesisUtxo: UTxO = {
-      txHash: "61".repeat(32),
-      outputIndex: 0,
-      address,
-      assets: { lovelace: 5_000_000n },
-    };
-    const { ledgerOp, outputCbor } = await Effect.runPromise(
-      utxoToLedgerInsertMaterial(genesisUtxo),
-    );
-    const genesis = { outref: Buffer.from(ledgerOp.key), output: outputCbor };
-    const genesisRoot = await rootOf([genesis]);
-    await seed([], {
-      headerHash: SDK.GENESIS_HEADER_HASH,
-      utxosRoot: genesisRoot,
-    });
-    const tip = await confirmedTipOf({
-      ...mergedAt(SDK.GENESIS_HEADER_HASH, genesisRoot),
-      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-    });
-    const outcome = await resolve(tip, genesisRoot, {
-      genesisUtxos: [genesisUtxo],
-      ledgers: [[genesis]],
-      verified: "none",
-    });
-    expect(Either.isRight(outcome)).toBe(true);
-    const base = Either.getOrThrow(outcome);
-    expect(base.source).toBe(`confirmed:${SDK.GENESIS_HEADER_HASH}`);
-    expect(base.root).toBe(genesisRoot);
-    expect(base.entries).toEqual(hexEntries([genesis]));
   });
 });

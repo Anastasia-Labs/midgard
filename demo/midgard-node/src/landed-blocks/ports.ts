@@ -94,7 +94,7 @@ export type LandedBlockPorts<R> = Readonly<{
   ownJournal: (
     headerHash: string,
   ) => Effect.Effect<OwnJournal | undefined, unknown, R | Database>;
-  /** The configured genesis ledger. */
+  /** The genesis ledger: empty on every network. */
   genesis: Effect.Effect<
     readonly Ledger.EntryNoTimeStamp[],
     unknown,

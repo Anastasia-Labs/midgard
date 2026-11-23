@@ -3,7 +3,7 @@ import { SqlClient } from "@effect/sql";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { Cause, Effect, Option, pipe, Ref } from "effect";
+import { Effect, Option, pipe, Ref } from "effect";
 
 import { closeDaLibp2pPublicationTransport } from "../da/libp2p-producer.publication-transport.js";
 import {
@@ -21,7 +21,6 @@ import {
   refreshAdmissionBacklogGaugeOnStartup,
 } from "../fibers/admission-backlog-gauge.js";
 import { requestTxQueueProcessorWakeup } from "../fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
-import * as Genesis from "../genesis.js";
 import { exportLedgerDivergenceSeries } from "../mpf/local-ledger-divergence.js";
 import { rebuildAdmissionInputClaimsOnStartup } from "../services/admission-input-claims.rebuild.js";
 import { AdmissionWriter } from "../services/admission-writer.validate-options.js";
@@ -69,7 +68,6 @@ import { awaitLedgerSignatureVerifierOnStartup } from "./listen-startup.await-le
 import { ensureProtocolInitializedOnStartup } from "./listen-startup.ensure-protocol-initialized-on-startup.js";
 import { initializeNodeDatabase } from "./listen-startup.initialize-database.js";
 import { prepareNodeOnStartup } from "./listen-startup.prepare-node.js";
-import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 
 /**
  * Boots the long-running Midgard node runtime.
@@ -257,32 +255,6 @@ export const runNode = (
     yield* awaitFollowerViewOnStartup((reasons) =>
       startup.setStage("follower_view_apply", reasons),
     );
-
-    if (
-      shouldRunGenesisOnStartup({
-        network: nodeConfig.NETWORK,
-        runGenesisOnStartup: nodeConfig.RUN_GENESIS_ON_STARTUP,
-      })
-    ) {
-      yield* Effect.logInfo(
-        "Scheduling genesis startup program in background.",
-      );
-      yield* Effect.forkDaemon(
-        Genesis.program.pipe(
-          Effect.provideService(IntentJournal, intentJournal),
-          Effect.tapErrorCause((cause) =>
-            Effect.logError(
-              `Startup genesis program failed: ${Cause.pretty(cause)}`,
-            ),
-          ),
-          Effect.catchAllCause(() => Effect.void),
-        ),
-      );
-    } else {
-      yield* Effect.logInfo(
-        "Skipping genesis on startup (disabled or mainnet).",
-      );
-    }
 
     yield* refreshAdmissionBacklogGaugeOnStartup(refreshAdmissionBacklogGauge);
     yield* exportLedgerDivergenceSeries;

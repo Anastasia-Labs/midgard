@@ -1,7 +1,6 @@
 import { resolveL1ViewFatalMs } from "@al-ft/midgard-core";
 import type * as SDKCore from "@al-ft/midgard-sdk/core";
 import * as SDK from "@al-ft/midgard-sdk/state-queue";
-import type { UTxO } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer, Option } from "effect";
 
 import { daHardeningConfig } from "../da/hardening-config.js";
@@ -12,17 +11,6 @@ import { ingressConfig } from "./config.ingress.js";
 import { l1Config } from "./config.l1.js";
 import { mpfConfig } from "./config.mpf.js";
 import { validationConfig } from "./config.validation.js";
-
-/** The genesis ledger a node commits at initialization. */
-type GenesisFixture = {
-  GENESIS_UTXOS: UTxO[];
-  /** Preserves configured wallet identity when an isolated harness maps C=A. */
-  GENESIS_UTXOS_BY_WALLET?: Readonly<{
-    A: readonly UTxO[];
-    B: readonly UTxO[];
-    C: readonly UTxO[];
-  }>;
-};
 
 /**
  * The node's settings, one table per concern. Each table reads, defaults and
@@ -41,13 +29,6 @@ const nodeConfig = Config.all([
 ]).pipe(
   Config.mapAttempt(
     ([deployment, l1, validation, ingress, database, commit, mpf, da]) => {
-      // Atomic initialization commits an empty ledger on every network.
-      // Isolated harnesses may inject an explicitly authenticated genesis
-      // fixture.
-      const genesis: GenesisFixture = {
-        GENESIS_UTXOS: [],
-        GENESIS_UTXOS_BY_WALLET: { A: [], B: [], C: [] },
-      };
       return {
         ...deployment,
         ...l1,
@@ -63,7 +44,6 @@ const nodeConfig = Config.all([
         ...commit,
         ...mpf,
         ...da,
-        ...genesis,
       };
     },
   ),

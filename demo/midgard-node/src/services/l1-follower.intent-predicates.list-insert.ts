@@ -1,13 +1,9 @@
 /**
  * The node predicate of the list-insert family (`list_insert`): a
  * transaction that inserts into a protocol list from the node process, by
- * workflow-key verb. Each is wanted while the follower's facts show the
+ * workflow-key verb. It is wanted while the follower's facts show the
  * insert's target unreached:
  *
- * - `list_insert:deposit:<event key hex>`, a deposit the node admits into the
- *   deposit list (the genesis deposit): its event key is not in the
- *   follower's never-reuse key set (`l1_event_keys`, kind `deposit`). A key
- *   there is listed, or was, and the event projection refuses it again.
  * - `list_insert:protocol_init:<nonce outref>`, the atomic protocol
  *   initialization, which creates every list's root: no live output at the
  *   state-queue address carries the state-queue policy (the landed queue's
@@ -17,31 +13,11 @@
  * raises its transient hold.
  */
 import { landedStateQueueIn } from "../l1-state-queue/landed.js";
-import {
-  count,
-  keyRest,
-  type Read,
-} from "./l1-follower.intent-predicates.read.js";
-
-const HEX = /^[0-9a-f]+$/u;
+import { keyRest, type Read } from "./l1-follower.intent-predicates.read.js";
 
 export const listInsert = async (read: Read): Promise<boolean> => {
-  const [verb, ...rest] = keyRest(read.state, "list_insert:").split(":");
-  const target = rest.join(":");
+  const [verb] = keyRest(read.state, "list_insert:").split(":");
   switch (verb) {
-    case "deposit": {
-      if (!HEX.test(target))
-        throw new Error(
-          `deposit list insert ${read.state.intent.workflowKey} names no event key`,
-        );
-      return (
-        (await count(
-          read.tx,
-          "SELECT count(*) AS n FROM l1_event_keys WHERE kind = 'deposit' AND key = ?",
-          [Buffer.from(target, "hex")],
-        )) === 0
-      );
-    }
     case "protocol_init": {
       const queue = await landedStateQueueIn(
         read.tx,

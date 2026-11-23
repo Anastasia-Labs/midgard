@@ -1,16 +1,15 @@
 /**
  * The list-insert family (`list_insert`) on the node intent journal over the
- * follower's facts, in the node's own test database, for both in-node
- * paths: the genesis deposit (`list_insert:deposit:<event key>`) and the
- * atomic protocol initialization (`list_insert:protocol_init:<nonce>`).
+ * follower's facts, in the node's own test database, for the in-node
+ * path: the atomic protocol initialization
+ * (`list_insert:protocol_init:<nonce>`).
  *
- * - Each is recorded through the production journal and resent by S6 while
- *   its predicate reads its target unreached: the deposit's event key
- *   absent from the follower's key set, no live output carrying the
- *   state-queue policy.
+ * - It is recorded through the production journal and resent by S6 while
+ *   its predicate reads its target unreached: no live output carrying
+ *   the state-queue policy.
  * - Once a landed transaction that spends none of its inputs reaches the
- *   target (admits the event key, creates the queue root), the predicate is
- *   false: S6 abandons the intent and never sends it again.
+ *   target (creates the queue root), the predicate is false: S6 abandons
+ *   the intent and never sends it again.
  * - A record the journal refuses raises the family's named `/readyz` hold,
  *   which the family's next successful record clears.
  */
@@ -44,12 +43,7 @@ import {
   db,
   openNodeFollowerStore,
 } from "./helpers/forced-orders-node-store.js";
-import {
-  admissionTx,
-  eventKeyOf,
-  eventOrder,
-  EVENTS_CONFIG,
-} from "./helpers/l1-events-chain.js";
+import { EVENTS_CONFIG } from "./helpers/l1-events-chain.js";
 import { ChainDriver } from "./helpers/l1-events-store.js";
 import {
   GENESIS_HASH,
@@ -194,19 +188,11 @@ const record = (
 type Scenario = Awaited<ReturnType<typeof open>>;
 
 /**
- * The two in-node list inserts: the workflow key of the intent spending
- * `nonce`, and a landed transaction spending `other` (none of the intent's
- * inputs) that reaches the insert's target.
+ * The in-node list insert: the workflow key of the intent spending `nonce`,
+ * and a landed transaction spending `other` (none of the intent's inputs)
+ * that reaches the insert's target.
  */
 const PATHS = [
-  {
-    path: "the genesis deposit",
-    key: (nonce: OutRef) => `list_insert:deposit:${eventKeyOf(nonce)}`,
-    reach: (s: Scenario, nonce: OutRef, other: OutRef): SimTx => ({
-      ...admissionTx(eventOrder("deposit", nonce), s.driver.chain.nonce()),
-      inputs: [other],
-    }),
-  },
   {
     path: "the protocol initialization",
     key: (nonce: OutRef) => `list_insert:protocol_init:${outRefText(nonce)}`,

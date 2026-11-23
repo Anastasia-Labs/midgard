@@ -13,7 +13,6 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { deriveDeploymentManifestCardanoProtocolParametersFromLedger } from "@al-ft/midgard-l1-follower/protocol-parameters";
 import { GENESIS_HEADER_HASH } from "@al-ft/midgard-sdk/core";
-import { type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { deploymentEconomicsFromEnvironment } from "../environment.js";
@@ -26,7 +25,6 @@ import {
   loadRealBlueprintSha256,
 } from "../services/midgard-contracts.load-reference-script-auth-validator.js";
 import { deriveOperatorDaParams } from "../transactions/initialization.derive-operator-da-params.js";
-import { compareOutRefs } from "../tx-context.js";
 import {
   configuredAvailabilityChallenge,
   type DeploymentManifestIdentityContext,
@@ -67,32 +65,6 @@ export const ledgerProtocolParametersReader = (
     );
   return read;
 };
-
-const genesisUtxoIdentitySnapshot = (
-  utxos: readonly UTxO[],
-): ReturnType<typeof normalizeDeploymentManifestJsonValue> =>
-  normalizeDeploymentManifestJsonValue(
-    [...utxos].sort(compareOutRefs).map((utxo) => ({
-      txHash: utxo.txHash,
-      outputIndex: utxo.outputIndex,
-      address: utxo.address,
-      assets: Object.fromEntries(
-        Object.entries(utxo.assets)
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([unit, amount]) => [unit, amount.toString(10)]),
-      ),
-      datumHash: utxo.datumHash ?? null,
-      datum: utxo.datum ?? null,
-      scriptRef:
-        utxo.scriptRef == null
-          ? null
-          : {
-              type: utxo.scriptRef.type,
-              script: utxo.scriptRef.script,
-            },
-    })),
-    "genesisUtxos",
-  );
 
 /**
  * The DA transport profile the deployment commits to. Its retention window is
@@ -168,7 +140,6 @@ export const buildDeploymentManifestIdentityContextProgram: Effect.Effect<
       ),
   });
   const blueprintHash = yield* loadRealBlueprintSha256();
-  const genesisSnapshot = genesisUtxoIdentitySnapshot(nodeConfig.GENESIS_UTXOS);
   return {
     economics: deploymentEconomicsFromEnvironment(),
     availabilityChallenge: configuredAvailabilityChallenge(),
@@ -176,7 +147,10 @@ export const buildDeploymentManifestIdentityContextProgram: Effect.Effect<
     cardanoProtocolParameters,
     genesis: {
       headerHash: GENESIS_HEADER_HASH,
-      utxoSetDigest: computeDeploymentManifestJsonDigest(genesisSnapshot),
+      // Genesis is the empty ledger on every network.
+      utxoSetDigest: computeDeploymentManifestJsonDigest(
+        normalizeDeploymentManifestJsonValue([], "genesisUtxos"),
+      ),
     },
     da: {
       committeeVkeys,
