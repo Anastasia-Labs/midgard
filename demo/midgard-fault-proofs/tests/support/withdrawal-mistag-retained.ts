@@ -4,9 +4,14 @@ import {
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import { Data } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
-import type { CountedRoot } from "../../src/transition-trace/phas.js";
+import { ledgerEntriesRoot } from "../../src/ledger-at.js";
+import {
+  buildCountedRoot,
+  type CountedRoot,
+} from "../../src/transition-trace/phas.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   authenticatedHeaderObservation,
@@ -139,32 +144,16 @@ export const retainedBlock = async ({
   return { evidence, predecessor, context };
 };
 
-export const withdrawalMistagRetainedFixture = async ({
-  direction,
-  honest = false,
-  outputBytes = 0,
-  assetCount = 0,
-  payoutDatumBytes = 0,
-  operatorVkey,
-  now,
-}: {
-  direction: WithdrawalMistagDirectionFixture;
-  honest?: boolean;
-  outputBytes?: number;
-  assetCount?: number;
-  payoutDatumBytes?: number;
-  operatorVkey?: string;
-  now?: number;
-}) => {
-  const material = await buildWithdrawalMistagEvidenceMaterial(
-    direction,
-    honest,
-    outputBytes,
-    assetCount,
-    payoutDatumBytes,
-  );
+type WithdrawalMistagMaterial = Awaited<
+  ReturnType<typeof buildWithdrawalMistagEvidenceMaterial>
+>;
+
+/** The ledger output a material's withdrawal spends. */
+export const withdrawalMistagOutput = (
+  material: WithdrawalMistagMaterial,
+): LedgerOutput => {
   const outref = material.args.committedWithdrawal.value.body.l2_outref;
-  const output = {
+  return {
     key: encodeMidgardSpendInputItem({
       txId: Buffer.from(outref.transactionId, "hex"),
       outputIndex: Number(outref.outputIndex),
@@ -174,16 +163,78 @@ export const withdrawalMistagRetainedFixture = async ({
       "hex",
     ),
   };
+};
+
+/** The material's one-step trace, its step starting from `utxos`. */
+const traceFrom = async (
+  material: WithdrawalMistagMaterial,
+  utxos: readonly LedgerOutput[],
+): Promise<CountedRoot> =>
+  await buildCountedRoot(SDK.ROOT_DOMAINS.transitionTrace, [
+    {
+      key: Buffer.from(Data.to(0n), "hex"),
+      value: Buffer.from(
+        Data.to(
+          {
+            ...material.args.transitionStep.value,
+            pre_utxos_root: await ledgerEntriesRoot(
+              utxos.map(({ key, value }) => ({ outRef: key, output: value })),
+            ),
+          },
+          SDK.TransitionStep,
+        ),
+        "hex",
+      ),
+    },
+  ]);
+
+export const withdrawalMistagRetainedFixture = async ({
+  direction,
+  honest = false,
+  outputBytes = 0,
+  assetCount = 0,
+  payoutDatumBytes = 0,
+  operatorVkey,
+  now,
+  material: given,
+  predecessorExtra = [],
+}: {
+  direction: WithdrawalMistagDirectionFixture;
+  honest?: boolean;
+  outputBytes?: number;
+  assetCount?: number;
+  payoutDatumBytes?: number;
+  operatorVkey?: string;
+  now?: number;
+  /** The withdrawal's material, when the caller built it. */
+  material?: WithdrawalMistagMaterial;
+  /** Outputs the predecessor holds beside the withdrawn one. */
+  predecessorExtra?: readonly LedgerOutput[];
+}) => {
+  const material =
+    given ??
+    (await buildWithdrawalMistagEvidenceMaterial(
+      direction,
+      honest,
+      outputBytes,
+      assetCount,
+      payoutDatumBytes,
+    ));
+  const output = withdrawalMistagOutput(material);
   const keep = !SDK.withdrawalClaimsValid(
     material.args.committedWithdrawal.value,
   );
+  const predecessorUtxos = [output, ...predecessorExtra];
   return {
     ...(await retainedBlock({
-      predecessorUtxos: [output],
+      predecessorUtxos,
       blockUtxos: keep ? [output] : [],
       source: material.source,
       event: material.event,
-      trace: material.trace,
+      trace:
+        predecessorExtra.length === 0
+          ? material.trace
+          : await traceFrom(material, predecessorUtxos),
       operatorVkey,
       now,
     })),
