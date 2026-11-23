@@ -100,7 +100,7 @@ const summary = (samples: readonly number[]) => {
 const mib = (bytes: number) => Math.round((bytes / 2 ** 20) * 10) / 10;
 
 /** Peak RSS and heap, sampled while `run` runs. */
-const sampled = async <T>(run: () => Promise<T>) => {
+export const sampled = async <T>(run: () => Promise<T>) => {
   const baseline = process.memoryUsage();
   let rss = baseline.rss;
   let heap = baseline.heapUsed;
