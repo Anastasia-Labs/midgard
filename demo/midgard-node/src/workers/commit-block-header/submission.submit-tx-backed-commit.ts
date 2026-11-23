@@ -77,7 +77,6 @@ export const submitTxBackedCommit = ({
   validationTraceCount,
   ledgerDelta,
   selectedBaseUtxosRoot,
-  implicitGenesisEntries,
   transactionsMpf,
   processedMempoolTxs,
   mempoolTxHashes,
@@ -331,8 +330,6 @@ export const submitTxBackedCommit = ({
                   yield* resolvePendingJournalLedgerState({
                     recordedBaseUtxosRoot: metadata.baseRoots.utxosRoot,
                     selectedBaseUtxosRoot,
-                    expectedFinalUtxosRoot: utxoRoot,
-                    implicitGenesisEntries,
                     transitionDelta: ledgerDelta,
                   });
                 const beforeJournalInsert =

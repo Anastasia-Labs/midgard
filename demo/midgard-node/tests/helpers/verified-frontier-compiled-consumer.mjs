@@ -1,26 +1,20 @@
 // The compiled commit worker's side of `WorkerInput.verifiedFrontier`: it
 // reads the frontier from the input its parent posted, with the built
-// codec, and resolves a landed commit base from it with the built check.
-// The landed ledger arrives as hex and is rebuilt into the Buffers the
-// worker's database reads return.
+// codec, and resolves where a landed commit builds from it with the built
+// check. The landed chain arrives as hex and is rebuilt into the Buffers
+// the worker's database reads return.
 import { parentPort, workerData } from "node:worker_threads";
 
 import { Effect, Either } from "effect";
 
 const { parseVerifiedFrontier } = await import(workerData.codecUrl);
-const { verifiedLandedLedgerAt } = await import(workerData.baseUrl);
+const { verifiedLandedRootAt } = await import(workerData.baseUrl);
 
 const bytes = (hex) => Buffer.from(hex, "hex");
 const { landed } = workerData;
-const ledger = {
+const chain = {
   frontier: landed.frontier,
   generation: landed.generation,
-  confirmed: landed.confirmed.map((entry) => ({
-    tx_id: Buffer.alloc(32),
-    address: "addr",
-    outref: bytes(entry.outref),
-    output: bytes(entry.output),
-  })),
   chain: landed.chain.map((row) => ({
     ...row,
     spent: row.spent.map(bytes),
@@ -36,7 +30,7 @@ const outcome = await Effect.runPromise(
     Effect.flatMap(
       parseVerifiedFrontier(workerData.input.verifiedFrontier),
       (verified) =>
-        verifiedLandedLedgerAt(ledger, workerData.headerHash, verified),
+        verifiedLandedRootAt(chain, workerData.headerHash, verified),
     ),
   ),
 );
@@ -45,6 +39,6 @@ parentPort.postMessage(
     ? { refused: outcome.left._tag, headerHash: outcome.left.headerHash }
     : {
         root: outcome.right?.root,
-        keys: [...(outcome.right?.ledger.keys() ?? [])].sort(),
+        row: outcome.right?.row?.headerHash,
       },
 );

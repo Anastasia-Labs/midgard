@@ -8,7 +8,6 @@ import type {
   TxUtils as TxTable,
   WithdrawalsDB,
 } from "../../database/index.js";
-import type * as Ledger from "../../database/utils/ledger.js";
 import type {
   LedgerDelta,
   MidgardMpf,
@@ -47,7 +46,6 @@ export type SubmitTxBackedCommitInput = CommitSubmissionHooks & {
   readonly validationTraceCount: number;
   readonly ledgerDelta: LedgerDelta;
   readonly selectedBaseUtxosRoot: string;
-  readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
   readonly nativeMpfReplay: NativeMpfReplayBuild;
   readonly transactionsMpf: MidgardMpf;
   readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];

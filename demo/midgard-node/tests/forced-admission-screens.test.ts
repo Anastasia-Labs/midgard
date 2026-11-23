@@ -39,6 +39,7 @@ import {
   makeSignedEffectfulTransaction,
   outputReferenceFromHash,
 } from "./forced-transactions.make-signed-effectful-transaction.js";
+import { ledgerOfOutputs } from "./helpers/ledger-of.js";
 const time = new Date("2026-07-23T12:01:00.000Z");
 const validation = {
   l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -156,7 +157,7 @@ describe("forced admission screens", () => {
       const [classified] = await Effect.runPromise(
         classifyForcedTransactions({
           entries: [await forcedEntry({ label: 8, transaction })],
-          initialState,
+          ledger: await ledgerOfOutputs(initialState),
           blockTime: time,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           validation,

@@ -131,7 +131,6 @@ const submit = (
       validationTraceCount: txs.length,
       ledgerDelta: { spent: [], produced: [] },
       selectedBaseUtxosRoot: header.prevUtxosRoot,
-      implicitGenesisEntries: [],
       nativeMpfReplay: {},
       transactionsMpf: {},
       mempoolTxHashes: [],

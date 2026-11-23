@@ -4,13 +4,11 @@ import { StateQueueMutationLeasesDB } from "../database/index.js";
 import { TIMEOUT_CORRECTION_LEASE_HOLDER } from "../fibers/attestation-timeout-correction.reconcile-state-queue-corrections.js";
 import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { VALIDATION_TRACE_DEFENSE_LEASE_HOLDER } from "../validation-trace-defense/health.js";
-import { NODE_PROCESS_MPF_AUDIT_LEASES } from "./mpf-audit-leases.js";
 
 /**
  * State-queue lease holders that only a node process takes, from fibers that
  * start after startup preparation: block commitment, merge,
- * attestation-timeout removal, the validation-trace Defend and the node's own
- * payload audit.
+ * attestation-timeout removal and the validation-trace Defend.
  * `mpf-payload-audit` is deliberately absent: the offline `mpf-audit` command
  * takes it without the node instance lock, so a live one may exist beside this
  * node.
@@ -20,7 +18,6 @@ export const NODE_PROCESS_STATE_QUEUE_LEASE_HOLDERS: readonly string[] = [
   "state_queue_merge",
   TIMEOUT_CORRECTION_LEASE_HOLDER,
   VALIDATION_TRACE_DEFENSE_LEASE_HOLDER,
-  NODE_PROCESS_MPF_AUDIT_LEASES.stateQueueHolder,
 ];
 
 const RETIRED_AT_STARTUP =

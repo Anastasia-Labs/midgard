@@ -28,6 +28,7 @@ import { Globals } from "../src/services/globals.globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
 import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import { insertWithdrawals } from "./helpers/event-rows.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 /**
@@ -192,7 +193,7 @@ const build = (baseRoot: string) =>
       processMpfs(transactionsMpf as unknown as MidgardMpf, [], {
         currentBlockStartTime: at(0),
         fixedBlockEndTime: at(10),
-        initialLedgerEntries: BASE,
+        baseLedger: yield* Effect.promise(() => ledgerOf(BASE)),
         nativeMpf: {
           handle: { baseRoot },
           ownerBinarySha256: "00".repeat(32),

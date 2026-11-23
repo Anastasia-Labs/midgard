@@ -29,6 +29,6 @@ export {
   rebasePlanOf,
   type RebaseTarget,
   rebaseTargetOf,
-  walkTarget,
+  targetRoots,
 } from "./rebase-target.js";
 export type { ReplayInput, ReplayOutcome } from "./replay.js";

@@ -1,7 +1,6 @@
 import { Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { shouldRunMpfPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import {
   configureCommitMpfRuntime,
   getMpfScratchBuild,
@@ -27,12 +26,6 @@ describe("commit MPF runtime configuration", () => {
       }),
     );
     expect(getMpfScratchBuild()).toBe("fromlist");
-  });
-
-  it("disables the background payload audit only when root checks are off", () => {
-    expect(shouldRunMpfPayloadAudit("every_block")).toBe(true);
-    expect(shouldRunMpfPayloadAudit("periodic")).toBe(true);
-    expect(shouldRunMpfPayloadAudit("off")).toBe(false);
   });
 
   const pinned = {

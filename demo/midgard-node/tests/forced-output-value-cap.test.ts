@@ -48,6 +48,7 @@ import {
   outputReferenceFromHash,
   TEST_ADDRESS,
 } from "./forced-transactions.make-signed-effectful-transaction.js";
+import { ledgerOfOutputs } from "./helpers/ledger-of.js";
 
 const time = new Date("2026-07-23T12:01:00.000Z");
 const validation = {
@@ -262,7 +263,7 @@ describe("forced transaction output Value at the 5,000-byte cap", () => {
           await forcedEntry({ label: 31, transaction: overCap.transaction }),
           await forcedEntry({ label: 32, transaction: atCap.transaction }),
         ],
-        initialState,
+        ledger: await ledgerOfOutputs(initialState),
         blockTime: time,
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation,
@@ -299,7 +300,7 @@ describe("forced transaction output Value at the 5,000-byte cap", () => {
           entries: [
             await forcedEntry({ label: 33, transaction: shape.transaction }),
           ],
-          initialState,
+          ledger: await ledgerOfOutputs(initialState),
           blockTime: time,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           validation,

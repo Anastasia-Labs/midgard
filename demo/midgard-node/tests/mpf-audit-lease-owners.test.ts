@@ -1,20 +1,17 @@
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
-import { Effect, Ref, Runtime } from "effect";
+import { Effect, Runtime } from "effect";
 import { describe, expect } from "vitest";
 
 import { runMpfAudit } from "../src/commands/mpf-audit.js";
-import * as MpfEngineStateDB from "../src/database/mpfEngineState.js";
 import * as StateQueueLeases from "../src/database/stateQueueMutationLeases.js";
-import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import type { Database } from "../src/services/database.js";
-import { Globals } from "../src/services/globals.globals.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
-// Node startup retires the running node's own audit leases after a kill and
-// keeps the offline command's, so each audit must take both leases under its
-// own names. The persisted-root read runs under both leases, so it records
-// the holder and owner they were taken as.
+// Node startup keeps the offline command's audit leases, so the audit must
+// take both leases under the names startup leaves alone. The persisted-root
+// read runs under both leases, so it records the holder and owner they were
+// taken as.
 
 const DURABLE_ROOT = "ab".repeat(32);
 
@@ -28,7 +25,7 @@ const auditDb = <A, E>(effect: Effect.Effect<A, E, any>) =>
     Effect.gen(function* () {
       yield* resetApplicationTables;
       return yield* effect;
-    }).pipe(Effect.provide(Globals.Default)),
+    }),
   ) as Effect.Effect<A, E, never>;
 
 /** Reads the leases held at this moment, then answers the persisted root. */
@@ -55,41 +52,6 @@ const expectReleased = Effect.gen(function* () {
 });
 
 describe("MPF audit lease names", () => {
-  it.effect(
-    "the running node's payload audit holds both leases under node-process names",
-    () =>
-      auditDb(
-        Effect.gen(function* () {
-          const seen: Held[] = [];
-          const runtime = yield* Effect.runtime<
-            Database | SqlClient.SqlClient
-          >();
-          const globals = yield* Globals;
-          yield* Ref.set(globals.NATIVE_MPF_OWNER, {
-            diagnostics: () =>
-              Runtime.runPromise(runtime)(
-                readHeldLeases(seen).pipe(
-                  Effect.map((durableRoot) => ({
-                    durableRoot,
-                    activeGenerations: 1,
-                  })),
-                ),
-              ),
-          } as never);
-          const result = yield* runLedgerPayloadAudit;
-          expect(result.persistedRoot).toBe(DURABLE_ROOT);
-          expect(seen).toHaveLength(1);
-          expect(seen[0]!.stateQueueHolder).toBe("node-mpf-payload-audit");
-          expect(
-            seen[0]!.ledgerOwner?.startsWith(
-              MpfEngineStateDB.NODE_PROCESS_AUDIT_LEASE_OWNER_PREFIX,
-            ),
-          ).toBe(true);
-          yield* expectReleased;
-        }),
-      ),
-  );
-
   it.effect(
     "the offline mpf-audit command keeps the names startup leaves alone",
     () =>

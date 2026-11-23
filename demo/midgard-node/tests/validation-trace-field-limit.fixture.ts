@@ -37,6 +37,7 @@ import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
 import * as ForcedTransactionsDB from "../src/database/forcedTransactions.js";
 import { classifyForcedTransactions } from "../src/mpf/event-window.classify-forced-transactions.js";
 import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
+import { ledgerOfOutputs } from "./helpers/ledger-of.js";
 // Capacity fixtures require funded, signed transactions with real ledger proofs;
 // the neighbouring admission suite exercises small rejected EmptyInputs events.
 export const fixture = async (
@@ -169,7 +170,7 @@ export const fixture = async (
     const [classified] = await Effect.runPromise(
       classifyForcedTransactions({
         entries: [entry],
-        initialState: new Map([[spent.toString("hex"), output]]),
+        ledger: await ledgerOfOutputs([[spent, output]]),
         blockTime: new Date(1_750_000_000_000),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {

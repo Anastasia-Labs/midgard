@@ -8,13 +8,13 @@ import {
 import { Cause, Effect, Either, Option, Runtime } from "effect";
 import { expect, it, vi } from "vitest";
 
+import { runMpfAudit } from "../src/commands/mpf-audit.js";
 import {
   DepositsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
 import { mergeAction } from "../src/fibers/merge.merge-action.js";
 import type { MergeActionResult } from "../src/fibers/merge.registered-merge-due-work-skip.js";
-import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { IntentJournal } from "../src/services/intent-journal.js";
@@ -380,7 +380,16 @@ export type MergeLifecycle = Awaited<ReturnType<typeof openMergeLifecycle>>;
 const expectFinalizedOnce = async (m: MergeLifecycle, headerHash: string) => {
   expect(await m.ownStatus(headerHash)).toBe(Status.Folded);
   await m.expectDeposits(headerHash, DepositsDB.Status.Consumed);
-  const audit = await m.run(runLedgerPayloadAudit);
+  // The ledger audit at the live native owner's durable root.
+  const owner = await m.run(Effect.flatMap(Globals, (g) => g.NATIVE_MPF_OWNER));
+  if (owner === undefined) throw new Error("Expected live native owner");
+  const audit = await m.run(
+    runMpfAudit({
+      readNativeDurableRoot: Effect.promise(
+        async () => (await owner.diagnostics()).durableRoot,
+      ),
+    }),
+  );
   expect(audit.confirmedRoot).toBe(await m.expectedRoot(headerHash));
   expect(audit.diverged).toBe(false);
 };

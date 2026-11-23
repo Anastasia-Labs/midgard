@@ -3,6 +3,12 @@
  * and producing `E1`, the queue tail and confirmed-state tips the commit
  * worker receives, and the outcomes the resolver's tests expect.
  */
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  type Ledger as StoreLedger,
+  ledgerAt,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { getAddressDetails, toUnit, type UTxO } from "@lucid-evolution/lucid";
@@ -21,7 +27,6 @@ import {
 import { deriveConfirmedLedgerRoots } from "../src/mpf/confirmed-ledger-roots.js";
 import { verifyConfirmedLedger } from "../src/mpf/confirmed-ledger-run.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
-import { LocalLedgerDivergenceError } from "../src/mpf/local-ledger-divergence.js";
 import { ForeignBlockVerificationError } from "../src/mpf/verified-block-import.js";
 import { NodeConfig } from "../src/services/config.make-config.js";
 import type { Database } from "../src/services/database.js";
@@ -29,8 +34,8 @@ import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { CommitBaseUnverifiedError } from "../src/workers/commit-block-header.landed-commit-base.js";
 import {
   LANDED_COMMIT_BASE_PENDING,
-  resolveCommitBaseLedgerEntries,
-} from "../src/workers/commit-block-header.resolve-commit-base-ledger-entries.js";
+  resolveCommitBase,
+} from "../src/workers/commit-block-header.resolve-commit-base.js";
 import {
   serializeStateQueueUTxO,
   type VerifiedFrontier,
@@ -57,6 +62,41 @@ export const run = <A, E>(effect: Effect.Effect<A, E, Database | NodeConfig>) =>
 
 export const rootOf = (entries: readonly Ledger.MinimalEntry[]) =>
   Effect.runPromise(computeLedgerMpfRootFromLedgerEntries([...entries]));
+
+/**
+ * The ledger store a commit reads its base from, as the native owner holds
+ * it: the ledgers of `ledgers` admitted at their roots. `openLedger` opens
+ * one at a root, its nodes from the store and its outputs from the reader
+ * the resolver gives it.
+ */
+export const ledgerStoreOf = async (
+  ledgers: readonly (readonly Ledger.MinimalEntry[])[],
+) => {
+  const storage = createMemoryLedgerStorage();
+  const store = createLedgerStore(storage);
+  for (const entries of ledgers)
+    await store.admit(
+      entries.map((item) => ({ outRef: item.outref, output: item.output })),
+      await rootOf(entries),
+    );
+  return (
+    root: string,
+    outputs: Parameters<typeof ledgerAt>[1]["outputs"],
+  ): StoreLedger =>
+    ledgerAt(root, {
+      node: (hash) => storage.readNodes([hash]).then(([node]) => node),
+      outputs,
+    });
+};
+
+/** Every entry of `ledger`, as out-ref and output hex, sorted as
+ * `hexEntries(...).sort()` is. */
+export const ledgerHex = async (ledger: StoreLedger) => {
+  const entries: string[][] = [];
+  for await (const { outRef, output } of ledger.entries())
+    entries.push([outRef.toString("hex"), output.toString("hex")]);
+  return entries.sort();
+};
 
 /** The queue tail carrying `header`, as the commit worker receives it. */
 export const tailOf = async (header: SDK.Header) => {
@@ -161,14 +201,23 @@ export const verifiedNow = () =>
   );
 
 /** The resolver's outcome on `tail`, as a commit worker that received
- * `verified` (by default, what a verification now records) resolves it; a
+ * `verified` (by default, what a verification now records) resolves it, its
+ * ledgers from a store holding `E0`'s and `E1`'s (or `ledgers`'), with the
+ * base ledger's entries as `ledgerHex` gives them; a
  * `verified` frontier with no generation is taken at the frontier
  * generation stored now. */
 export const resolve = async (
   tail: Awaited<ReturnType<typeof tailOf>>["tail"],
   nativeMpfRoot: string,
-  genesisUtxos?: readonly UTxO[],
-  verified: HeaderRoot | VerifiedFrontier | "none" | "verify" = "verify",
+  {
+    genesisUtxos,
+    ledgers = [[E0], [E1]],
+    verified = "verify",
+  }: Readonly<{
+    genesisUtxos?: readonly UTxO[];
+    ledgers?: readonly (readonly Ledger.MinimalEntry[])[];
+    verified?: HeaderRoot | VerifiedFrontier | "none" | "verify";
+  }> = {},
 ) => {
   const verifiedFrontier =
     verified === "verify"
@@ -182,13 +231,21 @@ export const resolve = async (
               generation:
                 (await run(Frontier.retrieveWithGeneration))?.generation ?? "1",
             };
+  // The base's entries are read while the database the resolver read from
+  // is still open, as a commit reads its base inside the worker's program.
   const resolved = Effect.either(
-    resolveCommitBaseLedgerEntries({
+    resolveCommitBase({
       availableConfirmedBlock: tail,
       nativeMpfRoot,
-      requireEntries: true,
+      openLedger: await ledgerStoreOf(ledgers),
       verifiedFrontier,
-    }),
+    }).pipe(
+      Effect.flatMap((base) =>
+        Effect.promise(() => ledgerHex(base.ledger)).pipe(
+          Effect.map((entries) => ({ ...base, entries })),
+        ),
+      ),
+    ),
   );
   return run(
     genesisUtxos === undefined
@@ -280,20 +337,4 @@ export const confirmedTipOf = (state: SDK.ConfirmedState) => {
       assetName: SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
     }),
   );
-};
-
-export const expectDivergence = (
-  outcome: Awaited<ReturnType<typeof resolve>>,
-  divergence: Readonly<{
-    check: string;
-    headerHash: string;
-    root: string;
-    derivedRoot?: string;
-    fault?: string;
-  }>,
-) => {
-  expect(Either.isLeft(outcome)).toBe(true);
-  const error = (outcome as Either.Left<unknown, unknown>).left;
-  expect(error).toBeInstanceOf(LocalLedgerDivergenceError);
-  expect(error).toMatchObject(divergence);
 };

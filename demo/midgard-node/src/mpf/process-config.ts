@@ -3,10 +3,10 @@
  */
 
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import type { Ledger } from "@al-ft/midgard-fault-proofs/ledger-store";
 import { Effect } from "effect";
 
 import { DatabaseError } from "../database/utils/common.js";
-import * as Ledger from "../database/utils/ledger.js";
 import type { ContractDeploymentIdentityValue } from "../services/midgard-contracts.js";
 import { MpfError } from "./errors.js";
 import { type NativeMpfBuildContext } from "./transition-trace.js";
@@ -36,9 +36,6 @@ export type ProcessMpfsConfig = {
   readonly depositVisibilityBarrierTime?: Date;
   readonly txOrderVisibilityBarrierTime?: Date;
   readonly withdrawalVisibilityBarrierTime?: Date;
-  readonly initialLedgerEntries?: readonly Ledger.MinimalEntry[];
-  readonly selectedBaseUtxoRoot?: string;
-  readonly payloadRootCheck?: "every_block" | "periodic" | "off";
   readonly recordCorpusPath?: string;
   /** Runs once a commit-stage rejection's mempool_ledger revert commits. */
   readonly onMempoolLedgerReverted?: Effect.Effect<void>;
@@ -57,6 +54,9 @@ export type ProcessMpfsConfig = {
     string,
     { readonly code: string; readonly detail: string }
   >;
+  /** The block's base ledger: the ledger at the native generation's base
+   * root, which every phase reads by key. */
+  readonly baseLedger: Ledger;
   /** The native owner generation every commit builds its ledger root on. */
   readonly nativeMpf: NativeMpfBuildContext;
   /**

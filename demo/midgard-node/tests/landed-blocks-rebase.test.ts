@@ -295,6 +295,8 @@ describe(
       const b = pendingTx("b", [], 2);
       const a = pendingTx("a", [E1.outref], 1);
       const native: Native = { ...freshNative(), durableRoot: R1, reaches: R2 };
+      // Processing X kept the ledger after it.
+      native.ledgers[R2] = [E1, E2];
       const globals = await processOf(native);
       await seed(globals, { kind: "own", applied: true, txIds: [b.id] });
       await land(globals, {

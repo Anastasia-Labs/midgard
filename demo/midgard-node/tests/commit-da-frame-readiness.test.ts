@@ -271,7 +271,6 @@ describe("commit DA frame readiness", () => {
         validationTraceCount: source === "transactions" ? 1 : 0,
         ledgerDelta: { spent: [], produced: [] },
         selectedBaseUtxosRoot: header.prevUtxosRoot,
-        implicitGenesisEntries: [],
         nativeMpfReplay: {},
         transactionsMpf: {},
         mempoolTxHashes: [],

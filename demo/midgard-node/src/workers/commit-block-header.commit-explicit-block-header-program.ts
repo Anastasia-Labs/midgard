@@ -4,9 +4,6 @@ import { SqlClient } from "@effect/sql";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
-import { PendingBlockFinalizationsDB } from "../database/index.js";
-import { DatabaseError } from "../database/utils/common.js";
-import * as Ledger from "../database/utils/ledger.js";
 import { MidgardMpf } from "../mpf/store.midgard-mpf.js";
 import { NodeConfig } from "../services/config.make-config.js";
 import type { IntentJournal } from "../services/intent-journal.js";
@@ -27,7 +24,6 @@ import {
   EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS,
   EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
-import { type ResolvedCommitBaseLedgerEntries } from "./commit-block-header.resolve-commit-base-ledger-entries.js";
 import { buildUnsignedCommitTx } from "./commit-block-header/build-unsigned-tx.js";
 import { fetchLatestCommittedBlockLocal } from "./commit-block-header/state-queue.js";
 import { makeEventCommitments } from "./commit-block-header/transition-commitments.js";
@@ -43,36 +39,17 @@ import { type CommitDaFrameNotice } from "./utils/commit-block-planner.commit-da
 import { type EarliestCommitSchedulerPlan } from "./utils/commit-block-planner.js";
 import { resolveExplicitCommitCandidateEndTimeMs } from "./utils/commit-end-time.js";
 
-export const alignCommitMpfsToBase = ({
-  nativeMpfRoot,
-  transactionsMpf,
-  base,
-}: {
-  readonly nativeMpfRoot: string;
-  readonly transactionsMpf: MidgardMpf;
-  readonly base: ResolvedCommitBaseLedgerEntries;
-}): Effect.Effect<readonly Ledger.MinimalEntry[], unknown, never> =>
+/** Empties the per-block transactions MPF before a build on `source`. */
+export const resetTransactionsMpf = (
+  transactionsMpf: MidgardMpf,
+  source: string,
+) =>
   Effect.gen(function* () {
-    if (nativeMpfRoot !== base.root) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: PendingBlockFinalizationsDB.tableName,
-          message:
-            "Architecture G durable marker differs from the selected commit base",
-          cause: `source=${base.source},current_root=${nativeMpfRoot},expected_root=${base.root}`,
-        }),
-      );
-    }
-
-    const transactionsRootIsEmpty = yield* transactionsMpf.rootIsEmpty();
-    if (!transactionsRootIsEmpty) {
-      yield* transactionsMpf.resetToEmpty();
-      yield* Effect.logInfo(
-        `🔹 Reset per-block transactions MPF before building on ${base.source}.`,
-      );
-    }
-
-    return base.entries ?? [];
+    if (yield* transactionsMpf.rootIsEmpty()) return;
+    yield* transactionsMpf.resetToEmpty();
+    yield* Effect.logInfo(
+      `🔹 Reset per-block transactions MPF before building on ${source}.`,
+    );
   });
 
 export const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {

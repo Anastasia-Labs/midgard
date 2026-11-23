@@ -34,14 +34,6 @@ export const ledgerMap = (entries: readonly Ledger.MinimalEntry[]): LedgerMap =>
     ]),
   );
 
-export const ledgerEntries = (ledger: LedgerMap): Ledger.MinimalEntry[] =>
-  [...ledger]
-    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-    .map(([outref, output]) => ({
-      [Ledger.Columns.OUTREF]: Buffer.from(outref, "hex"),
-      [Ledger.Columns.OUTPUT]: output,
-    }));
-
 /** `ledger` with `row`'s delta applied, in place. */
 export const applyDelta = (
   ledger: LedgerMap,
@@ -165,13 +157,15 @@ export type LandedChain = Readonly<{
   chain: readonly LandedBlockRow[];
 }>;
 
+/** The frontier and the processed chain after it, with the frontier
+ * generation read with them (migration 0038). */
+export type GeneratedLandedChain = LandedChain &
+  Readonly<{ generation: string }>;
+
 /** The ledger at the frontier and the processed chain after it, with the
- * frontier generation read with them (migration 0038). */
-export type LandedLedger = LandedChain &
-  Readonly<{
-    generation: string;
-    confirmed: readonly Ledger.EntryNoTimeStamp[];
-  }>;
+ * frontier generation read with them. */
+export type LandedLedger = GeneratedLandedChain &
+  Readonly<{ confirmed: readonly Ledger.EntryNoTimeStamp[] }>;
 
 export const landedLedger = (rows: readonly LandedBlockRow[]) =>
   Effect.gen(function* () {
@@ -195,6 +189,21 @@ export const landedChain = (rows: readonly LandedBlockRow[]) =>
         ? undefined
         : { frontier, chain: processedChain(rows, frontier.headerHash) },
     ),
+  );
+
+/** The frontier, its generation and the processed chain after it, reading
+ * no ledger row. */
+export const generatedLandedChain = (rows: readonly LandedBlockRow[]) =>
+  Frontier.retrieveWithGeneration.pipe(
+    Effect.map((read): GeneratedLandedChain | undefined => {
+      if (read === undefined) return undefined;
+      const { generation, ...frontier } = read;
+      return {
+        frontier,
+        generation,
+        chain: processedChain(rows, frontier.headerHash),
+      };
+    }),
   );
 
 /**

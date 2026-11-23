@@ -188,7 +188,7 @@ export const registerAdmissionsTests = () => {
               rejectionEntries: [
                 rejectionFor(successful.txId, "commit-stage rejection"),
               ],
-              resolveInputPostState: () => undefined,
+              resolveInputPostState: () => Effect.succeed(new Map()),
             });
             expect(
               yield* MempoolDB.retrieveTxCborByHash(successful.txId).pipe(
@@ -217,7 +217,7 @@ export const registerAdmissionsTests = () => {
                 rejectionEntries: [
                   rejectionFor(conflicting.txId, "duplicate conflict"),
                 ],
-                resolveInputPostState: () => undefined,
+                resolveInputPostState: () => Effect.succeed(new Map()),
               }),
             );
             expect(failed._tag).toBe("Left");
@@ -360,12 +360,24 @@ export const registerAdmissionsTests = () => {
               // The block consumes `spentByBlock` and leaves every other
               // committed output unspent.
               resolveInputPostState: commitStageInputPostState({
-                baseLedgerOutputs: new Map(
-                  committed.map((e) => [
-                    outRef(e).toString("hex"),
-                    e[LedgerUtils.Columns.OUTPUT],
-                  ]),
-                ),
+                readBase: (outRefHexes) => {
+                  const base = new Map(
+                    committed.map((e) => [
+                      outRef(e).toString("hex"),
+                      e[LedgerUtils.Columns.OUTPUT],
+                    ]),
+                  );
+                  return Effect.succeed(
+                    new Map(
+                      outRefHexes.flatMap((key) => {
+                        const output = base.get(key);
+                        return output === undefined
+                          ? []
+                          : [[key, output] as const];
+                      }),
+                    ),
+                  );
+                },
                 insertedOutputs: new Map(),
                 spentOutRefHexes: new Set([
                   outRef(spentByBlock).toString("hex"),

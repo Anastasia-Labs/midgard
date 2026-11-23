@@ -137,7 +137,6 @@ export const baseCommitArgs = {
   validationTraceCount: 0,
   ledgerDelta: { spent: [], produced: [] },
   selectedBaseUtxosRoot: "33".repeat(32),
-  implicitGenesisEntries: [],
   nativeMpfReplay: undefined,
 } as const;
 

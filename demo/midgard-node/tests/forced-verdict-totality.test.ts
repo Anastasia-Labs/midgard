@@ -28,6 +28,7 @@ import {
   makeOutput,
   TEST_ADDRESS,
 } from "./forced-transactions.make-signed-effectful-transaction.js";
+import { ledgerOfOutputs } from "./helpers/ledger-of.js";
 
 /**
  * Forced verdict totality: every order the tx-order mint admits gets a forced
@@ -334,7 +335,7 @@ const leafOf = (
     const entry = yield* entryOf(nativeTxCbor, label);
     const [classified] = yield* classifyForcedTransactions({
       entries: [entry],
-      initialState,
+      ledger: yield* Effect.promise(() => ledgerOfOutputs(initialState)),
       blockTime: new Date("2026-07-23T12:01:00.000Z"),
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       validation: {

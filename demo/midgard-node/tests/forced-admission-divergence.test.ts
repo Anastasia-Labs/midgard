@@ -53,6 +53,7 @@ import {
   runDatabase,
   UNCHANGED,
 } from "./helpers/forced-orders-node-store.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 import { landedRow } from "./landed-blocks-rebase.fixture.js";
 import { runningFollower } from "./readiness-l1-follower.fixture.js";
 
@@ -127,7 +128,7 @@ const classifiedReason = async () => {
   const [classified] = await Effect.runPromise(
     classifyForcedTransactions({
       entries,
-      initialState: new Map(),
+      ledger: await ledgerOf([]),
       blockTime: new Date(Number(10_000n)),
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       validation: {

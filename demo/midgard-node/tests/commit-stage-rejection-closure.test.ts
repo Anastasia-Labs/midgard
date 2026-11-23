@@ -96,7 +96,7 @@ describe(
         globals,
         persistCommitStageRejectedTransactions({
           rejectionEntries: [directRejection(b.id)],
-          resolveInputPostState: () => undefined,
+          resolveInputPostState: () => Effect.succeed(new Map()),
         }),
       );
       expect(outcome).toMatchObject({ _tag: "Persisted", ledgerChanged: true });
@@ -122,7 +122,7 @@ describe(
         globals,
         persistCommitStageRejectedTransactions({
           rejectionEntries: [directRejection(b.id)],
-          resolveInputPostState: () => undefined,
+          resolveInputPostState: () => Effect.succeed(new Map()),
         }),
       );
       // The foreign block spends `E0`, the input of `a`.
@@ -145,7 +145,7 @@ describe(
               return { accepted: candidates, rejected: [] };
             }),
           rejectionEntries: [directRejection(b.id)],
-          resolveInputPostState: () => () => undefined,
+          resolveInputPostState: () => () => Effect.succeed(new Map()),
         }),
       );
       // `c` leaves; Phase B runs again over `a` alone.

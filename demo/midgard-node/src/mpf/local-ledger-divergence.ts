@@ -16,11 +16,9 @@ import { Data, Effect, Metric } from "effect";
 
 /**
  * Where a divergence was found:
- * - `commit_base_landed`: the processed landed deltas from the verified
- *   frontier to the queue tail a commit builds on, one of which does not
- *   apply to the ledger before it;
- * - `commit_base_confirmed_ledger`: `confirmed_ledger` where the frontier
- *   places it at the confirmed state a commit builds on;
+ * - `commit_base_landed`, `commit_base_confirmed_ledger`: the commit base;
+ *   no check raises them, since the commit base reads the ledger store,
+ *   whose reads this node trusts;
  * - `confirmed_ledger`: `confirmed_ledger` against the frontier's root, in
  *   the full verification the main thread runs off the commit path
  *   (`confirmed-ledger-verification.ts`);
@@ -38,9 +36,9 @@ export const LEDGER_DIVERGENCE_CHECKS = [
 export type LedgerDivergenceCheck = (typeof LEDGER_DIVERGENCE_CHECKS)[number];
 
 /**
- * The checks whose divergence holds commits: the two the commit base runs
- * (`resolveCommitBaseLedgerEntries`) and the two of the full verification
- * of the landed ledger the landed commit base builds on.
+ * The checks whose divergence holds commits: the commit base's two and
+ * the two of the full verification of the landed ledger the landed commit
+ * base builds on.
  */
 export const COMMIT_BASE_DIVERGENCE_CHECKS = [
   "commit_base_landed",

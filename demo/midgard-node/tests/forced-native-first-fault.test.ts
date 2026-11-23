@@ -13,6 +13,7 @@ import { ForcedTransactionsDB } from "../src/database/index.js";
 import { classifyForcedTransactions } from "../src/mpf/event-window.classify-forced-transactions.js";
 import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import { forcedEntry } from "./forced-transactions.make-signed-effectful-transaction.js";
+import { ledgerOfOutputs } from "./helpers/ledger-of.js";
 
 it.each([
   "present",
@@ -42,8 +43,8 @@ it.each([
             },
           }),
         ],
-        initialState: new Map(
-          fixture.entries.map((e) => [e.outRef.toString("hex"), e.output]),
+        ledger: await ledgerOfOutputs(
+          fixture.entries.map((e) => [e.outRef, e.output] as const),
         ),
         blockTime: new Date(nativeFaultContext.blockTimeMs),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,

@@ -8,7 +8,6 @@ import type { WorkerInput } from "../../src/workers/utils/commit-block-header.js
 import { makeTestNodeConfig } from "./test-node-config.js";
 
 export const nodeConfig = makeTestNodeConfig({
-  MPF_PAYLOAD_ROOT_CHECK: "off",
   MPF_RECORD_CORPUS: "",
   MEMPOOL_RETRIEVE_PAGE_SIZE: 100,
   COMMIT_BUILD_COST_MODEL: "static",

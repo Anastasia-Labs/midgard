@@ -1,14 +1,16 @@
 /**
- * The landed ledger a commit on a queue tail builds on, from the frontier
- * the main thread verified `confirmed_ledger` at: the deltas after it are
- * applied, each checked to build on the root before it and to apply
- * cleanly. A delta that spends an output the ledger before it does not
- * hold, produces one it already holds, names an outref twice or as both
- * spent and produced, or changes the root exactly when it is empty, is a
- * `commit_base_landed` divergence; a frontier that is not the verified one
- * waits for the verification. A header off the processed chain (not landed,
- * or not processed yet) is off it whatever the verification, so the commit
- * waits for processing, not for the verification.
+ * The landed chain from the frontier the main thread verified
+ * `confirmed_ledger` at. Where a commit on a queue tail builds
+ * (`verifiedLandedRootAt`): the tail's root and row, reading no ledger; a
+ * frontier that is not the verified one waits for the verification, and a
+ * header off the processed chain (not landed, or not processed yet) is off
+ * it whatever the verification, so the commit waits for processing, not for
+ * the verification. The verification's walk of the deltas after the
+ * frontier (`walkLandedLedger`): each is checked to build on the root
+ * before it and to apply cleanly. A delta that spends an output the ledger
+ * before it does not hold, produces one it already holds, names an outref
+ * twice or as both spent and produced, or changes the root exactly when it
+ * is empty, is a divergence under the check the walk is run for.
  */
 import { Effect, Either } from "effect";
 import { describe, expect, it } from "vitest";
@@ -18,7 +20,8 @@ import type { LandedBlockRow } from "../src/landed-blocks/store.js";
 import { LocalLedgerDivergenceError } from "../src/mpf/local-ledger-divergence.js";
 import {
   CommitBaseUnverifiedError,
-  verifiedLandedLedgerAt,
+  verifiedLandedRootAt,
+  walkLandedLedger,
 } from "../src/workers/commit-block-header.landed-commit-base.js";
 
 const outRef = (label: number) => Buffer.alloc(36, label);
@@ -88,8 +91,9 @@ const landed = (
   ],
 });
 
-/** The base at `headerHash` on `ledger`, from the frontier `verified`
- * (none when undefined); F at the ledger's generation unless given. */
+/** Where a commit on `headerHash` builds on `ledger`, from the frontier
+ * `verified` (none when undefined); F at the ledger's generation unless
+ * given. */
 const at = (
   ledger: LandedLedger,
   headerHash: string,
@@ -102,7 +106,7 @@ const at = (
 ) =>
   Effect.runPromise(
     Effect.either(
-      verifiedLandedLedgerAt(
+      verifiedLandedRootAt(
         ledger,
         headerHash,
         verified.length === 0 ? VERIFIED_F : verified[0],
@@ -110,26 +114,38 @@ const at = (
     ),
   );
 
-const keys = (outcome: Awaited<ReturnType<typeof at>>) =>
+/** The verification's walk to `headerHash` on `ledger`. */
+const walk = (ledger: LandedLedger, headerHash: string) =>
+  Effect.runPromise(
+    Effect.either(
+      walkLandedLedger(ledger, headerHash, "confirmed_ledger_tail"),
+    ),
+  );
+
+const keys = (outcome: Awaited<ReturnType<typeof walk>>) =>
   [...(Either.getOrThrow(outcome)?.ledger.keys() ?? [])].sort();
 
-const divergence = (outcome: Awaited<ReturnType<typeof at>>) => {
+const divergence = (outcome: Awaited<ReturnType<typeof walk>>) => {
   expect(Either.isLeft(outcome)).toBe(true);
   const error = (outcome as Either.Left<unknown, unknown>).left;
   expect(error).toBeInstanceOf(LocalLedgerDivergenceError);
   return error as LocalLedgerDivergenceError;
 };
 
-describe("a landed commit base from the verified frontier", () => {
-  it("applies each delta after the frontier, ending at the tail's root", async () => {
-    const outcome = await at(landed(), H2);
-    expect(Either.getOrThrow(outcome)?.root).toBe("a2".repeat(32));
-    expect(keys(outcome)).toEqual(
-      [outRef(2), outRef(4)].map((each) => each.toString("hex")).sort(),
-    );
-    expect(keys(await at(landed(), F.headerHash))).toEqual(
-      [outRef(1), outRef(2)].map((each) => each.toString("hex")).sort(),
-    );
+describe("where a commit on a landed header builds", () => {
+  it("is the header's root and row, or the frontier's root at the frontier", async () => {
+    const ledger = landed();
+    expect(Either.getOrThrow(await at(ledger, H2))).toEqual({
+      root: "a2".repeat(32),
+      row: ledger.chain[1],
+    });
+    expect(Either.getOrThrow(await at(ledger, H1))).toEqual({
+      root: "a1".repeat(32),
+      row: ledger.chain[0],
+    });
+    expect(Either.getOrThrow(await at(ledger, F.headerHash))).toEqual({
+      root: F.utxosRoot,
+    });
   });
 
   it("is off the chain for a header no processed row names", async () => {
@@ -137,13 +153,26 @@ describe("a landed commit base from the verified frontier", () => {
       undefined,
     );
   });
+});
+
+describe("the verification's walk of the landed deltas", () => {
+  it("applies each delta after the frontier, ending at the tail's root", async () => {
+    const outcome = await walk(landed(), H2);
+    expect(Either.getOrThrow(outcome)?.root).toBe("a2".repeat(32));
+    expect(keys(outcome)).toEqual(
+      [outRef(2), outRef(4)].map((each) => each.toString("hex")).sort(),
+    );
+    expect(keys(await walk(landed(), F.headerHash))).toEqual(
+      [outRef(1), outRef(2)].map((each) => each.toString("hex")).sort(),
+    );
+  });
 
   it("refuses a delta that spends an output the ledger before it does not hold", async () => {
     const error = divergence(
-      await at(landed({ h2: { spent: [outRef(3), outRef(1)] } }), H2),
+      await walk(landed({ h2: { spent: [outRef(3), outRef(1)] } }), H2),
     );
     expect(error).toMatchObject({
-      check: "commit_base_landed",
+      check: "confirmed_ledger_tail",
       headerHash: H2,
       root: "a2".repeat(32),
     });
@@ -154,10 +183,10 @@ describe("a landed commit base from the verified frontier", () => {
 
   it("refuses a delta that produces an output the ledger before it already holds", async () => {
     const error = divergence(
-      await at(landed({ h1: { produced: [entry(3), entry(2)] } }), H2),
+      await walk(landed({ h1: { produced: [entry(3), entry(2)] } }), H2),
     );
     expect(error).toMatchObject({
-      check: "commit_base_landed",
+      check: "confirmed_ledger_tail",
       headerHash: H1,
       root: "a1".repeat(32),
     });
@@ -168,10 +197,10 @@ describe("a landed commit base from the verified frontier", () => {
 
   it("refuses an empty delta whose root is not the root before it", async () => {
     const error = divergence(
-      await at(landed({ h1: { spent: [], produced: [] } }), H2),
+      await walk(landed({ h1: { spent: [], produced: [] } }), H2),
     );
     expect(error).toMatchObject({
-      check: "commit_base_landed",
+      check: "confirmed_ledger_tail",
       headerHash: H1,
       root: "a1".repeat(32),
     });
@@ -182,10 +211,10 @@ describe("a landed commit base from the verified frontier", () => {
 
   it("refuses a delta that is not empty and keeps the root before it", async () => {
     const error = divergence(
-      await at(landed({ h1: { utxosRoot: F.utxosRoot } }), H1),
+      await walk(landed({ h1: { utxosRoot: F.utxosRoot } }), H1),
     );
     expect(error).toMatchObject({
-      check: "commit_base_landed",
+      check: "confirmed_ledger_tail",
       headerHash: H1,
     });
     expect(error.fault).toContain(
@@ -194,7 +223,7 @@ describe("a landed commit base from the verified frontier", () => {
   });
 
   it("applies an empty delta that keeps the root before it", async () => {
-    const outcome = await at(
+    const outcome = await walk(
       landed({ h1: { spent: [], produced: [], utxosRoot: F.utxosRoot } }),
       H1,
     );
@@ -206,13 +235,13 @@ describe("a landed commit base from the verified frontier", () => {
 
   it("refuses a delta that produces one outref twice", async () => {
     const error = divergence(
-      await at(
+      await walk(
         landed({ h1: { produced: [entry(3, "x"), entry(3, "y")] } }),
         H2,
       ),
     );
     expect(error).toMatchObject({
-      check: "commit_base_landed",
+      check: "confirmed_ledger_tail",
       headerHash: H1,
     });
     expect(error.fault).toContain(
@@ -222,10 +251,10 @@ describe("a landed commit base from the verified frontier", () => {
 
   it("refuses a delta that spends one outref twice", async () => {
     const error = divergence(
-      await at(landed({ h1: { spent: [outRef(1), outRef(1)] } }), H2),
+      await walk(landed({ h1: { spent: [outRef(1), outRef(1)] } }), H2),
     );
     expect(error).toMatchObject({
-      check: "commit_base_landed",
+      check: "confirmed_ledger_tail",
       headerHash: H1,
     });
     expect(error.fault).toContain(`spends ${outRef(1).toString("hex")} twice`);
@@ -233,13 +262,13 @@ describe("a landed commit base from the verified frontier", () => {
 
   it("refuses a delta that spends an outref and produces it again", async () => {
     const error = divergence(
-      await at(
+      await walk(
         landed({ h1: { spent: [outRef(2)], produced: [entry(2, "changed")] } }),
         H2,
       ),
     );
     expect(error).toMatchObject({
-      check: "commit_base_landed",
+      check: "confirmed_ledger_tail",
       headerHash: H1,
     });
     expect(error.fault).toContain(
@@ -249,10 +278,10 @@ describe("a landed commit base from the verified frontier", () => {
 
   it("refuses a row that does not build on the root before it", async () => {
     const error = divergence(
-      await at(landed({ h2: { parentUtxosRoot: "ee".repeat(32) } }), H2),
+      await walk(landed({ h2: { parentUtxosRoot: "ee".repeat(32) } }), H2),
     );
     expect(error).toMatchObject({
-      check: "commit_base_landed",
+      check: "confirmed_ledger_tail",
       headerHash: H2,
     });
     expect(error.fault).toContain(
@@ -261,7 +290,7 @@ describe("a landed commit base from the verified frontier", () => {
   });
 });
 
-describe("a landed commit base before its frontier is verified", () => {
+describe("a commit on a landed header before its frontier is verified", () => {
   it("waits while no verification has passed, or the last was at another frontier or generation", async () => {
     for (const verified of [
       undefined,

@@ -22,7 +22,7 @@ import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydrati
 import { Globals } from "../src/services/globals.globals.js";
 import {
   CommitBaseUnverifiedError,
-  verifiedLandedLedgerAt,
+  verifiedLandedRootAt,
 } from "../src/workers/commit-block-header.landed-commit-base.js";
 import {
   parseVerifiedFrontier,
@@ -159,7 +159,7 @@ export const commitAt = async (
   return Effect.runPromise(
     Effect.either(
       Effect.flatMap(parseVerifiedFrontier(posted.verifiedFrontier), (pair) =>
-        verifiedLandedLedgerAt(landed, headerHash, pair),
+        verifiedLandedRootAt(landed, headerHash, pair),
       ),
     ),
   );

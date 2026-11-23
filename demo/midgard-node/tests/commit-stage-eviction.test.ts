@@ -34,6 +34,7 @@ import {
   T4,
   TXS,
 } from "./helpers/commit-stage-eviction.fixture.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 /**
@@ -232,14 +233,18 @@ const seed = (
     }
   });
 
-const BASE_ROOT_REFUSAL =
-  "Refusing to build a block because the transition trace base UTxO snapshot root does not match the ledger MPF root";
+/** The native owner's refusal every build here stops at, once the normal
+ * phase and its rejections are settled. */
+const NATIVE_STOP = new Error("native owner stop");
+
+const BASE_LEDGER = ledgerOf(BASE);
 
 const config = () => ({
   currentBlockStartTime: at(0),
-  initialLedgerEntries: BASE,
-  selectedBaseUtxoRoot: "11".repeat(32),
-  nativeMpf: { handle: { baseRoot: "22".repeat(32) } } as never,
+  nativeMpf: {
+    handle: { baseRoot: "22".repeat(32) },
+    client: { applyEvents: () => Promise.reject(NATIVE_STOP) },
+  } as never,
   validationTraceBuilder: () => Effect.succeed([]),
   forcedValidation: {
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -263,32 +268,40 @@ const attemptBuild = (count: number, overrides: object = {}) =>
       count,
     );
     return yield* processMpfs(
-      { root: () => Effect.succeed("") } as unknown as MidgardMpf,
+      {
+        root: () => Effect.succeed(""),
+        applyBatch: () => Effect.void,
+        resetToRoot: () => Effect.void,
+      } as unknown as MidgardMpf,
       page,
-      { ...config(), ...overrides } as never,
+      {
+        ...config(),
+        baseLedger: yield* Effect.promise(() => BASE_LEDGER),
+        ...overrides,
+      } as never,
     ).pipe(Effect.flip);
   });
 
 /**
  * One block build over the first `count` pending transactions. Every
- * database write of the build runs; the build then stops at the base-root
- * check, past every normal-transaction stage. Returns what Phase B accepted
+ * database write of the build runs; the build then stops at the native
+ * owner, past every normal-transaction stage. Returns what Phase B accepted
  * last.
  */
 const build = (count: number, overrides: object = {}) =>
   Effect.gen(function* () {
     const refused = yield* attemptBuild(count, overrides);
-    expect(refused.message).toBe(BASE_ROOT_REFUSAL);
+    expect((refused as { cause?: unknown }).cause).toBe(NATIVE_STOP);
     return fixture.phaseBAccepted.at(-1) ?? [];
   });
 
-/** A build that holds before the base-root check: its failure, with what
- * the store then holds. */
+/** A build that holds before the native owner: its failure, with what the
+ * store then holds. */
 const held = (count: number) =>
   Effect.gen(function* () {
     yield* seed();
     const failure = yield* attemptBuild(count);
-    expect(failure.message).not.toBe(BASE_ROOT_REFUSAL);
+    expect((failure as { cause?: unknown }).cause).not.toBe(NATIVE_STOP);
     return {
       failure,
       rejected: yield* rejections,
@@ -469,7 +482,7 @@ describe("commit-stage eviction of normal transactions", () => {
       inject("phaseA", id, new Error("injected Phase A defect"));
     const tripped: string[] = [];
     const overrides = {
-      initialLedgerEntries: [...BASE, ...EXTRA_BASE],
+      baseLedger: await ledgerOf([...BASE, ...EXTRA_BASE]),
       onCommitBuildAlarm: (alarm: string, stage: string) =>
         Effect.sync(() => {
           tripped.push(`${alarm}:${stage}`);
@@ -544,7 +557,9 @@ describe("commit-stage eviction of normal transactions", () => {
       Effect.gen(function* () {
         yield* seed([], EXTRA_TXS);
         yield* build(100, {
-          initialLedgerEntries: [...BASE, ...EXTRA_BASE],
+          baseLedger: yield* Effect.promise(() =>
+            ledgerOf([...BASE, ...EXTRA_BASE]),
+          ),
           onCommitBuildAlarm: (alarm: string, stage: string) =>
             Effect.sync(() => {
               alarms.push(`${alarm}:${stage}`);
@@ -576,7 +591,9 @@ describe("commit-stage eviction of normal transactions", () => {
         // T1 reaches T2 after Phase B accepts it, and the build settles in a
         // second pass.
         const accepted = yield* build(100, {
-          initialLedgerEntries: [...BASE, ...EXTRA_BASE, T1.produced[0]!],
+          baseLedger: yield* Effect.promise(() =>
+            ledgerOf([...BASE, ...EXTRA_BASE, T1.produced[0]!]),
+          ),
           commitEvictions: new Map([
             [t1, { code: COMMIT_REJECT_CODE_DA_OVERSIZE, detail: "oversize" }],
           ]),
@@ -610,7 +627,10 @@ describe("commit-stage eviction of normal transactions", () => {
         const failure = yield* processMpfs(
           { root: () => Effect.succeed("") } as unknown as MidgardMpf,
           page,
-          config() as never,
+          {
+            ...config(),
+            baseLedger: yield* Effect.promise(() => BASE_LEDGER),
+          } as never,
         ).pipe(Effect.flip);
         return {
           failure,

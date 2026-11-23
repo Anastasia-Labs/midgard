@@ -233,7 +233,6 @@ const runEffect = <A>(effect: Effect.Effect<A, unknown, unknown>) =>
 describe("canonical V1 commit profile", () => {
   it("fails closed without worker slot mapping and passes the node mapping to processMpfs", async () => {
     const nodeConfig = makeTestNodeConfig({
-      MPF_PAYLOAD_ROOT_CHECK: "off",
       MPF_RECORD_CORPUS: "",
       MEMPOOL_RETRIEVE_PAGE_SIZE: 100,
       COMMIT_BUILD_COST_MODEL: "static",

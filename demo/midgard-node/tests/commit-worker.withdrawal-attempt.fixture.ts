@@ -22,10 +22,7 @@ import { findTransientBudgetExhausted } from "../src/services/transient-exhausti
 import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import { takeCommitWorkerOutput } from "../src/workers/commit-worker-message.js";
 import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
-import {
-  classifyWithdrawalsInOrder,
-  indexSelectedLedgerOutputs,
-} from "../src/workers/utils/mpf/withdrawal-classification.js";
+import { classifyWithdrawalsInOrder } from "../src/workers/utils/mpf/withdrawal-classification.js";
 
 /** The reason the node exits under, from source `commit_worker`. */
 export const EXIT_REASON = "commit_worker_withdrawal_unclassifiable";
@@ -144,10 +141,15 @@ export const attempt = async (
   const validities: string[] = [];
   const output = await Effect.runPromise(
     captureCommitWorkerFailure(
-      indexSelectedLedgerOutputs([base]).pipe(
-        Effect.flatMap((baseOutputs) =>
-          classifyWithdrawalsInOrder({ entries: [entry], baseOutputs }),
-        ),
+      classifyWithdrawalsInOrder({
+        entries: [entry],
+        baseOutputs: new Map([
+          [
+            base[LedgerUtils.Columns.OUTREF].toString("hex"),
+            base[LedgerUtils.Columns.OUTPUT],
+          ],
+        ]),
+      }).pipe(
         Effect.map((classified): WorkerOutput => {
           validities.push(...classified.map(({ validity }) => validity));
           return passed;

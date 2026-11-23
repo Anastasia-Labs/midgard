@@ -200,7 +200,7 @@ import { assetsToValue } from "../src/transactions/reserve-payout.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
 import { mergeMaturityWindow } from "../src/transactions/state-queue/merge-readiness.js";
 import { commitExplicitBlockHeaderProgram } from "../src/workers/commit-block-header.commit-explicit-block-header-program.js";
-import { LANDED_COMMIT_BASE_PENDING } from "../src/workers/commit-block-header.resolve-commit-base-ledger-entries.js";
+import { LANDED_COMMIT_BASE_PENDING } from "../src/workers/commit-block-header.resolve-commit-base.js";
 import {
   serializeStateQueueUTxO,
   type WorkerInput as CommitWorkerInput,

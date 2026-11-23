@@ -3,7 +3,8 @@
  * records a verification of `confirmed_ledger` (`Globals`
  * `VERIFIED_CONFIRMED_LEDGER`), the built parent codec turns the record into
  * the commit worker's input, and a real worker thread running the built
- * worker modules reads it back and resolves a landed commit base from it.
+ * worker modules reads it back and resolves where a landed commit builds
+ * from it.
  * The base is built only from the frontier a passed verification recorded,
  * at the frontier generation it read; before one, after a divergence clears
  * it, and once the ledger is at another generation, the commit waits for
@@ -59,16 +60,11 @@ const row = (
   produced,
 });
 
-/** `confirmed_ledger` holds 1 and 2 at F, read at frontier generation
- * `generation`; H1 spends 1 and produces 3, H2 spends `h2Spent` and
- * produces 4. */
-const landed = (
-  h2Spent: readonly string[] = [outRef(3)],
-  generation = "5",
-) => ({
+/** The chain after F, read at frontier generation `generation`: H1 spends
+ * 1 and produces 3, H2 spends 3 and produces 4. */
+const landed = (generation = "5") => ({
   frontier: F,
   generation,
-  confirmed: [entry(1), entry(2)],
   chain: [
     row(
       H1,
@@ -78,7 +74,7 @@ const landed = (
       [outRef(1)],
       [entry(3)],
     ),
-    row(H2, H1, "a1".repeat(32), "a2".repeat(32), h2Spent, [entry(4)]),
+    row(H2, H1, "a1".repeat(32), "a2".repeat(32), [outRef(3)], [entry(4)]),
   ],
 });
 
@@ -132,7 +128,7 @@ describe("the verified frontier across the built commit worker boundary", () => 
       headerHash: H2,
     });
 
-    // A pass at F: the worker builds from it through H1 and H2.
+    // A pass at F: the worker builds at H2's root.
     await Effect.runPromise(
       recordConfirmedLedgerVerification(globals, {
         kind: "verified",
@@ -146,16 +142,11 @@ describe("the verified frontier across the built commit worker boundary", () => 
     );
     expect(await consume(await posted())).toEqual({
       root: "a2".repeat(32),
-      keys: [outRef(2), outRef(4)].sort(),
-    });
-    // A delta that does not apply is refused by name across the boundary.
-    expect(await consume(await posted(), landed([outRef(1)]))).toEqual({
-      refused: "LocalLedgerDivergenceError",
-      headerHash: H2,
+      row: H2,
     });
     // The same frontier and root at a later generation (`confirmed_ledger`
     // written since the pass): the commit waits.
-    expect(await consume(await posted(), landed([outRef(3)], "6"))).toEqual({
+    expect(await consume(await posted(), landed("6"))).toEqual({
       refused: "CommitBaseUnverifiedError",
       headerHash: H2,
     });

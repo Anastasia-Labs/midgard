@@ -15,7 +15,10 @@ import { SqlClient } from "@effect/sql";
 import { Deferred, Effect, Either, Fiber, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { landedLedger, onOneSnapshot } from "../src/landed-blocks/ledger.js";
+import {
+  generatedLandedChain,
+  onOneSnapshot,
+} from "../src/landed-blocks/ledger.js";
 import type { LandedBlockPorts } from "../src/landed-blocks/ports.js";
 import { processLandedQueue } from "../src/landed-blocks/process.js";
 import {
@@ -34,7 +37,7 @@ import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/globals.globals.js";
 import {
   CommitBaseUnverifiedError,
-  verifiedLandedLedgerAt,
+  verifiedLandedRootAt,
 } from "../src/workers/commit-block-header.landed-commit-base.js";
 import {
   parseVerifiedFrontier,
@@ -88,10 +91,10 @@ const commitAt = (
     );
     const verified = yield* parseVerifiedFrontier(posted.verifiedFrontier);
     const landed = yield* onOneSnapshot(
-      Effect.flatMap(retrieveRows, landedLedger),
+      Effect.flatMap(retrieveRows, generatedLandedChain),
     );
     return yield* Effect.either(
-      verifiedLandedLedgerAt(landed!, headerHash, verified),
+      verifiedLandedRootAt(landed!, headerHash, verified),
     );
   });
 
@@ -125,7 +128,10 @@ describe("the confirmed-ledger generation", { concurrent: false }, () => {
       seen.push(await run(generation));
       expect(seen.at(-1)! > seen.at(-2)!).toBe(true);
       // The frontier and root are the ones verified; the generation is not.
-      expectUnverified(await resolve(tail, r1, undefined, passed!), headerHash);
+      expectUnverified(
+        await resolve(tail, r1, { verified: passed! }),
+        headerHash,
+      );
     }
     // A run now verifies the ledger at its new generation.
     const outcome = await resolve(tail, r1);

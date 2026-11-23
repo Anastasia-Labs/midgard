@@ -30,11 +30,12 @@ import {
   MidgardContracts,
 } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { NativeMpfWorkerPortClient } from "../services/mpf-native-owner/client.js";
+import { workerLedger } from "../services/mpf-native-owner/worker-ledger.js";
 import { outRefLabel } from "../tx-context.js";
 import {
-  alignCommitMpfsToBase,
   MEMPOOL_LEDGER_REVERTED_NOTICE,
   type NotifyCommitWorkerParent,
+  resetTransactionsMpf,
   shouldShortCircuitIdleCommitAttempt,
   workerPreIngestionDueWorkOutputFromPlan,
 } from "./commit-block-header.commit-explicit-block-header-program.js";
@@ -42,7 +43,6 @@ import { notifyCommitPlanningSelection } from "./commit-block-header.notify-plan
 import {
   type CommitLucidFactory,
   CommitWorkerInvariantError,
-  shouldHydrateCommitBaseEntries,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
 import { planAdditiveCommitDa } from "./commit-block-header.plan-additive-da.js";
 import {
@@ -50,7 +50,7 @@ import {
   planHistoryCommitEventWindow,
 } from "./commit-block-header.plan-event-window.js";
 import { recordSuccessfulBuildCalibration as recordBuildCalibration } from "./commit-block-header.record-successful-build-calibration.js";
-import { resolveCommitBaseLedgerEntries } from "./commit-block-header.resolve-commit-base-ledger-entries.js";
+import { resolveCommitBase } from "./commit-block-header.resolve-commit-base.js";
 import { verifyAdditiveCommitDaFrame } from "./commit-block-header.verify-additive-da.js";
 import type { CommitEviction } from "./commit-block-header/commit-da-oversize-eviction.js";
 import * as DaPrefix from "./commit-block-header/commit-da-prefix-search.js";
@@ -437,26 +437,16 @@ export const buildOnVerifiedCommitBaseProgram = (
     }
 
     const baseHydrationStartedAtMs = Date.now();
-    const commitBase = yield* resolveCommitBaseLedgerEntries({
+    const commitBase = yield* resolveCommitBase({
       availableConfirmedBlock,
       nativeMpfRoot: workerInput.nativeMpf.durableRoot,
       verifiedFrontier: yield* parseVerifiedFrontier(
         workerInput.verifiedFrontier,
       ),
-      requireEntries: shouldHydrateCommitBaseEntries({
-        payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
-        recordCorpus: nodeConfig.MPF_RECORD_CORPUS,
-        candidateTxCount: candidateSelection.candidateTxs.length,
-        pendingForcedTransactionCount:
-          pendingUserEventCounts.forcedTransactions,
-        pendingWithdrawalCount: pendingUserEventCounts.withdrawals,
-      }),
+      openLedger: (root, outputs) =>
+        workerLedger(nativeMpfClient, root, outputs),
     });
-    const initialLedgerEntries = yield* alignCommitMpfsToBase({
-      nativeMpfRoot: workerInput.nativeMpf.durableRoot,
-      transactionsMpf,
-      base: commitBase,
-    });
+    yield* resetTransactionsMpf(transactionsMpf, commitBase.source);
     const nativeMpfOwnerBinarySha256 = workerInput.nativeMpf.ownerBinarySha256;
     const forkNativeMpfContext = Effect.gen(function* () {
       const context: NativeMpfBuildContext = {
@@ -480,7 +470,7 @@ export const buildOnVerifiedCommitBaseProgram = (
       `🔹 Commit base hydration phase completed duration_ms=${Math.max(
         0,
         Date.now() - baseHydrationStartedAtMs,
-      ).toString()},source=${commitBase.source},base_entry_count=${initialLedgerEntries.length.toString()}`,
+      ).toString()},source=${commitBase.source}`,
     );
     let mpfProcessingStartedAtMs = Date.now();
     // Canonical V1 is the only consensus profile this node can carry: the
@@ -577,7 +567,7 @@ export const buildOnVerifiedCommitBaseProgram = (
         depositOnlyEndTime: canBuildOnConfirmedBlock
           ? effectiveUserEventOnlyEndTime
           : undefined,
-        initialLedgerEntries,
+        baseLedger: commitBase.ledger,
         consensusProfile: deploymentIdentity.consensusProfile,
         forcedValidation: {
           expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
@@ -590,8 +580,6 @@ export const buildOnVerifiedCommitBaseProgram = (
             ),
           l1SlotConfig: proofValidationSlotConfig,
         },
-        selectedBaseUtxoRoot: commitBase.root,
-        payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
         recordCorpusPath: nodeConfig.MPF_RECORD_CORPUS,
         onMempoolLedgerReverted: notifyParent?.(MEMPOOL_LEDGER_REVERTED_NOTICE),
         onCommitBuildAlarm: (alarm, stage) =>
@@ -796,8 +784,6 @@ export const buildOnVerifiedCommitBaseProgram = (
           validationTraceCount,
           ledgerDelta,
           selectedBaseUtxosRoot: commitBase.root,
-          implicitGenesisEntries:
-            commitBase.source === "genesis" ? initialLedgerEntries : [],
           afterDaFrameAccepted: notifyParent?.(COMMIT_DA_FRAME_FITS_NOTICE),
           nativeMpfReplay,
         }).pipe(Effect.provideService(Lucid, submissionLucid));
@@ -834,8 +820,6 @@ export const buildOnVerifiedCommitBaseProgram = (
           validationTraceCount,
           ledgerDelta,
           selectedBaseUtxosRoot: commitBase.root,
-          implicitGenesisEntries:
-            commitBase.source === "genesis" ? initialLedgerEntries : [],
           transactionsMpf,
           processedMempoolTxs,
           mempoolTxHashes,

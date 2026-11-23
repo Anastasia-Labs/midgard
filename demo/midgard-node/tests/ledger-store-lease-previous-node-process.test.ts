@@ -5,10 +5,7 @@ import { Effect, Exit } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { releaseLedgerStoreLeaseOfPreviousNodeProcess } from "../src/commands/listen-startup.release-ledger-store-lease-of-previous-node-process.js";
-import {
-  NODE_PROCESS_MPF_AUDIT_LEASES,
-  OFFLINE_MPF_AUDIT_LEASES,
-} from "../src/commands/mpf-audit-leases.js";
+import { OFFLINE_MPF_AUDIT_LEASES } from "../src/commands/mpf-audit-leases.js";
 import * as MpfEngineStateDB from "../src/database/mpfEngineState.js";
 import {
   type FollowerDriverPermit,
@@ -17,8 +14,7 @@ import {
 import { supersededDriver } from "./helpers/follower-write-gate.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
-// A node killed while its commit worker or its own payload audit held the
-// ledger MPF lease leaves that lease live for its whole TTL; nothing else
+// A node killed while its commit worker held the ledger MPF lease leaves that lease live for its whole TTL; nothing else
 // clears it. Startup retires it so the restarted node can commit at once, and
 // keeps every lease a live process outside the node may hold.
 
@@ -52,36 +48,29 @@ const leaseOwner = Effect.gen(function* () {
 beforeEach(async () => run(resetApplicationTables));
 
 describe("startup retires the ledger MPF lease of a killed node process", () => {
-  for (const [site, killed, prefix] of [
-    [
-      "commit",
-      MpfEngineStateDB.nodeProcessCommitLeaseOwner(),
-      MpfEngineStateDB.NODE_PROCESS_COMMIT_LEASE_OWNER_PREFIX,
-    ],
-    [
-      "payload audit",
-      NODE_PROCESS_MPF_AUDIT_LEASES.ledgerStoreOwner(),
-      MpfEngineStateDB.NODE_PROCESS_AUDIT_LEASE_OWNER_PREFIX,
-    ],
-  ] as const)
-    it(`retires a live node ${site} lease, so the next commit acquires the store`, async () => {
-      expect(killed.startsWith(prefix)).toBe(true);
-      await run(
-        Effect.gen(function* () {
-          yield* leftBehind(killed);
-          expect(yield* nextCommitAcquires).toBe(false);
-          const retired = yield* releaseLedgerStoreLeaseOfPreviousNodeProcess;
-          expect(retired?.owner).toBe(killed);
-          expect(retired?.expiresAt).toBeInstanceOf(Date);
-          expect(yield* leaseOwner).toBeNull();
-          const stale = yield* Effect.exit(
-            MpfEngineStateDB.revalidateLedgerStoreLease(killed),
-          );
-          expect(Exit.isFailure(stale)).toBe(true);
-          expect(yield* nextCommitAcquires).toBe(true);
-        }),
-      );
-    });
+  it("retires a live node commit lease, so the next commit acquires the store", async () => {
+    const killed = MpfEngineStateDB.nodeProcessCommitLeaseOwner();
+    expect(
+      killed.startsWith(
+        MpfEngineStateDB.NODE_PROCESS_COMMIT_LEASE_OWNER_PREFIX,
+      ),
+    ).toBe(true);
+    await run(
+      Effect.gen(function* () {
+        yield* leftBehind(killed);
+        expect(yield* nextCommitAcquires).toBe(false);
+        const retired = yield* releaseLedgerStoreLeaseOfPreviousNodeProcess;
+        expect(retired?.owner).toBe(killed);
+        expect(retired?.expiresAt).toBeInstanceOf(Date);
+        expect(yield* leaseOwner).toBeNull();
+        const stale = yield* Effect.exit(
+          MpfEngineStateDB.revalidateLedgerStoreLease(killed),
+        );
+        expect(Exit.isFailure(stale)).toBe(true);
+        expect(yield* nextCommitAcquires).toBe(true);
+      }),
+    );
+  });
 
   for (const owner of [
     `commit:${randomUUID()}`,
