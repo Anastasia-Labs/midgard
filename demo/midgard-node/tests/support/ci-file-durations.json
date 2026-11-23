@@ -581,7 +581,6 @@
     "tests/wallet-hygiene.test.ts": 0,
     "tests/wallet-view-emulator.test.ts": 5.9,
     "tests/withdrawal-classification-local-fault.test.ts": 16.9,
-    "tests/withdrawal-classification-selected-state.test.ts": 2,
     "tests/withdrawal-classification-semantics.test.ts": 1.9,
     "tests/withdrawal-cli-utils.test.ts": 1.7,
     "tests/withdrawal-deep-datum-ingestion.test.ts": 28.8,
