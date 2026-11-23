@@ -1,4 +1,4 @@
-import { Trie } from "#merkle-patricia-forestry";
+import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 
 import {
   applyValidationLedgerMutations,
