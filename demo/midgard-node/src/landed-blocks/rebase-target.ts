@@ -14,7 +14,10 @@
  */
 import { Effect } from "effect";
 
-import { PendingBlockFinalizationsDB } from "../database/index.js";
+import {
+  ConfirmedLedgerDB,
+  PendingBlockFinalizationsDB,
+} from "../database/index.js";
 import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
 import { type DriverHold, notRetried } from "../l1-events/driver.js";
 import { ledgerOutputToInsertBatchOp } from "../mpf/ledger-delta.js";
@@ -26,6 +29,8 @@ import { LANDED_BLOCK_REBASE_PENDING } from "./holds.js";
 import { liveJournal } from "./journal.js";
 import {
   applyDelta,
+  type LandedChain,
+  landedChain,
   type LandedLedger,
   landedLedger,
   type LedgerMap,
@@ -50,9 +55,15 @@ export type TargetStep = Readonly<{
   row?: LandedBlockRow;
 }>;
 
-export type RebaseTarget = Readonly<{
+/** The landed chain with the ledger at its frontier, read only for a
+ * rebase that runs. */
+export type RebaseLedger = LandedChain & Pick<LandedLedger, "confirmed">;
+
+/** `L`: the landed chain the target is over, with the ledger at its
+ * frontier (`RebaseLedger`) once a rebase runs on it. */
+export type RebaseTarget<L extends LandedChain = RebaseLedger> = Readonly<{
   rows: readonly LandedBlockRow[];
-  landed: LandedLedger;
+  landed: L;
   /** The processed chain then the live own block, in order. */
   steps: readonly TargetStep[];
   /** The processed tip `T`. */
@@ -65,7 +76,7 @@ export type RebaseTarget = Readonly<{
 /** The blocked detail while a block the target does not hold marks rows. */
 export const AWAITING_MARKING_BLOCK = "awaiting landed-block processing";
 
-export type RebasePlan =
+export type RebasePlan<L extends LandedChain = RebaseLedger> =
   | Readonly<{ kind: "none" }>
   | Readonly<{
       kind: "blocked";
@@ -75,7 +86,7 @@ export type RebasePlan =
     }>
   | Readonly<{
       kind: "ready";
-      target: RebaseTarget;
+      target: RebaseTarget<L>;
       /** Set when the native MPF's root is the only reason it is due. */
       drift?: NativeRootDrift;
     }>;
@@ -87,7 +98,7 @@ export type NativeRootDrift = Readonly<{
 }>;
 
 /** The root the target ends at: the live own block's, or the processed tip's. */
-export const targetRoot = (target: RebaseTarget) =>
+export const targetRoot = (target: RebaseTarget<LandedChain>) =>
   target.steps.at(-1)?.utxosRoot ?? target.landed.frontier.utxosRoot;
 
 /**
@@ -98,7 +109,7 @@ export const targetRoot = (target: RebaseTarget) =>
  */
 export const nativeRootDrift = (
   owner: NativeMpfOwnerService,
-  target: RebaseTarget,
+  target: RebaseTarget<LandedChain>,
 ) =>
   Effect.map(
     Effect.tryPromise({
@@ -123,16 +134,16 @@ export const blockedRebaseHold = (
     ? { reason: LANDED_BLOCK_REBASE_PENDING, detail: plan.detail }
     : notRetried({ reason: plan.reason, detail: plan.detail });
 
-const NO_FRONTIER: RebasePlan = {
+const NO_FRONTIER: Extract<RebasePlan, { kind: "blocked" }> = {
   kind: "blocked",
   detail: "confirmed_ledger has no frontier yet",
 };
-const NOT_DUE: RebasePlan = { kind: "none" };
+const NOT_DUE: Extract<RebasePlan, { kind: "none" }> = { kind: "none" };
 
 /** The target over `rows` and their landed chain `landed`. */
-const targetOn = (
+const targetOn = <L extends LandedChain>(
   rows: readonly LandedBlockRow[],
-  landed: LandedLedger,
+  landed: L,
   journals: OwnJournalDisposition,
 ) =>
   Effect.gen(function* () {
@@ -141,7 +152,7 @@ const targetOn = (
         kind: "blocked",
         reason: journals.held.reason,
         detail: journals.held.detail,
-      } satisfies RebasePlan;
+      } satisfies RebasePlan<L>;
     const onChain = new Set(landed.chain.map((row) => row.headerHash));
     const stray = rows.find(
       (row) => row.state === "processed" && !onChain.has(row.headerHash),
@@ -150,7 +161,7 @@ const targetOn = (
       return {
         kind: "blocked",
         detail: `processed block ${stray.headerHash} does not chain from the confirmed-ledger frontier ${landed.frontier.headerHash}`,
-      } satisfies RebasePlan;
+      } satisfies RebasePlan<L>;
     const last = landed.chain.at(-1);
     const tip: HeaderRoot = last ?? landed.frontier;
     const steps: TargetStep[] = landed.chain.map((row) => ({
@@ -165,7 +176,7 @@ const targetOn = (
       journals.dispose.map((disposal) => disposal.headerHash),
     );
     const active = yield* liveJournal(journals.dead);
-    let live: RebaseTarget["live"];
+    let live: RebaseTarget<L>["live"];
     if (active !== undefined) {
       if (
         active.baseTailHeaderHash !== tip.headerHash ||
@@ -174,7 +185,7 @@ const targetOn = (
         return {
           kind: "blocked",
           detail: `awaiting own journal resolution: live own block ${active.headerHash} is built on ${active.baseTailHeaderHash}, the processed landed tip is ${tip.headerHash}`,
-        } satisfies RebasePlan;
+        } satisfies RebasePlan<L>;
       live = active;
       steps.push({
         headerHash: active.headerHash,
@@ -196,11 +207,11 @@ const targetOn = (
       return {
         kind: "blocked",
         detail: `${AWAITING_MARKING_BLOCK}: block ${unheld} marks pending-table rows as included and the processed landed chain does not hold it`,
-      } satisfies RebasePlan;
+      } satisfies RebasePlan<L>;
     return {
       kind: "ready",
       target: { rows, landed, steps, tip, live, journals },
-    } satisfies RebasePlan;
+    } satisfies RebasePlan<L>;
   });
 
 /**
@@ -219,35 +230,60 @@ export const rebaseTargetOf = (
   });
 
 /**
- * Reads the rebase target over `journals`, and whether a rebase is due (a
- * landed row the working ledger does not match, a dead own journal to
- * dispose of, or the native MPF `owner` away from the target's end root)
- * and can run. Without `owner`, the native root is not read.
+ * Whether a rebase is due over `journals` (a landed row the working ledger
+ * does not match, a dead own journal to dispose of, or the native MPF
+ * `owner` away from the target's end root) and can run, with its target
+ * over the landed chain; it reads no `confirmed_ledger` row. Without
+ * `owner`, the native root is not read.
  */
-export const rebasePlanOf = (
+const chainPlanOf = (
   journals: OwnJournalDisposition,
   owner?: NativeMpfOwnerService,
 ) =>
   Effect.gen(function* () {
     const rows = yield* retrieveRows;
-    const landed = yield* landedLedger(rows);
+    const landed = yield* landedChain(rows);
     if (landed === undefined) return rebaseNeeded(rows) ? NO_FRONTIER : NOT_DUE;
     const due =
       journals.held !== undefined ||
       rebaseNeeded(rows) ||
       journals.dispose.length > 0;
     if (!due && owner === undefined) return NOT_DUE;
-    const on: RebasePlan = yield* targetOn(rows, landed, journals);
+    const on: RebasePlan<LandedChain> = yield* targetOn(rows, landed, journals);
     if (due) return on;
     if (owner === undefined || on.kind !== "ready") return NOT_DUE;
     const drift = yield* nativeRootDrift(owner, on.target);
     return drift === undefined ? NOT_DUE : { ...on, drift };
   });
 
-/** `rebasePlanOf` over the own-journal disposition it reads first. */
+/**
+ * `chainPlanOf`, with the ledger at the frontier (`confirmed_ledger`) read
+ * for a ready plan: the target the rebase runs on. The rebase reads it in
+ * the follower write transaction, so no fold moves the frontier between
+ * the two reads.
+ */
+export const rebasePlanOf = (
+  journals: OwnJournalDisposition,
+  owner?: NativeMpfOwnerService,
+) =>
+  Effect.gen(function* () {
+    const plan = yield* chainPlanOf(journals, owner);
+    if (plan.kind !== "ready") return plan;
+    const confirmed = yield* ConfirmedLedgerDB.retrieve;
+    return {
+      ...plan,
+      target: {
+        ...plan.target,
+        landed: { ...plan.target.landed, confirmed },
+      },
+    } satisfies RebasePlan;
+  });
+
+/** Whether a rebase is due and can run (`chainPlanOf`), over the own-journal
+ * disposition it reads first; it reads no `confirmed_ledger` row. */
 export const rebasePlan = (owner?: NativeMpfOwnerService) =>
   Effect.flatMap(ownJournalDisposition, (journals) =>
-    rebasePlanOf(journals, owner),
+    chainPlanOf(journals, owner),
   );
 
 /**
