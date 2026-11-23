@@ -1,3 +1,4 @@
+import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { describe, expect, it } from "vitest";
 
 import { ledgerEntriesRoot, type LedgerEntry } from "../src/ledger-at.js";
@@ -5,6 +6,7 @@ import {
   createLedgerStore,
   createMemoryLedgerStorage,
   EMPTY_LEDGER_ROOT,
+  type LedgerMutation,
   LedgerNodeMissing,
   LedgerNotRetained,
   LedgerOutputMissing,
@@ -59,6 +61,89 @@ describe("ledger store over storage that never waits", () => {
     expect(batches).toBeGreaterThan(1);
     expect(batchesBeforeTimer).toBeDefined();
     expect(batchesBeforeTimer).toBeLessThan(batches);
+  });
+});
+
+/**
+ * The `Map` lookups `run` makes. A ledger's in-memory records are reached
+ * only through maps, so this counts the work a read does wherever the
+ * records sit, without naming how they are laid out.
+ */
+const mapLookups = async (run: () => Promise<unknown>): Promise<number> => {
+  const get = Map.prototype.get;
+  let lookups = 0;
+  Map.prototype.get = function (this: Map<unknown, unknown>, key: unknown) {
+    lookups += 1;
+    return get.call(this, key);
+  };
+  try {
+    await run();
+  } finally {
+    Map.prototype.get = get;
+  }
+  return lookups;
+};
+
+describe("ledgers derived by many applies", () => {
+  it.each([
+    ["one-entry applies", (step: number) => event([], [10_000 + step])],
+    // A step that spends and creates nothing, as a rejected event's.
+    ["applies that change nothing", (): LedgerMutation[] => []],
+  ])(
+    "reads after 1,000 %s with at most three times the lookups of a read after 10",
+    async (_, mutationsOf) => {
+      const store = createLedgerStore(createMemoryLedgerStorage());
+      const base = testLedgerEntries(0, 200);
+      let ledger = await store.admit(base, await ledgerEntriesRoot(base));
+      // One apply first, so the reads below also pass a record in memory.
+      ledger = await ledger.apply(event([0], []));
+      let entries: readonly LedgerEntry[] = appliedEntries(
+        base,
+        event([0], []),
+      );
+      const after = new Map<number, typeof ledger>();
+      for (let step = 1; step <= 1_000; step += 1) {
+        const mutations = mutationsOf(step);
+        ledger = await ledger.apply(mutations);
+        entries = appliedEntries(entries, mutations);
+        after.set(step, ledger);
+      }
+      // An entry of the admitted base: a lookup misses every in-memory
+      // record before it reaches the store.
+      const key = testOutRef(7);
+      const lookupsAfter = async (step: number) =>
+        await mapLookups(async () => await after.get(step)!.read([key]));
+      expect(await lookupsAfter(1_000)).toBeLessThanOrEqual(
+        3 * (await lookupsAfter(10)),
+      );
+      await expectLedgerMatches(ledger, entries);
+    },
+  );
+
+  it("reads the output an out-ref was inserted with last, over earlier ones the ledger deleted", async () => {
+    const store = createLedgerStore(createMemoryLedgerStorage());
+    const base = testLedgerEntries(0, 40);
+    const outRef = testOutRef(500);
+    const first = { outRef, output: makeOutput(7_000_000n) };
+    const second = { outRef, output: makeOutput(9_000_000n) };
+    let ledger = await store.admit(base, await ledgerEntriesRoot(base));
+    const steps = [
+      [{ type: "insert" as const, ...first }],
+      [{ type: "delete" as const, outRef }],
+      [{ type: "insert" as const, ...second }],
+      ...[1, 2, 3, 4, 5, 6].map((n) => event([n], [])),
+    ];
+    let entries: readonly LedgerEntry[] = base;
+    const ledgers = [];
+    for (const mutations of steps) {
+      ledger = await ledger.apply(mutations);
+      entries = appliedEntries(entries, mutations);
+      ledgers.push({ ledger, entries });
+    }
+    for (const { ledger: each, entries: held } of ledgers)
+      await expectLedgerMatches(each, held, [testOutRef(900_001)]);
+    await store.persist(ledger);
+    await expectLedgerMatches(await store.at(ledger.root), entries);
   });
 });
 

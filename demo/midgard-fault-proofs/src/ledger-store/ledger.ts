@@ -53,11 +53,58 @@ export interface Ledger {
   }>;
 }
 
-/** Nodes and outputs created in memory by `apply` or `admit`. */
+/**
+ * Nodes and outputs created in memory by `apply` or `admit`, one layer over
+ * the layers of the ledgers before. A layer is never changed once built:
+ * several ledgers may share it.
+ */
 export type Overlay = {
   readonly nodes: ReadonlyMap<NodeHash, StoredNode>;
   readonly outputs: ReadonlyMap<OutRefHex, Buffer>;
   readonly parent: Overlay | undefined;
+  /** The layer's records: its nodes plus its outputs. */
+  readonly size: number;
+};
+
+/**
+ * The overlay of a ledger `apply` derives: `nodes` and `outputs` as a layer
+ * over `parent`. A lookup reads one layer after another from the top, so a
+ * block replayed one `apply` per step would otherwise read one layer per
+ * earlier step, quadratic in the block's steps. Instead the new layer is
+ * merged into a new copy of each layer below it that is not at least twice
+ * its size (the binary-counter rule): layer sizes then at least double going
+ * down, so a lookup reads at most log2 of the lineage's records plus one
+ * layers, and each record is copied a logarithmic number of times. A merged
+ * layer takes the upper layer's record where both hold a key, which is what
+ * the lookup through both would find, so every lookup answers as before.
+ * `parent` and every layer below it stay as they are. An `apply` that
+ * created nothing adds no layer.
+ */
+const overlayOver = (
+  parent: Overlay | undefined,
+  nodes: ReadonlyMap<NodeHash, StoredNode>,
+  outputs: ReadonlyMap<OutRefHex, Buffer>,
+): Overlay | undefined => {
+  if (nodes.size === 0 && outputs.size === 0) return parent;
+  let layer: Overlay = {
+    nodes,
+    outputs,
+    parent,
+    size: nodes.size + outputs.size,
+  };
+  while (layer.parent !== undefined && layer.parent.size < 2 * layer.size) {
+    const below: Overlay = layer.parent;
+    const merged = {
+      nodes: new Map([...below.nodes, ...layer.nodes]),
+      outputs: new Map([...below.outputs, ...layer.outputs]),
+    };
+    layer = {
+      ...merged,
+      parent: below.parent,
+      size: merged.nodes.size + merged.outputs.size,
+    };
+  }
+  return layer;
 };
 
 /** Where a ledger's nodes and outputs come from below its overlay. */
@@ -188,7 +235,7 @@ export class LedgerValue implements Ledger {
     return new LedgerValue(
       rootOf(trie),
       this.owner,
-      { nodes: store.writes, outputs, parent: this.overlay },
+      overlayOver(this.overlay, store.writes, outputs),
       this.source,
     );
   }
