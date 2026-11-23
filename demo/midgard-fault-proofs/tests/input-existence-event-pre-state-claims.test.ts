@@ -7,18 +7,19 @@ import { computeHash32 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import type { PreparedInputExistence } from "../src/input-existence/prepare.js";
-import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import {
   keyValuePhasNonMembershipProof,
   keyValuePhasProof,
   keyValuePhasRootWithCount,
 } from "../src/transition-trace/phas.js";
 import { buildIndexedTraceProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
+import { referenceLedgerOf } from "./helpers/event-ledger-reference.js";
 import type { InputChronology } from "./helpers/input-existence-chronology-fixture.js";
 import {
   expectOnchainRefusal,
   type RefusalPin,
 } from "./support/emulator/expect-onchain-refusal.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
 import { startChronologyJourney } from "./support/input-existence-chronology-journey.js";
 
 const TIMEOUT = 600_000;
@@ -74,12 +75,10 @@ describe("input-existence claims about the target event's ledger", () => {
         stepIndex: 0n,
       });
       // The creator's own pre-root lacks the input it creates.
-      expect(creatorStep.value.pre_utxos_root).toBe(
-        history.predecessor.utxosRoot,
-      );
+      expect(creatorStep.value.pre_utxos_root).toBe(history.predecessor.root);
       const carried = await withAbsence(
         { ...prepared, transitionMembership: creatorStep },
-        history.predecessor.trie,
+        (await referenceLedgerOf(history.predecessor)).trie,
         history.selected,
       );
       await expectOnchainRefusal(
@@ -176,11 +175,9 @@ describe("input-existence claims about the target event's ledger", () => {
       expect(prepared.ledgerEvidence).toHaveProperty("Present");
       await j.send(0);
       await j.send(1);
-      const post = await checkLedgerAgainstRoot({
-        entries: history.targetPostEntries,
-        utxosRoot: history.targetPostRoot,
-        label: "target post-state",
-      });
+      const post = await referenceLedgerOf(
+        await memoryLedger(history.targetPostEntries, history.targetPostRoot),
+      );
       expect(
         post.entries.some(({ outRef }) => outRef.equals(history.selected)),
       ).toBe(false);

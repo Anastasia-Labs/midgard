@@ -1,9 +1,9 @@
 /**
  * Conformance cases every ledger storage adapter runs. Expected roots and
- * proofs come from today's trie path (`ledgerEntriesRoot`,
- * `keyValuePhasResolutionProofs`), which builds a fresh in-memory trie from
+ * proofs come from the MPF library's in-memory trie (`Trie.fromList`) over
  * the whole entry set, never from the store under test.
  */
+import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { describe, expect, it } from "vitest";
@@ -30,7 +30,7 @@ import {
   type StoredNode,
 } from "../../src/ledger-store/index.js";
 import {
-  keyValuePhasResolutionProofs,
+  type KeyValuePhasRoot,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
 import { describeLedgerStoreAdmitConformance } from "./ledger-store-conformance-admit.js";
@@ -104,6 +104,33 @@ const referenceTrie = async (entries: readonly LedgerEntry[]) =>
     }),
   );
 
+/** Each key's proof CBOR from a library trie of `reference`'s entries:
+ * membership when held, absence otherwise. Absence proofs edit the trie they
+ * are built on, so each takes a trie of its own. */
+const referenceProofs = async (
+  reference: KeyValuePhasRoot,
+  keys: readonly Buffer[],
+): Promise<Buffer[]> => {
+  const trieOf = async () =>
+    await Trie.fromList(
+      reference.entries.map(({ key, value }) => ({
+        key: Buffer.from(key),
+        value: Buffer.from(value),
+      })),
+    );
+  const held = new Set(reference.entries.map(({ key }) => key.toString("hex")));
+  const members = await trieOf();
+  const proofs: Buffer[] = [];
+  for (const key of keys) {
+    const member = held.has(key.toString("hex"));
+    const trie = member ? members : await trieOf();
+    proofs.push(
+      Buffer.from((await trie.prove(Buffer.from(key), !member)).toCBOR()),
+    );
+  }
+  return proofs;
+};
+
 const sortedHex = (entries: Iterable<{ outRef: Buffer; output: Buffer }>) =>
   [...entries]
     .map(({ outRef, output }) => [
@@ -125,7 +152,7 @@ export const expectLedgerMatches = async (
   const reference = await referenceTrie(entries);
   expect(ledger.root).toBe(reference.root);
   const keys = [...entries.map(({ outRef }) => outRef), ...absent];
-  const expected = await keyValuePhasResolutionProofs(reference, keys);
+  const expected = await referenceProofs(reference, keys);
   const reads = await ledger.read(keys);
   const outputs = new Map(
     entries.map(({ outRef, output }) => [outRef.toString("hex"), output]),

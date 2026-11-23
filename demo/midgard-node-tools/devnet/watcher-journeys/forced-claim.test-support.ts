@@ -89,7 +89,7 @@ export const classifyFull = async (claimed: SDK.RejectionReason) => {
   const block = await retainedTransactionFixture({
     canonicalTransactionCbor: forced.transaction.canonicalCbor,
     predecessor,
-    ledgerEntries: predecessor.ledger.entries,
+    ledgerEntries: predecessor.ledgerEntries,
     operatorVkey: "82".repeat(28),
     endTime: predecessor.header.endTime + 40_000n,
     blockSlot: predecessor.header.blockSlot + 40n,

@@ -7,7 +7,6 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -29,6 +28,7 @@ import {
   replayedLedgerChainBlockWith,
   replayedLedgerChainSource,
 } from "./helpers/replayed-ledger-chain.js";
+import { entriesRoot } from "./support/fixture-ledger.js";
 
 type Chain = Awaited<ReturnType<typeof replayedLedgerChain>>;
 
@@ -135,7 +135,7 @@ describe(
         // A classification's lookup replays top over the root the liar
         // commits, and never the liar.
         const replayed = await first.ledgerAt(source)(top.headerHash);
-        expect(await ledgerEntriesRoot(replayed!)).toBe(top.header.utxosRoot);
+        expect(await entriesRoot(replayed!)).toBe(top.header.utxosRoot);
 
         const ledger = when === "after a restart" ? s.keeper() : first;
         expect(await ledger.ensure(head(top), source)).toBe(false);
@@ -166,9 +166,7 @@ describe(
         // replays stray over b0's ledger and refuses nothing.
         if (when === "a lookup already replayed") {
           const replayed = await ledger.ledgerAt(source)(stray.headerHash);
-          expect(await ledgerEntriesRoot(replayed!)).toBe(
-            stray.header.utxosRoot,
-          );
+          expect(await entriesRoot(replayed!)).toBe(stray.header.utxosRoot);
           expect(s.refusals).toEqual([]);
         }
 

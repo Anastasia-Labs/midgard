@@ -10,7 +10,10 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "@al-ft/midgard-fault-proofs/evidence";
-import { checkLedgerAgainstRoot } from "@al-ft/midgard-fault-proofs/ledger-at";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import {
   buildPortableValidationTraceDefenseMaterial,
   type PortableValidationTraceDefense,
@@ -81,14 +84,15 @@ export const buildPortableDefenseOutcome = async (
         grade: "security",
       },
     });
-    const predecessor = await checkLedgerAgainstRoot({
-      entries: job.parentEntries.map(({ outRef, output }) => ({
+    const predecessor = await createLedgerStore(
+      createMemoryLedgerStorage(),
+    ).admit(
+      job.parentEntries.map(({ outRef, output }) => ({
         outRef: bytes(outRef),
         output: bytes(output),
       })),
-      utxosRoot: job.parentUtxosRoot,
-      label: `the landed ledger at ${job.parentHeaderHash}`,
-    });
+      job.parentUtxosRoot,
+    );
     const material = await buildPortableValidationTraceDefenseMaterial({
       evidence,
       predecessor,

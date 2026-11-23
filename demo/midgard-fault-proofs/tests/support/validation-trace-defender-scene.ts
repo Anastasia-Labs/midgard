@@ -6,7 +6,7 @@
  * a case its defender won, references published under their roles' tokens,
  * the operator's later commits, and the emulator's transaction limits, and
  * the longest-running passing script admission takes. */
-export { completeCanonicalReplayPredecessorLedger } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+export { completeCanonicalReplayPredecessorStoreLedger } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 export {
   ADMITTED_TX_EX_UNITS,
   LONGEST_PASSING_SCRIPT,

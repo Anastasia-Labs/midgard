@@ -18,7 +18,6 @@ import {
 } from "../src/direct-purpose-family/transaction-port.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK } from "../src/execution-source-script-decoding/index.js";
-import { singleLedgerAt } from "../src/ledger-at.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
@@ -48,6 +47,7 @@ import {
   type MissingRedeemerScenario,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 
 const SHAPE = honestForcedObserverShape(5);
 const OBSERVER = { purpose_kind: 2n, purpose_index: 0n };
@@ -156,10 +156,14 @@ describe("executionSourceScriptDecoding installed cursor actuator", () => {
       // The predecessor ledger the subject's inputs resolve against.
       const replayContext = {
         predecessor: await admitCompleteCanonicalReplayPredecessor({
-          ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-            ...(scenarioCase.shape.spend ?? []),
-            ...(scenarioCase.shape.reference ?? []),
-          ]),
+          ledgerAt: singleLedgerAt(
+            evidence.header.prevHeaderHash,
+            [
+              ...(scenarioCase.shape.spend ?? []),
+              ...(scenarioCase.shape.reference ?? []),
+            ],
+            evidence.header.prevUtxosRoot,
+          ),
           currentEvidence: evidence,
         }),
       };
@@ -353,10 +357,11 @@ describe("executionSourceScriptDecoding installed cursor actuator", () => {
         evidence,
         {
           predecessor: await admitCompleteCanonicalReplayPredecessor({
-            ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-              ...(SHAPE.spend ?? []),
-              ...(SHAPE.reference ?? []),
-            ]),
+            ledgerAt: singleLedgerAt(
+              evidence.header.prevHeaderHash,
+              [...(SHAPE.spend ?? []), ...(SHAPE.reference ?? [])],
+              evidence.header.prevUtxosRoot,
+            ),
             currentEvidence: evidence,
           }),
         },

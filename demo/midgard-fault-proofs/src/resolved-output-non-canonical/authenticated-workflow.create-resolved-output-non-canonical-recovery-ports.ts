@@ -3,9 +3,9 @@ import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
-import { type CheckedLedger } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.replay-context-identity.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
@@ -40,8 +40,8 @@ import {
   RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW,
 } from "./authenticated-workflow.resolved-output-non-canonical-config-from-binding.js";
 import {
-  deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
+  readResolvedOutputPriorLedger,
   resolvedOutputOpenedField,
 } from "./resolved-output-non-canonical.js";
 import { type ResolvedOutputStage } from "./workflow.js";
@@ -103,9 +103,9 @@ export const resolvedOutputStageFromL1 = (
 export const prepareResolvedOutputNonCanonicalRecoveryMaterial = async (
   canonical: CanonicalBlockEvidence,
   detectionId: string,
-  predecessor: CheckedLedger | undefined,
+  predecessor: Ledger | undefined,
 ) => {
-  const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
+  const priorLedger = await readResolvedOutputPriorLedger({
     block: canonical,
     predecessor,
   });
@@ -141,7 +141,7 @@ export const createResolvedOutputNonCanonicalRecoveryPorts = (
       await prepareResolvedOutputNonCanonicalRecoveryMaterial(
         canonical,
         classification.selected.detectionId,
-        completeCanonicalReplayPredecessorLedger({
+        completeCanonicalReplayPredecessorStoreLedger({
           evidence: canonical,
           context: workflow.replayContext,
         }),

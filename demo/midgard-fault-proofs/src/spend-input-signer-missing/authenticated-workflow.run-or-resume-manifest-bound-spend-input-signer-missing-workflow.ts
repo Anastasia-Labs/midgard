@@ -1,5 +1,5 @@
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,
@@ -75,7 +75,7 @@ export const createSpendInputSignerMissingRecoveryAdapter = (
       await prepareSpendInputSignerMissingRecoveryMaterial(
         canonical,
         classification.selected.detectionId,
-        completeCanonicalReplayPredecessorLedger({
+        completeCanonicalReplayPredecessorStoreLedger({
           evidence: canonical,
           context: workflow.replayContext,
         }),

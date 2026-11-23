@@ -8,17 +8,16 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import type { Script, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import {
   type PreparedInputExistence,
   prepareInputExistence,
 } from "../src/input-existence/prepare.js";
 import { buildInputExistenceStep } from "../src/input-existence/submit.js";
-import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import { buildInit } from "../src/submit-init.submit-init.js";
 import { keyValuePhasNonMembershipProof } from "../src/transition-trace/phas.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
+import { referenceLedgerOf } from "./helpers/event-ledger-reference.js";
 import type { InputChronology } from "./helpers/input-existence-chronology-fixture.js";
 import { network } from "./support/emulator/blueprints.js";
 import {
@@ -35,6 +34,7 @@ import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
 import {
   checkStepFit,
   startChronologyJourney,
@@ -131,13 +131,7 @@ const startHonestRejectionJourney = async (field: 0 | 1) => {
     },
     field,
     inputIndex: undefined,
-    predecessor: await checkedLedgerAsLedger(
-      await checkLedgerAgainstRoot({
-        entries: [],
-        utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-        label: "registered prior-block ledger",
-      }),
-    ),
+    predecessor: await memoryLedger([], SDK.EMPTY_MERKLE_TREE_ROOT),
     owner: h.proverSigner.paymentKeyHash,
   });
   expect(prepared.source.subject.direction).toBe(1n);
@@ -301,20 +295,20 @@ describe("input-existence lifecycle refusals, by the check that refuses", () => 
     async ({ field, kind }) => {
       const j = await startChronologyJourney({ field, scenario: kind });
       const { history } = j;
-      expect(history.targetPreRoot).not.toBe(history.predecessor.utxosRoot);
-      expect(history.predecessor.utxosRoot).toBe(
+      expect(history.targetPreRoot).not.toBe(history.predecessor.root);
+      expect(history.predecessor.root).toBe(
         history.evidence.header.prevUtxosRoot,
       );
       expect(
-        history.predecessor.trie.entries.some(({ key }) =>
-          key.equals(history.selected),
+        (await referenceLedgerOf(history.predecessor)).trie.entries.some(
+          ({ key }) => key.equals(history.selected),
         ),
       ).toBe(false);
       const carriage = {
         raw: true,
         prepared: await withAbsence(
           j.prepared,
-          history.predecessor.trie,
+          (await referenceLedgerOf(history.predecessor)).trie,
           history.selected,
         ),
         claimedPreUtxosRoot: history.evidence.header.prevUtxosRoot,

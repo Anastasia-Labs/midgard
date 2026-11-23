@@ -60,7 +60,7 @@ it.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
             runDirectory!,
             staged.predecessor,
           )
-        ).ledger,
+        ).ledgerEntries,
       ),
       events: [
         {

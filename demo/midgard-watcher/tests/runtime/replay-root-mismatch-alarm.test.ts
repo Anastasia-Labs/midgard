@@ -13,6 +13,7 @@ import {
 } from "@al-ft/midgard-fault-proofs/ledger-store";
 import { memoryVerifiedHead } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { entriesOf } from "@al-ft/midgard-fault-proofs/test-support/fixture-ledger";
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
@@ -274,7 +275,9 @@ describe("the replayed ledger's root mismatch alarm", () => {
     ];
 
     // The classifier still gets the unchecked post-ledger.
-    expect(await w.keeper.ledgerAt(sources)(block.headerHash)).toEqual([]);
+    expect(
+      await entriesOf((await w.keeper.ledgerAt(sources)(block.headerHash))!),
+    ).toEqual([]);
     const text = await w.scrape();
     expect(
       sample(text, "midgard_watcher_replay_refusals_total", {

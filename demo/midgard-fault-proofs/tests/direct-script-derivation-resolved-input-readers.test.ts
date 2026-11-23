@@ -12,22 +12,20 @@ import {
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { directPurposeSpendDescriptorPresent } from "../src/direct-purpose-family/script-purposes.js";
 import { directSpendEvidence } from "../src/direct-script-derivation/claimed-purpose.js";
 import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/material.js";
 import { directResolvedSources } from "../src/direct-script-derivation/sources.js";
-import {
-  type CheckedLedger,
-  checkLedgerAgainstRoot,
-  ledgerEntriesRoot,
-} from "../src/ledger-at.js";
+import { ledgerEntriesRoot } from "../src/ledger-at.js";
+import type { Ledger } from "../src/ledger-store/index.js";
 import { keyValuePhasProof } from "../src/transition-trace/phas.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { referenceLedgerOf } from "./helpers/event-ledger-reference.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
 
 const outRefAt = (byte: number, outputIndex: number) =>
   encodeMidgardSpendInputItem({ txId: Buffer.alloc(32, byte), outputIndex });
@@ -54,11 +52,7 @@ const materialFor = async ({
     output: scriptOutput(0x44 + index * 0x11),
   }));
   const root = await ledgerEntriesRoot(entries);
-  const ledger = await checkLedgerAgainstRoot({
-    entries,
-    utxosRoot: root,
-    label: "resolved input readers",
-  });
+  const ledger = await memoryLedger(entries, root);
   const tx = buildFixtureTransaction({
     spendInputs: [...spent],
     referenceInputs: [...referenced],
@@ -84,17 +78,18 @@ const materialFor = async ({
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     }),
     eventKey,
-    predecessor: await checkedLedgerAsLedger(ledger),
+    predecessor: ledger,
   });
   return { ledger, material };
 };
 
 /** The leaf and membership proof `ledger` has for `key`. */
-const ownEntry = async (ledger: CheckedLedger, key: Buffer) => {
-  const { value } = ledger.trie.entries.find((entry) => entry.key.equals(key))!;
+const ownEntry = async (ledger: Ledger, key: Buffer) => {
+  const { trie } = await referenceLedgerOf(ledger);
+  const { value } = trie.entries.find((entry) => entry.key.equals(key))!;
   return {
     descriptor_cbor: value.toString("hex"),
-    proof: await keyValuePhasProof(ledger.trie, key, value),
+    proof: await keyValuePhasProof(trie, key, value),
   };
 };
 

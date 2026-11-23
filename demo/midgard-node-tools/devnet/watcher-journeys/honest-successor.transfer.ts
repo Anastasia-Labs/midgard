@@ -149,9 +149,10 @@ export const successorTransfer = (input: SuccessorTransferInput) => {
 /** The fault's predecessor with its replayed ledger, as staging holds it. */
 export type ReplayedPredecessor = JourneyBlock &
   Readonly<{
-    ledger: Readonly<{
-      entries: readonly Readonly<{ outRef: Uint8Array; output: Uint8Array }>[];
-    }>;
+    ledgerEntries: readonly Readonly<{
+      outRef: Uint8Array;
+      output: Uint8Array;
+    }>[];
   }>;
 
 /**
@@ -191,7 +192,7 @@ export const stackTransferBeforeFault =
           .sort()
           .join(",");
       const expected = owned(
-        predecessor.ledger.entries
+        predecessor.ledgerEntries
           .filter(
             ({ output }) =>
               encodeMidgardAddressText(

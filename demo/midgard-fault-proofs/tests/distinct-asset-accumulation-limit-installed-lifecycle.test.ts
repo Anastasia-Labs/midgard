@@ -18,7 +18,6 @@ import {
 } from "../src/direct-purpose-family/transaction-port.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK } from "../src/distinct-asset-accumulation-limit/workflow.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { singleLedgerAt } from "../src/ledger-at.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
@@ -50,6 +49,7 @@ import {
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 
 const daProvenance = {
   trustClass: "public_or_permissionless_da",
@@ -91,10 +91,11 @@ const replayContextOf = async (
   evidence: Awaited<ReturnType<typeof blockEvidence>>,
 ) => ({
   predecessor: await admitCompleteCanonicalReplayPredecessor({
-    ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-      ...spentEntries(shape),
-      ...referenceEntries(shape),
-    ]),
+    ledgerAt: singleLedgerAt(
+      evidence.header.prevHeaderHash,
+      [...spentEntries(shape), ...referenceEntries(shape)],
+      evidence.header.prevUtxosRoot,
+    ),
     currentEvidence: evidence,
   }),
 });

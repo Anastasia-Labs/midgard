@@ -7,7 +7,7 @@ import { type MidgardValidationMachineState } from "@al-ft/midgard-core";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { buildValidationTraceDefenseMaterial } from "../src/validation-trace-dispute/defense-material.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { sparseTrace } from "./support/validation-game-deep-traces.js";
 import { l1SlotConfig } from "./support/validation-trace-claim-material.js";
 import {
@@ -107,7 +107,7 @@ describe("validation-trace dispute Defend at the deepest case", () => {
   it("lands the Defend of its own honest trace at the deepest step count", async () => {
     const material = await buildValidationTraceDefenseMaterial({
       evidence: scene.passing.evidence,
-      predecessor: completeCanonicalReplayPredecessorLedger(scene.passing),
+      predecessor: completeCanonicalReplayPredecessorStoreLedger(scene.passing),
       eventKey: scene.passing.eventKey,
       stepCount: MAX_STEP_COUNT,
       l1SlotConfig,

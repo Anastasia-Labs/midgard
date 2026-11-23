@@ -23,14 +23,14 @@ import type { CanonicalTransitionEffect } from "@al-ft/midgard-validation/transi
 import { Data } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
-import {
-  checkLedgerAgainstRoot,
-  ledgerEntriesRoot,
-  type LedgerEntry,
-} from "../../src/ledger-at.js";
+import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
-import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import {
+  admitCompleteCanonicalReplayPredecessor,
+  completeCanonicalReplayPredecessorStoreLedger,
+} from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { fixtureBlockSlot } from "../support/emulator/header-fixtures.js";
+import { singleLedgerAt } from "../support/predecessor-ledger.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -467,18 +467,20 @@ export const inputExistenceChronologyFixture = async (
     payloadEnvelopeCbor: await reencodeFixturePayload(payload),
     daProvenance: PROVENANCE,
   });
-  const predecessor = await checkLedgerAgainstRoot({
-    entries: predecessorEntries,
-    utxosRoot: header.prevUtxosRoot,
-    label: "chronology predecessor",
-  });
   const context = {
     predecessor: await admitCompleteCanonicalReplayPredecessor({
       currentEvidence: evidence,
-      ledgerAt: async (hash) =>
-        hash === header.prevHeaderHash ? predecessorEntries : undefined,
+      ledgerAt: singleLedgerAt(
+        header.prevHeaderHash,
+        predecessorEntries,
+        header.prevUtxosRoot,
+      ),
     }),
   };
+  const predecessor = completeCanonicalReplayPredecessorStoreLedger({
+    evidence,
+    context,
+  })!;
   if (targetEvent === undefined)
     throw new Error("chronology target event absent");
   return {

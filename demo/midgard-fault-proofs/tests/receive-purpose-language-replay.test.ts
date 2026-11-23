@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { type LedgerEntry, singleLedgerAt } from "../src/ledger-at.js";
+import { type LedgerEntry } from "../src/ledger-at.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
@@ -28,6 +28,7 @@ import {
   type MissingRedeemerSubjectShape,
   plutusScript,
 } from "./support/missing-redeemer-emulator.subject.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 
 const daProvenance = {
   trustClass: "public_or_permissionless_da",
@@ -62,7 +63,11 @@ const decide = async (
   });
   const context = {
     predecessor: await admitCompleteCanonicalReplayPredecessor({
-      ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, ledger),
+      ledgerAt: singleLedgerAt(
+        evidence.header.prevHeaderHash,
+        ledger,
+        evidence.header.prevUtxosRoot,
+      ),
       currentEvidence: evidence,
     }),
   };

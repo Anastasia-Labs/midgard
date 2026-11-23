@@ -20,7 +20,7 @@ import type * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { type LedgerEntry, singleLedgerAt } from "../src/ledger-at.js";
+import { type LedgerEntry } from "../src/ledger-at.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   createCompleteCanonicalReplayUnion,
@@ -49,6 +49,7 @@ import {
   signingKey,
 } from "./support/execution-native-script-invalid-emulator.subject.js";
 import { protectedScriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 import { unreadableItemViolations } from "./support/unreadable-item-block.js";
 
 const daProvenance = {
@@ -112,7 +113,11 @@ const replayUnder = async (
   });
   const decision = await replayer.replay(evidence, {
     predecessor: await admitCompleteCanonicalReplayPredecessor({
-      ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, ledger),
+      ledgerAt: singleLedgerAt(
+        evidence.header.prevHeaderHash,
+        ledger,
+        evidence.header.prevUtxosRoot,
+      ),
       currentEvidence: evidence,
     }),
   });

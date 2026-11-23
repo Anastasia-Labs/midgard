@@ -14,9 +14,6 @@ export type KeyValuePhasRoot = {
   readonly root: string;
   readonly count: bigint;
   readonly entries: readonly KeyValuePhasEntry[];
-  /** The membership trie of `entries`, from an owner that decides how long
-   * it is kept. A root without one shares one trie per root object. */
-  readonly membershipTrie?: () => Promise<Trie>;
 };
 
 export type CountedRoot = KeyValuePhasRoot & {
@@ -61,7 +58,7 @@ export const canonicalizeKeyValuePhasEntries = (
   return sorted;
 };
 
-export const trieFromEntries = async (
+const trieFromEntries = async (
   entries: readonly KeyValuePhasEntry[],
 ): Promise<Trie> =>
   await Trie.fromList(
@@ -78,7 +75,6 @@ export const trieFromEntries = async (
 const triesByRoot = new WeakMap<KeyValuePhasRoot, Promise<Trie>>();
 
 const trieForRoot = (root: KeyValuePhasRoot): Promise<Trie> => {
-  if (root.membershipTrie !== undefined) return root.membershipTrie();
   const known = triesByRoot.get(root);
   if (known !== undefined) return known;
   const built = trieFromEntries(root.entries);
@@ -106,25 +102,6 @@ export const keyValuePhasRootWithCount = async (
     count: BigInt(canonical.length),
     entries: canonical,
   };
-};
-
-/** A trie of `entries` its one owner edits in place, to replay a ledger
- * forward: after each edit `root()` is the root of the entries it then holds.
- * Its insertions are edits, never proof devices, so nothing proves against
- * it. */
-export const mutableKeyValuePhasTrie = async (
-  entries: readonly KeyValuePhasEntry[],
-) => {
-  const trie = await trieFromEntries(entries);
-  return Object.freeze({
-    insert: async (key: Buffer, value: Buffer): Promise<void> => {
-      await trie.insert(Buffer.from(key), Buffer.from(value));
-    },
-    delete: async (key: Buffer): Promise<void> => {
-      await trie.delete(Buffer.from(key));
-    },
-    root: (): string => normalizeRoot(trie.hash),
-  });
 };
 
 export const keyValuePhasRoot = async (
@@ -178,60 +155,6 @@ export const keyValuePhasProof = async (
     );
   }
   return sdkProofFromCbor(proof.toCBOR());
-};
-
-/** Construct one immutable trie for multiple exact membership openings. */
-export const keyValuePhasMembershipProofs = async (
-  root: KeyValuePhasRoot,
-  openings: readonly KeyValuePhasEntry[],
-): Promise<readonly SDK.Proof[]> => {
-  if (openings.length === 0) return [];
-  const entries = new Map(
-    root.entries.map((entry) => [entry.key.toString("hex"), entry.value]),
-  );
-  for (const opening of openings) {
-    if (!entries.get(opening.key.toString("hex"))?.equals(opening.value))
-      throw transitionTraceError(
-        "missingWitnessData",
-        "Cannot build PHAS membership proof for an absent key/value.",
-      );
-  }
-  const trie = await trieForRoot(root);
-  const proofs: SDK.Proof[] = [];
-  for (const opening of openings) {
-    const proof = await trie.prove(Buffer.from(opening.key));
-    if (normalizeRoot(proof.verify(true)) !== root.root)
-      throw transitionTraceError(
-        "proofConstructionFailed",
-        "Generated PHAS membership proof does not open committed root.",
-      );
-    proofs.push(sdkProofFromCbor(proof.toCBOR()));
-  }
-  return proofs;
-};
-
-/**
- * Each key's MPF proof CBOR against `root`, in order: membership for a key
- * the trie holds, absence for one it does not. Membership reads the trie
- * every opening of `root` shares; an absence proof edits a trie while it
- * builds, so those take a trie of their own.
- */
-export const keyValuePhasResolutionProofs = async (
-  root: KeyValuePhasRoot,
-  keys: readonly Buffer[],
-): Promise<readonly Buffer[]> => {
-  const held = new Set(root.entries.map(({ key }) => key.toString("hex")));
-  let scratch: Promise<Trie> | undefined;
-  const proofs: Buffer[] = [];
-  for (const key of keys) {
-    const member = held.has(key.toString("hex"));
-    const trie = await (member
-      ? trieForRoot(root)
-      : (scratch ??= trieFromEntries(root.entries)));
-    const proof = await trie.prove(Buffer.from(key), !member);
-    proofs.push(Buffer.from(proof.toCBOR()));
-  }
-  return proofs;
 };
 
 export const keyValuePhasNonMembershipProof = async (

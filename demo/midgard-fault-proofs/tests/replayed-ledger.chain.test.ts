@@ -6,7 +6,6 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -19,6 +18,7 @@ import {
   replayedLedgerChain,
   replayedLedgerChainSource,
 } from "./helpers/replayed-ledger-chain.js";
+import { entriesOf, entriesRoot } from "./support/fixture-ledger.js";
 
 /** A store holding the ledger below the chain's first block. */
 const storeOver = async (
@@ -47,7 +47,7 @@ describe("the replayed ledger over a chain", { timeout: 120_000 }, () => {
     const first = await createReplayedLedger({ store }).ledgerAt(
       replayedLedgerChainSource(chain.blocks, { asked }),
     )(tip.headerHash);
-    expect(await ledgerEntriesRoot(first!)).toBe(tip.header.utxosRoot);
+    expect(await entriesRoot(first!)).toBe(tip.header.utxosRoot);
     expect(asked).toEqual(chain.blocks.map(({ headerHash }) => headerHash));
 
     // Restart: a new keeper over the same store.
@@ -55,9 +55,11 @@ describe("the replayed ledger over a chain", { timeout: 120_000 }, () => {
     const restarted = createReplayedLedger({ store }).ledgerAt(
       replayedLedgerChainSource(chain.blocks, { asked: again }),
     );
-    expect(await restarted(tip.headerHash)).toEqual(first);
+    expect(await entriesOf((await restarted(tip.headerHash))!)).toEqual(
+      await entriesOf(first!),
+    );
     expect(
-      await ledgerEntriesRoot((await restarted(chain.blocks[1]!.headerHash))!),
+      await entriesRoot((await restarted(chain.blocks[1]!.headerHash))!),
     ).toBe(chain.blocks[1]!.header.utxosRoot);
     expect(again).toEqual([]);
   });
@@ -101,7 +103,7 @@ describe("the replayed ledger over a chain", { timeout: 120_000 }, () => {
     serveThird = true;
     asked.length = 0;
     const entries = await ledger.ledgerAt(source)(hashes[4]!);
-    expect(await ledgerEntriesRoot(entries!)).toBe(rootOf.get(hashes[4]!));
+    expect(await entriesRoot(entries!)).toBe(rootOf.get(hashes[4]!));
     expect(asked).toEqual(hashes.slice(2));
     expect(outstandingAtRequest.every((count) => count === 0)).toBe(true);
     expect(outstandingAtRequest).toHaveLength(6);
@@ -190,7 +192,7 @@ describe("the replayed ledger over a chain", { timeout: 120_000 }, () => {
     ).toEqual(new Set());
     serve();
     const entries = await lookup;
-    expect(await ledgerEntriesRoot(entries!)).toBe(b1.header.utxosRoot);
+    expect(await entriesRoot(entries!)).toBe(b1.header.utxosRoot);
     expect(await readable(store, b1.header.utxosRoot)).toBe(true);
     expect(await readable(store, b0.header.utxosRoot)).toBe(true);
   });

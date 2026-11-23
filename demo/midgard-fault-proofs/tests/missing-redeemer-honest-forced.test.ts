@@ -10,7 +10,6 @@ import type * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { singleLedgerAt } from "../src/ledger-at.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
@@ -20,6 +19,7 @@ import {
   machineForcedVerdict,
   redeemerMissingVerdict,
 } from "./support/missing-redeemer-emulator.subject.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 
 const daProvenance = {
   trustClass: "public_or_permissionless_da",
@@ -47,10 +47,11 @@ const replayUnder = async (verdict: SDK.OperatorVerdict) => {
     evidence,
     {
       predecessor: await admitCompleteCanonicalReplayPredecessor({
-        ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-          ...(shape.spend ?? []),
-          ...(shape.reference ?? []),
-        ]),
+        ledgerAt: singleLedgerAt(
+          evidence.header.prevHeaderHash,
+          [...(shape.spend ?? []), ...(shape.reference ?? [])],
+          evidence.header.prevUtxosRoot,
+        ),
         currentEvidence: evidence,
       }),
     },

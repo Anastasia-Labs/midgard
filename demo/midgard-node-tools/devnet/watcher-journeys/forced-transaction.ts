@@ -44,7 +44,7 @@ export const journeyOwnerKey = (seedPhrase: string) =>
 /** The ledger owner's outputs on `predecessor`. */
 export const journeyOwnerEntries = (input: JourneyOwnerTransactionInput) =>
   ownedLedgerEntries(
-    input.predecessor.ledger.entries,
+    input.predecessor.ledgerEntries,
     journeyOwnerKey(input.ledgerOwnerSeedPhrase).to_public().hash().to_hex(),
   );
 

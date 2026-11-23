@@ -815,7 +815,7 @@ it("does not replace a locally timed-out commit while canonical recovery still s
   // over just before each commit attempt.
   await fixture.stage({
     beforeFaultCommit: async ({ header, ledger }) => {
-      fixture.actions.push(`ready ${ledger.utxosRoot === header.utxosRoot}`);
+      fixture.actions.push(`ready ${ledger.root === header.utxosRoot}`);
       return async () => void fixture.actions.push("hand over");
     },
   });

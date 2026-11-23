@@ -15,7 +15,7 @@ import {
   buildValidationTraceDefenseMaterial,
   type ValidationTraceDefenseMaterial,
 } from "../src/validation-trace-dispute/defense-material.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   plutusExecutionBlockFixture,
   type PlutusExecutionScenario,
@@ -29,7 +29,7 @@ const defenseMaterial = async (
   const block = await plutusExecutionBlockFixture(scenario);
   return await buildValidationTraceDefenseMaterial({
     evidence: block.evidence,
-    predecessor: completeCanonicalReplayPredecessorLedger(block),
+    predecessor: completeCanonicalReplayPredecessorStoreLedger(block),
     eventKey: block.eventKey,
     stepCount,
     l1SlotConfig,

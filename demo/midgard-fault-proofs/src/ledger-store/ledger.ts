@@ -30,7 +30,7 @@ export type LedgerRead = {
   /**
    * The MPF proof CBOR against the ledger's root, as the on-chain verifier
    * reads it: membership when the out-ref is held, non-membership when it is
-   * not. Byte for byte what `keyValuePhasResolutionProofs` returns.
+   * not.
    */
   proof(): Promise<Buffer>;
 };

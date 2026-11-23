@@ -37,18 +37,18 @@ import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/material.js";
 import {
   buildDirectSourceIndex,
   buildDirectSourceIndexEvidence,
 } from "../src/direct-script-derivation/source-index.js";
-import { checkLedgerAgainstRoot, ledgerEntriesRoot } from "../src/ledger-at.js";
+import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import {
   buildCanonicalBlockFixture,
   fixtureTransactionFromCanonicalCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
 
 /**
  * The direct source map selects, for each script hash, the first source the
@@ -102,11 +102,7 @@ const directMaterial = async (
 ) => {
   const entries = state.map(([outRef, output]) => ({ outRef, output }));
   const root = await ledgerEntriesRoot(entries);
-  const predecessor = await checkLedgerAgainstRoot({
-    entries,
-    utxosRoot: root,
-    label: "direct source order rows",
-  });
+  const predecessor = await memoryLedger(entries, root);
   const tx = fixtureTransactionFromCanonicalCbor({
     txId: txId.toString("hex"),
     canonicalCbor,
@@ -133,7 +129,7 @@ const directMaterial = async (
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     }),
     eventKey,
-    predecessor: await checkedLedgerAsLedger(predecessor),
+    predecessor: predecessor,
   });
 };
 

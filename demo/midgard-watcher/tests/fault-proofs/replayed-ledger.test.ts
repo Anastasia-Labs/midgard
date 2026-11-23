@@ -7,6 +7,7 @@ import {
   type LedgerStorage,
 } from "@al-ft/midgard-fault-proofs/ledger-store";
 import { memoryVerifiedHead } from "@al-ft/midgard-fault-proofs/replayed-ledger";
+import { entriesOf } from "@al-ft/midgard-fault-proofs/test-support/fixture-ledger";
 import {
   replayedLedgerChain,
   type ReplayedLedgerChainBlock,
@@ -305,7 +306,9 @@ describe(
       // The ledger stored before the change still answers, with no payload
       // or material read.
       requests.length = 0;
-      expect(await ledgerAt(first.headerHash)).toEqual(entries);
+      expect(await entriesOf((await ledgerAt(first.headerHash))!)).toEqual(
+        await entriesOf(entries!),
+      );
       expect(requests).toEqual([]);
       expect(materialReads).toBe(1);
       // A block not stored yet reads its admission from the new generation.

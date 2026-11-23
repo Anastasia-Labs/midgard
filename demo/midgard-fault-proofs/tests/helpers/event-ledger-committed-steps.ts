@@ -8,10 +8,10 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { Data } from "@lucid-evolution/lucid";
 
-import { eventLedgerBefore } from "../../src/event-ledger.js";
+import { ledgerBeforeStep } from "../../src/event-ledger.ledger.js";
 import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
 import { classifyCanonicalBlockViolations } from "../../src/workflow/classification.classify-canonical-block-violations.js";
-import { completeCanonicalReplayPredecessorLedger } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { createCompleteCanonicalReplayUnion } from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import type { CompleteCanonicalReplay } from "../../src/workflow/complete-replay.replay-context-identity.js";
 import { CanonicalReplayPrerequisiteError } from "../../src/workflow/replay-prerequisite.js";
@@ -93,11 +93,11 @@ export const block = async (
       ),
     /** The block's walk's ledger before step `index`. */
     before: async (index: number) =>
-      await eventLedgerBefore({
+      await ledgerBeforeStep({
         block: fixture.evidence,
         eventKey: key(index),
         stepIndex: BigInt(index),
-        predecessor: completeCanonicalReplayPredecessorLedger(fixture)!,
+        predecessor: completeCanonicalReplayPredecessorStoreLedger(fixture)!,
       }),
     replay: async (members: readonly CompleteCanonicalReplay[]) => {
       const replayer =

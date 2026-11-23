@@ -1,5 +1,6 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { type CheckedLedger, requireLedgerOpening } from "../ledger-at.js";
+import { requireLedgerOpening } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 
 /**
  * The previous ledger a predecessor-relative family replays the challenged
@@ -8,7 +9,7 @@ import { type CheckedLedger, requireLedgerOpening } from "../ledger-at.js";
  *
  * The challenged header alone decides which ledger applies. A header that
  * commits a non-empty `prev_utxos_root` is refused without a ledger, and a
- * ledger checked against any other root is refused, so neither an omitted nor
+ * ledger with any other root is refused, so neither an omitted nor
  * a substituted ledger can change the verdict.
  */
 export const requireReplayPredecessorLedger = ({
@@ -17,9 +18,9 @@ export const requireReplayPredecessorLedger = ({
   label,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly predecessor: CheckedLedger | undefined;
+  readonly predecessor: Ledger | undefined;
   readonly label: string;
-}): CheckedLedger =>
+}): Ledger =>
   requireLedgerOpening({
     ledger: predecessor,
     utxosRoot: block.header.prevUtxosRoot,

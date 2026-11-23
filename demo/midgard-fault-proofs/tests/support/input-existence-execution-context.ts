@@ -4,7 +4,6 @@ import type { MidgardNativeTxFull } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 
-import { checkedLedgerAsLedger } from "../../src/checked-ledger-store.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
 import type { InputExistenceDeploymentStepArguments } from "../../src/input-existence/deployment-step.js";
 import {
@@ -16,7 +15,6 @@ import {
   prepareInputExistence,
 } from "../../src/input-existence/prepare.js";
 import type { buildInputExistenceStep } from "../../src/input-existence/submit.js";
-import { checkLedgerAgainstRoot } from "../../src/ledger-at.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
 import { inputExistenceChronologyFixture } from "../helpers/input-existence-chronology-fixture.js";
 import { chronologySeedDeposits } from "../helpers/input-existence-chronology-seed.js";
@@ -30,6 +28,7 @@ import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.pu
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSecondHeaderTx } from "./emulator/setup-tx.js";
 import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
+import { memoryLedger } from "./fixture-ledger.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
   certifyFieldCarriage,
@@ -131,11 +130,7 @@ export const inputExistenceExecutionContext = async ({
           evidence,
           eventKey: { L2TransactionEventKey: { tx_id: fixture.nativeTxId } },
           inputIndex,
-          predecessor: await checkLedgerAgainstRoot({
-            entries: [],
-            utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-            label: "retained stage predecessor",
-          }),
+          predecessor: await memoryLedger([], SDK.EMPTY_MERKLE_TREE_ROOT),
           setup: await submitSetupTx({
             lucid: h.funderLucid,
             contracts: h.contracts,
@@ -154,7 +149,7 @@ export const inputExistenceExecutionContext = async ({
     eventKey: material.eventKey,
     field,
     inputIndex: material.inputIndex,
-    predecessor: await checkedLedgerAsLedger(material.predecessor),
+    predecessor: material.predecessor,
     owner: h.proverSigner.paymentKeyHash,
   });
   const category = field === 0 ? "nonExistentInput" : "noReferenceInput";

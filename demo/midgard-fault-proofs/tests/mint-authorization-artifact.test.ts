@@ -122,7 +122,7 @@ describe("mint authorization artifact predecessor witness", () => {
       const admitted = await admitMintAuthorizationWorkflowArtifact(artifact);
       const [expected] = await prepareMintAuthorizationReplay({
         current: fixture.evidence.reconstruction,
-        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+        predecessor: completeCanonicalReplayPredecessorStoreLedger({
           evidence: fixture.evidence,
           context: fixture.context,
         }),

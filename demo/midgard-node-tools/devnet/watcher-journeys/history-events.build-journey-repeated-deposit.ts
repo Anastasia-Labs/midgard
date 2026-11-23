@@ -34,10 +34,12 @@ export const buildJourneyRepeatedDeposit = async (
     throw new Error("Duplicate-event history is newer than the predecessor");
   const base = await buildCanonicalBlockFixture({
     transactions: [],
-    utxos: journeyLedgerPairs(input.predecessor.ledger).map(([key, value]) => ({
-      key: Buffer.from(key, "hex"),
-      value: Buffer.from(value, "hex"),
-    })),
+    utxos: journeyLedgerPairs(input.predecessor.ledgerEntries).map(
+      ([key, value]) => ({
+        key: Buffer.from(key, "hex"),
+        value: Buffer.from(value, "hex"),
+      }),
+    ),
     startTime: input.predecessor.header.endTime,
     endTime: input.endTime,
     prevHeaderHash: input.predecessor.headerHash,
@@ -128,7 +130,7 @@ export const buildJourneyRepeatedDeposit = async (
         mode: "identity",
       }),
     },
-    input.predecessor.ledger.entries,
+    input.predecessor.ledgerEntries,
   );
 };
 

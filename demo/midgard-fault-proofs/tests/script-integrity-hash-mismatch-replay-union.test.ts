@@ -8,7 +8,6 @@
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { singleLedgerAt } from "../src/ledger-at.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   createCompleteCanonicalReplayUnion,
@@ -20,6 +19,7 @@ import {
   WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 import {
   buildIntegrityBlock,
   expectedHash,
@@ -58,7 +58,11 @@ const twoLanguageSpendDetections = async (integrity: IntegrityHash) => {
   });
   const decision = await SIHM.replay(evidence, {
     predecessor: await admitCompleteCanonicalReplayPredecessor({
-      ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, spend),
+      ledgerAt: singleLedgerAt(
+        evidence.header.prevHeaderHash,
+        spend,
+        evidence.header.prevUtxosRoot,
+      ),
       currentEvidence: evidence,
     }),
   });

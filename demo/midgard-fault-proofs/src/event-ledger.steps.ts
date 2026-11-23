@@ -2,9 +2,7 @@
  * The checks every event-ledger walk makes of a block's committed steps, and
  * the refusals they give: the step's trace opening and source event, its
  * phase order, the entries it spends and creates, and the selected step's
- * opening. The checked-ledger walk (`event-ledger.ts`) and the ledger store
- * walk (`event-ledger.ledger.ts`) share them, so both refuse the same inputs
- * for the same reasons.
+ * opening. The ledger store walk (`event-ledger.ledger.ts`) makes them.
  */
 import {
   decodeMidgardFieldPreimage,

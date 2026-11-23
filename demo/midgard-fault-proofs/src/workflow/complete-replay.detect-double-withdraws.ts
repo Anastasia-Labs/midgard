@@ -218,7 +218,7 @@ export const NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
     })),
     ...(await detectNonExistentInputWrongfulRejections({
       block: evidence,
-      predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+      predecessor: completeCanonicalReplayPredecessorStoreLedger({
         evidence,
         context,
       }),
@@ -255,7 +255,7 @@ export const NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
     })),
     ...(await detectNoReferenceInputWrongfulRejections({
       block: evidence,
-      predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+      predecessor: completeCanonicalReplayPredecessorStoreLedger({
         evidence,
         context,
       }),

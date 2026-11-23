@@ -11,14 +11,14 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { type CheckedLedger } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   requireProof,
   transactionSourceTrieItem,
 } from "../prepare-double-spend.resolve-double-spend-pair.js";
-import { deriveResolvedOutputPriorLedgerReplay } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
+import { readResolvedOutputPriorLedger } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
@@ -171,9 +171,9 @@ export const spendInputSignerStageFromL1 = (
 export const prepareSpendInputSignerMissingRecoveryMaterial = async (
   canonical: CanonicalBlockEvidence,
   detectionId: string,
-  predecessor: CheckedLedger | undefined,
+  predecessor: Ledger | undefined,
 ) => {
-  const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
+  const priorLedger = await readResolvedOutputPriorLedger({
     block: canonical,
     predecessor,
   });

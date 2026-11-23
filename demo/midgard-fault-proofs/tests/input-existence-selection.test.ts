@@ -16,7 +16,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { faultProofFieldOpening } from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import { inputExistenceArtifact } from "../src/input-existence/artifact.js";
@@ -32,13 +31,13 @@ import {
 } from "../src/input-existence/reopen-forced.js";
 import { deriveInputExistenceSelection } from "../src/input-existence/selection.js";
 import { openProofThreadSubjectFromCanonicalEvidence } from "../src/input-existence/source.js";
-import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import { inputExistenceFieldCarriageRequirements } from "../src/workflow/input-existence-field-carriage.js";
 import { LEDGER_ABSENCE_ARTIFACT } from "../src/workflow/ledger-absence-artifact.js";
 import { NO_REFERENCE_INPUT_FAMILY_DEFINITION } from "../src/workflow/no-reference-input.no-reference-input-family-definition.js";
 import { NON_EXISTENT_INPUT_FAMILY_DEFINITION } from "../src/workflow/non-existent-input.non-existent-input-family-definition.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 
 const OWNER = "91".repeat(28);
@@ -247,13 +246,7 @@ describe("input-existence workflow field prerequisites", () => {
       field: 0,
       inputIndex: 0n,
       owner: OWNER,
-      predecessor: await checkedLedgerAsLedger(
-        await checkLedgerAgainstRoot({
-          entries: [],
-          utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          label: "field-plan source predecessor",
-        }),
-      ),
+      predecessor: await memoryLedger([], SDK.EMPTY_MERKLE_TREE_ROOT),
     });
     const artifact = {
       schemaVersion: LEDGER_ABSENCE_ARTIFACT,
@@ -396,13 +389,7 @@ describe("retained forced evidence on the current shared path", () => {
         ...sourceContext,
         field,
         owner: OWNER,
-        predecessor: await checkedLedgerAsLedger(
-          await checkLedgerAgainstRoot({
-            entries: [],
-            utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-            label: "retained forced predecessor",
-          }),
-        ),
+        predecessor: await memoryLedger([], SDK.EMPTY_MERKLE_TREE_ROOT),
       });
       if (prepared.source.kind !== "forced")
         throw new Error("fixture source is not forced");

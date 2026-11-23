@@ -154,7 +154,7 @@ export const prepareMintAuthorizationWorkflowArtifact = async ({
   >;
   replayContext?: CompleteCanonicalReplayContext;
 }) => {
-  const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
+  const predecessor = completeCanonicalReplayPredecessorStoreLedger({
     evidence,
     context: replayContext,
   });

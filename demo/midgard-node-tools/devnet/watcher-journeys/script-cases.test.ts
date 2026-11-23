@@ -158,7 +158,7 @@ const loadRetainedDeposit = async () => {
           runDirectory!,
           staged.predecessor,
         )
-      ).ledger,
+      ).ledgerEntries,
     ),
     events: [
       {

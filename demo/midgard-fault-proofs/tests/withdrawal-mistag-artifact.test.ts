@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { ledgerJson } from "../src/ledger-at.js";
 import {
   admitWithdrawalMistagWorkflowArtifact,
   prepareWithdrawalMistagWorkflowArtifact,
@@ -8,10 +7,7 @@ import {
 import { prepareWithdrawalMistagReplay } from "../src/withdrawal-mistag/replay.js";
 import { withdrawalMistagStepPayloadCbor } from "../src/withdrawal-mistag/submit-withdrawal-mistag-steps.step-args.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
-import {
-  completeCanonicalReplayPredecessorLedger,
-  completeCanonicalReplayPredecessorStoreLedger,
-} from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import type { WorkflowJsonObject } from "../src/workflow/identity.js";
 import { testLedgerEntries } from "./support/ledger-store-conformance.js";
@@ -64,7 +60,7 @@ const artifactOf = async (fixture: Fixture) => {
 const preparedOverFullLedger = async (fixture: Fixture) =>
   await prepareWithdrawalMistagReplay({
     current: fixture.evidence.reconstruction,
-    predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+    predecessor: completeCanonicalReplayPredecessorStoreLedger({
       evidence: fixture.evidence,
       context: fixture.context,
     }),
@@ -161,12 +157,14 @@ describe("withdrawalMistag artifact predecessor witness", () => {
     const previous = {
       ...artifact,
       schemaVersion: "midgard-withdrawal-mistag-workflow-artifact-v2",
-      predecessorLedger: ledgerJson(
-        completeCanonicalReplayPredecessorLedger({
-          evidence: fixture.evidence,
-          context: fixture.context,
-        })!,
-      ),
+      // The previous shape: the predecessor's entries as out-ref and output
+      // CBOR hex pairs.
+      predecessorLedger: [
+        [
+          "825820" + "55".repeat(32) + "00",
+          "a200581d70" + "aa".repeat(28) + "018200a0",
+        ],
+      ],
     } as unknown as WorkflowJsonObject;
     await expect(
       admitWithdrawalMistagWorkflowArtifact(previous),

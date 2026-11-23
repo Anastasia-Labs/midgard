@@ -18,7 +18,7 @@ import {
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import {
-  checkedLedgerAfter,
+  ledgerAfter,
   payloadLedgerAt,
 } from "@al-ft/midgard-fault-proofs/test-support/predecessor-ledger";
 import {
@@ -106,7 +106,7 @@ it
             runDirectory!,
             staged.predecessor,
           )
-        ).ledger,
+        ).ledgerEntries,
       ),
       events: [
         {
@@ -163,7 +163,7 @@ it
         expected: honest ? "healthy" : "fault",
       });
       if (!honest) {
-        const prevLedger = await checkedLedgerAfter(
+        const prevLedger = await ledgerAfter(
           await canonicalBlockEvidenceFromVerifiedPayload({
             observation: authenticatedHeaderObservation(predecessor),
             payloadEnvelopeCbor: predecessor.payloadEnvelopeCbor,

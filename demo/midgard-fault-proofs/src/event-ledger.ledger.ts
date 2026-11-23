@@ -4,18 +4,17 @@
  * step one `apply`, and every intermediate root checked. Step ledgers are
  * in-memory overlays over the predecessor, never persisted.
  *
- * It refuses what the checked-ledger walk (`event-ledger.ts`) refuses, for
- * the same reasons: both make the checks of `event-ledger.steps.ts`. A
- * predecessor that stops being readable while a walk reads it (its root
- * dropped by `retain`, a node or an output gone) says nothing of the block:
- * it is this process's own fault, a `ReplayLocalFault` (not held), and the
- * next reader walks afresh.
+ * It makes the checks of `event-ledger.steps.ts` and refuses for their
+ * reasons. A predecessor that stops being readable while a walk reads it
+ * (its root dropped by `retain`, a node or an output gone) says nothing of
+ * the block: it is this process's own fault, a `ReplayLocalFault` (not
+ * held), and the next reader walks afresh.
  *
- * Every reader of a block from one predecessor ledger shares one walk, as
- * the checked-ledger walk's readers do: a family that asks for the ledger
- * before each of a block's events (withdrawal-mistag asks once per
- * withdrawal, up to the profile's 10,000) would otherwise apply the steps
- * before each one again, quadratic in the block's steps.
+ * Every reader of a block from one predecessor ledger shares one walk: a
+ * family that asks for the ledger before each of a block's events
+ * (withdrawal-mistag asks once per withdrawal, up to the profile's 10,000)
+ * would otherwise apply the steps before each one again, quadratic in the
+ * block's steps.
  */
 import type * as SDK from "@al-ft/midgard-sdk/core";
 
@@ -36,11 +35,9 @@ import {
   walkableReconstruction,
 } from "./event-ledger.steps.js";
 import type { CanonicalBlockEvidence } from "./evidence/canonical-block-evidence.js";
-import { LedgerRootMismatchError, requireLedgerOpening } from "./ledger-at.js";
+import { requireLedgerOpening } from "./ledger-at.js";
 import {
-  EMPTY_LEDGER_ROOT,
   type Ledger,
-  ledgerAt,
   LedgerNodeMissing,
   LedgerOutputMissing,
 } from "./ledger-store/index.js";
@@ -72,13 +69,6 @@ export const readingLedger = async <T>(
   }
 };
 
-/** The genesis ledger: empty, with nothing to read. */
-const emptyLedger = (): Ledger =>
-  ledgerAt(EMPTY_LEDGER_ROOT, {
-    node: async () => undefined,
-    outputs: async (outRefs) => outRefs.map(() => undefined),
-  });
-
 type LedgerWalk = Readonly<{
   /** The ledger before the withdrawal or transaction event `eventKey`, the
    * block's step `stepIndex`. */
@@ -95,8 +85,7 @@ type LedgerPass = {
 };
 
 /**
- * One block's committed steps, applied in order and each at most once, as
- * the checked-ledger walk applies them (`walkSteps` in `event-ledger.ts`): a
+ * One block's committed steps, applied in order and each at most once: a
  * step whose phase follows the requested event's refuses that request only,
  * and a step that fails stops the walk there. A refusal or an output no
  * ledger can hold is the block's, and every request past that step meets it;
@@ -223,27 +212,14 @@ const sharedWalk = (
   const key = predecessor ?? GENESIS;
   const known = walks.get(key);
   if (known !== undefined) return known;
-  const label = "event ledger predecessor";
-  const { prevUtxosRoot } = reconstruction.header;
   const walk = walkLedgers({
     reconstruction,
-    open: () => {
-      if (predecessor === undefined) {
-        requireLedgerOpening({
-          ledger: undefined,
-          utxosRoot: prevUtxosRoot,
-          label,
-        });
-        return emptyLedger();
-      }
-      if (predecessor.root !== prevUtxosRoot)
-        throw new LedgerRootMismatchError(
-          label,
-          prevUtxosRoot,
-          predecessor.root,
-        );
-      return predecessor;
-    },
+    open: () =>
+      requireLedgerOpening({
+        ledger: predecessor,
+        utxosRoot: reconstruction.header.prevUtxosRoot,
+        label: "event ledger predecessor",
+      }),
     evict: () => {
       if (walks.get(key) === walk) walks.delete(key);
     },

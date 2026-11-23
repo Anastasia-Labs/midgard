@@ -45,6 +45,7 @@ import { authenticatedHeaderObservation } from "../helpers/canonical-block-evide
 import { emulatorManifestProtocolParameters } from "./emulator-protocol-parameters.js";
 import { emulatorPublicationObserver } from "./install-field-carriage.js";
 import { oneMovePerRun } from "./one-move-per-run.js";
+import { singleLedgerAt } from "./predecessor-ledger.js";
 import { FixtureRetainedDaSource } from "./script-decode-installed-host.js";
 import { validationDisputeWalletMoveReserve } from "./validation-dispute-wallet-move-reserve.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
@@ -108,10 +109,11 @@ export const classifyFailingHeader = async (scene: Scene) => {
         minimumConfirmationDepth: releaseFinality.policy.confirmationDepth,
       }),
     sources,
-    predecessorLedgerAt: async (hash) =>
-      hash === block.evidence.header.prevHeaderHash
-        ? block.predecessorEntries
-        : undefined,
+    predecessorLedgerAt: singleLedgerAt(
+      block.evidence.header.prevHeaderHash,
+      block.predecessorEntries,
+      block.evidence.header.prevUtxosRoot,
+    ),
   });
   // The install stand-in admits this category, which the type excludes.
   if (

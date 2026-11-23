@@ -15,12 +15,11 @@ import {
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
-import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import { keyValuePhasNonMembershipProof } from "../src/transition-trace/phas.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
+import { referenceLedgerOf } from "./helpers/event-ledger-reference.js";
 import {
   inputChronologies,
   type InputChronology,
@@ -38,6 +37,7 @@ import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import { submitSecondHeaderTx } from "./support/emulator/setup-tx.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { submitRawInputExistenceStep } from "./support/raw-input-existence-step.js";
 import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
@@ -204,11 +204,10 @@ describe("registered event-relative input-existence lifecycle", () => {
                     },
                   }),
                   eventKey,
-                  predecessor: await checkLedgerAgainstRoot({
-                    entries: [],
-                    utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-                    label: "registered prior-block ledger",
-                  }),
+                  predecessor: await memoryLedger(
+                    [],
+                    SDK.EMPTY_MERKLE_TREE_ROOT,
+                  ),
                 };
               })()
             : {
@@ -217,9 +216,7 @@ describe("registered event-relative input-existence lifecycle", () => {
                 predecessor: history.predecessor,
               };
         if (history !== undefined && priorDeposit !== undefined) {
-          expect(history.predecessor.utxosRoot).toBe(
-            priorDeposit.header.utxosRoot,
-          );
+          expect(history.predecessor.root).toBe(priorDeposit.header.utxosRoot);
           const committedPredecessor = await submitSetupTx({
             lucid: h.funderLucid,
             contracts: h.contracts,
@@ -273,7 +270,7 @@ describe("registered event-relative input-existence lifecycle", () => {
           eventKey: selected.eventKey,
           field,
           inputIndex: rejected ? undefined : 0n,
-          predecessor: await checkedLedgerAsLedger(selected.predecessor),
+          predecessor: selected.predecessor,
           owner: h.proverSigner.paymentKeyHash,
         });
         expect(prepared.source.subject.direction).toBe(rejected ? 1n : 0n);
@@ -295,13 +292,13 @@ describe("registered event-relative input-existence lifecycle", () => {
           // The block-initial ledger lacks the created input, so a genuine
           // non-membership proof exists against it, but not against the
           // target event's pre-root.
-          expect(history.predecessor.utxosRoot).toBe(
+          expect(history.predecessor.root).toBe(
             selected.evidence.header.prevUtxosRoot,
           );
-          expect(history.targetPreRoot).not.toBe(history.predecessor.utxosRoot);
+          expect(history.targetPreRoot).not.toBe(history.predecessor.root);
           expect(
-            history.predecessor.trie.entries.some(({ key }) =>
-              key.equals(history.selected),
+            (await referenceLedgerOf(history.predecessor)).trie.entries.some(
+              ({ key }) => key.equals(history.selected),
             ),
           ).toBe(false);
           return {
@@ -309,7 +306,7 @@ describe("registered event-relative input-existence lifecycle", () => {
             ledgerEvidence: {
               Absent: {
                 proof: await keyValuePhasNonMembershipProof(
-                  history.predecessor.trie,
+                  (await referenceLedgerOf(history.predecessor)).trie,
                   history.selected,
                 ),
               },

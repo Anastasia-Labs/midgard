@@ -11,7 +11,6 @@ import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/material.js";
 import {
   directPurposeAt,
@@ -24,13 +23,14 @@ import {
   directResolvedSources,
   directWitnessSource,
 } from "../src/direct-script-derivation/sources.js";
-import { checkLedgerAgainstRoot, ledgerEntriesRoot } from "../src/ledger-at.js";
+import { ledgerEntriesRoot } from "../src/ledger-at.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
 import { nativeDecodingFixture } from "./support/native-script-decoding-retained.js";
 
 const a = "22".repeat(28);
@@ -174,12 +174,10 @@ describe("direct script preparation", () => {
       const prepared = await prepareDirectScriptMaterial({
         current,
         eventKey: { ForcedTransactionEventKey: { tx_order_id: eventKey.key } },
-        predecessor: await checkedLedgerAsLedger(
-          completeCanonicalReplayPredecessorLedger({
-            evidence: fixture.evidence,
-            context: fixture.context,
-          })!,
-        ),
+        predecessor: completeCanonicalReplayPredecessorStoreLedger({
+          evidence: fixture.evidence,
+          context: fixture.context,
+        })!,
       });
       expect(prepared.bound.subject.direction).toBe(BigInt(direction));
       expect(prepared.bound.subject.source_kind).toBe(1n);
@@ -223,11 +221,7 @@ describe("direct script preparation", () => {
         output: output(hashes[index]!),
       }));
       const root = await ledgerEntriesRoot(entries);
-      const predecessor = await checkLedgerAgainstRoot({
-        entries,
-        utxosRoot: root,
-        label: "three spend T203 control",
-      });
+      const predecessor = await memoryLedger(entries, root);
       const raw = order === "ascending" ? keys : [keys[2]!, keys[0]!, keys[1]!];
       const tx = buildFixtureTransaction({ spendInputs: raw, fee: 0n });
       const eventKey: SDK.EventKey = {
@@ -253,7 +247,7 @@ describe("direct script preparation", () => {
       const prepared = await prepareDirectScriptMaterial({
         current,
         eventKey,
-        predecessor: await checkedLedgerAsLedger(predecessor),
+        predecessor: predecessor,
       });
       expect(
         [0n, 1n, 2n].map((index) =>
@@ -343,11 +337,7 @@ describe("direct script preparation", () => {
       }),
     }));
     const root = await ledgerEntriesRoot(entries);
-    const predecessor = await checkLedgerAgainstRoot({
-      entries,
-      utxosRoot: root,
-      label: "direct source T224 exact set",
-    });
+    const predecessor = await memoryLedger(entries, root);
     const item = encodeMidgardVersionedScript(script);
     const tx = buildFixtureTransaction({
       spendInputs: [high],
@@ -377,7 +367,7 @@ describe("direct script preparation", () => {
         payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
       }),
       eventKey,
-      predecessor: await checkedLedgerAsLedger(predecessor),
+      predecessor: predecessor,
     });
     const indexed = await buildDirectSourceIndexEvidence(material);
     const hash = directWitnessSource(item, 0).descriptor.script_hash;

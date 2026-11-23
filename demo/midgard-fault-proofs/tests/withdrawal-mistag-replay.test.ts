@@ -2,9 +2,8 @@ import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import { isReplayLocalFault } from "../src/block-replay.faults.js";
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
-import type { CheckedLedger } from "../src/ledger-at.js";
+import type { Ledger } from "../src/ledger-store/index.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -22,7 +21,6 @@ import {
 import { WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
 import {
-  checkedLedgerAfter,
   ledgerAfter,
   ledgerEntriesAfter,
 } from "./support/predecessor-ledger.js";
@@ -72,7 +70,7 @@ describe("withdrawal mistag retained replay", () => {
  */
 const expectedLedgerEvidence = async (
   block: CanonicalBlockEvidence,
-  predecessor: CheckedLedger,
+  predecessor: Ledger,
   index: number,
 ) => {
   const { key: withdrawalId, value } = block.reconstruction.withdrawals[index]!;
@@ -116,10 +114,10 @@ describe("withdrawal mistag ledger evidence", () => {
     "proves the %s withdrawal's present output against the ledger before its step",
     async (direction) => {
       const fixture = await withdrawalMistagRetainedFixture({ direction });
-      const predecessor = await checkedLedgerAfter(fixture.predecessor);
+      const predecessor = await ledgerAfter(fixture.predecessor);
       const findings = await detectWithdrawalMistagReplay({
         block: fixture.evidence,
-        predecessor: await checkedLedgerAsLedger(predecessor),
+        predecessor: predecessor,
       });
       expect(findings).toHaveLength(1);
       const expected = await expectedLedgerEvidence(
@@ -145,10 +143,10 @@ describe("withdrawal mistag ledger evidence", () => {
       event: material.event,
       trace: material.trace,
     });
-    const predecessor = await checkedLedgerAfter(fixture.predecessor);
+    const predecessor = await ledgerAfter(fixture.predecessor);
     const findings = await detectWithdrawalMistagReplay({
       block: fixture.evidence,
-      predecessor: await checkedLedgerAsLedger(predecessor),
+      predecessor: predecessor,
     });
     expect(findings.map(({ index }) => index)).toEqual([1]);
     const expected = await expectedLedgerEvidence(

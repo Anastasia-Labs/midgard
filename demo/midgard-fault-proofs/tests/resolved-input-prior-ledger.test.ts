@@ -12,7 +12,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { isReplayLocalFault } from "../src/block-replay.faults.js";
-import type { CheckedLedger } from "../src/ledger-at.js";
+import type { Ledger } from "../src/ledger-store/index.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -20,7 +20,6 @@ import {
 } from "../src/ledger-store/index.js";
 import { prepareResolvedOutputNonCanonicalRecoveryMaterial } from "../src/resolved-output-non-canonical/authenticated-workflow.create-resolved-output-non-canonical-recovery-ports.js";
 import {
-  deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
   readResolvedOutputPriorLedger,
   resolvedOutputEvidenceIdentity,
@@ -28,8 +27,7 @@ import {
 } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
 import { prepareSpendInputSignerMissingRecoveryMaterial } from "../src/spend-input-signer-missing/authenticated-workflow.derive-spend-input-signer-missing-authenticated-source.js";
 import { detectSpendInputSignerMissingCompleteReplay } from "../src/spend-input-signer-missing/spend-input-signer-missing.js";
-import { keyValuePhasResolutionProofs } from "../src/transition-trace/phas.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import type { CompleteCanonicalReplay } from "../src/workflow/complete-replay.replay-context-identity.js";
 import {
   RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
@@ -43,23 +41,29 @@ import {
   SPENT,
 } from "./helpers/event-ledger-committed-steps.js";
 import { forcedRejection } from "./helpers/event-ledger-forced-step.js";
+import {
+  referenceLedgerOf,
+  referenceProofs,
+} from "./helpers/event-ledger-reference.js";
 
 type Fixture = Readonly<{
   evidence: Awaited<ReturnType<typeof block>>["evidence"];
   context: Awaited<ReturnType<typeof block>>["context"];
 }>;
 
-/** Every entry of `checked`, each with its proof from `checked`'s own trie. */
+/** Every entry of `ledger`, each with its proof from a trie the MPF library
+ * builds from the ledger's entries. */
 const wholeLedgerView = async (
-  checked: CheckedLedger,
+  ledger: Ledger,
 ): Promise<ResolvedOutputPriorLedgerReplay> => {
-  const entries = checked.trie.entries;
-  const proofs = await keyValuePhasResolutionProofs(
-    checked.trie,
+  const reference = await referenceLedgerOf(ledger);
+  const entries = reference.trie.entries;
+  const proofs = await referenceProofs(
+    reference,
     entries.map(({ key }) => key),
   );
   return {
-    priorRoot: checked.utxosRoot,
+    priorRoot: reference.utxosRoot,
     outputs: new Map(
       entries.map(({ key, value }, index) => {
         const { txId, outputIndex } = decodeMidgardSpendInputItem(key);
@@ -71,7 +75,7 @@ const wholeLedgerView = async (
             transactionId,
             outputIndex,
             descriptorCborHex: value.toString("hex"),
-            outputCborHex: checked.outputs
+            outputCborHex: reference.outputs
               .get(key.toString("hex"))!
               .toString("hex"),
             membershipProofCborHex,
@@ -109,18 +113,18 @@ const sameAsWholeLedger = async (
   fixture: Fixture,
   withMaterial = true,
 ) => {
-  const checked = completeCanonicalReplayPredecessorLedger(fixture)!;
+  const predecessor = completeCanonicalReplayPredecessorStoreLedger(fixture)!;
   const detect = family.detect as (input: {
     block: Fixture["evidence"];
     priorLedger: ResolvedOutputPriorLedgerReplay;
   }) => readonly unknown[];
   const expected = detect({
     block: fixture.evidence,
-    priorLedger: await wholeLedgerView(checked),
+    priorLedger: await wholeLedgerView(predecessor),
   });
-  const view = await deriveResolvedOutputPriorLedgerReplay({
+  const view = await readResolvedOutputPriorLedger({
     block: fixture.evidence,
-    predecessor: checked,
+    predecessor,
   });
   expect(detect({ block: fixture.evidence, priorLedger: view })).toStrictEqual(
     expected,
@@ -137,7 +141,7 @@ const sameAsWholeLedger = async (
     const material = await family.material(
       fixture.evidence,
       detections[0]!.detectionId,
-      checked,
+      predecessor,
     );
     expect(material.evidence).toStrictEqual(expected[0]);
   }
@@ -249,12 +253,9 @@ describe("the prior view of a predecessor ledger the store no longer holds", () 
     const fixture = await block([
       { input: spending(SPENT.outRef, 1_999_993n), applied: true },
     ]);
-    const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+    const predecessor = completeCanonicalReplayPredecessorStoreLedger(fixture)!;
     const store = createLedgerStore(createMemoryLedgerStorage());
-    const ledger = await store.admit(
-      predecessor.entries,
-      predecessor.utxosRoot,
-    );
+    const ledger = await store.admit(predecessor.entries(), predecessor.root);
     await store.retain(new Set());
     const error: unknown = await readResolvedOutputPriorLedger({
       block: fixture.evidence,

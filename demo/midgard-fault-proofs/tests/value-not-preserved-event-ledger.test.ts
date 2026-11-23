@@ -29,7 +29,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { isReplayLocalFault } from "../src/block-replay.faults.js";
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { ledgerEntriesRoot, type LedgerEntry } from "../src/ledger-at.js";
 import {
   createLedgerStore,
@@ -42,7 +41,7 @@ import {
   prepareValueConservationArtifact,
   valueConservationInputs,
 } from "../src/value-not-preserved/replay.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import {
   NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
@@ -259,17 +258,17 @@ describe("value-not-preserved's spent inputs", () => {
         applied: true,
       },
     ]);
-    const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+    const predecessor = completeCanonicalReplayPredecessorStoreLedger(fixture)!;
     const before = await referenceLedgerBefore({
       block: fixture.evidence,
       predecessor,
       eventKey: fixture.key(1),
       stepIndex: 1n,
     });
-    expect(before.utxosRoot).not.toBe(predecessor.utxosRoot);
+    expect(before.utxosRoot).not.toBe(predecessor.root);
     const artifact = await prepareValueConservationArtifact({
       block: fixture.evidence,
-      predecessor: await checkedLedgerAsLedger(predecessor),
+      predecessor,
       sourceIndex: Number(fixture.position(1)),
       forced: false,
     });
@@ -317,12 +316,10 @@ describe("value-not-preserved's spent inputs", () => {
       // The transaction is step 0, so it reads the predecessor itself, which
       // `retain` of nothing deletes.
       const fixture = await block([inflation]);
-      const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+      const predecessor =
+        completeCanonicalReplayPredecessorStoreLedger(fixture)!;
       const store = createLedgerStore(createMemoryLedgerStorage());
-      const ledger = await store.admit(
-        predecessor.entries,
-        predecessor.utxosRoot,
-      );
+      const ledger = await store.admit(predecessor.entries(), predecessor.root);
       await store.retain(new Set());
       const error: unknown = await run(ledger, fixture).catch(
         (cause: unknown) => cause,

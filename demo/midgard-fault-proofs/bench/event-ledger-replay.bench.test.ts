@@ -23,21 +23,13 @@
  * gate: `tests/predecessor-ledger-replay-cost.test.ts` gates the same replays
  * on the trie work they do.
  */
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  credentialToAddress,
-  type LucidEvolution,
-} from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { eventLedgerBefore } from "../src/event-ledger.js";
-import { checkedLedgerPreState } from "../src/ledger-at.js";
+import { ledgerBeforeStep } from "../src/event-ledger.ledger.js";
 import { detectLedgerRelativeMissingInputs } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import * as completeReplay from "../src/workflow/complete-replay.js";
-import { createFabricatedDepositEvidenceAuthority } from "../src/workflow/fabricated-deposit-evidence.js";
-import { createFabricatedWithdrawalEvidenceAuthority } from "../src/workflow/fabricated-withdrawal-evidence.js";
-import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "../src/workflow/installed-categories.js";
 import { eventLedgerBlock } from "./event-ledger-block.js";
+import { installedFamiliesWithoutTransitionTrace } from "./installed-families.js";
 
 const sizeFromEnv = (name: string, fallback: number): number => {
   const raw = process.env[name];
@@ -75,75 +67,6 @@ const timed = async <T>(run: () => Promise<T>) => {
   return { result, ms: Math.round(performance.now() - started) };
 };
 
-// The block holds only normal transactions: no fabricated-event authority is
-// asked for chain history.
-const unusedEventProvider = new Proxy(
-  {},
-  {
-    get: () => () => {
-      throw new Error("the benchmark block has no deposits or withdrawals");
-    },
-  },
-) as LucidEvolution;
-
-const retention = {
-  inlineLimitBytes: 512n,
-  maxPayloadBytes: 5000n,
-  maxPayloadNodes: 512n,
-  retentionAddress: credentialToAddress("Preprod", {
-    type: "Script",
-    hash: "ee".repeat(28),
-  }),
-};
-
-const authority = {
-  lucid: unusedEventProvider,
-  network: "Preprod" as const,
-  hubOraclePolicyId: "c1".repeat(28),
-  minimumConfirmationDepth: 1,
-  history: retention,
-};
-
-/** Every installed family's replay in catalogue order, as the catalogue
- * replay builds it, without the transition-trace family. */
-const installedFamiliesWithoutTransitionTrace = () => {
-  const owner = "b1".repeat(28);
-  const replays = [
-    ...Object.values(completeReplay),
-    completeReplay.createValidationTraceDisputeCompleteCanonicalReplay(
-      NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-    ),
-    completeReplay.createFabricatedDepositCompleteCanonicalReplay({
-      authority: createFabricatedDepositEvidenceAuthority(authority),
-      owner,
-    }),
-    completeReplay.createFabricatedWithdrawalCompleteCanonicalReplay({
-      authority: createFabricatedWithdrawalEvidenceAuthority(authority),
-      owner,
-    }),
-  ];
-  const byCategory = new Map<string, completeReplay.CompleteCanonicalReplay>();
-  for (const value of replays)
-    if (
-      typeof value === "object" &&
-      value !== null &&
-      "replayVersion" in value &&
-      value.replayVersion === completeReplay.COMPLETE_CANONICAL_REPLAY &&
-      (value as completeReplay.CompleteCanonicalReplay).launchScope.length === 1
-    ) {
-      const replay = value as completeReplay.CompleteCanonicalReplay;
-      byCategory.set(replay.launchScope[0]!, replay);
-    }
-  return INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.filter(
-    (category) => category !== "transitionTrace",
-  ).map((category) => {
-    const member = byCategory.get(category);
-    if (member === undefined)
-      throw new Error(`no complete replay installs ${category}`);
-    return { category, member };
-  });
-};
-
 describe(`event-ledger replay over ${EVENTS} events and ${ENTRIES} entries`, () => {
   let block: Awaited<ReturnType<typeof eventLedgerBlock>>;
 
@@ -174,18 +97,18 @@ describe(`event-ledger replay over ${EVENTS} events and ${ENTRIES} entries`, () 
       const step = Math.ceil((EVENTS * sample) / PROVED_EVENTS) - 1;
       const input = block.predecessorEntries[step]!.outRef;
       const ledger = await timed(() =>
-        eventLedgerBefore({
+        ledgerBeforeStep({
           block: block.evidence,
           eventKey: { L2TransactionEventKey: { tx_id: block.txs[step]!.txId } },
           stepIndex: BigInt(step),
           predecessor:
-            completeReplay.completeCanonicalReplayPredecessorLedger(block),
+            completeReplay.completeCanonicalReplayPredecessorStoreLedger(block),
         }),
       );
-      const proof = await timed(() =>
-        checkedLedgerPreState(ledger.result).proveResolution([input]),
+      const proof = await timed(async () =>
+        (await ledger.result.read([input])).get(input.toString("hex"))!.proof(),
       );
-      expect(proof.result).toHaveLength(1);
+      expect(proof.result.length).toBeGreaterThan(0);
       ledgerMs += ledger.ms;
       proveMs += proof.ms;
     }

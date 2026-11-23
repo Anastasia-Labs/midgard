@@ -1,6 +1,6 @@
 /**
  * What an event-ledger refusal means to a trace-relative family that reads a
- * block's ledgers through the shared walk (`eventLedgerBeforeStep`), and
+ * block's ledgers through the shared walk (`ledgerBeforeTraceStep`), and
  * which family's finding discharges it:
  *
  * - a rejected normal step changes nothing, and is itself convicted by
@@ -26,9 +26,9 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  eventLedgerBefore,
-  eventLedgerBeforeStep,
-} from "../src/event-ledger.js";
+  ledgerBeforeStep,
+  ledgerBeforeTraceStep,
+} from "../src/event-ledger.ledger.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { type LedgerEntry } from "../src/ledger-at.js";
 import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
@@ -128,9 +128,11 @@ describe("a rejected normal step in the event ledger", () => {
   it("gives a rejected step the ledger before it, which its no-op leaves to the next step", async () => {
     const fixture = await block([rejected(false), nativeFault()]);
     const own = await fixture.before(0);
-    expect(own.utxosRoot).toBe(fixture.evidence.header.prevUtxosRoot);
-    expect(own.outputs.has(hex(OTHER.outRef))).toBe(true);
-    expect((await fixture.before(1)).utxosRoot).toBe(own.utxosRoot);
+    expect(own.root).toBe(fixture.evidence.header.prevUtxosRoot);
+    expect(
+      (await own.read([OTHER.outRef])).get(hex(OTHER.outRef))!.output,
+    ).toBeDefined();
+    expect((await fixture.before(1)).root).toBe(own.root);
   });
 
   it("refuses a rejected step whose committed root changed, and l2TxMistag's finding at it discharges the refusal", async () => {
@@ -275,7 +277,7 @@ describe("an absent input in the event ledger", () => {
       withdrawal,
     );
     const [failure] = await prerequisites(() =>
-      eventLedgerBeforeStep(
+      ledgerBeforeTraceStep(
         fixture.evidence.reconstruction,
         fixture.targetStep,
         fixture.predecessor,
@@ -330,14 +332,14 @@ describe("a step out of phase order in the event ledger", () => {
       "ForcedTransaction",
     ]);
     await expect(
-      eventLedgerBefore({
+      ledgerBeforeStep({
         block: evidence,
         eventKey: forced!.event_key,
         stepIndex: 1n,
       }),
     ).rejects.toMatchObject({ reason: "phase_order_changed", step: 0n });
     const [failure] = await prerequisites(() =>
-      eventLedgerBeforeStep(evidence.reconstruction, 1n),
+      ledgerBeforeTraceStep(evidence.reconstruction, 1n),
     );
     expect(failure).toEqual({
       eventKey: l2!.event_key,
@@ -405,7 +407,7 @@ describe("a deposit stepped before an earlier phase's event", () => {
     );
     const [deposit] = events.map(([eventKey]) => eventKey);
     expect(
-      await prerequisites(() => eventLedgerBeforeStep(reconstruction, 1n)),
+      await prerequisites(() => ledgerBeforeTraceStep(reconstruction, 1n)),
     ).toEqual([{ eventKey: deposit, prerequisite: "prior_transition_effect" }]);
     // Each step lies in the other's band. Such a block never reaches the
     // replay union: the header classifier seals the band fault first.

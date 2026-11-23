@@ -4,7 +4,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { isReplayLocalFault } from "../src/block-replay.faults.js";
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import {
   type CanonicalBlockEvidence,
   canonicalBlockEvidenceFromVerifiedPayload,
@@ -14,7 +13,6 @@ import {
   inputExistenceArtifact,
 } from "../src/input-existence/artifact.js";
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
-import type { CheckedLedger } from "../src/ledger-at.js";
 import {
   createLedgerStore,
   createMemoryLedgerStorage,
@@ -259,7 +257,7 @@ describe("input-existence event chronology", () => {
           eventKey: f.targetEvent,
           field,
           inputIndex: 0n,
-          predecessor: await checkedLedgerAsLedger(f.predecessor),
+          predecessor: f.predecessor,
           owner: OWNER,
         });
         expect(prepared.eventMembership.value.step_index).toBe(f.targetStep);
@@ -310,7 +308,7 @@ describe("input-existence event chronology", () => {
  */
 const referenceEvidence = async (
   block: CanonicalBlockEvidence,
-  predecessor: CheckedLedger,
+  predecessor: Ledger,
   eventKey: SDK.EventKey,
   stepIndex: bigint,
   key: Buffer,
@@ -354,7 +352,7 @@ describe("input-existence ledger evidence", () => {
         eventKey: f.targetEvent,
         field,
         inputIndex: 0n,
-        predecessor: await checkedLedgerAsLedger(f.predecessor),
+        predecessor: f.predecessor,
         owner: OWNER,
       });
       const { value, proof } = await referenceEvidence(
@@ -396,7 +394,7 @@ describe("input-existence ledger evidence", () => {
       expect(f.targetPreRoot).not.toBe(f.evidence.header.prevUtxosRoot);
       const detections = await detect({
         block: f.evidence,
-        predecessor: await checkedLedgerAsLedger(f.predecessor),
+        predecessor: f.predecessor,
       });
       expect(detections).toHaveLength(1);
       const { value, proof } = await referenceEvidence(
@@ -448,7 +446,7 @@ describe("input-existence ledger evidence", () => {
       const store = createLedgerStore(createMemoryLedgerStorage());
       const predecessor = await store.admit(
         f.predecessorEntries,
-        f.predecessor.utxosRoot,
+        f.predecessor.root,
       );
       await store.retain(new Set());
       const error: unknown = await prepare(f, predecessor).catch(

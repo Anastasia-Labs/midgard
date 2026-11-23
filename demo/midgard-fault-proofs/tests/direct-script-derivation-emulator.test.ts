@@ -15,7 +15,6 @@ import {
 import { Effect } from "effect";
 import { expect, it } from "vitest";
 
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import {
   directBindEventRedeemer,
   directBindingStates,
@@ -25,7 +24,7 @@ import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/mat
 import { carriedCountedMembership } from "../src/input-existence/counted-membership-carriage.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorStoreLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
@@ -60,12 +59,10 @@ const materialFor = async (direction: "A-N" | "A-F" | "R-F") => {
             fixture.evidence.reconstruction.forcedTransactions[0]!.key,
         },
       },
-      predecessor: await checkedLedgerAsLedger(
-        completeCanonicalReplayPredecessorLedger({
-          evidence: fixture.evidence,
-          context: fixture.context,
-        })!,
-      ),
+      predecessor: completeCanonicalReplayPredecessorStoreLedger({
+        evidence: fixture.evidence,
+        context: fixture.context,
+      })!,
     });
   }
   const tx = buildFixtureTransaction({ spendInputs: [], fee: 0n });

@@ -13,7 +13,6 @@ import { Data } from "@lucid-evolution/lucid";
 import * as WithdrawalsDB from "midgard-node/database/withdrawals";
 import { describe, expect, it } from "vitest";
 
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import {
   admitInputExistenceArtifact,
   inputExistenceArtifact,
@@ -159,7 +158,7 @@ describe("input existence on a submitted withdrawal", () => {
         },
         withdrawal,
       );
-      expect(history.predecessor.utxosRoot).toBe(priorDeposit.header.utxosRoot);
+      expect(history.predecessor.root).toBe(priorDeposit.header.utxosRoot);
       expect(history.evidence.header.withdrawalCount).toBe(1n);
       awaitHeaderCommitWindow(h.emulator, history.evidence.header);
       const committed = await submitSecondHeaderTx({
@@ -186,7 +185,7 @@ describe("input existence on a submitted withdrawal", () => {
         eventKey: history.targetEvent,
         field,
         inputIndex: 0n,
-        predecessor: await checkedLedgerAsLedger(history.predecessor),
+        predecessor: history.predecessor,
         owner: h.proverSigner.paymentKeyHash,
       });
       expect(prepared.source.subject.direction).toBe(0n);

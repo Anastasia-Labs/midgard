@@ -92,7 +92,7 @@ describe("a replayed ledger opened on its first read", () => {
       return {
         ledgerAt: async (headerHash) => {
           events.push(`read ${headerHash}`);
-          return [];
+          return undefined;
         },
         close: async () => {
           events.push("close");
@@ -131,7 +131,7 @@ describe("a replayed ledger opened on its first read", () => {
       events.push(`open ${attempts.toString()}`);
       if (attempts === 1) throw new Error("follower not reachable");
       return {
-        ledgerAt: async () => [],
+        ledgerAt: async () => undefined,
         close: async () => {
           events.push("close");
         },

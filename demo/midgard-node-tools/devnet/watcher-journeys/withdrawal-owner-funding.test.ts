@@ -157,7 +157,7 @@ const runFamilies = async (
       txId: Buffer.from(split.txId, "hex"),
       outputIndex: 0,
     });
-    const first = block.ledger.entries.find(({ outRef }) =>
+    const first = block.ledgerEntries.find(({ outRef }) =>
       outRef.equals(firstOutRef),
     );
     expect(lovelaceOf(first!.output)).toBe(orderLovelace);
@@ -168,7 +168,7 @@ const runFamilies = async (
         output: decodeMidgardTxOutput(first!.output),
       }),
     ).toBe(orderLovelace);
-    utxos = block.ledger.entries
+    utxos = block.ledgerEntries
       .filter(({ outRef }) => !outRef.equals(firstOutRef))
       .map(({ outRef, output }) => ({ key: outRef, value: output }));
   }

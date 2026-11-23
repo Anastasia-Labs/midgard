@@ -118,7 +118,7 @@ export const NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
     async (evidence, context) =>
       await detectNativeScriptDecodingReplay({
         block: evidence,
-        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+        predecessor: completeCanonicalReplayPredecessorStoreLedger({
           evidence,
           context,
         }),
@@ -133,7 +133,7 @@ export const MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   async (evidence, context) =>
     await detectMissingRedeemerReplay({
       block: evidence,
-      predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+      predecessor: completeCanonicalReplayPredecessorStoreLedger({
         evidence,
         context,
       }),
@@ -148,7 +148,7 @@ export const MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   async (evidence, context) =>
     await detectMissingScriptSourceReplay({
       block: evidence,
-      predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+      predecessor: completeCanonicalReplayPredecessorStoreLedger({
         evidence,
         context,
       }),
@@ -163,7 +163,7 @@ export const UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   async (evidence, context) =>
     await detectUnusedRedeemerReplay({
       block: evidence,
-      predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+      predecessor: completeCanonicalReplayPredecessorStoreLedger({
         evidence,
         context,
       }),
@@ -179,7 +179,7 @@ export const RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY =
     async (evidence, context) =>
       await detectReceivePurposeLanguageReplay({
         block: evidence,
-        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+        predecessor: completeCanonicalReplayPredecessorStoreLedger({
           evidence,
           context,
         }),
@@ -195,7 +195,7 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY =
     async (evidence, context) =>
       await detectScriptIntegrityHashMismatchReplay({
         block: evidence,
-        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+        predecessor: completeCanonicalReplayPredecessorStoreLedger({
           evidence,
           context,
         }),
@@ -210,7 +210,7 @@ export const EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
     async (evidence, context) =>
       await detectExecutionSourceScriptDecodingReplay({
         block: evidence,
-        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+        predecessor: completeCanonicalReplayPredecessorStoreLedger({
           evidence,
           context,
         }),
@@ -226,7 +226,7 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY =
     async (evidence, context) =>
       await detectExecutionNativeScriptInvalidReplay({
         block: evidence,
-        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+        predecessor: completeCanonicalReplayPredecessorStoreLedger({
           evidence,
           context,
         }),
@@ -241,7 +241,7 @@ export const DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY =
     async (evidence, context) =>
       await detectDistinctAssetAccumulationLimitReplay({
         block: evidence,
-        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+        predecessor: completeCanonicalReplayPredecessorStoreLedger({
           evidence,
           context,
         }),
@@ -255,7 +255,7 @@ export const UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   async (evidence, context) =>
     await detectUnusedScriptWitnessReplay({
       block: evidence,
-      predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+      predecessor: completeCanonicalReplayPredecessorStoreLedger({
         evidence,
         context,
       }),
@@ -358,7 +358,7 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY =
     async (evidence, context) => {
       const priorLedger = await readResolvedOutputPriorLedger({
         block: evidence,
-        predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+        predecessor: completeCanonicalReplayPredecessorStoreLedger({
           evidence,
           context,
         }),
@@ -412,7 +412,7 @@ export const SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["spendInputSignerMissing"], async (evidence, context) => {
     const priorLedger = await readResolvedOutputPriorLedger({
       block: evidence,
-      predecessor: await completeCanonicalReplayPredecessorStoreLedger({
+      predecessor: completeCanonicalReplayPredecessorStoreLedger({
         evidence,
         context,
       }),

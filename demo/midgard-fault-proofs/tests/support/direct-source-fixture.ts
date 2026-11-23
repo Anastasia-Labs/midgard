@@ -8,18 +8,15 @@ import type * as SDKCore from "@al-ft/midgard-sdk/core";
 import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
-import { checkedLedgerAsLedger } from "../../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
 import { buildDirectSourceIndexEvidence } from "../../src/direct-script-derivation/source-index.js";
-import {
-  checkLedgerAgainstRoot,
-  ledgerEntriesRoot,
-} from "../../src/ledger-at.js";
+import { ledgerEntriesRoot } from "../../src/ledger-at.js";
 import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { memoryLedger } from "./fixture-ledger.js";
 
 /** Genuine sixteen-entry predecessor trie, eight actual items in each input
  * field, authenticated no-script None cases, duplicate reference/witness
@@ -47,11 +44,7 @@ export const directSourceBatchFixture = async (
     }),
   }));
   const root = await ledgerEntriesRoot(entries);
-  const predecessor = await checkLedgerAgainstRoot({
-    entries,
-    utxosRoot: root,
-    label: "N6 actual sixteen-entry predecessor",
-  });
+  const predecessor = await memoryLedger(entries, root);
   // One field array head + one outer bstr head + the versioned-script array,
   // tag and inner bstr head use nine bytes at this actual payload width.
   const scriptWitnesses = options.maximumWitnessField
@@ -97,7 +90,7 @@ export const directSourceBatchFixture = async (
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     }),
     eventKey,
-    predecessor: await checkedLedgerAsLedger(predecessor),
+    predecessor: predecessor,
   });
   const evidence = await buildDirectSourceIndexEvidence(material);
   const steps = [...evidence.steps];

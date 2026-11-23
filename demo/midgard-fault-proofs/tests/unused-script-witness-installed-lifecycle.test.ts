@@ -17,7 +17,6 @@ import {
   type DirectWalkReferenceScripts,
 } from "../src/direct-purpose-family/transaction-port.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { singleLedgerAt } from "../src/ledger-at.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/workflow.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
@@ -42,6 +41,7 @@ import {
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 import {
   machineForcedVerdict,
   plutusScript,
@@ -140,10 +140,14 @@ describe("unusedScriptWitness installed cursor actuator", () => {
       // The predecessor ledger the subject's inputs resolve against.
       const replayContext = {
         predecessor: await admitCompleteCanonicalReplayPredecessor({
-          ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-            ...(scenarioCase.shape.spend ?? []),
-            ...(scenarioCase.shape.reference ?? []),
-          ]),
+          ledgerAt: singleLedgerAt(
+            evidence.header.prevHeaderHash,
+            [
+              ...(scenarioCase.shape.spend ?? []),
+              ...(scenarioCase.shape.reference ?? []),
+            ],
+            evidence.header.prevUtxosRoot,
+          ),
           currentEvidence: evidence,
         }),
       };
@@ -333,10 +337,11 @@ describe("unusedScriptWitness installed cursor actuator", () => {
     const decision =
       await UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY.replay(evidence, {
         predecessor: await admitCompleteCanonicalReplayPredecessor({
-          ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-            ...(shape.spend ?? []),
-            ...(shape.reference ?? []),
-          ]),
+          ledgerAt: singleLedgerAt(
+            evidence.header.prevHeaderHash,
+            [...(shape.spend ?? []), ...(shape.reference ?? [])],
+            evidence.header.prevUtxosRoot,
+          ),
           currentEvidence: evidence,
         }),
       });

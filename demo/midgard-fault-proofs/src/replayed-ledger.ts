@@ -30,8 +30,9 @@
  * A block whose replay is refused, whose replayed ledger does not open its
  * `utxos_root`, or that does not start from its parent's ledger is reported
  * through `onRefusal` and never persisted. Its own lookup still gets the
- * replayed entries on a root mismatch, unchecked, so a classifier records the
- * post-ledger mismatch; nothing above it is derived from them. A payload no
+ * replayed ledger on a root mismatch, held in memory over its parent, so a
+ * classifier records the post-ledger mismatch; nothing above it is derived
+ * from it. A payload no
  * attested availability commitment binds yet (`ReplayedLedgerSource.binding`)
  * is not refused that way: its copy is released and the read waits.
  */
@@ -40,11 +41,7 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import type * as SDKDa from "@al-ft/midgard-sdk/da";
 
 import { type BlockReplayContext } from "./block-replay.js";
-import {
-  type LedgerAt,
-  type LedgerEntry,
-  LedgerRootMismatchError,
-} from "./ledger-at.js";
+import { type LedgerAt, LedgerRootMismatchError } from "./ledger-at.js";
 import {
   EMPTY_LEDGER_ROOT,
   type Ledger,
@@ -57,11 +54,7 @@ import {
   type ReplayedLedgerUnverified,
   type ReplayedLedgerVerifiedHead,
 } from "./replayed-ledger.confirmed.js";
-import {
-  createLedgerHolds,
-  type HeldLedger,
-  storeCall,
-} from "./replayed-ledger.holds.js";
+import { createLedgerHolds, type HeldLedger } from "./replayed-ledger.holds.js";
 import {
   authenticHeader,
   authenticPayload,
@@ -137,7 +130,11 @@ export type ReplayedLedgerWindow = {
 };
 
 export type ReplayedLedger = {
-  /** The `LedgerAt` over one operation's sources. */
+  /**
+   * The `LedgerAt` over one operation's sources. A ledger it answers is not
+   * held: the root stays readable while `retain` keeps it, and a read after
+   * that is this process's own fault (`readingLedger`).
+   */
   readonly ledgerAt: (source: ReplayedLedgerSource) => LedgerAt;
   /**
    * Verifies the confirmed chain up to the confirmed head and makes the
@@ -176,7 +173,7 @@ export type ReplayedLedger = {
 
 type Step =
   | { readonly kind: "held"; readonly held: HeldLedger }
-  | { readonly kind: "mismatch"; readonly entries: readonly LedgerEntry[] }
+  | { readonly kind: "mismatch"; readonly ledger: Ledger }
   /** The block is refused, as `onRefusal` was told. */
   | { readonly kind: "refused" }
   /** A header, payload or parent ledger is not available. */
@@ -207,14 +204,6 @@ export const createReplayedLedger = ({
    * each with that root. One leaves once the verified head passed it or
    * `retain` no longer names its root. */
   const replayed = new Map<string, string>();
-
-  /** The ledger's entries: the one place a `LedgerAt` answer is listed. */
-  const listed = (ledger: Ledger): Promise<readonly LedgerEntry[]> =>
-    storeCall(`list ledger ${ledger.root}`, async () => {
-      const entries: LedgerEntry[] = [];
-      for await (const entry of ledger.entries()) entries.push(entry);
-      return entries;
-    });
 
   /**
    * Replays `block` over `parent`, persisting the ledger when it opens the
@@ -263,9 +252,8 @@ export const createReplayedLedger = ({
         );
         unboundWait(source, headerHash, message);
         refuse({ headerHash, kind: "root-mismatch", detail: message });
-        const entries = target ? await listed(ledger) : [];
         release();
-        return target ? { kind: "mismatch", entries } : { kind: "refused" };
+        return target ? { kind: "mismatch", ledger } : { kind: "refused" };
       }
       await holds.persist(ledger);
       replayed.set(headerHash, header.utxosRoot);
@@ -278,7 +266,7 @@ export const createReplayedLedger = ({
   };
 
   /** The ledger after `headerHash`, held until released; the replayed
-   * entries of a target that does not open its root; or nothing. */
+   * ledger of a target that does not open its root; or nothing. */
   const derive = async (
     headerHash: string,
     source: ReplayedLedgerSource,
@@ -369,13 +357,10 @@ export const createReplayedLedger = ({
   return {
     ledgerAt: (source) => async (headerHash) => {
       const step = await derive(headerHash, source);
-      if (step.kind === "mismatch") return step.entries;
+      if (step.kind === "mismatch") return step.ledger;
       if (step.kind !== "held") return undefined;
-      try {
-        return await listed(step.held.ledger);
-      } finally {
-        step.held.release();
-      }
+      step.held.release();
+      return step.held.ledger;
     },
     ensure,
     retain: ({ blocks, newestRoot, confirmedRoot }) => {

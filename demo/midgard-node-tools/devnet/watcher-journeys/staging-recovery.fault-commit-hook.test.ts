@@ -176,7 +176,7 @@ it("readies our node's work once before the fault's commit, and not again when a
     fixture.actions.push("ready");
     readied.push(headerHash);
     // The predecessor comes replayed: the ledger our node must show.
-    expect(ledger.utxosRoot).toBe(header.utxosRoot);
+    expect(ledger.root).toBe(header.utxosRoot);
     return async () => {
       fixture.actions.push("hand over");
     };

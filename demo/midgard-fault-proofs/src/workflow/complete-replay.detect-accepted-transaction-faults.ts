@@ -346,7 +346,7 @@ export const detectPlutusExecutionFailures = async ({
   readonly l1SlotConfig: L1SlotConfig;
   readonly holds?: ValidationTraceReplayHolds;
 }): Promise<readonly CanonicalViolationDetection[]> => {
-  const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
+  const predecessor = completeCanonicalReplayPredecessorStoreLedger({
     evidence,
     context,
   });

@@ -131,7 +131,7 @@ export const prepareLedgerAbsenceArtifact = async ({
   } else if (selected.violationId !== `${violation}-wrongful-rejection`) {
     throw new Error("input-existence classification names another rule");
   }
-  const predecessor = await completeCanonicalReplayPredecessorStoreLedger({
+  const predecessor = completeCanonicalReplayPredecessorStoreLedger({
     evidence,
     context: replayContext,
   });

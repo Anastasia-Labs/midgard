@@ -6,6 +6,7 @@ import {
 } from "@al-ft/midgard-validation/value-accounting";
 import { describe, expect, it } from "vitest";
 
+import { emptyLedger } from "../src/ledger-at.js";
 import { createCompleteCanonicalReplayUnion } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { NETWORK_ID_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import { MIN_ADA_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
@@ -83,7 +84,7 @@ describe("deposit projection under transaction-only checks", () => {
       observation,
       authenticatedObservationDigest,
       predecessorLedgerAt: async (headerHash) =>
-        headerHash === predecessor.headerHash ? [] : undefined,
+        headerHash === predecessor.headerHash ? emptyLedger() : undefined,
       sources: [
         {
           sourceId: "deposit-projection",

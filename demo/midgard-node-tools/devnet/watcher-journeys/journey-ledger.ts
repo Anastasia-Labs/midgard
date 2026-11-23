@@ -1,28 +1,43 @@
+import type { LedgerEntry } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
-  type CheckedLedger,
-  checkLedgerAgainstRoot,
-  type LedgerEntry,
-} from "@al-ft/midgard-fault-proofs/ledger-at";
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  type Ledger,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect, Either } from "effect";
 
 import type { JourneyBlock } from "./fixture.js";
 
+/** A block's ledger as a journey holds it: the store ledger the fault-proof
+ * readers take, and its entries for the fixture builders that compose the
+ * next block. */
+export type JourneyLedger = {
+  ledger: Ledger;
+  ledgerEntries: readonly LedgerEntry[];
+};
+
 /** An input-only retained block paired with its separately checked replay state. */
-export type JourneyLedgerPredecessor = {
+export type JourneyLedgerPredecessor = JourneyLedger & {
   header: SDK.Header;
   headerHash: string;
   payload: SDKDa.DaPayload;
   payloadEnvelopeCbor: Uint8Array;
-  ledger: CheckedLedger;
+};
+
+/** `ledger` with the entries it lists. */
+export const journeyLedger = async (ledger: Ledger): Promise<JourneyLedger> => {
+  const ledgerEntries: LedgerEntry[] = [];
+  for await (const entry of ledger.entries()) ledgerEntries.push(entry);
+  return { ledger, ledgerEntries };
 };
 
 /** String pairs for fixture builders; these are never serialized into retained DA. */
 export const journeyLedgerPairs = (
-  ledger: CheckedLedger,
+  entries: readonly LedgerEntry[],
 ): SDKDa.DaPayloadEntry[] =>
-  ledger.entries.map(({ outRef, output }) => [
+  entries.map(({ outRef, output }) => [
     outRef.toString("hex"),
     output.toString("hex"),
   ]);
@@ -37,7 +52,7 @@ export const checkedJourneyConstruction = async <
 >(
   block: T,
   entries: readonly LedgerEntry[],
-): Promise<T & { ledger: CheckedLedger }> => {
+): Promise<T & JourneyLedger> => {
   const commitments = Effect.runSync(
     Effect.either(SDK.validateHeaderTransitionCommitmentsProgram(block.header)),
   );
@@ -47,11 +62,11 @@ export const checkedJourneyConstruction = async <
     );
   return {
     ...block,
-    ledger: await checkLedgerAgainstRoot({
+    ledger: await createLedgerStore(createMemoryLedgerStorage()).admit(
       entries,
-      utxosRoot: block.header.utxosRoot,
-      label: "journey constructed ledger",
-    }),
+      block.header.utxosRoot,
+    ),
+    ledgerEntries: entries,
   };
 };
 

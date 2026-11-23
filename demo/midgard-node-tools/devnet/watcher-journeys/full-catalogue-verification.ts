@@ -16,7 +16,7 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import { createCatalogueCompleteCanonicalReplay } from "@al-ft/midgard-fault-proofs/workflow/catalogue-replay";
-import { completeCanonicalReplayPredecessorLedger } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
+import { completeCanonicalReplayPredecessorStoreLedger } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
@@ -299,7 +299,7 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
     predecessor:
       evidence === undefined
         ? undefined
-        : completeCanonicalReplayPredecessorLedger({
+        : completeCanonicalReplayPredecessorStoreLedger({
             evidence,
             context: headerDecisionReplayContext(decision),
           }),

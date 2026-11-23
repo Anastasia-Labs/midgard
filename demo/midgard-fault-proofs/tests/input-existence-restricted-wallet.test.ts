@@ -6,11 +6,9 @@ import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
-import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
 import { buildInputExistenceStep } from "../src/input-existence/submit.js";
-import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -20,6 +18,7 @@ import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { runInputExistenceRoute } from "./support/emulator/input-existence-route.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { restrictedProverWallet } from "./support/restricted-prover-wallet.js";
 import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
@@ -75,13 +74,7 @@ describe("non-existent-input steps under the watcher's restricted wallet", () =>
       eventKey: { L2TransactionEventKey: { tx_id: block.nativeTxId } },
       field: 0,
       inputIndex: 0n,
-      predecessor: await checkedLedgerAsLedger(
-        await checkLedgerAgainstRoot({
-          entries: [],
-          utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          label: "restricted-wallet prior-block ledger",
-        }),
-      ),
+      predecessor: await memoryLedger([], SDK.EMPTY_MERKLE_TREE_ROOT),
       owner: h.proverSigner.paymentKeyHash,
     });
     let checked = 0;

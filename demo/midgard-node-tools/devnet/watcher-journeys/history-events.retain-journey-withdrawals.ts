@@ -157,7 +157,7 @@ export const buildJourneyFabricatedDeposit = async (
     blockSlot: input.blockSlot,
     prevHeaderHash: input.predecessor.headerHash,
     prevUtxosRoot: input.predecessor.header.utxosRoot,
-    priorLedger: journeyLedgerPairs(input.predecessor.ledger),
+    priorLedger: journeyLedgerPairs(input.predecessor.ledgerEntries),
     events: [
       {
         eventCbor: canonical(
@@ -188,7 +188,7 @@ type WithdrawalClaim = { id: SDK.OutputReference; infoCbor: string };
 export const retainJourneyWithdrawals = async (
   input: HistoryEventBlockInput & { claims: readonly WithdrawalClaim[] },
 ) => {
-  const ledger = new Map(journeyLedgerPairs(input.predecessor.ledger));
+  const ledger = new Map(journeyLedgerPairs(input.predecessor.ledgerEntries));
   const ledgerBlock = () =>
     buildCanonicalBlockFixture({
       transactions: [],

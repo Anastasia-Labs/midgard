@@ -29,14 +29,10 @@ import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { checkedLedgerAsLedger } from "../../src/checked-ledger-store.js";
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
-import {
-  checkLedgerAgainstRoot,
-  ledgerEntriesRoot,
-  type LedgerEntry,
-} from "../../src/ledger-at.js";
+import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
 import { nodeForcedVerdict } from "./emulator/node-forced-verdict.js";
+import { memoryLedger } from "./fixture-ledger.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { setupFraudulentBlock } from "./submit-init/removal.js";
 import {
@@ -277,11 +273,7 @@ export const buildDistinctAssetBlock = async ({
   const nativeTx = buildDistinctAssetSubject(shape);
   const entries = predecessorEntries(shape);
   const root = await ledgerEntriesRoot(entries);
-  const predecessor = await checkLedgerAgainstRoot({
-    entries,
-    utxosRoot: root,
-    label: "distinct-asset-accumulation-limit predecessor",
-  });
+  const predecessor = await memoryLedger(entries, root);
   const block = await buildDecodingBlockFixture({
     operatorVkey,
     startTime,
@@ -305,7 +297,7 @@ export const buildDistinctAssetBlock = async ({
   const material = await prepareDirectScriptMaterial({
     current: block.reconstruction,
     eventKey,
-    predecessor: await checkedLedgerAsLedger(predecessor),
+    predecessor: predecessor,
   });
   return {
     nativeTx,

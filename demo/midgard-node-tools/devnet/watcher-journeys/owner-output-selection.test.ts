@@ -79,7 +79,7 @@ const spentOf = (
 ) =>
   [dust, funding, large]
     .filter(({ outRef }) =>
-      predecessor.ledger.entries.some((entry) => entry.outRef.equals(outRef)),
+      predecessor.ledgerEntries.some((entry) => entry.outRef.equals(outRef)),
     )
     .filter(
       ({ outRef }) =>

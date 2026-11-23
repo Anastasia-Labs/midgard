@@ -18,7 +18,6 @@ import {
   type DirectWalkReferenceScripts,
 } from "../src/direct-purpose-family/transaction-port.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { singleLedgerAt } from "../src/ledger-at.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { UNUSED_REDEEMER_DIRECT_WALK } from "../src/unused-redeemer/index.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
@@ -52,6 +51,7 @@ import {
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
 import { scriptSourceMissingVerdict } from "./support/missing-script-source-emulator.js";
+import { singleLedgerAt } from "./support/predecessor-ledger.js";
 import { unusedRedeemerVerdict } from "./support/unused-redeemer-emulator.js";
 
 const daProvenance = {
@@ -155,10 +155,11 @@ describe("unusedRedeemer installed cursor actuator", () => {
       const shape: MissingRedeemerSubjectShape = scenarioCase.shape;
       const replayContext = {
         predecessor: await admitCompleteCanonicalReplayPredecessor({
-          ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-            ...(shape.spend ?? []),
-            ...(shape.reference ?? []),
-          ]),
+          ledgerAt: singleLedgerAt(
+            evidence.header.prevHeaderHash,
+            [...(shape.spend ?? []), ...(shape.reference ?? [])],
+            evidence.header.prevUtxosRoot,
+          ),
           currentEvidence: evidence,
         }),
       };
@@ -350,10 +351,11 @@ describe("unusedRedeemer installed cursor actuator", () => {
       evidence,
       {
         predecessor: await admitCompleteCanonicalReplayPredecessor({
-          ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
-            ...(shape.spend ?? []),
-            ...(shape.reference ?? []),
-          ]),
+          ledgerAt: singleLedgerAt(
+            evidence.header.prevHeaderHash,
+            [...(shape.spend ?? []), ...(shape.reference ?? [])],
+            evidence.header.prevUtxosRoot,
+          ),
           currentEvidence: evidence,
         }),
       },

@@ -282,9 +282,9 @@ export const buildJourneyWithdrawnTransaction = async (
     txId: Buffer.from(datum.event.info.body.l2_outref.transactionId, "hex"),
     outputIndex: Number(datum.event.info.body.l2_outref.outputIndex),
   });
-  const withdrawnOutput = journeyLedgerPairs(input.predecessor.ledger).find(
-    ([key]) => key === withdrawn.toString("hex"),
-  );
+  const withdrawnOutput = journeyLedgerPairs(
+    input.predecessor.ledgerEntries,
+  ).find(([key]) => key === withdrawn.toString("hex"));
   const key = journeyOwnerKey(input.ledgerOwnerSeedPhrase);
   const owner = key.to_public().hash().to_hex();
   const retained = ownedHistoryLedgerEntries(input.predecessor, owner).filter(
@@ -433,6 +433,6 @@ export const buildJourneyWithdrawnTransaction = async (
         L2TransactionEventKey: { tx_id: transaction.txId },
       } satisfies SDK.EventKey,
     },
-    transactions.ledger.entries,
+    transactions.ledgerEntries,
   );
 };
