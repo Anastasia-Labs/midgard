@@ -2,7 +2,7 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Duration, Effect } from "effect";
 
 import { startDaLibp2pRetainedPayloadServerFromEnv } from "../da/libp2p-producer.create-da-libp2p-producer-transport.js";
-import { DaPayloadsDB } from "../database/index.js";
+import type { DaRetainedPayloadServerLookups } from "../da/libp2p-producer.parse-committee-peers.js";
 import { isRetryableProviderError } from "../provider-retry.js";
 import {
   retryStartupStep,
@@ -61,9 +61,7 @@ export const retainedPayloadServerStatus = (): RetainedPayloadServerStatus =>
   status;
 
 export const retainedPayloadServerThread = (
-  retrieveByHeaderHash: (
-    headerHash: Buffer,
-  ) => Promise<DaPayloadsDB.Row | undefined>,
+  lookups: DaRetainedPayloadServerLookups,
   options: {
     readonly start?: typeof startDaLibp2pRetainedPayloadServerFromEnv;
     readonly retryInitialMs?: number;
@@ -80,7 +78,7 @@ export const retainedPayloadServerThread = (
     for (let attempts = 1; ; attempts += 1) {
       const started = yield* Effect.either(
         Effect.tryPromise({
-          try: () => start({ retrieveByHeaderHash }),
+          try: () => start(lookups),
           catch: (cause) => cause,
         }),
       );
