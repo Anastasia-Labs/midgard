@@ -63,19 +63,24 @@ export type Native = {
   reaches: string | undefined;
   /** The ledgers its store retains, by root. */
   ledgers: Record<string, readonly Ledger.MinimalEntry[]>;
+  /** The root a delta applied on a base root reaches, by base root. */
+  next?: Record<string, string>;
 };
 
-export const nativeOwner = (native: Native) =>
-  ({
+export const nativeOwner = (native: Native) => {
+  const reached = (base: string) => native.reaches ?? native.next?.[base] ?? R1;
+  return {
     diagnostics: async () => ({ durableRoot: native.durableRoot }),
     restoreCanonicalRoot: async ({ targetRoot }: { targetRoot: string }) => {
       if (native.retainsNothing) throw new NativeMpfRootNotRetained(targetRoot);
       native.durableRoot = targetRoot;
     },
     fork: async (base: string) => ({ base }),
-    applyEvents: async () => ({ candidateRoot: native.reaches ?? R1 }),
-    promote: async () => {
-      native.durableRoot = native.reaches ?? R1;
+    applyEvents: async (handle: { base: string }) => ({
+      candidateRoot: reached(handle.base),
+    }),
+    promote: async (handle: { base: string }) => {
+      native.durableRoot = reached(handle.base);
     },
     discard: async () => undefined,
     ledger: async (at: string) => {
@@ -83,7 +88,8 @@ export const nativeOwner = (native: Native) =>
       if (entries === undefined) throw new LedgerNotRetained(at);
       return ledgerOf(entries);
     },
-  }) as unknown as NativeMpfOwnerService;
+  } as unknown as NativeMpfOwnerService;
+};
 
 /** One node process: its globals, with the modelled native owner. */
 export const processOf = async (native: Native) => {

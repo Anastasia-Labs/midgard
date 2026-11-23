@@ -13,7 +13,6 @@ import { Data, Effect } from "effect";
 
 import type { CommitSubmitRefusalCode } from "../../fibers/block-commitment.worker-readiness.js";
 import type { SlotAwareDueWork } from "../../fibers/slot-aware-due-work.js";
-import type { LedgerDivergenceCheck } from "../../mpf/local-ledger-divergence.js";
 import type { UnwrittenHold } from "../../services/intent-journal.holds.js";
 
 export type WorkerInput = {
@@ -234,16 +233,13 @@ export type RegisteredDueWorkOutput = {
 
 /** The commit waits for its base: a tail landed-block processing has not
  * applied to the working ledger yet, or this node's own block still in
- * flight. With `divergence`, the base's entries do not derive the root this
- * node stores for it (`local-ledger-divergence.ts`, by that check): the
- * commit is refused until they do. With `unverified`, the base is a landed
+ * flight. With `unverified`, the base is a landed
  * tail and the frontier it builds from is not the verified frontier the
  * worker received: it waits for the main thread's verification. */
 export type AwaitingCommitBaseOutput = {
   readonly type: "AwaitingCommitBaseOutput";
   readonly baseHeaderHash: string;
   readonly detail: string;
-  readonly divergence?: LedgerDivergenceCheck;
   readonly unverified?: true;
 };
 

@@ -25,7 +25,11 @@
  * again (`own-journals.ts`); every event a removed block, a dead journal or
  * an unknown header held goes back to `awaiting`; every event a processed block holds is
  * projected to it; the shared working-ledger recompute
- * (`working-ledger-recompute.rebuild.ts`) runs on the target's ledger; an
+ * (`working-ledger-recompute.rebuild.ts`) runs on the target's steps, at
+ * the keys the target holds and the ones the working ledger may hold that
+ * the target does not (a removed block's delta, a dead journal's delta, the
+ * outputs a transaction an unapplied processed block included spends or
+ * produces); an
  * own block the working ledger did not hold yet gets its local effects
  * (`own-blocks.ts`); removed rows are deleted (an own one's landed time
  * cleared with it), processed ones marked applied, and the ledger-store
@@ -45,9 +49,14 @@ import {
   NativeMpfRootNotRetained,
 } from "../services/mpf-native-owner/protocol.js";
 import { encodeNativeMpfEventLog } from "../services/mpf-native-owner/service.parse-promotion-records.js";
-import { rebuildWorkingLedger } from "../services/working-ledger-recompute.rebuild.js";
+import { admittedTxKeys } from "../services/working-ledger-recompute.pending-txs.js";
+import {
+  rebuildWorkingLedger,
+  type StepDelta,
+} from "../services/working-ledger-recompute.rebuild.js";
 import { sha256Hex } from "../sha256.js";
 import { LANDED_BLOCK_REBASE_FAILED } from "./holds.js";
+import { ownJournal } from "./journal.js";
 import { depositOutputs } from "./ledger.js";
 import { applyOwnBlocks, clearOwnLandedTimes } from "./own-blocks.js";
 import { disposeJournals } from "./own-journals.js";
@@ -60,7 +69,6 @@ import { stepEvents } from "./rebase-native-events.js";
 import {
   nativeRootDrift,
   type RebaseTarget,
-  targetLedger,
   targetRoot,
   targetRoots,
 } from "./rebase-target.js";
@@ -182,7 +190,6 @@ export const moveNativeRoot = (
 /** Recomputes the working ledger and event statuses on the target. */
 export const rebaseSql = (target: RebaseTarget) =>
   Effect.gen(function* () {
-    const ledger = targetLedger(target);
     const { dispose, dead, deadCommits } = target.journals;
     // Every processed row, foreign or this node's own: one path applies
     // both.
@@ -203,17 +210,38 @@ export const rebaseSql = (target: RebaseTarget) =>
     ];
     const deposits = yield* depositOutputs(depositIds);
     const removed = target.rows.filter((row) => row.state === "removed");
+    // The outputs the working ledger may hold that the target does not.
+    const keys = new Set<string>();
+    const add = (delta: StepDelta) => {
+      for (const outRef of delta.spent) keys.add(outRef.toString("hex"));
+      for (const entry of delta.produced)
+        keys.add(entry.outref.toString("hex"));
+    };
+    for (const row of removed) add(row);
+    // A dead journal's delta, read before its disposal.
+    for (const header of dead) {
+      const journal = yield* ownJournal(header.toString("hex"));
+      if (journal !== undefined) add(journal);
+    }
     yield* disposeJournals(dispose, dead);
     yield* resetUnheldEvents(target, [
       ...removed.map((row) => row.headerHash),
       ...dead.map((header) => header.toString("hex")),
     ]);
+    // A transaction an unapplied processed row includes was marked when
+    // the row was processed: its admission's outputs are in the working
+    // ledger, and the block's net delta need not name them.
+    const included = yield* admittedTxKeys(
+      chained.filter((row) => !row.applied).flatMap((row) => row.txIds),
+    );
+    for (const key of included) keys.add(key);
     yield* assignChainEvents(chained);
     // A processed (landed) row marks the transactions it includes in the
     // pending tables; the live own block has not landed.
     yield* markRows(chained);
     const rebuilt = yield* rebuildWorkingLedger({
-      base: ledger,
+      steps: target.steps,
+      keys,
       baseDeposits: new Map(
         [...deposits].map(([outRef, { txId, eventId }]) => [
           outRef,

@@ -71,10 +71,7 @@ export {
   establishEffectiveEndTimeFromDecodedMempool,
   refuseMalformedMempoolCandidates,
 } from "./mempool-order.js";
-export {
-  computeUtxoPayloadRoot,
-  estimateMpfStoredValueBytes,
-} from "./payload-size.js";
+export { estimateMpfStoredValueBytes } from "./payload-size.js";
 export { processMpfs } from "./process.js";
 export { type ProcessMpfsConfig } from "./process-config.js";
 export { type MpfReplayCorpusBlock } from "./replay-corpus.js";

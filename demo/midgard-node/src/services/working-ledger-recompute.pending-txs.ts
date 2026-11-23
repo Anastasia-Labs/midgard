@@ -257,3 +257,40 @@ export const loadPendingTxs = loadPending("fail");
 /** `loadPendingTxs`, with a transaction that cannot be decoded kept as one
  * that spends and produces nothing. */
 export const loadPendingTxsKeepingUndecodable = loadPending("inert");
+
+/** The outrefs (hex) the transactions `txIds` of the pending tables, marked
+ * or not, spend and produce: the working-ledger keys their admission wrote.
+ * A transaction that cannot be decoded names none. */
+export const admittedTxKeys = (txIds: readonly Buffer[]) =>
+  Effect.gen(function* () {
+    const keys = new Set<string>();
+    if (txIds.length === 0) return keys;
+    const sql = yield* SqlClient.SqlClient;
+    const entries: Tx.EntryWithTimeStamp[] = [];
+    for (const table of MempoolInclusionsDB.PENDING_TABLES)
+      for (let start = 0; start < txIds.length; start += 1_000)
+        entries.push(
+          ...(yield* sql<Tx.EntryWithTimeStamp>`SELECT ${sql(Tx.Columns.TX_ID)},
+              ${sql(Tx.Columns.TX)}, ${sql(Tx.Columns.TIMESTAMPTZ)}
+            FROM ${sql(table)}
+            WHERE ${sql.in(Tx.Columns.TX_ID, txIds.slice(start, start + 1_000))}`),
+        );
+    const deltas = yield* MempoolTxDeltasDB.retrieveByTxIds(
+      entries.map((entry) => entry[Tx.Columns.TX_ID]),
+    );
+    for (const entry of entries) {
+      const resolved = yield* resolveTxDeltaForCommit(
+        entry,
+        deltas.get(hex(entry[Tx.Columns.TX_ID])),
+      );
+      if (resolved._tag === "Rejected") continue;
+      for (const outRef of resolved.spent) keys.add(hex(outRef));
+      for (const output of resolved.produced)
+        keys.add(hex(Buffer.from(output[Ledger.Columns.OUTREF])));
+    }
+    return keys;
+  }).pipe(
+    Effect.mapError((cause) =>
+      failure("The admitted transactions' ledger keys cannot be read", cause),
+    ),
+  );

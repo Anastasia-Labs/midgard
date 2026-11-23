@@ -269,13 +269,9 @@ export const buildAndSubmitCommitmentBlockAction = (
         break;
       }
       case "AwaitingCommitBaseOutput": {
-        yield* workerOutput.divergence === undefined
-          ? Effect.logWarning(
-              `🔹 Commit deferred awaiting its base header_hash=${workerOutput.baseHeaderHash}: ${workerOutput.detail}`,
-            )
-          : Effect.logError(
-              `Commit refused on its base header_hash=${workerOutput.baseHeaderHash}: ${workerOutput.detail}`,
-            );
+        yield* Effect.logWarning(
+          `🔹 Commit deferred awaiting its base header_hash=${workerOutput.baseHeaderHash}: ${workerOutput.detail}`,
+        );
         break;
       }
       case "AwaitingNextCommitWindowOutput": {

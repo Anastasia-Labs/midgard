@@ -2,18 +2,14 @@
  * `midgard_local_ledger_divergence_total` as the Prometheus exporter of a
  * monitored node serves it (`MidgardLocalLedgerDivergence` alerts on its
  * increase). Every check's series is exported at 0 from startup, so the
- * first divergence shows as an increase. A commit worker's refusal on a
- * diverged base is counted once, when its output reaches the main thread,
- * whose metrics the exporter reads: a worker thread's metrics stay in that
- * thread, so the check the worker runs counts nothing itself. Each
- * divergence the main thread's verification of the landed ledger records
+ * first divergence shows as an increase. Each divergence the main thread's verification of the landed ledger records
  * is counted under its check, `confirmed_ledger` at the frontier or
  * `confirmed_ledger_tail` at the tail, the first named on `/readyz`, and
  * clears the verified frontier commits build from; the next pass records it
  * again and clears the reason. A divergence from a run below the recorded
  * generation is counted too, but raises nothing and leaves the record.
  */
-import { Effect, Either, Ref } from "effect";
+import { Effect, Ref } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -21,15 +17,12 @@ import {
   recordConfirmedLedgerVerification,
 } from "../src/mpf/confirmed-ledger-verification.js";
 import {
-  checkLedgerRoot,
   exportLedgerDivergenceSeries,
   LEDGER_DIVERGENCE_CHECKS,
   type LedgerDivergenceCheck,
 } from "../src/mpf/local-ledger-divergence.js";
 import { Globals } from "../src/services/globals.globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
-import { takeCommitWorkerOutput } from "../src/workers/commit-worker-message.js";
-import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
 import {
   sampleValue,
   startPrometheusExporter,
@@ -60,8 +53,6 @@ const exported = async () => {
 const counts = (
   values: Partial<Record<LedgerDivergenceCheck, number>> = {},
 ): Record<LedgerDivergenceCheck, number> => ({
-  commit_base_landed: 0,
-  commit_base_confirmed_ledger: 0,
   confirmed_ledger: 0,
   confirmed_ledger_tail: 0,
   ...values,
@@ -74,50 +65,6 @@ describe("the local ledger divergence counter", { concurrent: false }, () => {
   it("exports every check's series at 0 from startup", async () => {
     await Effect.runPromise(exportLedgerDivergenceSeries);
     expect(await exported()).toEqual(counts());
-  });
-
-  it("counts a commit worker's refusal on a diverged base once, in the main thread", async () => {
-    const node = await globals();
-    const refused: WorkerOutput = {
-      type: "AwaitingCommitBaseOutput",
-      baseHeaderHash: BASE,
-      detail: `local ledger divergence (commit_base_confirmed_ledger): the ledger at ${BASE} diverges`,
-      divergence: "commit_base_confirmed_ledger",
-    };
-    expect(takeCommitWorkerOutput(node, refused, 16)).toEqual(refused);
-    expect(await exported()).toEqual(
-      counts({ commit_base_confirmed_ledger: 1 }),
-    );
-
-    // A wait on the base is no divergence.
-    takeCommitWorkerOutput(
-      node,
-      {
-        type: "AwaitingCommitBaseOutput",
-        baseHeaderHash: BASE,
-        detail: "the commit base is not processed yet",
-      },
-      16,
-    );
-    expect(await exported()).toEqual(
-      counts({ commit_base_confirmed_ledger: 1 }),
-    );
-  });
-
-  it("counts nothing for the check the worker runs, so an in-process build is counted once too", async () => {
-    const before = await exported();
-    const result = await Effect.runPromise(
-      Effect.either(
-        checkLedgerRoot({
-          check: "commit_base_landed",
-          headerHash: BASE,
-          root: "ab".repeat(32),
-          derivedRoot: "cd".repeat(32),
-        }),
-      ),
-    );
-    expect(Either.isLeft(result)).toBe(true);
-    expect(await exported()).toEqual(before);
   });
 
   it("counts each divergence the confirmed_ledger verification records once, names the frontier's and clears the verified frontier until a pass", async () => {

@@ -119,6 +119,18 @@ describe(
         ) => sql`INSERT INTO confirmed_ledger (tx_id, outref, output, address)
       VALUES (${simDigest("rebase:odd")}, ${odd}, ${Buffer.from("ff", "hex")}, 'addr_test_odd')`,
       );
+      // A pending transaction spends the odd output and one that is absent:
+      // it is rejected, so the odd output stays in the recomputed ledger.
+      await run(
+        globals,
+        admitPending([
+          pendingTx(
+            "odd",
+            [odd, makeOutRefCbor(simDigest("rebase:absent"), 0)],
+            1,
+          ),
+        ]),
+      );
       expectHeld(
         await attempt(globals),
         /recomputed ledger output is not canonical/,
@@ -196,7 +208,8 @@ describe(
       const E2 = entry("e2", 4_000_000n);
       const R2 = root(0x12);
       const OWN = "0a".repeat(28);
-      const t = pendingTx("own", [E0.outref], 1);
+      // T is O's whole delta: it spends E0 and produces E1.
+      const t = { ...pendingTx("own", [E0.outref], 1), produced: [E1] };
       const native: Native = { ...freshNative(), durableRoot: R1, reaches: R2 };
       const globals = await processOf(native);
       await seed(globals, {
@@ -292,7 +305,8 @@ describe(
       const R2 = root(0x12);
       const R3 = root(0x13);
       const X = "c2".repeat(28);
-      const b = pendingTx("b", [], 2);
+      // b is O's whole delta: it spends E0 and produces E1.
+      const b = { ...pendingTx("b", [E0.outref], 2), produced: [E1] };
       const a = pendingTx("a", [E1.outref], 1);
       const native: Native = { ...freshNative(), durableRoot: R1, reaches: R2 };
       // Processing X kept the ledger after it.

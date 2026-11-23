@@ -1,7 +1,6 @@
 import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
 import { Effect, Ref } from "effect";
 
-import { countLedgerDivergence } from "../mpf/local-ledger-divergence.js";
 import type { Globals } from "../services/globals.js";
 import {
   type ActiveLivenessReason,
@@ -49,12 +48,11 @@ export const COMMIT_BASE_SOURCE = "commit_base";
  */
 export const COMMIT_BASE_PENDING = "commit_base_pending";
 /**
- * The commit is refused: its base's entries do not derive the root this
- * node stores for that base, named `commit_base_ledger_divergence:<check>`
- * by the check that found it (`COMMIT_BASE_DIVERGENCE_CHECKS`). Raised under
- * `commit_base` in place of `commit_base_pending`, and counted under the
- * check in `midgard_local_ledger_divergence_total`; it clears on the
- * worker's next output that is not this refusal.
+ * The landed ledger commits build on does not derive the root this node
+ * stores for it, named `commit_base_ledger_divergence:<check>` by the check
+ * that found it (`COMMIT_BASE_DIVERGENCE_CHECKS`). The verification of
+ * `confirmed_ledger` raises it under `confirmed_ledger_verification`
+ * (`confirmed-ledger-verification.ts`).
  */
 export const COMMIT_BASE_LEDGER_DIVERGENCE = "commit_base_ledger_divergence";
 /**
@@ -156,10 +154,9 @@ export const COMMIT_SCHEDULER_ALIGNMENT_FAILED =
  * under `commit_submit`, cleared with this reason.
  *
  * A commit waiting for its base raises `commit_base_pending` under
- * `commit_base`, `commit_base_ledger_unverified` where it waits for the
- * verification of the frontier it builds from, or
- * `commit_base_ledger_divergence:<check>` where the base's entries do not
- * derive its stored root, and one waiting for the next window raises
+ * `commit_base`, or `commit_base_ledger_unverified` where it waits for the
+ * verification of the frontier it builds from, and one waiting for the
+ * next window raises
  * `commit_window_pending` under `commit_window`; any other output clears
  * each. */
 export const applyCommitWorkerReadiness = (
@@ -173,18 +170,11 @@ export const applyCommitWorkerReadiness = (
         raiseLivenessIncident(
           globals,
           COMMIT_BASE_SOURCE,
-          output.divergence !== undefined
-            ? `${COMMIT_BASE_LEDGER_DIVERGENCE}:${output.divergence}`
-            : output.unverified === true
-              ? COMMIT_BASE_LEDGER_UNVERIFIED
-              : COMMIT_BASE_PENDING,
+          output.unverified === true
+            ? COMMIT_BASE_LEDGER_UNVERIFIED
+            : COMMIT_BASE_PENDING,
           `commit base ${output.baseHeaderHash}: ${output.detail}`,
         ),
-        // The worker's check is counted here, in the main thread whose
-        // metrics the exporter reads, once per refused attempt.
-        output.divergence === undefined
-          ? Effect.void
-          : countLedgerDivergence({ check: output.divergence }),
       ],
       { discard: true },
     );

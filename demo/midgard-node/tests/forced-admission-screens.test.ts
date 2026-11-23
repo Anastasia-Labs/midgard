@@ -29,7 +29,7 @@ import { describe, expect, it } from "vitest";
 
 import { ForcedTransactionsDB } from "../src/database/index.js";
 import { classifyForcedTransactions } from "../src/mpf/event-window.classify-forced-transactions.js";
-import { computeUtxoPayloadRoot } from "../src/mpf/payload-size.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import {
   canonicalTransaction,
@@ -198,7 +198,7 @@ describe("forced admission screens", () => {
       const priorRoot =
         result.ledgerMutationSteps[0]?.preRoot.toString("hex") ??
         (await Effect.runPromise(
-          computeUtxoPayloadRoot(
+          computeLedgerMpfRootFromLedgerEntries(
             [...initialState.entries()].map(([key, value]) => ({
               outref: Buffer.from(key, "hex"),
               output: value,
