@@ -39,6 +39,7 @@ import { Effect } from "effect";
 import { encodeTransactionRootValue } from "../src/mpf/ledger-hydration.js";
 import { countsFromLengths, headerFor } from "./da-payload.record.js";
 import { rebind, verdict } from "./foreign-block-import.fixture.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 import {
   makeMidgardTxOutput,
   makeOutRefCbor,
@@ -237,10 +238,11 @@ export const normalFixture = async (
     transactionId: tx.txId.toString("hex"),
     /** The one entry the block's parent ledger holds. */
     spentEntry: { outRef: spent, output: Buffer.from(output) },
-    imported: (payload: SDKDa.DaPayload = bound) =>
+    imported: async (payload: SDKDa.DaPayload = bound) =>
       verdict(payload, {
-        parentUtxosRoot: prior,
-        parentEntries: [{ outref: spent, output }],
+        parent: await ledgerOf([
+          { outref: spent, output: Buffer.from(output) },
+        ]),
       }),
   };
 };

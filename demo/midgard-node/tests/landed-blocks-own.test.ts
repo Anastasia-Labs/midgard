@@ -22,7 +22,7 @@
 
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
-import { Effect, Metric } from "effect";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -54,7 +54,6 @@ import { processedChain } from "../src/landed-blocks/ledger.js";
 import { processLandedQueue } from "../src/landed-blocks/process.js";
 import { blockedRebaseHold } from "../src/landed-blocks/rebase-target.js";
 import type { ReplayOutcome } from "../src/landed-blocks/replay.js";
-import { landedBlockLocalFaultCounter } from "../src/landed-blocks/replay-outcome-hold.js";
 import {
   Frontier,
   markApplied,
@@ -62,10 +61,10 @@ import {
 } from "../src/landed-blocks/store.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { simDigest } from "./helpers/landed-blocks-sim.universe.js";
-import { hex32 } from "./helpers/state-queue-sim.fixtures.js";
 import {
   A1,
   AFTER_A,
+  AFTER_F,
   type Block,
   confirmedAt,
   confirmedKeys,
@@ -77,8 +76,11 @@ import {
   harness,
   hex,
   inNode,
+  localFaultAlarms,
+  opening,
   ports,
   queueOf,
+  rootOf,
   sortedKeys,
 } from "./landed-blocks-own.fixture.js";
 
@@ -135,9 +137,8 @@ describe("own landed blocks", () => {
         expect(state.replays.map((input) => input.headerHash)).toEqual([
           f.hash,
         ]);
-        expect(sortedKeys(state.replays[0]!.parentEntries)).toEqual(
-          sortedKeys(AFTER_A),
-        );
+        // F replays on A's ledger, read from the store by A's root.
+        expect(state.replays[0]!.parent.root).toBe(a.header.utxosRoot);
         const rows = yield* landedRows;
         expect(
           rows.map((row) => [row.headerHash, row.kind, row.applied]),
@@ -266,11 +267,12 @@ describe("own landed blocks", () => {
     );
   }, 120_000);
 
-  it("never adopts a foreign block that replays to another root than its header's", async () => {
+  it("never adopts a foreign block that replays to another root than its header's, nor keeps that root", async () => {
     const { a, f, genesisState, journalA } = await fixture();
     const state = harness();
     state.journals.set(a.hash, journalA);
-    state.replayRoot = hex32(7);
+    state.replayExtra = entry("bad-root-extra", 9_000_000n);
+    const badRoot = await rootOf([...AFTER_F, state.replayExtra]);
     await inNode(
       Effect.gen(function* () {
         const waiting = yield* processLandedQueue(
@@ -293,10 +295,11 @@ describe("own landed blocks", () => {
         // A verdict: no timer replays it again at the same view.
         expect(isRetriedHold(held!)).toBe(false);
         expect(held?.detail).toContain(f.hash);
-        expect(held?.detail).toContain(hex32(7));
+        expect(held?.detail).toContain(badRoot);
         expect((yield* retrieveRows).map((row) => row.headerHash)).toEqual([
           a.hash,
         ]);
+        expect(yield* opening(state, badRoot)).toBe("LedgerNotRetained");
       }),
     );
   }, 120_000);
@@ -362,10 +365,6 @@ describe("own landed blocks", () => {
     ];
     await inNode(
       Effect.gen(function* () {
-        const alarms = (kind: "local_fault" | "incomplete") =>
-          Metric.value(
-            Metric.tagged(landedBlockLocalFaultCounter, "kind", kind),
-          ).pipe(Effect.map(({ count }) => count));
         // `a` adopted and applied, as the rebase leaves it: what holds is
         // the foreign block's replay alone.
         yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
@@ -373,8 +372,8 @@ describe("own landed blocks", () => {
         for (const [ends, reason, retried, alarm] of cases) {
           state.replayEnds = ends;
           const before = {
-            local_fault: yield* alarms("local_fault"),
-            incomplete: yield* alarms("incomplete"),
+            local_fault: yield* localFaultAlarms("local_fault"),
+            incomplete: yield* localFaultAlarms("incomplete"),
           };
           const held = yield* processLandedQueue(
             ports(state),
@@ -389,8 +388,10 @@ describe("own landed blocks", () => {
             reason === LANDED_BLOCK_ORIGIN_AFTER_FRONTIER,
           );
           expect({
-            local_fault: (yield* alarms("local_fault")) - before.local_fault,
-            incomplete: (yield* alarms("incomplete")) - before.incomplete,
+            local_fault:
+              (yield* localFaultAlarms("local_fault")) - before.local_fault,
+            incomplete:
+              (yield* localFaultAlarms("incomplete")) - before.incomplete,
           }).toEqual({
             local_fault: alarm === "local_fault" ? 1n : 0n,
             incomplete: alarm === "incomplete" ? 1n : 0n,

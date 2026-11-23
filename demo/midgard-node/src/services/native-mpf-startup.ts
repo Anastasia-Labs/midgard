@@ -7,6 +7,7 @@ import {
   MpfEngineStateDB,
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
+import { readLedgerOutputs } from "../landed-blocks/ledger-outputs.js";
 import { utxoToLedgerInsertMaterial } from "../mpf/ledger-hydration.js";
 import {
   MPF_EMPTY_ROOT_HEX,
@@ -188,7 +189,18 @@ export const initializeArchitectureGOwner = <R = never>(
       Effect.gen(function* () {
         // The ledger's one LevelDB handle and store; the owner takes them over.
         const ledger = yield* Effect.tryPromise({
-          try: () => openNativeOwnerLedger(nodeConfig.LEDGER_MPF_DB_PATH),
+          try: () =>
+            openNativeOwnerLedger(nodeConfig.LEDGER_MPF_DB_PATH, (outRefs) =>
+              // Only the client: a reader built inside a transaction must not
+              // keep that transaction's connection.
+              Effect.runPromise(
+                Effect.provideService(
+                  readLedgerOutputs(outRefs),
+                  SqlClient.SqlClient,
+                  sql,
+                ),
+              ),
+            ),
           catch: (cause) => cause,
         });
         yield* restore(initializeLedger(ledger)).pipe(

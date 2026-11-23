@@ -107,7 +107,10 @@ export const replayArchitectureGOne = (
           levelPath,
         });
         service = await ProductionNativeMpfOwnerService.create(
-          await openNativeOwnerLedger(levelPath),
+          // The replay builds no ledger that reads outputs.
+          await openNativeOwnerLedger(levelPath, () =>
+            Promise.reject(new Error("The MPF replay reads no outputs")),
+          ),
           {
             sidecarPath,
             binaryPath: nativeOwner.binaryPath,

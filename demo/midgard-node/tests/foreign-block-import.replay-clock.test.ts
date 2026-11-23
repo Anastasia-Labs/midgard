@@ -38,6 +38,7 @@ import { encodeTransitionStepCbor } from "@al-ft/midgard-fault-proofs/block-repl
 
 import { encodeForcedInclusionValueV1 } from "../src/database/forcedTransactions.encode-forced-inclusion-value-v1.js";
 import { fixture, rebind, verdict } from "./foreign-block-import.fixture.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 import {
   makeMidgardTxOutput,
   makeOutRefCbor,
@@ -166,8 +167,7 @@ it("replays a catch-up forced verdict at its authenticated commit clock instead 
   const result = await verdict(catchup, {
     blockTimeMs: 8,
     blockSlot: 8n,
-    parentUtxosRoot: root,
-    parentEntries: [{ outref: spent, output }],
+    parent: await ledgerOf([{ outref: spent, output }]),
   });
   expect(calls.at(-1)).toEqual({ time: 8, slot: 8n });
   if (result._tag === "Left") throw result.left;

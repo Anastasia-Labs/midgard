@@ -21,6 +21,7 @@ import { verifyAndImportBlock } from "../src/mpf/verified-block-import.js";
 import { countsFromLengths, headerFor } from "./da-payload.record.js";
 import { rebind } from "./foreign-block-import.fixture.js";
 import { insertWithdrawals } from "./helpers/event-rows.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 /**
@@ -188,11 +189,11 @@ export const payloadOf = async (produced: Produced, baseRoot: string) => {
 };
 
 /** Replays `payload` with the foreign replayer's own withdrawal checks. */
-export const replay = (
+export const replay = async (
   payload: SDKDa.DaPayload,
   orders: readonly WithdrawalsDB.Entry[],
-  baseRoot: string,
 ) => {
+  const parent = await ledgerOf(BASE);
   const memberships: WithdrawalMembership[] = [];
   const known = new Map(
     orders.map((row) => [
@@ -212,8 +213,7 @@ export const replay = (
         header: payload.block_body.header,
         headerHash: payload.block_body.header_hash,
         parentHeaderHash: payload.block_body.header.prevHeaderHash,
-        parentUtxosRoot: baseRoot,
-        parentEntries: BASE,
+        parent,
         payload,
         expectedNetworkId: 0n,
         minFeeA: 0n,

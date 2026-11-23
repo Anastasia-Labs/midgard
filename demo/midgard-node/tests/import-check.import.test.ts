@@ -36,7 +36,7 @@ describe("foreign import by committed verdict", () => {
       { input: parent[0]!.outRef, body: "reject", next: "accept" },
     ]);
     const result = await imported(first);
-    expect(result.root).toBe(first.payload.block_body.header.utxosRoot);
+    expect(result.after.root).toBe(first.payload.block_body.header.utxosRoot);
     expect(result.scriptChecks.checks).toHaveLength(1);
     const [check] = result.scriptChecks.checks;
     expect(check!.transactionId).toEqual(first.txIds[0]);
@@ -49,7 +49,9 @@ describe("foreign import by committed verdict", () => {
       { input: first.produced[0]!, body: "accept", next: "accept" },
     ]);
     const nextResult = await imported(next);
-    expect(nextResult.root).toBe(next.payload.block_body.header.utxosRoot);
+    expect(nextResult.after.root).toBe(
+      next.payload.block_body.header.utxosRoot,
+    );
     expect(nextResult.scriptChecks.checks).toHaveLength(1);
   });
 
@@ -75,7 +77,7 @@ describe("foreign import by committed verdict", () => {
     const next = await committedBlock(first.ledger, [
       { input: first.produced[0]!, body: "accept", next: "accept" },
     ]);
-    expect((await imported(next)).root).toBe(
+    expect((await imported(next)).after.root).toBe(
       next.payload.block_body.header.utxosRoot,
     );
   });
@@ -91,7 +93,7 @@ describe("foreign import by committed verdict", () => {
       })),
     );
     const result = await imported(block);
-    expect(result.root).toBe(block.payload.block_body.header.utxosRoot);
+    expect(result.after.root).toBe(block.payload.block_body.header.utxosRoot);
     expect(result.scriptChecks.checks.map((check) => check.position)).toEqual([
       0, 1,
     ]);
@@ -152,7 +154,7 @@ describe("foreign import by committed verdict", () => {
     });
     expect(block.rejection.code).toBe("E_PLUTUS_SCRIPT_INVALID");
     const result = await imported(block);
-    expect(result.root).toBe(block.payload.block_body.header.utxosRoot);
+    expect(result.after.root).toBe(block.payload.block_body.header.utxosRoot);
     expect(result.scriptChecks.checks).toEqual([]);
   });
 });

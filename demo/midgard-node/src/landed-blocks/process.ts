@@ -26,13 +26,14 @@
  *    it: one path for both kinds, and one whose journal was dead (whichever
  *    lands wins) is taken in like any other. A foreign block is
  *    replayed on its parent's ledger and must reach its header's root. A
- *    block that does not is never recorded: it holds `landed_block_invalid`
- *    and nothing after it is processed. A mismatch never feeds a fault-proof
- *    path. A parent ledger this node cannot give is its own fault, a local
- *    fault on the block (`landed_block_local_fault`), never a verdict: for a
- *    foreign block, a working ledger that does not derive the parent's root
- *    (`local-ledger-divergence.ts`); for an own block, a parent root the
- *    ledger store does not retain.
+ *    block that does not is never recorded and its ledger never kept: it
+ *    holds `landed_block_invalid` and nothing after it is processed. A
+ *    mismatch never feeds a fault-proof path. Both kinds read the parent's
+ *    ledger from the node's ledger store by the parent's root, and the
+ *    ledger after the block is persisted there before the block's row is
+ *    written. A parent root the store does not retain, or an output its
+ *    ledger cannot read, is this node's own fault, a local fault on the
+ *    block (`landed_block_local_fault`), never a verdict.
  * 4. A row the working ledger does not hold yet (any new one), or a removed
  *    row, runs the rebase (the driver's recompute, which
  *    also disposes of the dead own journals). One that cannot
@@ -49,6 +50,7 @@
  * move's, replaces. Every hold keeps the process up and clears on a later
  * run.
  */
+import type { Ledger as RetainedLedger } from "@al-ft/midgard-fault-proofs/ledger-store";
 import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
@@ -82,16 +84,9 @@ import {
   LANDED_BLOCK_REPLAY_FAILED,
   LANDED_BLOCKS_WAITING,
 } from "./holds.js";
-import {
-  applyDelta,
-  landedChain,
-  landedStart,
-  ledgerAfter,
-  ledgerEntries,
-  type LedgerMap,
-  netDelta,
-} from "./ledger.js";
-import { ownBlockHold } from "./own-check.js";
+import { landedChain, landedStart } from "./ledger.js";
+import { ownBlock } from "./own-check.js";
+import { parentLedger } from "./parent-ledger.js";
 import { type LandedBlockPorts, viewChecked, ViewMoved } from "./ports.js";
 import {
   replayOutcomeAlarm,
@@ -163,20 +158,21 @@ type Step =
   | Readonly<{
       kind: "row";
       row: LandedBlockRow;
+      /** The ledger after the block, persisted before the row is written. */
+      after: RetainedLedger;
       due?: ImportChecks;
       named?: NamedEvents;
     }>
   | Readonly<{ kind: "held"; hold: DriverHold }>;
 
-/** The row a new node makes, or the hold that stops processing at it. A
- * foreign block reads the whole working ledger at its parent,
- * `parentLedger`. */
+/** The row a new node makes, with the ledger after it, or the hold that
+ * stops processing at it. */
 const newRow = <R>(
   ports: LandedBlockPorts<R>,
   view: View,
   node: LandedNode,
   parent: Parent,
-  parentLedger: ReturnType<typeof ledgerAfter>,
+  lineage: readonly LandedBlockRow[],
 ) =>
   Effect.gen(function* () {
     const fault = linkageFault(node, parent);
@@ -197,9 +193,8 @@ const newRow = <R>(
       // The block's header hash is this node's: a journal that does not
       // describe it, or whose delta does not reach its root, is a local
       // fault, never the block's.
-      const held = yield* ownBlockHold(ports, node, parent, journal);
-      if (held !== undefined)
-        return { kind: "held", hold: held } satisfies Step;
+      const own = yield* ownBlock(ports, node, parent, lineage, journal);
+      if (own.kind === "held") return own satisfies Step;
       // The rebase applies it, as it does a foreign block: it projects its
       // events (the withdrawals with its journal's classification) and
       // writes its local effects, whether or not its journal was dead.
@@ -216,18 +211,16 @@ const newRow = <R>(
           forcedIds: journal.forcedIds,
           txIds: journal.txIds,
         },
+        after: own.after,
       } satisfies Step;
     }
-    const ledger = yield* parentLedger;
+    const ledger = yield* parentLedger(ports, node, parent, lineage);
+    if (ledger.kind === "held") return ledger satisfies Step;
     const outcome = yield* Effect.either(
       ports.replay({
         ...node,
         parentHeaderHash: parent.headerHash,
-        parentUtxosRoot: parent.utxosRoot,
-        // Interim: the replay takes this whole working ledger and returns
-        // the whole ledger after the block, which `netDelta` diffs below;
-        // the node's own ledger store replaces both.
-        parentEntries: ledgerEntries(ledger),
+        parent: ledger.ledger,
         view,
       }),
     );
@@ -256,12 +249,14 @@ const newRow = <R>(
         ),
       } satisfies Step;
     }
-    if (replayed.root !== node.header.utxosRoot)
+    // Checked before anything is persisted or recorded: a ledger at a root
+    // the header does not commit is never kept.
+    if (replayed.after.root !== node.header.utxosRoot)
       return {
         kind: "held",
         hold: verdict(
           LANDED_BLOCK_INVALID,
-          `block ${node.headerHash} replays to root ${replayed.root}, its header commits ${node.header.utxosRoot}`,
+          `block ${node.headerHash} replays to root ${replayed.after.root}, its header commits ${node.header.utxosRoot}`,
         ),
       } satisfies Step;
     return {
@@ -270,12 +265,14 @@ const newRow = <R>(
         ...base,
         kind: "foreign",
         applied: false,
-        ...netDelta(ledger, replayed.entries),
+        spent: replayed.spent,
+        produced: replayed.produced,
         depositIds: replayed.depositIds,
         withdrawals: replayed.withdrawals,
         forcedIds: replayed.forcedIds,
         txIds: replayed.txIds,
       },
+      after: replayed.after,
       due: importChecks(node.header.endTime, replayed.scriptChecks),
       named: replayed.named,
     } satisfies Step;
@@ -357,8 +354,10 @@ const run = <R>(
     const sequence =
       missed === undefined ? nodes : [...missed.headers, ...nodes];
     // The walk: rows kept, relanded, and where new processing starts.
-    const walked = [...start.through];
-    const visited = new Set(walked.map((row) => row.headerHash));
+    // The processed chain to `parent`, which a parent ledger the store no
+    // longer retains is rebuilt along (`parent-ledger.ts`).
+    const lineage = [...start.through];
+    const visited = new Set(lineage.map((row) => row.headerHash));
     const byHash = new Map(rows.map((row) => [row.headerHash, row] as const));
     const relands: LandedBlockRow[] = [];
     let parent: Parent = {
@@ -378,7 +377,7 @@ const run = <R>(
         break;
       visited.add(row.headerHash);
       if (row.state === "removed") relands.push(row);
-      walked.push(row);
+      lineage.push(row);
       parent = {
         headerHash: row.headerHash,
         utxosRoot: row.utxosRoot,
@@ -390,45 +389,30 @@ const run = <R>(
     );
     if (left.length > 0 || relands.length > 0)
       yield* viewChecked(ports, queue.view, rollBackRows(left, relands));
-    // Only a foreign block's replay reads the whole working ledger, at most
-    // once a run (`chain` is the processed chain to its parent), so a run
-    // that only folds, unfolds or takes in own blocks stays O(delta) in
-    // `confirmed_ledger`'s size.
-    if (next < sequence.length) {
-      const chain = [...walked];
-      let ledger: LedgerMap | undefined;
-      const parentLedger = Effect.suspend(() =>
-        ledger === undefined
-          ? ledgerAfter(chain).pipe(Effect.map((read) => (ledger = read)))
-          : Effect.succeed(ledger),
-      );
-      for (; next < sequence.length; next++) {
-        const node = sequence[next]!;
-        const step = yield* newRow(
-          ports,
-          queue.view,
-          node,
-          parent,
-          parentLedger,
-        );
-        if (step.kind === "held") {
-          holds.push(step.hold);
-          break;
-        }
-        yield* viewChecked(
-          ports,
-          queue.view,
-          processRow(step.row, step.due, step.named, options.divergences),
-        );
-        options.committed?.(step.row.headerHash);
-        chain.push(step.row);
-        if (ledger !== undefined) applyDelta(ledger, step.row);
-        parent = {
-          headerHash: step.row.headerHash,
-          utxosRoot: step.row.utxosRoot,
-          endTime: node.header.endTime,
-        };
+    for (; next < sequence.length; next++) {
+      const node = sequence[next]!;
+      const step = yield* newRow(ports, queue.view, node, parent, lineage);
+      if (step.kind === "held") {
+        holds.push(step.hold);
+        break;
       }
+      // The ledger after the block is kept before its row: a child's check or
+      // replay reads it by the row's root. A crash between the two leaves a
+      // root no row names, which the next `retain` drops once no window
+      // keeps it, and the restart processes the block again.
+      yield* ports.persistLedger(step.after);
+      yield* viewChecked(
+        ports,
+        queue.view,
+        processRow(step.row, step.due, step.named, options.divergences),
+      );
+      options.committed?.(step.row.headerHash);
+      lineage.push(step.row);
+      parent = {
+        headerHash: step.row.headerHash,
+        utxosRoot: step.row.utxosRoot,
+        endTime: node.header.endTime,
+      };
     }
     if (missed !== undefined) {
       // The rows just processed may fold already (an own merged block).

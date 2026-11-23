@@ -11,9 +11,16 @@ import type {
   NativeMpfOwnerServiceOptions,
   StoredNode,
 } from "../../src/services/mpf-native-owner/service.normalize-owner-options.js";
-import { openNativeOwnerLedger } from "../../src/services/mpf-native-owner/service.open-ledger.js";
+import {
+  type LedgerOutputReader,
+  openNativeOwnerLedger,
+} from "../../src/services/mpf-native-owner/service.open-ledger.js";
 import { ProductionNativeMpfOwnerService } from "../../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { createEventFlatDigest } from "../../src/workers/utils/mpf-event-flat-digest.js";
+
+/** An output reader for owner tests, none of which reads an output. */
+export const refuseOutputs: LedgerOutputReader = () =>
+  Promise.reject(new Error("This test reads no ledger outputs"));
 
 /** Needs `prepareEventFlatDigest` first. */
 export const digest = (...parts: readonly Uint8Array[]): Buffer => {
@@ -52,7 +59,10 @@ export const seedOwnerLedger = async (
   root: string,
   nodes: ReadonlyMap<string, StoredNode> = new Map(),
 ): Promise<void> => {
-  const { level, store } = await openNativeOwnerLedger(levelPath);
+  const { level, store } = await openNativeOwnerLedger(
+    levelPath,
+    refuseOutputs,
+  );
   try {
     await store.adopt(root, { nodes });
   } finally {
@@ -91,7 +101,10 @@ export const ledgerStoreRecords = async (
   levelPath: string,
   roots: readonly string[] = [],
 ) => {
-  const { level, store } = await openNativeOwnerLedger(levelPath);
+  const { level, store } = await openNativeOwnerLedger(
+    levelPath,
+    refuseOutputs,
+  );
   try {
     const nodes = new Map<string, StoredNode>();
     const counts = new Map<string, number>();
@@ -170,12 +183,16 @@ export const expectCountedLedger = (records: LedgerStoreRecords): void => {
     expect(records.counts.get(hash), hash).toBeGreaterThan(0);
 };
 
-/** Opens the ledger at `levelPath` and hands it to a new owner service. */
+/**
+ * Opens the ledger at `levelPath`, reading outputs through `readOutputs`,
+ * and hands it to a new owner service.
+ */
 export const createOwnerService = async (
   levelPath: string,
   options: NativeMpfOwnerServiceOptions,
+  readOutputs: LedgerOutputReader = refuseOutputs,
 ): Promise<ProductionNativeMpfOwnerService> =>
   ProductionNativeMpfOwnerService.create(
-    await openNativeOwnerLedger(levelPath),
+    await openNativeOwnerLedger(levelPath, readOutputs),
     options,
   );

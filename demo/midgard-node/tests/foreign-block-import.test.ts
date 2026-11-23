@@ -10,6 +10,10 @@ import { describe, expect, it } from "vitest";
 
 import { MINT_ADMITTED_UNDECODABLE } from "./forced-mint-boundary.fixtures.js";
 import { fixture, rebind, verdict } from "./foreign-block-import.fixture.js";
+import { normalFixture } from "./foreign-block-import.normal-fixture.js";
+import { simDigest, simOutput } from "./helpers/landed-blocks-sim.universe.js";
+import { ledgerOf, ledgerWithoutOutputs } from "./helpers/ledger-of.js";
+import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
 describe("complete foreign block import", () => {
   it("honestly imports a nonempty rejected forced event with unchanged ledger root", async () => {
@@ -22,8 +26,9 @@ describe("complete foreign block import", () => {
     if (result._tag === "Right")
       expect(result.right).toEqual({
         headerHash: payload.block_body.header_hash,
-        root: SDK.EMPTY_MERKLE_TREE_ROOT,
-        entries: [],
+        after: expect.objectContaining({ root: SDK.EMPTY_MERKLE_TREE_ROOT }),
+        spent: [],
+        produced: [],
         // A forced transaction is replayed in full: it leaves no check.
         scriptChecks: expect.objectContaining({
           checks: [],
@@ -44,8 +49,9 @@ describe("complete foreign block import", () => {
       if (result._tag === "Left") throw result.left;
       expect(result.right).toEqual({
         headerHash: payload.block_body.header_hash,
-        root: SDK.EMPTY_MERKLE_TREE_ROOT,
-        entries: [],
+        after: expect.objectContaining({ root: SDK.EMPTY_MERKLE_TREE_ROOT }),
+        spent: [],
+        produced: [],
         // A forced transaction is replayed in full: it leaves no check.
         scriptChecks: expect.objectContaining({
           checks: [],
@@ -235,17 +241,57 @@ describe("foreign block import failure attribution", () => {
       expect(result.left).toMatchObject({ reason: "invalid" });
   });
 
-  it("calls a failure it cannot pin on the block incomplete, never invalid", async () => {
-    // A parent ledger with an entry that is no ledger entry: building the
-    // parent ledger, a local computation, fails.
-    const result = await verdict(await fixture(), {
-      parentEntries: [{ outref: Buffer.alloc(0), output: Buffer.alloc(0) }],
+  it("calls a header naming a root other than its parent ledger's invalid", async () => {
+    const payload = await fixture();
+    const result = await verdict(payload, {
+      parent: await ledgerOf([
+        {
+          outref: makeOutRefCbor(simDigest("import:other-parent"), 0),
+          output: simOutput(2_000_000n),
+        },
+      ]),
     });
     expect(result._tag).toBe("Left");
     if (result._tag === "Left")
       expect(result.left).toMatchObject({
-        reason: "incomplete",
-        detail: expect.stringContaining("not a canonical ledger entry"),
+        reason: "invalid",
+        detail: "foreign header does not extend the verified parent",
+      });
+  });
+
+  it("calls a block whose replay misses the post-state root it commits invalid", async () => {
+    const payload = await fixture();
+    const result = await verdict(
+      await rebind({
+        ...payload,
+        block_body: {
+          ...payload.block_body,
+          header: { ...payload.block_body.header, utxosRoot: "ab".repeat(32) },
+        },
+      }),
+    );
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left")
+      expect(result.left).toMatchObject({
+        reason: "invalid",
+        detail: "foreign replay UTxO root mismatch",
+      });
+  });
+
+  it("calls a parent ledger whose output cannot be read a local fault, never invalid", async () => {
+    // The parent holds the spent out-ref, but its store has no output for
+    // it: reading the parent, this node's own work, fails.
+    const f = await normalFixture();
+    const result = await verdict(f.payload, {
+      parent: await ledgerWithoutOutputs([
+        { outref: f.spentEntry.outRef, output: f.spentEntry.output },
+      ]),
+    });
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left")
+      expect(result.left).toMatchObject({
+        reason: "local_fault",
+        detail: expect.stringContaining("LedgerOutputMissing"),
       });
   });
 });

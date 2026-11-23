@@ -695,10 +695,10 @@ first hold by priority is the reason, the rest are in its detail):
   link to its parent; it is never adopted, and no timer replays it again
   (the next follower change does). Report the block.
 - `landed_block_own_journal_mismatch`: this node's own landed block
-  disagrees with its journal, applied on a parent ledger that derives the
-  parent's root (one that does not is `landed_block_local_fault`). A local
-  fault; processing stops until the journal is repaired (no timer retries
-  it): restore the node database from a backup that holds the block's
+  disagrees with its journal, applied on its parent's ledger from the node's
+  ledger store (a ledger the store cannot give is `landed_block_local_fault`).
+  A local fault; processing stops until the journal is repaired (no timer
+  retries it): restore the node database from a backup that holds the block's
   journal (plan §7.5, R5). Report it with the detail.
 - `landed_block_follower_schema_missing`: the follower's admission tables
   are missing from the node database; no timer retries it. Run `migrate`.
@@ -767,9 +767,9 @@ reason=landed_block_origin_after_frontier`); a restart on the same store
   after a fixed number of runs with no progress past that block the node
   exits non-zero for its supervisor to restart it. If it repeats after a
   restart, check the node's libsodium install and read the detail. A detail
-  naming `local ledger divergence (<check>)` is this node's parent ledger not
-  deriving the parent's stored root, for a foreign block or its own; a
-  restart does not clear it. Report it with the detail.
+  naming the ledger store (a parent root it does not retain) or a ledger
+  output it cannot read is this node's own ledger store or database, for a
+  foreign block or its own. Report it with the detail.
 - `landed_block_replay_held`, `landed_block_replay_stuck`: the event replay
   of a foreign block failed locally, which the block's input can reach.
   Never attributed to the block and never an exit: the block is held and

@@ -24,6 +24,7 @@ import { classifyForcedTransactions } from "../src/mpf/event-window.classify-for
 import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import { forcedEntry } from "./forced-transactions.make-signed-effectful-transaction.js";
 import { fixture, rebind, verdict } from "./foreign-block-import.fixture.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 
 /**
  * A forced transaction carrying a Plutus item whose stored program does not
@@ -196,14 +197,11 @@ describe.each(SHAPES)(
         },
       });
       const result = await verdict(funded, {
-        parentUtxosRoot: root,
-        parentEntries: [{ outref: SPENT, output: SPENT_OUTPUT }],
+        parent: await ledgerOf([{ outref: SPENT, output: SPENT_OUTPUT }]),
       });
       if (result._tag === "Left") throw result.left;
-      expect(result.right).toMatchObject({
-        headerHash: funded.block_body.header_hash,
-        root,
-      });
+      expect(result.right.headerHash).toBe(funded.block_body.header_hash);
+      expect(result.right.after.root).toBe(root);
     }, 60_000);
   },
 );

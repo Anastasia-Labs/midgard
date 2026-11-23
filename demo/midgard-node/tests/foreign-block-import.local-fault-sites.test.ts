@@ -83,6 +83,7 @@ import {
   localFaultProgress,
 } from "../src/services/l1-follower.coalesced-runner.js";
 import { rebind, verdict } from "./foreign-block-import.fixture.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 import {
   committedBlock,
   forcedBlock,
@@ -286,7 +287,7 @@ const onParent = async (block: Block, parent: readonly LedgerEntry[]) => {
       },
     },
   });
-  return verdict(payload, { parentUtxosRoot, parentEntries });
+  return verdict(payload, { parent: await ledgerOf(parentEntries) });
 };
 
 describe("a rejection the event replay derives from the block", () => {

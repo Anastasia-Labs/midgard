@@ -82,6 +82,14 @@ export type LandedBlockPorts<R> = Readonly<{
   retainedLedger: (
     root: string,
   ) => Effect.Effect<RetainedLedger, unknown, R | Database>;
+  /**
+   * Keeps `ledger`, one obtained from `retainedLedger` and applied to, in the
+   * node's ledger store and retains its root; keeping a retained root
+   * changes nothing.
+   */
+  persistLedger: (
+    ledger: RetainedLedger,
+  ) => Effect.Effect<void, unknown, R | Database>;
   /** This node's journal of `headerHash`, if it committed that block. */
   ownJournal: (
     headerHash: string,

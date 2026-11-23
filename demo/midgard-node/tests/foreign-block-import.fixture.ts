@@ -19,6 +19,7 @@ import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-tr
 import { verifyAndImportBlock } from "../src/mpf/verified-block-import.js";
 import { computeDaPayloadRoots } from "../src/workers/commit-block-header/da-payload.compute-da-payload-roots.js";
 import { countsFromLengths, headerFor } from "./da-payload.record.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 import { buildNativeTx } from "./native-transaction-integration.build-native-tx.js";
 import { ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX } from "./native-transaction-integration.script-witness-item-to-versioned.js";
 
@@ -183,39 +184,42 @@ const imported = (
   payload: SDKDa.DaPayload,
   overrides: Partial<Parameters<typeof verifyAndImportBlock>[0]> = {},
 ) =>
-  verifyAndImportBlock({
-    header: payload.block_body.header,
-    headerHash: payload.block_body.header_hash,
-    parentHeaderHash: payload.block_body.header.prevHeaderHash,
-    parentUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-    parentEntries: [],
-    payload,
-    expectedNetworkId: 0n,
-    minFeeA: 0n,
-    minFeeB: 0n,
-    blockSlot: 0n,
-    // The fixture block's node time; its traces were built at this clock.
-    blockTimeMs: 2,
-    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-    replayUserEvent: () => Effect.die("fixture has no user event"),
-    verifyForcedSource: ({ source, canonicalTransactionCbor, rejection }) =>
-      Effect.gen(function* () {
-        const { encodeForcedInclusionValueV1 } = yield* Effect.promise(
-          () => import("../src/database/forcedTransactions.js"),
-        );
-        const encoded = yield* encodeForcedInclusionValueV1({
-          nativeTxCbor: canonicalTransactionCbor,
-          consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-          verdict:
-            rejection === undefined
-              ? "ForcedTxValid"
-              : forcedVerdictForRejection(rejection),
-        });
-        if (encoded.value.toString("hex") !== source[1])
-          return yield* Effect.fail(new Error("forced verdict mismatch"));
+  Effect.promise(() => ledgerOf([])).pipe(
+    Effect.flatMap((parent) =>
+      verifyAndImportBlock({
+        header: payload.block_body.header,
+        headerHash: payload.block_body.header_hash,
+        parentHeaderHash: payload.block_body.header.prevHeaderHash,
+        parent,
+        payload,
+        expectedNetworkId: 0n,
+        minFeeA: 0n,
+        minFeeB: 0n,
+        blockSlot: 0n,
+        // The fixture block's node time; its traces were built at this clock.
+        blockTimeMs: 2,
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        replayUserEvent: () => Effect.die("fixture has no user event"),
+        verifyForcedSource: ({ source, canonicalTransactionCbor, rejection }) =>
+          Effect.gen(function* () {
+            const { encodeForcedInclusionValueV1 } = yield* Effect.promise(
+              () => import("../src/database/forcedTransactions.js"),
+            );
+            const encoded = yield* encodeForcedInclusionValueV1({
+              nativeTxCbor: canonicalTransactionCbor,
+              consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+              verdict:
+                rejection === undefined
+                  ? "ForcedTxValid"
+                  : forcedVerdictForRejection(rejection),
+            });
+            if (encoded.value.toString("hex") !== source[1])
+              return yield* Effect.fail(new Error("forced verdict mismatch"));
+          }),
+        ...overrides,
       }),
-    ...overrides,
-  });
+    ),
+  );
 
 export const verdict = (
   payload: SDKDa.DaPayload,

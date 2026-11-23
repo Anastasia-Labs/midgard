@@ -28,7 +28,11 @@ import { Effect, Option } from "effect";
 
 import { DaPayloadsDB } from "../database/index.js";
 import { resolveWorkerEntry } from "../fibers/resolve-worker-entry.js";
-import { type LandedLedger, ledgerAt } from "../landed-blocks/ledger.js";
+import {
+  applyDelta,
+  type LandedLedger,
+  ledgerMap,
+} from "../landed-blocks/ledger.js";
 import type { LandedBlockRow } from "../landed-blocks/store.js";
 import { BUNDLED_WORKER_EXEC_ARGV } from "../services/validation-pool.bundled-worker-exec-argv.js";
 import type {
@@ -136,6 +140,22 @@ const buildInWorker = (
   });
 
 /**
+ * The whole ledger after `headerHash` on the landed ledger, if it is on it:
+ * the frontier's `confirmed_ledger` with the processed deltas to it. The
+ * fault-proofs defender builds its predecessor ledger from whole entries, so
+ * this read stays until the defender takes a ledger store `Ledger`.
+ */
+const ledgerAt = (landed: LandedLedger, headerHash: string) => {
+  const ledger = ledgerMap(landed.confirmed);
+  if (landed.frontier.headerHash === headerHash) return ledger;
+  for (const row of landed.chain) {
+    applyDelta(ledger, row);
+    if (row.headerHash === headerHash) return ledger;
+  }
+  return undefined;
+};
+
+/**
  * The defense material for a case on landed block `target`, on the case's
  * event at its step count, given `landed` (the landed ledger, which holds
  * `target`'s parent while `target` is unmerged).
@@ -172,7 +192,7 @@ export const validationTraceDefenseOutcome = (
       headerHash: target.headerHash,
       parentHeaderHash: target.parentHeaderHash,
       parentUtxosRoot: target.parentUtxosRoot,
-      parentEntries: [...parent.ledger].map(([outRef, output]) => ({
+      parentEntries: [...parent].map(([outRef, output]) => ({
         outRef: Buffer.from(outRef, "hex"),
         output,
       })),

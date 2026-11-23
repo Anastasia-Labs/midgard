@@ -14,15 +14,10 @@ import { DepositsDB } from "../../src/database/index.js";
 import { readQueueHistory } from "../../src/landed-blocks/history.js";
 import { LANDED_BLOCK_REBASE_PENDING } from "../../src/landed-blocks/holds.js";
 import { ownJournal } from "../../src/landed-blocks/journal.js";
-import {
-  ledgerEntries,
-  ledgerMap,
-  ledgerRows,
-} from "../../src/landed-blocks/ledger.js";
+import { ledgerRows } from "../../src/landed-blocks/ledger.js";
 import type { LandedBlockPorts } from "../../src/landed-blocks/ports.js";
 import type { ConfirmedLedgerPosition } from "../../src/landed-blocks/position.js";
 import { rebasePlan } from "../../src/landed-blocks/rebase-target.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/ledger-hydration.js";
 import type { NodeConfig } from "../../src/services/config.js";
 import type { Database } from "../../src/services/database.js";
 import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
@@ -254,19 +249,31 @@ export const simPorts = (
         faults.transient += 1;
         return yield* Effect.fail(new Error("transient replay fault"));
       }
-      const ledger = ledgerMap(input.parentEntries);
-      for (const key of [...ledger.keys()])
-        if (env.universe.xKeys.has(key)) ledger.delete(key);
+      // The parent's X and the Y this height spends, read by out-ref.
       const ySpent = env.universe.ySpent(info.h);
-      if (ySpent !== undefined) ledger.delete(hex(ySpent.outref));
+      const candidates = [
+        ...[...env.universe.xKeys].map((key) => Buffer.from(key, "hex")),
+        ...(ySpent === undefined ? [] : [Buffer.from(ySpent.outref)]),
+      ];
+      const held = yield* Effect.promise(() => input.parent.read(candidates));
+      const spent = candidates.filter(
+        (outRef) => held.get(hex(outRef))?.output !== undefined,
+      );
       const produced = [
         env.universe.y(info.h),
         env.universe.x(info.h, info.b),
         ...(hasDeposit(info.h) ? [env.universe.deposit(info.h).entry] : []),
       ];
-      for (const entry of produced)
-        ledger.set(hex(entry.outref), Buffer.from(entry.output));
-      const entries = ledgerEntries(ledger);
+      const after = yield* Effect.promise(() =>
+        input.parent.apply([
+          ...spent.map((outRef) => ({ type: "delete" as const, outRef })),
+          ...produced.map(({ outref, output }) => ({
+            type: "insert" as const,
+            outRef: outref,
+            output,
+          })),
+        ]),
+      );
       // Every other block includes the node's pending (unmarked)
       // transactions that spend the parent's X (as the block does), with
       // every pending transaction that spends their outputs, fixed at its
@@ -274,8 +281,8 @@ export const simPorts = (
       let txIds = env.includes.get(input.headerHash);
       if (txIds === undefined) {
         const reached = new Set(
-          [...input.parentEntries]
-            .map((entry) => hex(entry.outref))
+          spent
+            .map((outRef) => hex(outRef))
             .filter((key) => env.universe.xKeys.has(key)),
         );
         const pending = new Set(
@@ -298,8 +305,9 @@ export const simPorts = (
       }
       return {
         kind: "replayed",
-        entries,
-        root: yield* computeLedgerMpfRootFromLedgerEntries(entries),
+        after,
+        spent,
+        produced,
         depositIds: hasDeposit(info.h)
           ? [env.universe.deposit(info.h).row[DepositsDB.Columns.ID]]
           : [],
@@ -324,6 +332,11 @@ export const simPorts = (
   retainedLedger: (root) =>
     Effect.tryPromise({
       try: () => env.owner.current.ledger(root),
+      catch: (cause) => cause,
+    }),
+  persistLedger: (ledger) =>
+    Effect.tryPromise({
+      try: () => env.owner.current.persistLedger(ledger),
       catch: (cause) => cause,
     }),
   ownJournal,

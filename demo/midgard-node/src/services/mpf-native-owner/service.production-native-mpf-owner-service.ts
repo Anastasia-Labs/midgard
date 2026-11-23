@@ -386,6 +386,13 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     return this.store.at(root);
   }
 
+  /** Outside the ledger lock: a persist moves no durable root, and the
+   * store orders it with a promotion's adoption and a `retain`'s
+   * replacement of the retained set on its own write lock. */
+  public persistLedger(ledger: Ledger): Promise<void> {
+    return this.store.persist(ledger);
+  }
+
   public async recover(replay: PersistedNativeMpfReplay): Promise<void> {
     return this.runOperation(async () => {
       if (replay.schema !== NATIVE_MPF_RPC_SCHEMA) {

@@ -9,16 +9,13 @@ import {
   locally,
   replayBlockEvents,
 } from "@al-ft/midgard-fault-proofs/block-replay";
-import {
-  createLedgerStore,
-  createMemoryLedgerStorage,
-} from "@al-ft/midgard-fault-proofs/ledger-store";
+import type { Ledger } from "@al-ft/midgard-fault-proofs/ledger-store";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKDa from "@al-ft/midgard-sdk/da";
 import type { MidgardCommittedScriptRun } from "@al-ft/midgard-validation/types";
 import { Data, Effect } from "effect";
 
-import * as Ledger from "../database/utils/ledger.js";
+import type * as LedgerRows from "../database/utils/ledger.js";
 import { importCheckCommittedRunBytes } from "../import-check/kill.js";
 import {
   computeDaPayloadRoots,
@@ -28,35 +25,28 @@ import {
   headerRoots,
   rootMismatches,
 } from "../workers/commit-block-header/da-payload.compute-da-payload-roots.js";
-import {
-  countLedgerDivergence,
-  type LedgerDivergence,
-  ledgerDivergenceDetail,
-} from "./local-ledger-divergence.js";
 
-/** The shared block replay's context over the node's ledger rows. */
+/** The shared block replay's context, on the parent's ledger. */
 export type ImportedBlockReplayContext = Omit<
   BlockReplayContext,
-  "parent" | "committedVerdicts" | "onReplayedEvent"
-> & {
-  readonly parentEntries: readonly Ledger.MinimalEntry[];
-};
+  "committedVerdicts" | "onReplayedEvent"
+>;
 
-/** Whether `error` is the ledger store's `LedgerRootMismatchError`, matched
- * by name: the package ships more than one entry bundle. */
-const isLedgerRootMismatch = (
-  error: unknown,
-): error is Error & { readonly actualRoot: string } =>
-  error instanceof Error && error.name === "LedgerRootMismatchError";
+/** A block's net delta on its parent's ledger: the out-refs it spent, and
+ * the outputs at out-refs the parent does not hold or holds with other
+ * bytes, each in out-ref order. The two never share an out-ref. */
+export type LedgerDelta = Readonly<{
+  spent: readonly Buffer[];
+  produced: readonly LedgerRows.MinimalEntry[];
+}>;
 
 /**
  * - `missing`: the block's DA payload is not available yet;
  * - `invalid`: the block (its header, DA payload or replay) is at fault;
  * - `local_fault`: this node's own computation failed where the block's
  *   input cannot make it fail (hashing, the payload roots after their keys
- *   checked, the import's bookkeeping, a runtime fault named at its
- *   origin), or the parent ledger this node supplied does not derive the
- *   parent root it supplied with it (`local-ledger-divergence.ts`); retried;
+ *   checked, the import's bookkeeping, a read of the parent's ledger, a
+ *   runtime fault named at its origin); retried;
  * - `incomplete`: the import failed for a reason it cannot pin on the block
  *   (a ledger root, or an unclassified typed replay failure); retried.
  * - `verifier_unavailable`: this node's Ed25519 verifier could not answer
@@ -224,9 +214,57 @@ const verifierUnavailable = (foreignHeaderHash: string, cause: unknown) => {
       });
 };
 
+const byHex = (left: string, right: string) =>
+  left < right ? -1 : left > right ? 1 : 0;
+
+/**
+ * The block's net delta on `parent` from each touched out-ref's first change
+ * (`firstRemoved`: whether it removed the out-ref) and last output
+ * (`null`: removed). A first removal names an out-ref `parent` held, so one
+ * removed first and last is spent unread; every other touched out-ref is
+ * read from `parent`, for whether it held it and with which bytes. Nothing
+ * the block did not touch is read.
+ */
+const netDelta = (
+  parent: Ledger,
+  firstRemoved: ReadonlyMap<string, boolean>,
+  last: ReadonlyMap<string, Buffer | null>,
+) =>
+  Effect.gen(function* () {
+    const toRead = [...firstRemoved]
+      .filter(([key, removed]) => !removed || last.get(key) !== null)
+      .map(([key]) => Buffer.from(key, "hex"));
+    const held = yield* Effect.tryPromise({
+      try: () => parent.read(toRead),
+      catch: (cause) => new LocalFailure("parent ledger read", cause),
+    });
+    const spent: string[] = [];
+    const produced: [string, Buffer][] = [];
+    for (const [key, removed] of firstRemoved) {
+      const output = last.get(key) ?? null;
+      const before = held.get(key)?.output;
+      if (output === null) {
+        if (removed || before !== undefined) spent.push(key);
+      } else if (before === undefined || !before.equals(output))
+        produced.push([key, output]);
+    }
+    return {
+      spent: spent.sort(byHex).map((key) => Buffer.from(key, "hex")),
+      produced: produced
+        .sort(([left], [right]) => byHex(left, right))
+        .map(([key, output]) => ({
+          outref: Buffer.from(key, "hex"),
+          output: Buffer.from(output),
+        })),
+    } satisfies LedgerDelta;
+  });
+
 /** Full import authentication. A caller must supply the exact canonical parent
  * and deployment observation; matching ledger roots or DA signatures do not
  * substitute for replay. No successful result is cached across observations.
+ * The parent's ledger is this node's own (its root is the parent's): it is
+ * read, never checked. The result is the ledger after the block, which is
+ * not persisted, and the block's net delta on the parent.
  *
  * Every L2 transaction is applied by its committed verdict: the import runs
  * no script, and returns the transactions with script runs as
@@ -235,18 +273,16 @@ const verifierUnavailable = (foreignHeaderHash: string, cause: unknown) => {
  * Failures: a fault of the Ed25519 verifier, wherever it is raised (a
  * callback's included), is `verifier_unavailable`, checked first; otherwise
  * the caller's callbacks' pass through unchanged (their verdicts are the
- * caller's). A `ReplayLocalFault` defect (named where it arose), a parent
- * ledger that does not derive the parent root it came with, and this
- * import's own computations are `local_fault`, one marked `held` (the
- * event replay's) `replay_held`; any other defect is
- * `invalid`: it may come from reading the block's or its events' bytes, so
- * it is never taken for a local fault.
+ * caller's). A `ReplayLocalFault` defect (named where it arose, a read of
+ * the parent's ledger among them) and this import's own computations are
+ * `local_fault`, one marked `held` (the event replay's) `replay_held`; any
+ * other defect is `invalid`: it may come from reading the block's or its
+ * events' bytes, so it is never taken for a local fault.
  * Any other typed failure is `incomplete`. */
 export const verifyAndImportBlock = (
   input: ImportedBlockReplayContext & {
     readonly headerHash: string;
     readonly parentHeaderHash: string;
-    readonly parentUtxosRoot: string;
     readonly payload?: SDKDa.DaPayload;
   },
 ) =>
@@ -261,7 +297,7 @@ export const verifyAndImportBlock = (
       );
     if (
       input.header.prevHeaderHash !== input.parentHeaderHash ||
-      input.header.prevUtxosRoot !== input.parentUtxosRoot
+      input.header.prevUtxosRoot !== input.parent.root
     ) {
       return yield* fail(
         "invalid",
@@ -346,40 +382,6 @@ export const verifyAndImportBlock = (
         "invalid",
         `foreign DA commitment mismatch: ${mismatches.join(",")}`,
       );
-    // The parent's entries and root are both this node's (the header was
-    // checked against the root above): entries that do not derive it are
-    // this node's ledger divergence, never the block's. Checked after every
-    // check of the payload that does not read them, so a payload fault is
-    // judged on any parent ledger.
-    // Interim: the parent ledger is built in memory from this node's
-    // whole-table entries for each block; the node's own ledger store
-    // replaces it.
-    const parent = yield* Effect.tryPromise({
-      try: () =>
-        createLedgerStore(createMemoryLedgerStorage()).admit(
-          input.parentEntries.map((entry) => ({
-            outRef: entry[Ledger.Columns.OUTREF],
-            output: entry[Ledger.Columns.OUTPUT],
-          })),
-          input.parentUtxosRoot,
-        ),
-      catch: (cause) => cause,
-    }).pipe(
-      Effect.catchAll((cause) => {
-        if (!isLedgerRootMismatch(cause)) return Effect.fail(cause);
-        const divergence: LedgerDivergence = {
-          check: "landed_parent",
-          headerHash: input.parentHeaderHash,
-          root: input.parentUtxosRoot,
-          derivedRoot: cause.actualRoot,
-        };
-        return countLedgerDivergence(divergence).pipe(
-          Effect.zipRight(
-            fail("local_fault", ledgerDivergenceDetail(divergence)),
-          ),
-        );
-      }),
-    );
     const collector = blockChecksCollector({
       blockTimeMs: input.blockTimeMs,
       blockSlot: input.blockSlot,
@@ -388,44 +390,34 @@ export const verifyAndImportBlock = (
       minFeeB: input.minFeeB,
       l1SlotConfig: input.l1SlotConfig,
     });
-    // Interim: the entries after the block are the parent's with each
-    // event's changes folded in, for callers that hold whole-table entries;
-    // the node's own ledger store replaces them.
-    const after = new Map(
-      input.parentEntries.map((entry) => [
-        entry[Ledger.Columns.OUTREF].toString("hex"),
-        entry,
-      ]),
-    );
+    // Each touched out-ref's first change (a removal names an out-ref the
+    // parent held) and its last output (`null`: removed).
+    const firstRemoved = new Map<string, boolean>();
+    const last = new Map<string, Buffer | null>();
     const replayed = yield* replayBlockEvents({
       ...input,
-      parent,
       payload,
       replayUserEvent: (event) => passThrough(input.replayUserEvent(event)),
       verifyForcedSource: (source) =>
         passThrough(input.verifyForcedSource(source)),
       committedVerdicts: collector.committedVerdicts,
       onReplayedEvent: ({ mutations }) => {
-        for (const { key, output } of mutations)
-          if (output === null) after.delete(key);
-          else
-            after.set(key, {
-              [Ledger.Columns.OUTREF]: Buffer.from(key, "hex"),
-              [Ledger.Columns.OUTPUT]: output,
-            });
+        for (const { key, output } of mutations) {
+          if (!firstRemoved.has(key)) firstRemoved.set(key, output === null);
+          last.set(key, output);
+        }
       },
     });
-    const replayRoot = replayed.root;
-    if (replayRoot !== input.header.utxosRoot)
+    if (replayed.root !== input.header.utxosRoot)
       return yield* fail("invalid", "foreign replay UTxO root mismatch");
-    const entries = [...after.values()];
+    const delta = yield* netDelta(input.parent, firstRemoved, last);
     // Replay compares every transition and mapping by its canonical bytes,
     // independently of the payload's internally consistent roots; validation
     // descriptors, which the header does not commit, only by verdict.
     return {
       headerHash: input.headerHash,
-      root: replayRoot,
-      entries,
+      after: replayed,
+      ...delta,
       scriptChecks: collector.result(),
     };
   }).pipe(

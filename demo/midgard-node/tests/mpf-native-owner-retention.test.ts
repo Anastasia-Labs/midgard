@@ -1,8 +1,8 @@
 /**
  * The native owner's `retain` against the pinned child and the node's
  * LevelDB ledger store: what it keeps besides the roots it is given, how a
- * canonical restore treats a root it dropped, and how a promotion runs
- * beside its deletion.
+ * canonical restore treats a root it dropped, how a promotion runs beside
+ * its deletion, and what it keeps of a ledger handed to it to persist.
  */
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -25,12 +25,17 @@ import { openNativeOwnerLedger } from "../src/services/mpf-native-owner/service.
 import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
 import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
+import { simDigest, simOutput } from "./helpers/landed-blocks-sim.universe.js";
 import {
   nativeOwnerBinaryPath,
   nativeOwnerBinaryPresent,
   warnNativeOwnerBinaryAbsent,
 } from "./helpers/native-owner-binary.js";
-import { seedOwnerLedger } from "./helpers/native-owner-ledger.js";
+import {
+  refuseOutputs,
+  seedOwnerLedger,
+} from "./helpers/native-owner-ledger.js";
+import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
 const binaryPresent = nativeOwnerBinaryPresent();
 if (!binaryPresent) warnNativeOwnerBinaryAbsent("mpf-native-owner-retention");
@@ -111,7 +116,7 @@ describe.skipIf(!binaryPresent)("native MPF owner retention", () => {
     paths.push(directory);
     const levelPath = join(directory, "ledger");
     await seedOwnerLedger(levelPath, SDK.EMPTY_MERKLE_TREE_ROOT);
-    const ledger = await openNativeOwnerLedger(levelPath);
+    const ledger = await openNativeOwnerLedger(levelPath, refuseOutputs);
     const { level } = ledger;
     const batch = level.batch.bind(level) as (ops: unknown) => Promise<unknown>;
     let intercept: Intercept | undefined;
@@ -453,5 +458,35 @@ describe.skipIf(!binaryPresent)("native MPF owner retention", () => {
     const held = await records();
     expect(held.retained).toEqual(new Set([tip]));
     expectExact(held);
+  });
+
+  it("keeps a ledger it is handed to persist, without moving its durable root, until a retain leaves it out", async () => {
+    const { service, records } = await openOwner();
+    const durable = (await service.diagnostics()).durableRoot;
+    const after = await (
+      await service.ledger(durable)
+    ).apply([
+      {
+        type: "insert",
+        outRef: makeOutRefCbor(simDigest("retention:persisted"), 0),
+        output: simOutput(3_000_000n),
+      },
+    ]);
+    await expect(service.ledger(after.root)).rejects.toBeInstanceOf(
+      LedgerNotRetained,
+    );
+
+    await service.persistLedger(after);
+    expect((await service.ledger(after.root)).root).toBe(after.root);
+    expect((await service.diagnostics()).durableRoot).toBe(durable);
+    const kept = await records();
+    expect(kept.retained.has(after.root)).toBe(true);
+    expectExact(kept);
+
+    await service.retain(new Set([durable]));
+    await expect(service.ledger(after.root)).rejects.toBeInstanceOf(
+      LedgerNotRetained,
+    );
+    expectExact(await records());
   });
 });

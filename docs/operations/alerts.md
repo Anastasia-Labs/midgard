@@ -145,14 +145,6 @@ landed deltas) do not derive the root it stores for them
 come from the node's own stores, so the fault is this node's, never a
 block's. The `check` names where it was found:
 
-- `landed_parent`: the parent ledger a foreign landed block is replayed on.
-  The block is held as `landed_block_local_fault`, not judged invalid. (This
-  node's own landed block is checked on the ledger its MPF store retains at
-  the parent's root, so it raises no divergence; a parent root the store does
-  not retain holds it under the same reason and raises the
-  `LandedBlockLocalFault` event, with no increase here.) After
-  `LOCAL_FAULT_RUN_LIMIT` attempts in a row the node exits non-zero under that
-  reason.
 - `commit_base_landed`, `commit_base_confirmed_ledger`: the base a commit
   builds on. The commit is refused on every tick, each refusal counted; the
   node keeps running. A commit on a landed tail builds from the frontier at
@@ -205,8 +197,8 @@ read the ledger and its root on one database snapshot. A commit base on a
 tail that landed-block processing has not processed yet waits as
 `commit_base_pending`, not this alert.
 
-**First checks.** `GET /readyz` names `landed_block_local_fault` (landed
-blocks), `commit_base_ledger_divergence:<check>` (commits), or
+**First checks.** `GET /readyz` names `commit_base_ledger_divergence:<check>`
+(commits), or
 `commit_base_ledger_divergence:confirmed_ledger` or `:confirmed_ledger_tail`
 under `confirmed_ledger_verification` (the verification; when both diverge it
 names `confirmed_ledger`, the frontier's, and the log and the counter carry
@@ -214,8 +206,8 @@ both). The node log carries
 `local ledger divergence (<check>): the ledger at <headerHash> derives root
 <derived>, its stored root is <stored>` (or, for a landed delta, `takes a
 delta that <fault>` in place of the derived root). It appears under a
-`LandedBlockLocalFault` error event or a `Commit refused on its base` error
-line, one line per divergence a verification run found. Each verification
+`Commit refused on its base` error line, one line per divergence a
+verification run found. Each verification
 run also logs `confirmed_ledger verification at frontier <headerHash>
 (generation <n>), tail <headerHash>: verified (entries=<count>, <ms> ms)` (or
 `diverged (<check>, ...)` in place of `verified`). A pass replayed over folds
@@ -226,11 +218,10 @@ replayed <count> folds made during the run, to <headerHash> (generation
 logs `confirmed_ledger fold log past 256 folds: dropped, a full verification
 run is due`.
 
-**Action.** None in node state: the node neither adopts a block nor commits
-on the diverged ledger, and nothing repairs it automatically. No known
-transient fires it, so a restart does not clear it: the node reads the same
-ledger and fails the same check, and after a landed-block exit it exits
-again.
+**Action.** None in node state: the node does not commit on the diverged
+ledger, and nothing repairs it automatically. No known transient fires it,
+so a restart does not clear it: the node reads the same ledger and fails the
+same check.
 
 **Escalate** every occurrence to the protocol developers, with the check,
 header hash, both roots and the deployment manifest.

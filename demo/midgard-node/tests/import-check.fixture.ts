@@ -54,6 +54,7 @@ import { encodeTransactionRootValue } from "../src/mpf/ledger-hydration.js";
 import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import { countsFromLengths, headerFor } from "./da-payload.record.js";
 import { rebind, verdict } from "./foreign-block-import.fixture.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 
 /** A script body: accepts (returns unit), fails, loops until its budget is
  * spent, or accepts carrying `LARGE_SCRIPT_BYTES` of unused constants. */
@@ -339,13 +340,14 @@ export const committedBlock = async (
     /** The output each transaction produced (index 0). */
     produced: built.map(({ tx }) => outRefFromTxId(tx.txId, 0n)),
     ledger: after,
-    imported: () =>
+    imported: async () =>
       verdict(payload, {
-        parentUtxosRoot: prior,
-        parentEntries: parent.map((entry) => ({
-          outref: entry.outRef,
-          output: entry.output,
-        })),
+        parent: await ledgerOf(
+          parent.map((entry) => ({
+            outref: entry.outRef,
+            output: entry.output,
+          })),
+        ),
       }),
   };
 };
@@ -475,13 +477,14 @@ export const forcedBlock = async (
   return {
     payload,
     rejection: replay.rejection,
-    imported: () =>
+    imported: async () =>
       verdict(payload, {
-        parentUtxosRoot: prior,
-        parentEntries: parent.map((entry) => ({
-          outref: entry.outRef,
-          output: entry.output,
-        })),
+        parent: await ledgerOf(
+          parent.map((entry) => ({
+            outref: entry.outRef,
+            output: entry.output,
+          })),
+        ),
       }),
   };
 };

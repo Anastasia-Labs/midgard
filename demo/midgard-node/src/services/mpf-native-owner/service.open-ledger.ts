@@ -7,6 +7,7 @@
 import {
   createLedgerStore,
   type LedgerStore,
+  type OutRefHex,
 } from "@al-ft/midgard-fault-proofs/ledger-store";
 import { Level } from "level";
 
@@ -19,23 +20,25 @@ export type NativeOwnerLedger = {
   readonly store: LedgerStore;
 };
 
+/** Output bytes by out-ref, in order; `undefined` for an out-ref it lacks. */
+export type LedgerOutputReader = (
+  outRefs: readonly OutRefHex[],
+) => Promise<(Buffer | undefined)[]>;
+
 /**
- * Opens the LevelDB at `path` and builds the ledger store over it. Nothing
- * on the node reads ledger outputs through this store, and LevelDB holds
- * none, so an output read is refused.
+ * Opens the LevelDB at `path` and builds the ledger store over it. LevelDB
+ * holds trie nodes only; the store reads outputs through `readOutputs`.
  */
 export const openNativeOwnerLedger = async (
   path: string,
+  readOutputs: LedgerOutputReader,
 ): Promise<NativeOwnerLedger> => {
   const level = new Level<string, StoredValue>(path, { valueEncoding: "json" });
   await level.open();
   const storage = createLevelLedgerStorage({
     // The same handle: the adapter types values as the MPF store does.
     level: level as unknown as Level<string, MpfStoredValue>,
-    readOutputs: () =>
-      Promise.reject(
-        new Error("The native owner's ledger store reads no outputs"),
-      ),
+    readOutputs,
   });
   return { level, store: createLedgerStore(storage) };
 };

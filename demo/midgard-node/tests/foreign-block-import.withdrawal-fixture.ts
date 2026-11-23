@@ -20,6 +20,7 @@ import {
   verifyAndImportBlock,
 } from "../src/mpf/verified-block-import.js";
 import { computeDaPayloadRoots } from "../src/workers/commit-block-header/da-payload.compute-da-payload-roots.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 
 /**
  * A foreign block settling one honestly signed withdrawal of a ledger output
@@ -178,8 +179,9 @@ export const withdrawalFixture = async (
   ]);
   return {
     headerHash: payload.block_body.header_hash,
-    imported: () => {
+    imported: async () => {
       const material = foreignReplayMaterial(new Map(), known, new Map(), []);
+      const parent = await ledgerOf(parentEntries);
       return Effect.runPromise(
         Effect.either(
           verifyAndImportBlock({
@@ -190,8 +192,7 @@ export const withdrawalFixture = async (
             header: payload.block_body.header,
             headerHash: payload.block_body.header_hash,
             parentHeaderHash: header.prevHeaderHash,
-            parentUtxosRoot: prior,
-            parentEntries,
+            parent,
             payload,
             expectedNetworkId: 0n,
             minFeeA: 0n,

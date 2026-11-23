@@ -46,6 +46,7 @@ import {
   openNativeOwnerLedger,
   writeGenesisLedger,
 } from "../src/services/mpf-native-owner/service.open-ledger.js";
+import { refuseOutputs } from "./helpers/native-owner-ledger.js";
 
 const directories: string[] = [];
 const freshPath = async () => {
@@ -282,7 +283,7 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
    * `survive` refused, as if the process died there.
    */
   const openDyingAfter = async (path: string, survive: number) => {
-    const ledger = await openNativeOwnerLedger(path);
+    const ledger = await openNativeOwnerLedger(path, refuseOutputs);
     const level = ledger.level as unknown as Record<
       string,
       (...args: unknown[]) => Promise<unknown>
@@ -308,7 +309,7 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
         () => true,
       );
       await dying.level.close();
-      const restarted = await openNativeOwnerLedger(path);
+      const restarted = await openNativeOwnerLedger(path, refuseOutputs);
       const level = restarted.level as unknown as Level<string, MpfStoredValue>;
       try {
         if ((await level.get(ROOT_KEY)) === undefined) {

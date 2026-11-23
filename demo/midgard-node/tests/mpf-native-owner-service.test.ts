@@ -37,6 +37,7 @@ import {
   leafRoot,
   ledgerStoreRecords,
   reachableNodes,
+  refuseOutputs,
   seedLeafLedger,
   seedOwnerLedger,
 } from "./helpers/native-owner-ledger.js";
@@ -405,7 +406,7 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     await expect(createOwnerService(levelPath, options)).rejects.toThrow(
       refusal,
     );
-    await (await openNativeOwnerLedger(levelPath)).level.close();
+    await (await openNativeOwnerLedger(levelPath, refuseOutputs)).level.close();
   };
 
   it("refuses a native binary whose SHA differs from the pin and releases the ledger", async () => {

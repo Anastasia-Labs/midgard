@@ -16,7 +16,6 @@ import { Data, Effect, Metric } from "effect";
 
 /**
  * Where a divergence was found:
- * - `landed_parent`: the parent ledger a foreign landed block is replayed on;
  * - `commit_base_landed`: the processed landed deltas from the verified
  *   frontier to the queue tail a commit builds on, one of which does not
  *   apply to the ledger before it;
@@ -30,7 +29,6 @@ import { Data, Effect, Metric } from "effect";
  *   or one of those deltas that does not apply to the ledger before it.
  */
 export const LEDGER_DIVERGENCE_CHECKS = [
-  "landed_parent",
   "commit_base_landed",
   "commit_base_confirmed_ledger",
   "confirmed_ledger",

@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import { ForeignBlockVerificationError } from "../src/mpf/verified-block-import.js";
 import { rebind, verdict } from "./foreign-block-import.fixture.js";
 import { normalFixture } from "./foreign-block-import.normal-fixture.js";
+import { ledgerOf } from "./helpers/ledger-of.js";
 
 // A parent ledger may hold an output whose native script_ref does not
 // decode: it has no canonical descriptor, and its trie leaf is the
@@ -100,11 +101,12 @@ describe("foreign import over a parent ledger holding an output whose native scr
     const post = await rootWithUndecodable([produced]);
     const payload = await reRooted(f.payload, prior, post);
     const result = await verdict(payload, {
-      parentUtxosRoot: prior,
-      parentEntries: [f.spentEntry, undecodable].map(({ outRef, output }) => ({
-        outref: outRef,
-        output,
-      })),
+      parent: await ledgerOf(
+        [f.spentEntry, undecodable].map(({ outRef, output }) => ({
+          outref: outRef,
+          output,
+        })),
+      ),
     });
     expect(
       result._tag === "Right"
@@ -114,7 +116,7 @@ describe("foreign import over a parent ledger holding an output whose native scr
           : String(result.left),
     ).toBe("imported");
     if (result._tag === "Left") return;
-    expect(result.right.root).toBe(payload.block_body.header.utxosRoot);
-    expect(result.right.root).toBe(post);
+    expect(result.right.after.root).toBe(payload.block_body.header.utxosRoot);
+    expect(result.right.after.root).toBe(post);
   });
 });
