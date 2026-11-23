@@ -1,4 +1,3 @@
-import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   buildMidgardMpfDeletionOpening,
   decodeMidgardSpendInputItem,
@@ -9,86 +8,84 @@ import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { KeyValuePhasEntry } from "./phas.js";
+import { readingLedger } from "../event-ledger.ledger.js";
+import { type Ledger, ledgerTrie } from "../ledger-store/index.js";
 
-/** Mutation witness builder. Authority comes from the caller's authenticated
- * descriptor root; this helper never classifies a block or admits a challenge. */
+/** `run`, with a ledger no longer readable named this process's own fault. */
+const reading = async <T>(run: () => Promise<T>): Promise<T> =>
+  await readingLedger("transition replay ledger", run);
+
+/** Mutation witness builder over `ledger`, whose root must be `expectedRoot`.
+ * Its edits stay in its own trie, so `ledger` is unchanged by them, and a
+ * ledger no longer readable is this process's own fault (`ReplayLocalFault`).
+ * Authority comes from the caller's authenticated descriptor root; this
+ * helper never classifies a block or admits a challenge. */
 export const createTransitionTraceLedgerReplay = async ({
-  entries,
+  ledger,
   expectedRoot,
 }: {
-  readonly entries: readonly KeyValuePhasEntry[];
+  readonly ledger: Ledger;
   readonly expectedRoot: string;
 }) => {
-  const values = new Map<string, Buffer>();
-  for (const entry of entries) {
-    decodeMidgardSpendInputItem(entry.key);
-    const key = entry.key.toString("hex");
-    if (values.has(key))
-      throw new Error("Transition replay has a duplicate ledger key");
-    values.set(key, Buffer.from(entry.value));
-  }
-  const trie = await Trie.fromList(
-    entries.map(({ key, value }) => ({
-      key: Buffer.from(key),
-      value: Buffer.from(value),
-    })),
-  );
+  if (ledger.root !== expectedRoot)
+    throw new Error(
+      "Transition replay ledger root differs from the authenticated predecessor root",
+    );
+  const trie = await reading(async () => await ledgerTrie(ledger));
   const root = () =>
     trie.hash === null || trie.hash === undefined
       ? SDK.EMPTY_MERKLE_TREE_ROOT
       : Buffer.from(trie.hash).toString("hex");
-  if (root() !== expectedRoot)
-    throw new Error(
-      "Transition replay descriptor trie differs from authenticated predecessor root",
-    );
   return Object.freeze({
     root,
-    has: (key: Buffer): boolean => values.has(key.toString("hex")),
-    async delete(key: Buffer): Promise<SDKFraudProof.LedgerDeleteWitness> {
-      decodeMidgardSpendInputItem(key);
-      const value = values.get(key.toString("hex"));
-      if (value === undefined)
-        throw new Error("Transition replay cannot delete an absent input");
-      const proved = await trie.prove(key);
-      const opening = await buildMidgardMpfDeletionOpening(
-        trie,
-        key,
-        parseMidgardMpfProofJson(proved.toJSON()),
-      );
-      await trie.delete(key);
-      values.delete(key.toString("hex"));
-      return {
-        key: key.toString("hex"),
-        value: value.toString("hex"),
-        opening: opening.toString("hex"),
-        delete_proof: Data.from(proved.toCBOR().toString("hex"), SDK.Proof),
-      };
-    },
-    async insert(
+    has: async (key: Buffer): Promise<boolean> =>
+      await reading(async () => (await trie.get(key)) !== undefined),
+    delete: async (key: Buffer): Promise<SDKFraudProof.LedgerDeleteWitness> =>
+      await reading(async () => {
+        decodeMidgardSpendInputItem(key);
+        const value = await trie.get(key);
+        if (value === undefined)
+          throw new Error("Transition replay cannot delete an absent input");
+        const proved = await trie.prove(key);
+        const opening = await buildMidgardMpfDeletionOpening(
+          trie,
+          key,
+          parseMidgardMpfProofJson(proved.toJSON()),
+        );
+        await trie.delete(key);
+        return {
+          key: key.toString("hex"),
+          value: value.toString("hex"),
+          opening: opening.toString("hex"),
+          delete_proof: Data.from(proved.toCBOR().toString("hex"), SDK.Proof),
+        };
+      }),
+    insert: async (
       key: Buffer,
       output: Buffer,
-    ): Promise<SDKFraudProof.LedgerInsertWitness> {
-      decodeMidgardSpendInputItem(key);
-      if (values.has(key.toString("hex")))
-        throw new Error("Transition replay cannot replace an existing output");
-      const value = Buffer.from(
-        buildCanonicalMidgardLedgerEntryOutputMaterial({
-          outRef: key,
-          outputCbor: output,
-        }).descriptorCbor,
-      );
-      await trie.insert(key, value);
-      values.set(key.toString("hex"), value);
-      const proof = Data.from(
-        (await trie.prove(key)).toCBOR().toString("hex"),
-        SDK.Proof,
-      );
-      return {
-        key: key.toString("hex"),
-        value: value.toString("hex"),
-        insert_proof: proof,
-      };
-    },
+    ): Promise<SDKFraudProof.LedgerInsertWitness> =>
+      await reading(async () => {
+        decodeMidgardSpendInputItem(key);
+        if ((await trie.get(key)) !== undefined)
+          throw new Error(
+            "Transition replay cannot replace an existing output",
+          );
+        const value = Buffer.from(
+          buildCanonicalMidgardLedgerEntryOutputMaterial({
+            outRef: key,
+            outputCbor: output,
+          }).descriptorCbor,
+        );
+        await trie.insert(key, value);
+        const proof = Data.from(
+          (await trie.prove(key)).toCBOR().toString("hex"),
+          SDK.Proof,
+        );
+        return {
+          key: key.toString("hex"),
+          value: value.toString("hex"),
+          insert_proof: proof,
+        };
+      }),
   });
 };

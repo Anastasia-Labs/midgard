@@ -10,7 +10,14 @@ import { placeholderValidationTraceDescriptorV1 } from "@al-ft/midgard-validatio
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
+import { isReplayLocalFault } from "../src/block-replay.faults.js";
+import type { LedgerEntry } from "../src/ledger-at.js";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  ledgerAt,
+  LedgerNodeMissing,
+} from "../src/ledger-store/index.js";
 import {
   mpfProofFromWitness,
   normalizedMpfRoot,
@@ -50,16 +57,22 @@ const descriptorEntry = (index: number) => ({
   ),
 });
 
+/** The ledger of `entries`, checked against `root`. */
+const ledgerOf = async (
+  entries: readonly { readonly key: Buffer }[],
+  root: string,
+) =>
+  await createLedgerStore(createMemoryLedgerStorage()).admit(
+    entries.map(({ key: outRef }): LedgerEntry => ({ outRef, output })),
+    root,
+  );
+
 describe("transition trace retained descriptor mutations", () => {
   it("replays a rejected forced transaction without retained machine endpoints", async () => {
     const id = outRef(88);
     const eventKey = forcedEventKey(id);
     const previous = await reconstruct(await buildPayloadFixture({}));
-    const predecessor = await checkLedgerAgainstRoot({
-      entries: [],
-      utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-      label: "predecessor",
-    });
+    const predecessor = await ledgerOf([], SDK.EMPTY_MERKLE_TREE_ROOT);
     const transaction = forcedTx(88, {
       ForcedTxInvalid: { reason: "EmptyInputs" },
     });
@@ -136,9 +149,10 @@ describe("transition trace retained descriptor mutations", () => {
     const entries = Array.from({ length: 256 }, (_, index) =>
       descriptorEntry(index),
     );
+    const { root } = await keyValuePhasRootWithCount(entries);
     const ledger = await createTransitionTraceLedgerReplay({
-      entries,
-      expectedRoot: (await keyValuePhasRootWithCount(entries)).root,
+      ledger: await ledgerOf(entries, root),
+      expectedRoot: root,
     });
     let opened = 0;
     for (const entry of entries) {
@@ -184,7 +198,7 @@ describe("transition trace retained descriptor mutations", () => {
     }));
     const initial = await keyValuePhasRootWithCount(entries);
     const ledger = await createTransitionTraceLedgerReplay({
-      entries,
+      ledger: await ledgerOf(entries, initial.root),
       expectedRoot: initial.root,
     });
     const removed = await ledger.delete(key(0));
@@ -228,35 +242,64 @@ describe("transition trace retained descriptor mutations", () => {
     );
   });
 
-  it("refuses a raw-output trie or duplicate ledger keys before replay", async () => {
-    const descriptor = Buffer.from(
-      buildCanonicalMidgardLedgerEntryOutputMaterial({
-        outRef: key(0),
-        outputCbor: output,
-      }).descriptorCbor,
+  it("refuses a ledger whose root is not the expected root before replay", async () => {
+    const held = await ledgerOf(
+      [descriptorEntry(0)],
+      (await keyValuePhasRootWithCount([descriptorEntry(0)])).root,
     );
-    const correct = await keyValuePhasRootWithCount([
-      { key: key(0), value: descriptor },
-    ]);
-    await expect(
-      createTransitionTraceLedgerReplay({
-        entries: [{ key: key(0), value: output }],
-        expectedRoot: correct.root,
-      }),
-    ).rejects.toThrow(/descriptor trie/u);
-    await expect(
-      createTransitionTraceLedgerReplay({
-        entries: [
-          { key: key(0), value: descriptor },
-          { key: key(0), value: descriptor },
-        ],
-        expectedRoot: correct.root,
-      }),
-    ).rejects.toThrow(/duplicate/u);
+    for (const expectedRoot of [
+      (await keyValuePhasRootWithCount([{ key: key(0), value: output }])).root,
+      (await keyValuePhasRootWithCount([descriptorEntry(1)])).root,
+      SDK.EMPTY_MERKLE_TREE_ROOT,
+    ])
+      await expect(
+        createTransitionTraceLedgerReplay({ ledger: held, expectedRoot }),
+      ).rejects.toThrow(
+        /root differs from the authenticated predecessor root/u,
+      );
     const empty = await createTransitionTraceLedgerReplay({
-      entries: [],
+      ledger: await ledgerOf([], SDK.EMPTY_MERKLE_TREE_ROOT),
       expectedRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     });
     expect(empty.root()).toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
+  });
+
+  it("names a replay over a ledger whose nodes are no longer readable a local fault", async () => {
+    const entries = [0, 1, 2].map(descriptorEntry);
+    const { root } = await keyValuePhasRootWithCount(entries);
+    const storage = createMemoryLedgerStorage();
+    await createLedgerStore(storage).admit(
+      entries.map(({ key: outRef }): LedgerEntry => ({ outRef, output })),
+      root,
+    );
+    let readable = true;
+    const ledger = ledgerAt(root, {
+      node: async (hash) =>
+        readable ? (await storage.readNodes([hash]))[0] : undefined,
+      outputs: async (outRefs) => await storage.readOutputs(outRefs),
+    });
+    const localFault = async (run: Promise<unknown>) => {
+      const error: unknown = await run.then(
+        () => {
+          throw new Error("the read succeeded");
+        },
+        (rejection: unknown) => rejection,
+      );
+      expect(isReplayLocalFault(error)).toBe(true);
+      expect((error as { cause: unknown }).cause).toBeInstanceOf(
+        LedgerNodeMissing,
+      );
+    };
+    const replay = await createTransitionTraceLedgerReplay({
+      ledger,
+      expectedRoot: root,
+    });
+    readable = false;
+    await localFault(replay.has(key(0)));
+    await localFault(replay.delete(key(1)));
+    await localFault(replay.insert(key(3), output));
+    await localFault(
+      createTransitionTraceLedgerReplay({ ledger, expectedRoot: root }),
+    );
   });
 });

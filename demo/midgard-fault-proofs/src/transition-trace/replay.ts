@@ -13,7 +13,7 @@ import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-v
 import { Data, type Network } from "@lucid-evolution/lucid";
 
 import { classifyCommittedFieldShapeFields } from "../committed-field-shape/prepare-committed-field-shape.js";
-import { type CheckedLedger } from "../ledger-at.js";
+import type { Ledger } from "../ledger-store/index.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import { replayPrerequisiteFailure } from "../workflow/replay-prerequisite.js";
 import type { TransitionTraceDetectionEvidence } from "./detect.detect-count-faults.js";
@@ -34,7 +34,7 @@ export type TransitionTraceDepositPreimage = Readonly<{
   history: TransitionDepositOpening;
 }>;
 
-/** Derives witnesses from the predecessor descriptor trie and retained source
+/** Derives witnesses from the predecessor ledger and retained source
  * bytes. Stops at the first false transition: later operator pre-roots no longer
  * describe the locally replayed ledger. No caller-supplied verdict or MPF proof
  * participates in this derivation. */
@@ -46,20 +46,13 @@ export const deriveTransitionTraceReplayEvidence = async ({
   depositPolicyId,
 }: {
   current: TransitionTraceReconstruction;
-  predecessor?: CheckedLedger;
+  predecessor: Ledger;
   deposits: readonly TransitionTraceDepositPreimage[];
   network: Network;
   depositPolicyId: string;
 }): Promise<TransitionTraceDetectionEvidence> => {
-  if (
-    predecessor !== undefined &&
-    predecessor.utxosRoot !== current.header.prevUtxosRoot
-  )
-    throw new Error(
-      "Transition replay predecessor differs from authenticated header",
-    );
   const ledger = await createTransitionTraceLedgerReplay({
-    entries: predecessor?.trie.entries ?? [],
+    ledger: predecessor,
     expectedRoot: current.header.prevUtxosRoot,
   });
   const l2: NonNullable<
@@ -162,7 +155,7 @@ export const deriveTransitionTraceReplayEvidence = async ({
         for (const key of decodeMidgardFieldPreimage(
           full.body.spendInputsPreimageCbor,
         )) {
-          if (!ledger.has(key))
+          if (!(await ledger.has(key)))
             throw replayPrerequisiteFailure(
               current.headerHash,
               step.event_key,
@@ -195,7 +188,7 @@ export const deriveTransitionTraceReplayEvidence = async ({
         });
         // A payable claim on an output the replayed ledger no longer holds has
         // no delete witness; a direct withdrawal finding must cover the event.
-        if (!ledger.has(key))
+        if (!(await ledger.has(key)))
           throw replayPrerequisiteFailure(
             current.headerHash,
             step.event_key,
@@ -274,7 +267,7 @@ export const deriveTransitionTraceReplayEvidence = async ({
         throw new Error("Transition deposit projection is not one insert");
       // A deposit that re-creates a held output repeats an earlier source
       // event; the finding naming that repeat owns its ledger effect.
-      if (ledger.has(op.outRefCbor))
+      if (await ledger.has(op.outRefCbor))
         throw replayPrerequisiteFailure(
           current.headerHash,
           step.event_key,
