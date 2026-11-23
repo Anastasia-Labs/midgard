@@ -103,19 +103,26 @@ export const buildDuplicateOutRefMistagMaterial = async (
     validity: secondValidity,
   };
 
-  const descriptor = (lovelaceAmount: bigint) =>
-    buildCanonicalMidgardLedgerOutputMaterial({
+  const outputOf = (outRef: SDK.OutputReference, lovelaceAmount: bigint) => ({
+    key: ledgerKey(outRef),
+    value: encodeMidgardTxOutput({
+      address: Buffer.concat([Buffer.from([0x60]), Buffer.from(owner, "hex")]),
+      value: { lovelace: lovelaceAmount, assets: new Map() },
+    }),
+  });
+  const outputs = {
+    shared: outputOf(SHARED_OUTREF, lovelace),
+    other: outputOf(OTHER_OUTREF, 2_000_000n),
+  };
+  const leafOf = ({ key, value }: (typeof outputs)["shared"]) => ({
+    key,
+    value: buildCanonicalMidgardLedgerOutputMaterial({
       outputIndex: 0,
-      outputCbor: encodeMidgardTxOutput({
-        address: Buffer.concat([
-          Buffer.from([0x60]),
-          Buffer.from(owner, "hex"),
-        ]),
-        value: { lovelace: lovelaceAmount, assets: new Map() },
-      }),
-    }).descriptorCbor;
-  const shared = { key: ledgerKey(SHARED_OUTREF), value: descriptor(lovelace) };
-  const other = { key: ledgerKey(OTHER_OUTREF), value: descriptor(2_000_000n) };
+      outputCbor: value,
+    }).descriptorCbor,
+  });
+  const shared = leafOf(outputs.shared);
+  const other = leafOf(outputs.other);
   // Step 0 drains the shared outref; step 1 sees the ledger it leaves.
   const before = await keyValuePhasRootWithCount([shared, other]);
   const after = await keyValuePhasRootWithCount([other]);
@@ -190,6 +197,8 @@ export const buildDuplicateOutRefMistagMaterial = async (
     event,
     trace,
     steps,
+    /** The ledger outputs step 0 starts from, by role. */
+    outputs,
     args: {
       committedWithdrawal: {
         domain: SDK.ROOT_DOMAINS.withdrawals,

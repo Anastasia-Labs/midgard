@@ -11,6 +11,11 @@ import {
   type LedgerEntry,
   singleLedgerAt,
 } from "../../src/ledger-at.js";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  type Ledger,
+} from "../../src/ledger-store/index.js";
 import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import type { TransitionTraceReconstruction } from "../../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import { fixtureLedgerEntriesByRoot } from "./fixture-ledger.js";
@@ -44,6 +49,14 @@ export const checkedLedgerAfter = async (
     utxosRoot: block.header.utxosRoot,
     label: "test ledger",
   });
+
+/** The ledger after `block` in a memory store of its own, admitted against
+ * its `utxos_root`. */
+export const ledgerAfter = async (block: Block): Promise<Ledger> =>
+  await createLedgerStore(createMemoryLedgerStorage()).admit(
+    ledgerEntriesAfter(block),
+    block.header.utxosRoot,
+  );
 
 /** A `LedgerAt` that holds only the ledger after the block in `payloadEnvelopeCbor`. */
 export const payloadLedgerAt =

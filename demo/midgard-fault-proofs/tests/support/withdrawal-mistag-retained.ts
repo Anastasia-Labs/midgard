@@ -6,6 +6,7 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import type * as SDKDa from "@al-ft/midgard-sdk/da";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
+import type { CountedRoot } from "../../src/transition-trace/phas.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   authenticatedHeaderObservation,
@@ -25,45 +26,34 @@ const provenance = {
   sourceId: "test/withdrawal-mistag-retained",
   grade: "security",
 } as const;
-export const withdrawalMistagRetainedFixture = async ({
-  direction,
-  honest = false,
-  outputBytes = 0,
-  assetCount = 0,
-  payoutDatumBytes = 0,
+type LedgerOutput = Readonly<{ key: Buffer; value: Buffer }>;
+
+/**
+ * A retained block of withdrawal events, with its committed withdrawal,
+ * event-to-step and transition-trace roots, over a predecessor block holding
+ * `predecessorUtxos`; the block leaves `blockUtxos`.
+ */
+export const retainedBlock = async ({
+  predecessorUtxos,
+  blockUtxos,
+  source,
+  event,
+  trace,
   operatorVkey = "aa".repeat(28),
   now = 1_000_000,
 }: {
-  direction: WithdrawalMistagDirectionFixture;
-  honest?: boolean;
-  outputBytes?: number;
-  assetCount?: number;
-  payoutDatumBytes?: number;
+  predecessorUtxos: readonly LedgerOutput[];
+  blockUtxos: readonly LedgerOutput[];
+  source: CountedRoot;
+  event: CountedRoot;
+  trace: CountedRoot;
   operatorVkey?: string;
   now?: number;
 }) => {
-  const material = await buildWithdrawalMistagEvidenceMaterial(
-    direction,
-    honest,
-    outputBytes,
-    assetCount,
-    payoutDatumBytes,
-  );
-  const outref = material.args.committedWithdrawal.value.body.l2_outref;
-  const output = {
-    key: encodeMidgardSpendInputItem({
-      txId: Buffer.from(outref.transactionId, "hex"),
-      outputIndex: Number(outref.outputIndex),
-    }),
-    value: Buffer.from(
-      material.args.ledgerEvidence.PresentLedgerOutput.output_cbor,
-      "hex",
-    ),
-  };
   const predecessorBase = await withPlaceholderWithdrawalBlock(
     await buildCanonicalBlockFixture({
       transactions: [],
-      utxos: [output],
+      utxos: predecessorUtxos,
       startTime: BigInt(now),
       endTime: BigInt(now + 1000),
     }),
@@ -95,12 +85,9 @@ export const withdrawalMistagRetainedFixture = async ({
     payloadEnvelopeCbor: predecessorEnvelope,
     daProvenance: provenance,
   });
-  const keep = !SDK.withdrawalClaimsValid(
-    material.args.committedWithdrawal.value,
-  );
   const base = await buildCanonicalBlockFixture({
     transactions: [],
-    utxos: keep ? [output] : [],
+    utxos: blockUtxos,
     startTime: BigInt(now + 1000),
     endTime: BigInt(now + 61000),
     prevHeaderHash: predecessorHash,
@@ -108,23 +95,23 @@ export const withdrawalMistagRetainedFixture = async ({
   });
   const counts = {
     ...base.payload.block_body.counts,
-    withdrawalCount: 1n,
-    totalEventCount: 1n,
-    transitionStepCount: 1n,
+    withdrawalCount: source.count,
+    totalEventCount: source.count,
+    transitionStepCount: trace.count,
   };
   const header = {
     ...base.header,
     ...counts,
     operatorVkey,
     blockSlot: fixtureBlockSlot(base.header.endTime, 10n),
-    withdrawalsRoot: material.source.root,
-    eventToStepRoot: material.event.root,
-    transitionTraceRoot: material.trace.root,
+    withdrawalsRoot: source.root,
+    eventToStepRoot: event.root,
+    transitionTraceRoot: trace.root,
   };
   const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
     "hex",
   );
-  const entries = (root: typeof material.source): SDKDa.DaPayloadEntry[] =>
+  const entries = (root: CountedRoot): SDKDa.DaPayloadEntry[] =>
     root.entries.map((e) => [e.key.toString("hex"), e.value.toString("hex")]);
   const payload: SDKDa.DaPayload = {
     ...base.payload,
@@ -133,9 +120,9 @@ export const withdrawalMistagRetainedFixture = async ({
       header,
       header_hash: headerHash,
       counts,
-      withdrawals: entries(material.source),
-      event_to_step: entries(material.event),
-      transition_trace: entries(material.trace),
+      withdrawals: entries(source),
+      event_to_step: entries(event),
+      transition_trace: entries(trace),
     },
   };
   const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
@@ -149,5 +136,57 @@ export const withdrawalMistagRetainedFixture = async ({
       currentEvidence: evidence,
     }),
   };
-  return { evidence, predecessor, context, material };
+  return { evidence, predecessor, context };
+};
+
+export const withdrawalMistagRetainedFixture = async ({
+  direction,
+  honest = false,
+  outputBytes = 0,
+  assetCount = 0,
+  payoutDatumBytes = 0,
+  operatorVkey,
+  now,
+}: {
+  direction: WithdrawalMistagDirectionFixture;
+  honest?: boolean;
+  outputBytes?: number;
+  assetCount?: number;
+  payoutDatumBytes?: number;
+  operatorVkey?: string;
+  now?: number;
+}) => {
+  const material = await buildWithdrawalMistagEvidenceMaterial(
+    direction,
+    honest,
+    outputBytes,
+    assetCount,
+    payoutDatumBytes,
+  );
+  const outref = material.args.committedWithdrawal.value.body.l2_outref;
+  const output = {
+    key: encodeMidgardSpendInputItem({
+      txId: Buffer.from(outref.transactionId, "hex"),
+      outputIndex: Number(outref.outputIndex),
+    }),
+    value: Buffer.from(
+      material.args.ledgerEvidence.PresentLedgerOutput.output_cbor,
+      "hex",
+    ),
+  };
+  const keep = !SDK.withdrawalClaimsValid(
+    material.args.committedWithdrawal.value,
+  );
+  return {
+    ...(await retainedBlock({
+      predecessorUtxos: [output],
+      blockUtxos: keep ? [output] : [],
+      source: material.source,
+      event: material.event,
+      trace: material.trace,
+      operatorVkey,
+      now,
+    })),
+    material,
+  };
 };

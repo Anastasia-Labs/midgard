@@ -1,12 +1,16 @@
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk/core";
 
-import { eventLedgerBeforeStep } from "../event-ledger.js";
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
+import {
+  ledgerBeforeTraceStep,
+  readingLedger,
+} from "../event-ledger.ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { type CheckedLedger } from "../ledger-at.js";
+import type { CheckedLedger } from "../ledger-at.js";
+import { type Ledger, ledgerProof } from "../ledger-store/index.js";
 import {
   type CountedRoot,
-  keyValuePhasNonMembershipProof,
   keyValuePhasProof,
 } from "../transition-trace/phas.js";
 import {
@@ -45,7 +49,8 @@ export const prepareWithdrawalMistagReplay = async ({
   index,
 }: {
   current: TransitionTraceReconstruction;
-  predecessor?: CheckedLedger;
+  /** The ledger the block starts from; none when it starts from genesis. */
+  predecessor?: Ledger;
   index: number;
 }) => {
   if (!Number.isSafeInteger(index) || index < 0)
@@ -63,7 +68,7 @@ export const prepareWithdrawalMistagReplay = async ({
       : current.traceByStepIndex.get(mapping.value.step_index);
   if (mapping === undefined || step === undefined)
     throw new Error("withdrawalMistag authenticated event mapping is absent");
-  const ledger = await eventLedgerBeforeStep(
+  const ledger = await ledgerBeforeTraceStep(
     current,
     mapping.value.step_index,
     predecessor,
@@ -72,28 +77,25 @@ export const prepareWithdrawalMistagReplay = async ({
     txId: Buffer.from(entry.value.body.l2_outref.transactionId, "hex"),
     outputIndex: Number(entry.value.body.l2_outref.outputIndex),
   });
-  const output = ledger.outputs.get(key.toString("hex"));
-  const descriptor = ledger.trie.entries.find((e) => e.key.equals(key));
-  const ledgerEvidence =
-    output === undefined
-      ? {
-          AbsentLedgerOutput: {
-            non_membership_proof: await keyValuePhasNonMembershipProof(
-              ledger.trie,
-              key,
-            ),
-          },
-        }
-      : {
-          PresentLedgerOutput: {
-            output_cbor: output.toString("hex"),
-            membership_proof: await keyValuePhasProof(
-              ledger.trie,
-              key,
-              descriptor!.value,
-            ),
-          },
-        };
+  const ledgerEvidence = await readingLedger(
+    "withdrawalMistag ledger evidence",
+    async () => {
+      const output = (await ledger.read([key])).get(
+        key.toString("hex"),
+      )?.output;
+      // Membership when the ledger holds the out-ref, non-membership when
+      // it does not: the proof `output` calls for.
+      const proof = await ledgerProof(ledger, key);
+      return output === undefined
+        ? { AbsentLedgerOutput: { non_membership_proof: proof } }
+        : {
+            PresentLedgerOutput: {
+              output_cbor: output.toString("hex"),
+              membership_proof: proof,
+            },
+          };
+    },
+  );
   try {
     return await prepareWithdrawalMistag({
       challengedHeaderHash: current.headerHash,
@@ -132,12 +134,16 @@ export const detectWithdrawalMistagReplay = async ({
   block: CanonicalBlockEvidence;
   predecessor?: CheckedLedger;
 }) => {
+  const ledger =
+    predecessor === undefined
+      ? undefined
+      : await checkedLedgerAsLedger(predecessor);
   return collectReplayFindings(
     block.reconstruction.withdrawals,
     async (_, index) => {
       const prepared = await prepareWithdrawalMistagReplay({
         current: block.reconstruction,
-        predecessor,
+        predecessor: ledger,
         index,
       });
       return prepared === null

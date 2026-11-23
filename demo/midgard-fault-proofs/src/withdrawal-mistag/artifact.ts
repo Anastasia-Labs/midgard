@@ -1,3 +1,4 @@
+import { checkedLedgerAsLedger } from "../checked-ledger-store.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { checkLedgerJson, ledgerJson } from "../ledger-at.js";
 import { reconstructDaPayload } from "../transition-trace/reconstruct.reconstruct-da-payload.js";
@@ -41,11 +42,13 @@ export const admitWithdrawalMistagWorkflowArtifact = async (
   const predecessor =
     value.predecessorLedger === null
       ? undefined
-      : await checkLedgerJson({
-          value: value.predecessorLedger,
-          utxosRoot: current.header.prevUtxosRoot,
-          label: "withdrawalMistag predecessor ledger",
-        });
+      : await checkedLedgerAsLedger(
+          await checkLedgerJson({
+            value: value.predecessorLedger,
+            utxosRoot: current.header.prevUtxosRoot,
+            label: "withdrawalMistag predecessor ledger",
+          }),
+        );
   const index = value.index;
   if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 0)
     throw new Error("withdrawalMistag invalid index");
