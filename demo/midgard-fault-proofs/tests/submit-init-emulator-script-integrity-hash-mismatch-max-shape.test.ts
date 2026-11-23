@@ -29,7 +29,6 @@ import {
   ScriptIntegrityHashMismatchHonestLeaf,
 } from "../src/script-integrity-hash-mismatch/prover.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK } from "../src/script-integrity-hash-mismatch/workflow.js";
-import { keyValuePhasMembershipProofs } from "../src/transition-trace/phas.js";
 import {
   DIRECT_WALK_STEP_BOUNDS,
   driveDirectWalkThread,
@@ -390,13 +389,10 @@ describe("script-integrity-hash-mismatch consensus-maximum purpose shape", () =>
       expect(bytes.length).toBeLessThanOrEqual(FIELD_CAP);
     const { harness, scenario, run } = await driveShape(shape);
     expect(run.prepared.convicts).toBe(true);
-    const { ledger } = scenario.material;
     const ledgerDepths = (
-      await keyValuePhasMembershipProofs(
-        ledger.root,
-        scenario.material.fields[0]!.map(
-          (item) =>
-            ledger.root.entries.find((entry) => entry.key.equals(item))!,
+      await Promise.all(
+        scenario.material.fields[0]!.map((item) =>
+          scenario.material.resolvedInputs.proof(item),
         ),
       )
     ).map((proof) => proof.length);

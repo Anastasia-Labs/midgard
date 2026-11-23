@@ -9,7 +9,6 @@ import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DirectPurposeSourceEvidence } from "../direct-purpose-family/source-walk.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/index.js";
-import { keyValuePhasMembershipProofs } from "../transition-trace/phas.js";
 import { UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL as LABEL } from "./contracts.js";
 
 export type Execution = SDK.DirectAllPurposesExecutionWitness;
@@ -33,25 +32,19 @@ export const spendWitnesses = async (
   evidence: DirectPurposeSourceEvidence,
 ): Promise<readonly SDK.DirectAllPurposesSpendWitness[]> => {
   const descriptors = material.fields[0]!.map((item) => {
-    const entry = material.ledger.root.entries.find((candidate) =>
-      candidate.key.equals(item),
-    );
-    if (entry === undefined)
+    const leaf = material.resolvedInputs.byKey.get(item.toString("hex"))?.leaf;
+    if (leaf === undefined)
       throw new Error(`${LABEL}: spent descriptor absent`);
-    return entry;
+    return { item, leaf };
   });
-  const proofs = await keyValuePhasMembershipProofs(
-    material.ledger.root,
-    descriptors,
-  );
   return await Promise.all(
-    descriptors.map(async (entry, index) => {
+    descriptors.map(async ({ item, leaf }) => {
       const credential = decodeMidgardAddressBytes(
-        decodeMidgardLedgerOutputCommitment(entry.value).address,
+        decodeMidgardLedgerOutputCommitment(leaf).address,
       ).paymentCredential;
       return {
-        descriptor_cbor: entry.value.toString("hex"),
-        proof: proofs[index]!,
+        descriptor_cbor: leaf.toString("hex"),
+        proof: await material.resolvedInputs.proof(item),
         execution:
           credential.kind === "Script"
             ? await executionOf(evidence, credential.hash.toString("hex"))

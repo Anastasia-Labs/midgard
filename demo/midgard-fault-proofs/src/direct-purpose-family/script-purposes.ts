@@ -21,7 +21,7 @@ export const directPurposeSpendDescriptorPresent = (
   const spend = directSpendInputAt(material, index);
   return (
     spend !== null &&
-    material.ledger.root.entries.some((entry) => entry.key.equals(spend.item))
+    material.resolvedInputs.byKey.has(spend.item.toString("hex"))
   );
 };
 
@@ -30,14 +30,10 @@ export const directPurposeSpendDescriptorPresent = (
  * source index can be built for it. */
 export const directPurposeInputDescriptorsPresent = (
   material: DirectScriptMaterial,
-): boolean => {
-  const keys = new Set(
-    material.ledger.root.entries.map((entry) => entry.key.toString("hex")),
+): boolean =>
+  [...material.fields[0]!, ...material.fields[1]!].every((key) =>
+    material.resolvedInputs.byKey.has(key.toString("hex")),
   );
-  return [...material.fields[0]!, ...material.fields[1]!].every((key) =>
-    keys.has(key.toString("hex")),
-  );
-};
 
 const coordinates = (kind: bigint, count: number): Coordinate[] =>
   Array.from({ length: count }, (_, index) => ({

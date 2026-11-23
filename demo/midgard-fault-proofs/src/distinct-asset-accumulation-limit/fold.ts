@@ -185,10 +185,8 @@ export const mintDeclaredCount = (item: Uint8Array): bigint => {
 export const spentDescriptor = (
   material: DirectScriptMaterial,
   item: Uint8Array,
-) =>
-  material.ledger.root.entries.find((entry) =>
-    entry.key.equals(Buffer.from(item)),
-  );
+): Buffer | undefined =>
+  material.resolvedInputs.byKey.get(Buffer.from(item).toString("hex"))?.leaf;
 
 /** The spent input's schedule position: its field-0 ordinal plus the
  * reference inputs ordered strictly below it by item bytes. */
@@ -213,12 +211,12 @@ export const distinctAssetUnits = (
 ): SDK.DistinctAssetUnits | null => {
   const inputs: { scheduleIndex: bigint; entries: bigint }[] = [];
   for (const [ordinal, item] of material.fields[0]!.entries()) {
-    const entry = spentDescriptor(material, item);
-    if (entry === undefined) return null;
+    const descriptor = spentDescriptor(material, item);
+    if (descriptor === undefined) return null;
     inputs.push({
       scheduleIndex: inputScheduleIndex(material, ordinal),
       entries: BigInt(
-        decodeMidgardLedgerOutputCommitment(entry.value).assetCount,
+        decodeMidgardLedgerOutputCommitment(descriptor).assetCount,
       ),
     });
   }

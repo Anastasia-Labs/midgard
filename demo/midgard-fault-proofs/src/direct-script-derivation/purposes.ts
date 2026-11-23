@@ -77,9 +77,7 @@ export const directPurposeAt = (
     const selected = directSpendInputAt(material, coordinate.index);
     if (selected === null) return null;
     const { item } = selected;
-    const value = material.ledger.root.entries.find((entry) =>
-      entry.key.equals(item),
-    )?.value;
+    const value = material.resolvedInputs.byKey.get(item.toString("hex"))?.leaf;
     if (value === undefined)
       throw new Error("direct script derivation: spent descriptor absent");
     const address = decodeMidgardAddressBytes(

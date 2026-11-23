@@ -7,7 +7,6 @@
 import type { MidgardVersionedScript } from "@al-ft/midgard-core";
 import { expect } from "vitest";
 
-import { keyValuePhasMembershipProofs } from "../../src/transition-trace/phas.js";
 import { clusterPadding, intoCluster } from "./deep-ledger-trie.js";
 import {
   DIRECT_WALK_STEP_BOUNDS,
@@ -221,13 +220,10 @@ export const deepSourceInputs = (
 export const deepSourceLedgerDepths = async (
   scenario: MissingRedeemerScenario,
 ): Promise<number[]> => {
-  const { ledger, fields } = scenario.material;
+  const { resolvedInputs, fields } = scenario.material;
   return (
-    await keyValuePhasMembershipProofs(
-      ledger.root,
-      [...fields[0]!, ...fields[1]!].map(
-        (item) => ledger.root.entries.find((entry) => entry.key.equals(item))!,
-      ),
+    await Promise.all(
+      [...fields[0]!, ...fields[1]!].map((item) => resolvedInputs.proof(item)),
     )
   ).map((proof) => proof.length);
 };

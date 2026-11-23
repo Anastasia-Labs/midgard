@@ -85,14 +85,14 @@ const purposeScriptHashes = (
   const spends: string[] = [];
   try {
     for (const item of material.fields[0]!) {
-      const entry = material.ledger.root.entries.find((candidate) =>
-        candidate.key.equals(item),
-      );
-      if (entry === undefined) return null;
+      const leaf = material.resolvedInputs.byKey.get(
+        item.toString("hex"),
+      )?.leaf;
+      if (leaf === undefined) return null;
       const credential = readItem(
         () =>
           decodeMidgardAddressBytes(
-            decodeMidgardLedgerOutputCommitment(entry.value).address,
+            decodeMidgardLedgerOutputCommitment(leaf).address,
           ).paymentCredential,
       );
       if (credential.kind === "Script")
