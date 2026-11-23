@@ -125,7 +125,7 @@ it("refuses a preserved store of this run recorded for another deployment", asyn
     }),
   });
   await expect(assertPreservedStorage(value.processes)).rejects.toThrow(
-    "Postgres deployment marker is missing or changed",
+    "Postgres controller identity row is missing or changed",
   );
 });
 it("refuses lost durable storage on attachment instead of creating a new store", async () => {
@@ -133,7 +133,7 @@ it("refuses lost durable storage on attachment instead of creating a new store",
   await writeDurableJson(value.markerPath, value.marker);
   value.answer({ [IDENTITY_TABLE_QUERY]: { exists: false } });
   await expect(assertPreservedStorage(value.processes)).rejects.toThrow(
-    "Postgres deployment marker is missing",
+    "Postgres controller identity row is missing",
   );
   expect(value.queries).toEqual([IDENTITY_TABLE_QUERY]);
   expect(await readJsonIfPresent(value.markerPath)).toEqual(value.marker);
@@ -146,7 +146,7 @@ it("refuses an emptied identity table", async () => {
     [IDENTITY_ROW_QUERY]: null,
   });
   await expect(assertPreservedStorage(value.processes)).rejects.toThrow(
-    "Postgres deployment marker is missing",
+    "Postgres controller identity row is missing",
   );
 });
 it("reports a failed storage query rather than a missing store", async () => {

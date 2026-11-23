@@ -99,7 +99,7 @@ export async function assertPreservedStorage(processes: StackProcesses) {
       observed.hub_oracle_policy_id !== hubOraclePolicyId
     )
       throw new Error(
-        "Postgres deployment marker is missing or changed; preserve the deployment",
+        "Postgres controller identity row is missing or changed; preserve the deployment",
       );
     if (
       marker &&

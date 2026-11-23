@@ -137,7 +137,7 @@ const identityPolicy = (
  * Signs the deployment's finalized manifest into the watcher release bundle,
  * once. Every artifact is written before the authority that names them. An
  * existing release is reopened and verified, never re-signed; one signed for
- * another deployment is refused.
+ * another deployment manifest is refused.
  *
  * No measured workflow funding profiles exist for a devnet, so the bundle is
  * empty: the watcher installs every runner and observes, and a category only
@@ -189,9 +189,9 @@ export const ensureWatcherReleaseBundle = async (
 
   if (existsSync(paths.authority)) {
     const verified = (await reopen()).deploymentIdentity;
-    if (verified.hubOraclePolicyId !== hubOraclePolicyId)
+    if (!watcher.matchesWatcherSignedDeploymentManifest(verified, manifest))
       throw new Error(
-        `the watcher release under ${layout.watcherRelease} was signed for deployment ${verified.hubOraclePolicyId}, not ${hubOraclePolicyId}; it is never re-signed`,
+        `the watcher release under ${layout.watcherRelease} was signed for another deployment manifest than ${layout.contractManifest}; it is never re-signed`,
       );
     if (
       verified.blueprintHash !== blueprintHash ||

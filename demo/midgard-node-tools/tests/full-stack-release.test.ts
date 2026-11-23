@@ -136,6 +136,25 @@ it("reopens its saved release for the same signer and refuses another", async ()
   expect(await readFile(authority, "utf8")).toBe(signed);
 });
 
+it("refuses a saved release signed for other manifest content with the same hub-oracle policy id", async () => {
+  const stack = await finalizedStack("other-content");
+  await prepareStackRelease(stack.processes);
+  // Without release inputs the stack only opens the saved release.
+  stack.processes.config.watcher.releaseInput = null;
+  await expect(prepareStackRelease(stack.processes)).resolves.toBeDefined();
+  const manifest = JSON.parse(await readFile(stack.manifest, "utf8"));
+  await writeFile(
+    stack.manifest,
+    JSON.stringify({
+      ...manifest,
+      updatedAt: new Date(Date.parse(manifest.updatedAt) + 1_000).toISOString(),
+    }),
+  );
+  await expect(prepareStackRelease(stack.processes)).rejects.toThrow(
+    "Watcher release is signed for another deployment manifest",
+  );
+});
+
 const RETAINED =
   "/ip4/127.0.0.1/tcp/39003/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
 

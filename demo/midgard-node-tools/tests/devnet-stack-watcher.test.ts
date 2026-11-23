@@ -64,6 +64,7 @@ import {
   watcherServiceSpecs,
 } from "../src/devnet-stack/watcher.js";
 import {
+  ensureWatcherReleaseBundle,
   loadWatcherModule,
   releasePaths,
 } from "../src/devnet-stack/watcher-release.js";
@@ -368,7 +369,7 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
       writeJson(layout.contractManifest, otherManifest);
       try {
         await expect(ensureWatcherRelease(context, oneShot)).rejects.toThrow(
-          `was signed for deployment ${deploymentManifestHubOraclePolicyId(manifest)}, not ${deploymentManifestHubOraclePolicyId(otherManifest)}`,
+          "was signed for another deployment manifest",
         );
       } finally {
         writeFileSync(layout.contractManifest, original);
@@ -412,6 +413,39 @@ describe.skipIf(!isCustomNetwork(SELECTED_DEPLOYMENT_PROFILE.network))(
     });
   },
 );
+
+// Runs on the compiled profile's network: the bundle signs any finalized manifest.
+describe("devnet watcher release bundle", () => {
+  it("refuses a saved release signed for other manifest content with the same hub-oracle policy id", async () => {
+    // Under the suite's run directory, which afterAll removes.
+    const bundleLayout = makeLayout(join(runDir, "bundle"));
+    mkdirSync(dirname(bundleLayout.blueprint), { recursive: true });
+    copyFileSync(
+      join(bundleLayout.repoRoot, "onchain/aiken/plutus.json"),
+      bundleLayout.blueprint,
+    );
+    const signed = await makeDevnetManifest(
+      createHash("sha256")
+        .update(readFileSync(bundleLayout.blueprint))
+        .digest("hex"),
+    );
+    const changed = {
+      ...signed,
+      updatedAt: new Date(Date.parse(signed.updatedAt) + 1_000).toISOString(),
+    };
+    writeJson(bundleLayout.contractManifest, signed);
+    const watcher = await loadWatcherModule(bundleLayout);
+    await ensureWatcherReleaseBundle(bundleLayout, watcher, signed);
+    await expect(
+      ensureWatcherReleaseBundle(bundleLayout, watcher, signed),
+    ).resolves.toBeDefined();
+    const before = snapshot(bundleLayout.watcherRelease);
+    await expect(
+      ensureWatcherReleaseBundle(bundleLayout, watcher, changed),
+    ).rejects.toThrow("was signed for another deployment manifest");
+    expect(snapshot(bundleLayout.watcherRelease)).toEqual(before);
+  }, 300_000);
+});
 
 describe("devnet watcher configuration preflight", () => {
   /** A generated run with nothing but its genesis: no chain, no deployment. */

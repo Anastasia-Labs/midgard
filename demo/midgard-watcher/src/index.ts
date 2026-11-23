@@ -162,6 +162,7 @@ export {
 } from "./runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 export {
   assertWatcherDeploymentProtocolParameterAuthority,
+  matchesWatcherSignedDeploymentManifest,
   watcherDeploymentAppliedScriptHashes,
   watcherDeploymentAvailabilityChallengeAuthority,
   watcherDeploymentProtocolParameterAuthority,
