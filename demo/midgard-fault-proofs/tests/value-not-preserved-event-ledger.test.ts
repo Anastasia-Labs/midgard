@@ -23,10 +23,26 @@
  * whose reason ranks after the spent output's fault. The decline stays
  * undischarged, so the union fails closed on it.
  */
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { isReplayLocalFault } from "../src/block-replay.faults.js";
+import { checkedLedgerAsLedger } from "../src/checked-ledger-store.js";
 import { ledgerEntriesRoot, type LedgerEntry } from "../src/ledger-at.js";
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  type Ledger,
+  LedgerNodeMissing,
+} from "../src/ledger-store/index.js";
+import { keyValuePhasProof } from "../src/transition-trace/phas.js";
+import {
+  prepareValueConservationArtifact,
+  valueConservationInputs,
+} from "../src/value-not-preserved/replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import {
   NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
@@ -47,6 +63,7 @@ import {
   type Step,
 } from "./helpers/event-ledger-committed-steps.js";
 import { forcedRejection } from "./helpers/event-ledger-forced-step.js";
+import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
 import {
   outRef,
   undecodableNativeOutput,
@@ -216,6 +233,106 @@ describe("value-not-preserved declines an output that does not decode", () => {
       },
     ]);
   });
+});
+
+describe("value-not-preserved's spent inputs", () => {
+  it("are read and proved against the ledger before their transaction", async () => {
+    // Step 0 spends `SPENT` and creates the output step 1 spends with
+    // `OTHER`: the ledger before step 1 differs from the predecessor.
+    const creating: FixtureTransactionInput = {
+      spendInputs: [SPENT.outRef],
+      outputs: [makeOutput(1_999_993n)],
+      fee: 7n,
+    };
+    const spent = [
+      OTHER.outRef,
+      outRef(buildFixtureTransaction(creating).txId),
+    ].sort(Buffer.compare);
+    const fixture = await block([
+      { input: creating, applied: true },
+      {
+        input: {
+          spendInputs: spent,
+          outputs: [makeOutput(6_000_000n)],
+          fee: 7n,
+        },
+        applied: true,
+      },
+    ]);
+    const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+    const before = await referenceLedgerBefore({
+      block: fixture.evidence,
+      predecessor,
+      eventKey: fixture.key(1),
+      stepIndex: 1n,
+    });
+    expect(before.utxosRoot).not.toBe(predecessor.utxosRoot);
+    const artifact = await prepareValueConservationArtifact({
+      block: fixture.evidence,
+      predecessor: await checkedLedgerAsLedger(predecessor),
+      sourceIndex: Number(fixture.position(1)),
+      forced: false,
+    });
+    expect(artifact?.inputs).toStrictEqual(
+      await Promise.all(
+        spent.map(async (key) => {
+          const { value } = before.trie.entries.find((entry) =>
+            entry.key.equals(key),
+          )!;
+          return {
+            outputCbor: before.outputs
+              .get(key.toString("hex"))!
+              .toString("hex"),
+            proofCbor: Data.to(
+              await keyValuePhasProof(before.trie, key, value),
+              SDK.Proof,
+            ),
+          };
+        }),
+      ),
+    );
+  });
+
+  it.each([
+    [
+      "reading the spent inputs",
+      async (ledger: Ledger, fixture: Awaited<ReturnType<typeof block>>) =>
+        await prepareValueConservationArtifact({
+          block: fixture.evidence,
+          predecessor: ledger,
+          sourceIndex: Number(fixture.position(0)),
+          forced: false,
+        }),
+    ],
+    [
+      "proving the spent inputs",
+      async (ledger: Ledger) =>
+        await valueConservationInputs(ledger, [
+          { key: SPENT.outRef, output: SPENT.output },
+        ]),
+    ],
+  ] as const)(
+    "is this process's local fault %s when the store no longer holds the ledger",
+    async (_, run) => {
+      // The transaction is step 0, so it reads the predecessor itself, which
+      // `retain` of nothing deletes.
+      const fixture = await block([inflation]);
+      const predecessor = completeCanonicalReplayPredecessorLedger(fixture)!;
+      const store = createLedgerStore(createMemoryLedgerStorage());
+      const ledger = await store.admit(
+        predecessor.entries,
+        predecessor.utxosRoot,
+      );
+      await store.retain(new Set());
+      const error: unknown = await run(ledger, fixture).catch(
+        (cause: unknown) => cause,
+      );
+      expect(isReplayLocalFault(error)).toBe(true);
+      expect((error as { cause: unknown }).cause).toBeInstanceOf(
+        LedgerNodeMissing,
+      );
+    },
+  );
 });
 
 describe("value-not-preserved declines a forced rejection whose output does not decode", () => {

@@ -239,7 +239,7 @@ export const prepareJourneyTransactionProof = async (input: {
       return prepared[0];
     }
     case "valueNotPreserved": {
-      const predecessor = await checkedLedgerAfter(
+      const predecessor = await ledgerAfter(
         await canonicalBlockEvidenceFromVerifiedPayload({
           ...raw,
           observation: authenticatedHeaderObservation(input.predecessor),
