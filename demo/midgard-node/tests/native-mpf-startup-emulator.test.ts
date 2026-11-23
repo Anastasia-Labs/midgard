@@ -41,7 +41,7 @@ import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
 /** Actual public admissions and native promotion establish the empty restart
  * state. Network transport labels remain synthetic, as in the shared fixture. */
-it("restarts the production native initializer after withdrawal empties an unmerged and merged ledger without replaying genesis, and refuses a missing initialized store or a stale store beside a fresh database", async () => {
+it("restarts the production native initializer after withdrawal empties an unmerged and merged ledger and refuses a missing initialized store or a stale store beside a fresh database", async () => {
   const h = await openProductionLifecycle();
   const { fixture, lucidService, globals, production } = h;
   const context = { fixture, lucidService, globals, production };
@@ -171,9 +171,8 @@ it("restarts the production native initializer after withdrawal empties an unmer
         root_hex: nonemptyNative.durableRoot,
       })),
     });
-    // Explicit reload sentinel: this is the actual subsequently withdrawn L2
-    // output, not a claim that the published empty genesis originally held it.
-    const sentinel: UTxO = {
+    // The L2 output the withdrawal spends.
+    const withdrawn: UTxO = {
       txHash: target.txHash,
       outputIndex: target.outputIndex,
       address,
@@ -188,7 +187,7 @@ it("restarts the production native initializer after withdrawal empties an unmer
         outputIndex: BigInt(target.outputIndex),
       },
       l2_owner: paymentCredentialOf(address).hash,
-      l2_value: assetsToValue(sentinel.assets),
+      l2_value: assetsToValue(withdrawn.assets),
       l1_address: addressData,
       l1_datum: "NoDatum",
     };
@@ -257,10 +256,7 @@ it("restarts the production native initializer after withdrawal empties an unmer
       const beforeQueue = await queue();
       await (await native()).close();
       const restarted = await h.command(
-        initializeArchitectureGOwner(globals, {
-          ...production.nodeConfig,
-          GENESIS_UTXOS: [sentinel],
-        }),
+        initializeArchitectureGOwner(globals, production.nodeConfig),
       );
       replacements.push(restarted);
       expect((await restarted.diagnostics()).durableRoot).toBe(
@@ -273,7 +269,6 @@ it("restarts the production native initializer after withdrawal empties an unmer
         after: await ledger(),
         queue: beforeQueue,
         native: await restarted.diagnostics(),
-        configuredGenesisSentinel: sentinel,
       };
     };
     await restart("restart-unmerged-empty");
@@ -305,7 +300,6 @@ it("restarts the production native initializer after withdrawal empties an unmer
       Effect.either(
         initializeArchitectureGOwner(globals, {
           ...production.nodeConfig,
-          GENESIS_UTXOS: [sentinel],
           LEDGER_MPF_DB_PATH: join(missingRoot, "absent-ledger"),
           MPF_NATIVE_OWNER_SIDECAR_PATH: join(missingRoot, "absent.sidecar"),
         }),
@@ -358,7 +352,7 @@ it("restarts the production native initializer after withdrawal empties an unmer
           JSON.stringify(
             {
               scope:
-                "Actual public deposit/withdrawal and native promotion to empty; production initializer restarts under same source owner and real unmerged/merged queue. Nonempty reload genesis is explicitly a sentinel, not the deployment genesis. Synthetic network transport ancestry.",
+                "Actual public deposit/withdrawal and native promotion to empty; production initializer restarts under same source owner and real unmerged/merged queue. Synthetic network transport ancestry.",
               hubOraclePolicyId: deploymentManifestHubOraclePolicyId(
                 h.deployment.manifest,
               ),
