@@ -84,7 +84,6 @@ const observedEnums: ReadonlySet<string> = new Set([
   "operator_watchdog_manifest",
   "operator_watchdog_takeover",
   "native_mpf_owner",
-  "native_mpf_promotion_index_cap",
   "landed_block_rebase",
   "commit_da_frame",
   "merge",

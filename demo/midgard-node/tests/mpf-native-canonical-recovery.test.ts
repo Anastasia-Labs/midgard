@@ -14,10 +14,18 @@ import {
 } from "../src/services/mpf-native-owner/protocol.js";
 import type { NativeMpfOwnerServiceOptions } from "../src/services/mpf-native-owner/service.js";
 import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
-import type { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
+import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { nativeOwnerBinaryPath } from "./helpers/native-owner-binary.js";
 import { createOwnerService } from "./helpers/native-owner-ledger.js";
+import {
+  openCountingLedger,
+  promoteBlock,
+  referenceRoots,
+  seedTrieLedger,
+  trieBlocks,
+  trieInsert,
+} from "./helpers/native-owner-trie.js";
 
 // This suite checks the native durable boundary with the actual pinned child.
 describe("native canonical root recovery", () => {
@@ -72,7 +80,6 @@ describe("native canonical root recovery", () => {
     paths.push(directory);
     const options = {
       levelPath: join(directory, "ledger"),
-      sidecarPath: join(directory, "ledger.sidecar"),
       binaryPath: nativeOwnerBinaryPath,
       binarySha256,
     };
@@ -133,7 +140,7 @@ describe("native canonical root recovery", () => {
     expect((await service.diagnostics()).durableRoot).toBe(root);
   };
 
-  it("checks out the retained ancestor in a new epoch and rejects displaced handles", async () => {
+  it("checks out the retained ancestor in the same child and rejects displaced handles", async () => {
     const { service, plan } = await fixture();
     const old = await service.fork(plan.expectedRoot);
     await service.discard(old);
@@ -141,17 +148,88 @@ describe("native canonical root recovery", () => {
     await service.restoreCanonicalRoot(plan);
     const after = await service.diagnostics();
     expect(after.durableRoot).toBe(plan.targetRoot);
-    expect(Buffer.from(after.ownerEpoch)).not.toEqual(
+    expect(Buffer.from(after.ownerEpoch)).toEqual(
       Buffer.from(before.ownerEpoch),
     );
+    expect(after.childRestarts).toBe(before.childRestarts);
     expect(after.activeGenerations).toBe(0);
     await expect(
       service.applyEvents(
         old,
         encodeNativeMpfEventLog(plan.expectedRoot, [[]]),
       ),
-    ).rejects.toThrow(/stale owner epoch/);
+    ).rejects.toThrow(/generation handle is stale/);
+    await expect(service.fork(plan.expectedRoot)).rejects.toThrow(
+      /fork base is stale/,
+    );
     await assertAncestorContents(service, plan.targetRoot);
+  });
+
+  it("moves a warm owner back to a retained root in the same child without reading a node, then reads only what the next block needs", async () => {
+    const keyCount = 8_000;
+    const [first, second] = trieBlocks({ keyCount, blocks: 2 });
+    // Inserts only, so it applies wherever the first block left the keys.
+    const replacement = [0, 1, 2].map((event) =>
+      Array.from({ length: 16 }, (_, index) =>
+        trieInsert(7_000_000 + event * 16 + index),
+      ),
+    );
+    const forward = await referenceRoots(keyCount, [first!, second!]);
+    const back = await referenceRoots(keyCount, [first!, replacement]);
+    const directory = await mkdtemp(
+      join(tmpdir(), "midgard-native-restore-warm-"),
+    );
+    paths.push(directory);
+    const levelPath = join(directory, "ledger");
+    const seeded = await seedTrieLedger(
+      levelPath,
+      { binaryPath: nativeOwnerBinaryPath, binarySha256 },
+      keyCount,
+    );
+    const { ledger, nodeReads } = await openCountingLedger(levelPath);
+    const childPids: number[] = [];
+    const service = await ProductionNativeMpfOwnerService.create(ledger, {
+      binaryPath: nativeOwnerBinaryPath,
+      binarySha256,
+      onChildSpawnForTests(pid) {
+        childPids.push(pid);
+      },
+    });
+    services.add(service);
+    expect(await promoteBlock(service, seeded.root, first!)).toEqual(
+      forward.blocks[0],
+    );
+    const targetRoot = forward.blocks[0]!.at(-1)!;
+    expect(await promoteBlock(service, targetRoot, second!)).toEqual(
+      forward.blocks[1],
+    );
+    const expectedRoot = forward.blocks[1]!.at(-1)!;
+    const displaced = await service.fork(expectedRoot);
+    await service.discard(displaced);
+    const before = nodeReads();
+    await service.restoreCanonicalRoot({
+      recoveryId: Buffer.alloc(32, 63).toString("hex"),
+      expectedRoot,
+      targetRoot,
+    });
+    expect(nodeReads()).toBe(before);
+    expect(childPids).toHaveLength(1);
+    const after = await service.diagnostics();
+    expect(after).toMatchObject({ durableRoot: targetRoot, childRestarts: 0 });
+    expect(Buffer.from(after.ownerEpoch)).toEqual(
+      Buffer.from(displaced.ownerEpoch),
+    );
+    await expect(
+      service.applyEvents(
+        displaced,
+        encodeNativeMpfEventLog(expectedRoot, [[]]),
+      ),
+    ).rejects.toThrow(/generation handle is stale/);
+    expect(await promoteBlock(service, targetRoot, replacement)).toEqual(
+      back.blocks[1],
+    );
+    expect(nodeReads() - before).toBeLessThan(seeded.nodes / 5);
+    expect(childPids).toHaveLength(1);
   });
 
   it("persists the exact plan and repeats it idempotently across restart", async () => {
@@ -208,7 +286,7 @@ describe("native canonical root recovery", () => {
     });
   });
 
-  it("refuses an unavailable target closure and leaves the current owner usable", async () => {
+  it("refuses a target root the store does not retain and leaves the current owner usable", async () => {
     const { service, options, plan } = await fixture();
     const targetRoot = Buffer.alloc(32, 99).toString("hex");
     const refusal = await service
@@ -219,7 +297,7 @@ describe("native canonical root recovery", () => {
       );
     expect(refusal).toBeInstanceOf(NativeMpfRootNotRetained);
     expect((refusal as Error).message).toBe(
-      `Native MPF canonical recovery target root ${targetRoot} is not retained in full; refusing to restore`,
+      `Native MPF canonical recovery target root ${targetRoot} is not retained; refusing to restore`,
     );
     expect((refusal as Error).cause).toBeInstanceOf(LedgerNotRetained);
     expect((await service.diagnostics()).durableRoot).toBe(plan.expectedRoot);
@@ -232,55 +310,41 @@ describe("native canonical root recovery", () => {
     });
   });
 
-  /** The owner's own store handle, which the restore reads the target
-   * closure through. */
+  /** The owner's own store handle, which the restore reads the retained
+   * roots through. */
   const storeOf = (service: ProductionNativeMpfOwnerService) =>
     (service as unknown as { db: Level<string, unknown> }).db;
 
-  it("refuses a target whose closure holds a record that is not a node as not retained", async () => {
+  it("names a failed read of the retained roots as transient, changes nothing, and restores once the read succeeds", async () => {
     const { service, options, plan } = await fixture();
-    // The ancestor's root record, outside the live descendant's closure.
-    await storeOf(service).put(plan.targetRoot, { corrupt: true });
-    const refusal = await service.restoreCanonicalRoot(plan).then(
-      () => undefined,
-      (error: unknown) => error,
-    );
-    expect(refusal).toBeInstanceOf(NativeMpfRootNotRetained);
-    expect(String((refusal as Error).cause)).toMatch(/malformed record/);
-    expect((await service.diagnostics()).durableRoot).toBe(plan.expectedRoot);
+    // A new owner over the same store, whose ledger store has not read the
+    // retained roots yet.
     await close(service);
-    expect(await inspectStore(options.levelPath, plan.recoveryId)).toEqual({
-      root: plan.expectedRoot,
-      receipt: undefined,
-    });
-  });
-
-  it("names a failed read of the target closure as transient, changes nothing, and restores once the read succeeds", async () => {
-    const { service, options, plan } = await fixture();
-    const store = storeOf(service);
-    const getMany = store.getMany.bind(store);
+    const restarted = await open(options);
+    const store = storeOf(restarted);
+    const keys = store.keys.bind(store);
     let failures = 1;
-    store.getMany = (async (keys: string[]) => {
+    store.keys = ((...args: Parameters<typeof store.keys>) => {
       if (failures-- > 0)
         throw Object.assign(new Error("IO error: injected read failure"), {
           code: "LEVEL_IO_ERROR",
         });
-      return getMany(keys);
-    }) as typeof store.getMany;
-    const refusal = await service.restoreCanonicalRoot(plan).then(
+      return keys(...args);
+    }) as typeof store.keys;
+    const refusal = await restarted.restoreCanonicalRoot(plan).then(
       () => undefined,
       (error: unknown) => error,
     );
     expect(refusal).toBeInstanceOf(NativeMpfRestoreReadFailed);
     expect(refusal).not.toBeInstanceOf(NativeMpfRootNotRetained);
     expect((refusal as Error).message).toBe(
-      `Native MPF canonical recovery could not read target root ${plan.targetRoot}'s node closure from the native MPF store: IO error: injected read failure`,
+      `Native MPF canonical recovery could not read whether the native MPF store retains target root ${plan.targetRoot}: IO error: injected read failure`,
     );
-    expect((await service.diagnostics()).durableRoot).toBe(plan.expectedRoot);
-    // The next restore reads the closure and completes.
-    await service.restoreCanonicalRoot(plan);
-    await assertAncestorContents(service, plan.targetRoot);
-    await close(service);
+    expect((await restarted.diagnostics()).durableRoot).toBe(plan.expectedRoot);
+    // The next restore reads the retained roots and completes.
+    await restarted.restoreCanonicalRoot(plan);
+    await assertAncestorContents(restarted, plan.targetRoot);
+    await close(restarted);
     expect(await inspectStore(options.levelPath, plan.recoveryId)).toEqual({
       root: plan.targetRoot,
       receipt: JSON.stringify(plan),

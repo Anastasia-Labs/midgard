@@ -95,7 +95,6 @@ export const replayArchitectureGOne = (
         join(tmpdir(), `midgard-mpf-differential-${scratchBuild}-`),
       );
       const levelPath = join(temporaryRoot, "ledger");
-      const sidecarPath = join(temporaryRoot, "ledger.sidecar");
       let service: ProductionNativeMpfOwnerService | undefined;
       let handle:
         | Awaited<ReturnType<ProductionNativeMpfOwnerService["fork"]>>
@@ -112,7 +111,6 @@ export const replayArchitectureGOne = (
             Promise.reject(new Error("The MPF replay reads no outputs")),
           ),
           {
-            sidecarPath,
             binaryPath: nativeOwner.binaryPath,
             binarySha256: nativeOwner.binarySha256,
           },

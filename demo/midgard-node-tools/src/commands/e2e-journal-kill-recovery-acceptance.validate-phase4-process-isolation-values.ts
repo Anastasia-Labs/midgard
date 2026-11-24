@@ -235,11 +235,6 @@ export const validatePhase4ProcessIsolationValues = (
       "Phase 4 MPF_NATIVE_OWNER_BINARY_SHA256 must be 64 lowercase hex characters",
     );
   }
-  if (values.MPF_NATIVE_OWNER_SIDECAR_PATH !== undefined) {
-    throw new Error(
-      "Phase 4 nodes derive their owner sidecar from their own LEDGER_MPF_DB_PATH; MPF_NATIVE_OWNER_SIDECAR_PATH must be unset",
-    );
-  }
   // Without its local node, origin and one-shot every node stays unready
   // (l1_follower_unconfigured), so the gate would only time out at /readyz.
   assertNodeFollowerEnvironment(values);

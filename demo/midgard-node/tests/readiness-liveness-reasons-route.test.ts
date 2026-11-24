@@ -66,9 +66,8 @@ const responsiveOwner = {
     Promise.resolve({
       ownerEpoch: Buffer.alloc(16, 1),
       durableRoot: "ab".repeat(32),
-      residentNodes: 0,
-      residentEdges: 0,
-      residentBytes: 0,
+      cachedNodes: 0,
+      cachedBytes: 0,
       activeGenerations: 0,
       generatedNodes: 0,
       generatedBytes: 0,

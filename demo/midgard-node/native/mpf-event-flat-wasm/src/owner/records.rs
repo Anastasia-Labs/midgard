@@ -93,6 +93,19 @@ pub(super) fn generated_reachable_records(
         .collect()
 }
 
+// All or nothing: one bad record refuses the whole frame.
+pub(super) fn parse_node_records(payload: &[u8]) -> Result<Vec<Node>, String> {
+    let mut reader = Reader::new(payload);
+    let mut nodes = Vec::new();
+    while reader.remaining() != 0 {
+        nodes.push(
+            parse_node(&mut reader)
+                .map_err(|error| format!("Architecture G node record is invalid: {error}"))?,
+        );
+    }
+    Ok(nodes)
+}
+
 pub(super) fn read_hash(bytes: &[u8], field: &str) -> Result<Hash, String> {
     bytes
         .try_into()

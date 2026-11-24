@@ -339,27 +339,11 @@ export const restartedAcrossHalts = <A, E, R>(
  * the root in full, and restarts it. */
 export const MPF_CLOSURE_MISSING = "mpf_closure_missing";
 
-/** The landed-block rebase's native restore was refused because the target
- * root's node closure is in the native MPF store but its full index is over
- * a full-index cap
- * (`NativeMpfFullIndexCapExceeded`, whose message names the cap,
- * `FULL_INDEX_MAX_RECORDS` or `FULL_INDEX_MAX_BYTES`, and its value). Raised
- * under the rebase's source. The refusal changes nothing: the rebase holds
- * with native MPF, the SQL root and the journals as they are, and the
- * follower write gate closed; every evaluation retries the restore, and the next
- * rebase evaluation that runs, or finds no rebase due, clears it. The caps
- * are fixed in the node build (the TypeScript owner and its native child
- * each enforce them), so the node cannot load the root
- * until it runs a build whose caps cover it. */
-export const NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED =
-  "native_mpf_restore_index_cap_exceeded";
-
 /** The landed-block rebase's native restore was refused because reading the
- * target root's node closure from the native MPF store failed
- * (`NativeMpfRestoreReadFailed`): a LevelDB read error other than a missing,
- * corrupt or undecodable record. Raised under the rebase's source.
+ * native MPF store's retained roots failed (`NativeMpfRestoreReadFailed`):
+ * a LevelDB read error. Raised under the rebase's source.
  * The refusal changes nothing, and every evaluation retries the restore on
- * the follower-change driver's backoff; the first that reads the closure clears it
+ * the follower-change driver's backoff; the first that reads them clears it
  * (or raises the refusal that read finds). Escalated, in the log and on
  * readiness, after `NATIVE_MPF_RESTORE_READ_ESCALATION_MS`. */
 export const NATIVE_MPF_RESTORE_READ_TRANSIENT =

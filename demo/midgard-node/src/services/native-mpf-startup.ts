@@ -19,7 +19,6 @@ import type { Globals } from "./globals.js";
 import { landedStateQueueSnapshot } from "./landed-state-queue.js";
 import { Lucid } from "./lucid.js";
 import { MidgardContracts } from "./midgard-contracts.make-midgard-contract-runtime.js";
-import { NativeMpfPromotionIndexCapExceeded } from "./mpf-native-owner/protocol.js";
 import {
   type NativeOwnerLedger,
   openNativeOwnerLedger,
@@ -43,9 +42,7 @@ export const NATIVE_OWNER_PIN_REMEDY =
 export const requirePinnedNativeOwnerBinary = (
   nodeConfig: Pick<
     NodeConfigDep,
-    | "MPF_NATIVE_OWNER_BINARY_PATH"
-    | "MPF_NATIVE_OWNER_BINARY_SHA256"
-    | "MPF_NATIVE_OWNER_SIDECAR_PATH"
+    "MPF_NATIVE_OWNER_BINARY_PATH" | "MPF_NATIVE_OWNER_BINARY_SHA256"
   >,
 ): Effect.Effect<void, Error> => {
   if (!/^[0-9a-f]{64}$/.test(nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256))
@@ -59,10 +56,6 @@ export const requirePinnedNativeOwnerBinary = (
       new Error(
         `MPF_NATIVE_OWNER_BINARY_PATH must name the native owner. ${NATIVE_OWNER_PIN_REMEDY}`,
       ),
-    );
-  if (nodeConfig.MPF_NATIVE_OWNER_SIDECAR_PATH.trim().length === 0)
-    return Effect.fail(
-      new Error("MPF_NATIVE_OWNER_SIDECAR_PATH must name the owner sidecar"),
     );
   return Effect.void;
 };
@@ -193,7 +186,6 @@ export const initializeArchitectureGOwner = <R = never>(
               maxChunkBytes: nodeConfig.MPF_NATIVE_OWNER_MAX_CHUNK_BYTES,
               requestTimeoutMs: nodeConfig.MPF_NATIVE_OWNER_REQUEST_TIMEOUT_MS,
               restartLimit: nodeConfig.MPF_NATIVE_OWNER_RESTART_LIMIT,
-              sidecarPath: nodeConfig.MPF_NATIVE_OWNER_SIDECAR_PATH,
             }),
           catch: (cause) => cause,
         });
@@ -234,21 +226,7 @@ export const initializeArchitectureGOwner = <R = never>(
                       eventCount: replay.eventCount,
                     }),
                   catch: (cause) => cause,
-                }).pipe(
-                  // A replay the owner refuses over a full-index cap left it
-                  // at its durable root: the owner starts there, holding the
-                  // refusal (which readiness names), instead of failing
-                  // startup into a crash loop. The journal stays live, and
-                  // the landed-block rebase retries its replay.
-                  Effect.catchIf(
-                    (cause): cause is NativeMpfPromotionIndexCapExceeded =>
-                      cause instanceof NativeMpfPromotionIndexCapExceeded,
-                    (cause) =>
-                      Effect.logWarning(
-                        `${cause.message}. The native owner starts at its durable root and holds the journal's replay.`,
-                      ),
-                  ),
-                );
+                });
               }
             }
           }),

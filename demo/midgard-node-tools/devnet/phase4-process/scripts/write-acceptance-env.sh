@@ -82,10 +82,6 @@ if (!values.TESTNET_GENESIS_WALLET_SEED_PHRASE_C?.trim()) {
 const owner = resolveNativeOwnerBinary(nodeValues, nodeRoot);
 values.MPF_NATIVE_OWNER_BINARY_PATH = owner.path;
 values.MPF_NATIVE_OWNER_BINARY_SHA256 = owner.sha256;
-// The sidecar is bound to its node's ledger store. The process gate gives each
-// node its own LEDGER_MPF_DB_PATH, so each must derive its own sidecar from it
-// (<LEDGER_MPF_DB_PATH>.architecture-g.sidecar) instead of sharing one path.
-delete values.MPF_NATIVE_OWNER_SIDECAR_PATH;
 // The node has no L1 provider choice; a node.env that still names one is
 // not carried into the acceptance env.
 delete values.L1_PROVIDER;

@@ -18,7 +18,6 @@ import {
 } from "../src/landed-blocks/restore-holds.js";
 import {
   MPF_CLOSURE_MISSING,
-  NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
   NATIVE_MPF_RESTORE_READ_ESCALATION_MS,
   NATIVE_MPF_RESTORE_READ_TRANSIENT,
 } from "../src/services/liveness-halt.js";
@@ -96,21 +95,12 @@ describe("the landed-block rebase's native restore", () => {
   });
 
   it("names a refusal that crossed the native child's boundary by its tag, and nothing else", async () => {
-    const capped = { _tag: "NativeMpfFullIndexCapExceeded" };
-    const { owner, restores } = ownerRefusing(() => capped);
+    const unread = { _tag: "NativeMpfRestoreReadFailed" };
+    const { owner, restores } = ownerRefusing(() => unread);
     // A refusal other than a missing root is not retried at an older root.
-    expect(failureOf(await move(owner))).toBe(capped);
+    expect(failureOf(await move(owner))).toBe(unread);
     expect(restores).toHaveLength(1);
-    expect(restoreRefusalHold([capped])).toEqual({
-      reason: NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
-      escalateAfterMs: 0,
-    });
-    expect(
-      restoreRefusalHold([
-        new Error("x"),
-        { _tag: "NativeMpfRestoreReadFailed" },
-      ]),
-    ).toEqual({
+    expect(restoreRefusalHold([new Error("x"), unread])).toEqual({
       reason: NATIVE_MPF_RESTORE_READ_TRANSIENT,
       escalateAfterMs: NATIVE_MPF_RESTORE_READ_ESCALATION_MS,
     });

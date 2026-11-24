@@ -1,7 +1,6 @@
 import "node:child_process";
 import "node:crypto";
 import "node:fs/promises";
-import "node:path";
 import "node:v8";
 import "node:worker_threads";
 import "level";
@@ -14,6 +13,7 @@ import "./service.normalize-owner-options.js";
 import "./service.encode-stored-node.js";
 import "./service.parse-promotion-records.js";
 import "./service.native-child-rpc.js";
+import "./service.rpc-payloads.js";
 import "./service.start-native-child.js";
 import "./service.production-native-mpf-owner-service.js";
 export {

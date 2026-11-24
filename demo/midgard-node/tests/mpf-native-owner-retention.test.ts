@@ -16,10 +16,10 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { RETAINED_ROOT_PREFIX } from "../src/mpf/ledger-store-level.js";
 import { NativeMpfWorkerPortClient } from "../src/services/mpf-native-owner/client.js";
 import { NativeMpfRootNotRetained } from "../src/services/mpf-native-owner/protocol.js";
-import { walkReachableRecords } from "../src/services/mpf-native-owner/service.encode-stored-node.js";
 import type {
   NativeMpfEventOp,
   NativeMpfOwnerServiceOptions,
+  StoredNode,
 } from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
 import { openNativeOwnerLedger } from "../src/services/mpf-native-owner/service.open-ledger.js";
 import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
@@ -153,10 +153,17 @@ describe.skipIf(!binaryPresent)("native MPF owner retention", () => {
         else if (key.startsWith("__dead__/")) dead += 1;
       }
       const reachable = new Set<string>();
-      for (const root of retained)
-        await walkReachableRecords(level, root, (hash) => {
-          reachable.add(hash);
-        });
+      const pending = [...retained];
+      for (let hash = pending.pop(); hash !== undefined; hash = pending.pop()) {
+        if (hash === SDK.EMPTY_MERKLE_TREE_ROOT || reachable.has(hash))
+          continue;
+        reachable.add(hash);
+        const node = (await level.get(hash)) as StoredNode | undefined;
+        expect(node, `node ${hash}`).toBeDefined();
+        if (node?.__kind === "Branch")
+          for (const child of node.children)
+            if (child !== null) pending.push(child);
+      }
       return { retained, nodes, counted, dead, reachable };
     };
     return {

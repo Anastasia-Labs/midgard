@@ -301,7 +301,6 @@ it("restarts the production native initializer after withdrawal empties an unmer
         initializeArchitectureGOwner(globals, {
           ...production.nodeConfig,
           LEDGER_MPF_DB_PATH: join(missingRoot, "absent-ledger"),
-          MPF_NATIVE_OWNER_SIDECAR_PATH: join(missingRoot, "absent.sidecar"),
         }),
       ),
     );
@@ -323,7 +322,6 @@ it("restarts the production native initializer after withdrawal empties an unmer
         initializeArchitectureGOwner(globals, {
           ...production.nodeConfig,
           LEDGER_MPF_DB_PATH: staleLedgerPath,
-          MPF_NATIVE_OWNER_SIDECAR_PATH: join(missingRoot, "stale.sidecar"),
         }),
       ),
     );

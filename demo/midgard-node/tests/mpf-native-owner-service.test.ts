@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
-import { Level } from "level";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { MidgardMpf } from "../src/mpf/store.midgard-mpf.js";
@@ -78,21 +77,20 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     );
   });
 
-  it("loads genuine empty genesis and promotes insertion and final deletion across restart", async () => {
+  it("starts from genuine empty genesis and promotes insertion and final deletion across restart", async () => {
     const root = await mkdtemp(join(tmpdir(), "midgard-native-empty-"));
     temporaryPaths.push(root);
     const levelPath = join(root, "ledger");
-    const sidecarPath = join(root, "ledger.sidecar");
     const emptyRoot = SDK.EMPTY_MERKLE_TREE_ROOT;
     await seedOwnerLedger(levelPath, emptyRoot);
-    const options = { binaryPath, binarySha256, sidecarPath };
+    const options = { binaryPath, binarySha256 };
     const key = Buffer.alloc(32, 91);
     const value = Buffer.alloc(64, 92);
     let service = await createOwnerService(levelPath, options);
     try {
       expect(await service.diagnostics()).toMatchObject({
         durableRoot: emptyRoot,
-        residentNodes: 0,
+        cachedNodes: 0,
       });
       const inserted = await service.fork(emptyRoot);
       const result = await service.applyEvents(
@@ -105,7 +103,7 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       service = await createOwnerService(levelPath, options);
       expect(await service.diagnostics()).toMatchObject({
         durableRoot: result.candidateRoot,
-        residentNodes: 1,
+        cachedNodes: 0,
       });
       const deleted = await service.fork(result.candidateRoot);
       const removed = await service.applyEvents(
@@ -120,32 +118,17 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       service = await createOwnerService(levelPath, options);
       expect(await service.diagnostics()).toMatchObject({
         durableRoot: emptyRoot,
-        residentNodes: 0,
+        cachedNodes: 0,
       });
-      // Loading the empty sidecar is the same authenticated empty closure.
-      await service.close();
-      service = await createOwnerService(levelPath, options);
-      expect((await service.diagnostics()).durableRoot).toBe(emptyRoot);
     } finally {
       await service.close();
     }
-    const invalidPath = join(root, "missing-root");
-    const invalid = new Level<string, unknown>(invalidPath, {
-      valueEncoding: "json",
-    });
-    await invalid.open();
-    await invalid.put("__root__", leafRoot(key, value));
-    await invalid.close();
-    await expect(
-      createOwnerService(invalidPath, { ...options, sidecarPath: undefined }),
-    ).rejects.toThrow(/missing record/);
   });
 
   it("matches legacy roots, promotes atomically, restarts, and replays recovery", async () => {
     const root = await mkdtemp(join(tmpdir(), "midgard-native-owner-"));
     temporaryPaths.push(root);
     const levelPath = join(root, "ledger");
-    const sidecarPath = join(root, "ledger.sidecar");
     const key1 = Buffer.alloc(32, 1);
     const key2 = Buffer.alloc(32, 2);
     const key3 = Buffer.alloc(32, 3);
@@ -223,11 +206,10 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       binaryPath,
       binarySha256,
       maxChunkBytes: 200,
-      sidecarPath,
     });
     expect(await service.diagnostics()).toMatchObject({
       durableRoot: baseRoot,
-      residentNodes: 1,
+      cachedNodes: 0,
       activeGenerations: 0,
     });
     const handle = await service.fork(baseRoot);
@@ -350,7 +332,6 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       binaryPath,
       binarySha256,
       maxChunkBytes: 211,
-      sidecarPath,
     });
     expect((await service.diagnostics()).durableRoot).toBe(
       applied.candidateRoot,
@@ -367,15 +348,7 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     );
     await service.close();
 
-    const corruptSidecar = await readFile(sidecarPath);
-    corruptSidecar[corruptSidecar.length - 1] ^= 1;
-    await writeFile(sidecarPath, corruptSidecar);
-
-    service = await createOwnerService(levelPath, {
-      binaryPath,
-      binarySha256,
-      sidecarPath,
-    });
+    service = await createOwnerService(levelPath, { binaryPath, binarySha256 });
     await service.recover({
       schema: 1,
       ownerBinarySha256: binarySha256,
@@ -434,7 +407,7 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     );
   });
 
-  it("requires explicit cgroup headroom above the V8 heap and native owner cap", () => {
+  it("requires explicit cgroup headroom above the V8 heap and the native owner's cache budget", () => {
     expect(parseNativeOwnerCgroupMemoryLimit("max\n")).toEqual({
       kind: "unlimited",
     });
@@ -452,7 +425,7 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
           kind: "finite",
           limitBytes: 8 * 1024 * 1024 * 1024,
         },
-        v8HeapLimitBytes: 6 * 1024 * 1024 * 1024,
+        v8HeapLimitBytes: 7 * 1024 * 1024 * 1024,
       }),
     ).toThrow(/runtime memory budget is insufficient/);
     expect(() =>
@@ -590,7 +563,6 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       );
       temporaryPaths.push(root);
       const levelPath = join(root, "ledger");
-      const sidecarPath = join(root, "ledger.sidecar");
       const key1 = Buffer.alloc(32, 51);
       const key2 = Buffer.alloc(32, 52);
       const value1 = Buffer.alloc(64, 61);
@@ -601,7 +573,6 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
         [{ type: "insert", key: key2, value: value2 }],
       ]);
       let service = await createOwnerService(levelPath, {
-        sidecarPath,
         binaryPath,
         binarySha256,
         faultInjectionForTests(crashPoint) {
@@ -627,7 +598,6 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       );
 
       service = await createOwnerService(levelPath, {
-        sidecarPath,
         binaryPath,
         binarySha256,
       });

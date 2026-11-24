@@ -34,11 +34,7 @@ import {
   ROOT_KEY,
 } from "../src/mpf/store-primitives.js";
 import type { MpfStoredValue } from "../src/mpf/types.js";
-import { walkReachableRecords } from "../src/services/mpf-native-owner/service.encode-stored-node.js";
-import type {
-  StoredNode,
-  StoredValue,
-} from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
+import type { StoredNode } from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
 import {
   type NativeOwnerLedger,
   openNativeOwnerLedger,
@@ -71,8 +67,24 @@ const openLevel = async (path: string) => {
 };
 
 /** The same database handle, typed as the native owner types its values. */
-const asOwnerLevel = (level: Level<string, MpfStoredValue>) =>
-  level as unknown as Level<string, StoredValue>;
+/** The node keys under each of `roots`, read node by node from `level`. */
+const reachableFrom = async (
+  level: Level<string, MpfStoredValue>,
+  roots: readonly string[],
+) => {
+  const reachable = new Set<string>();
+  const pending = [...roots];
+  for (let hash = pending.pop(); hash !== undefined; hash = pending.pop()) {
+    if (reachable.has(hash)) continue;
+    reachable.add(hash);
+    const node = (await level.get(hash)) as StoredNode | undefined;
+    expect(node, `node ${hash}`).toBeDefined();
+    if (node?.__kind === "Branch")
+      for (const child of node.children)
+        if (child !== null) pending.push(child);
+  }
+  return reachable;
+};
 
 const levelStorage = (level: Level<string, MpfStoredValue>) =>
   createLevelLedgerStorage({
@@ -118,22 +130,13 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
       await (await ledger.read([key])).get(key.toString("hex"))!.proof()
     ).toString("hex");
 
-  it("leaves MidgardMpf.load and walkReachableRecords reading the same trie", async () => {
+  it("leaves MidgardMpf.load reading the trie the ledger store wrote", async () => {
     const { path, level, store, b } = await written();
     const keys = [testOutRef(4), testOutRef(100), testOutRef(0)];
     const proofs = await Promise.all(
       keys.map(async (key) => await proofOf(await store.at(b.root), key)),
     );
-    const visited: string[] = [];
-    const count = await walkReachableRecords(
-      asOwnerLevel(level),
-      b.root,
-      (hash) => {
-        visited.push(hash);
-      },
-    );
-    expect(count).toBeGreaterThan(0);
-    expect(visited.every((hash) => /^[0-9a-f]{64}$/.test(hash))).toBe(true);
+    expect((await reachableFrom(level, [b.root])).size).toBeGreaterThan(0);
     let retainedKeys = 0;
     for await (const key of level.keys())
       if (key.startsWith(RETAINED_ROOT_PREFIX)) retainedKeys += 1;
@@ -165,11 +168,7 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
     await store.retain(new Set([a.root, b.root]));
     await expect(store.at(c.root)).rejects.toThrow(/is not retained/);
     expect(await level.get(ROOT_KEY)).toBe(a.root);
-    const reachable = new Set<string>();
-    for (const root of [a.root, b.root])
-      await walkReachableRecords(asOwnerLevel(level), root, (hash) => {
-        reachable.add(hash);
-      });
+    const reachable = await reachableFrom(level, [a.root, b.root]);
     expect((await levelStorage(level).counts()).nodes).toBe(reachable.size);
     await level.close();
 
@@ -221,18 +220,6 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
           .map((key) => key.slice("__refs__/".length)),
       ),
     };
-  };
-
-  const reachableFrom = async (
-    level: Level<string, MpfStoredValue>,
-    roots: readonly string[],
-  ) => {
-    const reachable = new Set<string>();
-    for (const root of roots)
-      await walkReachableRecords(asOwnerLevel(level), root, (hash) => {
-        reachable.add(hash);
-      });
-    return reachable;
   };
 
   it("adopt moves __root__ to the adopted root and writes no node key without its count", async () => {

@@ -184,7 +184,6 @@ const openOwner = async (
   const directory = await mkdtemp(join(tmpdir(), "midgard-landed-sim-"));
   const options = {
     levelPath: join(directory, "ledger"),
-    sidecarPath: join(directory, "ledger.sidecar"),
     binaryPath: nativeOwnerBinaryPath,
     binarySha256,
   };

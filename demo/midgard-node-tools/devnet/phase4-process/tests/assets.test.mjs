@@ -147,7 +147,7 @@ test("acceptance env is canonical when node.env lacks run-scoped values", async 
     (ownerBinary) =>
       // An unnormalized spelling: the child env must carry the resolved
       // absolute path, not node.env's text.
-      `POSTGRES_HOST=stale\nL1_PROVIDER=Blockfrost\nMPF_NATIVE_OWNER_BINARY_PATH=${dirname(ownerBinary)}/secrets/../${basename(ownerBinary)}\nMPF_NATIVE_OWNER_SIDECAR_PATH=/shared/owner.sidecar\n`,
+      `POSTGRES_HOST=stale\nL1_PROVIDER=Blockfrost\nMPF_NATIVE_OWNER_BINARY_PATH=${dirname(ownerBinary)}/secrets/../${basename(ownerBinary)}\n`,
   );
   const result = await writeAcceptanceEnv(runDir);
   assert.equal(result.status, 0, result.stderr);
@@ -172,7 +172,6 @@ test("acceptance env is canonical when node.env lacks run-scoped values", async 
   );
   assert.doesNotMatch(output, /Blockfrost|POSTGRES_HOST="stale"/);
   assert.doesNotMatch(output, /^L1_PROVIDER=/m);
-  assert.doesNotMatch(output, /MPF_NATIVE_OWNER_SIDECAR_PATH/);
   rmSync(runDir, { recursive: true, force: true });
 });
 

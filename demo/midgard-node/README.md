@@ -383,9 +383,7 @@ pnpm listen
 
 The ledger MPF is always the Architecture G native owner, and the node
 refuses to start unless `MPF_NATIVE_OWNER_BINARY_SHA256` pins the binary at
-`MPF_NATIVE_OWNER_BINARY_PATH` as 64 lowercase hex characters.
-`MPF_NATIVE_OWNER_SIDECAR_PATH` defaults to
-`<LEDGER_MPF_DB_PATH>.architecture-g.sidecar`; see
+`MPF_NATIVE_OWNER_BINARY_PATH` as 64 lowercase hex characters; see
 [Architecture G is the only MPF engine](../../docs/midgard/decisions/architecture-g-sole-mpf-engine.md).
 
 ## Reconciliation Commands

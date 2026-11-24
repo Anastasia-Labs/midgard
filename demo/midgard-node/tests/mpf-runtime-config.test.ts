@@ -31,10 +31,9 @@ describe("commit MPF runtime configuration", () => {
   const pinned = {
     MPF_NATIVE_OWNER_BINARY_PATH: "/app/native/architecture-g-owner",
     MPF_NATIVE_OWNER_BINARY_SHA256: "ab".repeat(32),
-    MPF_NATIVE_OWNER_SIDECAR_PATH: "/app/db/ledger.architecture-g.sidecar",
   };
 
-  it("accepts a native owner pinned by path, SHA-256 and sidecar", async () => {
+  it("accepts a native owner pinned by path and SHA-256", async () => {
     await expect(
       Effect.runPromise(requirePinnedNativeOwnerBinary(pinned)),
     ).resolves.toBeUndefined();
@@ -53,11 +52,6 @@ describe("commit MPF runtime configuration", () => {
       /SHA256/,
     ],
     ["an empty binary path", { MPF_NATIVE_OWNER_BINARY_PATH: " " }, /PATH/],
-    [
-      "an empty sidecar path",
-      { MPF_NATIVE_OWNER_SIDECAR_PATH: "" },
-      /SIDECAR_PATH/,
-    ],
   ])(
     "refuses to start the native owner from %s",
     async (_, override, error) => {

@@ -49,9 +49,7 @@ must match the binary, or the script refuses. It fails fast when the binary is
 missing: with the build command when the checkout default is unbuilt, or by
 naming the `node.env` path when that path does not exist on this host (for
 example the image path `/app/native/architecture-g-owner` kept from
-`.env.example`; remove it or point it at a host binary). It drops any `MPF_NATIVE_OWNER_SIDECAR_PATH`, because each process-gate
-node has its own `LEDGER_MPF_DB_PATH` and derives its own sidecar from it; the
-acceptance command refuses an env file that sets one. Rebuilding the owner
+`.env.example`; remove it or point it at a host binary). Rebuilding the owner
 changes its hash, so a rebuilt binary needs a fresh run.
 
 Every node follows L1 through the run's own node, and stays unready

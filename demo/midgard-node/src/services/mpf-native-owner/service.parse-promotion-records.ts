@@ -1,153 +1,32 @@
 import { timingSafeEqual } from "node:crypto";
-import { readFile } from "node:fs/promises";
 
 import { LedgerNotRetained } from "@al-ft/midgard-fault-proofs/ledger-store";
-import { Level } from "level";
 
 import {
   assertNativeMpfHashHex,
   NATIVE_MPF_OWNER_DEFAULT_CAPS,
-  NativeMpfFullIndexCapExceeded,
   NativeMpfRestoreReadFailed,
   NativeMpfRootNotRetained,
 } from "./protocol.js";
 import {
-  decodeSidecar,
-  encodeSidecar,
-  encodeStoredNode,
-  makeFullIndexHeader,
-  NativeMpfClosureIncomplete,
-  NativeMpfFullIndexOverCap,
-  walkReachableRecords,
-  writeSidecarAtomic,
-} from "./service.encode-stored-node.js";
-import {
   type DecodedPromotionRecord,
   digest,
-  EMPTY_ROOT_HEX,
   EVENT_LOG_HEADER_BYTES,
+  EVENT_LOG_MAX_BYTES,
   EVENT_STREAM_DIGEST_DOMAIN,
-  FULL_INDEX_HEADER_BYTES,
-  FULL_INDEX_MAX_BYTES,
-  FULL_INDEX_MAX_RECORDS,
   HASH_BYTES,
   type NativeMpfEventOp,
-  type NormalizedNativeMpfOwnerServiceOptions,
   type StoredNode,
-  type StoredValue,
 } from "./service.normalize-owner-options.js";
 
-/**
- * The full index of `marker`'s node closure: the sidecar's, when one is
- * configured and binds this marker, or else one built from the closure in
- * the store. Throws `NativeMpfClosureIncomplete` when the store does not hold
- * the closure in full, and `NativeMpfFullIndexOverCap` when it does but
- * the index is over `FULL_INDEX_MAX_RECORDS` or `FULL_INDEX_MAX_BYTES`; a
- * store read that fails otherwise propagates unchanged.
- */
-export const buildOrReadFullIndex = async ({
-  db,
-  marker,
-  options,
-  binarySha256,
-}: {
-  readonly db: Level<string, StoredValue>;
-  readonly marker: string;
-  readonly options: NormalizedNativeMpfOwnerServiceOptions;
-  readonly binarySha256: string;
-}): Promise<Buffer> => {
-  let fullIndex: Buffer | undefined;
-  if (options.sidecarPath !== undefined) {
-    try {
-      fullIndex = decodeSidecar({
-        bytes: await readFile(options.sidecarPath),
-        levelPath: db.location,
-        marker,
-        binarySha256,
-      });
-    } catch {
-      fullIndex = undefined;
-    }
-  }
-  let rebuiltSidecar = false;
-  if (fullIndex === undefined) {
-    const recordCount = await walkReachableRecords(db, marker, () => undefined);
-    if (recordCount === 0 && marker !== EMPTY_ROOT_HEX)
-      throw new NativeMpfClosureIncomplete(
-        `Native MPF durable closure of ${marker} has no records`,
-      );
-    if (recordCount > FULL_INDEX_MAX_RECORDS)
-      throw new NativeMpfFullIndexOverCap(
-        marker,
-        "FULL_INDEX_MAX_RECORDS",
-        FULL_INDEX_MAX_RECORDS,
-        recordCount,
-      );
-    const records: Buffer[] = [];
-    let totalBytes = FULL_INDEX_HEADER_BYTES;
-    await walkReachableRecords(db, marker, (key, value) => {
-      const encoded = encodeStoredNode(key, value);
-      totalBytes += encoded.length;
-      if (totalBytes > FULL_INDEX_MAX_BYTES)
-        throw new NativeMpfFullIndexOverCap(
-          marker,
-          "FULL_INDEX_MAX_BYTES",
-          FULL_INDEX_MAX_BYTES,
-          totalBytes,
-        );
-      records.push(encoded);
-    });
-    fullIndex = Buffer.concat(
-      [makeFullIndexHeader(marker, recordCount), ...records],
-      totalBytes,
-    );
-    rebuiltSidecar = options.sidecarPath !== undefined;
-  }
-  const recordCount = fullIndex.readUInt32LE(28);
-  if (recordCount > FULL_INDEX_MAX_RECORDS)
-    throw new NativeMpfFullIndexOverCap(
-      marker,
-      "FULL_INDEX_MAX_RECORDS",
-      FULL_INDEX_MAX_RECORDS,
-      recordCount,
-    );
-  if (recordCount === 0 && marker !== EMPTY_ROOT_HEX) {
-    throw new Error(
-      `Native MPF full-index record count is invalid: ${recordCount.toString()}`,
-    );
-  }
-  if (rebuiltSidecar && options.sidecarPath !== undefined) {
-    await writeSidecarAtomic(
-      options.sidecarPath,
-      encodeSidecar({
-        levelPath: db.location,
-        marker,
-        binarySha256,
-        payload: fullIndex,
-      }),
-    );
-  }
-  return fullIndex;
-};
-
-/** Why a canonical restore cannot load `targetRoot`'s full index, by cause:
- * the store does not retain it or its closure is not all in the store
- * (`NativeMpfRootNotRetained`), it is but its index is over a full-index
- * cap (`NativeMpfFullIndexCapExceeded`), or a store read failed
+/** Why a canonical restore cannot move to `targetRoot`, by the cause the
+ * store's `at` gave: the store does not retain it
+ * (`NativeMpfRootNotRetained`), or the read failed
  * (`NativeMpfRestoreReadFailed`, which a later restore retries). */
-export const restoreIndexRefusal = (targetRoot: string, cause: unknown) =>
-  cause instanceof NativeMpfClosureIncomplete ||
+export const restoreRefusal = (targetRoot: string, cause: unknown) =>
   cause instanceof LedgerNotRetained
     ? new NativeMpfRootNotRetained(targetRoot, { cause })
-    : cause instanceof NativeMpfFullIndexOverCap
-      ? new NativeMpfFullIndexCapExceeded(
-          targetRoot,
-          cause.cap,
-          cause.limit,
-          cause.observed,
-          { cause },
-        )
-      : new NativeMpfRestoreReadFailed(targetRoot, { cause });
+    : new NativeMpfRestoreReadFailed(targetRoot, { cause });
 
 const packedNibbles = (prefix: string): Buffer => {
   if (prefix.length % 2 !== 0) {
@@ -313,7 +192,7 @@ export const encodeNativeMpfEventLog = (
   output.writeUInt32LE(opCount, 12);
   output.writeUInt32LE(NATIVE_MPF_OWNER_DEFAULT_CAPS.maxEvents, 16);
   output.writeUInt32LE(NATIVE_MPF_OWNER_DEFAULT_CAPS.maxOps, 20);
-  output.writeUInt32LE(FULL_INDEX_MAX_BYTES, 24);
+  output.writeUInt32LE(EVENT_LOG_MAX_BYTES, 24);
   Buffer.from(baseRoot, "hex").copy(output, 28);
   output.fill(0, 60, EVENT_LOG_HEADER_BYTES);
   let offset = EVENT_LOG_HEADER_BYTES;

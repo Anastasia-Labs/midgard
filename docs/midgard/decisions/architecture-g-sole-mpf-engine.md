@@ -8,8 +8,8 @@ Supersedes: [Benchmark-gated runtime options](benchmark-gated-runtime-options.md
 ## Decision
 
 The node has one ledger MPF engine: Architecture G, the native owner process
-(`architecture-g-owner`) that holds the ledger trie and hands commit workers a
-fork of its durable root. The `legacy`, `overlay` and `event_flat` engines are
+(`architecture-g-owner`) that computes a block's ledger roots and hands commit
+workers a fork of its durable root. The `legacy`, `overlay` and `event_flat` engines are
 deleted, together with the `MPF_ENGINE` setting and the probes and tests that
 existed only for them. No setting selects an engine and no fallback path
 remains.
@@ -19,13 +19,55 @@ Startup fails closed unless the node is pinned to one owner binary:
 - `MPF_NATIVE_OWNER_BINARY_PATH` names the binary (the release image ships it
   at `/app/native/architecture-g-owner`);
 - `MPF_NATIVE_OWNER_BINARY_SHA256` is its lowercase 64-hex SHA-256 (the image
-  ships the value next to the binary as `architecture-g-owner.sha256`);
-- `MPF_NATIVE_OWNER_SIDECAR_PATH` names the owner's durable sidecar; it
-  defaults to `<LEDGER_MPF_DB_PATH>.architecture-g.sidecar`.
+  ships the value next to the binary as `architecture-g-owner.sha256`).
 
 Speculative commit building and its `SPECULATIVE_COMMIT_BUILD` setting were
 deleted on 2026-10-03 (#752). A commit is built only once its base block has
 landed.
+
+## The owner's node cache (owner ruling, 2026-11-24)
+
+The owner process no longer keeps the ledger trie in memory. It keeps a cache
+of trie nodes keyed by content hash, bounded at 1 GiB
+(`NATIVE_MPF_OWNER_NODE_CACHE_BYTES`, a constant), and asks the node for the
+nodes a block's paths reach that it lacks. The node reads them from its
+LevelDB ledger store in batches. Start, a child restart and moving the root
+back to a retained root each send the child only the root.
+
+This replaces the resident index, the two walks of every stored node at
+start, the sidecar file and `MPF_NATIVE_OWNER_SIDECAR_PATH`, the 2,000,000
+node ceiling, and the readiness reasons
+`native_mpf_promotion_index_cap_exceeded` and
+`native_mpf_restore_index_cap_exceeded`. Roots, the node encoding and the
+LevelDB format are unchanged. The message layouts are in
+[the crate README](../../../demo/midgard-node/native/mpf-event-flat-wasm/README.md).
+
+Measured once on each ledger, before and after, with
+`demo/midgard-node/tests/benchmarks/native-owner-node-cache.bench.ts` (blocks
+of half spends and half new outputs, 64-byte values):
+
+| 1,000,000 UTxOs                               | Resident trie       | Node cache                |
+| --------------------------------------------- | ------------------- | ------------------------- |
+| Start                                         | 22–26 s             | 11–27 ms                  |
+| Roots of 10,000 operations, paths cached      | 0.13–0.18 s         | 0.16 s                    |
+| Roots of 10,000 operations, first after start | as cached           | 0.53–0.71 s               |
+| Roots of 40,000 operations, paths cached      | 0.50–0.58 s         | 0.57–0.59 s               |
+| Roots of 40,000 operations, first after start | as cached           | 1.7–2.1 s                 |
+| Roots with a cache a tenth of the trie        | not possible        | 0.54–0.65 s and 1.8–1.9 s |
+| Promote 10,000 operations                     | 3.6–4.3 s           | 1.7–2.4 s                 |
+| Promote 40,000 operations                     | 10.3–11.3 s         | 4.7–5.6 s                 |
+| Child memory after start                      | 772 MiB             | 2 MiB                     |
+| Child memory with every path cached           | 772 MiB and growing | 639 MiB                   |
+
+At 200,000 UTxOs start went from 4.3–4.7 s to 13–26 ms, and a block's roots
+cost the same as before once its paths are cached. The whole trie at
+1,000,000 UTxOs is 1.4 million nodes and 662 MiB of cache, so at that size
+every node stays cached; above the budget the node keeps running and reads
+the colder nodes from the store.
+
+The lower promote time is not the cache: the promotion check stopped reading
+each new branch's stored children one at a time, which the store's `adopt`
+already checks in batches before it writes.
 
 ## Why
 

@@ -4,8 +4,8 @@ import { NATIVE_MPF_OWNER_DEFAULT_CAPS } from "./protocol.js";
 import {
   digest,
   EVENT_LOG_HEADER_BYTES,
+  EVENT_LOG_MAX_BYTES,
   EVENT_STREAM_DIGEST_DOMAIN,
-  FULL_INDEX_MAX_BYTES,
 } from "./service.normalize-owner-options.js";
 
 export const validateEventLog = (baseRoot: string, log: Buffer): number => {
@@ -23,7 +23,7 @@ export const validateEventLog = (baseRoot: string, log: Buffer): number => {
   if (
     eventCount > NATIVE_MPF_OWNER_DEFAULT_CAPS.maxEvents ||
     opCount > NATIVE_MPF_OWNER_DEFAULT_CAPS.maxOps ||
-    log.length > FULL_INDEX_MAX_BYTES
+    log.length > EVENT_LOG_MAX_BYTES
   ) {
     throw new Error("Native MPF event log cap exceeded");
   }

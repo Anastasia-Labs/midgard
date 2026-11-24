@@ -9,7 +9,6 @@ import { DA_PUBLICATION_MANIFEST_UNAVAILABLE } from "../fibers/da-publication-re
 import {
   NATIVE_MPF_OWNER_RECOVERY_PENDING,
   NATIVE_MPF_OWNER_STUCK,
-  NATIVE_MPF_PROMOTION_INDEX_CAP_EXCEEDED,
 } from "../fibers/native-mpf-owner-supervisor.js";
 import {
   OPERATOR_WATCHDOG_MANIFEST_MISMATCH,
@@ -19,10 +18,8 @@ import { OPERATOR_WATCHDOG_TAKEOVER_FAILING } from "../fibers/operator-watchdog.
 import { RETENTION_L1_VIEW_STALE } from "../fibers/retention-sweeper.js";
 import {
   MPF_CLOSURE_MISSING,
-  NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
   NATIVE_MPF_RESTORE_READ_TRANSIENT,
 } from "./liveness-halt.js";
-import { NATIVE_MPF_FULL_INDEX_NEAR_CAP } from "./mpf-native-owner/service.full-index-accounting.js";
 import {
   COUNT,
   detail,
@@ -69,16 +66,8 @@ export const NODE_READINESS_ROWS: readonly ReadinessRow[] = [
   reason("native_mpf_owner_unhealthy"),
   reason(NATIVE_MPF_OWNER_RECOVERY_PENDING),
   reason(NATIVE_MPF_OWNER_STUCK),
-  reason(NATIVE_MPF_PROMOTION_INDEX_CAP_EXCEEDED),
-  reason(NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED),
   reason(NATIVE_MPF_RESTORE_READ_TRANSIENT),
   reason(MPF_CLOSURE_MISSING),
-  detail(
-    NATIVE_MPF_FULL_INDEX_NEAR_CAP,
-    oneOf("FULL_INDEX_MAX_RECORDS", "FULL_INDEX_MAX_BYTES"),
-    COUNT,
-    COUNT,
-  ),
   // Settlement (`settlement-readiness.ts`): the last error is free text.
   reason("settlement_worker_failing", COUNT, TEXT),
   detail("settlement_jobs_stuck", COUNT, TEXT),

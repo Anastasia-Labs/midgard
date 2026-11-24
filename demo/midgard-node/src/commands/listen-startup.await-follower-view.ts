@@ -36,10 +36,7 @@ import {
   DRIVER_RECOMPUTE_FAILED,
   STARTUP_PREPARATION_FAILED,
 } from "../services/l1-follower.recompute.js";
-import {
-  MPF_CLOSURE_MISSING,
-  NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
-} from "../services/liveness-halt.js";
+import { MPF_CLOSURE_MISSING } from "../services/liveness-halt.js";
 import {
   STARTUP_DATABASE_BUDGET,
   startupStepFailed,
@@ -58,7 +55,6 @@ export const STARTUP_FAILURE_HOLDS: ReadonlySet<string> = new Set([
   EVENTS_INGESTION_FAILED,
   LANDED_BLOCK_REBASE_FAILED,
   MPF_CLOSURE_MISSING,
-  NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
 ]);
 
 type FollowerViewWait = Readonly<{

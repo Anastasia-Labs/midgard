@@ -67,7 +67,6 @@ const startupConfig = makeTestNodeConfig({
   L1_SETTLEMENT_SEED_PHRASE: generateSeedPhrase(),
   MPF_NATIVE_OWNER_BINARY_PATH: "/unused/midgard-native-owner",
   MPF_NATIVE_OWNER_BINARY_SHA256: "0".repeat(64),
-  MPF_NATIVE_OWNER_SIDECAR_PATH: "/unused/midgard-native-owner.sidecar",
   POSTGRES_HOST: "127.0.0.1",
   POSTGRES_PORT: 1,
   POSTGRES_USER: "midgard",

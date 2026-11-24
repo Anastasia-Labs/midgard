@@ -113,10 +113,6 @@ export const nodeEnvironment = (input: {
     LEDGER_MPF_DB_PATH: join(layout.nodeData, "ledger-mpf-db"),
     MPF_NATIVE_OWNER_BINARY_PATH: artifacts.nativeOwnerBinary,
     MPF_NATIVE_OWNER_BINARY_SHA256: artifacts.nativeOwnerSha256,
-    MPF_NATIVE_OWNER_SIDECAR_PATH: join(
-      layout.nodeData,
-      "ledger-mpf-architecture-g.sidecar",
-    ),
     PORT: String(ports.nodeHttp),
     MIDGARD_NODE_URL: `http://127.0.0.1:${ports.nodeHttp}`,
     PROM_METRICS_PORT: String(ports.nodeMetrics),

@@ -58,7 +58,6 @@ describe.skipIf(!binaryPresent)("worker reads through the owner port", () => {
         binarySha256: createHash("sha256")
           .update(await readFile(nativeOwnerBinaryPath))
           .digest("hex"),
-        sidecarPath: join(directory, "ledger.sidecar"),
       },
       outputs,
     );

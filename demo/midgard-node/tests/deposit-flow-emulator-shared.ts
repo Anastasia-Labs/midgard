@@ -588,10 +588,6 @@ export const cleanupRuntimePaths = async ({
     unownedNativeOwners.delete(ledgerMpfPath);
     await owner.close();
   }
-  await rm(`${ledgerMpfPath}.architecture-g.sidecar`, {
-    recursive: true,
-    force: true,
-  });
   await Effect.runPromise(
     Effect.all(
       [

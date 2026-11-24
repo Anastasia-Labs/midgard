@@ -135,7 +135,6 @@ export const openNativeFrameFixture = async (
   await seed.put("__root__", SDK.EMPTY_MERKLE_TREE_ROOT);
   await seed.close();
   const native = await createOwnerService(levelPath, {
-    sidecarPath: join(directory, "sidecar"),
     binaryPath: nativeOwnerBinaryPath,
     binarySha256: nativeOwnerBinarySha256(),
   });

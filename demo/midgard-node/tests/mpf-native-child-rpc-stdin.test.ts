@@ -67,7 +67,7 @@ describe("the native MPF owner's RPC channel", () => {
     rpc.setFailureHandler((error) => failures.push(error));
     await untilExists(closed);
 
-    await expect(rpc.handshake()).rejects.toThrow(
+    await expect(rpc.handshake(1 << 20)).rejects.toThrow(
       /Native MPF owner stdin failed: .*EPIPE/,
     );
     expect(rpc.isClosed).toBe(true);
@@ -86,6 +86,6 @@ describe("the native MPF owner's RPC channel", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     // A later request rejects as on a closed channel.
-    await expect(rpc.handshake()).rejects.toThrow(/closed/);
+    await expect(rpc.handshake(1 << 20)).rejects.toThrow(/closed/);
   }, 30_000);
 });

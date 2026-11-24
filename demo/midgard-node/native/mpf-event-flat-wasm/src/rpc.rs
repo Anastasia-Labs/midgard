@@ -6,8 +6,8 @@ use blake2::{
 };
 
 pub const RPC_MAGIC: [u8; 4] = *b"MGRP";
-pub const RPC_SCHEMA: u16 = 1;
-pub const RPC_DIGEST_DOMAIN: &[u8] = b"MIDGARD-MPF-OWNER-RPC-V1";
+pub const RPC_SCHEMA: u16 = 2;
+pub const RPC_DIGEST_DOMAIN: &[u8] = b"MIDGARD-MPF-OWNER-RPC-V2";
 pub const RPC_HEADER_BYTES: usize = 36;
 pub const RPC_DIGEST_BYTES: usize = 32;
 pub const RPC_MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
@@ -18,9 +18,7 @@ pub const RPC_MAX_CHUNK_BYTES: usize = 16 * 1024 * 1024;
 pub enum RpcKind {
     Hello = 1,
     HelloAck = 2,
-    LoadBegin = 3,
-    LoadChunk = 4,
-    LoadEnd = 5,
+    SetRoot = 3,
     Ready = 6,
     Fork = 7,
     Forked = 8,
@@ -39,6 +37,9 @@ pub enum RpcKind {
     Shutdown = 21,
     ShutdownAck = 22,
     Error = 23,
+    NeedNodes = 24,
+    ProvideNodes = 25,
+    NodesProvided = 26,
 }
 
 impl TryFrom<u16> for RpcKind {
@@ -48,9 +49,7 @@ impl TryFrom<u16> for RpcKind {
         match value {
             1 => Ok(Self::Hello),
             2 => Ok(Self::HelloAck),
-            3 => Ok(Self::LoadBegin),
-            4 => Ok(Self::LoadChunk),
-            5 => Ok(Self::LoadEnd),
+            3 => Ok(Self::SetRoot),
             6 => Ok(Self::Ready),
             7 => Ok(Self::Fork),
             8 => Ok(Self::Forked),
@@ -69,6 +68,9 @@ impl TryFrom<u16> for RpcKind {
             21 => Ok(Self::Shutdown),
             22 => Ok(Self::ShutdownAck),
             23 => Ok(Self::Error),
+            24 => Ok(Self::NeedNodes),
+            25 => Ok(Self::ProvideNodes),
+            26 => Ok(Self::NodesProvided),
             _ => Err(format!("Unknown native MPF RPC message kind {value}")),
         }
     }

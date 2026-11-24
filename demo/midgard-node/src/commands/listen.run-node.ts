@@ -116,7 +116,7 @@ export const runNode = (
 
     yield* assertPhase1AcceptCrashCheckpointConfiguration;
     // The ledger MPF is always the Architecture G owner. Refuse to start before
-    // any durable work when its binary or sidecar is not pinned.
+    // any durable work when its binary is not pinned.
     yield* requirePinnedNativeOwnerBinary(nodeConfig).pipe(
       Effect.mapError(
         (cause) =>
@@ -127,10 +127,6 @@ export const runNode = (
               [
                 "MPF_NATIVE_OWNER_BINARY_PATH",
                 nodeConfig.MPF_NATIVE_OWNER_BINARY_PATH,
-              ],
-              [
-                "MPF_NATIVE_OWNER_SIDECAR_PATH",
-                nodeConfig.MPF_NATIVE_OWNER_SIDECAR_PATH,
               ],
             ],
           }),

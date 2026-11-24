@@ -223,10 +223,6 @@ describe("Phase 4 process isolation", () => {
       { MPF_NATIVE_OWNER_BINARY_PATH: "native/architecture-g-owner" },
       "must be absolute",
     ],
-    [
-      { MPF_NATIVE_OWNER_SIDECAR_PATH: "/shared/owner.sidecar" },
-      "must be unset",
-    ],
     [{ L1_ORIGIN: "" }, "L1_ORIGIN is not set"],
     [{ L1_NODE_CONFIG_PATH: "" }, "must be set together"],
     [

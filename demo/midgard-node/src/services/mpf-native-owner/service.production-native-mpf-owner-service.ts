@@ -15,24 +15,19 @@ import {
 import {
   assertNativeMpfGenerationHandle,
   assertNativeMpfHashHex,
+  NATIVE_MPF_APPLY_MAX_NODE_ROUNDS,
   NATIVE_MPF_OWNER_DEFAULT_CAPS,
-  NATIVE_MPF_RPC_SCHEMA,
+  NATIVE_MPF_REPLAY_SCHEMA,
   type NativeMpfApplyResult,
   type NativeMpfCanonicalRootRecovery,
-  type NativeMpfFullIndexHealth,
+  NativeMpfClosureIncomplete,
   type NativeMpfGenerationHandle,
   type NativeMpfOwnerDiagnostics,
   type NativeMpfOwnerService,
-  type NativeMpfPromotionIndexCapExceeded,
   NativeMpfRpcKind,
   type PersistedNativeMpfReplay,
 } from "./protocol.js";
-import {
-  candidateFullIndexSize,
-  type FullIndexSize,
-  fullIndexSizeOf,
-  promotionIndexCapBreach,
-} from "./service.full-index-accounting.js";
+import { encodeStoredNode } from "./service.encode-stored-node.js";
 import {
   createOwnerLedgerLock,
   type LedgerRetention,
@@ -57,16 +52,24 @@ import {
 } from "./service.normalize-owner-options.js";
 import type { NativeOwnerLedger } from "./service.open-ledger.js";
 import {
-  buildOrReadFullIndex,
   parsePromotionRecords,
-  restoreIndexRefusal,
+  restoreRefusal,
 } from "./service.parse-promotion-records.js";
 import { readWorkerNodes } from "./service.read-worker-nodes.js";
 import {
   type NativeOwnerRestartHealth,
   NativeOwnerRestartPolicy,
 } from "./service.restart-policy.js";
-import { startNativeChild } from "./service.start-native-child.js";
+import {
+  decodeDiagnostics,
+  decodeNeedNodes,
+  decodeNodesProvided,
+  encodeProvideNodes,
+} from "./service.rpc-payloads.js";
+import {
+  setChildRoot,
+  startNativeChild,
+} from "./service.start-native-child.js";
 import { validateEventLog } from "./service.validate-event-log.js";
 import { validatePromotionClosure } from "./service.validate-promotion-closure.js";
 
@@ -87,7 +90,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   private restoration: Promise<void> | undefined;
   private recoveryFailure: Error | undefined;
   private lastChildError: Error | undefined;
-  private promotionRefusal: NativeMpfPromotionIndexCapExceeded | undefined;
+  /** The last apply's settling, which the next apply waits for. */
+  private applyTail: Promise<unknown> = Promise.resolve();
   private readonly ledgerLock: ReturnType<typeof createOwnerLedgerLock>;
 
   private constructor(
@@ -96,7 +100,6 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     private rpc: NativeChildRpc,
     private readonly binarySha256: string,
     private durableRoot: string,
-    private fullIndexSize: FullIndexSize,
     private readonly options: NormalizedNativeMpfOwnerServiceOptions,
   ) {
     this.restartPolicy = new NativeOwnerRestartPolicy(options);
@@ -122,20 +125,13 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         normalized.binarySha256,
       );
       const marker = assertStoredHash(await db.get("__root__"), "durableRoot");
-      const fullIndex = await buildOrReadFullIndex({
-        db,
-        marker,
-        options: normalized,
-        binarySha256: normalized.binarySha256,
-      });
-      rpc = await startNativeChild({ options: normalized, fullIndex, marker });
+      rpc = await startNativeChild({ options: normalized, root: marker });
       const service = new ProductionNativeMpfOwnerService(
         db,
         store,
         rpc,
         normalized.binarySha256,
         marker,
-        fullIndexSizeOf(fullIndex),
         normalized,
       );
       service.installFailureHandler(rpc);
@@ -185,14 +181,14 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
       this.assertOwnedHandle(handle, rpc);
       const log = Buffer.from(eventLog);
       const eventCount = validateEventLog(handle.baseRoot, log);
-      const response = await rpc.request(
-        NativeMpfRpcKind.ApplyEvents,
-        Buffer.concat([Buffer.from(handle.generationId), log]),
-        new Set([NativeMpfRpcKind.Applied]),
-        false,
-        NATIVE_MPF_OWNER_DEFAULT_CAPS.applyTimeoutMs,
+      // One apply at a time: the child trims its cache when an apply ends,
+      // which between two rounds of another apply could drop the nodes that
+      // apply was just given.
+      const applied = this.applyTail.then(() =>
+        this.applyWithNodes(rpc, handle, log),
       );
-      const payload = Buffer.from(response.payload);
+      this.applyTail = applied.catch(() => undefined);
+      const payload = Buffer.from((await applied).payload);
       const rootsEnd = 84 + eventCount * HASH_BYTES;
       const expectedBytes = rootsEnd + 16;
       if (
@@ -231,6 +227,61 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         mutationDurationNs: readDurationNs(rootsEnd + 8, "mutationDurationNs"),
       };
     });
+  }
+
+  /** Sends ApplyEvents until the child answers Applied. Each NeedNodes is
+   * answered with those nodes read from the store in one `getMany`, and the
+   * same ApplyEvents is sent again. No lock is needed for the read: the
+   * child walks only from its root, the durable root, which the store keeps
+   * retained with every node under it; if the durable root moved meanwhile,
+   * the child refuses the stale apply anyway. */
+  private async applyWithNodes(
+    rpc: NativeChildRpc,
+    handle: NativeMpfGenerationHandle,
+    log: Buffer,
+  ) {
+    const request = Buffer.concat([Buffer.from(handle.generationId), log]);
+    for (let round = 0; ; round += 1) {
+      const response = await rpc.request(
+        NativeMpfRpcKind.ApplyEvents,
+        request,
+        new Set([NativeMpfRpcKind.Applied, NativeMpfRpcKind.NeedNodes]),
+        false,
+        NATIVE_MPF_OWNER_DEFAULT_CAPS.applyTimeoutMs,
+      );
+      if (response.kind === NativeMpfRpcKind.Applied) return response;
+      if (round === NATIVE_MPF_APPLY_MAX_NODE_ROUNDS) {
+        throw new Error(
+          `Native MPF apply from ${handle.baseRoot} still needs nodes after ${NATIVE_MPF_APPLY_MAX_NODE_ROUNDS.toString()} rounds`,
+        );
+      }
+      const hashes = decodeNeedNodes(response.payload, handle.generationId);
+      const nodes = await this.db.getMany(hashes);
+      const missing = hashes.filter((_, index) => nodes[index] === undefined);
+      if (missing.length > 0) {
+        if (handle.baseRoot !== this.durableRoot)
+          throw new Error(
+            `Native MPF apply base is stale: base=${handle.baseRoot},durable=${this.durableRoot}`,
+          );
+        throw new NativeMpfClosureIncomplete(handle.baseRoot, missing);
+      }
+      const records = hashes.map((hash, index) =>
+        encodeStoredNode(hash, nodes[index]),
+      );
+      for (const { payload, count } of encodeProvideNodes(
+        records,
+        this.options.maxChunkBytes,
+      )) {
+        const provided = await rpc.request(
+          NativeMpfRpcKind.ProvideNodes,
+          payload,
+          new Set([NativeMpfRpcKind.NodesProvided]),
+        );
+        if (decodeNodesProvided(provided.payload) !== count) {
+          throw new Error("Native MPF NodesProvided count mismatch");
+        }
+      }
+    }
   }
 
   public async discard(handle: NativeMpfGenerationHandle): Promise<void> {
@@ -314,27 +365,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
           `Native MPF durable marker changed before promotion: expected=${handle.baseRoot},actual=${marker}`,
         );
       }
-      await validatePromotionClosure(
-        this.db,
-        candidateRoot,
-        handle.baseRoot,
-        records,
-      );
-      // The next start loads the durable root under the full-index caps, so a
-      // root over either is refused here, with nothing written.
-      const candidateSize = await candidateFullIndexSize({
-        db: this.db,
-        baseRoot: handle.baseRoot,
-        base: this.fullIndexSize,
-        candidateRoot,
-        records,
-      });
-      const breach = promotionIndexCapBreach(candidateRoot, candidateSize);
-      if (breach !== undefined) {
-        this.promotionRefusal = breach;
-        await this.discard(handle).catch(() => undefined);
-        throw breach;
-      }
+      validatePromotionClosure(candidateRoot, handle.baseRoot, records);
       // From the write to the durable root's move, under the ledger lock: a
       // `retain` reads the durable root before the write or after the move.
       await this.ledgerLock.run(async () => {
@@ -357,8 +388,6 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
           throw new Error("Native MPF PromotionCommitted root mismatch");
         }
         this.durableRoot = candidateRoot;
-        this.fullIndexSize = candidateSize;
-        this.promotionRefusal = undefined;
         this.workerGenerationLeases.delete(this.generationKey(handle));
       });
     });
@@ -396,7 +425,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
 
   public async recover(replay: PersistedNativeMpfReplay): Promise<void> {
     return this.runOperation(async () => {
-      if (replay.schema !== NATIVE_MPF_RPC_SCHEMA) {
+      if (replay.schema !== NATIVE_MPF_REPLAY_SCHEMA) {
         throw new Error("Native MPF replay schema mismatch");
       }
       if (replay.ownerBinarySha256 !== this.binarySha256) {
@@ -445,51 +474,19 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         Buffer.alloc(0),
         new Set([NativeMpfRpcKind.DiagnosticsResult]),
       );
-      const payload = Buffer.from(response.payload);
-      if (payload.length !== 96) {
-        throw new Error("Native MPF diagnostics payload length is invalid");
-      }
-      const value = (offset: number): number => {
-        const result = payload.readBigUInt64LE(offset);
-        if (result > BigInt(Number.MAX_SAFE_INTEGER)) {
-          throw new Error("Native MPF diagnostic exceeds safe integer");
-        }
-        return Number(result);
-      };
-      const diagnostics = {
+      return {
         ownerEpoch: rpc.epoch,
-        durableRoot: payload.subarray(0, 32).toString("hex"),
-        residentNodes: value(32),
-        residentEdges: value(40),
-        residentBytes: value(48),
-        activeGenerations: value(56),
-        generatedNodes: value(64),
-        generatedBytes: value(72),
-        rssBytes: value(80) * 1024,
-        peakRssBytes: value(88) * 1024,
+        ...decodeDiagnostics(response.payload),
         childRestarts: this.childRestarts,
       };
-      if (
-        diagnostics.residentNodes >
-          NATIVE_MPF_OWNER_DEFAULT_CAPS.maxResidentNodes ||
-        diagnostics.residentBytes >
-          NATIVE_MPF_OWNER_DEFAULT_CAPS.maxResidentBytes ||
-        diagnostics.rssBytes > NATIVE_MPF_OWNER_DEFAULT_CAPS.maxResidentBytes ||
-        diagnostics.peakRssBytes >
-          NATIVE_MPF_OWNER_DEFAULT_CAPS.maxResidentBytes
-      ) {
-        throw new Error(
-          `Native MPF diagnostics cap exceeded: nodes=${diagnostics.residentNodes.toString()},resident_bytes=${diagnostics.residentBytes.toString()},rss_bytes=${diagnostics.rssBytes.toString()},peak_rss_bytes=${diagnostics.peakRssBytes.toString()}`,
-        );
-      }
-      return diagnostics;
     });
   }
 
-  /** Restore only a retained, hash-verified closure. The caller must persist and
+  /** Restore only a root the store retains. The caller must persist and
    * authenticate the recovery plan and drain producers before this operation.
    * SQL reconciliation and Ready publication remain the caller's responsibility.
-   * A new child epoch invalidates all handles from the displaced native state.
+   * The child keeps its epoch; every handle from before the restore names a
+   * generation the child no longer holds, since the restore requires none.
    * In-flight read-only diagnostics (readiness, audits) are awaited, not refused;
    * new operations are refused from this call until the restore settles.
    */
@@ -565,51 +562,19 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     // A root `retain` dropped is refused even while its nodes are still
     // queued for deletion: the marker never names a root the store may delete.
     await this.store.at(plan.targetRoot).catch((cause: unknown) => {
-      throw restoreIndexRefusal(plan.targetRoot, cause);
+      throw restoreRefusal(plan.targetRoot, cause);
     });
     const diagnostics = await rpc.request(
       NativeMpfRpcKind.Diagnostics,
       Buffer.alloc(0),
       new Set([NativeMpfRpcKind.DiagnosticsResult]),
     );
-    const payload = Buffer.from(diagnostics.payload);
-    if (payload.length !== 96 || payload.readBigUInt64LE(56) !== 0n)
+    if (decodeDiagnostics(diagnostics.payload).activeGenerations !== 0)
       throw new Error(
         "Native MPF canonical recovery requires drained generations",
       );
-    // Never use a sidecar as authority for a different canonical root. Read the
-    // retained content-addressed closure, then let the pinned native loader
-    // verify every hash, path and child before changing the durable marker.
-    // A target that cannot be loaded is refused here by cause, before any marker
-    // change: restoring onto a partial trie would commit on a wrong base.
-    const fullIndex = await buildOrReadFullIndex({
-      db: this.db,
-      marker: plan.targetRoot,
-      options: { ...this.options, sidecarPath: undefined },
-      binarySha256: this.binarySha256,
-    }).catch((cause: unknown) => {
-      throw restoreIndexRefusal(plan.targetRoot, cause);
-    });
-    let replacement: NativeChildRpc | undefined;
     let committed = false;
     try {
-      // Avoid keeping two resident native tries alive at production scale.
-      await rpc.close();
-      replacement = await startNativeChild({
-        options: this.options,
-        fullIndex,
-        marker: plan.targetRoot,
-      });
-      if (this.closing)
-        throw new Error("Native MPF owner closed during canonical recovery");
-      const current = assertStoredHash(
-        await this.db.get("__root__"),
-        "durableRoot",
-      );
-      if (current !== plan.expectedRoot)
-        throw new Error(
-          "Native MPF canonical recovery marker changed before commit",
-        );
       await this.options.faultInjectionForTests?.("before_root_restore_batch");
       // The store retains the target (checked above), so moving only the
       // marker leaves its counts and retained roots consistent.
@@ -624,21 +589,18 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
       await this.options.faultInjectionForTests?.(
         "after_root_restore_batch_before_ack",
       );
-      this.rpc = replacement;
+      // The child refuses while a generation is active; none can be, as
+      // operations stay refused until the restore settles.
+      await setChildRoot(rpc, plan.targetRoot);
       this.durableRoot = plan.targetRoot;
-      this.fullIndexSize = fullIndexSizeOf(fullIndex);
-      this.promotionRefusal = undefined;
       this.workerGenerationLeases.clear();
-      this.childRestarts += 1;
-      this.installFailureHandler(replacement);
-      replacement = undefined;
     } catch (error) {
+      // Committed but not installed: the owner refuses work until a restart
+      // gives a new child the durable root, the target.
       if (committed)
         this.recoveryFailure =
           error instanceof Error ? error : new Error(String(error));
       throw error;
-    } finally {
-      await replacement?.close().catch(() => undefined);
     }
   }
 
@@ -654,13 +616,6 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
 
   public restartHealth(): NativeOwnerRestartHealth {
     return this.restartPolicy.health();
-  }
-
-  /** The durable root's full-index size and the promotion last refused over
-   * a full-index cap, which a later promotion or restore that succeeds
-   * clears. */
-  public fullIndexHealth(): NativeMpfFullIndexHealth {
-    return { ...this.fullIndexSize, promotionRefusal: this.promotionRefusal };
   }
 
   private refusal(): Error | undefined {
@@ -804,30 +759,18 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   }
 
   private async restartChild(): Promise<void> {
-    // Never keep two resident native tries alive at production scale.
     if (!this.rpc.isClosed) await this.rpc.close().catch(() => undefined);
     const marker = assertStoredHash(
       await this.db.get("__root__"),
       "durableRoot",
     );
-    const fullIndex = await buildOrReadFullIndex({
-      db: this.db,
-      marker,
-      options: this.options,
-      binarySha256: this.binarySha256,
-    });
-    const rpc = await startNativeChild({
-      options: this.options,
-      fullIndex,
-      marker,
-    });
+    const rpc = await startNativeChild({ options: this.options, root: marker });
     if (this.closing) {
       await rpc.close().catch(() => undefined);
       throw new Error("Native MPF owner service closed during child restart");
     }
     this.rpc = rpc;
     this.durableRoot = marker;
-    this.fullIndexSize = fullIndexSizeOf(fullIndex);
     this.workerGenerationLeases.clear();
     this.recoveryFailure = undefined;
     this.childRestarts += 1;

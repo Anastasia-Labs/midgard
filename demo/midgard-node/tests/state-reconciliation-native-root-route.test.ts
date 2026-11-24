@@ -41,9 +41,8 @@ const COPY_ROOT = "c0".repeat(32);
 const diagnostics: NativeMpfOwnerDiagnostics = {
   ownerEpoch: new Uint8Array(16).fill(7),
   durableRoot: DURABLE_ROOT,
-  residentNodes: 3,
-  residentEdges: 2,
-  residentBytes: 4_096,
+  cachedNodes: 3,
+  cachedBytes: 4_096,
   activeGenerations: 0,
   generatedNodes: 0,
   generatedBytes: 0,

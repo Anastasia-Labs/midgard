@@ -13,7 +13,7 @@ mod owner;
 mod rpc;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use owner::{run_owner_cli, run_owner_rpc};
+pub use owner::run_owner_rpc;
 
 type Hash = [u8; 32];
 

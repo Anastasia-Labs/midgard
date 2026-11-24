@@ -111,7 +111,6 @@ L1_NODE_TRANSPORT_BINARY_PATH: "/usr/local/bin/midgard-l1-node-transport"
 # /app/native/architecture-g-owner.sha256 of the pinned node image.
 MPF_NATIVE_OWNER_BINARY_PATH: "/app/native/architecture-g-owner"
 MPF_NATIVE_OWNER_BINARY_SHA256: "<64 hex characters>"
-MPF_NATIVE_OWNER_SIDECAR_PATH: "db/midgard-ledger-mpf-architecture-g.sidecar"
 
 # --- L2 fees (required) --------------------------------------------------------
 # Linear L2 fee: MIN_FEE_A per byte plus MIN_FEE_B. Every operator of the

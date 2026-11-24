@@ -6,6 +6,7 @@ import { MPF_EMPTY_ROOT } from "../../mpf/store-primitives.js";
 import { createEventFlatDigest } from "../../workers/utils/mpf-event-flat-digest.js";
 import {
   NATIVE_MPF_OWNER_DEFAULT_CAPS,
+  NATIVE_MPF_OWNER_NODE_CACHE_BYTES,
   type NativeMpfGenerationHandle,
   type NativeMpfRpcFrame,
   NativeMpfRpcKind,
@@ -19,15 +20,11 @@ export const EMPTY_ROOT_HEX = MPF_EMPTY_ROOT.toString("hex");
 
 export const HASH_BYTES = 32;
 
-export const FULL_INDEX_HEADER_BYTES = 72;
-
-export const FULL_INDEX_MAX_BYTES = 512 * 1024 * 1024;
-
-export const FULL_INDEX_MAX_RECORDS = 2_000_000;
-
 export const EVENT_LOG_HEADER_BYTES = 92;
 
-export const LOAD_DIGEST_DOMAIN = Buffer.from("MIDGARD-MPF-OWNER-LOAD-V1");
+/** The largest event log the child takes (its `ABSOLUTE_MAX_INPUT_BYTES`),
+ * which the log's header also states. */
+export const EVENT_LOG_MAX_BYTES = 512 * 1024 * 1024;
 
 export const EVENT_LOG_DIGEST_DOMAIN = Buffer.from(
   "MIDGARD-MPF-ARCH-G-EVENT-LOG-V1",
@@ -46,14 +43,6 @@ export const SELF_TEST_DOMAIN = Buffer.from(
 );
 
 export const ZERO_EPOCH = Buffer.alloc(16);
-
-export const SIDECAR_MAGIC = "MGNS";
-
-export const SIDECAR_HEADER_BYTES = 144;
-
-export const SIDECAR_DIGEST_DOMAIN = Buffer.from(
-  "MIDGARD-MPF-OWNER-NODE-SIDECAR-V1",
-);
 
 const NATIVE_OWNER_MIN_RUNTIME_HEADROOM_BYTES = 1024 * 1024 * 1024;
 
@@ -131,7 +120,10 @@ export type NativeMpfOwnerServiceOptions = {
   readonly restartWindowMs?: number;
   readonly restartBackoffBaseMs?: number;
   readonly restartBackoffMaxMs?: number;
-  readonly sidecarPath?: string;
+  /** The child's node cache budget in bytes, for tests that need it small;
+   * production callers leave it undefined, which is
+   * `NATIVE_MPF_OWNER_NODE_CACHE_BYTES`. */
+  readonly nodeCacheBytes?: number;
   /** Process-crash and interleaving test seam; production callers must leave
    * this undefined. */
   readonly faultInjectionForTests?: (
@@ -155,6 +147,7 @@ export type NormalizedNativeMpfOwnerServiceOptions =
     readonly restartWindowMs: number;
     readonly restartBackoffBaseMs: number;
     readonly restartBackoffMaxMs: number;
+    readonly nodeCacheBytes: number;
   };
 
 export const digest = (...parts: readonly Uint8Array[]): Buffer => {
@@ -171,7 +164,7 @@ export const normalizeOwnerOptions = (
   const maxChunkBytes =
     options.maxChunkBytes ?? NATIVE_MPF_OWNER_DEFAULT_CAPS.maxChunkBytes;
   const requestTimeoutMs =
-    options.requestTimeoutMs ?? NATIVE_MPF_OWNER_DEFAULT_CAPS.loadTimeoutMs;
+    options.requestTimeoutMs ?? NATIVE_MPF_OWNER_DEFAULT_CAPS.requestTimeoutMs;
   const restartLimit = options.restartLimit ?? 3;
   const restartWindowMs = options.restartWindowMs ?? DEFAULT_RESTART_WINDOW_MS;
   const restartBackoffBaseMs =
@@ -186,6 +179,11 @@ export const normalizeOwnerOptions = (
   positiveSafeInteger(restartBackoffMaxMs, "restartBackoffMaxMs");
   if (!Number.isSafeInteger(restartLimit) || restartLimit < 0) {
     throw new Error("restartLimit must be a non-negative safe integer");
+  }
+  const nodeCacheBytes =
+    options.nodeCacheBytes ?? NATIVE_MPF_OWNER_NODE_CACHE_BYTES;
+  if (!Number.isSafeInteger(nodeCacheBytes) || nodeCacheBytes < 0) {
+    throw new Error("nodeCacheBytes must be a non-negative safe integer");
   }
   if (maxFrameBytes > NATIVE_MPF_OWNER_DEFAULT_CAPS.maxFrameBytes) {
     throw new Error("maxFrameBytes exceeds the compiled native owner cap");
@@ -205,6 +203,7 @@ export const normalizeOwnerOptions = (
     restartWindowMs,
     restartBackoffBaseMs,
     restartBackoffMaxMs,
+    nodeCacheBytes,
   };
 };
 
@@ -248,9 +247,11 @@ export const assertNativeOwnerRuntimeMemoryBudget = ({
     return;
   }
   const cgroupLimitBytes = cgroup.limitBytes;
+  // The child holds its node cache to the budget; the headroom covers the
+  // open generations' nodes and everything else.
   const requiredBytes =
     v8HeapLimitBytes +
-    NATIVE_MPF_OWNER_DEFAULT_CAPS.maxResidentBytes +
+    NATIVE_MPF_OWNER_NODE_CACHE_BYTES +
     NATIVE_OWNER_MIN_RUNTIME_HEADROOM_BYTES;
   if (
     !Number.isSafeInteger(cgroupLimitBytes) ||
@@ -262,7 +263,7 @@ export const assertNativeOwnerRuntimeMemoryBudget = ({
   }
   if (cgroupLimitBytes < requiredBytes) {
     throw new Error(
-      `Architecture G runtime memory budget is insufficient: cgroup_limit_bytes=${cgroupLimitBytes.toString()},v8_heap_limit_bytes=${v8HeapLimitBytes.toString()},owner_cap_bytes=${NATIVE_MPF_OWNER_DEFAULT_CAPS.maxResidentBytes.toString()},required_headroom_bytes=${NATIVE_OWNER_MIN_RUNTIME_HEADROOM_BYTES.toString()},required_total_bytes=${requiredBytes.toString()}`,
+      `Architecture G runtime memory budget is insufficient: cgroup_limit_bytes=${cgroupLimitBytes.toString()},v8_heap_limit_bytes=${v8HeapLimitBytes.toString()},owner_cache_bytes=${NATIVE_MPF_OWNER_NODE_CACHE_BYTES.toString()},required_headroom_bytes=${NATIVE_OWNER_MIN_RUNTIME_HEADROOM_BYTES.toString()},required_total_bytes=${requiredBytes.toString()}`,
     );
   }
 };

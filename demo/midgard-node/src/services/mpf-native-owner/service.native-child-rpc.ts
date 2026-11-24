@@ -12,13 +12,12 @@ import {
 import {
   assertBufferLength,
   digest,
-  FULL_INDEX_MAX_RECORDS,
   type PendingPromotion,
   type PendingRequest,
-  SELF_TEST_DOMAIN,
   ZERO_EPOCH,
 } from "./service.normalize-owner-options.js";
 import { NativeOwnerBinaryPinMismatchError } from "./service.restart-policy.js";
+import { assertHelloAck, encodeHello } from "./service.rpc-payloads.js";
 
 export class NativeChildRpc {
   private readonly child: ChildProcessWithoutNullStreams;
@@ -72,31 +71,17 @@ export class NativeChildRpc {
     });
   }
 
-  public async handshake(): Promise<void> {
+  /** Hello with the cache budget the child holds its trie nodes to. */
+  public async handshake(cacheBytes: number): Promise<void> {
     const response = await this.request(
       NativeMpfRpcKind.Hello,
-      Buffer.from(this.binarySha256, "hex"),
+      encodeHello(this.binarySha256, cacheBytes),
       new Set([NativeMpfRpcKind.HelloAck]),
       true,
       NATIVE_MPF_OWNER_DEFAULT_CAPS.handshakeTimeoutMs,
     );
     this.ownerEpoch = assertBufferLength(response.ownerEpoch, 16, "ownerEpoch");
-    if (response.payload.byteLength !== 82) {
-      throw new Error("Native MPF HelloAck payload length is invalid");
-    }
-    const payload = Buffer.from(response.payload);
-    if (
-      payload.readUInt16LE(0) !== NATIVE_MPF_RPC_SCHEMA ||
-      payload.subarray(2, 34).toString("hex") !== this.binarySha256 ||
-      payload.readUInt32LE(34) !== FULL_INDEX_MAX_RECORDS ||
-      payload.readUInt32LE(38) !== NATIVE_MPF_OWNER_DEFAULT_CAPS.maxEvents ||
-      payload.readUInt32LE(42) !== NATIVE_MPF_OWNER_DEFAULT_CAPS.maxOps ||
-      payload.readUInt32LE(46) !==
-        NATIVE_MPF_OWNER_DEFAULT_CAPS.maxActiveGenerations ||
-      !timingSafeEqual(payload.subarray(50), digest(SELF_TEST_DOMAIN))
-    ) {
-      throw new Error("Native MPF HelloAck capability/self-test mismatch");
-    }
+    assertHelloAck(response.payload, this.binarySha256, cacheBytes);
   }
 
   public get epoch(): Buffer {

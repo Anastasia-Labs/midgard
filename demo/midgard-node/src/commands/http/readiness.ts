@@ -17,10 +17,6 @@ import { activeLivenessReasons } from "../../services/liveness-halt.js";
 import { Lucid } from "../../services/lucid.js";
 import { ContractDeploymentIdentity } from "../../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
-  fullIndexHealthOf,
-  fullIndexNearCapDetails,
-} from "../../services/mpf-native-owner/service.full-index-accounting.js";
-import {
   settlementReadinessReason,
   settlementReconcileStuckDetail,
   settlementStuckDetail,
@@ -312,14 +308,6 @@ export const getReadinessHandler = Effect.gen(function* () {
   // node ready. Removal is a liveness reason (`operator_removed`).
   if (operatorMembership === "unknown")
     details.push("operator_membership_unavailable");
-  // The live root's full index is past the warning fraction of a full-index
-  // cap: promotions still succeed, but one over the cap will be refused.
-  const nativeMpfFullIndex =
-    nativeMpfOwner === undefined
-      ? undefined
-      : fullIndexHealthOf(nativeMpfOwner);
-  if (nativeMpfFullIndex !== undefined)
-    details.push(...fullIndexNearCapDetails(nativeMpfFullIndex));
   const providerReadiness = l1ProviderReadiness({
     healthy: providerProbe.healthy,
     lastSuccessAtMs: providerHealthAfter.lastSuccessAtMs,

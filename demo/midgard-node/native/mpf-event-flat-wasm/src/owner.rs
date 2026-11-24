@@ -1,39 +1,35 @@
 use std::{
-    collections::{HashMap, HashSet},
-    env,
+    collections::{BTreeSet, HashMap, HashSet},
     fs::{self, File},
     io::{Read, Write},
     mem::size_of,
-    path::{Path, PathBuf},
     time::Instant,
 };
 
 use super::*;
-use crate::rpc::{read_frame, write_frame, RpcFrame, RpcKind, RPC_MAX_CHUNK_BYTES};
+use crate::rpc::{read_frame, write_frame, RpcFrame, RpcKind, RPC_MAX_CHUNK_BYTES, RPC_SCHEMA};
 
-const SIDECAR_MAGIC: &[u8; 4] = b"MGSI";
-const SIDECAR_HEADER_BYTES: usize = 80;
-const FULL_INDEX_MAX_RECORDS: usize = 2_000_000;
-const FULL_INDEX_MAX_BYTES: usize = 536_870_912;
-const MAX_RESIDENT_BYTES: usize = 2 * 1024 * 1024 * 1024;
-const UNRESOLVED_CHILD_ID: u32 = u32::MAX;
-
-mod compact_index;
-use compact_index::*;
-mod runtime_owner;
-use runtime_owner::*;
-mod simulated_owner;
-use simulated_owner::*;
-mod sidecar;
-use sidecar::*;
+mod node_cache;
+use node_cache::*;
 mod records;
 use records::*;
 mod rpc_handler;
 use rpc_handler::*;
+mod runtime_owner;
+use runtime_owner::*;
 
-mod cli;
-use cli::rss_kib;
-pub use cli::run_owner_cli;
+pub(super) fn rss_kib(field: &str) -> u64 {
+    fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|status| {
+            status.lines().find_map(|line| {
+                line.strip_prefix(field)
+                    .and_then(|value| value.split_whitespace().next())
+                    .and_then(|value| value.parse().ok())
+            })
+        })
+        .unwrap_or(0)
+}
 
 pub fn run_owner_rpc() -> Result<(), String> {
     let mut epoch = [0u8; 16];

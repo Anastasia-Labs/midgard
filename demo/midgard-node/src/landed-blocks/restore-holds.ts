@@ -10,7 +10,6 @@
  */
 import {
   MPF_CLOSURE_MISSING,
-  NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
   NATIVE_MPF_RESTORE_READ_ESCALATION_MS,
   NATIVE_MPF_RESTORE_READ_TRANSIENT,
 } from "../services/liveness-halt.js";
@@ -41,10 +40,6 @@ const RESTORE_HOLDS = new Map<
     { reason: MPF_CLOSURE_MISSING, escalateAfterMs: 0 },
   ],
   [
-    "NativeMpfFullIndexCapExceeded",
-    { reason: NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED, escalateAfterMs: 0 },
-  ],
-  [
     "NativeMpfRestoreReadFailed",
     {
       reason: NATIVE_MPF_RESTORE_READ_TRANSIENT,
@@ -56,8 +51,7 @@ const RESTORE_HOLDS = new Map<
 /**
  * The named hold for the first refused native restore on a failure's cause
  * chain, matched by its tag (a refusal crosses the native child's boundary
- * by tag, not by class): a store that lacks the root, or a cap it is over,
- * escalates at once; a read failure gets
+ * by tag, not by class): a store that lacks the root escalates at once; a read failure gets
  * `NATIVE_MPF_RESTORE_READ_ESCALATION_MS` to pass.
  */
 export const restoreRefusalHold = (chain: readonly unknown[]) => {

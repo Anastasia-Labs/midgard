@@ -87,7 +87,6 @@ describe("the readiness catalogue", () => {
       `validation-trace-defense-underfunded:${"ab".repeat(28)}:5000:2000000`,
       `validation-trace-defense-awaiting:${"ab".repeat(28)}:none`,
       "commit_da_frame_pressure:required_work:90",
-      "native_mpf_full_index_near_cap:FULL_INDEX_MAX_BYTES:9:10",
       "commit_build_held:phase_b",
     ]) {
       expect(parseReadinessLine(line), line).toBeDefined();

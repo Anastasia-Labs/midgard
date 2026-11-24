@@ -14,6 +14,7 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import { Level } from "level";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import {
   nativeOwnerBinaryPath,
@@ -21,6 +22,13 @@ import {
   warnNativeOwnerBinaryAbsent,
 } from "./helpers/native-owner-binary.js";
 import { createOwnerService } from "./helpers/native-owner-ledger.js";
+import {
+  openCountingLedger,
+  promoteBlock,
+  referenceRoots,
+  seedTrieLedger,
+  trieBlocks,
+} from "./helpers/native-owner-trie.js";
 
 // The service spawns the native owner binary; see the helper for the
 // build/skip contract (#642).
@@ -32,7 +40,8 @@ if (!binaryPresent) {
 
 /**
  * Child restarts of the production native owner (owner ruling 2026-10-09): a
- * child that fails is restarted from the durable root marker with backoff;
+ * child that fails is restarted from the durable root marker with backoff,
+ * with an empty node cache;
  * the same failure `restartLimit` times in a row holds the owner, which
  * restarts no more; a binary that is not the pinned one holds it at once.
  */
@@ -92,6 +101,52 @@ describe.skipIf(!binaryPresent)("native MPF owner child restarts", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
   };
+
+  it("restarts a child killed between blocks without reading the trie, and reads only what the next block needs", async () => {
+    const keyCount = 8_000;
+    const blocks = trieBlocks({ keyCount, blocks: 2 });
+    const reference = await referenceRoots(keyCount, blocks);
+    const root = await mkdtemp(join(tmpdir(), "midgard-native-owner-cold-"));
+    temporaryPaths.push(root);
+    const levelPath = join(root, "ledger");
+    const seeded = await seedTrieLedger(
+      levelPath,
+      { binaryPath, binarySha256 },
+      keyCount,
+    );
+    const { ledger, nodeReads } = await openCountingLedger(levelPath);
+    const childPids: number[] = [];
+    const service = await ProductionNativeMpfOwnerService.create(ledger, {
+      binaryPath,
+      binarySha256,
+      onChildSpawnForTests(pid) {
+        childPids.push(pid);
+      },
+    });
+    try {
+      expect(await promoteBlock(service, seeded.root, blocks[0]!)).toEqual(
+        reference.blocks[0],
+      );
+      const between = reference.blocks[0]!.at(-1)!;
+      const before = nodeReads();
+      process.kill(childPids[0]!, "SIGKILL");
+      await waitUntil(() => childPids.length === 2);
+      expect(childPids).toHaveLength(2);
+      expect(await service.diagnostics()).toMatchObject({
+        durableRoot: between,
+        childRestarts: 1,
+        cachedNodes: 0,
+      });
+      expect(await promoteBlock(service, between, blocks[1]!)).toEqual(
+        reference.blocks[1],
+      );
+      // The restart and the block after it together.
+      expect(nodeReads() - before).toBeGreaterThan(0);
+      expect(nodeReads() - before).toBeLessThan(seeded.nodes / 5);
+    } finally {
+      await service.close();
+    }
+  });
 
   it("restarts a child that dies after each run of restartWindowMs or longer, without end", async () => {
     // A second identical death in a row would hold the owner: only the long

@@ -1,6 +1,6 @@
 import { availableParallelism } from "node:os";
 
-import { Config, Option } from "effect";
+import { Config } from "effect";
 
 import {
   nonNegativeSafeIntegerConfig,
@@ -44,10 +44,6 @@ export const mpfConfig = Config.all({
     "MPF_NATIVE_OWNER_BINARY_SHA256",
     "",
   ),
-  /** Unset is beside the ledger database. */
-  MPF_NATIVE_OWNER_SIDECAR_PATH: Config.option(
-    Config.string("MPF_NATIVE_OWNER_SIDECAR_PATH"),
-  ),
   MPF_NATIVE_OWNER_MAX_FRAME_BYTES: positiveSafeIntegerConfig(
     "MPF_NATIVE_OWNER_MAX_FRAME_BYTES",
     NATIVE_MAX_FRAME_BYTES,
@@ -65,31 +61,23 @@ export const mpfConfig = Config.all({
     3,
   ),
 }).pipe(
-  Config.mapAttempt(
-    ({ MPF_NATIVE_OWNER_SIDECAR_PATH: sidecar, ...settings }) => {
-      const frameBytes = settings.MPF_NATIVE_OWNER_MAX_FRAME_BYTES;
-      const chunkBytes = settings.MPF_NATIVE_OWNER_MAX_CHUNK_BYTES;
-      const caps = `chunk_bytes=${chunkBytes.toString()},frame_bytes=${frameBytes.toString()}`;
-      if (
-        frameBytes > NATIVE_MAX_FRAME_BYTES ||
-        chunkBytes > NATIVE_MAX_CHUNK_BYTES
-      ) {
-        throw new Error(
-          `Architecture G RPC caps exceed the compiled native limits (${caps})`,
-        );
-      }
-      if (chunkBytes > frameBytes - 68) {
-        throw new Error(
-          `Architecture G chunk cap must fit inside the RPC frame cap (${caps})`,
-        );
-      }
-      return {
-        ...settings,
-        MPF_NATIVE_OWNER_SIDECAR_PATH: Option.getOrElse(
-          sidecar,
-          () => `${settings.LEDGER_MPF_DB_PATH}.architecture-g.sidecar`,
-        ),
-      };
-    },
-  ),
+  Config.mapAttempt((settings) => {
+    const frameBytes = settings.MPF_NATIVE_OWNER_MAX_FRAME_BYTES;
+    const chunkBytes = settings.MPF_NATIVE_OWNER_MAX_CHUNK_BYTES;
+    const caps = `chunk_bytes=${chunkBytes.toString()},frame_bytes=${frameBytes.toString()}`;
+    if (
+      frameBytes > NATIVE_MAX_FRAME_BYTES ||
+      chunkBytes > NATIVE_MAX_CHUNK_BYTES
+    ) {
+      throw new Error(
+        `Architecture G RPC caps exceed the compiled native limits (${caps})`,
+      );
+    }
+    if (chunkBytes > frameBytes - 68) {
+      throw new Error(
+        `Architecture G chunk cap must fit inside the RPC frame cap (${caps})`,
+      );
+    }
+    return settings;
+  }),
 );

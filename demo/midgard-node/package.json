@@ -71,7 +71,7 @@
     "native:mpf-owner:check": "cargo fmt --check --manifest-path native/mpf-event-flat-wasm/Cargo.toml && cargo test --release --locked --manifest-path native/mpf-event-flat-wasm/Cargo.toml",
     "native:mpf-owner:build": "node ../../scripts/contrib.mjs native --package midgard-node",
     "native:mpf-owner:build:contrib-raw": "cargo build --release --locked --bin architecture-g-owner --manifest-path native/mpf-event-flat-wasm/Cargo.toml",
-    "test:mpf-native-owner": "pnpm run native:mpf-owner:build && vitest run tests/mpf-native-owner-protocol.test.ts tests/mpf-native-owner-service.test.ts tests/mpf-native-promotion-recovery.test.ts tests/mpf-runtime-config.test.ts --reporter=default",
+    "test:mpf-native-owner": "pnpm run native:mpf-owner:build && vitest run tests/mpf-native-owner-protocol.test.ts tests/mpf-native-owner-service.test.ts tests/mpf-native-owner-node-cache.test.ts tests/mpf-native-promotion-recovery.test.ts tests/mpf-runtime-config.test.ts --reporter=default",
     "stress:noop": "node scripts/stress-noop-echo-server.mjs",
     "test:operator-lifecycle:emulator": "export NODE_ENV='emulator' && vitest run tests/operator-lifecycle-emulator.test.ts --disableConsoleIntercept",
     "test:operator-lifecycle": "pnpm run test:operator-lifecycle:emulator",
