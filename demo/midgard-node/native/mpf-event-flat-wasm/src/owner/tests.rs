@@ -80,6 +80,14 @@ fn seeded(keys: usize, seed: u64) -> (Ledger, Arena, Hash) {
     (ledger, arena, root)
 }
 
+fn reachable_nodes(arena: &Arena) -> Vec<Node> {
+    let root = arena
+        .root
+        .map(|id| arena.nodes[id].hash())
+        .unwrap_or(EMPTY_ROOT);
+    generated_reachable_nodes(arena, root).unwrap()
+}
+
 fn reference_roots(reference: &mut Arena, events: &[Vec<Op>]) -> Vec<Hash> {
     events
         .iter()
@@ -153,10 +161,10 @@ impl Harness {
             store: HashMap::new(),
             rounds: Vec::new(),
         };
-        for node in seed.dirty_records() {
+        for node in reachable_nodes(seed) {
             harness
                 .store
-                .insert(node.hash(), encode_node_record(node).unwrap());
+                .insert(node.hash(), encode_node_record(&node).unwrap());
         }
         let mut hello = vec![0x11; 32];
         hello.extend_from_slice(&budget.to_le_bytes());
@@ -317,8 +325,8 @@ fn key_where(accept: impl Fn(&[u8]) -> bool) -> Vec<u8> {
 
 fn full_cache(arena: &Arena) -> NodeCache {
     let mut cache = NodeCache::new(usize::MAX);
-    for node in arena.dirty_records() {
-        cache.insert(node.clone());
+    for node in reachable_nodes(arena) {
+        cache.insert(node);
     }
     cache
 }

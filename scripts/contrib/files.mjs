@@ -98,7 +98,6 @@ const packageOutputs = new Set([
   ".tmp",
   ".next",
   ".turbo",
-  ".architecture-f-wasm",
   "deploymentInfo",
 ]);
 // The further outputs a package's build declares (validation's vendor/),

@@ -334,35 +334,4 @@ impl Arena {
         }
         Ok(())
     }
-
-    pub(super) fn dirty_records(&self) -> Vec<&Node> {
-        let Some(root) = self.root else {
-            return Vec::new();
-        };
-        let mut pending = vec![root];
-        let mut visited = HashSet::new();
-        let mut dirty = Vec::new();
-        while let Some(id) = pending.pop() {
-            if !visited.insert(id) || id < self.base_count {
-                continue;
-            }
-            let node = &self.nodes[id];
-            dirty.push(node);
-            if let Node::Branch { children, .. } = node {
-                for child in children.iter().flatten() {
-                    if let Some(child_id) = self.ids.get(child) {
-                        pending.push(*child_id);
-                    }
-                }
-            }
-        }
-        dirty.sort_unstable_by_key(|node| node.hash());
-        dirty
-    }
-
-    pub(super) fn rollback(&mut self, node_count: usize, root: Option<usize>) {
-        self.nodes.truncate(node_count);
-        self.ids.retain(|_, id| *id < node_count);
-        self.root = root;
-    }
 }

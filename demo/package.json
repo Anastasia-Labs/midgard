@@ -11,7 +11,7 @@
     "lint:fix": "node scripts/lint-by-package.mjs --fix",
     "typecheck": "pnpm -r --if-present --workspace-concurrency=4 run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "format-check": "prettier --check \"**/*.{ts,tsx,md}\" \"!**/.architecture-f-wasm/**\" \"!**/coverage/**\" \"!**/deploymentInfo/**\" \"!**/dist/**\" \"!**/logs/**\" \"!**/node_modules/**\"",
+    "format-check": "prettier --check \"**/*.{ts,tsx,md}\" \"!**/coverage/**\" \"!**/deploymentInfo/**\" \"!**/dist/**\" \"!**/logs/**\" \"!**/node_modules/**\"",
     "hooks:install": "bash ../.githooks/install",
     "test:tx-prep:sdk": "pnpm --filter @al-ft/lucid-midgard test && pnpm --filter @al-ft/midgard-sdk test",
     "test:tx-prep:node": "pnpm --filter midgard-node run test:tx-prep:node && pnpm --filter midgard-node-tools run test:e2e-reliability",

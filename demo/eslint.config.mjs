@@ -71,7 +71,6 @@ export default tseslint.config(
       "**/dist/**",
       "**/logs/**",
       "**/node_modules/**",
-      "**/.architecture-f-wasm/**",
       "**/.probe-dist/**",
       "**/.tmp/**",
       // The build's verbatim copy of a vendored package.
