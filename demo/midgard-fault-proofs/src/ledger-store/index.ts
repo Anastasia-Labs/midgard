@@ -23,7 +23,7 @@ export type {
   LedgerSource,
 } from "./ledger.js";
 export { createMemoryLedgerStorage } from "./memory.js";
-export { ledgerAt, ledgerProof, ledgerTrie } from "./read.js";
+export { ledgerAt, ledgerProof, ledgerReads, ledgerTrie } from "./read.js";
 export type {
   LedgerStorage,
   LedgerStorageChange,
