@@ -74,8 +74,8 @@ export const followerRepair =
                 "the follower view moved during the recompute",
               ),
             );
-          for (const entry of outcome.ingestion.spendableUpserts)
-            keys.add(entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"));
+          for (const outRef of outcome.ingestion.spendableRestored)
+            keys.add(outRef.toString("hex"));
           if (outcome.ingestion.orphans > 0) keyed = false;
           return outcome.ingestion;
         });

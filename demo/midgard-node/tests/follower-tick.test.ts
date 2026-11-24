@@ -9,23 +9,39 @@
  * (`l1_events_orphan_recovery`), the runner retries it on its backoff with
  * no trigger, and once the follower admits the deposit again the next retry
  * clears the hold, opens the write gate and keeps the deposit.
+ *
+ * A deposit an own landed block includes holds no gate when the follower
+ * rewinds past its admission: a spend of its output is rejected as a missing
+ * input from the node's validation cache, and admitted from that same cache
+ * once a later block admits the deposit again.
  */
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import {
   eventProjection,
   eventTrackedSet,
 } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk/core";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  makePhaseBCandidate,
+  TEST_SIGNER_HASH,
+} from "../../midgard-validation/tests/validation-fixtures.js";
+import {
   createFollowerDriver,
   EVENTS_ORPHAN_RECOVERY,
 } from "../src/l1-events/driver.js";
-import { readFollowerWriteGate } from "../src/services/follower-write-gate.js";
+import {
+  readFollowerWriteGate,
+  runAtFollowerView,
+} from "../src/services/follower-write-gate.js";
+import { markMempoolLedgerStale } from "../src/services/globals.with-l1-control-plane-held.js";
 import { coalescedRunner } from "../src/services/l1-follower.coalesced-runner.js";
 import { driverSink } from "../src/services/l1-follower.driver-sink.js";
 import { failureHold } from "../src/services/l1-follower.failure-hold.js";
@@ -35,9 +51,13 @@ import {
   followerTick,
 } from "../src/services/l1-follower.tick.js";
 import { Lucid } from "../src/services/lucid.js";
+import { mempoolLedgerCacheLayer } from "../src/services/mempool-ledger-cache.make-mempool-ledger-cache.js";
+import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
 import {
   modelSlotLucid,
   testDriverRecompute,
+  testDriverRecomputeOverCache,
+  testWrite,
 } from "./helpers/driver-recompute.js";
 import { openNodeFollowerStore } from "./helpers/forced-orders-node-store.js";
 import {
@@ -51,6 +71,7 @@ import {
   BLOCK,
   freshNative,
   processOf,
+  R1,
   run,
   seed,
 } from "./landed-blocks-rebase.fixture.js";
@@ -188,5 +209,141 @@ describe("the follower's composition", () => {
     } finally {
       abort.abort();
     }
+  }, 60_000);
+
+  it("admits a spend of an own landed block's deposit from the validation cache once the follower admits the deposit again", async () => {
+    // Own landed block BLOCK, built locally, with the native MPF at its root:
+    // no rebase is due.
+    const globals = await processOf({ ...freshNative(), durableRoot: R1 });
+    await seed(globals, {
+      kind: "own",
+      applied: true,
+      depositIds: [EVENT_ID],
+    });
+    const store = await openNodeFollowerStore(
+      [eventProjection(EVENTS_CONFIG)],
+      K,
+    );
+    opened.push(store);
+    const chain = new ChainDriver(store, eventTrackedSet(EVENTS_CONFIG));
+    await chain.init();
+    // The deposit pays the key the spending candidate signs with.
+    const paid = () =>
+      admissionTx(
+        eventOrder("deposit", NONCE, {
+          inclusionTime: 1_000n,
+          l2Address: {
+            paymentCredential: { PublicKeyCredential: [TEST_SIGNER_HASH] },
+            stakeCredential: null,
+          },
+        }),
+        1,
+      );
+    await chain.forward([paid()]);
+
+    await run(
+      globals,
+      Effect.gen(function* () {
+        const recompute = yield* testDriverRecomputeOverCache({
+          planCurrent: () => planCurrentView(store, EVENTS_CONFIG),
+        });
+        const sink = yield* driverSink(recompute).pipe(
+          Effect.provideService(Lucid, modelSlotLucid),
+        );
+        const tick = followerTick({
+          driver: createFollowerDriver({
+            failureHold,
+            store,
+            config: EVENTS_CONFIG,
+            sink,
+          }),
+          nodeBehind: () => false,
+          recompute,
+          refreshJournal: () => Effect.void,
+        });
+        const cache = yield* MempoolLedgerCache;
+        const sql = yield* SqlClient.SqlClient;
+
+        // The first view ingests the deposit and projects its output, hidden.
+        const first = yield* tick;
+        expect(first.holds).toEqual([]);
+        // BLOCK includes it: the deposit is assigned to BLOCK and its
+        // output is spendable.
+        const deposited = yield* testWrite(
+          Effect.gen(function* () {
+            yield* sql`UPDATE deposits_utxos SET status = 'projected',
+              projected_header_hash = ${Buffer.from(BLOCK, "hex")}`;
+            const [row] = yield* sql<{
+              outref: Buffer;
+              output: Buffer;
+            }>`SELECT outref, output FROM mempool_ledger
+              WHERE source_event_id = ${EVENT_ID}`;
+            if (row === undefined)
+              return yield* Effect.die("the deposit projects no output");
+            return {
+              outRef: Buffer.from(row.outref),
+              output: Buffer.from(row.output),
+            };
+          }),
+        );
+        yield* markMempoolLedgerStale(globals, [
+          deposited.outRef.toString("hex"),
+        ]);
+        /** Phase B admission of a spend of the deposit's output into an
+         * equal output, over the node's validation cache. */
+        const spend = runAtFollowerView(
+          Effect.gen(function* () {
+            const state = yield* cache.withPhaseBLock(cache.currentState);
+            const result = yield* runPhaseBValidationWithPatch(
+              [
+                makePhaseBCandidate({
+                  spent: [deposited.outRef],
+                  outputs: [deposited.output],
+                }),
+              ],
+              state,
+              {
+                l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+                nowCardanoSlotNo: 0n,
+                bucketConcurrency: 1,
+              },
+            );
+            return {
+              accepted: result.accepted.length,
+              rejected: result.rejected.map((tx) => tx.code),
+            };
+          }),
+        );
+        expect(yield* spend).toEqual({ accepted: 1, rejected: [] });
+
+        // The follower rewinds past the admission: an own landed block's
+        // orphan holds no write gate, and a spend of its output is rejected
+        // as a missing input.
+        yield* Effect.promise(() => chain.backward(1));
+        const rewound = yield* tick;
+        expect(rewound.driverRun).toMatchObject({
+          kind: "ran",
+          change: { kind: "rewind" },
+          result: { kind: "applied" },
+        });
+        expect((yield* readFollowerWriteGate).pending).toBeUndefined();
+        expect(yield* spend).toEqual({
+          accepted: 0,
+          rejected: [RejectCodes.InputNotFound],
+        });
+
+        // The next block admits the deposit again: the driver advances,
+        // and the spend is admitted.
+        yield* Effect.promise(() => chain.forward([paid()]));
+        const readmitted = yield* tick;
+        expect(readmitted.holds).toEqual([]);
+        expect(readmitted.driverRun).toMatchObject({
+          kind: "ran",
+          change: { kind: "advance" },
+          result: { kind: "applied" },
+        });
+        expect(yield* spend).toEqual({ accepted: 1, rejected: [] });
+      }).pipe(Effect.provide(mempoolLedgerCacheLayer)),
+    );
   }, 60_000);
 });

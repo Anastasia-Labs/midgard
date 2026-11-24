@@ -24,7 +24,6 @@ import type * as SDK from "@al-ft/midgard-sdk/core";
 import { Emulator, type LucidEvolution } from "@lucid-evolution/lucid";
 import { Duration, Effect, Ref, Schedule } from "effect";
 
-import { MempoolLedgerDB } from "../../src/database/index.js";
 import { DatabaseError } from "../../src/database/utils/common.js";
 import {
   FollowerWriteFixture,
@@ -186,14 +185,12 @@ export const ingestEmulatorEventsUnowned = (
       return yield* failed("The emulator follower view moved");
     const globals = options.globals;
     // Newly projected deposits stay hidden until a header is assigned;
-    // restored header-assigned rows are spendable at once.
-    const { spendableUpserts } = outcome.ingestion;
-    if (globals !== undefined && spendableUpserts.length > 0)
+    // restored or re-admitted header-assigned rows are spendable at once.
+    const { spendableRestored } = outcome.ingestion;
+    if (globals !== undefined && spendableRestored.length > 0)
       yield* markMempoolLedgerStale(
         globals,
-        spendableUpserts.map((entry) =>
-          entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
-        ),
+        spendableRestored.map((outRef) => outRef.toString("hex")),
       );
     return outcome.ingestion;
   });

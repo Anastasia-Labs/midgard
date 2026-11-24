@@ -76,10 +76,10 @@ export const driverSink = (recompute: DriverRecompute) =>
               return yield* new FollowerRecomputeRequired({
                 reason: `L1 follower rewind orphaned ${outcome.ingestion.orphans.toString()} event admissions; their dependents must be rejected`,
               });
-            if (outcome.ingestion.spendableUpserts.length > 0)
+            if (outcome.ingestion.spendableRestored.length > 0)
               return yield* new FollowerRecomputeRequired({
                 reason:
-                  "Deposit projection restored spendable ledger rows; the validation cache must reload",
+                  "Header-assigned deposit outputs became spendable again; the validation cache must reload",
               });
             yield* advanceDriverView;
             return outcome;

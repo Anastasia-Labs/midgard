@@ -105,8 +105,12 @@ export type FollowerIngestion = Readonly<{
   retiredUnseen: number;
   /** Deposits newly projected into the mempool ledger (hidden). */
   projected: number;
-  /** Header-assigned deposits whose mempool row was restored: the cache must reload. */
-  spendableUpserts: readonly MempoolLedgerDB.DepositEntry[];
+  /**
+   * Working-ledger outrefs this run made spendable: header-assigned deposits
+   * whose mempool row was restored, or whose admission the follower admitted
+   * again after a rewind. The validation cache must read them again.
+   */
+  spendableRestored: readonly Buffer[];
   /** Events refused by name and left out of this run. */
   refused: readonly EventRefusal[];
 }>;
@@ -338,6 +342,29 @@ const projectAwaitingDeposits = (cutoff: Date) =>
 export type ViewTime = (slot: number) => number;
 
 /**
+ * Working-ledger outrefs of header-assigned deposits whose admission entered
+ * the chain after the view last ingested. The follower rewound past such an
+ * admission and admitted it again: the output, unspendable while its
+ * admission was off the chain, is spendable again. Read before the ingestion
+ * point moves; none before the first ingestion.
+ */
+const readmittedDepositOutRefs = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{
+    outref: Buffer;
+  }>`SELECT m.${sql(MempoolLedgerDB.Columns.OUTREF)} AS outref
+    FROM l1_event_keys k
+    JOIN ${sql(Deposits.tableName)} d
+      ON d.l1_event_key = k.key AND d.l1_origin_outref = k.origin_outref
+    JOIN ${sql(MempoolLedgerDB.tableName)} m
+      ON m.${sql(MempoolLedgerDB.Columns.SOURCE_EVENT_ID)} = d.${sql(Deposits.Columns.ID)}
+    WHERE k.kind = 'deposit'
+      AND d.${sql(Deposits.Columns.PROJECTED_HEADER_HASH)} IS NOT NULL
+      AND k.first_canonical_slot > (SELECT slot FROM follower_event_ingestion)`;
+  return rows.map((row) => Buffer.from(row.outref));
+});
+
+/**
  * Ingests `plan` in the caller's transaction: the follower-change driver's
  * gated transaction (`withFollowerWrite` under `FollowerDriverWrite`).
  * `cutoffMs` bounds the deposit projection; the driver passes the view's
@@ -381,7 +408,12 @@ export const reconcileFollowerEvents = (
         );
     }
     const orphans = yield* countOrphansAwaitingRecovery(input.dead);
-    const spendableUpserts = yield* reconcileAlreadyProjectedDeposits;
+    const spendableRestored = [
+      ...(yield* reconcileAlreadyProjectedDeposits).map(
+        (entry) => entry[MempoolLedgerDB.Columns.OUTREF],
+      ),
+      ...(yield* readmittedDepositOutRefs),
+    ];
     const projected = yield* projectAwaitingDeposits(new Date(input.cutoffMs));
     yield* backfillWithdrawalLedgerOutRefs;
     const ingestedThroughMs = input.slotToUnixTime(plan.view.point.slot);
@@ -400,7 +432,7 @@ export const reconcileFollowerEvents = (
         orphans,
         retiredUnseen: deposits.retiredUnseen + withdrawals.retiredUnseen,
         projected,
-        spendableUpserts,
+        spendableRestored,
         refused: [...deposits.refused, ...withdrawals.refused],
       },
     } as FollowerIngestionOutcome;

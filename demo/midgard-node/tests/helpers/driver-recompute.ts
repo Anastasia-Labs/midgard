@@ -39,14 +39,20 @@ export const modelSlotLucid = {
   api: { slotToUnixTime: modelSlotTime },
 } as unknown as Lucid;
 
-export const testDriverRecompute = <R = never>(
-  options: {
-    /** Writes the follower view the run applies; default: no events at `DRIVER_TEST_SLOT`. */
-    readonly plan?: Effect.Effect<IngestionPlan, unknown, Database>;
-    /** Reads the plan from a follower store instead (`planCurrentView`). */
-    readonly planCurrent?: () => Promise<FollowerPlanRead>;
-    readonly startupPreparation?: Effect.Effect<void, unknown, R>;
-  } = {},
+type DriverRecomputeOptions<R> = {
+  /** Writes the follower view the run applies; default: no events at `DRIVER_TEST_SLOT`. */
+  readonly plan?: Effect.Effect<IngestionPlan, unknown, Database>;
+  /** Reads the plan from a follower store instead (`planCurrentView`). */
+  readonly planCurrent?: () => Promise<FollowerPlanRead>;
+  readonly startupPreparation?: Effect.Effect<void, unknown, R>;
+};
+
+/**
+ * The recompute over the validation cache the caller provides
+ * (`mempoolLedgerCacheLayer`), for a test that reads that same cache.
+ */
+export const testDriverRecomputeOverCache = <R = never>(
+  options: DriverRecomputeOptions<R> = {},
 ) =>
   Effect.gen(function* () {
     const runtime = yield* Effect.runtime<Database>();
@@ -67,6 +73,12 @@ export const testDriverRecompute = <R = never>(
     Effect.provideService(Lucid, modelSlotLucid),
     // Reached only to start a native owner, which this recompute never does.
     Effect.provideService(MidgardContracts, {} as MidgardContracts),
+  );
+
+export const testDriverRecompute = <R = never>(
+  options: DriverRecomputeOptions<R> = {},
+) =>
+  testDriverRecomputeOverCache(options).pipe(
     Effect.provide(mempoolLedgerCacheLayer),
   );
 
