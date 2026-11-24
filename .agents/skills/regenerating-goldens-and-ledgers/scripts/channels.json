@@ -1044,7 +1044,8 @@
       "kind": "golden",
       "summary": "One-step validation evidence built in TypeScript and replayed by a whole generated Aiken test module.",
       "generators": [
-        "demo/midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs"
+        "demo/midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs",
+        "demo/midgard-validation/scripts/generate-validation-one-step-aiken-fixture.ledger-steps.mjs"
       ],
       "packageScripts": [
         "demo/midgard-validation:fixtures:validation-one-step-cross-language:sync",
