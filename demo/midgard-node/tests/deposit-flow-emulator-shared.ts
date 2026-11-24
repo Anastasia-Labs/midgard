@@ -253,7 +253,6 @@ import {
   nativeOwnerBinaryPath,
   nativeOwnerBinarySha256,
 } from "./helpers/native-owner-binary.js";
-import { verifiedFrontierNow } from "./helpers/verified-frontier.js";
 import { resetApplicationTables } from "./utils.js";
 
 // `EMULATOR_DEPLOYMENT_IDENTITY` is a `derived` identity with no finalized
@@ -755,17 +754,11 @@ export const runCommitWorker = async (
   /** The production lifecycle's services, its journal among them; without
    * them the run journals as a process with no follower does. */
   production?: OwnedCommitFixture,
-  /** The verification the node's fiber made, run by the caller before this
-   * attempt; without it, it runs here. */
-  verified?: Effect.Effect.Success<typeof verifiedFrontierNow>,
 ) => {
   const currentBlockStartTimeMs = await getStateQueueDatumEndTime(
     latestBlock.datum,
   );
   const workerInput = {
-    // The node's verification runs off the commit path; here it runs before
-    // each attempt, so a landed tail builds from the stored frontier.
-    ...(verified ?? (await runNodeDatabaseEffect(verifiedFrontierNow))),
     data: {
       availableConfirmedBlock: await Effect.runPromise(
         serializeStateQueueUTxO(latestBlock),
@@ -834,8 +827,8 @@ export const runCommitWorkerUntilSubmitted = async ({
   readonly production?: OwnedCommitFixture;
   readonly alignScheduler?: boolean;
   /** Told each attempt's own full reads of `confirmed_ledger`
-   * (`confirmed_ledger_full_scan_total`): the follower's sync and the
-   * verification run before the count starts. */
+   * (`confirmed_ledger_full_scan_total`): the follower's sync runs before
+   * the count starts. */
   readonly workerLedgerReads?: (reads: number) => void;
 }): Promise<
   Extract<
@@ -857,7 +850,6 @@ export const runCommitWorkerUntilSubmitted = async ({
     if (production === undefined)
       await runNodeDatabaseEffect(ingestEmulatorEventsUnowned(fixture));
     const config = nodeConfig ?? (await makeNodeConfigForFixture(fixture));
-    const verified = await runNodeDatabaseEffect(verifiedFrontierNow);
     const readsBefore = await Effect.runPromise(
       Metric.value(confirmedLedgerFullScanCounter),
     );
@@ -868,7 +860,6 @@ export const runCommitWorkerUntilSubmitted = async ({
       config,
       fixtureDeploymentIdentity(fixture),
       production,
-      verified,
     );
     const readsAfter = await Effect.runPromise(
       Metric.value(confirmedLedgerFullScanCounter),

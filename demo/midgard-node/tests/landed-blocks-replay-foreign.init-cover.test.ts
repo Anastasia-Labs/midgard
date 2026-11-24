@@ -18,17 +18,17 @@ import type {
   OutRef,
 } from "@al-ft/midgard-l1-follower";
 import type * as SDK from "@al-ft/midgard-sdk/da";
-import { Effect } from "effect";
+import { Effect, Ref } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { nodeLandedBlockPorts } from "../src/landed-blocks/node-ports.js";
 import type { ReplayInput } from "../src/landed-blocks/replay.js";
+import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/index.js";
 import { FORCED_CONFIG } from "./helpers/forced-orders-chain.js";
 import { db } from "./helpers/forced-orders-node-store.js";
 import { ELSEWHERE, EVENTS_CONFIG } from "./helpers/l1-events-chain.js";
 import type { ChainDriver } from "./helpers/l1-events-store.js";
 import { SIM_QUEUE_CONFIG } from "./helpers/state-queue-sim.fixtures.js";
-import { noVerification } from "./helpers/verified-frontier.js";
 import { AVAILABILITY } from "./landed-blocks-replay-foreign.availability.js";
 import {
   clock,
@@ -98,7 +98,11 @@ const portsOver = (store: FactStore) =>
     // Not reached: no landed row asks for a rebase here.
     () => Effect.succeed(undefined),
     () => AVAILABILITY,
-    noVerification(),
+    {
+      NATIVE_MPF_OWNER: Ref.unsafeMake<NativeMpfOwnerService | undefined>(
+        undefined,
+      ),
+    },
   );
 
 /** Retains `block` and replays it through the ports at the view (or `input`'s), its node output entered at `enteredSlot` (default: the view's slot). */

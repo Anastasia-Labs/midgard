@@ -48,7 +48,6 @@ import {
   expectSignedCommit,
   readSignedCommitJournal,
 } from "./helpers/signed-commit-journal.js";
-import { verifiedFrontierNow } from "./helpers/verified-frontier.js";
 
 /** The real worker, follower-change driver, parent failure classifier and SQL
  * mutation lease, in process; provider acceptance and response loss are real
@@ -100,7 +99,6 @@ it("fails the parent operation lease after accepted response loss while a later 
                 fixture.contracts,
                 lucidService,
                 {
-                  ...(yield* verifiedFrontierNow),
                   data: {
                     availableConfirmedBlock,
                     currentBlockStartTimeMs,

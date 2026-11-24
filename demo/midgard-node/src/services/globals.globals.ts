@@ -3,10 +3,6 @@ import { Deferred, Effect, MutableRef, Ref, SubscriptionRef } from "effect";
 
 import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
 import type { PublishedOperatorSet } from "../l1-operator-set/snapshot.js";
-import type {
-  ConfirmedLedgerFoldLog,
-  VerifiedConfirmedLedger,
-} from "../mpf/confirmed-ledger-advance.js";
 import {
   initialValidationTraceDefenseHealth,
   type ValidationTraceDefenseHealth,
@@ -200,26 +196,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const NATIVE_MPF_OWNER = yield* Ref.make<NativeMpfOwnerService | undefined>(
       undefined,
     );
-    // The frontier whose `confirmed_ledger` the main thread last verified
-    // derives its root, at the generation it read, with the digests of the
-    // landed deltas it checked; none until one passes, and after one
-    // diverges (`confirmed-ledger-verification.ts`). A clean fold advances
-    // it (`confirmed-ledger-advance.ts`). Commit workers build landed bases
-    // from it.
-    const VERIFIED_CONFIRMED_LEDGER = yield* Ref.make<
-      VerifiedConfirmedLedger | undefined
-    >(undefined);
-    // Every fold landed processing committed since the log last overflowed,
-    // which a recorded pass and each fold replay the record over, and
-    // whether its overflow made a full run due (`confirmed-ledger-advance.ts`).
-    // Its folds are read and written only inside a modify of
-    // `VERIFIED_CONFIRMED_LEDGER`, so a fold's log and replay and a pass's
-    // replay are each atomic with the record.
-    const CONFIRMED_LEDGER_FOLD_LOG = MutableRef.make<ConfirmedLedgerFoldLog>({
-      folds: [],
-      runDue: false,
-    });
-
     // Hybrid durable-admission backlog gauge. These fields share one cell so
     // a refresh can roll the local delta into the base without exposing an
     // under-counted intermediate state to concurrent submit handlers.
@@ -328,8 +304,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       TX_QUEUE_PROCESSOR_ACTIVE,
       TX_QUEUE_WAKE_GENERATION,
       NATIVE_MPF_OWNER,
-      VERIFIED_CONFIRMED_LEDGER,
-      CONFIRMED_LEDGER_FOLD_LOG,
       FOLLOWER_WRITE_GATE,
       L1_FOLLOWER,
       L1_HEAD_SEQUENCE,

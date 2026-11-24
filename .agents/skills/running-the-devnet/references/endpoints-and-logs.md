@@ -323,49 +323,6 @@ Commitment and liveness (raised by fibers, cleared by them):
 - `commit_base_pending`: the commit waits for a tail block that
   landed-block processing has not applied yet, or for this node's own block
   in flight to land. Wait.
-- `commit_base_ledger_unverified`: the commit on a landed tail waits for the
-  node's verification of `confirmed_ledger` at the current frontier and
-  frontier generation, which runs at startup, after each fold or other
-  write to `confirmed_ledger` and every ten minutes; a clean fold by
-  landed-block processing carries a pass to the folded block, and a pass is
-  replayed over the folds committed while its run was reading (log
-  `confirmed_ledger verification at generation <n> replayed <count> folds made during the run, to <headerHash> (generation <n>)`).
-  The fold log holds 256 folds; a fold past that drops it and makes a full
-  run due, at most one in flight (log
-  `confirmed_ledger fold log past 256 folds: dropped, a full verification run is due`),
-  so the reason still clears. It clears when the verification passes at the
-  current frontier, and each run logs
-  `confirmed_ledger verification at frontier <headerHash> (generation <n>), tail <headerHash>: verified (entries=<count>, <ms> ms)`.
-  While it waits, look under the source `confirmed_ledger_verification`:
-  `confirmed_ledger_verification_failed` means the verification cannot
-  complete, and `commit_base_ledger_divergence:confirmed_ledger` or
-  `:confirmed_ledger_tail` means it found a divergence (both below). With
-  neither raised, a run is still in progress; wait.
-- `confirmed_ledger_verification_failed`: the node's last verification of
-  `confirmed_ledger` failed before it could pass or find a divergence: its
-  database snapshot could not be read, or its worker thread failed. A run
-  reads `confirmed_ledger` a page at a time, so its worker's 2 GB heap
-  holds however many entries the ledger has. The detail names the failure.
-  Commits on landed tails wait as `commit_base_ledger_unverified` until a
-  run passes; the next run that completes clears it. A database error is
-  retried at the next frontier poll and the ten-minute re-check. Report it
-  with the detail.
-- `commit_base_ledger_divergence:<check>`: the commit is refused because its
-  base's ledger does not match the root this node stores for that base
-  (`check`: `commit_base_landed` or `commit_base_confirmed_ledger`). A local
-  fault, never the base block's; it repeats on every tick and a restart does
-  not clear it. Under the source `confirmed_ledger_verification`,
-  `check` is the node's verification's (at startup, after each fold and
-  every ten minutes): `confirmed_ledger` when `confirmed_ledger` does not
-  derive the frontier's stored root, `confirmed_ledger_tail` when, with the
-  processed landed deltas up to the queue tail applied, it does not derive
-  the tail's stored root, or one of those deltas does not apply to the
-  ledger before it. When both diverge it names `confirmed_ledger`; the
-  node log and `midgard_local_ledger_divergence_total` carry both. Commits
-  on landed tails then wait as `commit_base_ledger_unverified`.
-  The reason clears when a later verification passes. Report it with the
-  detail (see the `MidgardLocalLedgerDivergence` alert in
-  `docs/operations/alerts.md`).
 - `commit_scheduler_alignment_failed`: commit work is pending, but this
   node's scheduler alignment failed on its last tick, so it cannot take or
   pass on the scheduler turn. It escalates after ten minutes. Read the

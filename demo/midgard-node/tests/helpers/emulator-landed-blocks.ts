@@ -48,15 +48,9 @@ export const openLandedBlocks = async (args: {
   ) => Promise<A>;
   /** The driver's recompute when the rebase is due (`rebaseIfDue`). */
   readonly rebase: (reason: string) => Effect.Effect<DriverHold | undefined>;
-  /** The node's verified confirmed ledger, which each committed fold
-   * advances, and its native MPF owner, which each run has keep the ledgers
-   * the node needs. */
-  readonly verified: Pick<
-    Globals,
-    | "VERIFIED_CONFIRMED_LEDGER"
-    | "CONFIRMED_LEDGER_FOLD_LOG"
-    | "NATIVE_MPF_OWNER"
-  >;
+  /** The node's native MPF owner, which each run has keep the ledgers the
+   * node needs. */
+  readonly globals: Pick<Globals, "NATIVE_MPF_OWNER">;
 }) => {
   const { contracts, nodeConfig } = args;
   const stateQueue = stateQueueProjectionConfig(contracts.stateQueue);
@@ -101,7 +95,7 @@ export const openLandedBlocks = async (args: {
       responseGeometry:
         availabilityParametersFromExplicitEnvironment().response_geometry,
     }),
-    args.verified,
+    args.globals,
   );
   const hook: EmulatorLandedBlocks = (change) =>
     landedBlockHook({

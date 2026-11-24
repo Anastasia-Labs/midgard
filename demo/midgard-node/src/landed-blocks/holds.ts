@@ -108,7 +108,7 @@ export const LANDED_BLOCK_REPLAY_INCOMPLETE = "landed_block_replay_incomplete";
  * the block's input cannot make it fail (a runtime fault of a library the
  * replay runs, hashing, the payload roots), or a landed block's parent
  * ledger, foreign or own, does not derive the parent's root (a local ledger
- * divergence, `local-ledger-divergence.ts`). Never attributed to the block:
+ * divergence). Never attributed to the block:
  * retried on the driver's backoff, with the `landed_block_local_fault`
  * alarm, and bounded as `LANDED_BLOCK_VERIFIER_UNAVAILABLE` is: the same
  * count of runs with no progress past the faulted block, then the same

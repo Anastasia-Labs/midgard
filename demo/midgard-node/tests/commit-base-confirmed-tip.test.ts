@@ -66,7 +66,7 @@ const buildsBeforeAndAfterTheFold = async (
 ) => {
   const expectBase = async () => {
     const before = await scans();
-    const outcome = await resolve(tip, r1, { verified: "none" });
+    const outcome = await resolve(tip, r1);
     expect(await scans()).toBe(before);
     expect(Either.isRight(outcome)).toBe(true);
     const base = Either.getOrThrow(outcome);
@@ -91,7 +91,7 @@ describe("commit base on a confirmed-state tip", { concurrent: false }, () => {
   it("waits while the native root is not another operator's merged root, and builds on the ledger at it before and after the fold", async () => {
     const { headerHash, r0, r1 } = await fixture({ frontier: true, row: {} });
     const tip = await confirmedTipOf(mergedAt(headerHash, r1));
-    expectPending(await resolve(tip, r0, { verified: "none" }), headerHash);
+    expectPending(await resolve(tip, r0), headerHash);
     await buildsBeforeAndAfterTheFold(tip, headerHash, r1);
   });
 

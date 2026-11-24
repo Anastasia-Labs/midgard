@@ -7,19 +7,14 @@ import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Effect, Option, Runtime } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
-import {
-  generatedLandedChain,
-  onOneSnapshot,
-} from "../landed-blocks/ledger.js";
+import { landedStart, onOneSnapshot } from "../landed-blocks/ledger.js";
 import { readLedgerOutputs } from "../landed-blocks/ledger-outputs.js";
 import { retrieveRows } from "../landed-blocks/store.js";
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
 import { Database } from "../services/database.js";
-import { verifiedLandedRootAt } from "./commit-block-header.landed-commit-base.js";
 import {
   deserializeStateQueueUTxO,
   type SerializedStateQueueUTxO,
-  type VerifiedFrontier,
 } from "./utils/commit-block-header.js";
 
 /** The ledger a block commit builds on, its root, and where it came from. */
@@ -56,22 +51,19 @@ const pending = (headerHash: string) =>
  * tip names. A confirmed-state tip names the state's root (at genesis, the
  * deployment's genesis root, which startup admitted the native store at).
  * A tail, foreign or this node's own, is built on only once landed-block
- * processing took it in at its header's root and the rebase applied it,
- * while the landed frontier is `verifiedFrontier`, the frontier the main
- * thread verified `confirmed_ledger` at (else `CommitBaseUnverifiedError`).
- * With no confirmed block the native root is the base. Until then the
- * commit waits; it reads no whole ledger.
+ * processing took it in at its header's root and the rebase applied it
+ * (the frontier, or a processed row on the chain after it). With no
+ * confirmed block the native root is the base. Until then the commit
+ * waits; it reads no whole ledger.
  */
 export const resolveCommitBase = ({
   availableConfirmedBlock,
   nativeMpfRoot,
   openLedger,
-  verifiedFrontier,
 }: {
   readonly availableConfirmedBlock: "" | SerializedStateQueueUTxO;
   readonly nativeMpfRoot: string;
   readonly openLedger: OpenCommitBaseLedger;
-  readonly verifiedFrontier: VerifiedFrontier | undefined;
 }): Effect.Effect<ResolvedCommitBase, unknown, Database> =>
   Effect.gen(function* () {
     // A live, unlanded own block is never a base, and the tail it builds on
@@ -107,20 +99,17 @@ export const resolveCommitBase = ({
     }
     const header = yield* SDK.getHeaderFromStateQueueDatum(latestBlock.datum);
     const headerHash = yield* SDK.hashBlockHeader(header);
-    const landed = yield* onOneSnapshot(
-      Effect.flatMap(retrieveRows, generatedLandedChain),
+    // The tail's post-state root and the processed rows through it (none
+    // when the tail is the frontier), on one snapshot.
+    const start = yield* onOneSnapshot(
+      Effect.flatMap(retrieveRows, (rows) => landedStart(rows, headerHash)),
     );
-    if (landed === undefined) return yield* pending(headerHash);
-    const at = yield* verifiedLandedRootAt(
-      landed,
-      headerHash,
-      verifiedFrontier,
-    );
+    const row = start?.through.at(-1);
     if (
-      at === undefined ||
-      at.root !== header.utxosRoot ||
+      start === undefined ||
+      start.root !== header.utxosRoot ||
       nativeMpfRoot !== header.utxosRoot ||
-      (at.row !== undefined && !at.row.applied)
+      (row !== undefined && !row.applied)
     )
       return yield* pending(headerHash);
     return base(`landed:${headerHash}`);

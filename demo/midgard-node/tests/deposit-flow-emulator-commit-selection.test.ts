@@ -46,7 +46,6 @@ import {
 } from "./helpers/correction-admission-scenario.js";
 import { insertForcedEntriesWithOrders } from "./helpers/emulator-l1-follower.forced-orders.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
-import { verifiedFrontierNow } from "./helpers/verified-frontier.js";
 
 describe("deposit flow emulator", { concurrent: false }, () => {
   // 900s leaves headroom for the full real-contract workflow. Protocol
@@ -141,11 +140,9 @@ describe("deposit flow emulator", { concurrent: false }, () => {
 
       // With no selected normal or forced work the worker stops before it
       // hydrates any commit base; the full confirmed-ledger scan stays
-      // untouched. The node follows the chain and verifies its confirmed
-      // ledger first: landed processing and the verification read the
-      // ledger on their own, off the commit path.
+      // untouched. The node follows the chain first: landed processing
+      // reads the ledger on its own, off the commit path.
       await h.synchronize();
-      const verified = await runNodeDatabaseEffect(verifiedFrontierNow);
       const controlScanBefore = await Effect.runPromise(
         Metric.value(confirmedLedgerFullScanCounter),
       );
@@ -159,7 +156,6 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         nodeConfig,
         fixture.runtimeOverrides!.deploymentIdentity,
         owned,
-        verified,
       );
       const controlScanAfter = await Effect.runPromise(
         Metric.value(confirmedLedgerFullScanCounter),
@@ -251,8 +247,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       // tx-order ingestion barrier.
       await advanceEmulatorPastUnixTime(fixture, eventTime.getTime() + 1_000);
       vi.setSystemTime(new Date(fixture.emulator.now()));
-      // The attempts' own reads, apart from the follower's sync and the
-      // verification before each.
+      // The attempts' own reads, apart from the follower's sync before each.
       const workerReads: number[] = [];
       const stateful = await runCommitWorkerUntilSubmitted({
         fixture,

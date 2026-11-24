@@ -32,7 +32,6 @@ import {
   validationTraceDefenseFiber,
 } from "../fibers/validation-trace-defense-fiber.js";
 import { importCheckFiber } from "../import-check/fiber.js";
-import { confirmedLedgerVerificationFiber } from "../mpf/confirmed-ledger-verification.js";
 import type { NodeConfigDep } from "../services/config.make-config.js";
 import { Globals } from "../services/globals.globals.js";
 import { onL1HeadChange } from "../services/l1-head-trigger.js";
@@ -167,9 +166,6 @@ export const nodeFibers = ({
   validationTraceDefense: validationTraceDefenseFiber(
     mkSchedule(VALIDATION_TRACE_DEFENSE_TICK_MS),
   ),
-  confirmedLedgerVerification: confirmedLedgerVerificationFiber({
-    watchIntervalMs: nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
-  }),
   nativeMpfOwnerSupervisor: nativeMpfOwnerSupervisorFiber(
     mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
   ),

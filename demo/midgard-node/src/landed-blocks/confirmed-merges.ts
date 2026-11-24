@@ -38,7 +38,6 @@ import {
 import * as Ledger from "../database/utils/ledger.js";
 import { releaseFinalFolds } from "./final-folds.js";
 import { depositOutputs, ledgerRows } from "./ledger.js";
-import type { FoldGenerations } from "./ports.js";
 import {
   bytea,
   decodeFrontier,
@@ -283,7 +282,7 @@ export const foldMerge = (row: LandedBlockRow, merge: MergePoint | null) =>
     return {
       readGeneration: frontier.generation,
       generation: yield* Frontier.upsert(row),
-    } satisfies FoldGenerations;
+    };
   }).pipe(
     sqlErrorToDatabaseError(mergesTableName, "Failed to fold a landed block"),
   );
