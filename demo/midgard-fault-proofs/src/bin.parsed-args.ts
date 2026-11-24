@@ -47,7 +47,6 @@ export type ParsedArgs = {
   readonly badInputIndex: string | undefined;
   readonly prevHeaderHash: string | undefined;
   readonly prevUtxosRoot: string | undefined;
-  readonly prevLedgerPath: string | undefined;
   readonly inputsPreimagePath: string | undefined;
   readonly depositInclusionPath: string | undefined;
   readonly withdrawalInclusionPath: string | undefined;
