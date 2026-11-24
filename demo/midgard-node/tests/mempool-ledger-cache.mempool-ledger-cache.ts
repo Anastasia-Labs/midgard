@@ -19,7 +19,14 @@ import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-ca
 import { validationPhaseBLockWaitTimer } from "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
 import { takeCommitWorkerOutput } from "../src/workers/commit-worker-message.js";
 import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
-import { row, snapshot } from "./mempool-ledger-cache.row.js";
+import {
+  fullReloads,
+  keyedReadsOver,
+  noKeyedReads,
+  readAt,
+  row,
+  snapshot,
+} from "./mempool-ledger-cache.row.js";
 
 describe("mempool ledger cache", () => {
   it("replays a delta published while the full snapshot is loading", async () => {
@@ -45,10 +52,11 @@ describe("mempool ledger cache", () => {
             );
             return snapshot;
           }),
+          noKeyedReads,
         );
 
         const state = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot)),
+          service.currentState.pipe(Effect.map(snapshot([inserted]))),
         );
         expect(loads).toBe(1);
         expect(state.get(inserted.toString("hex"))).toEqual(insertedOutput);
@@ -77,10 +85,11 @@ describe("mempool ledger cache", () => {
             }
             return [row(inserted, insertedOutput)];
           }),
+          noKeyedReads,
         );
 
         const state = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot)),
+          service.currentState.pipe(Effect.map(snapshot([inserted]))),
         );
         expect(loads).toBe(2);
         expect(state.get(inserted.toString("hex"))).toEqual(insertedOutput);
@@ -100,6 +109,7 @@ describe("mempool ledger cache", () => {
             loads += 1;
             return backing;
           }),
+          noKeyedReads,
         );
         const first = outRefFromByte(0x71);
         const second = outRefFromByte(0x72);
@@ -107,7 +117,7 @@ describe("mempool ledger cache", () => {
         const secondOutput = makeOutput(11n);
 
         let state = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot)),
+          service.currentState.pipe(Effect.map(snapshot([first, second]))),
         );
         expect(state.size).toBe(0);
         expect(loads).toBe(1);
@@ -122,7 +132,7 @@ describe("mempool ledger cache", () => {
           64,
         );
         state = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot)),
+          service.currentState.pipe(Effect.map(snapshot([first, second]))),
         );
         expect(state.get(first.toString("hex"))?.equals(firstOutput)).toBe(
           true,
@@ -135,7 +145,7 @@ describe("mempool ledger cache", () => {
           version: journal.version + 1,
         }));
         state = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot)),
+          service.currentState.pipe(Effect.map(snapshot([first, second]))),
         );
         expect(state.has(first.toString("hex"))).toBe(false);
         expect(state.get(second.toString("hex"))?.equals(secondOutput)).toBe(
@@ -150,7 +160,7 @@ describe("mempool ledger cache", () => {
           64,
         );
         state = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot)),
+          service.currentState.pipe(Effect.map(snapshot([first, second]))),
         );
         expect(state.get(first.toString("hex"))?.equals(firstOutput)).toBe(
           true,
@@ -230,16 +240,17 @@ describe("mempool ledger cache", () => {
             loads += 1;
             return backing;
           }),
+          noKeyedReads,
         );
+        const restored = outRefFromByte(0x76);
+        const restoredOutput = makeOutput(14n);
         const readState = service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot)),
+          service.currentState.pipe(Effect.map(snapshot([restored]))),
         );
         expect((yield* readState).size).toBe(0);
 
         // A commit-stage rejection restores an input in the table, with no
         // delta for the cache.
-        const restored = outRefFromByte(0x76);
-        const restoredOutput = makeOutput(14n);
         backing = [row(restored, restoredOutput)];
         const output: WorkerOutput = { type: "NothingToCommitOutput" };
         expect(takeCommitWorkerOutput(globals, output, 64)).toBe(output);
@@ -267,6 +278,7 @@ describe("mempool ledger cache", () => {
         const service = yield* makeMempoolLedgerCacheService(
           globals,
           Effect.succeed([]),
+          noKeyedReads,
         );
         const events: string[] = [];
         const section = (name: string) =>
@@ -293,6 +305,7 @@ describe("mempool ledger cache", () => {
         const service = yield* makeMempoolLedgerCacheService(
           globals,
           Effect.succeed([]),
+          noKeyedReads,
         );
         const first = yield* service.withClaimLock(
           service.registerPhaseBSequence,
@@ -324,7 +337,7 @@ describe("mempool ledger cache", () => {
     );
   });
 
-  it("poisons later persistence and reloads speculative cache after an injected failure", async () => {
+  it("poisons later persistence and re-reads the speculative keys after an injected failure", async () => {
     const durable = outRefFromByte(0x61);
     const speculativeFirst = outRefFromByte(0x62);
     const speculativeSecond = outRefFromByte(0x63);
@@ -335,6 +348,7 @@ describe("mempool ledger cache", () => {
     ];
     let laterTerminalWrites = 0;
     let loads = 0;
+    const reads = keyedReadsOver(() => durableRows);
 
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -345,6 +359,7 @@ describe("mempool ledger cache", () => {
             loads += 1;
             return durableRows;
           }),
+          reads.spendableAt,
         );
         yield* service.withPhaseBLock(service.currentState);
         const first = yield* service.withClaimLock(
@@ -386,14 +401,24 @@ describe("mempool ledger cache", () => {
         expect(secondExit._tag).toBe("Failure");
         expect(laterTerminalWrites).toBe(0);
 
+        const reloadsBefore = yield* fullReloads;
         yield* service.recoverPoisonedEpoch;
-        const afterRecovery = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot)),
-        );
+        const afterRecovery = yield* readAt(service, [
+          durable,
+          speculativeFirst,
+          speculativeSecond,
+          recovered,
+        ]);
         expect([...afterRecovery.keys()]).toStrictEqual([
           durable.toString("hex"),
         ]);
-        expect(loads).toBe(2);
+        expect(loads).toBe(1);
+        expect(yield* fullReloads).toBe(reloadsBefore);
+        expect(reads.asked).toStrictEqual([
+          [speculativeFirst, speculativeSecond]
+            .map((key) => key.toString("hex"))
+            .sort(),
+        ]);
 
         const next = yield* service.withClaimLock(
           service.registerPhaseBSequence,
@@ -428,6 +453,7 @@ describe("mempool ledger cache", () => {
         const service = yield* makeMempoolLedgerCacheService(
           globals,
           Effect.sync(() => durableRows),
+          noKeyedReads,
         );
         yield* service.withPhaseBLock(service.currentState);
         const sequence = yield* service.withClaimLock(
@@ -445,9 +471,10 @@ describe("mempool ledger cache", () => {
           { full: true, upserts: [], deletes: [] },
           64,
         );
-        const duringPersistence = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot)),
-        );
+        const duringPersistence = yield* readAt(service, [
+          durable,
+          speculative,
+        ]);
         expect([...duringPersistence.keys()]).toStrictEqual([
           durable.toString("hex"),
           speculative.toString("hex"),
@@ -478,6 +505,7 @@ describe("mempool ledger cache", () => {
         const service = yield* makeMempoolLedgerCacheService(
           globals,
           Effect.sync(() => durableRows),
+          noKeyedReads,
         );
         yield* service.withPhaseBLock(service.currentState);
         const sequence = yield* service.withClaimLock(
@@ -506,9 +534,11 @@ describe("mempool ledger cache", () => {
           },
           64,
         );
-        const afterExternalDelta = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot)),
-        );
+        const afterExternalDelta = yield* readAt(service, [
+          spent,
+          persisted,
+          external,
+        ]);
         expect([...afterExternalDelta.keys()]).toStrictEqual([
           persisted.toString("hex"),
           external.toString("hex"),
@@ -544,6 +574,7 @@ describe("mempool ledger cache", () => {
             }
             return captured;
           }),
+          noKeyedReads,
         );
         yield* service.withPhaseBLock(service.currentState);
         const sequence = yield* service.withClaimLock(
@@ -593,9 +624,11 @@ describe("mempool ledger cache", () => {
           },
           64,
         );
-        const afterExternalDelta = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot)),
-        );
+        const afterExternalDelta = yield* readAt(service, [
+          spent,
+          persisted,
+          external,
+        ]);
         expect([...afterExternalDelta.keys()]).toStrictEqual([
           persisted.toString("hex"),
           external.toString("hex"),
@@ -616,6 +649,7 @@ describe("mempool ledger cache", () => {
     ];
     let loads = 0;
     let laterTerminalWrites = 0;
+    const reads = keyedReadsOver(() => durableRows);
 
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -626,6 +660,7 @@ describe("mempool ledger cache", () => {
             loads += 1;
             return durableRows;
           }),
+          reads.spendableAt,
         );
         yield* service.withPhaseBLock(service.currentState);
         const first = yield* service.withClaimLock(
@@ -682,9 +717,10 @@ describe("mempool ledger cache", () => {
         yield* Fiber.interrupt(secondFiber);
         yield* second.cancel;
 
+        const reloadsBefore = yield* fullReloads;
         const recoveryFiber = yield* Effect.fork(service.recoverPoisonedEpoch);
         yield* Effect.yieldNow();
-        expect(loads).toBe(1);
+        expect(reads.asked).toStrictEqual([]);
         yield* Deferred.succeed(releaseFirst, undefined);
         yield* Fiber.join(firstFiber);
         yield* Fiber.join(recoveryFiber);
@@ -699,16 +735,23 @@ describe("mempool ledger cache", () => {
         yield* third.cancel;
         expect(thirdExit._tag).toBe("Failure");
         expect(laterTerminalWrites).toBe(0);
-        const afterRecovery = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot)),
-        );
+        const afterRecovery = yield* readAt(service, [
+          durable,
+          persistedBeforeFailure,
+          interrupted,
+          later,
+        ]);
         expect([...afterRecovery.keys()]).toStrictEqual([
           durable.toString("hex"),
           persistedBeforeFailure.toString("hex"),
         ]);
         expect(afterRecovery.has(interrupted.toString("hex"))).toBe(false);
         expect(afterRecovery.has(later.toString("hex"))).toBe(false);
-        expect(loads).toBe(2);
+        expect(loads).toBe(1);
+        expect(yield* fullReloads).toBe(reloadsBefore);
+        expect(reads.asked).toStrictEqual([
+          [interrupted, later].map((key) => key.toString("hex")).sort(),
+        ]);
       }).pipe(Effect.provide(Globals.Default)),
     );
   });
@@ -734,10 +777,11 @@ describe("mempool ledger cache", () => {
         const service = yield* makeMempoolLedgerCacheService(
           globals,
           Effect.sync(() => retrieveSpendableRows),
+          noKeyedReads,
         );
         const read = () =>
           service.withPhaseBLock(
-            service.currentState.pipe(Effect.map(snapshot)),
+            service.currentState.pipe(Effect.map(snapshot([spent]))),
           );
 
         // Awaiting -> projected inserts a row, but it is intentionally hidden
@@ -777,64 +821,6 @@ describe("mempool ledger cache", () => {
           candidate.ledgerTx.txId,
         ]);
         expect(verdict.rejected).toHaveLength(0);
-      }).pipe(Effect.provide(Globals.Default)),
-    );
-  });
-
-  it("prevents a double accept across two concurrent drain-loop Phase B sections", async () => {
-    const spent = outRefFromByte(0x74);
-    // `makePhaseBCandidate` produces a `FUNDED_OUTPUT_LOVELACE` output by
-    // default, so the pre-state entry it spends has to carry the same value:
-    // a 10-lovelace input makes both candidates fail value conservation and
-    // the double-accept guard would then pass vacuously.
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
-    const candidates = [
-      makePhaseBCandidate({ arrivalSeq: 0n, spent: [spent] }),
-      makePhaseBCandidate({
-        arrivalSeq: 1n,
-        spent: [spent],
-        validityIntervalEnd: 100n,
-      }),
-    ];
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const globals = yield* Globals;
-        const service = yield* makeMempoolLedgerCacheService(
-          globals,
-          Effect.succeed([row(spent, output)]),
-        );
-        const validateOne = (candidate: (typeof candidates)[number]) =>
-          service.withPhaseBLock(
-            Effect.gen(function* () {
-              const state = yield* service.currentState;
-              const verdict = yield* runPhaseBValidationWithPatch(
-                [candidate],
-                state,
-                {
-                  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-                  nowCardanoSlotNo: 0n,
-                  bucketConcurrency: 1,
-                },
-              );
-              yield* service.applyPatchAndSync(verdict.statePatch);
-              return verdict;
-            }),
-          );
-        const verdicts = yield* Effect.all(candidates.map(validateOne), {
-          concurrency: "unbounded",
-        });
-        expect(
-          verdicts.reduce(
-            (total, verdict) => total + verdict.accepted.length,
-            0,
-          ),
-        ).toBe(1);
-        expect(
-          verdicts.reduce(
-            (total, verdict) => total + verdict.rejected.length,
-            0,
-          ),
-        ).toBe(1);
       }).pipe(Effect.provide(Globals.Default)),
     );
   });

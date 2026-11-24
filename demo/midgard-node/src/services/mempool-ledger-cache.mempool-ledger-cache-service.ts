@@ -1,10 +1,17 @@
-import type { UTxOStatePatch } from "@al-ft/midgard-validation/phase-b";
+import type {
+  UTxOLookup,
+  UTxOStatePatch,
+} from "@al-ft/midgard-validation/phase-b";
 import { Context, Data, Effect, Metric } from "effect";
 
 import type { DatabaseError } from "../database/utils/common.js";
 import type { SpendableView } from "./admission-input-claims.js";
 
-export type MempoolLedgerState = Map<string, Buffer>;
+/**
+ * The working ledger as Phase B sees it: the durable in-memory ledger with
+ * the live speculative patches laid over it, answered one key at a time.
+ */
+export type MempoolLedgerState = UTxOLookup;
 
 export type PhaseBSequence = {
   readonly epoch: number;
@@ -41,10 +48,6 @@ export type MempoolLedgerCacheService = {
     MempoolLedgerState,
     DatabaseError | ValidationPipelineEpochError
   >;
-  /** Must be called while holding withPhaseBLock, before ordered persistence. */
-  readonly applyPatchAndSync: (
-    patch: UTxOStatePatch,
-  ) => Effect.Effect<void, DatabaseError | ValidationPipelineEpochError>;
   /** Must be called by its matching sequence while holding withPhaseBLock. */
   readonly applySpeculativePatch: (
     sequence: bigint,
@@ -112,6 +115,16 @@ export const validationLedgerCacheFullReloadCounter = Metric.counter(
   {
     description:
       "Full mempool-ledger cache reloads after startup or a delta gap",
+    bigint: true,
+    incremental: true,
+  },
+);
+
+export const validationLedgerCacheEntryWriteCounter = Metric.counter(
+  "validation_ledger_cache_entry_write_count",
+  {
+    description:
+      "Entries written into the in-memory working ledger: full-load rows, keyed repairs and promoted patch entries",
     bigint: true,
     incremental: true,
   },

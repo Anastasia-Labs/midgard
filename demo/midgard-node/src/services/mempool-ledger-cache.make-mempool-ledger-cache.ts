@@ -14,6 +14,10 @@ const makeMempoolLedgerCache = Effect.gen(function* () {
     MempoolLedgerDB.retrieveSpendable.pipe(
       Effect.provideService(SqlClient.SqlClient, sql),
     ),
+    (keys) =>
+      MempoolLedgerDB.spendableAt(keys).pipe(
+        Effect.provideService(SqlClient.SqlClient, sql),
+      ),
   );
 });
 
