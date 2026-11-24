@@ -14,6 +14,12 @@
  * so a row that a later block spent, or one that is removed, still answers
  * truthfully; the trie, not this reader, decides whether a ledger holds the
  * out-ref.
+ *
+ * An out-ref `confirmed_ledger` does not have is looked up in all three
+ * again in one statement, so on one snapshot: a fold moves a landed block's
+ * outputs into `confirmed_ledger` and deletes its landed row in one
+ * transaction, and a read that looked at the two tables on either side of
+ * that commit would find the output in neither.
  */
 import type { OutRefHex } from "@al-ft/midgard-fault-proofs/ledger-store";
 import { SqlClient } from "@effect/sql";
@@ -35,10 +41,8 @@ type OutputRow = { outref: Uint8Array; output: Uint8Array };
 
 /**
  * The outputs of `outRefs`, in order; `undefined` where no table has one.
- * Up to three indexed queries, each only for the out-refs the ones before
- * it missed: the `confirmed_ledger` out-ref index, one GIN probe of
- * `node_landed_blocks.produced_outrefs` per out-ref, then the
- * `node_confirmed_ledger_spent` out-ref index.
+ * One indexed query of `confirmed_ledger`; then, only for the out-refs it
+ * missed, one statement over all three tables (`unconfirmedOutputs`).
  */
 export const readLedgerOutputs = (
   outRefs: readonly OutRefHex[],
@@ -53,52 +57,49 @@ export const readLedgerOutputs = (
           Buffer.from(row.output),
         );
     };
-    const missed = () => outRefs.filter((outRef) => !found.has(outRef));
     record(
       yield* Ledger.retrieveEntriesByOutRefs(
         ConfirmedLedger.tableName,
         outRefKeys(outRefs),
       ),
     );
-    const notConfirmed = missed();
-    if (notConfirmed.length > 0) record(yield* landedOutputs(notConfirmed));
-    const notLanded = missed();
-    if (notLanded.length > 0) record(yield* spentOutputs(notLanded));
+    const missed = outRefs.filter((outRef) => !found.has(outRef));
+    if (missed.length > 0) record(yield* unconfirmedOutputs(missed));
     return outRefs.map((outRef) => found.get(outRef));
   });
 
 const outRefKeys = (outRefs: readonly OutRefHex[]) =>
   outRefs.map((outRef) => Buffer.from(outRef, "hex"));
 
-const landedOutputs = (outRefs: readonly OutRefHex[]) =>
+/**
+ * The outputs of out-refs a read of `confirmed_ledger` missed, from one
+ * snapshot of all three tables: the `confirmed_ledger` out-ref index again
+ * (a fold may have moved the output there since), one GIN probe of
+ * `node_landed_blocks.produced_outrefs` per out-ref, and the
+ * `node_confirmed_ledger_spent` out-ref index. An out-ref two of them hold
+ * has the same bytes in both.
+ */
+const unconfirmedOutputs = (outRefs: readonly OutRefHex[]) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const pg = sql as PgClient;
+    const keys = () => (sql as PgClient).array(bytea(outRefKeys(outRefs)));
     return yield* sql<OutputRow>`
-      SELECT DISTINCT ON (k.outref)
+      SELECT outref, output
+      FROM ${sql(ConfirmedLedger.tableName)}
+      WHERE outref = ANY(${keys()}::bytea[])
+      UNION ALL
+      SELECT
         k.outref,
         b.produced_outputs[array_position(b.produced_outrefs, k.outref)] AS output
-      FROM unnest(${pg.array(bytea(outRefKeys(outRefs)))}::bytea[]) AS k(outref)
+      FROM unnest(${keys()}::bytea[]) AS k(outref)
       JOIN ${sql(tableName)} b ON b.produced_outrefs @> ARRAY[k.outref]
-    `;
+      UNION ALL
+      SELECT outref, output
+      FROM ${sql(spentTableName)}
+      WHERE outref = ANY(${keys()}::bytea[])`;
   }).pipe(
     sqlErrorToDatabaseError(
       tableName,
-      "Failed to read the produced outputs of landed blocks by out-ref",
-    ),
-  );
-
-const spentOutputs = (outRefs: readonly OutRefHex[]) =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    return yield* sql<OutputRow>`
-      SELECT DISTINCT ON (outref) outref, output
-      FROM ${sql(spentTableName)}
-      WHERE outref IN ${sql.in(outRefKeys(outRefs))}
-    `;
-  }).pipe(
-    sqlErrorToDatabaseError(
-      spentTableName,
-      "Failed to read the confirmed outputs folds spent by out-ref",
+      "Failed to read by out-ref the outputs confirmed_ledger does not hold",
     ),
   );
