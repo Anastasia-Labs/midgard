@@ -288,7 +288,7 @@ export const makeMempoolLedgerCacheService = (
                   yield* requireCurrent;
                   const result = yield* repairDurable;
                   yield* requireCurrent;
-                  ledger.dropPatches();
+                  const dropped = ledger.dropPatches();
                   const changes = durableChanges?.(result);
                   if (changes === undefined) yield* fullReload;
                   else {
@@ -298,6 +298,12 @@ export const makeMempoolLedgerCacheService = (
                     yield* synchronize;
                     yield* countWrites(
                       ledger.repair(changes.keys, changes.spendable),
+                    );
+                    // A dropped patch's persistence may have committed
+                    // while this retirement stopped its promotion, so its
+                    // keys are read again as well.
+                    yield* countWrites(
+                      ledger.repair(dropped, yield* spendableAt(dropped)),
                     );
                   }
                   yield* requireCurrent;
