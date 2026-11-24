@@ -4,7 +4,7 @@ import {
   NativeChildRpc,
 } from "./service.native-child-rpc.js";
 import type { NormalizedNativeMpfOwnerServiceOptions } from "./service.normalize-owner-options.js";
-import { decodeReady, encodeSetRoot } from "./service.rpc-payloads.js";
+import { assertReady, encodeSetRoot } from "./service.rpc-payloads.js";
 
 /** Sets `rpc`'s root to `root`; the child refuses while a generation is
  * active. Its cache is kept: entries are keyed by content hash. */
@@ -17,7 +17,7 @@ export const setChildRoot = async (
     encodeSetRoot(root),
     new Set([NativeMpfRpcKind.Ready]),
   );
-  decodeReady(ready.payload, root);
+  assertReady(ready.payload, root);
 };
 
 /** A new child with an empty cache and `root` as its root. It reads no

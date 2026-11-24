@@ -202,8 +202,7 @@ impl Harness {
 
     fn set_root(&mut self, root: Hash) -> Result<(), String> {
         let ready = self.request(RpcKind::SetRoot, root.to_vec(), RpcKind::Ready)?;
-        assert_eq!(ready.len(), 64);
-        assert_eq!(ready[..32], root);
+        assert_eq!(ready, root);
         Ok(())
     }
 

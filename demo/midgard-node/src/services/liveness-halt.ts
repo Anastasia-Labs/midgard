@@ -326,7 +326,7 @@ export const restartedAcrossHalts = <A, E, R>(
   });
 
 /** The landed-block rebase's native restore was refused because the native
- * MPF store retains no root of the processed landed chain in full (every
+ * MPF store retains no root of the processed landed chain (every
  * `restoreCanonicalRoot` it tried returned `NativeMpfRootNotRetained`).
  * Raised under the rebase's source (`landed_block_rebase`). The refusal
  * changes nothing: the rebase holds with native MPF, the SQL root and the
@@ -334,9 +334,9 @@ export const restartedAcrossHalts = <A, E, R>(
  * follower-change driver retries it on its backoff; the next rebase evaluation that runs, or
  * finds no rebase due, clears it. The store keeps only the roots inside the
  * ledger retention window and the node's own, so a rollback past the window
- * or a lost store raises it. The node cannot put the root's closure back
+ * or a lost store raises it. The node cannot put the root's nodes back
  * itself: the operator stops it, installs a native MPF store that retains
- * the root in full, and restarts it. */
+ * the root, and restarts it. */
 export const MPF_CLOSURE_MISSING = "mpf_closure_missing";
 
 /** The landed-block rebase's native restore was refused because reading the

@@ -62,22 +62,11 @@ export const assertHelloAck = (
 /** SetRoot: root[32]. */
 export const encodeSetRoot = (root: string) => Buffer.from(root, "hex");
 
-/** Ready: root[32], cached nodes u64, cached bytes u64, VmRSS KiB u64,
- * VmHWM KiB u64. Refused unless it names `root`. */
-export const decodeReady = (response: Uint8Array, root: string) => {
-  const payload = Buffer.from(response);
-  if (
-    payload.byteLength !== HASH_BYTES + 4 * 8 ||
-    payload.subarray(0, HASH_BYTES).toString("hex") !== root
-  ) {
-    throw new Error("Native MPF Ready root/diagnostics are invalid");
+/** Ready: root[32]. Refused unless it names `root`. */
+export const assertReady = (response: Uint8Array, root: string): void => {
+  if (Buffer.from(response).toString("hex") !== root) {
+    throw new Error("Native MPF Ready root is invalid");
   }
-  return {
-    cachedNodes: readSafeU64(payload, 32, "Ready cached nodes"),
-    cachedBytes: readSafeU64(payload, 40, "Ready cached bytes"),
-    rssBytes: readSafeU64(payload, 48, "Ready VmRSS") * 1024,
-    peakRssBytes: readSafeU64(payload, 56, "Ready VmHWM") * 1024,
-  };
 };
 
 /** NeedNodes: generation id[16], count u32, count node hashes[32] sorted

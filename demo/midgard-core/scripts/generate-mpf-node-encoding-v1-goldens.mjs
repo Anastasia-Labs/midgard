@@ -13,7 +13,7 @@
  *
  * Midgard holds several encoders of that rule: the Aiken library and
  * `mpf_proof_v1`, the TypeScript proof fold and catalogue reconstruction in
- * this package, and the PHAS and native-owner encoders in `midgard-node`. This
+ * this package, and the PHAS encoder in `midgard-node`. This
  * generator computes every value from the MPF library's `Trie` alone, never
  * from a Midgard encoder, so each consumer is checked against an independent
  * producer:

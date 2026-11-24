@@ -89,9 +89,7 @@ describe("the landed-block rebase's native restore", () => {
     });
     // The detail names both roots and the operator's clearing action.
     expect((failure as Error).message).toContain(DURABLE);
-    expect((failure as Error).message).toContain(
-      `retains root ${FRONTIER} in full`,
-    );
+    expect((failure as Error).message).toContain(`retains root ${FRONTIER} (`);
   });
 
   it("names a refusal that crossed the native child's boundary by its tag, and nothing else", async () => {

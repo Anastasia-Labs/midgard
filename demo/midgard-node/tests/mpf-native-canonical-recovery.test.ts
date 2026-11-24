@@ -364,41 +364,14 @@ describe("native canonical root recovery", () => {
     await assertAncestorContents(service, plan.targetRoot);
   });
 
-  it("holds the restore until an in-flight diagnostics read has finished on the displaced child", async () => {
-    // The read is parked after taking the current child and before asking it,
-    // as a readiness probe is when the restore arrives. An ungated restore
-    // would close that child under it and commit first.
-    const events: string[] = [];
-    let holdRead = false;
-    let readParked!: () => void;
-    const parked = new Promise<void>((resolve) => (readParked = resolve));
-    let releaseRead!: () => void;
-    const released = new Promise<void>((resolve) => (releaseRead = resolve));
-    const { service, plan } = await fixture(async (point) => {
-      if (point === "diagnostics_before_request" && holdRead) {
-        holdRead = false;
-        readParked();
-        await released;
-        events.push("read_released");
-      }
-      if (point === "before_root_restore_batch") {
-        events.push("restore_batch");
-        releaseRead();
-      }
-    });
-    holdRead = true;
+  it("restores while a diagnostics read is in flight, and answers the read", async () => {
+    // A readiness probe is in flight when the restore arrives.
+    const { service, plan } = await fixture();
     const reading = service.diagnostics();
-    await parked;
-    const restoring = service.restoreCanonicalRoot(plan);
-    // A gated restore stays parked behind the read for this whole interval.
-    const timer = setTimeout(releaseRead, 2_000);
-    try {
-      expect((await reading).durableRoot).toBe(plan.expectedRoot);
-      await restoring;
-    } finally {
-      clearTimeout(timer);
-    }
-    expect(events).toEqual(["read_released", "restore_batch"]);
+    await service.restoreCanonicalRoot(plan);
+    expect([plan.expectedRoot, plan.targetRoot]).toContain(
+      (await reading).durableRoot,
+    );
     await assertAncestorContents(service, plan.targetRoot);
   });
 

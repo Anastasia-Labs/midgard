@@ -71,7 +71,6 @@ import {
   startNativeChild,
 } from "./service.start-native-child.js";
 import { validateEventLog } from "./service.validate-event-log.js";
-import { validatePromotionClosure } from "./service.validate-promotion-closure.js";
 
 export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   private readonly workerPorts = new Set<MessagePort>();
@@ -85,8 +84,6 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   private restartPromise: Promise<void> | undefined;
   private closing = false;
   private activeOperations = 0;
-  private activeReads = 0;
-  private readDrainWaiters: (() => void)[] = [];
   private restoration: Promise<void> | undefined;
   private recoveryFailure: Error | undefined;
   private lastChildError: Error | undefined;
@@ -339,9 +336,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         );
       }
       for (let index = 1; index < records.length; index += 1) {
-        if (
-          Buffer.compare(records[index - 1]!.hash, records[index]!.hash) >= 0
-        ) {
+        if (records[index - 1]!.hashHex >= records[index]!.hashHex) {
           throw new Error(
             "Native MPF promotion records are not uniquely hash-sorted",
           );
@@ -352,7 +347,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
         .update(PROMOTION_DIGEST_DOMAIN)
         .update(Buffer.from(handle.baseRoot, "hex"))
         .update(Buffer.from(candidateRoot, "hex"));
-      for (const record of records) aggregate.update(record.encoded);
+      aggregate.update(bytes);
       if (!timingSafeEqual(aggregate.digest(), payload.subarray(84, 116))) {
         throw new Error("Native MPF promotion aggregate digest mismatch");
       }
@@ -365,7 +360,6 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
           `Native MPF durable marker changed before promotion: expected=${handle.baseRoot},actual=${marker}`,
         );
       }
-      validatePromotionClosure(candidateRoot, handle.baseRoot, records);
       // From the write to the durable root's move, under the ledger lock: a
       // `retain` reads the durable root before the write or after the move.
       await this.ledgerLock.run(async () => {
@@ -466,20 +460,20 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   }
 
   public async diagnostics(): Promise<NativeMpfOwnerDiagnostics> {
-    return this.runReadOperation(async () => {
-      const rpc = await this.ensureRpc();
-      await this.options.faultInjectionForTests?.("diagnostics_before_request");
-      const response = await rpc.request(
-        NativeMpfRpcKind.Diagnostics,
-        Buffer.alloc(0),
-        new Set([NativeMpfRpcKind.DiagnosticsResult]),
-      );
-      return {
-        ownerEpoch: rpc.epoch,
-        ...decodeDiagnostics(response.payload),
-        childRestarts: this.childRestarts,
-      };
-    });
+    // Not counted as an operation: a restore refuses under one, and a
+    // readiness probe must not make it refuse.
+    this.assertCanOperate();
+    const rpc = await this.ensureRpc();
+    const response = await rpc.request(
+      NativeMpfRpcKind.Diagnostics,
+      Buffer.alloc(0),
+      new Set([NativeMpfRpcKind.DiagnosticsResult]),
+    );
+    return {
+      ownerEpoch: rpc.epoch,
+      ...decodeDiagnostics(response.payload),
+      childRestarts: this.childRestarts,
+    };
   }
 
   /** Restore only a root the store retains. The caller must persist and
@@ -487,8 +481,8 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
    * SQL reconciliation and Ready publication remain the caller's responsibility.
    * The child keeps its epoch; every handle from before the restore names a
    * generation the child no longer holds, since the restore requires none.
-   * In-flight read-only diagnostics (readiness, audits) are awaited, not refused;
-   * new operations are refused from this call until the restore settles.
+   * In-flight read-only diagnostics (readiness, audits) finish on the same
+   * child; new operations are refused from this call until the restore settles.
    */
   public restoreCanonicalRoot(
     plan: NativeMpfCanonicalRootRecovery,
@@ -516,12 +510,10 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     // Under the ledger lock once every earlier `retain` has replaced the
     // retained set: the target found retained stays so until the marker and
     // the durable root name it, since a later `retain` reads them after.
-    const restore = this.readsDrained().then(() =>
-      this.ledgerLock.run(async () => {
-        await this.ledgerLock.deleted();
-        await this.restoreRetainedRoot(captured);
-      }),
-    );
+    const restore = this.ledgerLock.run(async () => {
+      await this.ledgerLock.deleted();
+      await this.restoreRetainedRoot(captured);
+    });
     this.restoration = restore;
     void restore
       .finally(() => {
@@ -607,7 +599,7 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
   /** Why every operation refuses right now, or undefined: the owner holds
    * until the node restarts (`NativeOwnerRestartPolicy`), or a committed
    * canonical recovery is not installed yet. Each call also starts a restart
-   * that is due, which loads the child from the durable root marker as a
+   * that is due, which starts a new child at the durable root marker as a
    * process start does; one that succeeds clears a pending recovery. */
   public terminalFailure(): Error | undefined {
     this.resumeRestart();
@@ -663,23 +655,6 @@ export class ProductionNativeMpfOwnerService implements NativeMpfOwnerService {
     } finally {
       this.activeOperations -= 1;
     }
-  }
-
-  private async runReadOperation<A>(work: () => Promise<A>): Promise<A> {
-    this.assertCanOperate();
-    this.activeReads += 1;
-    try {
-      return await work();
-    } finally {
-      this.activeReads -= 1;
-      if (this.activeReads === 0)
-        for (const resolve of this.readDrainWaiters.splice(0)) resolve();
-    }
-  }
-
-  private readsDrained(): Promise<void> {
-    if (this.activeReads === 0) return Promise.resolve();
-    return new Promise((resolve) => this.readDrainWaiters.push(resolve));
   }
 
   public createWorkerPort(): MessagePort {

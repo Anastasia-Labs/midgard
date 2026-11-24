@@ -67,9 +67,7 @@ export type StoredNode = StoredLeaf | StoredBranch;
 export type StoredValue = StoredNode | string;
 
 export type DecodedPromotionRecord = {
-  readonly hash: Buffer;
   readonly hashHex: string;
-  readonly encoded: Buffer;
   readonly stored: StoredNode;
 };
 
@@ -128,7 +126,6 @@ export type NativeMpfOwnerServiceOptions = {
    * this undefined. */
   readonly faultInjectionForTests?: (
     point:
-      | "diagnostics_before_request"
       | "before_promotion_batch"
       | "after_promotion_batch_before_ack"
       | "before_root_restore_batch"

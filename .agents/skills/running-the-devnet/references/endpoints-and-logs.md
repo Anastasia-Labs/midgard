@@ -214,9 +214,9 @@ deadline:
 - In the `follower_view_apply` stage, a driver failure hold
   (`startup_preparation_failed`, `l1_driver_recompute_failed`,
   `l1_events_ingestion_failed`, `landed_block_rebase_failed`,
-  `mpf_closure_missing`, `native_mpf_restore_index_cap_exceeded`) that the
-  driver does not retry ends startup with it as `failedReason`; one it
-  retries ends startup once it has stood for the database budget.
+  `mpf_closure_missing`) that the driver does not retry ends startup with it
+  as `failedReason`; one it retries ends startup once it has stood for the
+  database budget.
 - `l1_driver_transient_failure` (a `failedReason`, step `driver`): the
   follower-change driver ran out of its transient budget or its
   local-fault bound with no hold to name; otherwise the first hold's own
@@ -308,11 +308,6 @@ Core checks (`src/commands/readiness.ts`, the readiness handler):
 - `operator_membership_unavailable` (a detail): the operator set has not
   shown this operator in any state yet, or its key cannot be read. Duties
   run. Removal is `operator_removed`.
-- `native_mpf_full_index_near_cap:<cap>:<observed>:<limit>` (a detail): the
-  live root's full index is past four fifths of the full-index cap `<cap>`
-  (`FULL_INDEX_MAX_RECORDS` or `FULL_INDEX_MAX_BYTES`). Promotions still
-  succeed; one over the cap is refused. Plan a node build whose caps cover
-  the ledger.
 - `l1_transport_unready:<reason>`: the local node transport is not ready;
   `<reason>` is one of the transport's reasons in
   `demo/l1-node-transport/README.md`. Check that cardano-node is up and its
@@ -413,10 +408,6 @@ Commitment and liveness (raised by fibers, cleared by them):
   cause, then restart the node.
 - `native_mpf_owner_recovery_pending`: a committed canonical recovery is
   not installed yet. Wait.
-- `native_mpf_promotion_index_cap_exceeded`: the owner refused to promote a
-  root whose full index is over a cap; nothing was written. It clears when a
-  smaller promotion or a canonical restore succeeds; a root over the cap
-  needs a node build whose caps cover it.
 - `operator_removed`: the operator set retired this operator; commitment,
   merge, settlement and the watchdog hold. Nothing to recover on this node.
 - `operator_watchdog_manifest_mismatch`: the deployment manifest does not
@@ -742,13 +733,11 @@ reason=landed_block_origin_after_frontier`); a restart on the same store
   verify and is being fetched again. Wait; check the DA committee if it
   stays.
 - `mpf_closure_missing`: the rebase's native restore found no root of the
-  processed landed chain retained in full in the native MPF store. Stop the
-  node, install at `LEDGER_MPF_DB_PATH` a native MPF store that retains the
-  root in full, and restart (plan §7.5, R6).
-- `native_mpf_restore_index_cap_exceeded`: the restore target's full index
-  is over a cap; the node needs a build whose caps cover it.
-- `native_mpf_restore_read_transient`: reading the root's closure from the
-  native MPF store failed; retried, escalated after ten minutes. Check the
+  processed landed chain retained in the native MPF store. Stop the node,
+  install at `LEDGER_MPF_DB_PATH` a native MPF store that retains the root,
+  and restart (plan §7.5, R6).
+- `native_mpf_restore_read_transient`: reading the native MPF store's
+  retained roots failed; retried, escalated after ten minutes. Check the
   store's disk.
 - `landed_block_rebase_failed`, `landed_block_replay_incomplete`,
   `landed_block_replay_failed`: a rebase, or the import or replay of a

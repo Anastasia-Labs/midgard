@@ -1,5 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
-
 import { LedgerNotRetained } from "@al-ft/midgard-fault-proofs/ledger-store";
 
 import {
@@ -28,52 +26,17 @@ export const restoreRefusal = (targetRoot: string, cause: unknown) =>
     ? new NativeMpfRootNotRetained(targetRoot, { cause })
     : new NativeMpfRestoreReadFailed(targetRoot, { cause });
 
-const packedNibbles = (prefix: string): Buffer => {
-  if (prefix.length % 2 !== 0) {
-    throw new Error("MPF leaf tail must contain an even nibble count");
-  }
-  return Buffer.from(
-    Array.from({ length: prefix.length / 2 }, (_, index) =>
-      Number.parseInt(prefix.slice(index * 2, index * 2 + 2), 16),
-    ),
-  );
-};
-
-const hashStoredNode = (node: StoredNode): Buffer => {
-  if (node.__kind === "Leaf") {
-    const odd = node.prefix.length % 2 === 1;
-    const head = odd
-      ? Buffer.from([0x10, Number.parseInt(node.prefix[0]!, 16)])
-      : Buffer.from([0xff]);
-    const tail = packedNibbles(odd ? node.prefix.slice(1) : node.prefix);
-    return digest(head, tail, digest(Buffer.from(node.value, "hex")));
-  }
-  let layer = node.children.map((child) =>
-    child === null ? Buffer.alloc(HASH_BYTES) : Buffer.from(child, "hex"),
-  );
-  while (layer.length > 1) {
-    layer = Array.from({ length: layer.length / 2 }, (_, index) =>
-      digest(layer[index * 2]!, layer[index * 2 + 1]!),
-    );
-  }
-  return digest(
-    Buffer.from([...node.prefix].map((nibble) => Number.parseInt(nibble, 16))),
-    layer[0]!,
-  );
-};
-
 export const parsePromotionRecords = (
   bytes: Buffer,
 ): DecodedPromotionRecord[] => {
   const records: DecodedPromotionRecord[] = [];
   let offset = 0;
   while (offset < bytes.length) {
-    const start = offset;
     if (bytes.length - offset < 34) {
       throw new Error("Native MPF promotion record is truncated");
     }
     const kind = bytes.readUInt8(offset++);
-    const hash = Buffer.from(bytes.subarray(offset, offset + HASH_BYTES));
+    const hashHex = bytes.subarray(offset, offset + HASH_BYTES).toString("hex");
     offset += HASH_BYTES;
     const prefixLength = bytes.readUInt8(offset++);
     if (offset + prefixLength > bytes.length) {
@@ -136,27 +99,10 @@ export const parsePromotionRecords = (
         `Unknown native MPF promotion record kind ${kind.toString()}`,
       );
     }
-    const calculated = hashStoredNode(stored);
-    if (!timingSafeEqual(hash, calculated)) {
-      throw new Error(
-        `Native MPF promotion record content hash mismatch: claimed=${hash.toString("hex")},calculated=${calculated.toString("hex")}`,
-      );
-    }
-    records.push({
-      hash,
-      hashHex: hash.toString("hex"),
-      encoded: Buffer.from(bytes.subarray(start, offset)),
-      stored,
-    });
+    records.push({ hashHex, stored });
   }
   return records;
 };
-
-export const keyNibbles = (key: string): string =>
-  [...digest(Buffer.from(key, "hex"))]
-    .flatMap((byte) => [byte >> 4, byte & 0x0f])
-    .map((value) => value.toString(16))
-    .join("");
 
 export const encodeNativeMpfEventLog = (
   baseRoot: string,

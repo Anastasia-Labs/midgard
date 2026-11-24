@@ -21,7 +21,8 @@ services:
     cpuset: "0-7"
     mem_limit: "8g"
     environment:
-      # 4 GiB V8 + 2 GiB native-owner cap + >=1 GiB runtime headroom fits 8 GiB.
+      # 4 GiB V8 + the native owner's 1 GiB node cache + 1 GiB runtime headroom
+      # fits 8 GiB.
       NODE_OPTIONS: "--max-old-space-size=4096"
       MIDGARD_NODE_URL: "http://127.0.0.1:3000"
       STRESS_SUBMIT_ENDPOINT: "http://127.0.0.1:3000"

@@ -241,31 +241,31 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
     // Each listed hash is one reference: the root's own, then one per parent.
     let level: NodeHash[] = [root];
     while (level.length > 0) {
+      // In key order: storage keeps neighbouring keys together, so a sorted
+      // batch reads far fewer of its blocks than a scattered one.
+      const unread = level.filter((hash) => !stored.has(hash)).sort();
+      for (const [hash, refs] of await readCounts(unread, (hashes) =>
+        storage.nodeRefs(hashes),
+      ))
+        stored.set(hash, refs);
       const next: NodeHash[] = [];
-      for (const slice of slices(level, READ_BATCH)) {
-        const unread = slice.filter((hash) => !stored.has(hash));
-        for (const [hash, refs] of await readCounts(unread, (hashes) =>
-          storage.nodeRefs(hashes),
-        ))
-          stored.set(hash, refs);
-        for (const hash of slice) {
-          const written = change.putNodes.get(hash);
-          if (written !== undefined) {
-            written.refs += 1;
-            continue;
-          }
-          const refs = change.nodeRefs.get(hash) ?? stored.get(hash);
-          if (refs !== undefined) {
-            // Held, so complete below: it gains this reference only.
-            change.nodeRefs.set(hash, refs + 1);
-            continue;
-          }
-          const node = unheld.node(hash);
-          if (node === undefined) throw new LedgerNodeMissing(hash);
-          change.putNodes.set(hash, { node, refs: 1 });
-          if (node.__kind === "Leaf") newLeaves.push(node.key);
-          else next.push(...children(node));
+      for (const hash of level) {
+        const written = change.putNodes.get(hash);
+        if (written !== undefined) {
+          written.refs += 1;
+          continue;
         }
+        const refs = change.nodeRefs.get(hash) ?? stored.get(hash);
+        if (refs !== undefined) {
+          // Held, so complete below: it gains this reference only.
+          change.nodeRefs.set(hash, refs + 1);
+          continue;
+        }
+        const node = unheld.node(hash);
+        if (node === undefined) throw new LedgerNodeMissing(hash);
+        change.putNodes.set(hash, { node, refs: 1 });
+        if (node.__kind === "Leaf") newLeaves.push(node.key);
+        else next.push(...children(node));
       }
       level = next;
     }

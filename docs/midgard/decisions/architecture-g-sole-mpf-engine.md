@@ -48,26 +48,35 @@ of half spends and half new outputs, 64-byte values):
 
 | 1,000,000 UTxOs                               | Resident trie       | Node cache                |
 | --------------------------------------------- | ------------------- | ------------------------- |
-| Start                                         | 22–26 s             | 11–27 ms                  |
-| Roots of 10,000 operations, paths cached      | 0.13–0.18 s         | 0.16 s                    |
-| Roots of 10,000 operations, first after start | as cached           | 0.53–0.71 s               |
-| Roots of 40,000 operations, paths cached      | 0.50–0.58 s         | 0.57–0.59 s               |
-| Roots of 40,000 operations, first after start | as cached           | 1.7–2.1 s                 |
-| Roots with a cache a tenth of the trie        | not possible        | 0.54–0.65 s and 1.8–1.9 s |
-| Promote 10,000 operations                     | 3.6–4.3 s           | 1.7–2.4 s                 |
-| Promote 40,000 operations                     | 10.3–11.3 s         | 4.7–5.6 s                 |
+| Start                                         | 22–26 s             | 25–27 ms                  |
+| Roots of 10,000 operations, paths cached      | 0.13–0.18 s         | 0.16–0.18 s               |
+| Roots of 10,000 operations, first after start | as cached           | 0.66–1.2 s                |
+| Roots of 40,000 operations, paths cached      | 0.50–0.58 s         | 0.62–0.69 s               |
+| Roots of 40,000 operations, first after start | as cached           | 1.8–2.1 s                 |
+| Roots with a cache a tenth of the trie        | not possible        | 0.58–0.75 s and 1.9–2.1 s |
+| Promote 10,000 operations                     | 3.6–4.3 s           | 1.1–1.7 s                 |
+| Promote 40,000 operations                     | 10.3–11.3 s         | 3.5–3.8 s                 |
 | Child memory after start                      | 772 MiB             | 2 MiB                     |
 | Child memory with every path cached           | 772 MiB and growing | 639 MiB                   |
 
-At 200,000 UTxOs start went from 4.3–4.7 s to 13–26 ms, and a block's roots
-cost the same as before once its paths are cached. The whole trie at
-1,000,000 UTxOs is 1.4 million nodes and 662 MiB of cache, so at that size
-every node stays cached; above the budget the node keeps running and reads
-the colder nodes from the store.
+At 200,000 UTxOs start went from 4.3–4.7 s to 17–71 ms, a block's roots cost
+the same as before once its paths are cached, and a promote went from
+2.3–2.9 s to 0.74–0.86 s for 10,000 operations. The whole trie at 1,000,000
+UTxOs is 1.4 million nodes and 662 MiB of cache, so at that size every node
+stays cached; above the budget the node keeps running and reads the colder
+nodes from the store.
 
-The lower promote time is not the cache: the promotion check stopped reading
-each new branch's stored children one at a time, which the store's `adopt`
-already checks in batches before it writes.
+The lower promote time is not the cache. The node no longer checks the
+child's new nodes a second time: it used to hash each one again in JavaScript
+and walk them from the new root, reading each new branch's stored children
+one at a time. The child hashes them, and the store's `adopt` walks from the
+root and refuses a node neither held nor supplied before it writes. `adopt`
+also reads a level's reference counts in key order.
+
+What is left of a promote grows with the ledger: for every new branch the
+store reads and rewrites the reference count of each of its children, changed
+or not. At 1,000,000 UTxOs a block of 10,000 operations writes 25,000 nodes
+and updates 140,000 counts.
 
 ## Why
 

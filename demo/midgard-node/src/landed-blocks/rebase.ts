@@ -8,8 +8,7 @@
  *
  * Native MPF: when its durable root is a root of the target chain, the
  * blocks after it are applied forward (fork, apply, promote). Otherwise it
- * is restored to the newest root of the target chain it retains in full,
- * with
+ * is restored to the newest root of the target chain it retains, with
  *
  *   owner.restoreCanonicalRoot({
  *     recoveryId: sha256hex(REBASE_RECOVERY_DOMAIN ‖ durableRoot ‖ targetRoot),

@@ -54,22 +54,12 @@ pub(super) fn handle_rpc_frame(
         RpcKind::SetRoot => {
             let root = read_hash(&frame.payload, "root")?;
             owner.set_root(root)?;
-            let mut payload = Vec::with_capacity(64);
-            payload.extend_from_slice(&root);
-            for value in [
-                owner.cache.len() as u64,
-                owner.cache.bytes() as u64,
-                rss_kib("VmRSS:"),
-                rss_kib("VmHWM:"),
-            ] {
-                payload.extend_from_slice(&value.to_le_bytes());
-            }
             send_rpc(
                 writer,
                 owner.epoch,
                 frame.request_id,
                 RpcKind::Ready,
-                payload,
+                root.to_vec(),
             )?;
         }
         RpcKind::ProvideNodes => {

@@ -15,10 +15,10 @@ import {
 } from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
 import {
   assertHelloAck,
+  assertReady,
   decodeDiagnostics,
   decodeNeedNodes,
   decodeNodesProvided,
-  decodeReady,
   encodeProvideNodes,
 } from "../src/services/mpf-native-owner/service.rpc-payloads.js";
 import {
@@ -116,23 +116,13 @@ describe("native MPF owner protocol", () => {
 
   it("accepts a Ready only for the root it set", () => {
     const root = "cd".repeat(32);
-    const ready = Buffer.alloc(64);
-    Buffer.from(root, "hex").copy(ready);
-    ready.writeBigUInt64LE(3n, 32);
-    ready.writeBigUInt64LE(900n, 40);
-    ready.writeBigUInt64LE(2n, 48);
-    ready.writeBigUInt64LE(5n, 56);
-    expect(decodeReady(ready, root)).toEqual({
-      cachedNodes: 3,
-      cachedBytes: 900,
-      rssBytes: 2_048,
-      peakRssBytes: 5_120,
-    });
-    expect(() => decodeReady(ready, "ef".repeat(32))).toThrow(
-      /Ready root\/diagnostics are invalid/,
+    const ready = Buffer.from(root, "hex");
+    expect(() => assertReady(ready, root)).not.toThrow();
+    expect(() => assertReady(ready, "ef".repeat(32))).toThrow(
+      /Ready root is invalid/,
     );
-    expect(() => decodeReady(ready.subarray(0, 63), root)).toThrow(
-      /Ready root\/diagnostics are invalid/,
+    expect(() => assertReady(ready.subarray(0, 31), root)).toThrow(
+      /Ready root is invalid/,
     );
   });
 

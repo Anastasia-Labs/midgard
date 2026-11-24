@@ -101,8 +101,7 @@ Payloads (offset: field):
   whenever it moves the durable root back. Until the first one, `Fork`,
   `ApplyEvents`, the promotion messages and `Diagnostics` answer
   "Architecture G owner is not ready".
-- `Ready` (64 bytes): 0 `root[32]`, 32 `cached_nodes:u64`,
-  40 `cached_bytes:u64`, 48 `VmRSS_kib:u64`, 56 `VmHWM_kib:u64`.
+- `Ready` (32 bytes): `root[32]`.
 - `Fork` (32 bytes): `base_root[32]`. `Forked` (48): `id[16]`, `base_root[32]`.
 - `ApplyEvents`: `id[16]`, then the `MEGO` event stream.
 - `NeedNodes` (20 + 32n bytes): 0 `id[16]`, 16 `count:u32 = n`, 20 `n`

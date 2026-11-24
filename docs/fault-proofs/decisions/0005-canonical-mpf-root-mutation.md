@@ -24,8 +24,9 @@ at least `0x10`, while a branch preimage either starts with a byte below `0x10`
 or is exactly 32 bytes: the first byte, or the length, decides the node kind.
 Every Midgard encoder of these nodes (the Aiken verifiers, the TypeScript proof
 fold, PHAS walk and catalogue reconstruction, and the native MPF owner) uses
-this encoding; the `mpf-node-encoding-v1` golden channel pins all of them to the
-library's own hashes.
+this encoding. The `mpf-node-encoding-v1` golden channel pins the Aiken and
+TypeScript encoders to the library's own hashes; the native owner's roots are
+compared with the library's in the `midgard-node` differential suites.
 
 Do not restore direct upstream exclusion/mutation calls as a cleanup. Preserve
 captured Fork/Leaf vectors, membership controls, and refusal of the dropped-prefix

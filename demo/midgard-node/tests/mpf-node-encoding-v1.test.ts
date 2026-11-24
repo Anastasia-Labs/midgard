@@ -6,19 +6,15 @@ import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import { encodeStoredNode } from "../src/services/mpf-native-owner/service.encode-stored-node.js";
-import { parsePromotionRecords } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
 import { computeLeafHash } from "../src/workers/utils/mpf/phas.key-value-phas-non-membership-proof.js";
 import {
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
 } from "../src/workers/utils/mpf/phas.traverse-phas-proof.js";
-import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 
 /**
  * The `midgard-node` half of the `mpf-node-encoding-v1` channel: the PHAS leaf
- * hash and proof walk, and the native owner's stored-node hash, recomputed
- * against values the MPF library produced
+ * hash and proof walk, recomputed against values the MPF library produced
  * (`demo/midgard-core/scripts/generate-mpf-node-encoding-v1-goldens.mjs`).
  */
 
@@ -118,23 +114,6 @@ describe("MPF node encoding V1 goldens (midgard-node)", () => {
       expect(computeLeafHash(prefix, valueDigest).toString("hex")).toBe(
         leafHash,
       );
-    }
-  });
-
-  it("hashes a stored native-owner leaf as the library does at every cursor", async () => {
-    // The stored-node hash runs on the WebAssembly BLAKE2b, which loads
-    // asynchronously; the owner service awaits it before its first use too.
-    await prepareEventFlatDigest();
-    for (const { prefix, leafHash } of golden.suffixes.rows) {
-      const records = parsePromotionRecords(
-        encodeStoredNode(leafHash, {
-          __kind: "Leaf",
-          prefix,
-          key: golden.suffixes.key,
-          value: golden.suffixes.value,
-        }),
-      );
-      expect(records.map(({ hashHex }) => hashHex)).toEqual([leafHash]);
     }
   });
 

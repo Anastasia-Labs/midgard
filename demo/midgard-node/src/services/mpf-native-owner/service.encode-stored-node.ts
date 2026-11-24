@@ -3,10 +3,7 @@ import {
   type StoredNode,
 } from "./service.normalize-owner-options.js";
 
-export const assertStoredNode = (
-  value: unknown,
-  hashHex: string,
-): StoredNode => {
+const assertStoredNode = (value: unknown, hashHex: string): StoredNode => {
   if (typeof value !== "object" || value === null || !("__kind" in value)) {
     throw new Error(`MPF record ${hashHex} is not a node`);
   }
