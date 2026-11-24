@@ -692,7 +692,10 @@ const fixtureNodeConfigFromEnvironment = NodeConfig.pipe(
   })),
 );
 
-import { runOwnedNativeCommit } from "./deposit-flow-emulator-shared.run-owned-native-commit.js";
+import {
+  relayLedgerRevert,
+  runOwnedNativeCommit,
+} from "./deposit-flow-emulator-shared.run-owned-native-commit.js";
 import {
   runWithoutFollower,
   withoutFollowerJournal,
@@ -738,7 +741,7 @@ const runFixtureCommitProgram = (
           contracts,
           lucidService,
           nativeInput,
-          undefined,
+          relayLedgerRevert(production.globals),
           production.nodeConfig,
         ),
     ),
