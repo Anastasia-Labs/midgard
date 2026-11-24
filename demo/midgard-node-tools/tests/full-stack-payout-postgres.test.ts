@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { eventKeyOfId } from "@al-ft/midgard-l1-follower/events";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
-import * as MigrationRunner from "midgard-node/database/migrations/runner";
+import * as NodeSchema from "midgard-node/database/schema";
 import {
   provideDatabaseLayers,
   resetApplicationTables,
@@ -68,7 +68,7 @@ const seedTwinWithdrawal = (sql: SqlClient.SqlClient) =>
   `);
 
 /**
- * Runs `body` with the stack's settlement read answered by a freshly migrated
+ * Runs `body` with the stack's settlement read answered by a new
  * database holding the twin's rows, as psql in the stack's Postgres would.
  */
 const onTwinDatabase = (
@@ -81,10 +81,7 @@ const onTwinDatabase = (
     provideDatabaseLayers(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* MigrationRunner.migrate({
-          appVersion: "test",
-          actor: "full-stack-payout-postgres.test",
-        });
+        yield* NodeSchema.ensure;
         yield* resetApplicationTables;
         yield* seedTwinWithdrawal(sql);
         const { config } = yield* Effect.promise(() => stackFixture());

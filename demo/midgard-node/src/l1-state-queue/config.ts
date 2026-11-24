@@ -30,7 +30,7 @@ export const stateQueueProjectionConfig = (
 });
 
 /**
- * The follower tracked set P1 needs: every output at the queue address, and
+ * The follower tracked set the landed queue needs: every output at the queue address, and
  * the txs minting under its policy. The facts hold whatever third parties
  * pay to the address; the projection reads only outputs under the policy.
  */

@@ -65,8 +65,8 @@ export const insertDeposits = (
       incomingById.set(key, incoming);
     }
     const normalizedEntries = [...incomingById.values()];
-    // The whole payload is immutable, the L1 tx hash included (ruling 2: it
-    // is the admission tx, not the Order's current output). A known event is
+    // The whole payload is immutable, the L1 tx hash included (it is
+    // the admission tx, not the Order's current output). A known event is
     // kept as it is; reject the entire batch if any of its payload differs.
     yield* sql.withTransaction(
       Effect.gen(function* () {

@@ -2,7 +2,7 @@
  * `canonical-decodability` deployed-contract record.
  *
  * The family predates its catalogue registration, like `native-script-decoding`
- * and the two Q39/Q40 families: the `SupportedFaultProofCategoryName` entry,
+ * and the two fabricated families: the `SupportedFaultProofCategoryName` entry,
  * the SDK `contracts.ts` chain builder and the category-id constant are
  * parent-owned surfaces that land with registration. Until then,
  * submitters take this explicit already-resolved record instead of going

@@ -1,7 +1,6 @@
 /**
  * Emulator lifecycles for the three families registered by issue #547:
- * `no-reference-input` (Q18), `reference-input-no-idx` (Q31), and
- * `invalid-signature` (Q15).
+ * `no-reference-input`, `reference-input-no-idx` and `invalid-signature`.
  *
  * Each case drives the real Aiken validators through a Lucid emulator with the
  * production submitters: `init` (which spends the catalogue membership proof
@@ -15,7 +14,7 @@
  * catalogue registration unblocks and the segment whose evidence these builders
  * can construct without a family-specific ledger/exclusion fixture. The later
  * steps of the four-step families need `pexcludes` non-membership material
- * against a populated prev-ledger trie, which is the Q18/Q31 rows' own
+ * against a populated prev-ledger trie, which is those two families' own
  * remaining work.
  *
  * Lives in its own file for the reason its siblings do. The split was made

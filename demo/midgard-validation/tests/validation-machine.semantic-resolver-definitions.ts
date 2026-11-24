@@ -167,7 +167,7 @@ export const semanticResolverOffsets = [
   0, 2, 3, 4, 6, 10, 24, 26, 32, 60, 63, 67, 71,
 ] as const;
 
-// R5 item 1: the cek and ValueAndMint indices decompose into semantic kinds
+// The cek and ValueAndMint indices decompose into semantic kinds
 // in `cek_v1` / `value_and_mint_v1` prepare order. The index function is total
 // over every witness a deterministic trace emits; these tables pin the
 // kind → semantic-resolver-index map the builders and the totality verifier

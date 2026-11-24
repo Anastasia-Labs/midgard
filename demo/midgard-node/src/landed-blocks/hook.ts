@@ -1,8 +1,8 @@
 /**
  * The driver's landed-block hook: at the view each
- * driver run applies, the landed state queue (P1) is processed in order,
+ * driver run applies, the landed state queue is processed in order,
  * and what it cannot do yet is the hold it returns. An unhealthy queue is
- * P1's own hold (`state_queue_unhealthy`), so this hook waits for it
+ * the queue read's own hold (`state_queue_unhealthy`), so this hook waits for it
  * quietly. The run passes the follower's prune boundary to the fold prune,
  * has the native MPF drop the ledgers it no longer needs, then publishes
  * where `confirmed_ledger` stands, with its level.

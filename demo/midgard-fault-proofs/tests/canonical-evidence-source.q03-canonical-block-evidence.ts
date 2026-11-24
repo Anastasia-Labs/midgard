@@ -32,7 +32,7 @@ import {
   reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture.js";
 
-describe("Q03 canonical block evidence", () => {
+describe("canonical block evidence", () => {
   it("binds public DA payload bytes to the authenticated L1 header", async () => {
     const fixture = await doubleSpendBlock();
     const evidence = await evidenceFor(fixture);
@@ -227,7 +227,7 @@ describe("Q03 canonical block evidence", () => {
   });
 });
 
-describe("Q03 transactions-root inclusion authentication", () => {
+describe("transactions-root inclusion authentication", () => {
   it("authenticates the exact transaction-source convention", async () => {
     const fixture = await doubleSpendBlock();
     const evidence = await evidenceFor(fixture);

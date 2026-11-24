@@ -189,9 +189,9 @@ describe("watcher journal integrity", () => {
   });
 });
 
-describe("watcher journal open failures (R6)", () => {
-  it("holds the watcher unready by name on a migration that changed after it was applied", async () => {
-    const journalRoot = await journalDirectory("midgard-journal-migration");
+describe("watcher journal open failures", () => {
+  it("holds the watcher unready by name on a file created by a different schema", async () => {
+    const journalRoot = await journalDirectory("midgard-journal-schema");
     openWatcherJournalDatabase({
       journalRoot,
       authenticationKey: TEST_JOURNAL_KEY,
@@ -200,11 +200,9 @@ describe("watcher journal open failures (R6)", () => {
     const database = new DatabaseSync(
       join(journalRoot, WATCHER_JOURNAL_DATABASE_FILE),
     );
-    database.exec(
-      "UPDATE watcher_journal_migrations SET checksum = 'stale' WHERE rowid = (SELECT MIN(rowid) FROM watcher_journal_migrations)",
-    );
+    database.exec("UPDATE watcher_journal_schema SET checksum = 'stale'");
     database.close();
-    await expectHeldUnready(journalRoot, "changed after it was applied");
+    await expectHeldUnready(journalRoot, "created by a different schema");
   });
 
   it("reports journal_unavailable while the journals cannot be opened and recovers on the next use, without a restart", async () => {

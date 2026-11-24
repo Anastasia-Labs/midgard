@@ -4,8 +4,8 @@ import {
   type TemporalRegistry,
   type TemporalTableSpec,
 } from "../registry.js";
-import { followerMigrations } from "../schema/follower-migrations.js";
-import { applyMigrations, type MigrationSet } from "../schema/migrate.js";
+import { applySchemas, type SchemaSet } from "../schema/apply.js";
+import { followerSchema } from "../schema/follower-schema.js";
 import {
   RollbackWith,
   type SqlBackend,
@@ -107,7 +107,6 @@ export type StartResult =
       kind: "ready";
       cursor: Cursor | null;
       liveOutRefs: number;
-      migrated: readonly string[];
       /** The configured protocol tracked set against the store's record. */
       trackedSet: TrackedSetCheck;
       /** A store reset is replaying from the origin (`tracked_set_changed`). */
@@ -131,8 +130,8 @@ export type FactStoreOptions = Readonly<{
   wallets?: readonly Buffer[];
   /** The role's D-t tables. */
   temporalTables?: readonly TemporalTableSpec[];
-  /** The role's migrations (D-t tables and others), applied after the follower's. */
-  migrations?: readonly MigrationSet[];
+  /** The role's schemas (D-t tables and others), applied after the follower's. */
+  schemas?: readonly SchemaSet[];
   /** The role's S3 derivations, run in each block's transaction in order. */
   derivations?: readonly DerivationHook[];
   /** Columns whose values keep txs (by hash) or blocks (by slot) from pruning. */
@@ -154,8 +153,8 @@ export type FactStore = Readonly<{
   securityParameter: number;
   /**
    * Takes the writer lease (`store_locked` while another process holds it;
-   * retry with backoff), migrates, runs INV1–INV6 (R5 on failure), loads
-   * the tracked-outref set. Every write needs a started store; a write that
+   * retry with backoff), creates the schema, runs INV1–INV6 (R5 on
+   * failure), loads the tracked-outref set. Every write needs a started store; a write that
    * finds the lease lost returns `store_locked`, and the caller starts again.
    */
   start(): Promise<StartResult>;
@@ -404,9 +403,9 @@ export const createFactStore = (
           lostFrom = null;
           fenced = false;
         }
-        const { applied } = await applyMigrations(backend, [
-          followerMigrations(dialect.name),
-          ...(options.migrations ?? []),
+        await applySchemas(backend, [
+          followerSchema(dialect.name),
+          ...(options.schemas ?? []),
         ]);
         const check = await backend.transaction("write", (tx) =>
           checkTrackedSetIn(tx, dialect, protocolSet),
@@ -446,7 +445,6 @@ export const createFactStore = (
           kind: "ready",
           cursor,
           liveOutRefs: count,
-          migrated: applied,
           trackedSet: check,
           replaying: replaying ?? false,
         };

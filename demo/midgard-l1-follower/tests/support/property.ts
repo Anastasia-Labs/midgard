@@ -21,7 +21,7 @@ import {
 import {
   FIXTURE_DERIVATION,
   FIXTURE_TABLES,
-  fixtureMigrations,
+  fixtureSchema,
 } from "./fixture.js";
 
 export type PropertyOptions = Readonly<{
@@ -68,7 +68,7 @@ export const storeOptions = (
   securityParameter: k,
   trackedSet: universe.tracked,
   temporalTables: FIXTURE_TABLES,
-  migrations: [fixtureMigrations(dialect)],
+  schemas: [fixtureSchema(dialect)],
   derivations: [FIXTURE_DERIVATION],
 });
 

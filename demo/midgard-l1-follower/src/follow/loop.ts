@@ -11,7 +11,7 @@ import {
   recordedOriginHold,
   startFromOrigin,
 } from "../origin.js";
-import { FollowerMigrationError } from "../schema/migrate.js";
+import { FollowerSchemaError } from "../schema/apply.js";
 import { describeTrackedSetCheck } from "../store/tracked-set-record.js";
 import type { Intervention } from "../types.js";
 import {
@@ -80,7 +80,7 @@ type Handled = "continue" | "relock" | "backoff" | "intervention";
  * `exhausted` (`l1_follower_transient_exhausted`) and its host exits
  * non-zero. A deterministic failure stops the loop at once, an unknown one
  * once it repeats `stuckAfter` times in a row at one point (or one step);
- * `stuck` names it (`l1_follower_apply_stuck`, `l1_follower_migration_failed`)
+ * `stuck` names it (`l1_follower_apply_stuck`, `l1_follower_schema_refused`)
  * until a restart. Resolves with the final status once stopped by an
  * intervention, a stuck failure, an exhausted transient budget or abort.
  */
@@ -464,11 +464,11 @@ export const followChain = async (
       // A follower failure must not reach the role: record it, and back off
       // and start again while it is transient.
       log(`follower failed: ${message(error)}`);
-      // A migration the store refuses (a changed or unknown applied
-      // migration) fails the same way on every start: stuck at once, named.
+      // A schema the store refuses (one created by a different text) fails
+      // the same way on every start: stuck at once, named.
       const stopped =
-        error instanceof FollowerMigrationError
-          ? await failed("store", message(error), "deterministic", "migration")
+        error instanceof FollowerSchemaError
+          ? await failed("store", message(error), "deterministic", "schema")
           : await failed("store", message(error), classifyFailure(error));
       if (stopped) return finish();
       await wait();

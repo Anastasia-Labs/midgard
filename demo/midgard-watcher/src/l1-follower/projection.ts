@@ -2,9 +2,9 @@ import type {
   DerivationContext,
   DerivationHook,
   DialectName,
-  MigrationSet,
   PruneHook,
   RetentionPins,
+  SchemaSet,
   SqlTx,
   TemporalTableSpec,
   TrackedSet,
@@ -30,10 +30,7 @@ import {
 } from "./projection.departed-headers.js";
 import { recordTrackedUnits } from "./projection.followed-units.js";
 import { recordProtocolInitFaults } from "./projection.protocol-init.js";
-import {
-  WATCHER_TEMPORAL_TABLES,
-  watcherMigrations,
-} from "./projection.schema.js";
+import { WATCHER_TEMPORAL_TABLES, watcherSchema } from "./projection.schema.js";
 import { prunedKeyHooks } from "./pruned-keys.js";
 import {
   WATCHER_AVAILABILITY_TX_PINS_TABLE,
@@ -144,7 +141,7 @@ export type WatcherProjection = Readonly<{
   name: string;
   trackedSet: TrackedSet;
   temporalTables: readonly TemporalTableSpec[];
-  migrations: (dialect: DialectName) => MigrationSet;
+  schema: (dialect: DialectName) => SchemaSet;
   derivations: readonly DerivationHook[];
   retentionPins: RetentionPins;
   pruneHooks: readonly PruneHook[];
@@ -424,7 +421,7 @@ export const watcherProjection = (
       ]),
     },
     temporalTables: WATCHER_TEMPORAL_TABLES,
-    migrations: watcherMigrations,
+    schema: watcherSchema,
     derivations: [
       checkpointDerivation(deployment),
       derivation(deployment, credentials),

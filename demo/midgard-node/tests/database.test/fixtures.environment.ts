@@ -7,7 +7,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { beforeAll, onTestFinished } from "vitest";
 
-import * as MigrationRunner from "../../src/database/migrations/runner.js";
+import * as NodeSchema from "../../src/database/schema.js";
 import { provideDatabaseLayers, resetApplicationTables } from "../utils.js";
 
 export const collectChildProcess = (child: ReturnType<typeof spawn>) => {
@@ -104,10 +104,7 @@ export const registerDatabaseSetup = () => {
           yield* sql`
           DROP SCHEMA public CASCADE;
           CREATE SCHEMA public;`;
-          yield* MigrationRunner.migrate({
-            appVersion: "test",
-            actor: "database.test",
-          });
+          yield* NodeSchema.ensure;
           yield* resetApplicationTables;
         }),
       ),

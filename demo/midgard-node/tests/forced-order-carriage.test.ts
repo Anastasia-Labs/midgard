@@ -130,7 +130,7 @@ const expectIngested = async (submitted: Buffer, order: SimTx) => {
 };
 
 describe("forced-order carriage resolution", () => {
-  it("step 1: carriage an earlier tx of the order's own block created resolves in the projection", async () => {
+  it("carriage an earlier tx of the order's own block created resolves in the projection", async () => {
     const { store, chain, forward } = await follow();
     const f = fixture(chain.chain);
     await forward([f.publication, f.order]);
@@ -143,7 +143,7 @@ describe("forced-order carriage resolution", () => {
     await expectIngested(f.submitted, f.order);
   });
 
-  it("step 2: carriage spent in the next block resolves through the ledger at the order block's parent", async () => {
+  it("carriage spent in the next block resolves through the ledger at the order block's parent", async () => {
     const { store, chain, ledger, forward } = await follow();
     const f = fixture(chain.chain);
     await forward([f.publication]);
@@ -160,7 +160,7 @@ describe("forced-order carriage resolution", () => {
     await expectIngested(f.submitted, f.order);
   });
 
-  it("step 3: a parent point older than k with the carriage unspent resolves through the ledger at the tip", async () => {
+  it("a parent point older than k with the carriage unspent resolves through the ledger at the tip", async () => {
     const { store, chain, ledger, forward } = await follow();
     const f = fixture(chain.chain);
     await forward([f.publication]);
@@ -174,7 +174,7 @@ describe("forced-order carriage resolution", () => {
     await expectIngested(f.submitted, f.order);
   });
 
-  it("step 4: spent and older than k holds the node unready by name, never exits or writes a verdict, and resolves once a source supplies the creating tx", async () => {
+  it("spent and older than k holds the node unready by name, never exits or writes a verdict, and resolves once a source supplies the creating tx", async () => {
     const { store, chain, ledger, forward } = await follow();
     const f = fixture(chain.chain);
     await forward([f.publication]);

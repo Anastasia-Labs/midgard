@@ -211,7 +211,7 @@ describe("DA bond pool script identity", () => {
     expect(second.yields.timeout.withdrawalScriptHash).not.toBe(
       first.yields.timeout.withdrawalScriptHash,
     );
-    // The dispatcher and the other yields take no pool parameter (C8).
+    // The dispatcher and the other yields take no pool parameter.
     expect(second.policyId).toBe(first.policyId);
     expect(second.spendingScriptHash).toBe(first.spendingScriptHash);
     for (const arm of ["open", "settle", "close"] as const) {

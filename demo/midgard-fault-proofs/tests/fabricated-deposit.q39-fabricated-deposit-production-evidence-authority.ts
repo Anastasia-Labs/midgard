@@ -45,7 +45,7 @@ import {
 } from "./fabricated-deposit.q39-fabricated-deposit-evidence-admission.js";
 import { h28, h32 } from "./helpers/canonical-block-evidence-fixture.js";
 
-describe("Q39 fabricated-deposit production evidence authority", () => {
+describe("fabricated-deposit production evidence authority", () => {
   const artifactDigestForTest = (
     value: Omit<FabricatedDepositArtifact, "artifactDigest">,
   ): string =>

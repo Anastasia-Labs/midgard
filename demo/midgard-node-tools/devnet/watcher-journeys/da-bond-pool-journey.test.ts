@@ -104,7 +104,7 @@ describe("pooled DA bond journey driver", () => {
         feePart: PARAMS.penalty,
         payout: PARAMS.daBond - PARAMS.penalty,
       });
-    // Below one bond the penalty fills first (spec §5).
+    // Below one bond the penalty fills first.
     expect(
       planDaBondPoolSlash({
         daBond: PARAMS.daBond,
@@ -170,16 +170,16 @@ describe("pooled DA bond journey driver", () => {
         "3: committee pool monitor emits da_bond_pool_backing_short",
         "4: committee pool monitor emits no transition while the pool stays short",
         "5: committee pool monitor emits da_bond_pool_backing_restored",
-        "3: P16: alerts after Timeout: committee reasons from the da-committee-node /readyz, events from its stderr",
-        "3: P27: the committee node reported B1's challenge unavailable and never acted on it",
-        "4: P16: alerts while short: committee reasons from the da-committee-node /readyz, events from its stderr",
-        "5: P16: alerts after top-up: committee reasons from the da-committee-node /readyz, events from its stderr",
-        "6: P16: alerts after cancel: committee reasons from the da-committee-node /readyz, events from its stderr",
-        "6: P16: alerts after complete: committee reasons from the da-committee-node /readyz, events from its stderr",
-        "5: P18: top-up submitted by the real da-bond CLI",
-        "6: P18: begin withdraw #1 submitted by the real da-bond CLI",
-        "6: P18: cancel withdraw submitted by the real da-bond CLI",
-        "6: P18: complete withdraw submitted by the real da-bond CLI",
+        "3: committee view: alerts after Timeout: committee reasons from the da-committee-node /readyz, events from its stderr",
+        "3: committee node: the committee node reported B1's challenge unavailable and never acted on it",
+        "4: committee view: alerts while short: committee reasons from the da-committee-node /readyz, events from its stderr",
+        "5: committee view: alerts after top-up: committee reasons from the da-committee-node /readyz, events from its stderr",
+        "6: committee view: alerts after cancel: committee reasons from the da-committee-node /readyz, events from its stderr",
+        "6: committee view: alerts after complete: committee reasons from the da-committee-node /readyz, events from its stderr",
+        "5: CLI chain: top-up submitted by the real da-bond CLI",
+        "6: CLI chain: begin withdraw #1 submitted by the real da-bond CLI",
+        "6: CLI chain: cancel withdraw submitted by the real da-bond CLI",
+        "6: CLI chain: complete withdraw submitted by the real da-bond CLI",
       ]),
     );
     expect(renderDaBondPoolJourneyReport(record, META)).toContain(
@@ -187,7 +187,7 @@ describe("pooled DA bond journey driver", () => {
     );
   });
 
-  it("records the P16 committee process view and the P18 CLI chains, and all of it passes on an honest port", async () => {
+  it("records the committee process view and the CLI chains, and all of it passes on an honest port", async () => {
     const { port } = fakePort();
     const record = await runDaBondPoolJourney(port, {
       requireProcessEvidence: true,
@@ -195,24 +195,22 @@ describe("pooled DA bond journey driver", () => {
     expect(record.status).toBe("passed");
     const processChecks = record.stages.flatMap(({ step, assertions }) =>
       assertions
-        .filter(
-          ({ name }) => name.startsWith("P16: ") || name.startsWith("P18: "),
-        )
+        .filter(({ name }) => /^(committee view|CLI chain): /.test(name))
         .map(({ name, ok }) => ({ step, name, ok })),
     );
     expect(processChecks.every(({ ok }) => ok === true)).toBe(true);
-    // P16 at step 1 and step 6 on each fresh node start, and at steps 3 to 6
-    // (both directions); P18 for the top-up and every withdraw step.
+    // Committee views at steps 1 and 6 on each fresh node start and at steps 3
+    // to 6 (both directions); CLI chains for the top-up and every withdraw step.
     expect([
       ...new Set(
         processChecks
-          .filter(({ name }) => name.startsWith("P16: "))
+          .filter(({ name }) => name.startsWith("committee view: "))
           .map(({ step }) => step),
       ),
     ]).toEqual([1, 3, 4, 5, 6]);
     const cliLabels = new Set(
       processChecks
-        .filter(({ name }) => name.startsWith("P18: "))
+        .filter(({ name }) => name.startsWith("CLI chain: "))
         .map(({ step, name }) => `${step}: ${name.split(": ")[1]}`),
     );
     expect([...cliLabels]).toEqual([
@@ -232,7 +230,7 @@ describe("pooled DA bond journey driver", () => {
     expect(report).toContain(stage(record, 5).txIds["top-up"]);
   });
 
-  it("fails step 5 when the top-up process prints the pre-transaction pool status (P15/P18)", async () => {
+  it("fails step 5 when the top-up process prints the pre-transaction pool status", async () => {
     const { record } = await tryRunDaBondPoolJourney(
       fakePort({ cliStaleStatus: "top-up" }).port,
     );
@@ -241,21 +239,21 @@ describe("pooled DA bond journey driver", () => {
       expect.arrayContaining([
         {
           step: 5,
-          name: "P18: top-up: same-output status is the post-transaction pool",
+          name: "CLI chain: top-up: same-output status is the post-transaction pool",
         },
         {
           step: 5,
-          name: "P18: top-up: same-output status matches the transaction",
+          name: "CLI chain: top-up: same-output status matches the transaction",
         },
         {
           step: 5,
-          name: "P18: top-up: da-bond status after reads the same pool",
+          name: "CLI chain: top-up: da-bond status after reads the same pool",
         },
       ]),
     );
     expect(
       failedAssertions(record).every(({ name }) =>
-        name.startsWith("P18: top-up: "),
+        name.startsWith("CLI chain: top-up: "),
       ),
     ).toBe(true);
   });
@@ -267,7 +265,7 @@ describe("pooled DA bond journey driver", () => {
     expect(record.failure?.step).toBe(6);
     expect(failedAssertions(record)).toContainEqual({
       step: 6,
-      name: "P18: complete withdraw: same-output status is the post-transaction pool",
+      name: "CLI chain: complete withdraw: same-output status is the post-transaction pool",
     });
   });
 
@@ -278,16 +276,16 @@ describe("pooled DA bond journey driver", () => {
     expect(record.failure?.step).toBe(6);
     expect(failedAssertions(record)).toEqual(
       expect.arrayContaining([
-        { step: 6, name: "P18: cancel withdraw: every process exits 0" },
+        { step: 6, name: "CLI chain: cancel withdraw: every process exits 0" },
         {
           step: 6,
-          name: "P18: cancel withdraw: stdout names the landed txHash",
+          name: "CLI chain: cancel withdraw: stdout names the landed txHash",
         },
       ]),
     );
   });
 
-  it("fails step 3 when the committee node reports ready while its pool reason is raised (P16)", async () => {
+  it("fails step 3 when the committee node reports ready while its pool reason is raised", async () => {
     const { record } = await tryRunDaBondPoolJourney(
       fakePort({ readyzReadyWhileRaised: true }).port,
     );
@@ -295,7 +293,7 @@ describe("pooled DA bond journey driver", () => {
     expect(failedAssertions(record)).toEqual([
       {
         step: 3,
-        name: "P16: alerts after Timeout: committee reasons from the da-committee-node /readyz, events from its stderr",
+        name: "committee view: alerts after Timeout: committee reasons from the da-committee-node /readyz, events from its stderr",
       },
     ]);
   });
@@ -305,17 +303,17 @@ describe("pooled DA bond journey driver", () => {
       [
         { committeeInProcess: true },
         1,
-        "P16: alerts before commit: committee reasons from the da-committee-node /readyz, events from its stderr",
+        "committee view: alerts before commit: committee reasons from the da-committee-node /readyz, events from its stderr",
       ],
       [
         { cliInProcess: true },
         5,
-        "P18: top-up submitted by the real da-bond CLI",
+        "CLI chain: top-up submitted by the real da-bond CLI",
       ],
       [
         { responderNotRead: true },
         3,
-        "P27: the committee node reported B1's challenge unavailable and never acted on it",
+        "committee node: the committee node reported B1's challenge unavailable and never acted on it",
       ],
     ] as const) {
       const lenient = await runDaBondPoolJourney(fakePort(faults).port);
@@ -424,7 +422,7 @@ describe("pooled DA bond journey driver", () => {
     expect(failedAssertions(record)).toEqual([
       {
         step: 6,
-        name: "P18: complete withdraw: same-output status matches the transaction",
+        name: "CLI chain: complete withdraw: same-output status matches the transaction",
       },
       {
         step: 6,
@@ -448,9 +446,9 @@ describe("pooled DA bond journey driver", () => {
         "same-output status matches the transaction",
         "da-bond status after reads the same pool",
         "CLI status agrees with the adapter's chain read",
-      ].map((check) => `P18: ${label}: ${check}`);
+      ].map((check) => `CLI chain: ${label}: ${check}`);
     const p16 = (label: string) =>
-      `P16: ${label}: committee reasons from the da-committee-node /readyz, events from its stderr`;
+      `committee view: ${label}: committee reasons from the da-committee-node /readyz, events from its stderr`;
     const begin = (label: string) => [
       `${label}: unlock_at = validity upper bound + withdraw delay`,
       ...p18(label),
@@ -502,7 +500,7 @@ describe("pooled DA bond journey driver", () => {
           "committee reports a backing-short readiness reason",
           "committee pool monitor emits da_bond_pool_backing_short",
           p16("alerts after Timeout"),
-          "P27: the committee node reported B1's challenge unavailable and never acted on it",
+          "committee node: the committee node reported B1's challenge unavailable and never acted on it",
           "B1 is removed from the queue",
         ],
       ],
@@ -585,14 +583,14 @@ describe("pooled DA bond journey driver", () => {
 
   it("fails the exact check each misbehaving port breaks", async () => {
     const p16 = (label: string) =>
-      `P16: ${label}: committee reasons from the da-committee-node /readyz, events from its stderr`;
+      `committee view: ${label}: committee reasons from the da-committee-node /readyz, events from its stderr`;
     const cases: readonly (readonly [
       string,
       Faults,
       number,
       readonly string[],
     ])[] = [
-      // P16: the stderr half of the committee process view.
+      // The stderr half of the committee process view.
       [
         "a committee process view without its stderr events",
         { processWithoutEvents: true },
@@ -631,7 +629,7 @@ describe("pooled DA bond journey driver", () => {
           "committee pool monitor emits no transition while the pool stays short",
         ],
       ],
-      // P27: the node's own /readyz body and its restart.
+      // The node's own /readyz body and its restart.
       [
         "a 503 that names no pool reason while the pool is short",
         { readyzNoReasonWhileShort: true },
@@ -656,13 +654,13 @@ describe("pooled DA bond journey driver", () => {
         3,
         [p16("alerts after Timeout")],
       ],
-      // P27: the payload-free node reports B1 unavailable and never answers.
+      // The payload-free node reports B1 unavailable and never answers.
       [
         "a node that never reported B1's challenge unavailable",
         { responderOnB1: "silent" },
         3,
         [
-          "P27: the committee node reported B1's challenge unavailable and never acted on it",
+          "committee node: the committee node reported B1's challenge unavailable and never acted on it",
         ],
       ],
       [
@@ -670,7 +668,7 @@ describe("pooled DA bond journey driver", () => {
         { responderOnB1: "publishes" },
         3,
         [
-          "P27: the committee node reported B1's challenge unavailable and never acted on it",
+          "committee node: the committee node reported B1's challenge unavailable and never acted on it",
         ],
       ],
       [
@@ -678,7 +676,7 @@ describe("pooled DA bond journey driver", () => {
         { responderOnB1: "confirmed" },
         3,
         [
-          "P27: the committee node reported B1's challenge unavailable and never acted on it",
+          "committee node: the committee node reported B1's challenge unavailable and never acted on it",
         ],
       ],
       [
@@ -686,7 +684,7 @@ describe("pooled DA bond journey driver", () => {
         { responderOnB1: "executionFailed" },
         3,
         [
-          "P27: the committee node reported B1's challenge unavailable and never acted on it",
+          "committee node: the committee node reported B1's challenge unavailable and never acted on it",
         ],
       ],
       [

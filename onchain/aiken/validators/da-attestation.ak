@@ -627,8 +627,8 @@ validator da_attestation(
 // build params — sit outside that count.
 
 // ---------------------------------------------------------------------------
-// Fixtures — Q62 (non-retroactive committee rotation) and
-// Q63 acceptance clause (c) (partial-attestation rescue).
+// Fixtures — non-retroactive committee rotation and partial-attestation
+// rescue.
 //
 // Every transaction below is built from one base builder and mutated in
 // exactly one field per negative, so a rejection can only be attributed to the
@@ -1057,7 +1057,7 @@ fn test_rescue_drain_tx() -> Transaction {
   )
 }
 
-// ## Q63 acceptance clause (c) — partial-attestation rescue path
+// ## Partial-attestation rescue path
 //
 // The control has to carry both handlers, because a rescue transaction is only
 // valid if both run: the mint half decides *whether* the attestation is
@@ -1242,7 +1242,7 @@ test da_attestation_rescue_rejects_redirected_beneficiary() fail {
 }
 
 // ---------------------------------------------------------------------------
-// ## Q62 — non-retroactive committee rotation
+// ## Non-retroactive committee rotation
 //
 // Before this change `ApplyToStateQueue` read no DA params at all: it decided
 // quorum from the attestation datum's own frozen `da_threshold` and burnt the
@@ -1892,8 +1892,8 @@ test da_attestation_apply_rejects_attestation_index_aliasing_state_queue_input()
 
 // ### Commitment, hash binding and node value
 
-/// Refused by `commitment.deployment_identity == hub_oracle_policy_id`
-/// (HAZ-5): a quorum over a commitment naming another deployment. Open would
+/// Refused by `commitment.deployment_identity == hub_oracle_policy_id`:
+/// a quorum over a commitment naming another deployment. Open would
 /// refuse its preimage, so an Apply would leave the block unchallengeable.
 /// The node is attested with that commitment's own hash, so only the identity
 /// differs from the control.
@@ -1959,8 +1959,8 @@ test da_attestation_apply_other_commitment_is_canonical_and_distinct() {
   }
 }
 
-/// Refused by exact node-value equality in the state-queue attachment
-/// (HAZ-13): the node continuation gains one lovelace.
+/// Refused by exact node-value equality in the state-queue attachment: the
+/// node continuation gains one lovelace.
 test da_attestation_apply_rejects_node_value_change() fail {
   let node = test_state_queue_node_output(
     availability.Attested {

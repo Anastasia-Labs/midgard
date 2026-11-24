@@ -1,4 +1,4 @@
-/** DA-first Q34 preparation from authenticated L1 + retained block material. */
+/** DA-first native-script-invalid preparation from authenticated L1 + retained block material. */
 import {
   decodeMidgardAddressWitnessFieldPreimage,
   decodeMidgardFieldPreimage,

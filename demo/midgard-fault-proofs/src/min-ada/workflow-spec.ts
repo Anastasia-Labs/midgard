@@ -1,6 +1,6 @@
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 
-/** Exact authenticated L1 cursor topology for Q27 MIN-ADA-TX. */
+/** Exact authenticated L1 cursor topology for MIN-ADA-TX. */
 export const MIN_ADA_CURSOR_SPEC = Object.freeze({
   category: "minAda",
   stepCount: 4,

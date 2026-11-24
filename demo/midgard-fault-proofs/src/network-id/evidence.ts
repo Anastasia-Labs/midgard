@@ -1,5 +1,5 @@
 /**
- * DA-first Q35 evidence selection. The caller supplies the decoded canonical
+ * DA-first network-id evidence selection. The caller supplies the decoded canonical
  * native-V1 item reconstructed from authenticated retained DA; this module
  * never accepts an operator-local verdict or database flag.
  */

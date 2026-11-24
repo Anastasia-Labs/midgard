@@ -1229,8 +1229,8 @@ test identical_content_aliases_across_field_pairs() {
 // variable-width one, rather than answered with a number nobody checked.
 
 /// A single-chunk tier-3 carriage: exactly the shape §8.4's `preimage_len > K`
-/// boundary excludes, and the shape that made the round-2 field-6
-/// counterexample reachable without a full-`chunk_bytes_k` field.
+/// boundary excludes, and the shape that made the field-6 counterexample
+/// reachable without a full-`chunk_bytes_k` field.
 fn one_chunk_certified_view(
   field_index: Int,
   preimage: ByteArray,
@@ -1290,7 +1290,7 @@ test tier_three_refuses_a_below_boundary_field_8() fail {
   open_one_chunk_certified(8)
 }
 
-/// The exact round-2 counterexample, spelled out: field 6 carries three items,
+/// The exact field-6 counterexample, spelled out: field 6 carries three items,
 /// the §5.1 header claims four (`84`) or two (`82`), and the flat hash matches
 /// because the source is rebuilt from those very bytes.
 test the_field_six_counterexample_is_the_reported_one() {

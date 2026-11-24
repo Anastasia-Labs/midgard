@@ -1,5 +1,5 @@
 /**
- * Canonical evidence-source API — transport and block-evidence layer (`Q03`).
+ * Canonical evidence-source API — transport and block-evidence layer.
  *
  * Builders consume verified `DaPayloadV1`/proof bundles and authenticated L1
  * observations, not operator-private REST/DB/files except labelled

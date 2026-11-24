@@ -51,9 +51,9 @@ export const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
 /**
  * Dev/emulator DA cosigner seed.
  *
- * Q63 (F04 §4) floors `da_threshold` and `update_threshold` at two, so the
- * bootstrap needs a second key before the governor will accept its params. The
- * emulator has no committee peers, so the harness holds that key itself and
+ * The emulator bootstrap uses a two-key committee and owner set, whose F04 §4
+ * floors are two. The emulator has no committee peers, so the harness holds
+ * the second key itself and
  * passes it as `DA_COSIGNER_SEED_PHRASE`. It only ever signs attestation
  * messages, so it never needs emulator funds.
  */

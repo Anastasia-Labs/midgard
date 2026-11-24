@@ -116,7 +116,7 @@ const recommitLeaf = async ({
   };
 };
 
-describe("Q44 da-hash-preimage leaf classification", () => {
+describe("da-hash-preimage leaf classification", () => {
   it("classifies an honestly keyed source leaf as compliant", async () => {
     const fixture = await buildBlock();
     const [tx] = fixture.transactions;
@@ -172,7 +172,7 @@ describe("Q44 da-hash-preimage leaf classification", () => {
   });
 });
 
-describe("Q44 da-hash-preimage proof plan", () => {
+describe("da-hash-preimage proof plan", () => {
   it("builds a submittable plan for a miskeyed committed leaf", async () => {
     const fixture = await buildBlock();
     const [tx] = fixture.transactions;
@@ -291,7 +291,7 @@ describe("Q44 da-hash-preimage proof plan", () => {
   });
 });
 
-describe("Q44 da-hash-preimage evidence admission", () => {
+describe("da-hash-preimage evidence admission", () => {
   it("rejects operator-private DA provenance", async () => {
     const fixture = await buildBlock();
     await expect(
@@ -329,7 +329,7 @@ describe("Q44 da-hash-preimage evidence admission", () => {
   });
 });
 
-describe("Q44 exact production evidence route", () => {
+describe("da-hash-preimage exact production evidence route", () => {
   it("uses canonical reconstruction for an honest source leaf", async () => {
     const fixture = await buildBlock();
     await expect(
@@ -341,7 +341,7 @@ describe("Q44 exact production evidence route", () => {
     ).resolves.toMatchObject({ kind: "canonical_block" });
   });
 
-  it("routes only an L1-root-authenticated source-leaf violation to Q44", async () => {
+  it("routes only an L1-root-authenticated source-leaf violation to da-hash-preimage", async () => {
     const fixture = await buildBlock();
     const [tx] = fixture.transactions;
     const recommitted = await recommitLeaf({
@@ -366,7 +366,7 @@ describe("Q44 exact production evidence route", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("does not turn a forged raw root/key/value substitution into Q44", async () => {
+  it("does not turn a forged raw root/key/value substitution into da-hash-preimage", async () => {
     const fixture = await buildBlock();
     const [tx] = fixture.transactions;
     const forgedPayload: SDKDa.DaPayload = {

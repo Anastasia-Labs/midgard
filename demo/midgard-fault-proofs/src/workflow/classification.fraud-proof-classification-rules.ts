@@ -38,7 +38,7 @@ export type FraudProofClassificationRule = {
 };
 
 /**
- * Q55/W-O6's versioned violation-to-family authority.
+ * The versioned violation-to-family authority.
  *
  * The outer order is deliberately the append-only catalogue order; same-event
  * family precedence is that order with the owner-ruled corners moved

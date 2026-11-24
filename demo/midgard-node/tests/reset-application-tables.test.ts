@@ -19,13 +19,13 @@ import {
 const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   Effect.runPromise(provideDatabaseLayers(effect) as Effect.Effect<A, E>);
 
-/** The singletons a migration seeds, which the reset restores. */
+/** The singletons the schema seeds, which the reset restores. */
 const SEEDED_SINGLETONS = new Set([
   "commit_build_calibration",
   "node_follower_write_gate",
 ]);
 
-/** A table no migration and no reset names: created here, dropped after. */
+/** A table no schema and no reset names: created here, dropped after. */
 const PROBE = "reset_guard_unlisted_probe";
 
 /** Every table in the database's schemas with its row count. */
@@ -53,7 +53,7 @@ describe("per-file database reset", () => {
           `CREATE TABLE IF NOT EXISTS ${PROBE} (id integer PRIMARY KEY)`,
         );
         yield* sql.unsafe(`INSERT INTO ${PROBE} (id) VALUES (1)`);
-        // A migrated table the old hand list never named: the commit
+        // A schema table the old hand list never named: the commit
         // horizon reads it.
         yield* sql`INSERT INTO follower_event_ingestion
             (id, generation, slot, block_hash, height, ingested_through_ms, updated_at)
@@ -72,16 +72,16 @@ describe("per-file database reset", () => {
       const leftover = [...after].filter(
         ([name, count]) =>
           !RESET_KEPT_TABLES.has(name) &&
-          // The migration seed rows the reset restores.
+          // The schema seed rows the reset restores.
           count !== (SEEDED_SINGLETONS.has(name) ? 1 : 0),
       );
       expect(leftover).toEqual([]);
       expect(after.get(PROBE)).toBe(0);
-      // The kept bookkeeping is untouched: the migration ledgers and the
+      // The kept bookkeeping is untouched: the schema records and the
       // follower's writer fence row.
       for (const kept of RESET_KEPT_TABLES.keys())
         expect([kept, after.get(kept)]).toEqual([kept, before.get(kept)]);
-      expect(after.get("schema_migrations")).toBeGreaterThan(0);
+      expect(after.get("node_schema")).toBe(1);
       expect(after.get("l1_follower_writer")).toBe(1);
     } finally {
       await run(

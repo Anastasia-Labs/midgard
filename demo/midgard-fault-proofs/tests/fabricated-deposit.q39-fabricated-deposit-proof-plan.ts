@@ -44,7 +44,7 @@ import {
 } from "./fabricated-deposit.q39-fabricated-deposit-evidence-admission.js";
 import { h28, h32 } from "./helpers/canonical-block-evidence-fixture.js";
 
-describe("Q39 fabricated-deposit proof plan", () => {
+describe("fabricated-deposit proof plan", () => {
   it("builds a nonexistent-identity plan from an authenticated absence witness", async () => {
     const fixture = await buildDepositsBlockFixture({ leaves: [FI_LEAF] });
     // The Aiken-measured roots of `fabricated_identity_block_v1`.
@@ -194,7 +194,7 @@ describe("Q39 fabricated-deposit proof plan", () => {
   });
 });
 
-describe("Q39 fabricated-deposit L1 witness authentication", () => {
+describe("fabricated-deposit L1 witness authentication", () => {
   const fiLeaf = async () => {
     const fixture = await buildDepositsBlockFixture({ leaves: [FI_LEAF] });
     const plan = await prepareFabricatedDepositFromCommittedLeaves({

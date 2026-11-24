@@ -1216,8 +1216,8 @@ jobs:
 
   # Sharded like fault-proofs and watcher once ~450 files made one job take
   # 53.5 minutes (Node CI run 37448078028: 38 minutes of Vitest on four forks).
-  # Every shard is its own job with its own Postgres service and runs the
-  # isolated migration itself, so the per-worker database shards the suite
+  # Every shard is its own job with its own Postgres service and creates its
+  # database schemas itself, so the per-worker database shards the suite
   # pins (tests/test-env.ts) never span two shards.
   midgard-node:
     name: midgard-node (${{ matrix.shard }}/${{ strategy.job-total }})
@@ -1254,10 +1254,8 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: demo/midgard-node/native/mpf-event-flat-wasm
-      - name: Build Midgard node and migrate isolated CI database
-        env:
-          MIDGARD_DEPLOYMENT_PROFILE: preprod-testing
-        run: pnpm --dir demo/midgard-node run db:migrate
+      - name: Build Midgard node
+        run: pnpm --dir demo/midgard-node run build
       # The test run records each file's seconds (durationShards in
       # midgard-test-support); `test-durations` merges the shards' records into
       # the refreshed shard table.

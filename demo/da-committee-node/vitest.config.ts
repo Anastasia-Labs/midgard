@@ -11,7 +11,7 @@ import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   // The deployment input is derived through midgard-node's sources, which
-  // import their migrations as raw SQL.
+  // import their schema as raw SQL.
   plugins: [rawSqlLoaderPlugin()],
   test: {
     environment: "node",

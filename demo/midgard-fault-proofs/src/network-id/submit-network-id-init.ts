@@ -1,4 +1,4 @@
-/** Reference-script-only Q35 computation-thread initialization. */
+/** Reference-script-only network-id computation-thread initialization. */
 import {
   buildCanonicalDecodabilityInit,
   type CanonicalDecodabilityInitBuild,
@@ -21,7 +21,7 @@ export type SubmitNetworkIdInitParams = Omit<
 export type NetworkIdInitBuild = CanonicalDecodabilityInitBuild;
 
 /**
- * Init is family-invariant: catalogue membership authenticates Q35's exact
+ * Init is family-invariant: catalogue membership authenticates the family's exact
  * first-step hash before the computation-thread token is created.
  */
 export const buildNetworkIdInit = async (

@@ -7,7 +7,7 @@ import { prepareInputNoIdxFromTransactions } from "./prepare-input-no-idx.prepar
  * The security-grade entry point: an authenticated L1
  * header observation plus public retained-DA block evidence, and nothing else.
  *
- * `admitCanonicalEvidenceForProofBuild` re-runs both Q03 gates —
+ * `admitCanonicalEvidenceForProofBuild` re-runs both evidence gates —
  * `assertSecurityGradeEvidenceV1` over every contributing provenance record
  * and `assertNativeInclusionRootAuthenticatedV1` over the raw transactions MPF
  * root the family's two `NativeTxInclusionArgs` will carry — so a diagnostic,

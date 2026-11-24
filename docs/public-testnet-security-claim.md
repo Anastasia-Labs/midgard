@@ -16,10 +16,12 @@ Any key can initiate the enabled fraud proofs and availability challenges.
 
 Users rely on curated operators for block production and for correctness outside
 the enabled proof catalogue. A dishonest operator can commit some invalid states
-that P1 cannot prove, including fabricated forced transactions and a wrong
-Plutus verdict that depends on a step too large to prove on L1. A dishonest operator can also censor a valid
-forced transaction by assigning a rejection that P1 cannot challenge. These
-limitations prevent a general promise that users can always exit without
+that P1 cannot prove, including fabricated or substituted forced transactions
+and a wrong Plutus verdict that depends on a step too large to prove on L1. By
+substituting a valid forced transaction's content, a dishonest operator can
+censor it. A rejection assigned to a valid forced transaction is challengeable:
+every rejection reason has a family that proves a wrongful forced rejection.
+These limitations prevent a general promise that users can always exit without
 operator cooperation.
 
 A Plutus verdict is challengeable through the interactive validation dispute
@@ -93,6 +95,19 @@ manifest.
   The node's transaction status API reports its own diagnostic rejection
   codes.
 - An unsigned withdrawal order can block an output reference (issue #819).
+- Open fault-proof gaps, each a fault an honest challenger cannot prove today:
+  - [NIFP-03](fault-proofs/remaining-gaps.md#nifp-03--event-proof-lifetime): a block's omission of a
+    forced transaction, once that transaction's L1 order has been consumed.
+  - [NIFP-04](fault-proofs/remaining-gaps.md#nifp-04--fabricated-or-substituted-forced-transactions): a
+    forced transaction that no L1 order submitted, or whose content differs
+    from its L1 order.
+  - [NIFP-05](fault-proofs/remaining-gaps.md#nifp-05--forbidden-auxiliary-data-hash): a transaction whose
+    auxiliary-data hash is not the required empty value.
+  - [NIFP-06](fault-proofs/remaining-gaps.md#nifp-06--plutus-program-envelope-canonicality): a malformed
+    Plutus script held as a reference script by an input the transaction
+    resolves.
+  - [NIFP-08](fault-proofs/remaining-gaps.md#nifp-08--malformed-raw-leaves-outside-transactions_root): a
+    malformed leaf under any header root other than `transactions_root`.
 - No authenticated bootstrap state snapshot is supplied. New verifiers replay
   from genesis and must join while the required retained payload history is
   available. The public profile configures 120-day payload retention.

@@ -7,7 +7,7 @@
 //// open a trie, it added ~3.7 kB to each step's spending script — which is
 //// carried by the step transaction whichever route the prover takes, so it
 //// would have made the *redeemer-carried* route markedly more exhaustible
-//// (finding Q1X-F5's measured ceiling fell from branch level 21..23 to 8..9).
+//// (the measured ceiling fell from branch level 21..23 to 8..9).
 //// Remediating one route by degrading the other is not a remediation.
 ////
 //// So the walk lives here, in one merkelized validator shared by every family,

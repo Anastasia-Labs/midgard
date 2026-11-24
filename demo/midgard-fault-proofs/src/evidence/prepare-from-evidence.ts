@@ -1,5 +1,5 @@
 /**
- * Canonical-evidence proof builders (`Q03`).
+ * Canonical-evidence proof builders.
  *
  * These are the builder entry points of family output 7
  * (`docs/spec/protocol-decisions.md#family-outputs`): they take

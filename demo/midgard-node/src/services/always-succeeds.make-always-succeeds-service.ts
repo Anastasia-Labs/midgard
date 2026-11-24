@@ -141,10 +141,10 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDKCore.MidgardValidators>
     };
 
     // The always-succeeds devnet blueprint has no dedicated
-    // `da_hash_preimage` stub validator, so the Q44 category reuses the
+    // `da_hash_preimage` stub validator, so the da-hash-preimage category reuses the
     // `zero_input` stub here, exactly as `validationTraceDispute` reuses the
     // `transition_trace` stub above. Devnet only: the production contracts
-    // service builds the real Q44 chain from the Aiken blueprint.
+    // service builds the real da-hash-preimage chain from the Aiken blueprint.
     const daHashPreimage = zeroInput;
 
     // Same devnet aliasing for the three families registered by #547: the

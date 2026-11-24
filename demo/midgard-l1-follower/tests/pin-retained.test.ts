@@ -28,16 +28,11 @@ const PIN_TABLE = "test_tx_pins";
 
 const pinOptions = (dialect: DialectName): FactStoreOptions => ({
   ...options(K),
-  migrations: [
+  schemas: [
     {
       namespace: "pin_test",
-      migrations: [
-        {
-          id: "0001_test_tx_pins",
-          sql: `-- class: B; retention: owner (the pin test)
+      sql: `-- class: B; retention: owner (the pin test)
 CREATE TABLE ${PIN_TABLE} (tx_hash ${dialect === "postgres" ? "bytea" : "BLOB"} PRIMARY KEY);`,
-        },
-      ],
     },
   ],
   retentionPins: { txs: [{ table: PIN_TABLE, column: "tx_hash" }] },

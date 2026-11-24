@@ -179,7 +179,7 @@ describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)"
     // Exhaustion arithmetic over the one adversary-movable axis. Step 02
     // stacks THREE proofs, so its per-level cost is three times step-01's and
     // its exhaustion depth proportionally shallower — still work-bounded, and
-    // recorded under the same Q1X-F5 convention.
+    // recorded the same way.
     const perLevelBytes =
       (deepBytes - shallowBytes) / ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS;
     expect(perLevelBytes).toBeGreaterThan(0);

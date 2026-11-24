@@ -52,7 +52,7 @@ import { oracleLedgerRoot } from "./support/ledger-root-oracle.js";
 
 /**
  * The direct source map selects, for each script hash, the first source the
- * T224 lookup visits. These rows hold the map to the other two consumers of
+ * source lookup visits. These rows hold the map to the other two consumers of
  * the shared source-order function: Phase B's purpose lookup and the
  * validation trace builder's stage-nine scan. Every row carries one script in
  * an inline witness, a spent output and a reference input at once.
@@ -168,7 +168,7 @@ const txOptions = (row: Row) => ({
 const scriptSourcesStage = (cbor: Buffer): number =>
   Number((decodeSingleCbor(cbor) as readonly bigint[])[8]);
 
-describe("direct source order is the shared T224 lookup order", () => {
+describe("direct source order is the shared source lookup order", () => {
   it.each(ROWS)(
     "$name: the direct map, Phase B and the trace builder select one source",
     async (row) => {

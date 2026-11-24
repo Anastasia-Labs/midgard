@@ -91,7 +91,7 @@ export type DaBondPoolJourneyAlerts = Readonly<{
      * Present when the reasons are the pool reasons of a running
      * `da-committee-node` process's `GET /readyz` and the events are the
      * pool transition lines it wrote to stderr since the previous
-     * observation (P16, ruling P27). Absent when the committee view is
+     * observation. Absent when the committee view is
      * composed in process.
      */
     process?: Readonly<{
@@ -178,7 +178,7 @@ export type DaBondPoolJourneyTx = Readonly<{ txId: string }>;
 
 /**
  * A pool transaction an operator submits with the `da-bond` CLI. `cli` is
- * the process chain that submitted it (P18); absent when the adapter drove
+ * the process chain that submitted it; absent when the adapter drove
  * the command functions in process.
  */
 export type DaBondPoolJourneyCliTx = Readonly<{
@@ -196,13 +196,13 @@ export type DaBondPoolJourneyPort = {
   /**
    * Called at the start of each step, inside it, so a failure fails that
    * step. The live adapter starts its committee node before step 1, stops
-   * it before step 2 and restarts it before step 6 (ruling P27).
+   * it before step 2 and restarts it before step 6.
    */
   beforeStep?(step: DaBondPoolJourneyStep): Promise<void>;
   /**
    * Called at the end of each step's body, before its gate, so a failure
    * fails that step. The live adapter stops its committee node after step 6
-   * and checks that stop as it checks the one before step 2 (ruling P27).
+   * and checks that stop as it checks the one before step 2.
    */
   afterStep?(step: DaBondPoolJourneyStep): Promise<void>;
   /**
@@ -262,7 +262,7 @@ export type DaBondPoolJourneyOptions = Readonly<{
   /** Wall clock for stage timestamps. Default `new Date()`. */
   wallClock?: () => Date;
   /**
-   * Missing P16/P18 process evidence fails the step instead of being
+   * Missing committee-view or CLI-chain process evidence fails the step instead of being
    * recorded as `not-observable`. The live devnet run sets it: its evidence
    * counts only with the real processes. Default false.
    */

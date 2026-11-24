@@ -17,7 +17,7 @@ criteria, and evidence that support those guides.
 | Protocol and SDK decisions                                   | [Protocol ADRs](midgard/decisions/)                       |
 | Fault-proof decisions                                        | [Fault-proof ADRs](fault-proofs/decisions/README.md)      |
 | Protocol decisions, margin thresholds, proof-family contract | [Protocol decisions](spec/protocol-decisions.md)          |
-| Test-quality remediation                                     | [Task index](test-quality/README.md)                      |
+| Test-writing rules                                           | [writing-tests](../.agents/skills/writing-tests/SKILL.md) |
 | Reproducible performance checks                              | [Benchmark scenarios](benchmark-scenarios/)               |
 | Agent workflow and domain guidance                           | [Agent guide](agents/README.md)                           |
 

@@ -32,7 +32,7 @@ import {
 import type { WorkflowRun } from "./workflow-run.js";
 
 /**
- * W-O5 production entry point: fetch the payload only through public retained
+ * Production entry point: fetch the payload only through public retained
  * DA, authenticate it against the L1-observed header, detect/classify locally,
  * then enter the workflow. There is intentionally no REST, database,
  * or local-file evidence option in this API.
@@ -111,7 +111,7 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
       registryScope[0] !== "canonicalDecodability"
     ) {
       throw new Error(
-        `authenticated Q17 committed-field defect requires the exact canonicalDecodability registry; found=${registryScope.join(",")}`,
+        `authenticated committed-field defect requires the exact canonicalDecodability registry; found=${registryScope.join(",")}`,
       );
     }
     const familyArtifact = normalizeWorkflowJson(
@@ -131,7 +131,7 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
   }
   if (routed.kind === "da_hash_preimage") {
     throw new Error(
-      "authenticated Q44 source-leaf defect requires the dedicated daHashPreimage workflow",
+      "authenticated da-hash-preimage source-leaf defect requires the dedicated daHashPreimage workflow",
     );
   }
   if (

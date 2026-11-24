@@ -1,7 +1,7 @@
 /**
  * Indexed reads of the intents a slot range or a recording window touches
- * (migration 0003), so S6 and the prune hook read what changed instead of
- * the whole journal. Each read returns tx hashes; the caller derives their
+ * (`intents/schema.ts`), so S6 and the prune hook read what changed instead
+ * of the whole journal. Each read returns tx hashes; the caller derives their
  * states (`deriveIntentClosureIn`).
  */
 import {
@@ -172,7 +172,10 @@ export const rollbacksExplainIn = async (
   return asNumber(rows[0]?.n) === to - from;
 };
 
-/** The generation and boundary the prune hook last ran under (migration 0004). */
+/**
+ * The generation and boundary the prune hook last ran under
+ * (`l1_intent_prune_mark`).
+ */
 export type PruneMark = Readonly<{ generation: number; boundarySlot: number }>;
 
 export const readPruneMarkIn = async (tx: SqlTx): Promise<PruneMark | null> => {

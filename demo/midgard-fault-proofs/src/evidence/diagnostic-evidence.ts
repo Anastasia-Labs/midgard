@@ -1,5 +1,5 @@
 /**
- * Labelled diagnostic evidence (`Q03`).
+ * Labelled diagnostic evidence.
  *
  * Family output 7 (`docs/spec/protocol-decisions.md#family-outputs`) permits
  * operator-private REST/DB/file inputs only as

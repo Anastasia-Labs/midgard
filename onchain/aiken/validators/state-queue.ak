@@ -136,7 +136,7 @@ pub fn commit_block_header_carries_confirmed_state_v1(
   }
 }
 
-/// Q61 append fence. An unattested head accepts descendants only through a
+/// Append fence. An unattested head accepts descendants only through a
 /// validity window ending strictly before its timeout boundary. Once attached,
 /// the exact configured DA policy marker restores appendability. An unknown
 /// non-empty marker authorizes neither branch.
@@ -206,7 +206,7 @@ pub fn authenticated_queue_head_for_append_v1(
   head_node
 }
 
-/// D4 exclusivity (2026-08-11 owner ruling 7): within
+/// Reward exclusivity (2026-08-11 owner ruling): within
 /// `RemoveFraudulentBlockHeader`, the reward is payable only by the
 /// bond-consuming arms. Every other shape of that transaction has to carry no
 /// reward-shaped payment at all: the `OperatorAlreadySlashed` arm, which a
@@ -1117,7 +1117,7 @@ pub fn validate_commit_block_header_v1(
     // node (i.e. latest block in the queue).
     when m_anchor_key is {
       Some(header_hash) -> {
-        // Q61 starvation fence. A non-empty append observes the
+        // Starvation fence. A non-empty append observes the
         // singleton root's current head. If the tail anchor is not that
         // head, a second reference authenticates the head node. Timeout
         // pruning spends/continues the same head, so an old append
@@ -1213,7 +1213,7 @@ pub fn validate_remove_unattested_v1(
       }
     = self
 
-  // Q61: the state-queue node itself serializes DA attachment and
+  // The state-queue node itself serializes DA attachment and
   // permissionless timeout correction. No operator-directory input,
   // slash redeemer, fraud proof, reward, or signature authorizes this
   // liveness path.
@@ -1482,7 +1482,7 @@ pub fn validate_remove_fraudulent_v1(
         //     operator.
         and {
           // 2c-i. No bond is consumed here, so no reward may be paid —
-          //       the D4 exclusivity half that keeps a second claim
+          //       the reward-exclusivity half that keeps a second claim
           //       against an already-forfeited bond unrewarded.
           no_output_pays_fraud_prover_reward_v1(
             outputs,
@@ -2131,7 +2131,7 @@ test q49_l295_confirmed_ordinary_control_and_independent_mutations() {
   }
 }
 
-// ## D3/D4 fraud-prover reward routing (2026-08-11 owner ruling 7)
+// ## Fraud-prover reward routing (2026-08-11 owner ruling)
 //
 // The lovelace figure below is F04 §2.2's bounded-acceptance
 // `fraud_prover_reward` (400 tADA) used purely as a **test vector**. Nothing
@@ -2168,7 +2168,7 @@ fn d3_unrelated_output() -> Output {
   }
 }
 
-/// D3 exactness: the reward reaches the fraud prover's enterprise address and
+/// Reward exactness: the reward reaches the fraud prover's enterprise address and
 /// nowhere else, at exactly the ruled amount. Over- and under-payment are
 /// refused symmetrically because the slashed node pays this output and the
 /// pinned transaction fee, so a lovelace either way is taken from the
@@ -2232,7 +2232,7 @@ test d3_reward_output_exactness_control_and_mutations() {
   }
 }
 
-/// D3 routing: exactly one output pays the prover's bounty address, and it is
+/// Reward routing: exactly one output pays the prover's bounty address, and it is
 /// the exact reward. No such output is accepted only while the expected reward
 /// is zero. Under either release profile a missing reward output is a
 /// refusal, because paying nothing is not paying `fraud_prover_reward`.
@@ -2287,14 +2287,14 @@ test d3_reward_routing_control_and_mutations() {
   }
 }
 
-/// D4 exclusivity: the arms that consume no bond may pay no reward. The second
+/// Reward exclusivity: the arms that consume no bond may pay no reward. The second
 /// row is the double-claim refusal — a repeat `RemoveFraudulentBlockHeader`
 /// against an already-forfeited bond (the only shape a duplicate fraud-proof
 /// token for the same header can take) cannot carry the payout.
 ///
 /// The third row states the guard's exact reach: only reward-*shaped*
-/// payments are refused, so any other amount passes. The guard states D4 and
-/// protects no bond; a directory spend bundled into the same transaction
+/// payments are refused, so any other amount passes. The guard states the
+/// exclusivity rule and protects no bond; a directory spend bundled into the same transaction
 /// answers to its own validator for its lovelace.
 test d4_reward_exclusivity_control_and_double_claim() {
   and {

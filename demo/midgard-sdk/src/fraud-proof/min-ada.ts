@@ -1,4 +1,4 @@
-/** Q27 `min-ada` non-interactive wire types. */
+/** `min-ada` non-interactive wire types. */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 

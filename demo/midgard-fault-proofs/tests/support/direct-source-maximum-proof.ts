@@ -38,7 +38,7 @@ export const runDirectSourceMaximumProof = async (
 ) => {
   const { material, inputs } = await directSourceBatchFixture();
   const entry = inputs.find((item) => item.source !== null)!;
-  if (entry.source === null) throw new Error("N6 maximum proof source absent");
+  if (entry.source === null) throw new Error("maximum proof source absent");
   const candidate = entry.source.descriptor;
   // Both the Aiken ledger_outref_key and the real source producer use the
   // exact encoded original outref bytes already present in source_key.
@@ -71,7 +71,7 @@ export const runDirectSourceMaximumProof = async (
   const before = proof.verify(false),
     after = proof.verify(true);
   if (before === null || after === null)
-    throw new Error("N6 maximum proof envelope invalid");
+    throw new Error("maximum proof envelope invalid");
   const proofData = Data.from(proof.toCBOR().toString("hex"), SDK.Proof);
   expect(proofData).toHaveLength(64);
   const blueprint = readBlueprint(realBlueprintPath),
@@ -153,7 +153,7 @@ export const runDirectSourceMaximumProof = async (
           await publishPlainReferenceScriptUtxo({
             lucid,
             script: role.spendingScript,
-            label: `N6 maximum ${consumer} ${kind}`,
+            label: `maximum ${consumer} ${kind}`,
           })
         ).utxo,
       );

@@ -6,7 +6,7 @@ import {
 import { isRecord } from "./da-bond-pool-process-evidence.command-mismatches.js";
 
 /**
- * Collects the pool-monitor events one node process writes to stderr (P27).
+ * Collects the pool-monitor events one node process writes to stderr.
  * The cursor belongs to one pid: each `take` gets that process's whole stderr
  * capture so far, and returns the JSON event lines whose `event` `matches`
  * (by default the pool-monitor transition events) between the byte offset it stopped

@@ -128,7 +128,7 @@ export const buildNativeScriptDecodingStep02 = async ({
    * Must be absent for direction B, where the accusation names the pair.
    */
   readonly chosenOutpoint?: NativeScriptDecodingChosenOutpoint;
-  /** Q3: the mandatory published step-02 reference script. */
+  /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo: UTxO;
 }): Promise<NativeScriptDecodingStep02Build> => {
   const { threadUtxo, threadToken } =

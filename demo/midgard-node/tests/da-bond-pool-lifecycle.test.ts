@@ -70,7 +70,7 @@ describe("pooled DA bond lifecycle on the real validators", () => {
       });
       expect(init.assets[f.poolUnit]).toBe(1n);
       expect(init.assets.lovelace).toBeGreaterThanOrEqual(floor);
-      // Inline datum only, no reference script (G1).
+      // Inline datum only, no reference script.
       expect(init.scriptRef ?? null).toBeNull();
       expect(init.datumHash ?? null).toBeNull();
       expect(

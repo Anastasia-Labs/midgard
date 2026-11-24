@@ -1,11 +1,11 @@
 /**
  * The node follower's intent stage over a
  * simulated chain on a SQLite and a Postgres follower store carrying the
- * landed state queue (P1) and the intent journal:
+ * landed state queue and the intent journal:
  *
  * - a live, wanted intent the mempool lacks gets its exact journaled bytes,
  *   at most once per tip; one in the mempool is left alone;
- * - an intent whose family predicate fails (a merge of a header P1 does not
+ * - an intent whose family predicate fails (a merge of a header the landed queue does not
  *   hold at its head) is abandoned; one whose predicate holds (an
  *   attestation of a landed header, a payout funding step over live
  *   inputs) is sent; each predicate's polarities are in
@@ -61,7 +61,7 @@ const openScenario = intentStageScenarios(databases, opened);
 describe.each(["sqlite", "postgres"] as const)(
   "the node intent stage over a %s follower store",
   (dialect) => {
-    it("resubmits the journaled bytes of live, wanted intents once per tip and abandons a header family P1 no longer holds", async () => {
+    it("resubmits the journaled bytes of live, wanted intents once per tip and abandons a header family the landed queue no longer holds", async () => {
       const s = await openScenario(dialect);
       // A payout funding step: wanted while its inputs are live facts.
       const funding = await s.record(

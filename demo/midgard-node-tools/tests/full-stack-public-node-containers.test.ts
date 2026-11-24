@@ -250,7 +250,7 @@ describe("public node containers", () => {
         }),
       );
       return JSON.stringify(
-        ["midgard-node", "midgard-node-migrate", "postgres"].map(
+        ["midgard-node", "postgres"].map(
           (service) => model.services[service]!.environment ?? {},
         ),
       );

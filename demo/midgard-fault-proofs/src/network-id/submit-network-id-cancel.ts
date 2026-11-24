@@ -1,4 +1,4 @@
-/** Explicit Q35 prover cancellation from any physical step of the family. */
+/** Explicit network-id prover cancellation from any physical step of the family. */
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import { buildLinearFaultCancel } from "../linear-fault-cancel.js";

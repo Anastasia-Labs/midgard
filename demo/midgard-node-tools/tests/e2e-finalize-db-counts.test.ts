@@ -1,6 +1,6 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
-import * as MigrationRunner from "midgard-node/database/migrations/runner";
+import * as NodeSchema from "midgard-node/database/schema";
 import {
   foldMerge,
   pruneMerges,
@@ -73,10 +73,7 @@ const counts = (variant: Variant) =>
     provideDatabaseLayers(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* MigrationRunner.migrate({
-          appVersion: "test",
-          actor: "e2e-finalize-db-counts.test",
-        });
+        yield* NodeSchema.ensure;
         yield* resetApplicationTables;
         yield* journal(ownWon, BASE, won);
         yield* land(ownLandedRow(ownWon, BASE, { applied: true }));

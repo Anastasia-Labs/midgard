@@ -49,8 +49,8 @@ export {
 export { retentionUnseenRefusalsIn } from "./retention-unseen.js";
 export {
   EVENT_TABLES,
-  eventMigrations,
   EVENTS_TABLE,
+  eventSchema,
   REFUSALS_TABLE,
   RETIREMENTS_TABLE,
 } from "./schema.js";

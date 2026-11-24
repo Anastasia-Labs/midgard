@@ -2,13 +2,13 @@ import { randomBytes } from "node:crypto";
 
 import {
   FOLLOWER_BOOKKEEPING_DDL,
-  followerMigrations,
+  followerSchema,
 } from "@al-ft/midgard-l1-follower";
 import { declaredTables } from "@al-ft/midgard-l1-follower/lint";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { committeeMigrations } from "../src/l1/follower/queue-table.js";
+import { committeeSchema } from "../src/l1/follower/queue-table.js";
 import { PostgresCommitteeStore } from "../src/store/postgres.js";
 import {
   PostgresPublicRetainedDaStore,
@@ -42,14 +42,10 @@ describe("public retained-DA reader role isolation", () => {
     await store.close();
     admin = new Client({ connectionString: database.url });
     await admin.connect();
-    // The follower's order: its bookkeeping tables, then the migrations
-    // (a later follower migration alters a bookkeeping table).
+    // The follower's order: its bookkeeping tables, then the schemas.
     await admin.query(FOLLOWER_BOOKKEEPING_DDL);
-    for (const set of [
-      followerMigrations("postgres"),
-      committeeMigrations("postgres"),
-    ])
-      for (const migration of set.migrations) await admin.query(migration.sql);
+    for (const set of [followerSchema("postgres"), committeeSchema("postgres")])
+      await admin.query(set.sql);
     await admin.query(
       `CREATE ROLE ${readerRole} LOGIN PASSWORD '${readerPassword}'`,
     );
@@ -95,8 +91,8 @@ describe("public retained-DA reader role isolation", () => {
       )
     ).rows.map((row) => row.table_name);
     const followerTables = declaredTables([
-      followerMigrations("postgres"),
-      committeeMigrations("postgres"),
+      followerSchema("postgres"),
+      committeeSchema("postgres"),
     ]).map((table) => table.table);
     expect(followerTables.length).toBeGreaterThan(0);
     expect(tables).toEqual(expect.arrayContaining(followerTables));
@@ -127,7 +123,7 @@ describe("public retained-DA reader role isolation", () => {
   }, 60_000);
 
   it("refuses to start once its role can read a follower table, and starts again when the grant is revoked", async () => {
-    const [followerTable] = declaredTables([followerMigrations("postgres")]);
+    const [followerTable] = declaredTables([followerSchema("postgres")]);
     expect(followerTable).toBeDefined();
     await admin.query(
       `GRANT SELECT ON ${followerTable!.table} TO ${readerRole}`,

@@ -5,7 +5,7 @@
  * follower's class A `l1_event_keys`, which the derivation also writes.
  */
 import type { TemporalTableSpec } from "../registry.js";
-import type { MigrationSet } from "../schema/migrate.js";
+import type { SchemaSet } from "../schema/apply.js";
 import type { DialectName } from "../sql/backend.js";
 
 export const EVENTS_TABLE = "node_l1_events";
@@ -95,7 +95,7 @@ CREATE INDEX ${REFUSALS_TABLE}_slot ON ${REFUSALS_TABLE} (slot);
 `;
 };
 
-export const eventMigrations = (dialect: DialectName): MigrationSet => ({
+export const eventSchema = (dialect: DialectName): SchemaSet => ({
   namespace: "node_l1_events",
-  migrations: [{ id: "0001_node_l1_events", sql: eventSql(dialect) }],
+  sql: eventSql(dialect),
 });

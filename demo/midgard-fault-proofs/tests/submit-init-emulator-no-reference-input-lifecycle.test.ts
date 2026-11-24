@@ -1,5 +1,5 @@
 /**
- * `no-reference-input` (Q18) emulator lifecycle, both polarities.
+ * `no-reference-input` emulator lifecycle, both polarities.
  *
  * Three journeys against the real Aiken validators, driven by the production
  * submitters:

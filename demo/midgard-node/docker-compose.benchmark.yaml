@@ -27,15 +27,6 @@ services:
       MIDGARD_NODE_URL: "http://127.0.0.1:3000"
       STRESS_SUBMIT_ENDPOINT: "http://127.0.0.1:3000"
 
-  midgard-node-migrate:
-    env_file:
-      - .env
-      - path: .env.benchmark
-        required: false
-    environment:
-      MIDGARD_NODE_URL: "http://127.0.0.1:3000"
-      STRESS_SUBMIT_ENDPOINT: "http://127.0.0.1:3000"
-
   postgres:
     cpus: "4.0"
     cpuset: "16-23"

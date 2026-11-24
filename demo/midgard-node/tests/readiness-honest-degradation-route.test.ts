@@ -411,7 +411,7 @@ describe("GET /readyz names the L1 follower's reasons", () => {
       "l1_events_hook_failed",
       FORCED_ORDER_CARRIAGE_PENDING,
       FORCED_ORDER_INGESTION_FAILED,
-      // The landed state queue (P1) is unhealthy; reads keep serving.
+      // The landed state queue is unhealthy; reads keep serving.
       STATE_QUEUE_UNHEALTHY,
     ])
       await holds(

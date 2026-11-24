@@ -3,7 +3,7 @@
  * withdrawal row content the node's L2 side reads, derived from a
  * projected event's immutable bytes and its location. Pure: no database,
  * no clock. The follower-change driver writes the node's event rows from
- * it (E-N1-2 ruling 1).
+ * it.
  */
 import {
   decodeMidgardTxOutput,
@@ -111,7 +111,7 @@ const depositEntry = (
     idCbor: event.idCbor,
     infoCbor,
     inclusionTimeMs: inclusionMs(event),
-    // Ruling 2: a deposit's L1 tx hash is its admission tx, never the moving
+    // A deposit's L1 tx hash is its admission tx, never the moving
     // location of its list node.
     l1TxHash: event.admission.outRef.txHash.toString("hex"),
     ledgerTxId: computeHash32(Buffer.from(event.idCbor, "hex")).toString("hex"),

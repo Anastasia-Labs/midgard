@@ -247,7 +247,7 @@ export const openLocalHistoryEventStage =
         // Proof builders select an enterprise prover wallet on this Lucid instance.
         lucid.selectWallet.fromSeed(ownerSeedPhrase);
         const actor = await actorForCommit();
-        // The commit's short validity range fixes the header end time (Q60),
+        // The commit's short validity range fixes the header end time,
         // so the chain clock must first reach the block's closing minute.
         await awaitTime(Number(block.header.endTime) - 59_999);
         const queue = await Effect.runPromise(

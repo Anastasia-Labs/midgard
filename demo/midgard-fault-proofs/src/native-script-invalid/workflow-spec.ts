@@ -1,6 +1,6 @@
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 
-/** Exact authenticated L1 cursor topology for Q34's direct/staged routes. */
+/** Exact authenticated L1 cursor topology for the direct/staged routes. */
 export const NATIVE_SCRIPT_INVALID_CURSOR_SPEC = Object.freeze({
   category: "nativeScriptInvalid",
   stepCount: 5,

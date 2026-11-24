@@ -98,7 +98,7 @@ describe.each(["sqlite", "postgres"] as const)(
   (dialect) => {
     const open = storeOpener(dialect, databases);
 
-    it("runs first, publishes P1 at each applied view and holds readiness exactly while the queue is unhealthy", async () => {
+    it("runs first, publishes the landed queue at each applied view and holds readiness exactly while the queue is unhealthy", async () => {
       expect(DRIVER_HOOK_ORDER[0]).toBe("landedStateQueue");
       const store = await open(
         [

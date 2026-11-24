@@ -48,7 +48,7 @@ type AvailabilityParameters = typeof TEST_AVAILABILITY_PARAMETERS;
 /**
  * The largest exact fee a DA availability builder sets is the timeout's:
  * `min(penalty, taken) + c <= da_slash_penalty + max_timeout_fee`. The ledger
- * holds `collateralPercentage` of it as collateral (G9, H1).
+ * holds `collateralPercentage` of it as collateral.
  */
 export const availabilityRequiredCollateralLovelace = (
   parameters: AvailabilityParameters,
@@ -74,7 +74,7 @@ export const AVAILABILITY_COLLATERAL_COIN_LOVELACE =
   availabilityCollateralCoinLovelace(TEST_AVAILABILITY_PARAMETERS);
 
 /**
- * P3: queue nodes carry at least this much, so an Apply or Open output that
+ * The node lovelace floor: queue nodes carry at least this much, so an Apply or Open output that
  * grows the node datum stays above min-UTxO.
  */
 export const AVAILABILITY_QUEUE_NODE_LOVELACE = 5_000_000n;
@@ -178,7 +178,7 @@ export const sameOutRef = (a: UTxO, b: UTxO) =>
   a.txHash === b.txHash && a.outputIndex === b.outputIndex;
 
 // ---------------------------------------------------------------------------
-// Evaluation capture (H9). The fixture's Lucid evaluates with Scalus through
+// Evaluation capture. The fixture's Lucid evaluates with Scalus through
 // this wrapper, which keeps the transaction and resolved inputs of the last
 // failed evaluation so a refusal can be attributed to one redeemer and script.
 // ---------------------------------------------------------------------------

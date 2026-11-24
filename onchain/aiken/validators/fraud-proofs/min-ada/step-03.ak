@@ -1,4 +1,4 @@
-//// Q27 min-Ada predicate step: scan the opened output to its descriptor, then
+//// min-Ada predicate step: scan the opened output to its descriptor, then
 //// apply the exact compiled predicate in the claimed direction.
 
 use aiken/crypto.{ScriptHash}

@@ -15,10 +15,7 @@ import { readJsonIfPresent } from "./journal.js";
 import { exportLocalCardanoConfig } from "./native-ledger.js";
 import { originStep, restoreL1Origin } from "./origin.js";
 import { stackManifestPath, StackProcesses } from "./process.js";
-import {
-  assertHostDatabaseIsStackDatabase,
-  assertPreservedStorage,
-} from "./storage.js";
+import { assertPreservedStorage } from "./storage.js";
 import { deriveStackWallets } from "./wallets.js";
 import type { StackStep } from "./workflow.js";
 
@@ -289,17 +286,14 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
         );
         return { status: "complete", data: { initHash: recovery.initHash } };
       },
-      execute: async () => {
-        await assertHostDatabaseIsStackDatabase(processes);
-        await processes.node("migrate", ["db:migrate"]);
-        return processes.node("initialize-submit", [
+      execute: () =>
+        processes.node("initialize-submit", [
           "--l1",
           "node",
           "init",
           "--contract-deployment-info-output",
           paths.manifest,
-        ]);
-      },
+        ]),
     },
   ];
 }

@@ -1,15 +1,15 @@
 /**
- * The node's landed state queue (P1) in the fork simulator: honest
+ * The node's landed state queue in the fork simulator: honest
  * state-queue traffic, orphans with valid datums, third-party payments to
- * the queue address, and a check that compares P1 at the tip after every
+ * the queue address, and a check that compares the node's read at the tip after every
  * chain-sync event with an independent model replayed from the canonical
  * blocks alone.
  *
  * - The model (`state-queue-sim.model.ts`) decodes the queue outputs itself
- *   and walks them: it shares nothing with P1's decode or walk. The
+ *   and walks them: it shares nothing with the node's decode or walk. The
  *   fixtures are `state-queue-sim.fixtures.ts`.
- * - P1 keeps no tables, so the model being a replay of the canonical chain
- *   is the "equals a fresh replay" check; the runner checks the facts P1
+ * - The read keeps no tables, so the model being a replay of the canonical chain
+ *   is the "equals a fresh replay" check; the runner checks the facts it
  *   reads against a fresh replay itself.
  */
 import {
@@ -65,11 +65,11 @@ export type StateQueueSimStats = {
   tailRemovals: number;
   orphans: number;
   thirdPartyPayments: number;
-  /** Checks where an orphan with a valid datum made P1 unhealthy (orphan_node). */
+  /** Checks where an orphan with a valid datum made the queue unhealthy (orphan_node). */
   orphanUnhealthy: number;
   /** Rollbacks after which an unhealthy queue is healthy again. */
   healedByRollback: number;
-  /** Rollbacks that removed the tail, after which P1 is healthy at the earlier tail. */
+  /** Rollbacks that removed the tail, after which the queue is healthy at the earlier tail. */
   tailRemovedHealthy: number;
   /** Healthy checks with third-party outputs at the address, none in the queue. */
   thirdPartyIgnored: number;
@@ -252,7 +252,7 @@ const firstDifference = (projected: unknown, model: unknown): string | null => {
   const right = JSON.stringify(model);
   return left === right
     ? null
-    : `P1 ${left.slice(0, 600)} vs model ${right.slice(0, 600)}`;
+    : `queue ${left.slice(0, 600)} vs model ${right.slice(0, 600)}`;
 };
 
 const summary = (queue: LandedStateQueue) => ({
@@ -263,7 +263,7 @@ const summary = (queue: LandedStateQueue) => ({
 });
 
 /**
- * P1 with traffic and the model check. One per scenario run: the stats
+ * The landed queue with traffic and the model check. One per scenario run: the stats
  * accumulate across runs.
  */
 export const stateQueueSimProjection = (
@@ -289,10 +289,10 @@ export const stateQueueSimProjection = (
     const read = await readLandedStateQueueFrom(store, SIM_QUEUE_CONFIG);
     const model = modelQueue(canonical);
     if (read.kind === "not_initialized" && canonical.length === 0) return null;
-    if (read.kind !== "ok") return `P1 read refused: ${read.kind}`;
+    if (read.kind !== "ok") return `queue read refused: ${read.kind}`;
     const tip = canonical.at(-1)?.point.slot ?? SIM_ORIGIN.point.slot;
     if (read.queue.view.point.slot !== tip)
-      return `P1 read at slot ${read.queue.view.point.slot.toString()}, tip ${tip.toString()}`;
+      return `queue read at slot ${read.queue.view.point.slot.toString()}, tip ${tip.toString()}`;
     const difference = firstDifference(summary(read.queue), {
       healthy: model.healthy,
       reason: model.healthy || model.policyOutputs === 0 ? null : model.reason,
@@ -300,7 +300,7 @@ export const stateQueueSimProjection = (
       policyOutputs: model.policyOutputs,
     });
     if (difference !== null) return difference;
-    // Case counters (P1 agreed with the model, so these describe P1).
+    // Case counters (the read agreed with the model, so these describe it).
     if (
       ((await store.cursor())?.prunedThroughSlot ?? SIM_ORIGIN.point.slot) >
       SIM_ORIGIN.point.slot

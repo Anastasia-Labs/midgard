@@ -297,7 +297,7 @@ names `MIDGARD_DEPLOYMENT_PROFILE=preprod-public` and its stack configuration ha
 a `public` section. The operator steps are in the docs-site page
 `operators/node/preprod-public-deploy`. The stack:
 
-- runs the release's digest-pinned node, migration and Postgres images, as the
+- runs the release's digest-pinned node and Postgres images, as the
   host user that owns the private files;
 - writes the node's secrets and DA identity to a private generated
   `MIDGARD_CONFIG_FILE` in its run directory, keeps them out of the container

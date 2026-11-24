@@ -190,7 +190,7 @@ try {
       "tests/nested-data-boundary.test.ts": 1,
       "tests/nested-redeemer-data-boundary.test.ts": 1,
       "tests/retained-da-boundary.test.ts": 1,
-      // C23/C24/C25 closure: three inline-datum breadth maxima, the genuine
+      // Three inline-datum breadth maxima, the genuine
       // redeemer projection, and one complete-Data carriage-fit case per kind.
       "tests/data-breadth-boundary.test.ts": 7,
     },

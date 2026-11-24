@@ -1,8 +1,8 @@
 /**
- * `Q13` — `input-no-idx` (`nonExistentInputNoIndex`) off-chain surface.
+ * `input-no-idx` (`nonExistentInputNoIndex`) off-chain surface.
  *
  * Covers family outputs 6-8 (`docs/spec/protocol-decisions.md#family-outputs`): a canonical evidence definition,
- * evidence built from retained public data through the Q03 evidence-source
+ * evidence built from retained public data through the evidence-source
  * API, resumable prepare tooling, a valid-block negative, and a complete-item
  * proof-fit measurement.
  */

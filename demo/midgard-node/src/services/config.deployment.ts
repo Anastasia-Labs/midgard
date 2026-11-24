@@ -23,8 +23,8 @@ import { positiveSafeIntegerConfig, stringConfig } from "./config.parse.js";
  * Encoding only — deliberately not policy. `DA_COMMITTEE_HEX`, `DA_OWNERS_HEX`
  * and `DA_THRESHOLD` are read by exactly one consumer,
  * `deriveOperatorDaParams`, and every other subsystem that loads `NodeConfig`
- * ignores them. Enforcing the Q63 governed floors here would let a stale
- * deployment value (say the pre-Q63 `DA_THRESHOLD=1` still sitting in a
+ * ignores them. Enforcing the governed floors here would let a stale
+ * deployment value (say a `DA_THRESHOLD=1` still sitting in a
  * checkout's `.env`) fail config load for the whole process, surfacing as an
  * opaque error inside subsystems that never touch DA. The floors are instead
  * enforced in `deriveOperatorDaParams`, at the one point where a

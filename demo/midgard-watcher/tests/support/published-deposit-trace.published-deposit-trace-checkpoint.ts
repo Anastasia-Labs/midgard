@@ -63,7 +63,7 @@ export const SUCCESSOR_HEADER_INTERVAL_MS = 179_999;
 /**
  * Longest interval the empty predecessor may close after; it is shortened to
  * end before the staged deposit becomes eligible. Its commit's validity range
- * ends at this interval (Q60), so a longer interval survives more block gaps.
+ * ends at this interval, so a longer interval survives more block gaps.
  */
 export const EMPTY_PREDECESSOR_INTERVAL_MS = 79_999;
 

@@ -4,7 +4,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { MigrationRunner, TxAdmissionsDB } from "../src/database/index.js";
+import { NodeSchema, TxAdmissionsDB } from "../src/database/index.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 describe("durable admission monotone timestamps", () => {
@@ -13,10 +13,7 @@ describe("durable admission monotone timestamps", () => {
       provideDatabaseLayers(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
-          yield* MigrationRunner.migrate({
-            appVersion: "tx-admissions-monotone-timestamps-test",
-            actor: "tx-admissions-monotone-timestamps-test",
-          });
+          yield* NodeSchema.ensure;
           yield* resetApplicationTables;
 
           const txCanonicalCbor = Buffer.from("phase1-monotone-timestamp");

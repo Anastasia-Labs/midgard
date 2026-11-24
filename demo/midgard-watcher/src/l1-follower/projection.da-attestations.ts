@@ -25,7 +25,7 @@ export const DA_ATTESTATIONS_TEMPORAL_TABLE: TemporalTableSpec = {
  * header can still be challenged: a header's rows close when its node leaves
  * the queue, as its unit history does.
  */
-export const daAttestationsMigrationSql = (dialect: DialectName): string => {
+export const daAttestationsSchemaSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
   const int8 = dialect === "postgres" ? "bigint" : "INTEGER";
   return `

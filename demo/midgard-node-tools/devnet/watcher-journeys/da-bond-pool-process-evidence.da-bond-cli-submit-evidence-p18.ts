@@ -18,7 +18,7 @@ import {
   withdrawEvidence,
 } from "./da-bond-pool-process-evidence.withdraw-evidence.js";
 
-describe("da-bond CLI submit evidence (P18)", () => {
+describe("da-bond CLI submit evidence", () => {
   it("accepts an honest top-up chain and names every check", () => {
     const checks = checkDaBondCliSubmitEvidence({
       expectation: TOP_UP,

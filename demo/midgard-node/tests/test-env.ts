@@ -106,7 +106,7 @@ export const TEST_ENV_DEFAULTS: Readonly<Record<string, string>> = {
  *
  * The shard name is assigned, not defaulted: an ambient `POSTGRES_DB` names the
  * node's own database (CI sets `POSTGRES_DB=midgard` job-wide for the
- * `db:migrate` and acceptance steps that surround the suite), and honouring it
+ * acceptance steps that surround the suite), and honouring it
  * here would put every worker of a parallel run on one database. The refusal
  * below still fires on that ambient value, so an operator who deliberately
  * points the suite at the protected `midgard` database gets the same loud

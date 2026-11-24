@@ -23,7 +23,7 @@ import type { Header } from "../src/ledger-state.js";
 const h28 = "11".repeat(28);
 const h32 = "22".repeat(32);
 
-describe("Q35 network-id wire codec", () => {
+describe("network-id wire codec", () => {
   it("pins all claim constructor indices", () => {
     expect(Data.to("TransactionNetwork" as never, NetworkIdFaultSchema)).toBe(
       "d87980",
@@ -119,7 +119,7 @@ const FORCED_STEP_02_DATUM_CBOR =
  * family types. Nothing here compares one TypeScript derivation against
  * another: if either language's encoding moves, both sides go red.
  */
-describe("Q35 network-id forced-door wire twins", () => {
+describe("network-id forced-door wire twins", () => {
   const fraudProver = "11".repeat(28);
   const operatorVkey = "99".repeat(28);
   const badTxId = "22".repeat(32);
@@ -251,7 +251,7 @@ describe("Q35 network-id forced-door wire twins", () => {
  * reordered `State` would silently reinterpret a live thread's checkpoint, and
  * a reordered `ActionV1` would turn an `Advance` into a `FinishGrammar`.
  */
-describe("Q35 network-id forced-scan wire twins", () => {
+describe("network-id forced-scan wire twins", () => {
   const fraudProver = "11".repeat(28);
   const badTxId = "22".repeat(32);
   const orderKeyTransactionId = "77".repeat(32);

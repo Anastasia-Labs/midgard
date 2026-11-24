@@ -162,7 +162,7 @@ export const mintDeltaToScriptMintValue = (
 // _proof publication output_ on L1 and is not this consensus quantity; do not
 // read the two as the same computation (decision 0003, Q27).
 //
-// D-S4 (#618): both copies are hand-written, so a change to the slope, the
+// Both copies (#618) are hand-written, so a change to the slope, the
 // intercept, or the comparison on either side must be mirrored by hand.
 export const MIN_ADA_OUTPUT_OVERHEAD_BYTES = 160n;
 

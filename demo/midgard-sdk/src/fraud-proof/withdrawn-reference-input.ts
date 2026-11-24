@@ -1,9 +1,9 @@
 /**
- * `withdrawn-reference-input` family (Q19) — off-chain schema twins.
+ * `withdrawn-reference-input` family — off-chain schema twins.
  *
  * Proves a committed transaction references an input that the same block's
- * counted withdrawals root commits a **valid** L2 withdrawal for (spec
- * §5.1.16, reference side). Three steps: native-tx binding, §8.8 field-1
+ * counted withdrawals root commits a **valid** L2 withdrawal for (the
+ * spec's WITHDRAWN-REFERENCE-INPUT violation). Three steps: native-tx binding, §8.8 field-1
  * opening, then a counted-root withdrawal membership check against the
  * header's own `withdrawals_root`.
  *

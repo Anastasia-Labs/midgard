@@ -95,7 +95,7 @@ describe("DA attestation configuration", () => {
   });
 
   // Q63 (F04 §4): with no explicit DA_THRESHOLD the bootstrap must land on the
-  // governed floor, never on the pre-Q63 default of one.
+  // governed floor, never on a default of one.
   it("defaults both thresholds to the governed floor", async () => {
     const committee =
       "01".repeat(32) + "02".repeat(32) + "03".repeat(32) + "04".repeat(32);
@@ -143,11 +143,10 @@ describe("DA attestation configuration", () => {
     ).toEqual([]);
   });
 
-  // Rider 3 of the 2026-08-11 owner ruling 4: "bootstrap warns instead of
-  // rejecting". Both of the next two cases were `fails closed` assertions
-  // before the F04 §4 amendment. They are the bootstrap half of the lift on the
-  // committee side; the owner-set case below is its counterpart under the
-  // 2026-08-13 ruling, and warns rather than refusing for the same reason.
+  // The 2026-08-11 owner ruling: "bootstrap warns instead of rejecting". The
+  // next two cases are the committee side; the owner-set case below is its
+  // counterpart under the 2026-08-13 ruling, and warns rather than refusing
+  // for the same reason.
   it("warns instead of rejecting when the configured committee has a single member", async () => {
     const { params, warnings } = await daParamsWithLogs({
       ...BASE,
@@ -174,10 +173,9 @@ describe("DA attestation configuration", () => {
     expect(warnings[0]).toMatch(/DA_COSIGNER_SEED_PHRASE/);
   });
 
-  // Rider 3's owner-side half, under the 2026-08-13 in-session owner ruling
-  // recorded on #602: the governor's owner-set minimum dropped to one, so this
-  // was a `fails closed` assertion twice over — first for the committee, then
-  // for the owner set — and is now a warning on both.
+  // Under the 2026-08-13 owner ruling recorded on #602 the governor's owner-set
+  // minimum is one, so a single-member owner set, like a single-member
+  // committee, is a warning, not a refusal.
   it("warns instead of rejecting when the configured owner set has a single member", async () => {
     const { params, warnings } = await daParamsWithLogs({
       ...BASE,
@@ -285,10 +283,10 @@ describe("DA attestation configuration", () => {
   });
 
   // Regression: the governed floors belong to initialization, not to config
-  // load. A pre-Q63 `DA_THRESHOLD=1` left in a checkout's `.env` must not be
+  // load. A stale `DA_THRESHOLD=1` left in a checkout's `.env` must not be
   // able to fail `NodeConfig` for subsystems that never touch DA — but it must
   // still be refused here, where the datum would be written.
-  it("still refuses a pre-Q63 threshold of one over a well-formed committee", async () => {
+  it("still refuses a threshold of one over a well-formed committee", async () => {
     const failure = await daParamsFailure({
       ...BASE,
       DA_COMMITTEE_HEX: "01".repeat(32) + "02".repeat(32),

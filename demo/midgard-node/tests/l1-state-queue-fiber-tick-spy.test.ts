@@ -1,9 +1,9 @@
 /**
  * Zero L1 reads in the planner fibers' state-queue reads. Each
- * fiber tick's read of the queue runs against a seeded landed queue (P1)
+ * fiber tick's read of the queue runs against a seeded landed queue
  * with a Lucid client whose provider records every call, and with `fetch`
  * (Kupo, Ogmios HTTP) and `WebSocket` (Ogmios) recording every use. The
- * reads must answer from P1 alone: any provider, Kupo or Ogmios touch fails
+ * reads must answer from the landed queue alone: any provider, Kupo or Ogmios touch fails
  * the test, naming the call.
  *
  * Covered ticks: block commitment (the preflight snapshot, the tail, the
@@ -206,7 +206,7 @@ const run = <A, E>(
   );
 
 describe("the planner fibers' state-queue reads", () => {
-  it("answer every tick's queue read from P1 with no Lucid provider, Kupo or Ogmios call", async () => {
+  it("answer every tick's queue read from the landed queue with no Lucid provider, Kupo or Ogmios call", async () => {
     await run(
       Effect.gen(function* () {
         const headerHash = yield* seedQueue();

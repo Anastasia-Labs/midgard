@@ -57,7 +57,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
   effect: Effect.gen(function* () {
     const now = Date.now();
 
-    // Blocks in the landed state queue (P1), as last read.
+    // Blocks in the landed state queue, as last read.
     const BLOCKS_IN_QUEUE = yield* Ref.make<number>(0);
 
     // The latest merge this process submitted whose landing it still awaits,
@@ -77,6 +77,9 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const OPERATOR_SET = yield* Ref.make<PublishedOperatorSet | undefined>(
       undefined,
     );
+    // Completed by the first published removal; the node then shuts down
+    // (`untilOperatorRemoved`).
+    const OPERATOR_REMOVED = yield* Deferred.make<void>();
 
     // Prevents overlapping commitment workers (periodic + manual trigger).
     const COMMIT_WORKER_ACTIVE = yield* Ref.make<boolean>(false);
@@ -286,6 +289,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       MERGE_AWAITING_LANDING,
       OPERATOR_MEMBERSHIP,
       OPERATOR_SET,
+      OPERATOR_REMOVED,
       COMMIT_WORKER_ACTIVE,
       COMMIT_DA_FRAME_PRESSURE,
       COMMIT_PLANNING,

@@ -1,4 +1,4 @@
-/** Authenticated retained-DA preparation for Q27 MIN-ADA-TX. */
+/** Authenticated retained-DA preparation for MIN-ADA-TX. */
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import { type MinAdaFault } from "@al-ft/midgard-sdk/fraud-proof";
 import {

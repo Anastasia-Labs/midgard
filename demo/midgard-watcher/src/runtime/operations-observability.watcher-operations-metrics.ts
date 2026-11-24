@@ -43,7 +43,7 @@ export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
 /**
  * Alerts that tell the operator about the deployment or the chain, not about
  * this watcher's health. They are listed in `activeAlerts` but never make the
- * watcher `not_ready` (spec #685 E5): a short or withdrawing DA bond pool
+ * watcher `not_ready` (spec #685): a short or withdrawing DA bond pool
  * pauses attestations, while the watcher keeps verifying and challenging. An
  * L1 rollback is routine before finality and the watcher replays through it.
  * A stuck script re-execution already holds its objective by name, and keeps
@@ -249,7 +249,7 @@ export type WatcherOperationsStatus = Readonly<{
   daBondPool: WatcherOperationsDaBondPool | null;
   /**
    * The latest failed pool read, or `null` once a read succeeds. Reported
-   * only: it never adds a readiness reason (spec #685 E5), and `daBondPool`
+   * only: it never adds a readiness reason (spec #685), and `daBondPool`
    * keeps the last good readout, whose `observedAtMs` shows its age.
    */
   daBondPoolReadFailure: WatcherOperationsDaBondPoolReadFailure | null;

@@ -72,7 +72,7 @@ export class DaHashPreimageRejection extends Error {
   }
 }
 
-/** One committed `transactions_root` leaf, classified by the Q44 rule. */
+/** One committed `transactions_root` leaf, classified by the da-hash-preimage rule. */
 export type CommittedTransactionsLeaf = {
   readonly index: number;
   readonly committedTxId: string;

@@ -398,7 +398,7 @@ fn verify_midgard_transaction_field_preimage_against_source_v1(
 /// 0 spend inputs, 1 reference inputs, 2 outputs, 3 observers, 4 signers,
 /// 5 mint, 6 script witnesses, 7 address witnesses, 8 redeemers.
 ///
-/// **Not a field-access idiom** (AC2). This takes a whole revealed preimage
+/// **Not a field-access idiom.** This takes a whole revealed preimage
 /// and answers yes/no about it; it hands out no view and no item, and it never
 /// accepts a free-standing field hash — the expected hashes come from the
 /// tx-id-verified compact structures, satisfying §4. It has no production

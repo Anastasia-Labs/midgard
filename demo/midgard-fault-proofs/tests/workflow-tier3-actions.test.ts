@@ -51,7 +51,7 @@ vi.mock("../src/submit-init.js", async (importOriginal) => ({
   buildInit: vi.fn(),
 }));
 
-describe("Q38 tier-3 workflow action chains", () => {
+describe("tier-3 workflow action chains", () => {
   it("doubleSpend heals publications and certification by content before the proof step", async () => {
     const spendInputs = Array.from({ length: 440 }, (_, index) =>
       outRefCbor((index % 200) + 1, BigInt(Math.floor(index / 200))),

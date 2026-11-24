@@ -82,7 +82,6 @@ pnpm --dir "$transport_root" run native:build
 transport_binary=$(node "$follower_inputs" install-transport "$MIDGARD_PHASE4_RUN_DIR" "$transport_root/dist/native/midgard-l1-node-transport")
 host_config=$(node "$follower_inputs" host-config "$MIDGARD_PHASE4_RUN_DIR")
 cardano_socket=$(node "$follower_inputs" socket-path "$MIDGARD_PHASE4_RUN_DIR")
-node dist/index.js db:migrate
 nonce_output="$MIDGARD_PHASE4_RUN_DIR/work/hub-oracle-nonce.json"
 # The nonce command reads the deployment's L1 origin from the run's own node
 # before it signs, so it gets the local node settings; node.env gets them only

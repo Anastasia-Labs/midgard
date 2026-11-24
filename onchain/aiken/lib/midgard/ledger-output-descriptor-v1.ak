@@ -135,9 +135,8 @@ fn reference_script_facts(
 
 /// Builds the compact ledger MPF value of one canonical output.
 ///
-/// Spec §5.2/§5.3 and §5.5.3 make `LedgerOutputCommitmentV1` the *only* value
-/// that ever enters `utxos_root`; §5.5.3 says so exclusively ("recomputed with
-/// that descriptor as the MPT value, not with the full output bytes"). Every
+/// `LedgerOutputCommitmentV1` is the *only* value that ever enters
+/// `utxos_root`, never the full output bytes. Every
 /// producer commits descriptors — the node, the validation machine, the
 /// watcher's replay and the DA reconstruction — so any on-chain rule that
 /// re-derives a ledger root has to insert this, not `encode_midgard_tx_output`.

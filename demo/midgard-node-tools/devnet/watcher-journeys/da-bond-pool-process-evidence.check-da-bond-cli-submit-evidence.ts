@@ -14,7 +14,7 @@ import {
 } from "./da-bond-pool-process-evidence.command-mismatches.js";
 
 /**
- * Judges one CLI chain (P18). Every check is returned, passing or not, so the
+ * Judges one CLI chain. Every check is returned, passing or not, so the
  * journey ledger records each piece of evidence.
  */
 export const checkDaBondCliSubmitEvidence = (input: {

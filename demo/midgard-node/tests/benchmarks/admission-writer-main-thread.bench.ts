@@ -43,7 +43,7 @@ import {
   type CheckedTransactionsAdmitter,
   makeCheckedTransactionsAdmitter,
 } from "../../src/commands/http/checked-transaction-admission.js";
-import { MigrationRunner, TxAdmissionsDB } from "../../src/database/index.js";
+import { NodeSchema, TxAdmissionsDB } from "../../src/database/index.js";
 import { makeAdmissionWriterWithOptions } from "../../src/services/admission-writer.make-admission-writer-with-options.js";
 import {
   AdmissionWriter,
@@ -183,10 +183,7 @@ describe("admission writer main-thread cost", () => {
     const row = await Effect.runPromise(
       provideDatabaseLayers(
         Effect.gen(function* () {
-          yield* MigrationRunner.migrate({
-            appVersion: "admission-writer-bench",
-            actor: "admission-writer-bench",
-          });
+          yield* NodeSchema.ensure;
           yield* resetApplicationTables;
           const admissionSql = yield* AdmissionSql;
           const writer = yield* makeAdmissionWriterWithOptions(

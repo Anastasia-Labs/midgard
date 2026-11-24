@@ -49,33 +49,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      midgard-node-migrate:
-        condition: service_completed_successfully
     logging: *default-logging
-    restart: always
+    # Exit code 0 is a deliberate stop (an operator removed from the active
+    # set); only a failure restarts the node.
+    restart: on-failure
     networks:
       midgard_net:
 
-  midgard-node-migrate:
-    build:
-      context: ..
-      additional_contexts:
-        - onchain=../../onchain/aiken
-      dockerfile: midgard-node/Dockerfile
-    env_file:
-      - .env
-    command:
-      - node
-      - ./dist/index.js
-      - db:migrate
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-    logging: *default-logging
-    networks:
-      midgard_net:
-  
   postgres:
     image: postgres:15.15-alpine
     restart: always

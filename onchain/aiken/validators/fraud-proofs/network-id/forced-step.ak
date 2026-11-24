@@ -1,4 +1,4 @@
-//// Q35 network-id forced source binding.  Kept physically separate so the
+//// network-id forced source binding.  Kept physically separate so the
 //// transaction first step and this authenticated forced-leaf door both
 //// retain signed reference-publication margin.
 ////

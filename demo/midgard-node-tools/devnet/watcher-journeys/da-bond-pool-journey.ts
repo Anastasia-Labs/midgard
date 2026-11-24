@@ -28,7 +28,7 @@
  * The ledger is ordered by run order; the report is ordered by the spec's six
  * steps.
  *
- * Process-level evidence (program rulings P16, P18 and P27): the committee's
+ * Process-level evidence: the committee's
  * pool readiness reasons and transition events must come from a real
  * `da-committee-node` process (the pool reasons of its `/readyz` body, and
  * the pool transition lines of its stderr written by the pid that was read)

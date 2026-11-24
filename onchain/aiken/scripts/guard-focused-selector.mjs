@@ -4,8 +4,8 @@
 //
 // A bare `aiken check -m <selector>` whose selector matches no module and no
 // test prints an empty report and exits 0. Every gate that cites such a command
-// therefore reports success while executing nothing, which is how issue #519's
-// finding V-1 turned Q44's two 17-test selectors into a green gate that ran
+// therefore reports success while executing nothing, which is how issue #519
+// found da-hash-preimage's two 17-test selectors to be a green gate that ran
 // zero tests. This wrapper turns "0 tests collected" — and any nonzero aiken
 // status, unparseable report, or failing test — into a nonzero exit whose
 // diagnostic names the exact selector that collected nothing.

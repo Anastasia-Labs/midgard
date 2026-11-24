@@ -92,7 +92,7 @@ export type WatcherFollowerRuntime = Readonly<{
   transport: L1NodeTransport;
   rawReads: FollowerRawReads;
   provider: L1FollowerProvider;
-  /** The pins that hold open proof objectives' history past k (E1 ruling). */
+  /** The pins that hold open proof objectives' history past k. */
   proofRetention: WatcherProofRetention;
   /** The latest follow status; null before the loop's first status. */
   status(): FollowStatus | null;
@@ -279,7 +279,7 @@ export const openWatcherFollowerRuntime = (
     fraudProofSpend: input.deployment.fraudProofSpend,
   });
   // Resolves recorded txs' inputs at ingest, while the node still serves
-  // the predecessor's ledger state (E1 ruling, facet 2).
+  // the predecessor's ledger state.
   const txInputs = createTxInputsResolver({
     store,
     ledger: ledgerOutputsQueryFromTransport(transport),

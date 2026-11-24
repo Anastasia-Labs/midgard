@@ -1,5 +1,5 @@
 /**
- * `withdrawal-mistag` standalone proof family (D-S8/Q41).
+ * `withdrawal-mistag` standalone proof family.
  *
  * Production catalogue category `withdrawalMistag` (`00000014`). The schemas
  * mirror `onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-0*.ak`.

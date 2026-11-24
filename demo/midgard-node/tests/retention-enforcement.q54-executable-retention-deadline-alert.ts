@@ -36,7 +36,7 @@ beforeAll(async () => {
   deploymentManifest = await makeFinalizedDeploymentManifestFixture();
 }, 120_000);
 
-describe("Q54 executable retention deadline alert", () => {
+describe("executable retention deadline alert", () => {
   const headerHash = "ab".repeat(28);
   const blockTimeMs = NOW.getTime() - REQUIRED_RETENTION_MS / 2;
 

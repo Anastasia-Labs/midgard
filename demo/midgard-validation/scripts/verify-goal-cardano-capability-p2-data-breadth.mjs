@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// C23/C24/C25 closure: three inline-datum breadth maxima, one genuine
+// Three inline-datum breadth maxima, one genuine
 // redeemer projection, and one complete-Data carriage-fit case per kind that
 // measures direct and reference carriage before any bounded fallback.
 const EXPECTED_TEST_COUNT = 7;

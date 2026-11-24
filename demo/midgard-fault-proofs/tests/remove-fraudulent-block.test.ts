@@ -144,7 +144,7 @@ const boundedEconomics = {
   proverCollateralFloorLovelace: 5_000_000n,
 } as const;
 
-describe("Q53 exact fraud-slash economics", () => {
+describe("exact fraud-slash economics", () => {
   it("disables wallet coin selection only for exact bond-backed slash branches", () => {
     expect(fraudRemovalUsesWalletCoinSelection("SlashActiveOperator")).toBe(
       false,

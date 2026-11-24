@@ -39,6 +39,9 @@ afterAll(() =>
   ),
 );
 
+/** The node service exited by itself with this code; `/readyz` refuses. */
+type Exited = Readonly<{ exited: number }>;
+
 /**
  * Operator-2's node as a scripted Compose service: `stop` and `start` flip
  * it, and every read answers from the script for its current state.
@@ -51,13 +54,15 @@ const scriptedNode = ({
   stopLeaves?: "nothing" | "service" | "listener";
   /**
    * `/readyz` answers after `start`, in order; the last one repeats. An
-   * error is a read that fails other than by a refused connection.
+   * error is a read that fails other than by a refused connection; an
+   * `Exited` is the service's own exit.
    */
-  catchUp?: readonly (OperatorNodeReadiness | Error)[];
+  catchUp?: readonly (OperatorNodeReadiness | Error | Exited)[];
 }) => {
   const calls: string[] = [];
   let state: "running" | "stopped" = "running";
   let answered = 0;
+  let exitCode: number | undefined;
   const control: OperatorNodeControl = {
     name: "drill-op2/midgard-node",
     stop: () => {
@@ -85,10 +90,15 @@ const scriptedNode = ({
         );
       const answer = catchUp[Math.min(answered, catchUp.length - 1)] ?? ready();
       answered += 1;
+      if ("exited" in answer) {
+        exitCode = answer.exited;
+        return Promise.resolve({ reachable: false });
+      }
       return answer instanceof Error
         ? Promise.reject(answer)
         : Promise.resolve(answer);
     },
+    exitCode: () => Promise.resolve(exitCode),
   };
   return { control, calls, state: () => state };
 };
@@ -119,6 +129,17 @@ const outOfSet = (
     l1Follower: { atTip: follower === "caught_up" },
   },
 });
+/** A pause holding a scripted node that answers `catchUp` once resumed. */
+const heldPause = async (
+  catchUp: Parameters<typeof scriptedNode>[0]["catchUp"],
+) => {
+  const pause = createOperatorPause(scriptedNode({ catchUp }).control, {
+    resumeTimeoutMs: 5000,
+    pollIntervalMs: 1,
+  });
+  await pause.hold();
+  return pause;
+};
 const reset = Object.assign(new Error("socket hang up"), {
   code: "ECONNRESET",
 });
@@ -194,19 +215,13 @@ describe("operator-2 pause", () => {
     expect(node.calls).toEqual(["stop", "start"]);
   });
 
-  it("resumes a node whose operator the convictions removed, once it caught up with no hold", async () => {
-    const node = scriptedNode({
-      catchUp: [
-        outOfSet("catching_up", "operator_removed"),
-        outOfSet("caught_up", "operator_removed", "landed_block_invalid"),
-        outOfSet("caught_up", "operator_removed"),
-      ],
-    });
-    const pause = createOperatorPause(node.control, {
-      resumeTimeoutMs: 5000,
-      pollIntervalMs: 1,
-    });
-    await pause.hold();
+  it("resumes a node whose operator the convictions removed, once it caught up with no hold and then exited with code 0", async () => {
+    const pause = await heldPause([
+      outOfSet("catching_up", "operator_removed"),
+      outOfSet("caught_up", "operator_removed", "landed_block_invalid"),
+      outOfSet("caught_up", "operator_removed"),
+      { exited: 0 },
+    ]);
     await expect(pause.resume()).resolves.toMatchObject({
       terminal: "operator_removed",
       observedReasons: [
@@ -217,21 +232,33 @@ describe("operator-2 pause", () => {
     });
   });
 
+  it("refuses a node that exited before it reported its removal at the tip, or with a failure", async () => {
+    for (const [catchUp, message] of [
+      [
+        [outOfSet("catching_up", "operator_removed"), { exited: 0 }],
+        /exited with code 0 before it reported operator_removed at the tip/u,
+      ],
+      [
+        [outOfSet("caught_up", "operator_removed"), { exited: 1 }],
+        /exited with code 1 \(reasons seen: \[\["operator_removed"\]\]\)/u,
+      ],
+    ] as const) {
+      await expect((await heldPause(catchUp)).resume()).rejects.toThrow(
+        message,
+      );
+    }
+  });
+
   it("resumes a node re-registered but not yet active, once it caught up", async () => {
-    const node = scriptedNode({
-      catchUp: [outOfSet("caught_up", "operator_not_yet_active")],
-    });
-    const pause = createOperatorPause(node.control, {
-      resumeTimeoutMs: 5000,
-      pollIntervalMs: 1,
-    });
-    await pause.hold();
+    const pause = await heldPause([
+      outOfSet("caught_up", "operator_not_yet_active"),
+    ]);
     await expect(pause.resume()).resolves.toMatchObject({
       terminal: "awaiting_activation",
     });
   });
 
-  it("never takes a removed node that still holds the fault, or has not caught up, for resumed", async () => {
+  it("never takes a removed node that still holds the fault, has not caught up, or still runs, for resumed", async () => {
     const behindTip = (
       l1Follower: { atTip: boolean } | null,
     ): OperatorNodeReadiness => ({
@@ -245,6 +272,8 @@ describe("operator-2 pause", () => {
       // Only the follower itself says it is behind, or says nothing.
       behindTip({ atTip: false }),
       behindTip(null),
+      // Caught up with no hold, but not shut down yet.
+      outOfSet("caught_up", "operator_removed"),
     ]) {
       const node = scriptedNode({ catchUp: [answer] });
       const pause = createOperatorPause(node.control, {
@@ -257,14 +286,11 @@ describe("operator-2 pause", () => {
   });
 
   it("keeps waiting through a reset or aborted /readyz read while the node restarts", async () => {
-    const node = scriptedNode({
-      catchUp: [reset, new DOMException("timed out", "TimeoutError"), ready()],
-    });
-    const pause = createOperatorPause(node.control, {
-      resumeTimeoutMs: 5000,
-      pollIntervalMs: 1,
-    });
-    await pause.hold();
+    const pause = await heldPause([
+      reset,
+      new DOMException("timed out", "TimeoutError"),
+      ready(),
+    ]);
     await expect(pause.resume()).resolves.toMatchObject({
       terminal: "ready",
       observedReasons: [[]],
@@ -297,14 +323,9 @@ describe("operator-2 pause", () => {
   });
 
   it("refuses a resumed node that took a drill block for its own", async () => {
-    const node = scriptedNode({
-      catchUp: [holding("landed_block_own_journal_mismatch")],
-    });
-    const pause = createOperatorPause(node.control, {
-      resumeTimeoutMs: 5000,
-      pollIntervalMs: 1,
-    });
-    await pause.hold();
+    const pause = await heldPause([
+      holding("landed_block_own_journal_mismatch"),
+    ]);
     await expect(pause.resume()).rejects.toThrow(
       /landed_block_own_journal_mismatch: it did not replay the drill's blocks as foreign/u,
     );
@@ -380,6 +401,8 @@ const alive = () => {
 if (verb === "ps" && rest.join(" ") === "--status running --services") {
   console.log("kupo");
   if (alive()) console.log("midgard-node");
+} else if (verb === "ps" && rest.join(" ") === "--all --format {{.State}} {{.ExitCode}} midgard-node") {
+  console.log(alive() ? "running 0" : "exited 0");
 } else if (verb === "stop" && rest.join(" ") === "midgard-node") {
   if (alive()) {
     const pid = Number(readFileSync(${JSON.stringify(pidFile)}, "utf8"));
@@ -423,8 +446,9 @@ if (verb === "ps" && rest.join(" ") === "--status running --services") {
       resumeTimeoutMs: 10_000,
       pollIntervalMs: 20,
     });
-    // A running node is never taken for stopped.
+    // A running node is never taken for stopped, or for exited.
     expect(await control.runningServices()).toEqual(["kupo", "midgard-node"]);
+    await expect(control.exitCode()).resolves.toBeUndefined();
     await expect(control.readReadiness()).resolves.toEqual({
       reachable: true,
       httpStatus: 200,
@@ -435,6 +459,7 @@ if (verb === "ps" && rest.join(" ") === "--status running --services") {
       runningServices: ["kupo"],
       readyz: "connection_refused",
     });
+    await expect(control.exitCode()).resolves.toBe(0);
     await expect(pause.resume()).resolves.toMatchObject({
       node: "drill-op2/midgard-node",
       observedReasons: [[]],
@@ -450,6 +475,7 @@ if (verb === "ps" && rest.join(" ") === "--status running --services") {
         "start midgard-node",
         "stop midgard-node",
         "ps --status running --services",
+        "ps --all --format {{.State}} {{.ExitCode}} midgard-node",
       ]),
     );
 

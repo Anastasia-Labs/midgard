@@ -126,7 +126,7 @@ describe("reusing an earlier run's runtime (resumed journey)", () => {
 /** The isolated journey devnet's magic (`live-context.ts` requires it). */
 const JOURNEY_DEVNET_NETWORK_MAGIC = 424_242;
 
-describe("the committee node accepts the generated runtime (P31(6))", () => {
+describe("the committee node accepts the generated runtime", () => {
   let deployment: Awaited<ReturnType<typeof publishWorkflowDeployment>>;
   let runDirectory: string;
   let plan: DaBondPoolCommitteeRuntimePlan;

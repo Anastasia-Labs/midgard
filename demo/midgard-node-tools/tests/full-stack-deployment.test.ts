@@ -425,29 +425,6 @@ describe("wallet funding", () => {
   });
 });
 
-describe("host database commands", () => {
-  it("migrate only the Postgres the storage checks inspected", async () => {
-    const value = await deployment({ nonceRecorded: true });
-    value.processes.responses["storage-identity"] = { id: "7" };
-    value.processes.responses["host-database-identity"] = "8";
-    await expect(value.steps.initialize!.execute(undefined)).rejects.toThrow(
-      "does not reach this stack's Postgres",
-    );
-    expect(value.processes.calls.map((call) => call.id)).toEqual([
-      "storage-identity",
-      "host-database-identity",
-    ]);
-    value.processes.responses["host-database-identity"] = "7";
-    await value.steps.initialize!.execute(undefined);
-    expect(value.processes.calls.map((call) => call.id).slice(2)).toEqual([
-      "storage-identity",
-      "host-database-identity",
-      "migrate",
-      "initialize-submit",
-    ]);
-  });
-});
-
 describe("Cardano providers", () => {
   it("create the snapshot directories as the host user before Docker could create them as root", async () => {
     const value = await deployment({ nonceRecorded: false });

@@ -5,7 +5,7 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { CommitAnchor } from "../../src/database/commit-anchor.js";
-import * as MigrationRunner from "../../src/database/migrations/runner.js";
+import * as NodeSchema from "../../src/database/schema.js";
 import {
   deterministicFixtureBytes,
   provideDatabaseLayers,
@@ -184,9 +184,6 @@ export const insertJournal = (input: {
   });
 
 export const seed = Effect.gen(function* () {
-  yield* MigrationRunner.migrate({
-    appVersion: "test",
-    actor: "journal-recovery-sql-model",
-  });
+  yield* NodeSchema.ensure;
   yield* resetApplicationTables;
 });

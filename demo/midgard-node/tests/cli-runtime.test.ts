@@ -38,7 +38,7 @@ describe("CLI log lines", () => {
   it("logs the main fiber's lines to stderr, in UTC with a date, whatever TZ is", async () => {
     const failed = await execFileAsync(
       process.execPath,
-      [NODE_DIST, "db:status"],
+      [NODE_DIST, "db:backfill-da-payloads"],
       {
         env: { PATH: process.env.PATH ?? "", TZ: "America/New_York" },
         encoding: "utf8",

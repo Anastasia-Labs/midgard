@@ -58,7 +58,7 @@ const events = (paths: SupervisorPaths): Record<string, unknown>[] =>
         .split("\n")
         .map((line) => JSON.parse(line));
 
-it("holds a real child exit 78 without blind restarts while transient exit 70 keeps retrying", async () => {
+it("holds a real child exit 78 without blind restarts, stops one that exits 0, while transient exit 70 keeps retrying", async () => {
   const dir = mkdtempSync(join(tmpdir(), "devnet-refusal-"));
   const paths = pathsAt(dir);
   const abort = new AbortController();
@@ -72,6 +72,7 @@ it("holds a real child exit 78 without blind restarts while transient exit 70 ke
   const running = superviseServices(
     [
       service("refused", 78),
+      service("stopped", 0),
       service("transient", 70),
       {
         ...service("signal", 70),
@@ -106,6 +107,12 @@ it("holds a real child exit 78 without blind restarts while transient exit 70 ke
         (event) => event.event === "start" && event.service === "refused",
       ),
     ).toHaveLength(1);
+    // Exit 0 is the service's own stop: never restarted.
+    expect(
+      events(paths)
+        .filter((event) => event.service === "stopped")
+        .map(({ event }) => event),
+    ).toEqual(["start", "exit", "stopped"]);
     expect(
       events(paths).filter(
         (event) =>

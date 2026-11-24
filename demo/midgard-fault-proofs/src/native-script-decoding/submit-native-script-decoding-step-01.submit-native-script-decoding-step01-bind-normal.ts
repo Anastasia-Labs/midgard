@@ -88,7 +88,7 @@ export const buildNativeScriptDecodingStep01BindNormal = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   /** Present → the #545 published-chunk carriage; absent → redeemer-carried. */
   readonly publishedProofChunks?: readonly PublishedProofChunk[];
-  /** Q3: the mandatory published step-01 reference script. */
+  /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;

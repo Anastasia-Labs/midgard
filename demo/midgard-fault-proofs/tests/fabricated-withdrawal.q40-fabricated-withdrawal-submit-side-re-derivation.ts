@@ -53,7 +53,7 @@ import {
 } from "./fabricated-withdrawal.q40-fabricated-withdrawal-evidence-admission.js";
 import { h28 } from "./helpers/canonical-block-evidence-fixture.js";
 
-describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
+describe("fabricated-withdrawal submit-side re-derivation", () => {
   it("re-derives the step-01 handoff from the on-chain header and refuses a PHAS root or leaf encoding that does not open it", async () => {
     const fixture = await buildWithdrawalsBlockFixture({ leaves: [MM_LEAF] });
     const plan = await prepareFabricatedWithdrawalFromCommittedLeaves({

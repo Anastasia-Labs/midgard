@@ -223,7 +223,7 @@ const expectExactBundle = (
     maxBytes: 16 * 1024 - 1,
   });
   assertPinnedAuxiliaryEnvelope(bundle.oneStepArgument.auxiliaryCbor);
-  // R5 item 1 retired the last direct resolvers, so
+  // There are no direct resolvers, so
   // `ValidationOneStepEvidenceV1` is no longer any validator's redeemer
   // surface and the blueprint carries no definition for it: the evidence is
   // the hashed `(transition, auxiliary)` preimage, pinned below its envelope.

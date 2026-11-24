@@ -10,7 +10,7 @@
  * The `--midgard-node-url` and `--transactions` routes below are
  * operator-diagnostic rehearsal routes: they read block material from the node's
  * REST surface or an operator-private file and can never mint a security-grade
- * claim. A Q03 evidence-gated entry point (the analogue of
+ * claim. An evidence-gated entry point (the analogue of
  * `prepareInputNoIdxFromCanonicalEvidenceV1`) is not landed here yet; the four
  * `submit-reference-input-no-idx-step-0N` builders are, and each re-derives its
  * commitments from the on-chain header and step datum rather than trusting

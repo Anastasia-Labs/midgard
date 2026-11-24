@@ -97,7 +97,7 @@ describe("genuine public constructor mounted framing", () => {
         expect(() =>
           readMountedHttpFile(measurement.outputs[key].retainedPath, true),
         ).toThrow("E_PUBLIC_HTTP_CONFIG");
-        console.info("R7 genuine mounted framing", {
+        console.info("genuine mounted framing", {
           key,
           bytes: bytes.length,
           maximum,

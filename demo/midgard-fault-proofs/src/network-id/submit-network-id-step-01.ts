@@ -1,4 +1,4 @@
-/** Authenticate one accepted native-V1 transaction and bind a Q35 claim. */
+/** Authenticate one accepted native-V1 transaction and bind a network-id claim. */
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,

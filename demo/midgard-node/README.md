@@ -131,7 +131,7 @@ emulator regression before rerunning the full live flow.
 ## How to Run
 
 The canonical stack is `docker-compose.yaml` plus the `docker-compose.kupmios.yaml`
-overlay: PostgreSQL, the node, a one-shot schema migration, and an in-stack
+overlay: PostgreSQL, the node, and an in-stack
 Cardano L1 (cardano-node bootstrapped from a certified Mithril snapshot, Ogmios,
 Kupo). The base file alone starts no L1, and the node reads L1 only through the
 overlay's cardano-node (its socket and config; note 5 below), so every command
@@ -180,8 +180,8 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    ```
 
    The "Required settings" block at the top of `.env.example` lists every key
-   that has no default. Config load fails, for every command including
-   `db:migrate`, until each of them has a value; the error names the variable.
+   that has no default. Config load fails, for every command, until each of
+   them has a value; the error names the variable.
    Three distinct wallets are required (operator, merge, reference-script).
 
    `.env` values override the image pins in the compose files. Keep the
@@ -218,7 +218,7 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
       binary baked into the image). The one-shot `cardano-config-export`
       service copies the cardano-node image's config and genesis files for
       `NETWORK` into `./cardano/config` before the node starts. The follower
-      starts at the deployment manifest's recorded `l1Origin` (step 6). Only
+      starts at the deployment manifest's recorded `l1Origin` (step 5). Only
       a manifest without one needs `L1_ORIGIN` in `.env`; until it is set
       the node runs but `/readyz` reports `l1_follower_unconfigured`.
 
@@ -231,18 +231,7 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    If the preflight fails, fix the local cardano-node (its socket, config and
    sync). Remote L1 providers are not supported for demo-node acceptance.
 
-5. Install the schema:
-
-   ```sh
-   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
-     run --rm midgard-node-migrate
-   ```
-
-   `docker compose up` also runs this as the one-shot `midgard-node-migrate`
-   service and starts `midgard-node` only after it exits successfully. If it
-   fails, inspect `docker compose logs midgard-node-migrate`.
-
-6. One-time protocol bring-up. Run these from `demo/midgard-node` against the
+5. One-time protocol bring-up. Run these from `demo/midgard-node` against the
    healthy L1, inside the `midgard-node` container: it has `.env`, the
    overlay's `L1_NODE_*` settings, the in-stack node's socket and config, the
    `midgard-l1-node-transport` binary, and `deploymentInfo/` mounted. The three
@@ -282,13 +271,17 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    profiles and 100,005 ADA on the public ones, on top of the other init costs.
    See [DA bond pool commands](docs/da-bond-commands.md).
 
-7. Run the full stack, then register the operator once the node is ready:
+6. Run the full stack, then register the operator once the node is ready:
 
    ```sh
    docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml up -d
    midgard register-operator
    midgard activate-operator
    ```
+
+   The node creates its database schema on an empty database when it
+   starts, and refuses a database created by a different schema; recreate
+   such a database (drop it and create it empty).
 
    The node runs while its operator is unregistered and commits nothing until
    the operator is active. Operator commands read protocol state from the
@@ -345,8 +338,8 @@ nix develop
 # From demo/midgard-node, install the pinned workspace dependencies.
 pnpm install --frozen-lockfile
 pnpm build
-node dist/index.js db:migrate
-# One-time protocol bring-up: see step 6 of "With Docker".
+# One-time protocol bring-up: see step 5 of "With Docker".
+# `listen` creates the database schema on an empty database.
 pnpm listen
 ```
 
@@ -489,7 +482,7 @@ reserve funding (as many inputs as needed), and payment to the recorded L1
 address and datum. History retirement protection and manifest confirmation depth
 still apply. Invalid withdrawals retain their existing refund flow.
 
-Run `db:migrate` when upgrading, and configure `L1_SETTLEMENT_SEED_PHRASE` with a
+Configure `L1_SETTLEMENT_SEED_PHRASE` with a
 funded wallet distinct from the commitment, merge and reference-script wallets.
 Keep both fee funds and a separate ADA-only collateral UTxO in it. Treat it as
 node-owned: do not use it in another process or manually spend its inputs.
@@ -539,9 +532,12 @@ read protocol state from the running node's index: its follower store, opened
 read-only, never a ledger scan. Run them while the node runs. A node that has
 not initialized its store, or a database with no store, fails the read; a node
 that lags fails it once its view cannot catch up. Start the node and let it
-catch up, or pass `--l1 kupmios|blockfrost`. `da-bond` and
-`availability-challenge` read state the node does not track and refuse
-`--l1 node`. See the operator lifecycle page in the docs site
+catch up, or pass `--l1 kupmios|blockfrost`. A node whose operator leaves the
+active set (retired or slashed) reports `operator_removed` on `/readyz`, then
+shuts down with exit code 0, and shuts down again on each restart while its
+operator stays removed: recover the bond and re-register with
+`--l1 kupmios|blockfrost`. `da-bond` and `availability-challenge` read state
+the node does not track and refuse `--l1 node`. See the operator lifecycle page in the docs site
 (`docs-site/content/docs/operators/node/operator-lifecycle.mdx`) for the
 vocabulary table, recovery paths, and the status report.
 
@@ -676,7 +672,7 @@ Copy the printed `HUB_ORACLE_ONE_SHOT_TX_HASH` and
 publishing reference scripts or running `init`. Run it, the reference-script
 publication and `init` where the `L1_NODE_*` settings and the transport binary
 exist: in the compose stack,
-inside the `midgard-node` container (step 6 of the quick start).
+inside the `midgard-node` container (step 5 of the quick start).
 
 Before it signs a fresh nonce, the command reads the local node's tip
 (`L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH`, `L1_NODE_TRANSPORT_BINARY_PATH`)

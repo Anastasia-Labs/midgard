@@ -1,4 +1,4 @@
-//// Q27 min-Ada step 02: open the claimed transaction output; the rewarding
+//// min-Ada step 02: open the claimed transaction output; the rewarding
 //// yield script walks the outputs field.
 
 use aiken/crypto.{ScriptHash}

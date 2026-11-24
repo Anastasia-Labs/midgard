@@ -111,7 +111,7 @@ describe("committee projections in the fork simulator (SQLite)", () => {
     // 5 s locally and slower on a shared CI runner.
   }, 120_000);
 
-  it("an orphan node with a valid datum makes the queue unhealthy (P1)", async () => {
+  it("an orphan node with a valid datum makes the queue unhealthy", async () => {
     let unhealthy = 0;
     for (const { scenario } of corpus.slice(0, 6)) {
       const stats = zeroStats();

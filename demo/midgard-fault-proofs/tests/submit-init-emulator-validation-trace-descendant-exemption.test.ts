@@ -108,7 +108,7 @@ it("prunes validation-trace descendants unslashed, refuses every other arm, and 
   // leaves P0 in place; the exempt prune of S1 is the one successor that
   // verifies.
 
-  // B4: the exemption is mandatory, so slashing a validation-trace
+  // The exemption is mandatory, so slashing a validation-trace
   // descendant's operator is refused.
   await expectOnchainRefusal(
     () =>
@@ -123,7 +123,7 @@ it("prunes validation-trace descendants unslashed, refuses every other arm, and 
       check: /slashing_approach_admits_removal_v1/u,
     },
   );
-  // B3: the category prefix is read only from the authenticated token of the
+  // The category prefix is read only from the authenticated token of the
   // convicted header: a same-named token under another policy, or the
   // authentic record of another header, is refused.
   expect(foreignProof.assets).toHaveProperty(
@@ -156,7 +156,7 @@ it("prunes validation-trace descendants unslashed, refuses every other arm, and 
       check: /referenced_header_hash == fraudulent_blocks_header_hash/u,
     },
   );
-  // B5: an exempt prune cannot carry a directory slash of the exempt
+  // An exempt prune cannot carry a directory slash of the exempt
   // operator, which would otherwise hand the bond's reward tranche to the
   // submitter.
   const taker = generateEmulatorAccount({ lovelace: 0n }).address;
@@ -173,7 +173,7 @@ it("prunes validation-trace descendants unslashed, refuses every other arm, and 
       check: /bad_state_slashing_approach_matches_directory/u,
     },
   );
-  // B8: an exempt prune consumes no bond, so it carries no output shaped like
+  // An exempt prune consumes no bond, so it carries no output shaped like
   // the prover's reward, even one the submitter funds.
   await expectOnchainRefusal(
     () =>
@@ -197,7 +197,7 @@ it("prunes validation-trace descendants unslashed, refuses every other arm, and 
   expect(await liveOperatorNode(fixture)).toEqual(operatorNodeBefore);
   expect(await funderLucid.utxosAt(taker)).toHaveLength(0);
 
-  // B1: the exempt prune of S1 verifies. No directory input, no burn, no
+  // The exempt prune of S1 verifies. No directory input, no burn, no
   // reward; the operator keeps its node and bond.
   const exemptPrune = await submitRawFraudulentBlockRemoval(fixture, {
     removes: "successor",
@@ -224,7 +224,7 @@ it("prunes validation-trace descendants unslashed, refuses every other arm, and 
   expect(operatorNodeBefore!.assets.lovelace).toBe(economics.required_bond);
 
   // Pre-state P1: [F, S2], correction locked to the validation-trace token.
-  // B7: the lock refuses a link presenting another category's token for the
+  // The lock refuses a link presenting another category's token for the
   // same header (here the double-spend record, slashing S2's operator as that
   // category would); the validation-trace link of S2 verifies.
   await expectOnchainRefusal(
@@ -261,7 +261,7 @@ it("prunes validation-trace descendants unslashed, refuses every other arm, and 
     expectedHeaderHashes: [fixture.headerHash],
   });
 
-  // Pre-state P2: [F]. B6: the convicted block never takes the exemption;
+  // Pre-state P2: [F]. The convicted block never takes the exemption;
   // it is removed with its own operator slashed and the prover rewarded.
   await expectOnchainRefusal(
     () =>
@@ -314,7 +314,7 @@ it("keeps descendant slashing for every other conviction category", async () => 
   });
   const { contracts, funderLucid } = fixture;
   const operatorNodeBefore = await liveOperatorNode(fixture);
-  // B2: under a double-spend conviction the exemption is refused, and the
+  // Under a double-spend conviction the exemption is refused, and the
   // descendant's operator is slashed from the same pre-state.
   await expectOnchainRefusal(
     () =>

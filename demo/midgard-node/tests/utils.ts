@@ -5,7 +5,7 @@ import { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Layer } from "effect";
 
-import { MIGRATIONS } from "../src/database/migrations/index.js";
+import schemaSql from "../src/database/schema.sql";
 import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
 import { AdmissionWriterLive } from "../src/services/admission-writer.make-admission-writer.js";
 import { makeAdmissionWriterWithOptions } from "../src/services/admission-writer.make-admission-writer-with-options.js";
@@ -63,63 +63,46 @@ export const provideDatabaseLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
   );
 
 /**
- * A migration's INSERT statements are the rows a migrated database must always
- * contain (e.g. the `commit_build_calibration` singleton). A reset replays only
- * these, wherever they sit in the file, without re-running the migration's DDL.
- * A seed row must therefore be a plain `INSERT INTO ...;` statement: rows
- * seeded by `COPY` or inside a `DO` block would not be restored. Dollar-quoted
- * bodies are skipped, so an INSERT inside a trigger or function body (which
- * runs when the function does, not at migration time) is never replayed. A
- * top-level `INSERT ... SELECT` is a one-time carry-over of an existing
- * database's rows, not a seed row: against the emptied tables it adds nothing,
- * and the table it reads may since have been dropped by a later migration, so
- * it is never replayed.
+ * The schema's INSERT statements are the rows a new database always contains
+ * (e.g. the `commit_build_calibration` singleton). A reset replays only these,
+ * without re-running the DDL. A seed row must therefore be a plain
+ * `INSERT INTO ...;` statement. Dollar-quoted bodies are skipped, so an INSERT
+ * inside a trigger or function body is never replayed.
  */
-const MIGRATION_INSERT_STATEMENT = /^\s*INSERT\s+INTO\b[^;]*;/gim;
+const SEED_INSERT_STATEMENT = /^\s*INSERT\s+INTO\b[^;]*;/gim;
 const DOLLAR_QUOTED_BODY = /\$([A-Za-z_][A-Za-z0-9_]*)?\$[\s\S]*?\$\1\$/g;
-const CARRY_OVER = /\bSELECT\b/iu;
 
-const migrationSeedRowsSql: readonly string[] = MIGRATIONS.flatMap(
-  (migration) =>
-    (
-      migration.sql
-        .replace(DOLLAR_QUOTED_BODY, "")
-        .match(MIGRATION_INSERT_STATEMENT) ?? []
-    ).filter((statement) => !CARRY_OVER.test(statement)),
-);
+const seedRowsSql: readonly string[] =
+  schemaSql.replace(DOLLAR_QUOTED_BODY, "").match(SEED_INSERT_STATEMENT) ?? [];
 
 /**
  * The tables a reset keeps, each with why. Every other table in the test
- * database's schemas is emptied, so a table a new migration (node or
- * follower) adds is reset without editing this list.
+ * database's schemas is emptied, so a table a schema (node or follower)
+ * adds is reset without editing this list.
  */
 export const RESET_KEPT_TABLES: ReadonlyMap<string, string> = new Map([
   [
-    "schema_migrations",
-    "the node's migration ledger: the runner checks it against MIGRATIONS on every migrate, and the schema it records is still in place",
+    "node_schema",
+    "the checksum of the schema text that created the database, checked on every open",
   ],
   [
-    "schema_migration_events",
-    "the node's migration audit trail, written beside the ledger",
-  ],
-  [
-    "l1_follower_migrations",
-    "the follower store's migration ledger, the follower's schema_migrations",
+    "l1_follower_schemas",
+    "the follower store's schema checksums, one per namespace, checked on every open",
   ],
   [
     "l1_follower_tables",
-    "the follower's catalog of the tables its migrations declared; the follower's own reset reads it",
+    "the follower's catalog of the tables its schemas declared; the follower's own reset reads it",
   ],
   [
     "l1_follower_writer",
-    "the follower's writer-fence singleton (epoch, next generation), written by its migration; a store without the row refuses to open, and generations only ever rise",
+    "the follower's writer-fence singleton (epoch, next generation), seeded with its schema; a store without the row refuses to open, and generations only ever rise",
   ],
 ]);
 
 /**
- * Returns the test database to its freshly migrated contents: every table in
+ * Returns the test database to its new contents: every table in
  * its schemas except `RESET_KEPT_TABLES` is emptied in one TRUNCATE
- * (identities restarted), and the migrations' seed rows (the
+ * (identities restarted), and the schema's seed rows (the
  * `commit_build_calibration` singleton) are restored, in one transaction.
  * The tables are read from the catalog, not listed, so no table can be left
  * holding another file's chain: the fork pool runs every file of a worker
@@ -150,8 +133,8 @@ export const resetApplicationTables = Effect.gen(function* () {
             .map(({ schema, name }) => `"${schema}"."${name}"`)
             .join(", ")} RESTART IDENTITY CASCADE`,
         );
-      for (const seedRowsSql of migrationSeedRowsSql) {
-        yield* sql.unsafe(seedRowsSql);
+      for (const seedRow of seedRowsSql) {
+        yield* sql.unsafe(seedRow);
       }
     }),
   );

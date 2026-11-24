@@ -42,7 +42,7 @@ const vkeyWitnessCount = (built: BuiltDaAvailabilityTransaction): number => {
 };
 
 /**
- * Times out an expired challenge (spec #685 E2): burns the record and terminal
+ * Times out an expired challenge (spec #685): burns the record and terminal
  * accumulator, removes the challenged block (the head, or its immediate
  * descendant first) under an Idle correction lock, and slashes the pooled DA
  * bond in the same transaction.

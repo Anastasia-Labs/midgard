@@ -1,5 +1,5 @@
 import type { DialectName } from "../sql/backend.js";
-import type { MigrationSet } from "./migrate.js";
+import type { SchemaSet } from "./apply.js";
 
 /**
  * The fact schema. Every table carries the
@@ -17,10 +17,20 @@ import type { MigrationSet } from "./migrate.js";
  * which pruning may have removed spent outputs, closed temporal rows or
  * blocks. Facts are complete for every slot at or above it, so it bounds
  * reads at a point, rewind targets (R1) and the INV5 chain-linkage window.
+ *
+ * `l1_wallet_seeds` is the point each own wallet was seeded at: the wallet
+ * seeder reads a wallet's UTxOs from the node's ledger once, and a restart
+ * does not read it again while its row stands. The row is written with the
+ * wallet's seed rows, in the same transaction, so a wallet with no UTxOs is
+ * recorded too. Like a seed row it is a fact observed at its seed point: a
+ * rewind below that point deletes it, and so does a reset. A start whose
+ * tracked set lacks the address deletes it too: blocks applied while a
+ * wallet is not tracked hold none of its outputs, so its seed no longer
+ * covers them.
  */
-export const FOLLOWER_MIGRATION_NAMESPACE = "l1-follower";
+export const FOLLOWER_SCHEMA_NAMESPACE = "l1-follower";
 
-const POSTGRES_0001 = `
+const POSTGRES = `
 -- class: A; retention: kept while height > tip - k - 1, or referenced by a retained l1_txs or l1_outputs row; every 1,000th height and the origin are kept forever as intersection checkpoints
 CREATE TABLE l1_blocks (
   slot         bigint NOT NULL PRIMARY KEY,
@@ -151,9 +161,16 @@ CREATE INDEX l1_outputs_script_ref ON l1_outputs (script_ref_hash) WHERE script_
 CREATE INDEX l1_output_assets_unit ON l1_output_assets (policy_id, asset_name);
 CREATE INDEX l1_tx_mint_policy ON l1_tx_mint_policies (policy_id);
 CREATE INDEX l1_event_keys_slot ON l1_event_keys (first_canonical_slot);
+
+-- class: A; retention: one row per seeded own wallet; deleted by a rewind below seed_slot, a reset, or a start that does not track the address
+CREATE TABLE l1_wallet_seeds (
+  address   bytea  PRIMARY KEY,
+  seed_slot bigint NOT NULL,
+  seed_hash bytea  NOT NULL
+);
 `;
 
-const SQLITE_0001 = `
+const SQLITE = `
 -- class: A; retention: kept while height > tip - k - 1, or referenced by a retained l1_txs or l1_outputs row; every 1,000th height and the origin are kept forever as intersection checkpoints
 CREATE TABLE l1_blocks (
   slot         INTEGER NOT NULL PRIMARY KEY,
@@ -284,42 +301,7 @@ CREATE INDEX l1_outputs_script_ref ON l1_outputs (script_ref_hash) WHERE script_
 CREATE INDEX l1_output_assets_unit ON l1_output_assets (policy_id, asset_name);
 CREATE INDEX l1_tx_mint_policy ON l1_tx_mint_policies (policy_id);
 CREATE INDEX l1_event_keys_slot ON l1_event_keys (first_canonical_slot);
-`;
 
-/**
- * The height the cursor held when a reset marked the replay
- * (`tracked-set-record.ts`): the replay ends at the node tip only once the
- * cursor is back at it. The record is bookkeeping (created by
- * `FOLLOWER_BOOKKEEPING_DDL` before any migration), so this adds the column.
- */
-const POSTGRES_0002 = `
-ALTER TABLE l1_follower_tracked_set ADD COLUMN replay_height bigint;
-`;
-
-const SQLITE_0002 = `
-ALTER TABLE l1_follower_tracked_set ADD COLUMN replay_height INTEGER;
-`;
-
-/**
- * The point each own wallet was seeded at: the wallet seeder
- * reads a wallet's UTxOs from the node's ledger once, and a restart does not
- * read it again while its row stands. The row is written with the wallet's
- * seed rows, in the same transaction, so a wallet with no UTxOs is recorded
- * too. Like a seed row it is a fact observed at its seed point: a rewind
- * below that point deletes it, and so does a reset. A start whose tracked set
- * lacks the address deletes it too: blocks applied while a wallet is not
- * tracked hold none of its outputs, so its seed no longer covers them.
- */
-const POSTGRES_0003 = `
--- class: A; retention: one row per seeded own wallet; deleted by a rewind below seed_slot, a reset, or a start that does not track the address
-CREATE TABLE l1_wallet_seeds (
-  address   bytea  PRIMARY KEY,
-  seed_slot bigint NOT NULL,
-  seed_hash bytea  NOT NULL
-);
-`;
-
-const SQLITE_0003 = `
 -- class: A; retention: one row per seeded own wallet; deleted by a rewind below seed_slot, a reset, or a start that does not track the address
 CREATE TABLE l1_wallet_seeds (
   address   BLOB    PRIMARY KEY,
@@ -328,20 +310,7 @@ CREATE TABLE l1_wallet_seeds (
 );
 `;
 
-export const followerMigrations = (dialect: DialectName): MigrationSet => ({
-  namespace: FOLLOWER_MIGRATION_NAMESPACE,
-  migrations: [
-    {
-      id: "0001_fact_schema",
-      sql: dialect === "postgres" ? POSTGRES_0001 : SQLITE_0001,
-    },
-    {
-      id: "0002_tracked_set_replay_height",
-      sql: dialect === "postgres" ? POSTGRES_0002 : SQLITE_0002,
-    },
-    {
-      id: "0003_wallet_seeds",
-      sql: dialect === "postgres" ? POSTGRES_0003 : SQLITE_0003,
-    },
-  ],
+export const followerSchema = (dialect: DialectName): SchemaSet => ({
+  namespace: FOLLOWER_SCHEMA_NAMESPACE,
+  sql: dialect === "postgres" ? POSTGRES : SQLITE,
 });

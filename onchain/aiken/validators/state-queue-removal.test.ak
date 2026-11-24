@@ -515,7 +515,7 @@ test state_queue_removal_rejects_non_terminal_target() fail {
 }
 
 // ---------------------------------------------------------------------------
-// Q61 — permissionless attestation-timeout correction.
+// Permissionless attestation-timeout correction.
 // ---------------------------------------------------------------------------
 
 test attestation_timeout_accepts_exact_boundary_and_rejects_adjacent_premature() {
@@ -916,7 +916,7 @@ test da_attestation_apply_rejects_window_ending_after_timeout() fail {
 }
 
 // ---------------------------------------------------------------------------
-// Q58 — challenge-timeout correction.
+// Challenge-timeout correction.
 // ---------------------------------------------------------------------------
 
 test availability_timeout_prunes_descendant_from_exact_challenged_head() {
@@ -2313,7 +2313,7 @@ test unavailable_prune_rejects_anchor_gaining_lovelace() fail {
 }
 
 // ---------------------------------------------------------------------------
-// C2 — the clocks read the node's `block_time`, not its header's `end_time`.
+// The clocks read the node's `block_time`, not its header's `end_time`.
 //
 // Each fixture below is a catch-up node: committed `catch_up_lag` after its
 // covered interval ends. A clock read from `end_time` would open (or close)
@@ -2508,7 +2508,7 @@ test completed_fraud_terminal_rejects_a_terminal_at_block_time_maturity() {
   !late_committed_terminal(deadline - 1_000, deadline)
 }
 
-// Validation-trace descendant exemption (pd §6.9 B).
+// Validation-trace descendant exemption.
 
 fn proof_asset(category_id: ByteArray) -> ByteArray {
   bytearray.concat(category_id, faulty_header_hash)

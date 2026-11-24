@@ -133,7 +133,7 @@ const complete = async (confirmationDepth: number, rounds: number) => {
   return { states, status, released, verifyCompleted };
 };
 
-// Depth > k is final (plan section 9), for the completion check and the
+// Depth > k is final, for the completion check and the
 // marker alike: one verified at exactly k is not yet applicable.
 describe("fault-proof supervisor completion finality", () => {
   it("keeps a completion verified at exactly k open and verifies it again", async () => {

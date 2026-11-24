@@ -13,8 +13,9 @@
 - **Last semantic review:** 2026-08-09, with subsequent owner-approved errata
   incorporated in the affected sections. Git records their amendment history.
 - **Documentation maintenance:** 2026-11-23 for the implementation statements
-  of §§5.5, 8.2, 10.7, 10.9, 11 and 12; §13 is not covered. This maintenance
-  did not change wire rules or rerun acceptance.
+  of §§5.5, 8.2, 10.7, 10.9, 11 and 12, without changing wire rules or
+  rerunning acceptance. §13 was amended 2026-11-24 to the implemented
+  rejection hash.
 - **Version:** `native_tx_version_v1 = 1`. This is the sole pre-launch format;
   there is no compatibility path to the counted bounded-collection scheme.
 - **Carriage limits:** §8.3 defines the current constants and execution
@@ -2976,18 +2977,17 @@ The family's validator registration is maintained in the
 Compiled-artifact and execution checks use the ledger and verifier identified
 above; source registration alone does not establish release acceptance.
 
-## 13. Dispute-side rejection-code register
+## 13. Dispute-side rejection reason
 
 Normative for the dispute machine's rejection channel and for the #640 forced-
 leaf verdict format. §12 says what a challenger claims about a transaction's
 bytes; this section says what an **operator's rejection** of a forced
-transaction commits to, and fixes the register of codes every layer of that
-commitment resolves into.
+transaction commits to.
 
 The reference implementation is
-`onchain/aiken/lib/midgard/rejection-reason-v1.ak` (types, code constants and
-the arm-to-code bridge) with its seam suite at the same path with `.test.ak`;
-the machine (`validation-machine-v1.ak`) imports its codes from there.
+`onchain/aiken/lib/midgard/rejection-reason-v1.ak` (types) with its vector
+suite at the same path with `.test.ak`; the rejection hash is
+`hash_rejection_code` in `validation-trace-v1.ak`.
 
 ### 13.1 The verdict on the forced leaf
 
@@ -3001,15 +3001,15 @@ pub type OperatorVerdictV1 {
 }
 ```
 
-`RejectionReason` is the fully enumerated space of rejection verdicts — 47
+`RejectionReason` is the fully enumerated space of rejection verdicts — 49
 constructors, each carrying only subject coordinates (never expected values,
-hashes, or recomputable arguments). Its arm inventory, payload conventions
+hashes, or recomputable arguments). Its arm inventory and payload conventions
 are owned by the Aiken declaration and its TypeScript twin,
 `demo/midgard-sdk/src/rejection-reason.ts`. The
 [rejection-reason reference](../fault-proofs/rejection-reason-catalogue-v1.md)
-records subject discipline, the coarse-code bridge, and the interaction
-boundary; this section does not duplicate the constructor table. Two properties of the
-type are wire-normative here:
+records subject discipline and the interaction boundary; this section does
+not duplicate the constructor table. Two properties of the type are
+wire-normative here:
 
 - **Constructor order is the wire format.** The declaration order in
   `rejection-reason-v1.ak` fixes the Plutus Data constructor indices of the
@@ -3026,76 +3026,40 @@ no validity scalar. Source authentication binds the unchanged submission to its
 L1 order and uses the forced hash domain. Settlement authenticates the exact
 order key, source and verdict-bearing leaf, not the body ID alone.
 Normal transaction leaves retain their native scalar and must use zero.
-Reason/subject binding remains exact even when two reasons share a coarse
-machine rejection code. Rejected execution preserves the original disputed
-delta commitment while independently deriving no ledger operations.
+A rejected forced transaction applies no ledger operations: its transition
+leaves the UTxO root unchanged.
 
-### 13.2 The register
+### 13.2 The rejection hash
 
-The dispute machine's rejection channel is a 32-byte hash over one of **19
-rejection codes**. Each code's byte value is exactly the ASCII encoding of
-its label — the register below is therefore complete without a second
-column of hex:
-
-| #   | code label                           |
-| --- | ------------------------------------ |
-| 1   | `E_FIELD_PREIMAGE_SIZE`              |
-| 2   | `E_ASSET_COUNT`                      |
-| 3   | `E_INVALID_FIELD_TYPE`               |
-| 4   | `E_NATIVE_SCRIPT_DEPTH`              |
-| 5   | `E_NATIVE_SCRIPT_NODE_COUNT`         |
-| 6   | `E_MIN_ADA`                          |
-| 7   | `E_EMPTY_INPUTS`                     |
-| 8   | `E_DUPLICATE_INPUT_IN_TX`            |
-| 9   | `E_NETWORK_ID_MISMATCH`              |
-| 10  | `E_MIN_FEE`                          |
-| 11  | `E_INVALID_VALIDITY_INTERVAL_FORMAT` |
-| 12  | `E_MISSING_REQUIRED_WITNESS`         |
-| 13  | `E_INVALID_SIGNATURE`                |
-| 14  | `E_NATIVE_SCRIPT_INVALID`            |
-| 15  | `E_PLUTUS_SCRIPT_INVALID`            |
-| 16  | `E_VALIDITY_INTERVAL_MISMATCH`       |
-| 17  | `E_INPUT_NOT_FOUND`                  |
-| 18  | `E_INVALID_OUTPUT`                   |
-| 19  | `E_VALUE_NOT_PRESERVED`              |
-
-The canonical constant definitions are the 19 `reject_*` constants of
-`rejection-reason-v1.ak`; the machine's encodings import them and are
-byte-identical to the pre-#640 private copies. The seam suite pins every
-constant against its ASCII bytes.
-
-### 13.3 The bridge, and what is frozen
-
-`rejection_code_of : RejectionReason -> ByteArray` is the **total
-surjection** from the 47 arms onto the 19 codes (every arm maps; every code
-is hit). A rejecting validation-trace descriptor commits
+The machine's terminal rejection commits the exact reason and its
+coordinates:
 
 ```
-rejection_code_hash = blake2b_256("MidgardValidationRejectCodeV1" || code)
+rejection_code_hash = blake2b_256("MidgardValidationRejectCodeV1" || cbor(reason))
 ```
 
-(`hash_rejection_code`, `validation-trace-v1.ak`), and the claim layer's
-`forced_verdict_matches` accepts a rejecting forced leaf only when the
-descriptor's committed hash equals the hash of the code its `reason` maps
-to — the arm-level verdict and the code-level machine channel are bound
-through this bridge, in that direction only.
+where `cbor(reason)` is the reason's Plutus Data CBOR and the domain string is
+raw ASCII. There is no coarse code. A rejected machine successor is admitted
+only under the reason its rejection site names
+(`rejected_successor_is_exact`, `validation-machine/shared.ak`). A forced
+leaf's reason reaches a dispute as the verdict subject's `rejection_reason`
+(`proof-thread-substrate-v1.ak`), and the family that owns the reason
+adjudicates it.
 
-**Frozen by the #640 rulings (2026-08-24):** the descriptor format
-(`ValidationTraceDescriptor`), the machine state format
-(`ValidationMachineState`), the 19 code byte values, and the
-domain-separated hash above. The 47-arm type and the bridge are the revision
-surface: a `RejectionReasonV2` is a new leaf schema version whose bridge
-back to this register is its own compatibility obligation. Pre-launch changes
-still follow the repository's replacement-in-place rule; an unshipped version
-has no migration obligation.
+### 13.3 What is frozen
+
+The descriptor format (`ValidationTraceDescriptorV1`), the machine state
+format (`ValidationMachineStateV1`) and the domain-separated hash above are
+frozen. The 49-arm type is the revision surface: a `RejectionReasonV2` is a
+new leaf schema version. Pre-launch changes follow the repository's
+replacement-in-place rule; an unshipped version has no migration obligation.
 
 ### 13.4 Conformance
 
-The seam suite (`rejection-reason-v1.test.ak`) pins, for all 47 arms: the
-totality and exact value of `rejection_code_of` against the imported
-constants, and the frozen bridge hash of every arm against independently
-computed digests. The claim-layer suite (`validation-claim-v1.test.ak`) pins
-the §13.1 leaf-internal agreements — verdict-arm vs validity scalar in both
-directions, and the Normal-source acceptance scalar — and
-`forced_verdict_matches` positively and negatively across accepting and
-rejecting descriptors.
+The vector suite (`rejection-reason-v1.test.ak`) pins, for all 49 arms, the
+Plutus Data CBOR and the domain-separated hash, so a reordered or inserted arm
+or a dropped field moves the bytes. The same vectors, produced by
+`demo/midgard-core/scripts/generate-rejection-reason-v1-vectors.mjs`
+independently of either codec, pin the TypeScript encoder. The claim-layer
+suite (`validation-claim-v1.test.ak`) pins the forced and normal source
+verdicts, including the Normal-source acceptance scalar.

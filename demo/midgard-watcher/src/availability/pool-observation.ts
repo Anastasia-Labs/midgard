@@ -6,8 +6,8 @@ import { getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
  * served as JSON, so amounts are decimal lovelace strings. `state` and the two
  * alerts are independent: a `Withdrawing` pool can also be short, and a
  * `Bonded` pool drained by a slash is short until someone tops it up. Neither
- * alert changes the availability phase or the watcher's readiness (spec #685
- * E5); they tell the operator that attestations are paused or the committee is
+ * alert changes the availability phase or the watcher's readiness (spec
+ * #685); they tell the operator that attestations are paused or the committee is
  * leaving.
  */
 export type WatcherDaBondPoolObservation = Readonly<{

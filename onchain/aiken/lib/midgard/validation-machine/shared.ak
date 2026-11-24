@@ -331,7 +331,7 @@ pub fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1
 // `min_ada_absolute_vectors_match_the_typescript_twin` in the adjacent test
 // module. The TypeScript suite parses this declaration and the two functions
 // below out of this file as source text, so a slope, an intercept, a comparison or a
-// reshaped declaration on either side alone fails loudly (D-S4, #618).
+// reshaped declaration on either side alone fails loudly (#618).
 //
 // NO ARBITRARY SUB-CAP. The floor is exactly the target-network limit: it is
 // linear in the serialized size with slope `coins_per_utxo_byte` and carries no

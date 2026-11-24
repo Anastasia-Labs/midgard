@@ -51,7 +51,7 @@ const linkedUtxo = (
 });
 
 /**
- * A landed state queue (P1 facts): a `ConfirmedState` root whose datum names
+ * A landed state queue's facts: a `ConfirmedState` root whose datum names
  * `confirmedHeadHash`, followed by one header node per `liveUtxosRoots` entry
  * (the last one carrying an attestation marker, so no status filter can pass
  * unnoticed). `provide` seeds those facts in the node database and provides

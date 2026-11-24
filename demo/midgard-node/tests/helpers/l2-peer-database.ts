@@ -1,12 +1,12 @@
 /**
  * Databases for the extra nodes of an L2 transaction sharing test: each one
- * fresh, migrated and owned by this worktree's test prefix.
+ * fresh, with its schema, and owned by this worktree's test prefix.
  */
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import { Duration, Effect, Layer, Redacted } from "effect";
 
-import { MigrationRunner } from "../../src/database/index.js";
+import { NodeSchema } from "../../src/database/index.js";
 import { NodeConfig } from "../../src/services/config.make-config.js";
 import { Database } from "../../src/services/database.js";
 import { TEST_DATABASE_PREFIX } from "../test-env.js";
@@ -66,7 +66,7 @@ export const withPostgresDb = async <A>(
 };
 
 /**
- * A fresh, migrated database for a second node, owned by this worktree's
+ * A fresh database, with its schema, for a second node, owned by this worktree's
  * test prefix; `drop` removes it.
  */
 export const createPeerDatabase = async (label: string) => {
@@ -89,10 +89,7 @@ export const createPeerDatabase = async (label: string) => {
   );
   await withPostgresDb(database, () =>
     Effect.runPromise(
-      MigrationRunner.migrate({
-        appVersion: "midgard-node-l2-peer-test",
-        actor: "midgard-node-l2-peer-test",
-      }).pipe(
+      NodeSchema.ensure.pipe(
         Effect.provide(Layer.provideMerge(Database.layer, NodeConfig.layer)),
       ),
     ),

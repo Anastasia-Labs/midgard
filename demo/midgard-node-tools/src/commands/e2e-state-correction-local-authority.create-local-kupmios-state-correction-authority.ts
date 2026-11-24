@@ -20,7 +20,7 @@ export const createLocalKupmiosStateCorrectionAuthority = (
   config: LocalKupmiosStateCorrectionAuthorityConfig,
 ): StateCorrectionIndependentAuthority => {
   if (l1ProviderFailoverEnabled(config.providerFailover)) {
-    throw new Error("Q57 authority forbids L1 provider failover");
+    throw new Error("state-correction authority forbids L1 provider failover");
   }
   assertLoopbackEndpoint(config.kupoUrl, "the local Kupo endpoint (KUPO_PORT)");
   assertLoopbackEndpoint(
@@ -28,11 +28,13 @@ export const createLocalKupmiosStateCorrectionAuthority = (
     "the local Ogmios endpoint (OGMIOS_PORT)",
   );
   if (!HEX_28.test(config.stateQueuePolicyId)) {
-    throw new Error("Q57 authority state-queue policy id is invalid");
+    throw new Error(
+      "state-correction authority state-queue policy id is invalid",
+    );
   }
   const finalityPolicy = parseReleaseL1FinalityPolicy(
     config.finalityPolicy,
-    "Q57 deployment manifest l1Finality",
+    "deployment manifest l1Finality",
   );
   const source =
     config.source ?? createLocalKupmiosStateCorrectionSource(config);
@@ -77,13 +79,15 @@ export const createLocalKupmiosStateCorrectionAuthority = (
     },
     authenticateFinalState: async (input) => {
       if (input.hubOraclePolicyId !== config.hubOraclePolicyId) {
-        throw new Error("Q57 authority manifest identity mismatch");
+        throw new Error(
+          "state-correction authority manifest identity mismatch",
+        );
       }
       if (
         input.observedAt.confirmationDepth < finalityPolicy.confirmationDepth
       ) {
         throw new Error(
-          `final Q57 observation depth is below release depth ${finalityPolicy.confirmationDepth.toString()}`,
+          `final observation depth is below release depth ${finalityPolicy.confirmationDepth.toString()}`,
         );
       }
       const [
@@ -139,7 +143,7 @@ export const createLocalKupmiosStateCorrectionAuthority = (
         }),
         source.observeUnspentAddress({ address: config.reserveAddress }),
       ]);
-      assertAtOrAfter(tip, input.observedAt, "final Q57 live tip");
+      assertAtOrAfter(tip, input.observedAt, "final live tip");
       if (queue.depth !== input.stateQueueDepth) {
         throw new Error(
           `live Kupo state-queue depth mismatch: expected ${input.stateQueueDepth.toString()}, found ${queue.depth.toString()}`,
@@ -199,7 +203,7 @@ export const createLocalKupmiosStateCorrectionAuthority = (
             (expected.proverRewardLovelace === "0")
         ) {
           throw new Error(
-            `Q57 economic outref/amount nullability mismatch for ${expected.familyId}`,
+            `economic outref/amount nullability mismatch for ${expected.familyId}`,
           );
         }
         if (
@@ -229,7 +233,7 @@ export const createLocalKupmiosStateCorrectionAuthority = (
         }
         if (BigInt(expected.proverRewardLovelace) <= 0n) {
           throw new Error(
-            `Q57 requires non-zero launch economics for ${expected.familyId}`,
+            `state correction requires non-zero launch economics for ${expected.familyId}`,
           );
         }
         const proverAddress = credentialToAddress("Preprod", {
@@ -280,7 +284,9 @@ export const createLocalKupmiosStateCorrectionAuthority = (
         aggregateOutputValues(reserveOutputs),
       );
       if (reserveDigest !== payout.reserveValueSha256) {
-        throw new Error("live Kupo reserve value does not match Q57 evidence");
+        throw new Error(
+          "live Kupo reserve value does not match the state-correction evidence",
+        );
       }
     },
   };

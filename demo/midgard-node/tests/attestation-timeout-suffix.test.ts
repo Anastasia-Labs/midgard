@@ -100,7 +100,7 @@ const fixture = async (tailApplied = false, headApplied = true) => {
     "22",
   );
   const outputs = [root, first, tail];
-  // The stub client serves only the L1 tip; the queue is the landed one (P1).
+  // The stub client serves only the L1 tip; the queue is the landed one.
   const api = {} as LucidEvolution;
   /** `effect` over the landed queue holding exactly these outputs. */
   const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>

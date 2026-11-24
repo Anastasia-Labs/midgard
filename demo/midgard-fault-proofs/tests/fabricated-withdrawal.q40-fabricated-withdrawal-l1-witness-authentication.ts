@@ -42,7 +42,7 @@ import {
 } from "./fabricated-withdrawal.q40-fabricated-withdrawal-evidence-admission.js";
 import { h28, h32 } from "./helpers/canonical-block-evidence-fixture.js";
 
-describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
+describe("fabricated-withdrawal L1 witness authentication", () => {
   const leafOf = async (
     leaf: WithdrawalLeafEntry,
     witness: FabricatedWithdrawalL1Witness,

@@ -17,7 +17,7 @@ import {
 } from "../src/uplc-data.js";
 import { outRefFromByte } from "./validation-fixtures.js";
 
-// Ruling 1: a Midgard receiving script's redeemer is part of the MidgardV1
+// A Midgard receiving script's redeemer is part of the MidgardV1
 // transaction info, and a receive purpose never reaches a PlutusV3 context
 // (phase B refuses it before building one; phase-b.test.ts pins that arm).
 // These tests pin the context side, so moving the context's Data reads and
@@ -86,7 +86,7 @@ const purposeTag = (purpose: Data): bigint => {
   return purpose.constr;
 };
 
-describe("receive redeemers in the script context (ruling 1)", () => {
+describe("receive redeemers in the script context", () => {
   it("keeps the receive redeemer in the MidgardV1 txInfo redeemer map, in witness order", () => {
     const context = buildMidgardScriptContext(view, receive, redeemer(4, 41n));
     // MidgardV1 txInfo field 8 is the redeemer map.

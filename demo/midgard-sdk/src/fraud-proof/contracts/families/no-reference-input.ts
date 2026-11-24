@@ -27,7 +27,7 @@ export const NO_REFERENCE_INPUT_FAULT_PROOF_TITLES = {
 } as const;
 
 /**
- * Q18 `no-reference-input`: a committed transaction references an input that
+ * `no-reference-input`: a committed transaction references an input that
  * never existed in the block's prev ledger and was not produced in-block. The
  * chain mirrors `no_input`'s applied-parameter order step for step; only the
  * field lifted out of the bad transaction differs (reference inputs, not spend

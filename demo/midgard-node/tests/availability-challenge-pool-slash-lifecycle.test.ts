@@ -322,9 +322,9 @@ describe("pooled DA bond challenge and slash lifecycle", () => {
     // A fully backed pool's penalty pays the whole fee.
     expect(c).toBe(0n);
     expect(landed.measurement.fee).toBe(parameters.da_slash_penalty_lovelace);
-    // H12: the timeout's size and aggregate budget.
+    // The timeout's size and aggregate budget.
     console.info(
-      "pooled timeout H12",
+      "pooled timeout bounds",
       JSON.stringify({
         signedBytes: landed.measurement.signedBytes,
         memory: landed.measurement.memory.toString(),
@@ -360,7 +360,7 @@ describe("pooled DA bond challenge and slash lifecycle", () => {
    * bound + `da_bond_withdraw_delay`, and that delay covers validity +
    * max(window + full response, maturity) + slash grace. A timely challenger,
    * whose timeout lands by `response_deadline + da_slash_grace`, therefore
-   * always meets a full bond (I3). The timeout has no on-chain upper bound,
+   * always meets a full bond. The timeout has no on-chain upper bound,
    * so a late challenger can still meet the drawn-down pool, which is the
    * case here: `fee_part = penalty` first, `payout = backing - penalty`.
    *

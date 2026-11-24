@@ -47,7 +47,7 @@ import {
 } from "./fabricated-deposit.q39-fabricated-deposit-evidence-admission.js";
 import { h28 } from "./helpers/canonical-block-evidence-fixture.js";
 
-describe("Q39 fabricated-deposit submit-side re-derivation", () => {
+describe("fabricated-deposit submit-side re-derivation", () => {
   it("re-derives the step-01 handoff from the on-chain header and refuses a PHAS root that does not open it", async () => {
     const fixture = await buildDepositsBlockFixture({ leaves: [MM_LEAF] });
     const plan = await prepareFabricatedDepositFromCommittedLeaves({

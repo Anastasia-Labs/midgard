@@ -4,7 +4,7 @@
  * view at the node's tip; a fiber on `onL1HeadChange` runs its next tick
  * when that happens, instead of polling L1 on a timer.
  *
- * - A tick reads only the node's projections (P1 and the rest), so waking on
+ * - A tick reads only the node's projections (the landed queue and the rest), so waking on
  *   a head change is enough for every L1-driven decision.
  * - `maxIdle` bounds the wait: a tick still runs that long after the last one
  *   without a head change. It covers what moves without L1 (a maturity or

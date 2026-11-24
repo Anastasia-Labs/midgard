@@ -141,7 +141,7 @@ export const validateFinalizedDa = (value: unknown): void => {
       `Deployment manifest da.transportProfile.retentionDays must be at least ${String(deploymentDaRetentionDays())} for the compiled deployment profile`,
     );
   }
-  // Q54: additionally bind the window to the derived challengeability horizon
+  // Additionally bind the window to the derived challengeability horizon
   // (block maturity + worst-case proof-time bound), so deployment identity -
   // not a literal - is what the DA and proof stores enforce against.
   if (

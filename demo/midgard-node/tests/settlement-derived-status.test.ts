@@ -9,14 +9,9 @@
  *   it relands.
  * - Landed more than k deep, the follower's prune step stores `final` in
  *   the step that prunes its journal entry; never earlier.
- * - Migration 0015, on a database a release left at v12 with rows in the
- *   old columns: a `confirmed` attempt the journal still holds is pending
- *   again and reads the journal's level; one it does not hold stays
- *   terminal (`final`); a database with no follower tables migrates too.
- *   Such a database holds state, so the upgrade stops at 0029's refusal.
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import {
   currentViewIn,
@@ -37,9 +32,7 @@ import { PgClient } from "@effect/sql-pg";
 import { Effect, ManagedRuntime, Redacted } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { MIGRATIONS } from "../src/database/migrations/index.js";
-import * as MigrationRunner from "../src/database/migrations/runner.js";
-import { splitSqlStatements } from "../src/database/migrations/runner.js";
+import { NodeSchema } from "../src/database/index.js";
 import * as Journal from "../src/database/settlement.js";
 import { readIntentStatus } from "../src/services/intent-journal.js";
 import { settlementProjection } from "../src/services/settlement.final-hook.js";
@@ -65,20 +58,8 @@ afterAll(async () => {
   await databases.dropAll();
 });
 
-/** `0012`: the last version a release shipped with a stored `confirmed`. */
-const LEGACY_VERSION = 12;
-
-const manifestHashThrough = (version: number): string =>
-  createHash("sha256")
-    .update(
-      MIGRATIONS.filter((migration) => migration.version <= version)
-        .map((m) => `${m.version}:${m.name}:${m.checksumSha256}`)
-        .join("\n"),
-    )
-    .digest("hex");
-
-/** A node database: fully migrated, or as a release left it at `through`. */
-const nodeDatabase = async (through?: number) => {
+/** A new node database, with its schema. */
+const nodeDatabase = async () => {
   const connectionString = await databases.create();
   const runtime = ManagedRuntime.make(
     PgClient.layer({ url: Redacted.make(connectionString) }),
@@ -86,27 +67,7 @@ const nodeDatabase = async (through?: number) => {
   closers.push(() => runtime.dispose());
   const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
     runtime.runPromise(effect);
-  if (through === undefined)
-    await run(MigrationRunner.migrate({ appVersion: "test", actor: "n6b" }));
-  else
-    await run(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* MigrationRunner.getStatus;
-        for (const migration of MIGRATIONS.filter(
-          (m) => m.version <= through,
-        )) {
-          for (const statement of splitSqlStatements(migration.sql))
-            yield* sql.unsafe(statement);
-          yield* sql`INSERT INTO schema_migrations
-            (version, name, checksum_sha256, manifest_hash_sha256,
-             app_version, execution_ms, applied_by)
-            VALUES (${migration.version}, ${migration.name},
-                    ${migration.checksumSha256}, ${manifestHashThrough(through)},
-                    'earlier-release', 1, 'earlier-release')`;
-        }
-      }),
-    );
+  await run(NodeSchema.ensure);
   return { connectionString, run };
 };
 
@@ -294,110 +255,5 @@ describe("settlement confirmation from the intent journal", () => {
     expect(await tick()).toBeUndefined();
     expect(await run(jobPhase("01"))).toBe("complete");
     expect(await run(Journal.openAttempts(hubOraclePolicyId))).toEqual([]);
-  });
-});
-
-describe("migration 0015 on a database holding the old columns", () => {
-  const legacyRows = (
-    rows: readonly { hash: string; event: string; status: string }[],
-  ) =>
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      for (const { hash, event, status } of rows) {
-        yield* sql`INSERT INTO settlement_jobs
-          (hub_oracle_policy_id, kind, event_id, phase, verified_generation)
-          VALUES (${hubOraclePolicyId}, 'deposit', ${event},
-            ${status === "confirmed" ? "complete" : "absorb"},
-            ${status === "confirmed" ? 0 : -1})`;
-        yield* sql`INSERT INTO settlement_attempts
-          (hub_oracle_policy_id, kind, event_id, phase, tx_hash, signed_cbor,
-           required_outputs, fee_inputs, status, hold_slot, recovery)
-          VALUES (${hubOraclePolicyId}, 'deposit', ${event}, 'absorb', ${hash},
-            'legacy-body', ARRAY[0], ARRAY[${`${hash}#9`}], ${status}, 10,
-            false)`;
-      }
-    });
-  const migrate = (run: Awaited<ReturnType<typeof nodeDatabase>>["run"]) =>
-    run(
-      Effect.gen(function* () {
-        // Flat scripts start from a fresh genesis: the upgrade applies every
-        // migration before 0029, which refuses a database holding state.
-        const refusal = yield* Effect.flip(
-          MigrationRunner.migrate({
-            appVersion: "test",
-            actor: "n6b-upgrade",
-          }),
-        );
-        expect(refusal.code).toBe("schema_migration_requires_fresh_database");
-        const status = yield* MigrationRunner.getStatus;
-        expect(status.actualVersion).toBe(28);
-        const sql = yield* SqlClient.SqlClient;
-        const columns = yield* sql<{ column_name: string }>`SELECT column_name
-          FROM information_schema.columns
-          WHERE table_name IN ('settlement_attempts', 'settlement_jobs')
-            AND column_name IN ('recovery', 'verified_generation')`;
-        expect(columns).toEqual([]);
-        const refused = yield* Effect.either(
-          sql`UPDATE settlement_attempts SET status = 'confirmed'`,
-        );
-        expect(refused._tag).toBe("Left");
-      }),
-    );
-
-  it("reads a journaled confirmed attempt from the journal again and keeps an unjournaled one terminal", async () => {
-    const { connectionString, run } = await nodeDatabase(LEGACY_VERSION);
-    // The node ran its follower on this database before the upgrade.
-    const { driver, idle, journaled } = await followerOver(connectionString);
-    const body = await journaled();
-    await driver.forward([body]);
-    await idle(CD);
-    const landed = simTxHash(body).toString("hex");
-    const unjournaled = "f1".repeat(32);
-    const pending = "f2".repeat(32);
-    const expired = "f3".repeat(32);
-    await run(
-      legacyRows([
-        { hash: landed, event: "01", status: "confirmed" },
-        { hash: unjournaled, event: "02", status: "confirmed" },
-        { hash: pending, event: "03", status: "pending" },
-        { hash: expired, event: "04", status: "expired" },
-      ]),
-    );
-    await migrate(run);
-    expect(await run(storedStatus(landed))).toBe("pending");
-    expect(await run(storedStatus(unjournaled))).toBe("final");
-    expect(await run(storedStatus(pending))).toBe("pending");
-    expect(await run(storedStatus(expired))).toBe("expired");
-
-    // The migrated attempt's level is the journal's: landed CD + 1 deep.
-    const status = await run(readIntentStatus(landed));
-    expect(status).toMatchObject({ kind: "landed", depth: CD + 1 });
-    expect(settlementLevel(status, depths)).toBe("safe");
-    await run(ownSettlement);
-    const tick = () => run(settleAttempts(owner, depths));
-    // The legacy pending attempt (not journaled) is the oldest open one.
-    expect((await tick())?.attempt.tx_hash).toBe(pending);
-    expect(await run(jobPhase("01"))).toBe("complete");
-    // A rollback past cd reverts what the stored `confirmed` never could.
-    await driver.backward(CD + 1);
-    expect(settlementLevel(await run(readIntentStatus(landed)), depths)).toBe(
-      "open",
-    );
-    await tick();
-    expect(await run(jobPhase("01"))).toBe("absorb");
-    expect(await run(jobPhase("02"))).toBe("complete");
-  });
-
-  it("migrates a database that never ran a follower: every confirmed attempt stays terminal", async () => {
-    const { run } = await nodeDatabase(LEGACY_VERSION);
-    await run(
-      legacyRows([
-        { hash: "f4".repeat(32), event: "01", status: "confirmed" },
-        { hash: "f5".repeat(32), event: "02", status: "pending" },
-      ]),
-    );
-    await migrate(run);
-    expect(await run(storedStatus("f4".repeat(32)))).toBe("final");
-    expect(await run(storedStatus("f5".repeat(32)))).toBe("pending");
   });
 });

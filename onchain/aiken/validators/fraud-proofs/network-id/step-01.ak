@@ -1,4 +1,4 @@
-//// Q35 network-id step 01: counted-root binding and acceptance gate.
+//// network-id step 01: counted-root binding and acceptance gate.
 
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}

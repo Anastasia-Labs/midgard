@@ -7,7 +7,7 @@ import {
   parseDaBondPoolReadyz,
 } from "./da-bond-pool-process-evidence.js";
 
-describe("committee node process view (P16)", () => {
+describe("committee node process view", () => {
   it("reads the pool reasons from /readyz", () => {
     const short =
       "da_bond_pool_backing_short: backing=20000000, required=500000000, checkedAt=2026-09-28T00:00:00.000Z";

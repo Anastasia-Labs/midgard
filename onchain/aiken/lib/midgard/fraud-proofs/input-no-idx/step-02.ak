@@ -9,8 +9,8 @@ use midgard/ledger_state.{MidgardTxId}
 /// `FoldStart`/`FoldNext` pair that streamed the spend-input collection one
 /// counted `bounded_collection_v1.verify_item` opening at a time. All of that
 /// existed for one reason — the whole collection had to be reproduced in the
-/// step to re-hash it, and at real cardinalities it did not fit (Q1X-F6,
-/// #551). Under the flat scheme the door hashes the preimage once and reads
+/// step to re-hash it, and at real cardinalities it did not fit
+/// (#551). Under the flat scheme the door hashes the preimage once and reads
 /// item `n` by arithmetic, so there is nothing left to stream: the fold arms,
 /// the self-loop state, and the bespoke `PublishedSpendInputsV1` publication
 /// type are gone, and tier-2 carriage is now the door's `RawUtxo` arm rather

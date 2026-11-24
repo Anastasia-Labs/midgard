@@ -52,11 +52,8 @@ export const DATABASE_UNREACHABLE = "database_unreachable";
  * (bad credentials, a missing database): `database.ts`. */
 export const DATABASE_CONNECTION_FAILED = "database_connection_failed";
 
-/** A `db:migrate` holds the schema lock; the schema check waits for it. */
-export const SCHEMA_MIGRATION_IN_PROGRESS = "schema_migration_in_progress";
-
-/** The database's schema is not the one this binary runs on (not migrated,
- * unversioned, a ledger or shape mismatch): `database/init.ts`. */
+/** The database was created by a different schema, or holds tables but no
+ * schema record: `database/schema.ts`. */
 export const DATABASE_SCHEMA_INCOMPATIBLE = "database_schema_incompatible";
 
 /** The availability-challenge reward-account reads failed with a retryable

@@ -1,5 +1,5 @@
 /**
- * Q03/RF-043: the diagnostic submission surface is an allow-list.
+ * The diagnostic submission surface is an allow-list.
  *
  * Provenance labels and prepared JSON are caller-controlled data.  Until a
  * submitter revalidates an authenticated canonical evidence source and derives

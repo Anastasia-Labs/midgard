@@ -1,9 +1,9 @@
 /**
  * The node's landed state queue under the fork
  * simulator, on SQLite and Postgres with prune on: after every chain-sync
- * event P1 at the tip equals an independent model replayed from the
+ * event the node's read at the tip equals an independent model replayed from the
  * canonical blocks (its health, reason, walk and policy-output count), and
- * the runner checks the facts P1 reads against a fresh replay. Each suite
+ * the runner checks the facts it reads against a fresh replay. Each suite
  * proves its corpus exercised every case it claims: an orphan with a valid
  * datum is unhealthy (`orphan_node`), a rollback that removes the tail
  * leaves a healthy queue at the earlier tail, a third party's output at the

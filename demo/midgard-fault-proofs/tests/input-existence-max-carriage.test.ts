@@ -267,7 +267,7 @@ describe("registered maximum event/transition counted membership", () => {
               await publishPlainReferenceScriptUtxo({
                 lucid: h.funderLucid,
                 script: step.spendingScript,
-                label: `T255 maximum step${index + 1}`,
+                label: `maximum step${index + 1}`,
               })
             ).utxo,
           );
@@ -276,14 +276,14 @@ describe("registered maximum event/transition counted membership", () => {
           await publishPlainReferenceScriptUtxo({
             lucid: h.funderLucid,
             script: h.contracts.computationThread.mintingScript,
-            label: "T255 maximum CT",
+            label: "maximum CT",
           })
         ).utxo;
         const fp = (
           await publishPlainReferenceScriptUtxo({
             lucid: h.funderLucid,
             script: h.contracts.fraudProof.mintingScript,
-            label: "T255 maximum FP",
+            label: "maximum FP",
           })
         ).utxo;
         const cert = h.contracts.fieldPreimageCertificate;
@@ -291,7 +291,7 @@ describe("registered maximum event/transition counted membership", () => {
           await publishPlainReferenceScriptUtxo({
             lucid: h.funderLucid,
             script: cert.mintingScript,
-            label: "T255 maximum field certificate",
+            label: "maximum field certificate",
           })
         ).utxo;
         const tag = `field${field}-${shape}-${partial ? "eight-partial" : "packed"}`;

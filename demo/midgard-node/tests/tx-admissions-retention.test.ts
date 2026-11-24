@@ -5,7 +5,7 @@ import { Effect, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  MigrationRunner,
+  NodeSchema,
   TxAdmissionsDB,
   TxRejectionsDB,
 } from "../src/database/index.js";
@@ -49,18 +49,17 @@ const remainingAdmissions = Effect.gen(function* () {
   return new Set(rows.map((row) => row.tx_id.toString("hex")));
 });
 
-const freshDatabase = (name: string) =>
-  Effect.gen(function* () {
-    yield* MigrationRunner.migrate({ appVersion: name, actor: name });
-    yield* resetApplicationTables;
-  });
+const freshDatabase = Effect.gen(function* () {
+  yield* NodeSchema.ensure;
+  yield* resetApplicationTables;
+});
 
 describe("terminal admission retention", () => {
   it("deletes old terminal rows nothing needs and keeps every other row", async () => {
     await Effect.runPromise(
       provideDatabaseLayers(
         Effect.gen(function* () {
-          yield* freshDatabase("tx-admissions-retention-test");
+          yield* freshDatabase;
           const sql = yield* SqlClient.SqlClient;
           const labels = [
             "accepted-old",
@@ -136,7 +135,7 @@ describe("terminal admission retention", () => {
     await Effect.runPromise(
       provideDatabaseLayers(
         Effect.gen(function* () {
-          yield* freshDatabase("tx-admissions-retention-walk-test");
+          yield* freshDatabase;
           const sql = yield* SqlClient.SqlClient;
           // Five pending rows from one old terminal mark sit at the head of
           // the walk; three deletable rows come after them.

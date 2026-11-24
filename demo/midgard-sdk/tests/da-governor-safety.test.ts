@@ -209,11 +209,10 @@ describe("Q63 below-floor and drain rejection classes", () => {
     ).toStrictEqual(["owner_set_below_minimum"]);
   });
 
-  // Review finding: uncited by the Q63 artifact, and the committee-side twin of
-  // the row above. The threshold bounds say nothing about an empty committee —
+  // The committee-side twin of the row above. The threshold bounds say nothing about an empty committee —
   // `governedThresholdFloor(0) === 0`, so `daThreshold: 0` sits exactly on that
-  // floor and does not exceed the committee either — so before this class an
-  // empty committee was reported as no violation at all, while the governor
+  // floor and does not exceed the committee either — so without this class an
+  // empty committee would be reported as no violation at all, while the governor
   // refuses it structurally. Same disposition-isolating choice as the owner
   // row: zero is the only threshold that leaves the empty committee itself as
   // the only thing wrong with these params.
@@ -276,12 +275,9 @@ describe("Q63 below-floor and drain rejection classes", () => {
   });
 });
 
-// Review finding I2, inverted by the 2026-08-11 owner ruling. This block used
-// to pin that `governedThresholdFloor(1) === 2 > 1` made a one-member DA
-// committee unrepresentable. The ruling lifted that prohibition, so the floor
-// at one is one and a single-key attest loop is a representable — warned-about,
-// not refused — deployment shape. The consequence is pinned in its new
-// direction rather than deleted, because it is the only place the lift is
+// The 2026-08-11 owner ruling allows a one-member DA committee: the floor at
+// one is one, so a single-key attest loop is a representable — warned-about,
+// not refused — deployment shape. This block is the only place that is
 // measured end-to-end off-chain.
 describe("Q63 single-member-committee consequence", () => {
   it("consequence 1 — a one-member committee admits exactly one representable da_threshold", () => {
@@ -386,9 +382,7 @@ describe("Q63 single-owner governance consequence", () => {
   });
 });
 
-// Review finding E3. Quoting F04's floor text proves the decision record still
-// says what the review cited; it does not prove the implementation computes
-// it. This recomputes the F04 arithmetic — `ceil(2n/3)` — directly and binds
+// This recomputes the F04 arithmetic — `ceil(2n/3)` — directly and binds
 // the SDK's floor to it over every representable set size, so a floor/ceil
 // transcription error in the implementation breaks this leg.
 describe("Q63 floor arithmetic provenance", () => {

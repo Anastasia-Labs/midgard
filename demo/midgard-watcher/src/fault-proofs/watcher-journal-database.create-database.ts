@@ -10,7 +10,7 @@ import {
   prepareWatcherJournalDirectory,
   watcherJournalsWrittenUnderAnotherKey,
 } from "./watcher-journal-database.configuration.js";
-import { migrateWatcherJournals } from "./watcher-journal-database.migrate.js";
+import { ensureWatcherJournalSchema } from "./watcher-journal-database.create-schema.js";
 import { type WatcherJournalRefuse } from "./watcher-journal-database.refusal.js";
 import {
   type Staged,
@@ -32,9 +32,10 @@ const KEY = /^[A-Za-z0-9:._/-]{1,512}$/u;
 
 type RowFilter = WatcherJournalRowFilter & Readonly<{ afterRevision?: number }>;
 
-/** Opens, migrates and fully verifies the journals' database file. Callers
- * reach it through `openWatcherJournalDatabase`, which shares one connection
- * per root and guards it with the root's refusal latch. */
+/** Opens the journals' database file, creates or checks its schema, and
+ * fully verifies it. Callers reach it through `openWatcherJournalDatabase`,
+ * which shares one connection per root and guards it with the root's
+ * refusal latch. */
 export const createWatcherJournalDatabase = (
   journalRoot: string,
   authenticationKey: Uint8Array,
@@ -300,7 +301,7 @@ export const createWatcherJournalDatabase = (
   };
 
   try {
-    migrateWatcherJournals(database, prepare, inTransaction);
+    ensureWatcherJournalSchema(database, prepare, inTransaction);
     if (watcherJournalsWrittenUnderAnotherKey(prepare, codec))
       throw new WatcherJournalConfigurationError(
         "the journals were written under another authentication key",

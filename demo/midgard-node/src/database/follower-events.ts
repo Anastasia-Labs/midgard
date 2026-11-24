@@ -17,7 +17,7 @@
  *   another live identity or none (`l1_event_identity_conflict`), is refused
  *   by name and left out; the rest of the plan is ingested. The refusals are
  *   a function of the plan and the node rows, so every run derives them
- *   again. A row with no identity (one from before migration 0008) still
+ *   again. A row with no identity still
  *   fails the run below, by the eligibility check every event table gets.
  * - Rows whose admission the follower no longer holds (orphans) are never
  *   adopted; those the recovery must settle are counted
@@ -205,7 +205,7 @@ export const ingestKind = (
           continue;
         }
         // Same admission: the row keeps its L2 state. A deposit's L1 tx hash
-        // is its admission tx (ruling 2); only a withdrawal's location moves.
+        // is its admission tx; only a withdrawal's location moves.
         if (kind === "withdrawal") {
           const location = event.location;
           if (

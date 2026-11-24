@@ -1,43 +1,43 @@
 import type {
   DialectName,
-  MigrationSet,
+  SchemaSet,
   TemporalTableSpec,
 } from "@al-ft/midgard-l1-follower";
 
-import { availabilityTxPinsMigrationSql } from "./availability-pins.js";
+import { availabilityTxPinsSchemaSql } from "./availability-pins.js";
 import {
   CHECKPOINT_TEMPORAL_TABLES,
-  checkpointMigrationSql,
+  checkpointSchemaSql,
 } from "./checkpoints.js";
-import { followerGenerationMigrationSql } from "./follower-generation.js";
+import { followerGenerationSchemaSql } from "./follower-generation.js";
 import {
   DA_ATTESTATIONS_TEMPORAL_TABLE,
-  daAttestationsMigrationSql,
+  daAttestationsSchemaSql,
 } from "./projection.da-attestations.js";
 import {
   DEPARTED_HEADERS_TEMPORAL_TABLE,
-  departedHeadersMigrationSql,
+  departedHeadersSchemaSql,
 } from "./projection.departed-headers.js";
 import {
   FOLLOWED_UNITS_TEMPORAL_TABLES,
-  followedUnitsMigrationSql,
+  followedUnitsSchemaSql,
 } from "./projection.followed-units.js";
 import {
   PROTOCOL_INIT_FAULTS_TEMPORAL_TABLE,
-  protocolInitFaultsMigrationSql,
+  protocolInitFaultsSchemaSql,
 } from "./projection.protocol-init.js";
 import {
-  proofEventPinsMigrationSql,
-  proofRetentionMigrationSql,
+  proofEventPinsSchemaSql,
+  proofRetentionSchemaSql,
 } from "./proof-retention.schema.js";
-import { prunedKeysMigrationSql } from "./pruned-keys.js";
+import { prunedKeysSchemaSql } from "./pruned-keys.js";
 import {
   WATCHER_PROOF_PINS_TABLE,
   WATCHER_QUEUE_OUTPUTS_TABLE,
   WATCHER_QUEUE_UNIT_HISTORY_TABLE,
 } from "./tables.js";
 
-/** The watcher projection's D-t tables and migrations (see projection.ts). */
+/** The watcher projection's D-t tables and schema (see projection.ts). */
 
 export const WATCHER_TEMPORAL_TABLES: readonly TemporalTableSpec[] = [
   {
@@ -70,7 +70,7 @@ export const WATCHER_TEMPORAL_TABLES: readonly TemporalTableSpec[] = [
   ...CHECKPOINT_TEMPORAL_TABLES,
 ];
 
-const migrationSql = (dialect: DialectName): string => {
+const queueOutputsSchemaSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
   const int8 = dialect === "postgres" ? "bigint" : "INTEGER";
   return `
@@ -105,7 +105,7 @@ CREATE INDEX ${WATCHER_QUEUE_OUTPUTS_TABLE}_anchor ON ${WATCHER_QUEUE_OUTPUTS_TA
  * of its node outputs: the history of the node unit. A header's rows close
  * when its node leaves the queue.
  */
-const unitHistoryMigrationSql = (dialect: DialectName): string => {
+const unitHistorySchemaSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
   const int8 = dialect === "postgres" ? "bigint" : "INTEGER";
   return `
@@ -125,53 +125,22 @@ CREATE INDEX ${WATCHER_QUEUE_UNIT_HISTORY_TABLE}_tx ON ${WATCHER_QUEUE_UNIT_HIST
 `;
 };
 
-export const watcherMigrations = (dialect: DialectName): MigrationSet => ({
+export const watcherSchema = (dialect: DialectName): SchemaSet => ({
   namespace: "watcher",
-  migrations: [
-    { id: "0001_watcher_queue_outputs", sql: migrationSql(dialect) },
-    {
-      id: "0002_watcher_queue_unit_history",
-      sql: unitHistoryMigrationSql(dialect),
-    },
-    {
-      id: "0003_watcher_queue_checkpoints",
-      sql: checkpointMigrationSql(dialect),
-    },
-    {
-      id: "0004_watcher_da_attestations",
-      sql: daAttestationsMigrationSql(dialect),
-    },
-    {
-      id: "0005_watcher_protocol_init_faults",
-      sql: protocolInitFaultsMigrationSql(dialect),
-    },
-    {
-      id: "0006_watcher_departed_headers",
-      sql: departedHeadersMigrationSql(dialect),
-    },
-    {
-      id: "0007_watcher_followed_units",
-      sql: followedUnitsMigrationSql(dialect),
-    },
-    {
-      id: "0008_watcher_proof_retention",
-      sql: proofRetentionMigrationSql(dialect),
-    },
-    {
-      id: "0009_watcher_pruned_keys",
-      sql: prunedKeysMigrationSql(dialect),
-    },
-    {
-      id: "0010_watcher_follower_generation",
-      sql: followerGenerationMigrationSql(dialect),
-    },
-    {
-      id: "0011_watcher_proof_event_pins",
-      sql: proofEventPinsMigrationSql(dialect),
-    },
-    {
-      id: "0012_watcher_availability_tx_pins",
-      sql: availabilityTxPinsMigrationSql(dialect),
-    },
-  ],
+  sql: [
+    queueOutputsSchemaSql,
+    unitHistorySchemaSql,
+    checkpointSchemaSql,
+    daAttestationsSchemaSql,
+    protocolInitFaultsSchemaSql,
+    departedHeadersSchemaSql,
+    followedUnitsSchemaSql,
+    proofRetentionSchemaSql,
+    prunedKeysSchemaSql,
+    followerGenerationSchemaSql,
+    proofEventPinsSchemaSql,
+    availabilityTxPinsSchemaSql,
+  ]
+    .map((part) => part(dialect))
+    .join(""),
 });

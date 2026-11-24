@@ -127,7 +127,7 @@ test committed_header_identity_binds_each_admission_count_and_root() {
 }
 
 // ---------------------------------------------------------------------------
-// The commit time rules (C2): `state_queue.commit_bound_header_time_is_valid`.
+// The commit time rules: `state_queue.commit_bound_header_time_is_valid`.
 //
 // - R1: `block_time` equals the commit transaction's inclusive validity upper
 //   bound, and `start_time < end_time <= block_time`.
@@ -355,9 +355,9 @@ test state_queue_commit_time_rejects_a_block_time_inside_a_slot() {
 }
 
 // ---------------------------------------------------------------------------
-// Q60 due-ness adjudication.
+// Due-ness adjudication.
 //
-// D-S12's concrete harm is that a far-future `end_time` widens the window in
+// The concrete harm is that a far-future `end_time` widens the window in
 // which an L1 event counts as "due" for the block being committed, so an
 // operator could sweep events that have not happened yet into their block — or
 // be convicted for omitting them. Due-ness is the rule
@@ -622,7 +622,7 @@ test da_core_close_rejects_node_output_reference_script() fail {
   da_core_close(with_probe_reference_script)
 }
 
-// ## The DA core pins `block_time` (C2)
+// ## The DA core pins `block_time`
 //
 // Apply, Open and Close rebuild the node datum field by field. `block_time`
 // is the clock of the attestation deadline, the challenge window, merge

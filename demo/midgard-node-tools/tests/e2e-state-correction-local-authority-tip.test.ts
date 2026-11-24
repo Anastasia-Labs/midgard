@@ -45,7 +45,7 @@ const tipSource = (answer: (method: string, call: number) => unknown) => {
   return { source, methods };
 };
 
-describe("Q57 local Kupmios live tip", () => {
+describe("state-correction local Kupmios live tip", () => {
   it("binds the block height to a tip read on both sides of it", async () => {
     // The first bracket straddles a tip change; the second agrees.
     const tips = [hash(1), hash(2), hash(2), hash(2)];

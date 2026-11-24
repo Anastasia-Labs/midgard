@@ -21,7 +21,9 @@ export const loadLocalAuthorityDeployment = async (
     JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
   );
   if (manifest.network !== "Preprod") {
-    throw new Error("Q57 local authority requires a Preprod manifest");
+    throw new Error(
+      "state-correction local authority requires a Preprod manifest",
+    );
   }
   const stateQueueSpend = requireManifestContract(manifest, "stateQueueSpend");
   const stateQueueMint = requireManifestContract(manifest, "stateQueueMint");

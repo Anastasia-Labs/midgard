@@ -31,7 +31,7 @@ export const FABRICATED_WITHDRAWAL_FAULT_PROOF_TITLES = {
 } as const;
 
 /**
- * Q40 `fabricated-withdrawal`: a committed `withdrawals_root` leaf that is not
+ * `fabricated-withdrawal`: a committed `withdrawals_root` leaf that is not
  * the authentic L1 withdrawal order pair.
  */
 export type FabricatedWithdrawalFaultProofContracts = {

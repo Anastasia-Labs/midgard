@@ -32,7 +32,7 @@ import {
   COMMITTEE_QUEUE_TABLE,
   COMMITTEE_QUEUE_TABLE_SPEC,
   COMMITTEE_RETENTION_PINS,
-  committeeMigrations,
+  committeeSchema,
 } from "./queue-table.js";
 
 /**
@@ -79,7 +79,7 @@ export const committeeProjection = (
   name: "committee",
   trackedSet: committeeTrackedSet(parameters, tracked),
   temporalTables: [COMMITTEE_QUEUE_TABLE_SPEC],
-  migrations: committeeMigrations,
+  schema: committeeSchema,
   derivations: [committeeQueueDerivation(parameters)],
   retentionPins: COMMITTEE_RETENTION_PINS,
 });

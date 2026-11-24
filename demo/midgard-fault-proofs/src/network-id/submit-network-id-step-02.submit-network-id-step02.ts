@@ -86,7 +86,7 @@ export const buildNetworkIdStep02 = async ({
   readonly prepared: PreparedNetworkIdFinalProof;
   /** Required exactly for an OutputNetwork claim. */
   readonly outputsOpeningPlan?: FaultProofFieldOpeningPlan;
-  /** Mandatory published Q35 step-02 reference script. */
+  /** Mandatory published network-id step-02 reference script. */
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   /** Existing §8.6 certificate UTxOs, required only for tier 3. */

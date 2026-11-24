@@ -645,7 +645,7 @@ test merge_rejects_continued_root_reference_script() fail {
   )
 }
 
-// ## Merge maturity runs from `block_time` (C2)
+// ## Merge maturity runs from `block_time`
 //
 // The head is a catch-up block: `block_time` is an hour after `end_time`. The
 // confirmed state still chains on `end_time` (what the block covers); only the

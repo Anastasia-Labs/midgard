@@ -1,6 +1,5 @@
 /**
- * Inclusion marks on the pending tables (`mempool`, `processed_mempool`;
- * migration 0013). A row a block includes keeps its bytes and
+ * Inclusion marks on the pending tables (`mempool`, `processed_mempool`). A row a block includes keeps its bytes and
  * its delta, marked by that block's header hash (`included_by`), until the
  * block's fold into `confirmed_ledger` is final; the rollback that takes the
  * block off the landed chain clears the mark, and the row is pending again.
@@ -147,7 +146,7 @@ export const clearMarks = (
 /** Deletes the rows `headerHash` marked, and their deltas: the block's fold
  * is final. A deleted tx that is not in `immutable` (this node's own blocks
  * put theirs there) was included by another operator's block: its inclusion
- * is recorded in `node_foreign_tx_inclusions` (migration 0033) and kept as
+ * is recorded in `node_foreign_tx_inclusions` and kept as
  * `immutable` is, so it stays committed. */
 export const deleteIncluded = (
   headerHash: string | Buffer,

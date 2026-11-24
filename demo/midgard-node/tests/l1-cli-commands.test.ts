@@ -28,7 +28,7 @@ describe("l1-utxos command helpers", () => {
 
   it("keeps refusing Custom for the commands that resolve their network here (l1-utxos, availability-challenge)", () => {
     // Only `da-bond` admits Custom, taking its network from the verified
-    // manifest instead (P25(4)).
+    // manifest instead.
     expect(() => resolveL1UtxosNetwork({ network: "Custom", env: {} })).toThrow(
       'Unsupported network "Custom"',
     );

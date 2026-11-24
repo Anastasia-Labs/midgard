@@ -64,7 +64,7 @@ export const fakeClock = (start = T0) => {
   };
 };
 
-describe("the journey committee node's environment (P27(1))", () => {
+describe("the journey committee node's environment", () => {
   const base = {
     settings: {
       MIDGARD_NETWORK: "Custom",

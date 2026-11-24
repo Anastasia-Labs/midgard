@@ -40,7 +40,7 @@ import {
   workflowRows,
 } from "./concurrent-challenges.fixture.js";
 
-describe("concurrent availability challenges on one wallet (spec #685 E3, P9)", () => {
+describe("concurrent availability challenges on one wallet (spec #685, P9)", () => {
   it("prepares and Opens a second withheld header while the first header's challenge is live", async () => {
     const first = liveChallenge("44");
     const second = withheld("45");
@@ -136,7 +136,7 @@ describe("concurrent availability challenges on one wallet (spec #685 E3, P9)", 
     expect(io.timeouts.map(({ pool }) => pool)).toEqual([io.tipPool]);
   });
 
-  it("defers a Timeout whose pool is not found at the tip and still closes another live challenge in the same reconciliation (P13(2))", async () => {
+  it("defers a Timeout whose pool is not found at the tip and still closes another live challenge in the same reconciliation", async () => {
     const expired = fixture("44", BigInt(Date.now()));
     const complete = liveChallenge("45");
     openLanded(expired.challenged.headerHash);
@@ -212,7 +212,7 @@ describe("concurrent availability challenges on one wallet (spec #685 E3, P9)", 
     expect(workflowRows()).toEqual([["other-deployment", "49".repeat(28)]]);
   });
 
-  describe("releases a workflow someone else's terminal step ended (P20)", () => {
+  describe("releases a workflow someone else's terminal step ended", () => {
     const OTHER = "49".repeat(28);
     const CLOSE = {
       reason: "challenge-closed" as const,
@@ -471,7 +471,7 @@ const inputsOf = (cbor: string) => {
 };
 const TIMED_OUT_HEADER = "44".repeat(28);
 
-describe("a Timeout against a pool whose datum another spend re-encoded (P14(5))", () => {
+describe("a Timeout against a pool whose datum another spend re-encoded", () => {
   // TopUp keeps the pool datum by Data value only, so anyone paying the
   // minimum may re-store it in another encoding. The Timeout's tip read goes
   // through the SDK's value-level decoder, so a withholding committee cannot
@@ -671,7 +671,7 @@ describe("a Timeout whose pool moved after it was built (P13(4)(b))", () => {
   });
 });
 
-describe("the DA bond pool is read every reconciliation and never blocks (spec #685 E5, #691)", () => {
+describe("the DA bond pool is read every reconciliation and never blocks (spec #685, #691)", () => {
   const backed =
     PARAMETERS.da_bond_pool_floor_lovelace + PARAMETERS.da_bond_lovelace;
   const withdrawing: SDK.DaBondPoolDatum = {

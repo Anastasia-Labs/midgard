@@ -173,11 +173,10 @@ deadline:
 - `database_connection_failed` (a `failedReason`): PostgreSQL refused the
   connection for a reason waiting does not clear (bad credentials, a missing
   database). Fix the connection settings.
-- `schema_migration_in_progress`: a `db:migrate` holds the schema lock.
-  Wait for it to finish.
-- `database_schema_incompatible` (a `failedReason`): the database's schema
-  is not the one this binary runs on (not migrated, unversioned, a ledger or
-  shape mismatch). Run `migrate`, or point the node at the right database.
+- `database_schema_incompatible` (a `failedReason`): the database was
+  created by a different node schema, or holds tables but no schema record.
+  Recreate it (drop it and create it empty; the node creates the schema when
+  it starts), or point the node at the right database.
 - `startup_failed` in the `database_initialization` stage, the log naming
   `This database serves deployment <recorded>, not the configured deployment
 <configured>`: the database is bound to the deployment whose hub-oracle
@@ -408,8 +407,11 @@ Commitment and liveness (raised by fibers, cleared by them):
   cause, then restart the node.
 - `native_mpf_owner_recovery_pending`: a committed canonical recovery is
   not installed yet. Wait.
-- `operator_removed`: the operator set retired this operator; commitment,
-  merge, settlement and the watchdog hold. Nothing to recover on this node.
+- `operator_removed`: the operator set retired or slashed this operator;
+  commitment, merge, settlement and the watchdog hold, and about a second
+  later the node shuts down with exit code 0 (and again on each restart
+  while it stays removed). Nothing to recover on this node; the operator
+  recovers its bond and re-registers with `--l1 kupmios|blockfrost`.
 - `operator_watchdog_manifest_mismatch`: the deployment manifest does not
   match this node's configuration, so the watchdog strikes nobody. Fix the
   manifest or the configuration; it is re-read every ten minutes.
@@ -522,11 +524,10 @@ L1 follower and follower-change driver
   for a manifest without one, a point before the `prepareHubOracleNonce`
   block) and reset the follower to its origin
   (`midgard-l1-follower reset --to-origin`).
-- `l1_follower_migration_failed`: the follower store refused its migrations
-  at start (a recorded migration whose text changed, a duplicate id, or one
-  the schema lint refuses). The follow loop stops; the node stays up and
-  unready. Fix the migration set in the deployed build, then restart the
-  node.
+- `l1_follower_schema_refused`: the follower store refused its schema at
+  start (the store was created by a different schema, or the schema lint
+  refuses it). The follow loop stops; the node stays up and unready.
+  Recreate the store (drop it and create it empty), then restart the node.
 - `l1_follower_transient_exhausted`: the follower's store did not answer
   (a transient failure) for 15 min with no event settled. The follow loop
   stops and the node exits non-zero (`node_transient_budget_exhausted
@@ -960,18 +961,18 @@ is alerted on.
 
 ## Logs
 
-| Service                                                                                       | Where the log goes                                                                                                                                                               | Kept                                                                |
-| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Demo stack `midgard-node`, `midgard-node-migrate`, Prometheus, Loki, cAdvisor, Grafana, Tempo | Docker json-file: `docker compose $F logs --no-color midgard-node`                                                                                                               | One 1 MB file (`x-logging` anchor `default-logging`)                |
-| Demo stack Postgres                                                                           | Docker json-file                                                                                                                                                                 | Three 10 MB files                                                   |
-| Demo stack, aggregated                                                                        | Promtail ships container logs to Loki; browse them in Grafana on host port 3001                                                                                                  | Per the Loki configuration                                          |
-| Kupmios cardano-node, Ogmios, Kupo                                                            | Docker default logging for their services in `docker-compose.kupmios.yaml`                                                                                                       | Docker default                                                      |
-| Phase4 cardano-node, Ogmios, Kupo, Postgres                                                   | Docker default logging; read with `docker compose --project-name "$MIDGARD_PHASE4_COMPOSE_PROJECT" --file …/phase4-process/compose.yaml logs <service>` after sourcing `run.env` | Until the container is removed; `restart: "no"` keeps a crashed one |
-| Phase4 script compose output                                                                  | A transient `work/compose.<pid>.log` in the run directory, printed when a compose command fails and then deleted                                                                 | Only on failure, on the terminal                                    |
-| Phase4 acceptance nodes                                                                       | `<MIDGARD_PHASE4_PROCESS_RUN_DIR>/<scenario label>/<nodeId>.log`; default run dir `logs/phase4-process-<timestamp>` resolved against the command's working directory             | Kept                                                                |
-| Watcher journeys                                                                              | `<run dir>/work/journeys/sessions/session-*/<command>.log`, opened in append mode, next to each attempt's JSON record (`devnet/watcher-journeys/process.ts`)                     | Kept; append mode, so earlier attempts are in the same file         |
-| A process you started with `e2e-start-service`                                                | The `--raw-log` path you gave, with the PID in `--pid-file`                                                                                                                      | Kept                                                                |
-| DA committee node run by hand                                                                 | Its stdout and stderr                                                                                                                                                            | Wherever you redirected it                                          |
+| Service                                                               | Where the log goes                                                                                                                                                               | Kept                                                                |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Demo stack `midgard-node`, Prometheus, Loki, cAdvisor, Grafana, Tempo | Docker json-file: `docker compose $F logs --no-color midgard-node`                                                                                                               | One 1 MB file (`x-logging` anchor `default-logging`)                |
+| Demo stack Postgres                                                   | Docker json-file                                                                                                                                                                 | Three 10 MB files                                                   |
+| Demo stack, aggregated                                                | Promtail ships container logs to Loki; browse them in Grafana on host port 3001                                                                                                  | Per the Loki configuration                                          |
+| Kupmios cardano-node, Ogmios, Kupo                                    | Docker default logging for their services in `docker-compose.kupmios.yaml`                                                                                                       | Docker default                                                      |
+| Phase4 cardano-node, Ogmios, Kupo, Postgres                           | Docker default logging; read with `docker compose --project-name "$MIDGARD_PHASE4_COMPOSE_PROJECT" --file …/phase4-process/compose.yaml logs <service>` after sourcing `run.env` | Until the container is removed; `restart: "no"` keeps a crashed one |
+| Phase4 script compose output                                          | A transient `work/compose.<pid>.log` in the run directory, printed when a compose command fails and then deleted                                                                 | Only on failure, on the terminal                                    |
+| Phase4 acceptance nodes                                               | `<MIDGARD_PHASE4_PROCESS_RUN_DIR>/<scenario label>/<nodeId>.log`; default run dir `logs/phase4-process-<timestamp>` resolved against the command's working directory             | Kept                                                                |
+| Watcher journeys                                                      | `<run dir>/work/journeys/sessions/session-*/<command>.log`, opened in append mode, next to each attempt's JSON record (`devnet/watcher-journeys/process.ts`)                     | Kept; append mode, so earlier attempts are in the same file         |
+| A process you started with `e2e-start-service`                        | The `--raw-log` path you gave, with the PID in `--pid-file`                                                                                                                      | Kept                                                                |
+| DA committee node run by hand                                         | Its stdout and stderr                                                                                                                                                            | Wherever you redirected it                                          |
 
 Reading a crash:
 

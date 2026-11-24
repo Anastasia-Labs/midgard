@@ -1,5 +1,5 @@
 /**
- * Wire and rule twin of the standalone `min-fee` fault-proof family (Q20).
+ * Wire and rule twin of the standalone `min-fee` fault-proof family.
  *
  * The family proves one public predicate over a block-committed native-V1
  * transaction and the disputed header's own fee schedule:

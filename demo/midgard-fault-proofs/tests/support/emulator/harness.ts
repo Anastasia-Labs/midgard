@@ -81,14 +81,14 @@ import {
 } from "./reference-scripts.js";
 
 /**
- * Init transaction for a fabricated family (Q39/Q40): mints the computation
+ * Init transaction for a fabricated family: mints the computation
  * thread under the family's canonical catalogue category and locks it at
  * step-01.
  *
  * This mirrors the generic tail of `src/submit-init.ts` exactly — catalogue,
  * hub-oracle and fraudulent-block reference inputs, the PHAS membership
  * withdrawal carrying the category proof, and the `Init` mint redeemer. It
- * remains here as the focused Q39/Q40 emulator adapter.
+ * remains here as the focused fabricated-family emulator adapter.
  */
 export const submitFabricatedFamilyInit = async ({
   lucid,

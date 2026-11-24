@@ -57,7 +57,7 @@ import {
 export type DoubleSpendFixtureOptions = {
   /** Successors committed before `buildInit` mints the computation thread. */
   readonly successorCount?: number;
-  /** Optional second violation used by cross-family Q53 idempotency tests. */
+  /** Optional second violation used by cross-family reward idempotency tests. */
   readonly headerMinimumFee?: bigint;
   readonly coherentCanonicalEvidence?: boolean;
   /** Lovelace the operator adds to its active node at the target's commit. */

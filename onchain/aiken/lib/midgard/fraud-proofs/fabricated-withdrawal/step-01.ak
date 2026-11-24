@@ -57,7 +57,7 @@
 //// here; a fabricated-withdrawal thread that cannot first exhibit the committed
 //// leaf has nothing to adjudicate.
 ////
-//// ### Mirror of `fabricated-deposit` (Q39)
+//// ### Mirror of `fabricated-deposit`
 ////
 //// The category binding, header authentication and counted-root membership
 //// helpers below are family-local on purpose: the two fabricated-event families
@@ -207,7 +207,7 @@ pub type CommittedWithdrawalSourceProofV1 =
 /// `midgard/fraud_proofs/transition_trace/proof`'s `verify_source_membership`
 /// and its `WithdrawalSourceMembership` arm, and `validators/user-events`'
 /// settlement-side membership check, which keys the same domain). Inventing a
-/// second membership rule here would let Q40 convict a block over a leaf the
+/// second membership rule here would let this family convict a block over a leaf the
 /// transition arms and the settlement spend path do not recognise as committed.
 ///
 /// The counted-root wrapper is what makes `withdrawal_count` load-bearing:
@@ -321,8 +321,8 @@ pub type SpendRedeemer =
 // `midgard/fraud_proofs/native_binding_fixture_v1` (whose block, hub,
 // state-queue and thread builders these extend): it is not reachable from any
 // on-chain validator entry point. It lives in this family's own lib modules
-// rather than in the shared fixture module because Q39 and Q40 must keep
-// disjoint family paths.
+// rather than in the shared fixture module because the fabricated-deposit and
+// fabricated-withdrawal families must keep disjoint paths.
 
 /// Deterministic L1 output reference standing in for a genuine withdrawal nonce —
 /// the output a real withdrawal authentication transaction spent.

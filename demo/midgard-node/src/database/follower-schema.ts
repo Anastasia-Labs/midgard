@@ -2,16 +2,16 @@
  * The L1 follower's schema in the node database. The node's
  * event rows bind to the follower's admission identity (`l1_event_keys`), and
  * the node's own SQL joins it, so the follower's tables are part of the
- * node's schema: `migrate` installs them, in its transaction, with the
- * follower's own migration ledger. The follower store applies the same sets
+ * node's schema: `schema.ts` installs them, in its transaction, with the
+ * follower's own schema ledger. The follower store applies the same sets
  * again when it starts, which is a no-op.
  */
 import {
-  applyMigrations,
-  followerMigrations,
-  intentMigrations,
-  type MigrationSet,
+  applySchemas,
+  followerSchema,
+  intentSchema,
   postgresDialect,
+  type SchemaSet,
   type SqlBackend,
   type SqlRow,
   type SqlTx,
@@ -19,24 +19,23 @@ import {
   type View,
   viewValidIn,
 } from "@al-ft/midgard-l1-follower";
-import { eventMigrations } from "@al-ft/midgard-l1-follower/events";
+import { eventSchema } from "@al-ft/midgard-l1-follower/events";
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect, Runtime } from "effect";
 
-import { forcedOrderMigrations } from "../forced-orders/schema.js";
-import { queueTerminalMigrations } from "../l1-queue-terminals/schema.js";
-import { splitSqlStatements } from "./migrations/runner.split-sql-statements.js";
+import { forcedOrderSchema } from "../forced-orders/schema.js";
+import { queueTerminalSchema } from "../l1-queue-terminals/schema.js";
 
 /**
  * The follower's own sets plus the node event, forced-order, queue-terminal
  * and intent journal projections'.
  */
-export const NODE_FOLLOWER_SCHEMA: readonly MigrationSet[] = [
-  followerMigrations("postgres"),
-  eventMigrations("postgres"),
-  forcedOrderMigrations("postgres"),
-  queueTerminalMigrations("postgres"),
-  intentMigrations("postgres"),
+export const NODE_FOLLOWER_SCHEMA: readonly SchemaSet[] = [
+  followerSchema("postgres"),
+  eventSchema("postgres"),
+  forcedOrderSchema("postgres"),
+  queueTerminalSchema("postgres"),
+  intentSchema("postgres"),
 ];
 
 export const numbered = (text: string): string => {
@@ -68,10 +67,9 @@ export const followerSqlTx = Effect.gen(function* () {
       run(
         sql.unsafe<SqlRow>(numbered(text), params.map(bindParam) as never),
       ).then((rows) => [...rows]),
-    exec: async (text) => {
-      for (const statement of splitSqlStatements(text))
-        await run(sql.unsafe(statement));
-    },
+    // No parameters: one simple-protocol query, which runs a script of
+    // several statements.
+    exec: (text) => run(sql.unsafe(text)).then(() => undefined),
   };
   return tx;
 });
@@ -122,7 +120,7 @@ export const inFollowerSnapshot = <A>(
 
 /**
  * Applies the follower schema in the caller's SQL transaction: the follower's
- * migration runner, over the node's open transaction connection.
+ * `applySchemas`, over the node's open transaction connection.
  */
 export const installFollowerSchema = Effect.gen(function* () {
   const tx = yield* followerSqlTx;
@@ -134,7 +132,7 @@ export const installFollowerSchema = Effect.gen(function* () {
     close: () => Promise.resolve(),
   };
   return yield* Effect.tryPromise({
-    try: () => applyMigrations(backend, NODE_FOLLOWER_SCHEMA),
+    try: () => applySchemas(backend, NODE_FOLLOWER_SCHEMA),
     catch: (cause) => cause,
   });
 });

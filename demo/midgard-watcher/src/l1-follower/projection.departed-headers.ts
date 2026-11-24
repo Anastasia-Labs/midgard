@@ -54,7 +54,7 @@ export const DEPARTED_HEADERS_TEMPORAL_TABLE: TemporalTableSpec = {
   ],
 };
 
-export const departedHeadersMigrationSql = (dialect: DialectName): string => {
+export const departedHeadersSchemaSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
   const int8 = dialect === "postgres" ? "bigint" : "INTEGER";
   return `

@@ -3,7 +3,7 @@
  * traffic (admissions inline and external, continuations, retirements,
  * resubmitted keys, the same key under the other kind) and its check, which
  * compares the projection at every step with an independent in-memory model
- * of the canonical chain (P2 event and key sets, P4 spendability). Once the
+ * of the canonical chain (event and key sets, spendability). Once the
  * store pruned, the model is cut to what the projection's retention keeps
  * (`EVENT_TABLES`): a retired event and its retirement until its retirement
  * slot is pruned, a refusal until its slot is. The key set is never pruned,
@@ -403,7 +403,7 @@ export const eventSimProjection = (
         .sort(),
     );
     if (dueDifference !== null) return `due deposits: ${dueDifference}`;
-    // P4: spendable iff included by an own block and canonical at the tip;
+    // Spendable iff included by an own block and canonical at the tip;
     // being due never makes a deposit spendable. Include every other one.
     const included = due.value.filter((_, i) => i % 2 === 0);
     const spendable = await spendableAt(

@@ -5,7 +5,7 @@
  * also when the validity bounds are not on a slot boundary and at the
  * largest step count the trace descriptor admits (2^32 - 1). source-v1
  * refuses a terminal the challenger's own committed root does not prove, a
- * forced transaction (R-DESC), a state 0 the header does not derive (N5), a
+ * forced transaction (R-DESC), a state 0 the header does not derive, a
  * bond one lovelace short, and a VerifySource after `block_end + M/2`. */
 import {
   hashMidgardValidationMachineState,
@@ -246,7 +246,7 @@ describe("validation-trace dispute: Open and VerifySource", () => {
       check: /^Validator returned false$/u,
     };
     // State 0 over the block's post-state root instead of the event's
-    // pre-state root (N5).
+    // pre-state root.
     await expectOnchainRefusal(
       () =>
         verifySource(scene, opener, {

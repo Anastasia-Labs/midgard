@@ -11,7 +11,7 @@ one red run or one green run is not a rate.
 
 The rules for what a test should assert, and the traps that make a green
 result meaningless, are in the sibling [writing-tests](../writing-tests/SKILL.md)
-skill and its [mistakes-we-make.md](../writing-tests/references/mistakes-we-make.md).
+skill.
 This skill is about intermittence.
 
 ## 1. Measure the rate
@@ -83,7 +83,7 @@ any of them; as of 2026-11-23 no vitest config sets `retry`
 | vitest `retry`, a retry loop, rerunning CI until green      | the failure itself                                   | never, for a test; a bounded poll for a state the production caller also waits for is not a retry (it still fails hard with a state dump, as in `e7b91208e`)                                                                             |
 | a bigger timeout                                            | a hang, or a slowdown that will cross the new budget | you measured the real cost and the budget sits too close to it under contention, as in `ac1b630e1` (~22 s cost, 60 s budget, 2 of 4 CI runs timed out). A second raise for the same test is a diagnosis, not another raise (same commit) |
 | a `sleep` before an assertion                               | an ordering bug; fails again on a slower machine     | never; wait for the condition                                                                                                                                                                                                            |
-| `it.skip`, `skipIf`, a silent early return                  | everything the test checked                          | a missing prerequisite, with the reason printed (see `3e2c712ca` in [mistakes-we-make.md](../writing-tests/references/mistakes-we-make.md))                                                                                              |
+| `it.skip`, `skipIf`, a silent early return                  | everything the test checked                          | a missing prerequisite, with the reason printed ([writing-tests §5](../writing-tests/SKILL.md#5-keep-it-able-to-fail))                                                                                                                   |
 | `.only`, `-t` filters, running the file alone               | the neighbour that shares state with it              | as a diagnostic step, never as the result                                                                                                                                                                                                |
 | one fork (`MIDGARD_NODE_TEST_FORKS=1`)                      | a resource shared between files                      | as a diagnostic; to cut memory, lower the fork count and say so                                                                                                                                                                          |
 | a looser assertion (`toThrow()` without a matcher, a range) | the wrong failure passing as the right one           | the contract really is looser; cite the caller that shows it                                                                                                                                                                             |

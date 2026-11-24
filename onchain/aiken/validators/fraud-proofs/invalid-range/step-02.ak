@@ -137,8 +137,7 @@ fn accepted_subject() -> substrate.VerdictSubjectV1 {
 /// Positive selector: both malformed-interval shapes finalize into a permanent
 /// fraud-proof token — a closed interval whose upper bound falls below the
 /// block's replay slot, and an inverted interval. The inverted case is the
-/// executable disposition of F21
-/// physical structural row L302 (Q49-L302), previously an unverified inference.
+/// executable disposition of the malformed-interval concern.
 test invalid_range_step_02_accepts_uncovered_and_inverted_intervals() {
   and {
     run_finalize(

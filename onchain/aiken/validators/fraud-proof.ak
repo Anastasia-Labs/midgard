@@ -66,7 +66,7 @@ validator mint(computation_thread_script_hash: ByteArray) {
   }
 }
 
-// ## Q01 terminal token-coupling selectors
+// ## Terminal token-coupling selectors
 
 fn run_fraud_proof_mint(
   thread_asset_name: ByteArray,

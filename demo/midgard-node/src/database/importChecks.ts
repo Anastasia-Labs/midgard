@@ -1,5 +1,5 @@
 /**
- * The import checker's durable set (migrations 0028, 0030): each Plutus
+ * The import checker's durable set: each Plutus
  * transaction of an imported foreign block, applied by its committed
  * verdict, with what its script runs are rebuilt from. An entry is written
  * in the transaction that processes its block, and leaves the set on an

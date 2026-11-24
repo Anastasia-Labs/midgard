@@ -1,4 +1,4 @@
-//// Q35 network-id step 02: decisive check and permanent proof-token mint.
+//// network-id step 02: decisive check and permanent proof-token mint.
 
 use aiken/collection/list
 use cardano/address.{Address}
@@ -299,8 +299,8 @@ test network_id_step_02_convicts_foreign_raw_network_nibble_15() {
 }
 
 /// Exercises a non-trivial high-cardinality opening. This is intentionally not
-/// labelled the canonical maximum: Q38 owns the exact maximum-output frontier
-/// and its required tiered-carriage proof-fit evidence.
+/// labelled the canonical maximum: it does not establish the exact
+/// maximum-output frontier or its tiered-carriage proof fit.
 test network_id_step_02_convicts_the_last_high_cardinality_output() {
   let base = fixture.valid_native_tx_v1()
   expect [output] = base.body.outputs

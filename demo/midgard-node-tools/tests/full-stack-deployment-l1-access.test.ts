@@ -26,8 +26,6 @@ it("deploys over the local node's ledger, reading no wallet through Kupo", async
   const { config } = await stackFixture();
   const processes = new RecordingProcesses(config, stackEnvironment(config));
   processes.env.L1_ACCESS = "kupmios";
-  processes.responses["storage-identity"] = { id: "7" };
-  processes.responses["host-database-identity"] = "7";
   for (const step of deploymentSteps(processes))
     if (step.id in DEPLOYMENT) await step.execute(undefined);
 

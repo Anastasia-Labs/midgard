@@ -47,8 +47,8 @@ const durationTablePath = fileURLToPath(
   new URL("./tests/support/ci-file-durations.json", import.meta.url),
 );
 
-/** Every project's global setup: creates and migrates one database per worker
- * shard before any file runs, after refusing a stale onchain/aiken/plutus.json,
+/** Every project's global setup: creates one database per worker shard, with
+ * the node schema, before any file runs, after refusing a stale onchain/aiken/plutus.json,
  * and gives the run its shared fixture directory. Each project lists it, and
  * `tests/global-setup.ts` runs its work once per run. */
 const runSetup = [

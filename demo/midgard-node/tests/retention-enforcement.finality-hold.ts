@@ -7,7 +7,7 @@ import { Effect, Metric } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { DaPayloadsDB } from "../src/database/index.js";
-import * as MigrationRunner from "../src/database/migrations/runner.js";
+import * as NodeSchema from "../src/database/schema.js";
 import { retentionSweepAction } from "../src/fibers/retention-sweeper.js";
 import { NodeConfig } from "../src/services/config.make-config.js";
 import {
@@ -79,10 +79,7 @@ describe.skipIf(!dbEnabled)("DA payload retention held to L1 finality", () => {
   beforeAll(async () => {
     await Effect.runPromise(
       provideDatabaseLayers(
-        MigrationRunner.migrate({
-          appVersion: "test",
-          actor: "retention-enforcement-finality-hold.test",
-        }).pipe(Effect.asVoid),
+        NodeSchema.ensure.pipe(Effect.asVoid),
       ) as Effect.Effect<void, never, never>,
     );
   }, 120_000);

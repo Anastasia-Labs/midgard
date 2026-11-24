@@ -146,7 +146,7 @@ export function nodeEnvironment(
 }
 /**
  * The testing node's Compose services in the generated services file: the
- * locally built node and its migration, reading node.env, with the producer
+ * locally built node, reading node.env, with the producer
  * manifest and the in-stack Cardano node's socket and configuration.
  */
 export async function stackNodeServices(
@@ -160,7 +160,6 @@ export async function stackNodeServices(
       labels: await mountedFilesLabels([input.producer]),
       volumes: [`${input.producer}:/app/stack/producer.json:ro`, ...volumes],
     },
-    "midgard-node-migrate": { env_file: input.envFile, volumes },
   };
 }
 /** One read of every service's readiness; undefined while any is not ready. */
@@ -355,7 +354,7 @@ export function runtimeSteps(processes: StackProcesses): StackStep[] {
           "services-build",
           [
             "build",
-            ...(isPublic ? [] : ["midgard-node", "midgard-node-migrate"]),
+            ...(isPublic ? [] : ["midgard-node"]),
             "da-committee-0",
             "watcher",
           ],

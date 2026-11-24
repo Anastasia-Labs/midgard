@@ -257,7 +257,7 @@ export const rawLedgerEntry = (byte: number): SDKDa.DaPayloadEntry => [
 
 /// The exact bytes one output occupies in `utxos_root`: its
 /// `LedgerOutputCommitmentV1` descriptor, keyed by the out-ref the entry is
-/// filed under (spec §5.3 — "not with the full output bytes"). Fixtures that
+/// filed under, never the full output bytes. Fixtures that
 /// feed deliberately malformed or non-canonical output bytes have no
 /// descriptor at all; the challenger refuses those before it reaches MPF
 /// replay, so the trie value it never reads falls back to the raw bytes rather

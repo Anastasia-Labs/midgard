@@ -1,7 +1,7 @@
 /**
  * `native-script-decoding` deployed-contract record.
  *
- * Like the two Q39/Q40 families, this family predates its catalogue
+ * Like the two fabricated families, this family predates its catalogue
  * registration: the `SupportedFaultProofCategoryName` entry, the SDK
  * `contracts.ts` chain builder and the category-id constant are parent-owned
  * surfaces that land with registration. Until then, submitters

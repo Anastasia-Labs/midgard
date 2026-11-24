@@ -180,7 +180,7 @@ const captureOnce = async (
       ...scope,
       utxos: await scopeUtxos(store, rawReads, scope, point),
     });
-  // A pinned objective's followed units stay readable past k (E1 ruling);
+  // A pinned objective's followed units stay readable past k;
   // a history pruning removed first is refused, never read partially. An
   // unpinned header is a read for no open objective (classification): it
   // proceeds, and past k the raw reads refuse it.

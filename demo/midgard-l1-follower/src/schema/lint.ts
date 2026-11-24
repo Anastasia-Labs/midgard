@@ -1,5 +1,5 @@
 import type { TemporalRegistry } from "../registry.js";
-import type { MigrationSet } from "./migrate.js";
+import type { SchemaSet } from "./apply.js";
 
 /** Persistent table classes; D-v and D-c are never tables. */
 export const TABLE_CLASSES = ["A", "B", "C", "D-t", "D-x"] as const;
@@ -7,7 +7,6 @@ export type TableClass = (typeof TABLE_CLASSES)[number];
 
 export type DeclaredTable = Readonly<{
   namespace: string;
-  migration: string;
   table: string;
   tableClass: TableClass;
   retention: string;
@@ -15,7 +14,6 @@ export type DeclaredTable = Readonly<{
 
 export type SchemaLintProblem = Readonly<{
   namespace: string;
-  migration: string;
   table: string | null;
   message: string;
 }>;
@@ -27,10 +25,9 @@ const HEADER = /^\s*--\s*class:\s*([A-Za-z-]+)\s*;\s*retention:\s*(.*?)\s*$/u;
 const isTableClass = (value: string): value is TableClass =>
   (TABLE_CLASSES as readonly string[]).includes(value);
 
-/** A foreign key a migration declares: `table` references `target`. */
+/** A foreign key a schema declares: `table` references `target`. */
 type ForeignKey = Readonly<{
   namespace: string;
-  migration: string;
   table: string;
   target: string;
 }>;
@@ -48,12 +45,7 @@ const STATEMENT_OWNER =
 const REFERENCES = /\bREFERENCES\s+("?)([A-Za-z_][A-Za-z0-9_.]*)\1/giu;
 
 /** The foreign keys of every `CREATE TABLE` and `ALTER TABLE` statement. */
-const scanForeignKeys = (
-  namespace: string,
-  id: string,
-  sql: string,
-  scan: Scan,
-): void => {
+const scanForeignKeys = (namespace: string, sql: string, scan: Scan): void => {
   const code = sql.replace(/\/\*[\s\S]*?\*\//gu, " ").replace(/--[^\n]*/gu, "");
   for (const statement of code.split(";")) {
     const owner = STATEMENT_OWNER.exec(statement);
@@ -61,19 +53,13 @@ const scanForeignKeys = (
     for (const reference of statement.matchAll(REFERENCES))
       scan.foreignKeys.push({
         namespace,
-        migration: id,
         table: (owner[2] ?? "").toLowerCase(),
         target: (reference[2] ?? "").toLowerCase(),
       });
   }
 };
 
-const scanMigration = (
-  namespace: string,
-  id: string,
-  sql: string,
-  scan: Scan,
-): void => {
+const scanSchema = (namespace: string, sql: string, scan: Scan): void => {
   const lines = sql.split(/\r?\n/u);
   lines.forEach((line, index) => {
     const match = CREATE_TABLE.exec(line);
@@ -84,7 +70,7 @@ const scanMigration = (
     while (cursor >= 0 && (lines[cursor] ?? "").trim() === "") cursor -= 1;
     const header = HEADER.exec(cursor >= 0 ? (lines[cursor] ?? "") : "");
     const problem = (message: string): void => {
-      scan.problems.push({ namespace, migration: id, table, message });
+      scan.problems.push({ namespace, table, message });
     };
     if (header === null) {
       problem("missing `-- class: <A|B|C|D-t|D-x>; retention: <rule>` header");
@@ -104,20 +90,18 @@ const scanMigration = (
     }
     scan.declared.push({
       namespace,
-      migration: id,
       table,
       tableClass,
       retention,
     });
   });
-  scanForeignKeys(namespace, id, sql, scan);
+  scanForeignKeys(namespace, sql, scan);
   if (
     /\bCREATE\s+TABLE\b/iu.test(sql) &&
     !lines.some((line) => CREATE_TABLE.test(line))
   )
     scan.problems.push({
       namespace,
-      migration: id,
       table: null,
       message:
         "CREATE TABLE must start its own line so the header can be checked",
@@ -125,22 +109,21 @@ const scanMigration = (
 };
 
 /**
- * The tables one migration declares, and its header problems. The migration
- * runner refuses a migration with problems, so every table it creates is
- * in the catalog with its class (`l1_follower_tables`).
+ * The tables one schema declares, and its header problems. `applySchemas`
+ * refuses a schema with problems, so every table it creates is in the
+ * catalog with its class (`l1_follower_tables`).
  */
-export const migrationTables = (
+export const schemaTables = (
   namespace: string,
-  id: string,
   sql: string,
 ): Readonly<{ declared: DeclaredTable[]; problems: SchemaLintProblem[] }> => {
   const scan = emptyScan();
-  scanMigration(namespace, id, sql, scan);
+  scanSchema(namespace, sql, scan);
   return scan;
 };
 
 /**
- * The schema lint: every table in every migration declares
+ * The schema lint: every table in every schema declares
  * a class and a retention rule on the line above its `CREATE TABLE`, and
  * every D-t table is in the temporal registry (and every registered table is
  * a declared D-t or D-x table, and every table a registered row pin names is
@@ -150,13 +133,11 @@ export const migrationTables = (
  * Returns the problems; empty means clean.
  */
 export const lintSchema = (
-  sets: readonly MigrationSet[],
+  sets: readonly SchemaSet[],
   registry?: TemporalRegistry,
 ): SchemaLintProblem[] => {
   const scan = emptyScan();
-  for (const set of sets)
-    for (const migration of set.migrations)
-      scanMigration(set.namespace, migration.id, migration.sql, scan);
+  for (const set of sets) scanSchema(set.namespace, set.sql, scan);
   const declaredByName = new Map(
     scan.declared.map((table) => [table.table, table]),
   );
@@ -166,10 +147,9 @@ export const lintSchema = (
     if (target === "B") continue;
     scan.problems.push({
       namespace: key.namespace,
-      migration: key.migration,
       table: key.table,
       message: `class B table references ${key.target} (${
-        target === undefined ? "declared by no migration" : `class ${target}`
+        target === undefined ? "declared by no schema" : `class ${target}`
       }); a class B table may reference only class B tables`,
     });
   }
@@ -177,7 +157,6 @@ export const lintSchema = (
     if (table.tableClass === "D-t" && registry?.has(table.table) !== true)
       scan.problems.push({
         namespace: table.namespace,
-        migration: table.migration,
         table: table.table,
         message: "D-t table is not registered in the temporal registry",
       });
@@ -189,30 +168,24 @@ export const lintSchema = (
     )
       scan.problems.push({
         namespace: declared?.namespace ?? "(registry)",
-        migration: declared?.migration ?? "(registry)",
         table: spec.name,
         message:
-          "registered temporal table is not declared D-t or D-x by any migration",
+          "registered temporal table is not declared D-t or D-x by any schema",
       });
     for (const pin of spec.pinnedBy ?? [])
       if (!declaredByName.has(pin.table))
         scan.problems.push({
           namespace: declared?.namespace ?? "(registry)",
-          migration: declared?.migration ?? "(registry)",
           table: spec.name,
-          message: `pinning table ${pin.table} is declared by no migration`,
+          message: `pinning table ${pin.table} is declared by no schema`,
         });
   }
   return scan.problems;
 };
 
-/** The class and retention of every table the migrations declare. */
-export const declaredTables = (
-  sets: readonly MigrationSet[],
-): DeclaredTable[] => {
+/** The class and retention of every table the schemas declare. */
+export const declaredTables = (sets: readonly SchemaSet[]): DeclaredTable[] => {
   const scan = emptyScan();
-  for (const set of sets)
-    for (const migration of set.migrations)
-      scanMigration(set.namespace, migration.id, migration.sql, scan);
+  for (const set of sets) scanSchema(set.namespace, set.sql, scan);
   return scan.declared;
 };

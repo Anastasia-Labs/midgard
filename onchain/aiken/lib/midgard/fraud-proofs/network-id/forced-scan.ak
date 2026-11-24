@@ -1,4 +1,4 @@
-//// Q35 `network-id`, forced (wrongful-rejection) direction: the resumable
+//// `network-id`, forced (wrongful-rejection) direction: the resumable
 //// §10 walk that proves **no** output of the rejected forced transaction
 //// names a foreign network.
 ////

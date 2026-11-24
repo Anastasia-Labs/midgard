@@ -1,6 +1,6 @@
 /**
  * An operator command under `--l1 node` reads protocol state from its
- * running node's index (owner ruling D1): the services an operator command
+ * running node's index: the services an operator command
  * runs under (`provideOperatorTxServices`) answer a protocol address from
  * the node's follower store, read-only, while the local node (a fake
  * transport sidecar, `helpers/fake-local-node.ts`) refuses every address

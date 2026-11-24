@@ -120,7 +120,7 @@ describe("canonical Data corpus V1 through the TypeScript traverse twin", () => 
         vector.verdict === "accepted",
       );
       expect(streamResumed(source)).toBe(vector.verdict === "accepted");
-      // Node admission keeps its own single-pass gate in P1 (DC ruling F3);
+      // Node admission keeps its own single-pass gate in P1;
       // it must take exactly the corpus's accepted spans.
       expect(nodeAdmitsDatum(source)).toBe(vector.verdict === "accepted");
     },

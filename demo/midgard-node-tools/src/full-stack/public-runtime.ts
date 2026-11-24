@@ -71,11 +71,11 @@ export const publicPostgresPasswordPath = (config: StackConfig) =>
 
 /**
  * The public stack's Compose overlay on the base files: the release's
- * digest-pinned role images, the node and its migration as the host user,
+ * digest-pinned role images, the node as the host user,
  * host ports bound to loopback, and Postgres reading its password from a
- * private file rather than its environment. The node and its migration drop
+ * private file rather than its environment. The node drops
  * the base files' env_file: Compose appends env_file lists across files, and
- * the stack's .env holds other roles' secrets, so they read only the node.env
+ * the stack's .env holds other roles' secrets, so it reads only the node.env
  * the services file adds (publicNodeServices). The node publishes no API
  * port: it serves HTTP only on its socket, behind the TLS ingress. The DA
  * port serves the stack's own committee, which dials the loopback.
@@ -104,7 +104,6 @@ export async function writePublicRoles(processes: StackProcesses) {
             `${loopback}\${MIDGARD_NODE_DA_HOST_PORT:-39002}:39002`,
           ]),
         },
-        "midgard-node-migrate": node,
         postgres: {
           image: env.MIDGARD_PUBLIC_POSTGRES_IMAGE!,
           pull_policy: "missing",
@@ -127,7 +126,7 @@ export async function writePublicRoles(processes: StackProcesses) {
 
 /**
  * Pulls the release's digest-pinned images and writes the overlay that pins
- * the node, its migration and Postgres to them, before any service starts.
+ * the node and Postgres to them, before any service starts.
  */
 export async function preparePublicImages(processes: StackProcesses) {
   const { env, config } = processes;
@@ -426,7 +425,6 @@ export async function publicNodeServices(
       },
       ...l2PeerNodeNetworks(peerRoute),
     },
-    "midgard-node-migrate": { env_file: input.envFile, volumes },
   };
   const ingressConfig = join(input.servicesDirectory, "public-ingress.conf");
   await writeFile(

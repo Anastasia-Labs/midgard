@@ -6,8 +6,7 @@
  * - a pull of a generation this process already handled handles nothing
  *   again;
  * - only a transient failure (the store busy, a connection refused) is
- *   retried on a timer; any other is named and waits for the next rewind;
- * - migration 0010 seeds the marker from the cursor of a store that has one.
+ *   retried on a timer; any other is named and waits for the next rewind.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,21 +15,17 @@ import { join } from "node:path";
 import {
   decodeBlock,
   type FactStore,
-  type FactStoreOptions,
-  openSqliteFactStore,
   type Point,
 } from "@al-ft/midgard-l1-follower";
 import {
   SIM_ORIGIN,
   SimChain,
-  simStoreOptions,
   type SimTx,
   simUniverse,
 } from "@al-ft/midgard-l1-follower/testing";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { readHandledFollowerGeneration } from "../../src/l1-follower/follower-generation.js";
-import { watcherProjection } from "../../src/l1-follower/projection.js";
 import {
   createWatcherDecisionDriver,
   WATCHER_DECISION_PASS_FAILED,
@@ -52,16 +47,13 @@ import {
   SOURCE_ID,
   until,
 } from "../support/l1-follower-store-reset.js";
-import { postgresSchemas } from "../support/postgres-schemas.js";
 
 const scratch = mkdtempSync(join(tmpdir(), "watcher-driver-generations-"));
-const schemas = postgresSchemas();
 const opened: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of opened.splice(0).reverse()) await close();
 });
 afterAll(async () => {
-  await schemas.dropAll();
   rmSync(scratch, { recursive: true, force: true });
 });
 
@@ -216,76 +208,3 @@ describe("the decision driver's failure classes", () => {
     expect(passes).toBeGreaterThan(transientAt);
   });
 });
-
-describe.each(["sqlite", "postgres"] as const)(
-  "migration 0010 (%s)",
-  (dialect) => {
-    const without0010 = (options: FactStoreOptions): FactStoreOptions => ({
-      ...options,
-      migrations: (options.migrations ?? []).map((set) => ({
-        ...set,
-        migrations: set.migrations.filter(
-          ({ id }) => id !== "0010_watcher_follower_generation",
-        ),
-      })),
-    });
-    const opener = async (): Promise<
-      (options: FactStoreOptions) => FactStore
-    > => {
-      if (dialect === "postgres") return (await schemas.open()).store;
-      const path = join(scratch, `${String(Math.random()).slice(2)}.db`);
-      return (options) => openSqliteFactStore({ ...options, path });
-    };
-    const options = simStoreOptions([watcherProjection(D)], K, dialect);
-
-    it("seeds the marker from the cursor's generation of a store that has one", async () => {
-      const open = await opener();
-      const before = open(without0010(options));
-      try {
-        expect((await before.start()).kind).toBe("ready");
-        expect((await before.initialize(SIM_ORIGIN)).kind).toBe("initialized");
-        const chain = new SimChain(simUniverse(), SIM_ORIGIN);
-        for (let i = 0; i < 4; i += 1)
-          expect(
-            (
-              await before.applyBlock(
-                decodeBlock(chain.forward([]).encoded.raw),
-              )
-            ).kind,
-          ).toBe("applied");
-        chain.backward(2);
-        expect((await before.rewind(chain.tip.point)).kind).toBe("rewound");
-        expect((await before.cursor())?.generation).toBe(1);
-      } finally {
-        await before.close();
-      }
-      const store = open(options);
-      try {
-        const started = await store.start();
-        expect("migrated" in started ? started.migrated : []).toEqual([
-          expect.stringContaining("0010_watcher_follower_generation"),
-        ]);
-        expect(await readHandledFollowerGeneration(store)).toBe(1);
-      } finally {
-        await store.close();
-      }
-    });
-
-    it("seeds no marker on a store with no cursor", async () => {
-      const open = await opener();
-      const before = open(without0010(options));
-      try {
-        expect((await before.start()).kind).toBe("ready");
-      } finally {
-        await before.close();
-      }
-      const store = open(options);
-      try {
-        expect((await store.start()).kind).toBe("ready");
-        expect(await readHandledFollowerGeneration(store)).toBeNull();
-      } finally {
-        await store.close();
-      }
-    });
-  },
-);

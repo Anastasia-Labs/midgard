@@ -256,7 +256,7 @@ export const mmStep03State: SDKFraudProof.FabricatedWithdrawalStep03State = {
   },
 };
 
-describe("Q40 fabricated-withdrawal evidence admission", () => {
+describe("fabricated-withdrawal evidence admission", () => {
   it("admits a withdrawals-bearing block and extracts its committed leaves", async () => {
     const fixture = await buildWithdrawalsBlockFixture({ leaves: [MM_LEAF] });
     const evidence = await fabricatedWithdrawalBlockEvidenceFromVerifiedPayload(

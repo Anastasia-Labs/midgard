@@ -42,7 +42,7 @@ import {
 } from "./fabricated-withdrawal.q40-fabricated-withdrawal-evidence-admission.js";
 import { h28 } from "./helpers/canonical-block-evidence-fixture.js";
 
-describe("Q40 fabricated-withdrawal proof plan", () => {
+describe("fabricated-withdrawal proof plan", () => {
   it("builds a nonexistent-identity plan from an authenticated absence witness", async () => {
     const fixture = await buildWithdrawalsBlockFixture({ leaves: [FI_LEAF] });
     // The Aiken-measured roots of `fabricated_identity_block_v1`.

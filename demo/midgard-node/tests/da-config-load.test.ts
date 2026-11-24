@@ -17,16 +17,16 @@ afterEach(() => {
 /**
  * `DA_COMMITTEE_HEX`, `DA_OWNERS_HEX` and `DA_THRESHOLD` are read by exactly
  * one consumer — the bootstrap in `deriveOperatorDaParams`. Config load is
- * shared by every subsystem, so it validates their encoding and leaves the Q63
+ * shared by every subsystem, so it validates their encoding and leaves the
  * governed floors to the consumer.
  *
- * The regression these pin: enforcing the floors at config load made a stale
- * pre-Q63 `DA_THRESHOLD=1` in a checkout's `.env` fail `NodeConfig` for the
+ * These pin that config load does not enforce the floors: doing so would make
+ * a stale `DA_THRESHOLD=1` in a checkout's `.env` fail `NodeConfig` for the
  * whole process, surfacing as an opaque error inside tests and subsystems that
  * never touch DA.
  */
 describe("DA config loading", () => {
-  it("loads a pre-Q63 DA_THRESHOLD of one without failing the process config", async () => {
+  it("loads a stale DA_THRESHOLD of one without failing the process config", async () => {
     vi.stubEnv("DA_THRESHOLD", "1");
     vi.stubEnv("DA_COMMITTEE_HEX", "01".repeat(32) + "02".repeat(32));
 

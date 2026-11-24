@@ -77,7 +77,7 @@ validator main(
         //    against the commitment extracted positionally from the compact
         //    structures `verified_tx2_id` binds.
         //
-        //    This is the step the Q1X-F6 defect (#551) was measured on. Under
+        //    This is the step #551 measured. Under
         //    the retired idiom it reproduced tx2's entire spend-input
         //    collection to re-hash it, which put the proof past the ledger's
         //    memory cap at the admissible 296-input cardinality. The door hashes

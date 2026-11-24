@@ -46,7 +46,7 @@ export const dropReleasedHeaders = async (
 
 /**
  * A due Open (or the preparation of its challenger coin) the wallet could not
- * fund this reconciliation. Reported, never blocking (spec #685 E5): the
+ * fund this reconciliation. Reported, never blocking (spec #685): the
  * watcher still takes every other admitted step, such as a live challenge's
  * settle, close or Timeout. Amounts are decimal lovelace strings, since the
  * status is served as JSON.
@@ -66,7 +66,7 @@ export type WatcherAvailabilityOpenRefusal = Readonly<{
  * be read at the source tip, or no authentic pool was found there. The
  * Timeout never falls back to the finalized snapshot's pool; it is retried on
  * the next reconciliation. Reported, never blocking: the watcher still takes
- * the next admitted step (spec #685 E5, P9(6)).
+ * the next admitted step (spec #685, P9).
  */
 export type WatcherAvailabilityTimeoutDeferral = Readonly<{
   headerHash: string;
@@ -120,7 +120,7 @@ export type WatcherAvailabilityWorkflowRefusal = Readonly<{
 }>;
 
 /**
- * A workflow row released this reconciliation (P20): this actor's challenge
+ * A workflow row released this reconciliation: this actor's challenge
  * of `headerHash` in `deployment` ended in a terminal step someone else
  * landed, a finalized, verified transaction `txHash` that burned the header's
  * queue node or closed its challenge. Reported, never blocking.
@@ -137,7 +137,7 @@ export type WatcherAvailabilityWorkflowRelease = Readonly<{
  * A workflow row whose release check failed this reconciliation: a reader
  * error, a node chain past the hop cap, or the journal refusing the release.
  * The row is kept and checked again on the next reconciliation; the tick
- * goes on (P9(6)). `release-evidence-beyond-retention` names a check the
+ * goes on. `release-evidence-beyond-retention` names a check the
  * follower can no longer answer because it pruned the facts the check
  * reads: the row is kept as it is, never released or settled unproven.
  */
@@ -157,13 +157,13 @@ export type WatcherAvailabilityStatus = Readonly<{
   /**
    * The pooled DA bond from the last successful pool read, taken on every
    * reconciliation whether or not a header is pending, and kept when a later
-   * reconciliation fails. It never changes `phase` (spec #685 E5).
+   * reconciliation fails. It never changes `phase` (spec #685).
    */
   pool?: WatcherDaBondPoolObservation;
   /**
    * Why the last reconciliation's pool read failed, absent once a read
    * succeeds. Reported only: a failed pool read never changes `phase` or
-   * blocks an action (spec #685 E5).
+   * blocks an action (spec #685).
    */
   poolReadFailure?: string;
   /** Withheld Attested headers whose Open deadline passed unchallenged. */
@@ -176,7 +176,7 @@ export type WatcherAvailabilityStatus = Readonly<{
   stepsDeferred?: readonly WatcherAvailabilityStepDeferral[];
   /** Steps the journal's workflow rule refused in the last reconciliation. */
   workflowRefused?: readonly WatcherAvailabilityWorkflowRefusal[];
-  /** Workflow rows released on someone else's terminal step (P20). */
+  /** Workflow rows released on someone else's terminal step. */
   workflowReleased?: readonly WatcherAvailabilityWorkflowRelease[];
   /** Workflow rows whose release check failed and were kept. */
   workflowReleaseDeferred?: readonly WatcherAvailabilityWorkflowReleaseDeferral[];
@@ -267,7 +267,7 @@ export class WatcherAvailabilityCapitalShortfall extends Error {
 /**
  * The DA bond pool could not be read at the source tip for a Timeout, or no
  * authentic pool was found there. The Timeout is skipped this reconciliation
- * and reported (P13(2)); it never falls back to the finalized snapshot's pool.
+ * and reported; it never falls back to the finalized snapshot's pool.
  */
 export class WatcherAvailabilityTimeoutPoolUnavailable extends Error {
   constructor(message: string) {
@@ -327,7 +327,7 @@ const deferral = (
 
 /**
  * Releases every workflow row of `actor`, in any deployment, whose challenge
- * ended in a terminal step someone else landed (P20). Each row's evidence is
+ * ended in a terminal step someone else landed. Each row's evidence is
  * walked from the actor's own confirmed Open on L1 (`findRelease`), and the
  * journal re-checks its own facts before retiring the row. A failed check
  * keeps the row, is reported, and never stops the other rows or the tick.

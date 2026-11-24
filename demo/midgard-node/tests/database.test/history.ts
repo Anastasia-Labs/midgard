@@ -43,7 +43,7 @@ export const registerHistoryTests = () => {
               deposit[DepositsDB.Columns.DEPOSIT_L1_TX_HASH];
             yield* insertDeposits([deposit]);
             // A list insertion moves the Order to another output; the row
-            // keeps its admission tx (ruling 2) and refuses another one.
+            // keeps its admission tx and refuses another one.
             const movedHash = databaseTxHash("status-pointer-continuation");
             const moved = yield* Effect.either(
               insertDeposits([
@@ -94,7 +94,7 @@ export const registerHistoryTests = () => {
                 "history-pointer-deposit-replacement",
               );
               // The same event again keeps its projection; another admission
-              // tx for it is refused (ruling 2).
+              // tx for it is refused.
               yield* insertDeposits([entry]);
               const replaced = yield* Effect.either(
                 insertDeposits([

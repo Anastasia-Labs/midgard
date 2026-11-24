@@ -8,9 +8,9 @@ import {
   type DialectName,
   encodeOutRef,
   type FactStoreOptions,
-  type MigrationSet,
   type OutputSummary,
   type OutRef,
+  type SchemaSet,
   type TemporalTableSpec,
   type TxSummary,
 } from "../../src/index.js";
@@ -65,15 +65,12 @@ export const BENCH_TABLES: readonly TemporalTableSpec[] = [
   },
 ];
 
-export const benchMigrations = (dialect: DialectName): MigrationSet => {
+export const benchSchema = (dialect: DialectName): SchemaSet => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
   const int8 = dialect === "postgres" ? "bigint" : "INTEGER";
   return {
     namespace: "bench",
-    migrations: [
-      {
-        id: "0001_bench_tables",
-        sql: `
+    sql: `
 -- class: D-t; retention: current rows forever; closed rows once to_slot is k deep
 CREATE TABLE bench_address_live (
   address ${bytes} NOT NULL,
@@ -94,8 +91,6 @@ CREATE TABLE bench_spend_log (
 );
 CREATE INDEX bench_spend_log_slot ON bench_spend_log (spent_slot);
 `,
-      },
-    ],
   };
 };
 
@@ -206,7 +201,7 @@ export class Workload {
         policies: new Set([hex(this.policy)]),
       },
       temporalTables: BENCH_TABLES,
-      migrations: [benchMigrations(dialect)],
+      schemas: [benchSchema(dialect)],
       derivations: [BENCH_DERIVATION],
     };
   }

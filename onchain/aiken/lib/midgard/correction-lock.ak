@@ -11,7 +11,7 @@ pub const asset_name: AssetName = "MIDGARD_CORRECTION_LOCK"
 /// Authenticated reason for the correction currently holding the singleton.
 /// A permanent fraud-proof asset name includes category id || header hash.
 /// Timeout correction has no external proof UTxO.  The availability identity
-/// is reserved for Q58's authenticated per-header challenge token.
+/// is reserved for the availability challenge's authenticated per-header token.
 pub type CorrectionIdentity {
   FraudProof { fraud_proof_asset_name: AssetName }
   AttestationTimeout

@@ -5,7 +5,7 @@ import {
 } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk/da";
 
-/** Explicit bounded-acceptance Q58 release candidate used by node tests. */
+/** Explicit bounded-acceptance availability release candidate used by node tests. */
 export const TEST_AVAILABILITY_CHALLENGE = Object.freeze({
   responseClasses: Object.freeze({
     smallPayloadMaxBytes: 65_536,

@@ -1,5 +1,5 @@
 /**
- * Deterministic canonical-block fixture for the `Q03` evidence-source tests.
+ * Deterministic canonical-block fixture for the evidence-source tests.
  *
  * By default it builds a `DaPayload` exactly the way the production node
  * does: the header's `transactions_root` is the counted root over

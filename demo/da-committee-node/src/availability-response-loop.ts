@@ -12,8 +12,7 @@ export type AvailabilityResponseLoopTimers = {
 };
 
 /**
- * The responder's bounded retry burst (B6: bounded retries at the owning
- * operation). A failed drain (one that throws, or reports `failed`) is retried
+ * The responder's bounded retry burst, owned by the operation. A failed drain (one that throws, or reports `failed`) is retried
  * after a doubling backoff capped at `backoffCeilingMs`, at most `retries`
  * times in a row. Once the burst is exhausted the loop holds: it schedules no
  * more fast retries, fails readiness with

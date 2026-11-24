@@ -33,7 +33,7 @@ export const retrieveByEventIds = (
     ),
   );
 
-/** Withdrawals admitted by the L1 tx `cardanoTxHash` (ruling 2: the admission tx, not the moving location). */
+/** Withdrawals admitted by the L1 tx `cardanoTxHash` (the admission tx, not the moving location). */
 export const retrieveByCardanoTxHash = (
   cardanoTxHash: Buffer,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>

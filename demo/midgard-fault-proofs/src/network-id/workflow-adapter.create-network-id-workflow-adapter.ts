@@ -310,7 +310,7 @@ export const createNetworkIdWorkflowAdapter = (
         return {
           kind: "conflict",
           reason:
-            "fraudulent header disappeared without the permanent Q35 proof token",
+            "fraudulent header disappeared without the permanent network-id proof token",
         };
       }
       // Only the raw-L1 route derives a removal from the chain.

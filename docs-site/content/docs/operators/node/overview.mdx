@@ -131,10 +131,9 @@ serving traffic. This is where correctness is enforced:
 <Steps>
   <Step>
     Local preflight: the pinned native MPF owner binary, the ledger signature
-    verifier, the single-process instance lock and the DA identity. Verify that
-    explicit migrations already brought the database to the exact supported
-    schema and that it is bound to the configured deployment. Startup does not
-    apply migrations.
+    verifier, the single-process instance lock and the DA identity. Create the
+    schema on an empty database, or refuse a database created by a different
+    schema, and verify that it is bound to the configured deployment.
   </Step>
   <Step>
     Verify the finalized deployment manifest the deployment commands wrote,

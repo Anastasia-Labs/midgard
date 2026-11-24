@@ -1,6 +1,6 @@
 /**
  * The queue-terminal projection as the follower plugs it in: the state
- * queue's tracked set, the D-t table, its migrations and the
+ * queue's tracked set, the D-t table, its schema and the
  * derivation.
  */
 import type { FollowerProjection } from "@al-ft/midgard-l1-follower";
@@ -10,7 +10,7 @@ import {
   stateQueueTrackedSet,
 } from "../l1-state-queue/config.js";
 import { queueTerminalDerivation } from "./derive.js";
-import { QUEUE_TERMINAL_TABLES, queueTerminalMigrations } from "./schema.js";
+import { QUEUE_TERMINAL_TABLES, queueTerminalSchema } from "./schema.js";
 
 export const queueTerminalProjection = (
   config: StateQueueProjectionConfig,
@@ -18,6 +18,6 @@ export const queueTerminalProjection = (
   name: "node_l1_queue_terminals",
   trackedSet: stateQueueTrackedSet(config),
   temporalTables: QUEUE_TERMINAL_TABLES,
-  migrations: queueTerminalMigrations,
+  schema: queueTerminalSchema,
   derivations: [queueTerminalDerivation(config)],
 });

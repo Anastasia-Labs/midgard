@@ -14,7 +14,7 @@ import {
 } from "./da-bond-pool-committee-process.js";
 import { answer } from "./da-bond-pool-committee-process.the-journey-committee-node.js";
 
-describe("the real committee node process's output capture (P27(2))", () => {
+describe("the real committee node process's output capture", () => {
   it("reads the responder's stderr reports and its stdout action reports from a spawned child", async () => {
     const logDirectory = await mkdtemp(join(tmpdir(), "da-bond-pool-spawn-"));
     const unavailable = (headerHash: string) =>

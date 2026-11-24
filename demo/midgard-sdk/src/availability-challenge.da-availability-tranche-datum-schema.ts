@@ -51,7 +51,7 @@ export const DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE =
 
 /**
  * The first response-publication measurement candidate. It is deliberately
- * named as a candidate: Q58 may promote it to the compiled response chunk
+ * named as a candidate: the availability release may promote it to the compiled response chunk
  * bound only after a signed, reference-script-backed testnet-profile
  * transaction retains the protocol's 512-byte reliability reserve.
  */

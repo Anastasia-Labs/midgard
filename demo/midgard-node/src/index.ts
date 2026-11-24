@@ -32,7 +32,6 @@ import "./commands/utxos.js";
 import "./commands/withdrawal-status.js";
 import "./da/libp2p-producer.probe-da-envelope-capabilities.js";
 import "./da/libp2p-runtime-manifest.js";
-import "./database/migrations/runner.js";
 import "./e2e/env.js";
 import "./runtime-env.js";
 import "./services/database.js";

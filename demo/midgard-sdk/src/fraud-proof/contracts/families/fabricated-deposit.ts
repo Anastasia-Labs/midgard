@@ -31,7 +31,7 @@ export const FABRICATED_DEPOSIT_FAULT_PROOF_TITLES = {
 } as const;
 
 /**
- * Q39 `fabricated-deposit`: a committed `deposits_root` leaf that is not the
+ * `fabricated-deposit`: a committed `deposits_root` leaf that is not the
  * authentic L1 deposit event pair.
  */
 export type FabricatedDepositFaultProofContracts = {

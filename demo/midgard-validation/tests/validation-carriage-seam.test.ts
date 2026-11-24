@@ -15,7 +15,7 @@ import {
 } from "../src/index.js";
 
 /**
- * #600's carriage seam, as refusals (#600 review findings 2 and 3).
+ * #600's carriage seam, as refusals.
  *
  * The seam is `validationAuxiliaryWitnessDataV1`: the point where a step's
  * carriage plan input becomes the auxiliary CBOR that `evidence_hash` commits.

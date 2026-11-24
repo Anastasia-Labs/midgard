@@ -1,4 +1,4 @@
-//// Q27 min-Ada terminal token transition.
+//// min-Ada terminal token transition.
 
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}

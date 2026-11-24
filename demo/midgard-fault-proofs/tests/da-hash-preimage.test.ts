@@ -184,7 +184,7 @@ const l1 = (stage: {
   category: "daHashPreimage",
   publications: {} as never,
   observeHeader: async () => {
-    throw new Error("not used in focused Q44 builder test");
+    throw new Error("not used in focused da-hash-preimage builder test");
   },
   transactionConfirmed: async ({ txHash: observed }) => observed === txHash,
   observe: async () => ({ provenance, stage: stage.value }),
@@ -198,7 +198,7 @@ const identity: FraudProofWorkflowIdentity = {
 };
 
 describe("production da-hash-preimage workflow V1", () => {
-  it("persists only raw leaves and re-derives the exact Q44 proof on reload", async () => {
+  it("persists only raw leaves and re-derives the exact da-hash-preimage proof on reload", async () => {
     const prepared = await plan();
     const artifact = await daHashPreimageArtifact(prepared);
     expect(Object.keys(artifact).sort()).toEqual(
@@ -298,7 +298,7 @@ describe("production da-hash-preimage workflow V1", () => {
     } as const;
     const observed = await adapter.observe(context);
     if (observed.kind !== "action_required") {
-      throw new Error("expected Q44 step action");
+      throw new Error("expected da-hash-preimage step action");
     }
     const preflight = await adapter.preflight({
       ...context,
@@ -331,7 +331,7 @@ describe("production da-hash-preimage workflow V1", () => {
     });
   });
 
-  it("keeps Q44 out of the canonical-only prepare route", async () => {
+  it("keeps da-hash-preimage out of the canonical-only prepare route", async () => {
     const transactions = unsafeCreateDaHashPreimageTransactionPortForTest({
       config: {} as never,
       builders: {} as never,
@@ -386,7 +386,9 @@ describe("production da-hash-preimage workflow V1", () => {
       },
     };
     const prepare = vi.fn(async () => {
-      throw new Error("canonical adapter prepare must not be called for Q44");
+      throw new Error(
+        "canonical adapter prepare must not be called for da-hash-preimage",
+      );
     });
     const adapter: FraudProofFamilyWorkflowAdapter = {
       adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
@@ -421,7 +423,7 @@ describe("production da-hash-preimage workflow V1", () => {
             },
             referenceScripts: [
               {
-                role: `Q44 ${action.actionId}`,
+                role: `da-hash-preimage ${action.actionId}`,
                 outRef: referenceOutRef,
                 scriptHash: "66".repeat(28),
               },
@@ -468,7 +470,7 @@ describe("production da-hash-preimage workflow V1", () => {
     expect(result.kind).toBe("terminal_included");
     expect(prepare).not.toHaveBeenCalled();
     if (result.kind !== "terminal_included")
-      throw new Error("Q44 did not include");
+      throw new Error("da-hash-preimage did not include");
     expect(observedArtifacts[0]).toMatchObject({
       schemaVersion: "midgard-production-da-hash-preimage-artifact-v1",
     });

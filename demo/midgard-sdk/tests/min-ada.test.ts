@@ -15,7 +15,7 @@ import {
 const h28 = "11".repeat(28);
 const h32 = "22".repeat(32);
 
-describe("Q27 min-Ada wire codec", () => {
+describe("min-Ada wire codec", () => {
   it("pins the single transaction-output fault constructor", () => {
     // `MinAdaFaultV1.MinAdaTx { output_index: 3 }` is Constr 0 [3].
     expect(Data.to({ output_index: 3n } as never, MinAdaFaultSchema)).toBe(

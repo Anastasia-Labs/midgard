@@ -31,7 +31,7 @@ import {
 } from "./support/submit-init/removal.js";
 import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
-describe("Q53 fraud-proof reward idempotency", () => {
+describe("fraud-proof reward idempotency", () => {
   const expectExactNonZeroFullSlashEconomics = (
     signed: LocallyEvaluatedTransaction["signed"],
   ) => {
@@ -98,7 +98,7 @@ describe("Q53 fraud-proof reward idempotency", () => {
     const minFeeChain = fixture.contracts.fraudProofContracts.minFee;
     const category = fixture.catalogue.categories.minFee;
     if (minFeeChain === undefined || category === undefined) {
-      throw new Error("Q53 fixture omitted the registered min-fee family");
+      throw new Error("fixture omitted the registered min-fee family");
     }
     const minFee = {
       steps: minFeeChain.steps,
@@ -148,7 +148,7 @@ describe("Q53 fraud-proof reward idempotency", () => {
       lucid: fixture.proverLucid,
       steps: minFeeChain.steps,
       entryNames: stepReferenceEntryNames,
-      familyLabel: "Q53 min-fee",
+      familyLabel: "min-fee",
     });
     const catalogue = {
       policyId: fixture.contracts.fraudProofCatalogue.policyId,

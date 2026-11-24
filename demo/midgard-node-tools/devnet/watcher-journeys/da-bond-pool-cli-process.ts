@@ -1,11 +1,11 @@
 /**
  * The real `midgard-node da-bond` CLI behind the live pooled DA bond
- * journey's pool transactions (rulings P18 and P27(6)). Each transaction is a
+ * journey's pool transactions. Each transaction is a
  * chain of processes: `da-bond status`, then `da-bond top-up`, or
  * `da-bond withdraw <step> --build-unsigned`, one `da-bond witness` per key
  * and `da-bond assemble`; then `da-bond status` again. Every process's argv,
  * exit code, stdout, stderr and environment (secrets redacted) is kept as the
- * step's P18 evidence, and the submitted transaction is confirmed by the
+ * step's CLI-chain evidence, and the submitted transaction is confirmed by the
  * adapter's own chain read, not by the CLI.
  *
  * A process that exits non-zero stops the chain and fails the step; nothing

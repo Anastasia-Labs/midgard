@@ -223,7 +223,7 @@ describe("watcher deployment identity", () => {
     ).toThrow("invalid_field");
   });
 
-  it("mints exact Q58 availability parameters only from the signed deployment identity", () => {
+  it("mints exact availability parameters only from the signed deployment identity", () => {
     const fixture = makeFixture();
     const identity = verifyWatcherDeploymentIdentity({
       signedIdentity: fixture.signedIdentity,

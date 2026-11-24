@@ -20,8 +20,8 @@ import {
 export const HaltSource = {
   /** This operator is removed (`operator_removed`): retired,
    * or in no list after having been active, in the follower's operator set
-   * (see `publishOperatorMembership`). Holds every operator duty; a rollback
-   * that undoes the removal clears it. */
+   * (see `publishOperatorMembership`). Holds every operator duty until the
+   * node shuts down. */
   operatorMembership: "operator_membership",
   /** The node's instance lock is suspended or held by another process
    * (`node-instance-lock.ts`): another node may hold this database. Holds

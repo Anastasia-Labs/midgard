@@ -15,8 +15,8 @@
 //// preimages with the same items hash alike, and a hash on its own says
 //// nothing about which slot it came from. Carrying the *hash* forward is what
 //// forced every downstream step to re-hash a whole reproduced item list to use
-//// it — the shape measured as the Q1X-F6 defect (#551), where reproducing the
-//// spend-input collection put Q10/Q11 past the ledger's memory cap at the
+//// it — the shape measured in #551, where reproducing the spend-input
+//// collection put the double-spend and no-input proofs past the ledger's memory cap at the
 //// admissible 296-input cardinality. Carrying the *tx-id* forward instead
 //// costs the same 32 bytes of thread state and buys the door: positional
 //// extraction happens inside it, and the read that follows is a slice.
@@ -267,7 +267,7 @@ pub opaque type AnchoredNativeTxV1 {
 ///
 /// **Why this is a separate function at all.** `verify_native_tx_compact_cbor_v1`
 /// re-derives the id by hashing the body CBOR, and that hash is the dominant
-/// per-opening cost — measured at roughly 211k memory units on the Q21 vector.
+/// per-opening cost — measured at roughly 211k memory units.
 /// A step opening two fields through the single-field entry points paid it
 /// twice, and paid it a third time if it also needed the compact structure for
 /// itself. The saving is not available by reaching `authenticated_field_view`

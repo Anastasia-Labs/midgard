@@ -86,7 +86,7 @@ export const awaitDaBondPoolCommitteeSync = async (deps: {
 };
 
 /**
- * How long one observation may wait for the node to catch up (P27(4)): a few
+ * How long one observation may wait for the node to catch up: a few
  * of the node's poll intervals plus the finality lag of the manifest's
  * `confirmationDepth`, taken as twice the chain's ideal block cadence
  * (`slotLength / activeSlotsCoeff` per block), as the journey timing budgets
@@ -141,7 +141,7 @@ export const daBondPoolCommitteeStopSettleMs = (input: {
 export const DA_BOND_POOL_RESPONDER_EVENT = "availability_responder";
 
 /**
- * P27(3): what the journey does with its committee node around each step.
+ * What the journey does with its committee node around each step.
  * It runs through steps 1, 3, 4 and 5, is stopped before step 2's commit so
  * its payload-free settle and Close cannot race B3, is restarted before step
  * 6, and is stopped at the end of step 6, each stop checked.
@@ -186,7 +186,7 @@ export type DaBondPoolCommitteeProcess = Readonly<{
   /**
    * The whole stdout capture so far. The node writes its availability
    * responder's pending, included and confirmed reports, the only ones that
-   * carry an `action`, to stdout (P27(2)).
+   * carry an `action`, to stdout.
    */
   stdout: () => Uint8Array;
   readyz: () => Promise<DaBondPoolReadyzRead>;

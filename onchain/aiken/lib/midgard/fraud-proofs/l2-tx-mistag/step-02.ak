@@ -10,7 +10,7 @@ use midgard/ledger_state.{MidgardTxId}
 /// The scalar is forwarded rather than merely asserted at step-01 so the
 /// decisive soundness check (`!= 0`, i.e. `== 1` under the codec's `{0, 1}`
 /// domain) sits on the finalize path, where the permanent fraud-proof token is
-/// minted (l2-tx-mistag plan §3.1, D5).
+/// minted.
 pub type State {
   bad_tx_id: MidgardTxId,
   committed_validity_code: Int,

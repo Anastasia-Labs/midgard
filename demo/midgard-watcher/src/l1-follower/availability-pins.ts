@@ -11,7 +11,7 @@ import { WATCHER_AVAILABILITY_TX_PINS_TABLE } from "./tables.js";
  * first, so each row holds one such transaction (a registered tx pin) while
  * the journal still reconciles it.
  */
-export const availabilityTxPinsMigrationSql = (dialect: DialectName): string =>
+export const availabilityTxPinsSchemaSql = (dialect: DialectName): string =>
   `
 -- class: B; retention: the watcher deletes a row once the availability journal no longer reconciles the transaction
 CREATE TABLE ${WATCHER_AVAILABILITY_TX_PINS_TABLE} (

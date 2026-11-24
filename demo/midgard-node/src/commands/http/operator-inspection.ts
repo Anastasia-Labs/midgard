@@ -48,7 +48,7 @@ export const getStateQueueHandler = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
   const nodeConfig = yield* NodeConfig;
-  // The landed queue (P1). An unhealthy queue is still drawn, as far as its
+  // The landed queue. An unhealthy queue is still drawn, as far as its
   // walk reached, with its reason: reads keep serving.
   const read = yield* readLandedStateQueue(contracts.stateQueue);
   if (read.kind !== "ok") {

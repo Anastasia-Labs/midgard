@@ -308,7 +308,7 @@ pub fn target_snapshot_min_fee_step_is_provable(
 }
 
 // ---------------------------------------------------------------------------
-// D-S4 (#618) -- the Aiken half of the min-Ada twin cross-check.
+// #618 -- the Aiken half of the min-Ada twin cross-check.
 //
 // `parameterized_min_ada_boundary_matches_target_snapshot` above exercises one
 // rate (the C70 snapshot's 4,310) and one output shape, and its slope and

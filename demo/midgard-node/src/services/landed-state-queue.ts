@@ -3,7 +3,7 @@
  * state-queue read in the node goes through here: the follower's facts at
  * its view, in the node database, never an L1 provider.
  *
- * - `readLandedStateQueue` reads P1 (`landedStateQueueIn`) in one SQL
+ * - `readLandedStateQueue` reads the queue (`landedStateQueueIn`) in one SQL
  *   transaction; the view it was read at is part of the result.
  * - Everything that proposes (commit, merge, correction) needs a healthy
  *   queue: `requireLandedStateQueue` and the snapshot fail with a
@@ -36,7 +36,7 @@ import {
 } from "../workers/utils/commit-block-header.js";
 import type { Globals } from "./globals.js";
 
-/** The deployment's state queue, as P1 reads it. */
+/** The deployment's state queue, as the landed read sees it. */
 export type StateQueueContract = Pick<
   SDK.AuthenticatedValidator,
   "spendingScriptAddress" | "policyId"
@@ -54,7 +54,7 @@ const queueError = (message: string, cause: unknown) =>
   new SDKStateQueue.StateQueueError({ message, cause });
 
 /**
- * P1 at the follower's current view, read from the node database in one
+ * The landed queue at the follower's current view, read from the node database in one
  * transaction. A database failure is a `StateQueueError`: no read of the
  * queue falls back to L1.
  */
@@ -99,7 +99,7 @@ export const unhealthyQueueError = (
   return null;
 };
 
-/** P1, failing unless it is readable and healthy (everything that proposes). */
+/** The landed queue, failing unless it is readable and healthy (everything that proposes). */
 export const requireLandedStateQueue = (
   stateQueue: StateQueueContract,
   purpose: string,
@@ -291,15 +291,15 @@ export const landedStateQueueSnapshot = (
     snapshotOfLandedQueue(queue, reason),
   );
 
-/** How often, and how many times, a wait for the follower to land a tx re-reads P1. */
+/** How often, and how many times, a wait for the follower to land a tx re-reads the queue. */
 export const LANDED_QUEUE_VISIBILITY_DELAY = Duration.seconds(1);
 export const LANDED_QUEUE_VISIBILITY_RETRIES = 180;
-/** How long a landing wait re-reads P1 at most: its retries at their spacing. */
+/** How long a landing wait re-reads the queue at most: its retries at their spacing. */
 export const LANDED_QUEUE_VISIBILITY_BUDGET_MS =
   Duration.toMillis(LANDED_QUEUE_VISIBILITY_DELAY) *
   LANDED_QUEUE_VISIBILITY_RETRIES;
 
-/** The waits `awaitLandedStateQueueSnapshot` re-reads P1 on. */
+/** The waits `awaitLandedStateQueueSnapshot` re-reads the queue on. */
 const VISIBILITY_WAITS = new WeakSet<object>();
 
 const visibilityWait = (
@@ -312,13 +312,13 @@ const visibilityWait = (
 /**
  * The snapshot of the healthy landed queue once `landed` holds of it: after a
  * tx this node saw confirmed, until the follower has the block that holds
- * it. It re-reads P1 every `LANDED_QUEUE_VISIBILITY_DELAY`, at most
+ * it. It re-reads the queue every `LANDED_QUEUE_VISIBILITY_DELAY`, at most
  * `LANDED_QUEUE_VISIBILITY_RETRIES` times, only while it waits on the
  * follower (the queue does not show it yet, or is not readable at the
  * follower's view) or the database read failed transiently
  * (`isConnectionClassError`). An unhealthy queue, any other read failure,
  * or a queue that never shows it fails with a `StateQueueError`, and the
- * next tick reads P1 again.
+ * next tick reads the queue again.
  */
 export const awaitLandedStateQueueSnapshot = (
   stateQueue: StateQueueContract,

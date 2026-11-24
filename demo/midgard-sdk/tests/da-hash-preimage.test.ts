@@ -1,4 +1,4 @@
-/** Cross-language vectors for the total Q44 source-leaf adjudicator. */
+/** Cross-language vectors for the total da-hash-preimage source-leaf adjudicator. */
 import { computeHash32, encodeCbor } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -67,7 +67,7 @@ const source = (
 const sourceBytes = (value: L2TransactionSource): Buffer =>
   Buffer.from(Data.to(value, L2TransactionSource), "hex");
 
-describe("Q44 da-hash-preimage total source verdict", () => {
+describe("da-hash-preimage total source verdict", () => {
   it("accepts the exact maximum valid source as the valid-block negative", () => {
     const value = sourceBytes(source());
     const adjudication = adjudicateCommittedSourceLeaf({
@@ -276,7 +276,7 @@ describe("Q44 da-hash-preimage total source verdict", () => {
   });
 });
 
-describe("Q44 da-hash-preimage on-chain schemas", () => {
+describe("da-hash-preimage on-chain schemas", () => {
   const evidence = daHashPreimageEvidenceFromCommittedLeaf({
     committedTxId: FOREIGN_TX_ID,
     committedLeafValue: sourceBytes(source()),

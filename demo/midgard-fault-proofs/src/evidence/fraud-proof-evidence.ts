@@ -110,7 +110,7 @@ const isAuthenticatedFieldPreimageLengthDefect = (
     cause.message.startsWith("Failed to authenticate forced_transactions["));
 
 /**
- * Exact production evidence branches for Q44 source-leaf faults and Q17
+ * Exact production evidence branches for da-hash-preimage source-leaf faults and
  * committed-field envelope faults.
  *
  * One public retained-DA payload is fetched and admitted once. Canonical
@@ -358,7 +358,7 @@ export const fetchFraudProofEvidence = async ({
 
   // This second derivation is intentionally independent of the reconstruction
   // exception. It reopens the counted raw transactions root and emits an MPF
-  // membership proof for the first total Q44 violation. A forged exception or
+  // membership proof for the first total da-hash-preimage violation. A forged exception or
   // a root/key/value substitution therefore cannot manufacture a plan.
   const raw = await daHashPreimageBlockEvidenceFromVerifiedPayload({
     observation: admittedObservation,

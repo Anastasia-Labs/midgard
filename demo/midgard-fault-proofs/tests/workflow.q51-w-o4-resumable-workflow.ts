@@ -76,7 +76,7 @@ const retainedDaRun = (
   releaseFinalityAuthority: releaseFinalityAuthority(),
 });
 
-describe("Q51/W-O4 resumable workflow", () => {
+describe("resumable workflow", () => {
   it.each(["doubleSpend", "networkId"] as const)(
     "resumes %s terminal tracking after its header was removed",
     async (category) => {

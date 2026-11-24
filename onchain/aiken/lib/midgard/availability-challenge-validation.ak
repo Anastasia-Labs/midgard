@@ -785,7 +785,7 @@ fn timeout_node_status_matches(
   node.da_attestation == expected_status
 }
 
-/// Expired challenge (spec #685 §5): the record burns with its terminal
+/// Expired challenge (spec #685): the record burns with its terminal
 /// accumulator, the state queue removes the challenged block, and the pooled
 /// committee bond is slashed in the same transaction.
 ///

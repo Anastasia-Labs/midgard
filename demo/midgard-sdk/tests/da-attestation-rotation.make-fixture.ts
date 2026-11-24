@@ -23,7 +23,7 @@ import {
   type MidgardValidators,
 } from "../src/index.js";
 
-// Q62 and Q63 acceptance clause (c).
+// Non-retroactive committee rotation and partial-attestation rescue.
 //
 // This suite is the off-chain half. It cannot execute Plutus, so it never
 // claims to prove the validator's behaviour — the Aiken family in

@@ -38,7 +38,7 @@ import {
   transaction,
 } from "./availability-workflow-release.transaction.js";
 
-describe("availability workflow release (P20)", () => {
+describe("availability workflow release", () => {
   it("releases on a verified Close by anyone at the finality depth", async () => {
     const close = closeOf(Q0);
     await expect(

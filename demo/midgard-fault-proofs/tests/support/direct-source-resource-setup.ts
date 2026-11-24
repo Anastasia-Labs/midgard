@@ -99,7 +99,7 @@ export const setupDirectSourceResourceThread = async (
       publishPlainReferenceScriptUtxo({
         lucid: ownerLucid,
         script: role.spendingScript,
-        label: `N6 F2 ${name}`,
+        label: `${name}`,
       }),
     );
     const published = captured.result;

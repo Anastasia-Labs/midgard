@@ -91,10 +91,10 @@ export const chunkProofToData = (
   ),
 });
 
-describe("native-script-decoding compiled sizes and deployability (Q3)", () => {
+describe("native-script-decoding compiled sizes and deployability", () => {
   const blueprint = readBlueprint(realBlueprintPath);
 
-  it("proves Q3 by arithmetic and fits every applied step in the publication host", async () => {
+  it("proves deployability by arithmetic and fits every applied step in the publication host", async () => {
     // Measure the fully applied production family, including its shared policies.
     const {
       nativeScriptDecoding: { steps },
@@ -136,7 +136,7 @@ describe("native-script-decoding compiled sizes and deployability (Q3)", () => {
   });
 });
 
-describe("step-01 redeemer envelope chart (both carriages, Q4)", () => {
+describe("step-01 redeemer envelope chart (both carriages)", () => {
   const buildStep01RedeemerBytes = (
     inclusion: FixtureInclusion,
   ): { readonly redeemerCarried: number; readonly publishedChunk: number } => {
@@ -270,7 +270,7 @@ describe("step-01 redeemer envelope chart (both carriages, Q4)", () => {
     // depth the 2^128 reference adversary can force (level 32) still fits the
     // redeemer-carried carriage with room to spare. If this ever flips, the
     // carried carriage stops covering work-feasible blocks and the
-    // published-chunk carriage (Q4) becomes mandatory rather than an
+    // published-chunk carriage becomes mandatory rather than an
     // optimization — restate the family's finding, do not widen the allowance.
     expect(
       exhaustionDepth,
@@ -279,7 +279,7 @@ describe("step-01 redeemer envelope chart (both carriages, Q4)", () => {
       membershipProofBranchLevelsReachableWithWork(ADVERSARY_LOG2_WORK),
     );
 
-    // Q4's second carriage is the answer to that exhaustibility: the
+    // The second carriage is the answer to that exhaustibility: the
     // published-chunk redeemer replaces the proof with reference-input
     // indices, so its size is depth-independent up to the logarithmic index
     // list. The load-bearing claim is the ratio to the carried carriage at

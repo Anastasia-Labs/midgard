@@ -15,7 +15,6 @@ import {
 import { parseEventId, parseHexBytes } from "./commands/command-utils.js";
 import * as ContractDeploymentInfo from "./commands/contract-deployment-info.js";
 import * as ReconcileCommand from "./commands/reconcile.js";
-import * as MigrationRunner from "./database/migrations/runner.js";
 import { defaultDeploymentRunStatePath } from "./e2e/run-state.parse-deployment-run-state.js";
 import {
   parseOptionalHeaderHashOption,
@@ -23,32 +22,6 @@ import {
 } from "./index.registration.js";
 import { NodeConfig } from "./services/config.make-config.js";
 import { backfillMissingDaPayloadsFromAppliedJournals } from "./workers/commit-block-header/da-payload-backfill.js";
-
-program
-  .command("db:verify")
-  .description(
-    "Verify the database schema is compatible with this Midgard node binary",
-  )
-  .action(async () => {
-    const mainEffect = provideDatabaseServices(
-      MigrationRunner.assertCompatible.pipe(
-        Effect.tap(() =>
-          Effect.sync(() => {
-            process.stdout.write("schema compatibility verified\n");
-          }),
-        ),
-      ),
-    );
-
-    runCliEffect(mainEffect);
-  });
-
-program
-  .command("db:checksum")
-  .description("Print the compiled schema migration manifest checksums")
-  .action(async () => {
-    process.stdout.write(`${MigrationRunner.formatChecksum()}\n`);
-  });
 
 program
   .command("db:backfill-da-payloads")

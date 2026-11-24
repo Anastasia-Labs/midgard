@@ -24,7 +24,7 @@ import { chalk, ENV_VARS_GUIDE } from "./utils.js";
 
 loadRuntimeDotenv();
 
-export const VERSION = packageJson.version;
+const VERSION = packageJson.version;
 
 export const program = new Command();
 

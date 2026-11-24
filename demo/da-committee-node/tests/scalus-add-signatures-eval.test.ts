@@ -29,8 +29,7 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 } as const;
 
 describe("Scalus DA add-signatures evaluation", () => {
-  // Q63 (F04 §4) floors `da_threshold` at two, so the smallest attestation the
-  // governor can represent needs two genuine committee signatures. This is the
+  // The attestation here needs two genuine committee signatures. This is the
   // only suite that runs the real Plutus validator over an AddSignatures body,
   // so it is where a wrong bitmap, witness ordering, or signed message would
   // actually be caught.

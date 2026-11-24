@@ -83,7 +83,7 @@ const exactAvailabilityInteger = (value: unknown, field: string): number => {
 };
 
 /**
- * Absolute Q58 response-publication safety ceiling. This is deliberately
+ * Absolute availability response-publication safety ceiling. This is deliberately
  * separate from the 4,095-byte transaction-field proof chunk bound: the
  * activated DA response chunk length is release-authenticated and must be
  * justified by the signed transaction-size measurement artifact.
@@ -91,7 +91,7 @@ const exactAvailabilityInteger = (value: unknown, field: string): number => {
 export const MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES = 15_148;
 
 /**
- * Parse the release-authenticated Q58 geometry, response classes and fee/bond
+ * Parse the release-authenticated availability geometry, response classes and fee/bond
  * ceilings. These values are deployment identity: neither a network label nor
  * caller metadata may choose them after the scripts are applied.
  */

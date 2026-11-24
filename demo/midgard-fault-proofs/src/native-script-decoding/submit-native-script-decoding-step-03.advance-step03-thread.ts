@@ -167,7 +167,7 @@ export const requireAnchoredItemBytes = ({
 /**
  * The common thread-advancement transaction: fee input, thread spend with a
  * layout-resolving redeemer, the advanced state paid to `destinationAddress`,
- * carriage (if any) read as reference inputs, and the Q3 step-script
+ * carriage (if any) read as reference inputs, and the step-script
  * sourcing.
  */
 export const advanceStep03Thread = async ({

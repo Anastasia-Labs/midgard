@@ -354,7 +354,7 @@ export const createLiveDaBondPoolJourneyPort = async (
     daParamsGovernor,
     withdrawDelayMs: BigInt(journeyParams.withdrawDelayMs),
     now: () => bondNow,
-    // Pool transactions go through the da-bond CLI processes only (P18).
+    // Pool transactions go through the da-bond CLI processes only.
     submit: async () => {
       throw new Error(
         "The live DA bond pool journey submits pool transactions only through the da-bond CLI",
@@ -381,7 +381,7 @@ export const createLiveDaBondPoolJourneyPort = async (
   });
   const availabilityAddress = accounts.availability.address;
 
-  // The committee node's DA libp2p runtime (P31): fresh libp2p keys and the
+  // The committee node's DA libp2p runtime: fresh libp2p keys and the
   // committee-target runtime manifest from the real
   // `da-libp2p-generate-manifest` process, over the finalized deployment
   // manifest's DA committee. It runs before any transaction of this journey.
@@ -509,7 +509,7 @@ export const createLiveDaBondPoolJourneyPort = async (
     });
   }
 
-  // The committee node (P27): its submitter keys, database and environment.
+  // The committee node: its submitter keys, database and environment.
   const submitterKey = async (secret: string) => {
     const path = join(runDirectory, secret);
     const seed = loadOrCreateSeed(path);
@@ -585,7 +585,7 @@ export const createLiveDaBondPoolJourneyPort = async (
     REPOSITORY_ROOT,
     "da-bond-pool-committee-api",
   );
-  // P27(4): the node's sync wait is bounded by its own poll cadence plus
+  // The node's sync wait is bounded by its own poll cadence plus
   // twice the ideal time for the release confirmation depth on this devnet.
   const committeePollIntervalMs = 2_000;
   const cadence = await readJourneyCadence(runDirectory, {
@@ -632,7 +632,7 @@ export const createLiveDaBondPoolJourneyPort = async (
     pollIntervalMs: committeePollIntervalMs,
     inherited: process.env,
   });
-  // P27(8), P31(6): the node's own configuration loader accepts this
+  // The node's own configuration loader accepts this
   // environment and the runtime manifest's peer set admits its libp2p
   // identity, before the node's database is created.
   try {
@@ -744,7 +744,7 @@ export const createLiveDaBondPoolJourneyPort = async (
     nodeCadence: committeeCadence,
   });
 
-  // The da-bond CLI (P18).
+  // The da-bond CLI.
   let cliChains = 0;
   const cli = createDaBondPoolCli({
     run: spawnDaBondCliProcess({
@@ -1145,7 +1145,7 @@ export const createLiveDaBondPoolJourneyPort = async (
       }
     },
 
-    // P27(3): started before steps 1 and 6, stopped before step 2 and at
+    // Started before steps 1 and 6, stopped before step 2 and at
     // the end of step 6 (`daBondPoolCommitteeLifecycle`); every stop checks
     // exit 0 on SIGTERM, no daemon left and unchanged submitter UTxOs, so a
     // node that dies or spends fails the step it ran in.

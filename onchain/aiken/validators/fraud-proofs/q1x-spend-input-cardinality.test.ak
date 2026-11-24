@@ -150,7 +150,7 @@ fn built_witness_preimage_bytes(opening: FieldOpeningV1) -> Int {
 }
 
 // ---------------------------------------------------------------------------
-// Q11 — `no-input` step-02
+// `no-input` step-02
 // ---------------------------------------------------------------------------
 
 /// Everything the measured row builds, and nothing it does not: the block
@@ -302,7 +302,7 @@ test q1x_f6_no_input_step_02_at_the_admissible_maximum() {
 }
 
 // ---------------------------------------------------------------------------
-// Q10 — `double-spend` step-04
+// `double-spend` step-04
 // ---------------------------------------------------------------------------
 
 fn double_spend_step_04_control(count: Int) -> Bool {
@@ -371,11 +371,10 @@ test q1x_f6_double_spend_step_04_at_the_admissible_maximum() {
 }
 
 // ---------------------------------------------------------------------------
-// Q16 — `missing-signature` step-04, the field-7 walk
+// `missing-signature` step-04, the field-7 walk
 // ---------------------------------------------------------------------------
 //
-// The wave's genuinely unbounded walk, and the one the #575 round-2 review
-// asked for by name. The two pairs above measure *arithmetic* item access over
+// The genuinely unbounded walk. The two pairs above measure *arithmetic* item access over
 // a fixed-stride field; this walks field 7, which is also **fixed-stride**, so
 // the walk pays no per-item envelope decode to find the next item, but it
 // still visits every one because the rule is an absence claim. Its cost is

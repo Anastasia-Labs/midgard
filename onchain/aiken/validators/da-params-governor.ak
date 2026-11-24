@@ -106,7 +106,7 @@ fn sorted_unique_len_from(
 /// There is no lower clamp, and there is no set-size minimum beside it. Two
 /// owner rulings brought it here:
 ///
-/// - **2026-08-11 (ruling 4)** retired the floor's `max(2, …)` clamp —
+/// - **2026-08-11** retired the floor's `max(2, …)` clamp —
 ///   "governor floors become `ceil(2n/3)` with n ≥ 1" — so a one-member DA
 ///   committee floors at one and the single-key attest loop is representable.
 /// - **2026-08-13 (in-session, recorded on #602)** dropped the owner-set
@@ -549,9 +549,8 @@ fn test_governor_mint(minted_datum: DaParamsDatum) -> Bool {
 /// and the boundary where the ceiling overtakes two (`3 -> 2`, `4 -> 3`), then
 /// reaches the top of the representable range (`100`, `255`,
 /// `256 == max_indexed_signer_count`) so a defect in the large-`n` arithmetic
-/// cannot hide below the sample. The exhaustive 0..max_indexed_signer_count
-/// agreement is pinned off-chain instead, by the digest the
-/// `floor-arithmetic-provenance` check and the Q63 verifier both recompute.
+/// cannot hide below the sample. The off-chain floor tests sample the same
+/// sizes.
 test da_params_governor_invariant_da_threshold_majority_floor() {
   and {
     governed_threshold_floor(1) == 1,
@@ -684,7 +683,7 @@ test da_params_governor_rejects_empty_owner_set() fail {
   test_valid_datum(test_params(6, 4, 0, 1))
 }
 
-// ## Q63 single-member-committee consequence (review finding I2)
+// ## Q63 single-member-committee consequence
 //
 // This section used to pin the opposite claim, and the inversion is the first
 // of the F04 §4 amendment's two observable effects.
@@ -716,8 +715,7 @@ test da_params_governor_accepts_single_member_committee_datum() {
   test_valid_datum(test_params(1, 1, 4, 3))
 }
 
-/// Retained negative, uncited by the Q63 artifact: the lift did not disable the
-/// upper bound. A one-member committee naming `da_threshold == 2` is still
+/// Retained negative: the lift did not disable the upper bound. A one-member committee naming `da_threshold == 2` is still
 /// rejected because that threshold exceeds the committee. Single disposition —
 /// the owner set is at its own floor and `2 >= governed_threshold_floor(1) ==
 /// 1` holds, so `da_threshold <= committee_len` is the only bound left to
@@ -773,8 +771,7 @@ test da_params_governor_accepts_single_owner_governance_rotation() {
   )
 }
 
-/// Retained negative, uncited by the Q63 artifact: dropping the owner-set
-/// minimum did not disable the owner upper bound. A one-owner set naming
+/// Retained negative: dropping the owner-set minimum did not disable the owner upper bound. A one-owner set naming
 /// `update_threshold == 2` is still rejected because that threshold exceeds the
 /// set. Single disposition — the committee is at its own floor and
 /// `2 >= governed_threshold_floor(1) == 1` holds, so `update_threshold <=
@@ -812,7 +809,7 @@ test da_params_governor_mint_rejects_initial_datum_below_floor() fail {
   test_governor_mint(test_params(6, 3, 3, 2))
 }
 
-// ## Q63 spend-seam datum enforcement (review finding D1)
+// ## Q63 spend-seam datum enforcement
 //
 // Every test above reaches `valid_datum` directly. That leaves the seam that
 // actually matters unpinned: dropping `expect valid_datum(...)` from

@@ -7,8 +7,8 @@
  *
  * - `syncEmulatorChain` / `followEmulatorChain` / `withEmulatorChain`: the
  *   store at the emulator's tip once, or in the background while an effect
- *   runs (the node's fibers read P1 and the follower tables meanwhile);
- * - `emulatorStateQueueSnapshot`: P1's read of the landed state queue at
+ *   runs (the node's fibers read the landed queue and the follower tables meanwhile);
+ * - `emulatorStateQueueSnapshot`: the read of the landed state queue at
  *   the tip;
  * - `syncEmulatorFollower`: the event projection's plan at the store's
  *   current view (`planCurrentView`), which the follower-change driver
@@ -93,7 +93,7 @@ export const withEmulatorChain =
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.scoped(Effect.zipRight(followEmulatorChain(lucid), effect));
 
-/** The landed queue's snapshot (P1) at the emulator's tip. */
+/** The landed queue's snapshot at the emulator's tip. */
 export const emulatorStateQueueSnapshot = (
   lucid: LucidEvolution,
   stateQueue: StateQueueContract,

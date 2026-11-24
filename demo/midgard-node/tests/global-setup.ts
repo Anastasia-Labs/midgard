@@ -14,22 +14,20 @@
  *      server-wide, but a server started some other way may default to `off`.
  *      Per-database settings are NOT inherited through
  *      `CREATE DATABASE ... TEMPLATE`, so every shard needs its own `ALTER`;
- *   3. the schema — most database files migrate themselves in `beforeAll`, but
- *      not all of them do (`da-publication-reconciler-e2e.test.ts` relied on
- *      CI's separate `db:migrate` step against a single shared database), and a
- *      fresh shard has no schema to inherit.
+ *   3. the schema (`NodeSchema.ensure`): not every database file creates it
+ *      in `beforeAll`, and a fresh shard has no schema to inherit.
  */
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { FollowerSchemaError } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import { Effect, Layer, Redacted } from "effect";
 import type { TestProject } from "vitest/node";
 
-import { MigrationRunner } from "../src/database/index.js";
-import { MigrationError } from "../src/database/migrations/runner.js";
+import { NodeSchema } from "../src/database/index.js";
 import { NodeConfig } from "../src/services/config.make-config.js";
 import { Database } from "../src/services/database.js";
 import {
@@ -75,47 +73,36 @@ const dropShard = (shard: string) =>
     yield* sql.unsafe(`DROP DATABASE IF EXISTS "${shard}"`);
   }).pipe(Effect.provide(maintenanceClient("postgres")));
 
-const migrateShard = (shard: string) =>
+const ensureShardSchema = (shard: string) =>
   Effect.gen(function* () {
     process.env.POSTGRES_DB = shard;
-    yield* MigrationRunner.migrate({
-      appVersion: "midgard-node-test-global-setup",
-      actor: "midgard-node-test-global-setup",
-    }).pipe(
+    yield* NodeSchema.ensure.pipe(
       Effect.provide(Layer.provideMerge(Database.layer, NodeConfig.layer)),
     );
   });
 
 /**
- * Migration codes that mean the shard's applied schema belongs to a different
- * revision of the migration set than the one under test — a checkout that
- * edited a migration, or another worktree that migrated the shard ahead. The
- * runner refuses such a database because a production database must never be
- * silently rewritten; a test shard has no data worth keeping, so provisioning
- * recreates it instead of leaving the whole suite red until someone drops it
- * by hand. Every other migration failure (connection, SQL, lock) still throws.
+ * A refusal means the shard was created by another schema text: a checkout
+ * that edited it, or another worktree. A test shard has no data worth keeping,
+ * so provisioning recreates it. Every other failure still throws.
  */
-const STALE_SHARD_SCHEMA_CODES: ReadonlySet<string> = new Set([
-  "schema_checksum_mismatch",
-  "schema_manifest_hash_mismatch",
-  "schema_name_mismatch",
-  "schema_version_ahead",
-]);
-
-const isStaleShardSchema = (error: unknown): error is MigrationError =>
-  error instanceof MigrationError && STALE_SHARD_SCHEMA_CODES.has(error.code);
+const isStaleShardSchema = (
+  error: unknown,
+): error is NodeSchema.NodeSchemaError | FollowerSchemaError =>
+  error instanceof NodeSchema.NodeSchemaError ||
+  error instanceof FollowerSchemaError;
 
 const provisionShard = (shard: string) =>
   createShard(shard).pipe(
-    Effect.andThen(migrateShard(shard)),
+    Effect.andThen(ensureShardSchema(shard)),
     Effect.catchIf(isStaleShardSchema, (error) =>
       Effect.gen(function* () {
         process.stderr.write(
-          `[global-setup] ${shard}: ${error.message} (${error.code}) — recreating the shard for the current migration set\n`,
+          `[global-setup] ${shard}: ${error.message} — recreating the shard\n`,
         );
         yield* dropShard(shard);
         yield* createShard(shard);
-        yield* migrateShard(shard);
+        yield* ensureShardSchema(shard);
       }),
     ),
   );
@@ -198,7 +185,7 @@ export const poolIdBound = (project: TestProject): number =>
   Math.max(...project.vitest.projects.map(({ config }) => config.maxWorkers));
 
 /**
- * Create and migrate every shard a pool id up to `poolIds` can reach. Shared
+ * Create every shard, with its schema, a pool id up to `poolIds` can reach. Shared
  * with midgard-node-tools, whose suite reuses this shard scheme under its own
  * database prefix (tests/test-env.ts).
  */

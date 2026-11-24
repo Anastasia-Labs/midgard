@@ -1,6 +1,6 @@
 /**
  * The fraud removal of the state queue's tail header for the L1 follower's
- * fork simulator (E1 ruling tests): a pure function of the queue it
+ * fork simulator (proof-retention tests): a pure function of the queue it
  * extends, as the other state-queue traffic is. No Plutus evaluation,
  * signature or ledger validity is claimed.
  */

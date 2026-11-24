@@ -7,7 +7,7 @@ import { Deferred, Effect, Exit, Fiber, MutableRef, Scope } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { getTxStatusHandler } from "../src/commands/http/transaction-status.js";
-import { MigrationRunner, TxAdmissionsDB } from "../src/database/index.js";
+import { NodeSchema, TxAdmissionsDB } from "../src/database/index.js";
 import { makeAdmissionWriterWithOptions } from "../src/services/admission-writer.make-admission-writer-with-options.js";
 import {
   AdmissionWriter,
@@ -56,10 +56,7 @@ const writeRequest = (
 const withCleanAdmissions = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   provideDatabaseLayers(
     Effect.gen(function* () {
-      yield* MigrationRunner.migrate({
-        appVersion: "admission-writer-test",
-        actor: "admission-writer-test",
-      });
+      yield* NodeSchema.ensure;
       yield* resetApplicationTables;
       return yield* effect;
     }),

@@ -33,7 +33,7 @@ pub type VerifySourceActionV1 {
 pub type SpendRedeemer =
   ct.StepRedeemer<VerifySourceActionV1>
 
-/// N5: the hash of the state every thread starts from, state 0 as
+/// The hash of the state every thread starts from, state 0 as
 /// `validation_claim_v1.derive_initial_state` builds it from the committed
 /// header, the claim's event, its authenticated source and the step's
 /// pre-state root.
@@ -55,7 +55,7 @@ fn agreed_initial_hash(
 /// 2. R-DESC: only a normal source with redeemers opens a case;
 /// 3. the challenger's claim is coherent: a Terminal Rejected state, proven as
 ///    leaf S of the challenger's trace root;
-/// 4. N5: the agreed initial state;
+/// 4. the agreed initial state;
 /// 5. the open guard: the validity range is at most L_d long and its upper
 ///    bound is at most `block_end + M/2`;
 /// 6. the bond: one output at `dispute_bond_v1` holding at least

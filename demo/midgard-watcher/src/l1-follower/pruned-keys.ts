@@ -96,7 +96,7 @@ export const headerPrunedIn = recordedIn(
  * a key the replay prunes again is recorded again. Never deleted: a key can
  * have rows again at any later slot.
  */
-export const prunedKeysMigrationSql = (dialect: DialectName): string => {
+export const prunedKeysSchemaSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
   return `
 -- class: B; retention: forever (one row per followed unit a prune step deleted closed history rows of)

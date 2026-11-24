@@ -30,7 +30,7 @@ import {
   setupEmulator,
 } from "./field-preimage-carriage-fit-emulator.publish.js";
 
-describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
+describe("§8.3 exit measurement — the tier-2 raw-UTxO bound", () => {
   let harness: Harness;
 
   beforeAll(async () => {
@@ -135,8 +135,7 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
     const atKSigned = await measure(MIDGARD_CHUNK_BYTES_K);
 
     // Reported so a re-take reads the numbers off the report rather than
-    // reconstructing them. This is the Phase-4 measurement §8.3 declared
-    // itself provisional pending.
+    // reconstructing them.
     console.log(
       JSON.stringify({
         measurement: "tier2-raw-utxo-bound-v1",
@@ -224,15 +223,10 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
       MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationTransactionBytes,
     );
 
-    // §8.3's provisional `K = 15,900` was **falsified** by this measurement: a
-    // 15,900-byte publication measured 16,648 signed bytes, 264 over
-    // `maxTxSize`, reserve or no reserve. Erratum E1 recorded that and re-pinned
-    // `K` to the reliable frontier, and the re-pin has now landed — so what this
-    // block measures today is the repaired ladder rather than the outage.
-    //
-    // A full-`K` publication is exactly the reliable frontier's transaction: it
-    // clears `maxTxSize` with the 512-byte reserve intact, which is the property
-    // that makes every chunk of every tier-3 plan publishable.
+    // Erratum E1 pins `K` to the reliable frontier, so a full-`K` publication
+    // is exactly the reliable frontier's transaction: it clears `maxTxSize`
+    // with the 512-byte reserve intact, which is the property that makes every
+    // chunk of every tier-3 plan publishable.
     expect(atKSigned).toBe(MAX_L1_TX_BYTES - RELIABILITY_RESERVE_BYTES);
     expect(atKSigned).toBe(15_872);
     expect(MAX_L1_TX_BYTES - atKSigned).toBe(RELIABILITY_RESERVE_BYTES);

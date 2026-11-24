@@ -10,7 +10,7 @@
  *   the planned cut by budget exhaustion, never by a window/frame stall;
  * - a segment never spans a window change: every token step in a segment
  *   reads from the same authenticated chunk, and the mandatory
- *   chunk-plus-next window shape then makes the §33-byte safe-read margin
+ *   chunk-plus-next window shape then makes the 33-byte safe-read margin
  *   unconditional (a full following chunk is ≥ 4,095 bytes of margin, and a
  *   window ending at the item's last byte satisfies the end-of-item arm);
  * - direction A (wrongful acceptance) folds every advanced step of the trace

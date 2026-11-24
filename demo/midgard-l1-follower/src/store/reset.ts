@@ -1,5 +1,5 @@
-import { followerMigrations } from "../schema/follower-migrations.js";
-import { applyMigrations } from "../schema/migrate.js";
+import { applySchemas } from "../schema/apply.js";
+import { followerSchema } from "../schema/follower-schema.js";
 import {
   asNumber,
   asString,
@@ -193,7 +193,7 @@ export const resetIn = async (
  * `follower reset --to-origin` (R1, R2, R5): in one transaction, deletes
  * every row of every catalog table of class A, D-t or D-x (facts, seeds, the
  * cursor, the rollback log, and every such role table the follower
- * migrated), and never a class B or class C row or the bookkeeping. The
+ * created), and never a class B or class C row or the bookkeeping. The
  * next prune removes the `l1_scripts` rows the reset left unreferenced. The
  * next start initializes at the configured origin and replays from it.
  *
@@ -216,7 +216,7 @@ export const resetToOrigin = async (
       "a running follower holds this store's writer lease; stop it before resetting",
     );
   try {
-    await applyMigrations(backend, [followerMigrations(backend.dialect.name)]);
+    await applySchemas(backend, [followerSchema(backend.dialect.name)]);
     const { kind, tables, nextGeneration } = await backend.transaction(
       "write",
       (tx) => resetIn(tx, backend.dialect),

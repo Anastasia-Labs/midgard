@@ -157,7 +157,7 @@ export type NativeScriptDecodingProverDeps = {
     event: NativeScriptDecodingProverEvent,
   ) => void | Promise<void>;
   readonly policy: NativeScriptDecodingProverPolicy;
-  /** Q3: mandatory authenticated published step reference scripts. */
+  /** Mandatory authenticated published step reference scripts. */
   readonly referenceScriptUtxos?: {
     readonly step01?: UTxO;
     readonly step02?: UTxO;

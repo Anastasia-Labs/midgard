@@ -472,7 +472,7 @@ const makeFixture = async ({
   };
 };
 
-describe("Q57 independent state-correction reconciliation", () => {
+describe("independent state-correction reconciliation", () => {
   it("derives all gates and confirmations from independent sources", async () => {
     const fixture = await makeFixture();
     const evidence = await reconcileStateCorrectionIndependentEvidence(fixture);

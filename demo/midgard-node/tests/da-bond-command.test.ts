@@ -800,7 +800,7 @@ const fakeAccess = (options: {
   return { access, reads, tipSlots, getProtocolParameters };
 };
 
-describe("da-bond on the ledger's slot mapping (P25)", () => {
+describe("da-bond on the ledger's slot mapping", () => {
   // A whole second, about an hour before now.
   const genesisStartMs = Math.floor(Date.now() / 1_000) * 1_000 - 3_600_000;
 

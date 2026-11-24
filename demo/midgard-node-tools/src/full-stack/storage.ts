@@ -12,21 +12,19 @@ import type { StackStep } from "./workflow.js";
 
 /**
  * A fresh identity may only start over a store that holds no deployment. The
- * node's migrations create their own ledger rows, one calibration seed row
- * and, for the L1 follower's tables, a migration ledger, a table catalog and
+ * node's schema creates its own schema record, one calibration seed row
+ * and, for the L1 follower's tables, a schema record, a table catalog and
  * one writer seed row, plus the follower write gate's seed row, so a
- * migrated, never-deployed database is fresh. A writer row past its seed,
+ * never-deployed database with its schema is fresh. A writer row past its seed,
  * or a gate row a driver has bumped, means a node has run here. Never clear a store.
  */
 export const FRESH_STORAGE_QUERY =
-  "DO $$ DECLARE relation record; populated boolean; BEGIN FOR relation IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('schema_migrations', 'schema_migration_events', 'l1_follower_migrations', 'l1_follower_tables') LOOP IF relation.tablename = 'commit_build_calibration' THEN SELECT EXISTS(SELECT 1 FROM public.commit_build_calibration WHERE NOT (id = 1 AND ms_per_tx_ewma = 1.0 AND sample_count = 0)) INTO populated; ELSIF relation.tablename = 'l1_follower_writer' THEN SELECT EXISTS(SELECT 1 FROM public.l1_follower_writer WHERE NOT (id = 1 AND writer_epoch = 0 AND next_generation = 0)) INTO populated; ELSIF relation.tablename = 'node_follower_write_gate' THEN SELECT EXISTS(SELECT 1 FROM public.node_follower_write_gate WHERE NOT (singleton AND epoch = 0 AND applied_generation IS NULL AND pending_reason IS NULL)) INTO populated; ELSE EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I LIMIT 1)', relation.tablename) INTO populated; END IF; IF populated THEN RAISE EXCEPTION 'Fresh deployment requires empty local storage: %', relation.tablename; END IF; END LOOP; END $$; SELECT '{\"empty\":true}'::json";
+  "DO $$ DECLARE relation record; populated boolean; BEGIN FOR relation IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('node_schema', 'l1_follower_schemas', 'l1_follower_tables') LOOP IF relation.tablename = 'commit_build_calibration' THEN SELECT EXISTS(SELECT 1 FROM public.commit_build_calibration WHERE NOT (id = 1 AND ms_per_tx_ewma = 1.0 AND sample_count = 0)) INTO populated; ELSIF relation.tablename = 'l1_follower_writer' THEN SELECT EXISTS(SELECT 1 FROM public.l1_follower_writer WHERE NOT (id = 1 AND writer_epoch = 0 AND next_generation = 0)) INTO populated; ELSIF relation.tablename = 'node_follower_write_gate' THEN SELECT EXISTS(SELECT 1 FROM public.node_follower_write_gate WHERE NOT (singleton AND epoch = 0 AND applied_generation IS NULL AND pending_reason IS NULL)) INTO populated; ELSE EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I LIMIT 1)', relation.tablename) INTO populated; END IF; IF populated THEN RAISE EXCEPTION 'Fresh deployment requires empty local storage: %', relation.tablename; END IF; END LOOP; END $$; SELECT '{\"empty\":true}'::json";
 
 export const IDENTITY_TABLE_QUERY =
   "SELECT json_build_object('exists', to_regclass('public.full_stack_controller_identity') IS NOT NULL)";
 export const IDENTITY_ROW_QUERY =
   "SELECT row_to_json(identity) FROM full_stack_controller_identity identity";
-export const CLUSTER_IDENTITY_QUERY =
-  "SELECT json_build_object('id', system_identifier::text) FROM pg_control_system()";
 /**
  * The protocol initializations the node's L1 follower saw land: the
  * transactions that spent the deployment's one-shot outref
@@ -186,24 +184,6 @@ export async function establishStorageIdentity(processes: StackProcesses) {
     throw new Error("Storage identity differs from this deployment");
   await writeDurableJson(markerFile(processes), marker);
   await assertPreservedStorage(processes);
-}
-
-/**
- * Host commands (db:migrate) reach Postgres through the host port; the
- * storage checks run inside the compose service. Both must be the same
- * cluster.
- */
-export async function assertHostDatabaseIsStackDatabase(
-  processes: StackProcesses,
-) {
-  const inside = (await sql(processes, CLUSTER_IDENTITY_QUERY)) as {
-    id?: string;
-  } | null;
-  const host = await processes.hostDatabaseIdentity();
-  if (!inside?.id || inside.id !== host)
-    throw new Error(
-      `127.0.0.1:${processes.env.MIDGARD_POSTGRES_HOST_PORT} does not reach this stack's Postgres; refusing host database commands`,
-    );
 }
 
 export function storageIdentityStep(processes: StackProcesses): StackStep {

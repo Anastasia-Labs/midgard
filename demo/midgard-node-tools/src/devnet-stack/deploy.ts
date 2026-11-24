@@ -218,8 +218,6 @@ export const ensureDeployed = async (
       label,
     );
 
-  await step(["db:migrate"], "db-migrate");
-
   const runState = () => readJsonIfPresent<RunState>(layout.deploymentRunState);
   if (runState()?.steps?.hubOracleNonce?.status !== "complete")
     await step(

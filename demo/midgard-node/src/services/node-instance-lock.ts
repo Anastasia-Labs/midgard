@@ -1,5 +1,5 @@
 /**
- * The node's single-process exclusion on its database (E-N1H-1): a Postgres
+ * The node's single-process exclusion on its database: a Postgres
  * session advisory lock (`PostgresInstanceLock`), taken at startup before
  * the database is initialized, before any lease release, mutation-job
  * classification or L1 follower driver start, and held for the process's

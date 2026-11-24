@@ -27,7 +27,7 @@ labels deliberate byte mutations. `RecoveryScenario` provides generation and
 resource-retention assertions; its adapter supplies authenticated finality.
 It is a reference fixture, not the production finality policy.
 
-Node database cleanup uses the migration table inventory, restores migration
+Node database cleanup uses the schema's table inventory, restores the schema's
 seed rows, attests the exact disposable shard and refuses uncatalogued public
 tables. Test names are validated before identifier interpolation.
 Reset only this invocation's disposable database. [runtime: resetApplicationTables]

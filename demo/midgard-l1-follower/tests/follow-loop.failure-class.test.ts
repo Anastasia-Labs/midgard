@@ -5,8 +5,8 @@
  * and that the loop reopens a stream or restarts the store on a
  * transient failure however often it repeats, and stops under
  * `l1_follower_apply_stuck` once one that is not transient repeats
- * `stuckAfter` times in a row. Transient store failures are bounded
- * (orchestrator ruling R2): past `transientBudgetMs` with no event settled
+ * `stuckAfter` times in a row. Transient store failures are bounded:
+ * past `transientBudgetMs` with no event settled
  * the loop stops `exhausted`; stream drops and a held writer lease are not.
  */
 import {

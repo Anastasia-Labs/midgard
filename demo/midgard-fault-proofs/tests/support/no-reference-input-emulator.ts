@@ -1,5 +1,5 @@
 /**
- * `no-reference-input` (Q18) emulator support: the committed block fixture the
+ * `no-reference-input` emulator support: the committed block fixture the
  * four-step chain disputes, and the family's reference-script publisher.
  *
  * The fault is a committed transaction that names a reference input which

@@ -9,7 +9,7 @@
 //// pays ~276 complete-signed-transaction bytes per forced branch level, so the
 //// preserved 16,384-byte envelope is exhausted at branch level 21..23 and an
 //// adversary grinding sibling keys at 2^4 work per level can censor the honest
-//// prover for as little as 2^84 work (`Q1X-F5`).
+//// prover for as little as 2^84 work.
 ////
 //// `midgard/mpf_chunked_proof_v1` already removes a proof from the
 //// transaction that verifies it: the same canonical `mpf.ProofStep` list is

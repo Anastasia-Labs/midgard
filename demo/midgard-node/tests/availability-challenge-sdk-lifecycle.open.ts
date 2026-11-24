@@ -32,7 +32,7 @@ export const submit = async (
   expect(memory).toBeGreaterThan(0n);
   expect(memory).toBeLessThanOrEqual(13_200_000n);
   expect(steps).toBeLessThanOrEqual(8_000_000_000n);
-  // G9/H1: plain-ADA collateral in at most three inputs, covering the ledger
+  // Plain-ADA collateral in at most three inputs, covering the ledger
   // collateral percentage of the exact fee.
   expect(built.collateralOutRefs.length).toBeGreaterThanOrEqual(1);
   expect(built.collateralOutRefs.length).toBeLessThanOrEqual(3);

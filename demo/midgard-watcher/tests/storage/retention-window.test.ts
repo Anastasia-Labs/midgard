@@ -40,8 +40,8 @@ const expectWindowError = (
   throw new Error(`Expected retention window rejection ${code}`);
 };
 
-describe("watcher retention window (Q54 binding)", () => {
-  it("derives the window from the manifest with the Q54 arithmetic", () => {
+describe("watcher retention window binding", () => {
+  it("derives the window from the manifest with the core retention arithmetic", () => {
     const window = windowFor();
     expect(window.retentionDays).toBe(DA_TRANSPORT_LIMITS.minimumRetentionDays);
     expect(window.deployedRetentionMs).toBe(

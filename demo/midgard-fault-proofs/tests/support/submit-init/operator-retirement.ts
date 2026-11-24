@@ -100,7 +100,7 @@ const submitNeglectedFixtureTxOrder = async (
  * Drive the fixture's sole active operator through the canonical five-strike
  * inactivity path and transfer its exact remaining bond to the retired set.
  * This is deliberately a real validator lifecycle, not a fabricated retired
- * datum, so the partial Q53 tranche reaches fraud removal with authenticated
+ * datum, so the partial slash tranche reaches fraud removal with authenticated
  * provenance from the active-operator and scheduler contracts. Every strike
  * cites one tx order the tail has not delivered: an operator with no neglected
  * L1 work cannot be struck.

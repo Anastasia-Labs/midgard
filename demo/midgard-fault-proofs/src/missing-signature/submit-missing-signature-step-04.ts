@@ -11,7 +11,7 @@
  *
  * The absence predicate is re-run locally first with the exact twin: a preimage
  * in which the accused key IS present would be `NotAFault` (valid witness)
- * or `invalid-signature`'s fault (present-but-invalid, §7.3/D6) — either
+ * or `invalid-signature`'s fault (present-but-invalid) — either
  * way, refused here rather than burned on-chain.
  *
  * Field 7 is the family's fat field (~96 bytes per witness), so unlike

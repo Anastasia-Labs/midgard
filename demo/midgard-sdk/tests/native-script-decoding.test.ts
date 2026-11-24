@@ -12,7 +12,7 @@
  *
  * The family is reached by direct module import rather than through
  * `src/fraud-proof/catalogue.ts`, because its catalogue category is not
- * registered yet (Q2 — the expected id at registration is `0000000d`).
+ * registered yet (the expected id at registration is `0000000d`).
  */
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

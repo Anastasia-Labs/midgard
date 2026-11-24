@@ -116,7 +116,7 @@ export type ResolvedNonExistentInputNoIndexInit = {
 };
 
 /**
- * Q13/F20-01: the no-index category is now derived from the compiled blueprint
+ * The no-index category is derived from the compiled blueprint
  * like every other family (`buildInputNoIdxFaultProofContracts`) instead of
  * trusting the embedded deployment script bytes. The embedded bytes are still
  * cross-checked, so a deployment whose recorded contract disagrees with the

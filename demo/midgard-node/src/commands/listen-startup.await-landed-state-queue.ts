@@ -1,7 +1,7 @@
 /**
  * Startup's wait for the landed state queue. Startup recovery seeds the
- * node's commit base and journals from P1, so it waits until the follower is
- * caught up with the node's tip and P1 at its view is readable and healthy.
+ * node's commit base and journals from it, so it waits until the follower is
+ * caught up with the node's tip and the queue at its view reads healthy.
  *
  * - Waiting on the follower and the chain (catching up, the queue not yet
  *   initialized or healthy, the view moving) has no deadline: each reason
@@ -35,7 +35,7 @@ import {
   type StartupStepFailedError,
 } from "../services/startup-waiting.js";
 
-/** The follower is caught up, but P1 cannot be read at its view; the detail says why. */
+/** The follower is caught up, but the landed queue cannot be read at its view; the detail says why. */
 export const STATE_QUEUE_UNAVAILABLE = "state_queue_unavailable";
 
 export const LANDED_STATE_QUEUE_STARTUP_POLL = Duration.seconds(1);
@@ -96,7 +96,7 @@ const startupRead: Effect.Effect<
 });
 
 /**
- * What startup is still waiting on, or none when P1 is ready. A transient
+ * What startup is still waiting on, or none when the landed queue is ready. A transient
  * database failure is `state_queue_unavailable`; any other fails.
  */
 export const landedStateQueueStartupReasons: Effect.Effect<
@@ -106,7 +106,7 @@ export const landedStateQueueStartupReasons: Effect.Effect<
 > = Effect.map(startupRead, (read) => read.reasons);
 
 /**
- * Waits until P1 is ready, reporting each change of what it waits on through
+ * Waits until the landed queue is ready, reporting each change of what it waits on through
  * `report` (startup's `/readyz` stage) and the log. A transient database
  * failure is waited out for at most `databaseBudget`.
  */

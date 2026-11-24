@@ -6,8 +6,8 @@ import {
   type DialectName,
   type FactStore,
   type FollowerProjection,
-  type MigrationSet,
   openSqliteFactStore,
+  type SchemaSet,
 } from "../../src/index.js";
 import {
   buildForkSteps,
@@ -40,15 +40,10 @@ const PIN_PROJECTION: FollowerProjection = {
       retention: { kind: "owner", description: "kept for the pin test" },
     },
   ],
-  migrations: (dialect: DialectName): MigrationSet => ({
+  schema: (dialect: DialectName): SchemaSet => ({
     namespace: "pins",
-    migrations: [
-      {
-        id: "0001_sim_tx_pins",
-        sql: `-- class: D-t; retention: owner (the pin test keeps every row)
+    sql: `-- class: D-t; retention: owner (the pin test keeps every row)
 CREATE TABLE sim_tx_pins (tx_hash ${dialect === "postgres" ? "bytea" : "BLOB"} PRIMARY KEY, slot ${dialect === "postgres" ? "bigint" : "INTEGER"} NOT NULL);`,
-      },
-    ],
   }),
   derivations: [
     {

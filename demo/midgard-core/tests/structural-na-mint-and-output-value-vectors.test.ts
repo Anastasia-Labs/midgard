@@ -8,8 +8,8 @@ import {
 
 /**
  * TypeScript twin vectors for the structural-N/A closures
- * (`docs/spec/protocol-decisions.md#structural-na`) of Q24 (`ada-minted`) and Q25
- * (`negative-output-value`).
+ * (`docs/spec/protocol-decisions.md#structural-na`) of `ada-minted` and
+ * `negative-output-value`.
  *
  * Every hex string below is byte-identical to the constant of the same name in
  * the Aiken modules
@@ -20,7 +20,7 @@ import {
 
 const bytes = (hex: string): Uint8Array => Buffer.from(hex, "hex");
 
-// --- Q24 vectors -------------------------------------------------------------
+// --- ada-minted vectors ----------------------------------------------------
 
 /**
  * Field-5 preimages under §5.6's enveloped per-policy grammar:
@@ -49,7 +49,7 @@ const SHORT_MINT_FIELD_PREIMAGE_CBOR =
 const RETIRED_RAW_MAP_MINT_PREIMAGE_CBOR =
   "a1581c01010101010101010101010101010101010101010101010101010101a1410105";
 
-// --- Q25 vectors -------------------------------------------------------------
+// --- negative-output-value vectors -----------------------------------------
 
 const NEGATIVE_LOVELACE_OUTPUT =
   "a200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018220a0";
@@ -65,7 +65,7 @@ const POSITIVE_QUANTITY_OUTPUT =
 const POLICY_ID_HEX =
   "01010101010101010101010101010101010101010101010101010101";
 
-describe("Q24 ada-minted is unrepresentable in canonical V1", () => {
+describe("ada-minted is unrepresentable in canonical V1", () => {
   it("rejects a mint entry whose policy id is the ADA asset class", () => {
     expect(() =>
       decodeMidgardNativeMint(bytes(ADA_MINT_FIELD_PREIMAGE_CBOR)),
@@ -96,7 +96,7 @@ describe("Q24 ada-minted is unrepresentable in canonical V1", () => {
   });
 });
 
-describe("Q25 negative-output-value is unrepresentable in canonical V1", () => {
+describe("negative-output-value is unrepresentable in canonical V1", () => {
   it("rejects an output value carrying negative lovelace", () => {
     expect(() =>
       decodeMidgardTxOutput(bytes(NEGATIVE_LOVELACE_OUTPUT)),

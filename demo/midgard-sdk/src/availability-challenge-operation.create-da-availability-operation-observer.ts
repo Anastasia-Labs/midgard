@@ -56,7 +56,7 @@ const mintsUnderPolicy = (
 /**
  * Evidence that this actor's challenge workflow for `headerHash` ended in a
  * terminal step someone else landed, or undefined when there is none yet
- * (P20). From the confirmed Open's signed bytes it derives, by asset and never
+ * From the confirmed Open's signed bytes it derives, by asset and never
  * by index, the queue policy (the one policy under which an Open output holds
  * the header's node NFT), that node output Q0 and the challenge record output
  * R0 (the output holding the challenge asset the Open minted, whose datum

@@ -442,6 +442,7 @@ export const stoppableOperatorNode = () => {
             }
           : { reachable: false },
       ),
+    exitCode: () => Promise.resolve(undefined),
   };
   return { control, calls, running: () => running };
 };

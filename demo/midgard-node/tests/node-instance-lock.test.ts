@@ -1,5 +1,5 @@
 /**
- * The node's instance lock over this worker's database (E-N1H-1).
+ * The node's instance lock over this worker's database.
  *
  * - A second acquirer waits, under `node_instance_lock_held_elsewhere`, until
  *   the holder's session ends, then takes the lock; an unreachable Postgres

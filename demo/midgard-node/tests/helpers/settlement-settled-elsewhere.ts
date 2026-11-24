@@ -1,5 +1,5 @@
 /**
- * The settlement worker's tick against a migrated node database with a real
+ * The settlement worker's tick against a new node database with a real
  * follower store over it, fed a simulated chain whose settlement
  * transactions are built raw, for the settled-elsewhere tests
  * (`settlement-settled-elsewhere.test.ts`,
@@ -34,7 +34,7 @@ import { PgClient } from "@effect/sql-pg";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Layer, ManagedRuntime, Redacted } from "effect";
 
-import * as MigrationRunner from "../../src/database/migrations/runner.js";
+import * as NodeSchema from "../../src/database/schema.js";
 import * as Journal from "../../src/database/settlement.js";
 import { NodeConfig } from "../../src/services/config.make-config.js";
 import { Lucid } from "../../src/services/lucid.js";
@@ -110,7 +110,7 @@ const owner: Journal.SettlementOwner = {
   token: randomUUID(),
 };
 
-/** A migrated node database, a follower store over it carrying the event
+/** A new node database, a follower store over it carrying the event
  * projection and, as the node's does, the settlement and intent journal
  * projections, and the settlement worker's tick against both. */
 export type SettledElsewhereScenario = Awaited<ReturnType<typeof scenario>>;
@@ -127,7 +127,7 @@ export const scenario = async () => {
   const run = <A, E>(
     effect: Effect.Effect<A, E, SqlClient.SqlClient | NodeConfig>,
   ) => runtime.runPromise(effect);
-  await run(MigrationRunner.migrate({ appVersion: "test", actor: "race" }));
+  await run(NodeSchema.ensure);
   const store: FactStore = openPostgresFactStore({
     ...projectionStoreOptions(
       [

@@ -546,7 +546,7 @@ test min_ada_absolute_vectors_match_the_typescript_twin() {
 ///
 /// ZERO-RATE: no on-chain guard rejects a zero rate, and one must not be added
 /// -- at a compiled constant the rate cannot be zero at runtime, so the guard
-/// would be unreachable code in the hottest loop of the machine (C74). The
+/// would be unreachable code in the hottest loop of the machine. The
 /// hazard is real and is discharged here instead: the last two conjuncts show
 /// that a zero rate silently accepts a zero-lovelace 16 KiB output while the
 /// production rate rejects it, which is exactly what the absolute pin in the

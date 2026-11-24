@@ -211,7 +211,8 @@ for (const [index, fixture] of fixtures.entries()) {
             limit: AbortSignal.any([signal, deadline.signal]),
             excludingLimit: deadline.excluding,
             // Operator-2's node stays held through every family's fault phase;
-            // the completed run starts it again and proves it live.
+            // the completed run starts it again and proves it live, or shut
+            // down cleanly once it read its operator removed.
             ...(activeSession.mode === "attached" && last
               ? { afterJourney: () => activeSession.operator2.resume() }
               : {}),

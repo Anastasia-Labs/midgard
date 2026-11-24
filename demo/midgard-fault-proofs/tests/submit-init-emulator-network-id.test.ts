@@ -27,7 +27,7 @@ import { pinStepTranscript } from "./support/step-transcript.js";
 import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
 
-describe("Q35 network-id real-fault lifecycle", () => {
+describe("network-id real-fault lifecycle", () => {
   it.each([
     {
       label: "raw unprotected network nibble 2",

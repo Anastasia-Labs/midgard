@@ -35,7 +35,7 @@ import { describe, expect, it } from "vitest";
 import {
   MempoolDB,
   MempoolLedgerDB,
-  MigrationRunner,
+  NodeSchema,
   TxAdmissionsDB,
 } from "../../src/database/index.js";
 import { FixedValidationWorkerPool } from "../../src/services/validation-pool.fixed-validation-worker-pool.js";
@@ -475,7 +475,7 @@ describe("Phase 2 validation-worker isolation benchmark", () => {
           provideDatabaseLayers(
             Effect.gen(function* () {
               const sql = yield* SqlClient.SqlClient;
-              yield* MigrationRunner.assertCompatible;
+              yield* NodeSchema.ensure;
               yield* sql`TRUNCATE TABLE
                 tx_rejections,
                 tx_admissions,

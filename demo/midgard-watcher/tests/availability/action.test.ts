@@ -257,7 +257,7 @@ describe("watcher availability lifecycle action selection", () => {
   });
 });
 
-describe("watcher availability concurrency (spec #685 E3)", () => {
+describe("watcher availability concurrency (spec #685)", () => {
   it("opens a withheld descendant while its Challenged ancestor's challenge is live", () => {
     const first = fixture("44", HEADER_END_TIME);
     const second = fixture("45", HEADER_END_TIME + 100n);
@@ -400,7 +400,7 @@ describe("watcher availability funding", () => {
   });
 });
 
-describe("watcher Timeout collateral (spec #685 G9)", () => {
+describe("watcher Timeout collateral (spec #685)", () => {
   it("sizes collateral for a full slash plus the maximum Timeout fee", () => {
     const parameters = parametersFixture();
     expect(

@@ -45,7 +45,7 @@ export const stateCorrectionAcceptanceEvidence = ({
       transactions: [],
       rawEvidence: [],
       notes: [
-        "State-correction acceptance was not run: no strict Q57/C83-C85/W45 evidence artifact was supplied, so release readiness stays blocked.",
+        "State-correction acceptance was not run: no strict state-correction evidence artifact was supplied, so release readiness stays blocked.",
       ],
     };
   }

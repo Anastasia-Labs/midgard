@@ -1,7 +1,7 @@
 import type {
   DialectName,
-  MigrationSet,
   RetentionPins,
+  SchemaSet,
   TemporalRowPin,
   TemporalTableSpec,
 } from "@al-ft/midgard-l1-follower";
@@ -16,7 +16,7 @@ import type {
  */
 export const COMMITTEE_QUEUE_TABLE = "committee_queue_outputs";
 
-export const COMMITTEE_MIGRATION_NAMESPACE = "committee-l1";
+export const COMMITTEE_SCHEMA_NAMESPACE = "committee-l1";
 
 /**
  * The committee's retention pin tables (written only through
@@ -29,31 +29,6 @@ export const COMMITTEE_MIGRATION_NAMESPACE = "committee-l1";
 export const COMMITTEE_PINNED_BLOCKS_TABLE = "committee_l1_pinned_blocks";
 export const COMMITTEE_PINNED_TXS_TABLE = "committee_l1_pinned_txs";
 export const COMMITTEE_PINNED_HEADERS_TABLE = "committee_l1_pinned_headers";
-
-export const retentionPinsMigrationSql = (dialect: DialectName): string => {
-  const bytes = dialect === "postgres" ? "bytea" : "BLOB";
-  const int8 = dialect === "postgres" ? "bigint" : "INTEGER";
-  return `
--- class: B; retention: the committee deletes a holder's row once no record it holds names the slot
-CREATE TABLE ${COMMITTEE_PINNED_BLOCKS_TABLE} (
-  slot ${int8} NOT NULL,
-  holder text NOT NULL,
-  PRIMARY KEY (slot, holder)
-);
--- class: B; retention: the committee deletes a holder's row once no record it holds names the transaction
-CREATE TABLE ${COMMITTEE_PINNED_TXS_TABLE} (
-  tx_hash ${bytes} NOT NULL,
-  holder text NOT NULL,
-  PRIMARY KEY (tx_hash, holder)
-);
--- class: B; retention: the committee deletes a holder's row once the header is retired or deleted
-CREATE TABLE ${COMMITTEE_PINNED_HEADERS_TABLE} (
-  header_hash text NOT NULL,
-  holder text NOT NULL,
-  PRIMARY KEY (header_hash, holder)
-);
-`;
-};
 
 /** The follower's block and tx pins the committee registers. */
 export const COMMITTEE_RETENTION_PINS: RetentionPins = {
@@ -85,7 +60,7 @@ export const COMMITTEE_QUEUE_TABLE_SPEC: TemporalTableSpec = {
   pinnedBy: COMMITTEE_QUEUE_ROW_PINS,
 };
 
-const queueTableSql = (dialect: DialectName): string => {
+const committeeSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
   const int8 = dialect === "postgres" ? "bigint" : "INTEGER";
   return `
@@ -106,31 +81,41 @@ CREATE TABLE ${COMMITTEE_QUEUE_TABLE} (
   created_height ${int8} NOT NULL,
   created_tx_index integer NOT NULL,
   spent_slot ${int8},
+  block_time_ms ${int8},
   PRIMARY KEY (tx_hash, output_index)
 );
 CREATE INDEX ${COMMITTEE_QUEUE_TABLE}_created ON ${COMMITTEE_QUEUE_TABLE} (created_slot);
 CREATE INDEX ${COMMITTEE_QUEUE_TABLE}_spent ON ${COMMITTEE_QUEUE_TABLE} (spent_slot);
 CREATE INDEX ${COMMITTEE_QUEUE_TABLE}_header ON ${COMMITTEE_QUEUE_TABLE} (header_hash);
 CREATE INDEX ${COMMITTEE_QUEUE_TABLE}_live ON ${COMMITTEE_QUEUE_TABLE} (created_slot) WHERE spent_slot IS NULL;
+
+-- class: B; retention: the committee deletes a holder's row once no record it holds names the slot
+CREATE TABLE ${COMMITTEE_PINNED_BLOCKS_TABLE} (
+  slot ${int8} NOT NULL,
+  holder text NOT NULL,
+  PRIMARY KEY (slot, holder)
+);
+-- class: B; retention: the committee deletes a holder's row once no record it holds names the transaction
+CREATE TABLE ${COMMITTEE_PINNED_TXS_TABLE} (
+  tx_hash ${bytes} NOT NULL,
+  holder text NOT NULL,
+  PRIMARY KEY (tx_hash, holder)
+);
+-- class: B; retention: the committee deletes a holder's row once the header is retired or deleted
+CREATE TABLE ${COMMITTEE_PINNED_HEADERS_TABLE} (
+  header_hash text NOT NULL,
+  holder text NOT NULL,
+  PRIMARY KEY (header_hash, holder)
+);
 `;
 };
 
 /**
- * The committee's follower migrations. Production runs them on Postgres, in
+ * The committee's follower schema. Production creates it on Postgres, in
  * the committee store's database; the SQLite dialect exists for the fork
  * simulator.
  */
-export const committeeMigrations = (dialect: DialectName): MigrationSet => ({
-  namespace: COMMITTEE_MIGRATION_NAMESPACE,
-  migrations: [
-    { id: "0001_committee_queue_outputs", sql: queueTableSql(dialect) },
-    {
-      id: "0002_committee_retention_pins",
-      sql: retentionPinsMigrationSql(dialect),
-    },
-    {
-      id: "0003_committee_queue_block_time",
-      sql: `ALTER TABLE ${COMMITTEE_QUEUE_TABLE} ADD COLUMN block_time_ms ${dialect === "postgres" ? "bigint" : "INTEGER"};`,
-    },
-  ],
+export const committeeSchema = (dialect: DialectName): SchemaSet => ({
+  namespace: COMMITTEE_SCHEMA_NAMESPACE,
+  sql: committeeSql(dialect),
 });

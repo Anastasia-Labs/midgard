@@ -59,9 +59,7 @@ export const directSourceBatchFixture = async (
     options.maximumWitnessField &&
     encodeMidgardFieldPreimage(scriptWitnesses).length !== 32768
   )
-    throw new Error(
-      "N6 maximum source witness field is not exactly 32768 bytes",
-    );
+    throw new Error("maximum source witness field is not exactly 32768 bytes");
   const transaction = buildFixtureTransaction({
     spendInputs: spend,
     referenceInputs: reference,

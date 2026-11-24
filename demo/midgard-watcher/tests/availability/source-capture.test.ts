@@ -306,7 +306,7 @@ describe("availability captures on the follower's reads", () => {
     expect(io.status).not.toHaveBeenCalled();
   });
 
-  describe("workflow release readers (P20)", () => {
+  describe("workflow release readers", () => {
     const released = {
       reason: "challenge-closed",
       txHash: "ce".repeat(32),
@@ -464,7 +464,7 @@ describe("availability captures on the follower's reads", () => {
   });
 });
 
-describe("DA bond pool read (spec #685 E5, #691)", () => {
+describe("DA bond pool read (spec #685, #691)", () => {
   const raw = (utxo: ReturnType<typeof daBondPoolUtxo>) => ({
     outRef: `${utxo.txHash}#${utxo.outputIndex}`,
     outputCbor: utxoToCore(utxo).output().to_cbor_hex(),

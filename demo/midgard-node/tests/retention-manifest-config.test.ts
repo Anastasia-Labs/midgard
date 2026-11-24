@@ -36,7 +36,7 @@ const check =
       { ...CONFIG, RETENTION_DAYS: retentionDays },
     );
 
-describe("startup check of RETENTION_DAYS against the verified manifest (B5)", () => {
+describe("startup check of RETENTION_DAYS against the verified manifest", () => {
   it("refuses to start on a window shorter than the manifest's declared retention", () => {
     expect(check(14)).toThrow(
       /Deployment manifest at "\/deploy\/manifest\.json" does not match node config: da\.transportProfile\.retentionDays: RETENTION_DAYS=14 is shorter than the verified deployment manifest da\.transportProfile\.retentionDays=15/u,

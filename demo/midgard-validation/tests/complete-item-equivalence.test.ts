@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 import { countedMachineFieldTrace } from "../src/validation-machine/index.js";
 
 /**
- * §3.2 semantic equivalence for the transaction-field family: the complete
+ * Semantic equivalence for the transaction-field family: the complete
  * canonical item and its bounded chunk representation must authenticate the
  * same canonical commitment, and omission, duplication, reorder,
  * substitution, and trailing data must reject in both representations.

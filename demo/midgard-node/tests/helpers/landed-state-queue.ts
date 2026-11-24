@@ -1,7 +1,7 @@
 /**
- * The follower facts the node's landed state queue (P1) reads, written
+ * The follower facts the node's landed state queue reads, written
  * directly for tests without a followed chain: the follower's cursor at a
- * tip and the live outputs at the state-queue address as seed rows. P1 reads
+ * tip and the live outputs at the state-queue address as seed rows. The node reads
  * them exactly as it reads a followed chain's, so the node's code under
  * test is the production read.
  *
@@ -85,7 +85,7 @@ export const writeAddressFacts = (
             : Math.max(slot, Number(cursor[0].slot));
         // A block already stored at the tip slot (an earlier file's chain in
         // this worker's database) stays the tip: the cursor must name a
-        // stored block, or P1 reads `point_not_canonical`. A new tip block
+        // stored block, or the queue read returns `point_not_canonical`. A new tip block
         // sits one height above the highest stored one, as on a followed
         // chain, so the block d below it (the commit horizon lag) is the
         // tip written d times earlier.

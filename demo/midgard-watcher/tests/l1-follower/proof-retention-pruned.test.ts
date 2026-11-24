@@ -1,5 +1,5 @@
 /**
- * Proof retention when pruning wins (E1 ruling): the result is not dropped.
+ * Proof retention when pruning wins: the result is not dropped.
  * A pin or unit hold pruning beat is the named degradation
  * `l1_proof_history_pruned` until the objective is released, or until a
  * later hold of the same unit finds its history whole. A header no pin

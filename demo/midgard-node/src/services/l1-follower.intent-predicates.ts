@@ -107,7 +107,7 @@ const awaitAnchorDepth = (
 };
 
 /**
- * The state queue's Q61 append fence (`state_queue_head_allows_append_v1`,
+ * The state queue's append fence (`state_queue_head_allows_append_v1`,
  * `onchain/aiken/validators/state-queue.ak:137-158`), which a non-empty
  * append checks against the queue's head (`state-queue.ak:1207-1229`): no
  * completed fraud proof on the head, and its DA status Attested or

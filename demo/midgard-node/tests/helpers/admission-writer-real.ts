@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { SqlClient } from "@effect/sql";
 import { Deferred, Effect, Fiber } from "effect";
 
-import { MigrationRunner, TxAdmissionsDB } from "../../src/database/index.js";
+import { NodeSchema, TxAdmissionsDB } from "../../src/database/index.js";
 import { makeAdmissionWriterWithOptions } from "../../src/services/admission-writer.make-admission-writer-with-options.js";
 import type { AdmissionWriteRequest } from "../../src/services/admission-writer.validate-options.js";
 import { AdmissionSql } from "../../src/services/database.js";
@@ -35,14 +35,11 @@ export const writeRequest = (
   };
 };
 
-/** Runs `effect` on the migrated test database with empty tables. */
+/** Runs `effect` on the test database with empty tables. */
 export const withCleanAdmissions = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   provideDatabaseLayers(
     Effect.gen(function* () {
-      yield* MigrationRunner.migrate({
-        appVersion: "admission-writer-test",
-        actor: "admission-writer-test",
-      });
+      yield* NodeSchema.ensure;
       yield* resetApplicationTables;
       return yield* effect;
     }),

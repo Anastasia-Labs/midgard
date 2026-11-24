@@ -343,7 +343,7 @@ if (selectMidgardFieldCarriageTier(fieldChunkPreimage.length) !== "Inline") {
 // published spending validator a real step reads through `readFrom` — because a
 // dispute step references more than its own carriage and the decoy shifts every
 // index after it. A vector built without one would pin indices that only look
-// right (ruling D3-A).
+// right.
 const carriageOwner = Buffer.alloc(28, 0x7c);
 const certificatePolicyId = "ab".repeat(28);
 const decoyReferenceInput = {

@@ -44,8 +44,7 @@ pub type OperatorVerdictV1 {
 
 /// The full space of operator rejection reasons — 49 constructors (arms
 /// 0–48), one per (reason, subject-space) pair. Declaration order is
-/// wire-normative (catalogue §5/§6); arm 47 `MintItemMalformed` is the first
-/// arm of the T238 wave and new arms only ever append.
+/// wire-normative (catalogue §2); new arms only ever append.
 pub type RejectionReasonV1 {
   // ── CanonicalDecode ────────────────────────────────────────────────
   /// Declared field preimage length ≠ the canonical §5.1 walk length.

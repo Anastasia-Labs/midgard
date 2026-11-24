@@ -241,7 +241,7 @@ describe("commit-block expected state-queue tail lookup (landed queue)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Q60 / D-S12 — the commit `end_time` bound, off-chain half.
+// The commit `end_time` bound, off-chain half.
 //
 // The on-chain rule (`commit_bound_header_time_is_valid`,
 // onchain/aiken/lib/midgard/state-queue.ak) accepts exactly one `end_time` per

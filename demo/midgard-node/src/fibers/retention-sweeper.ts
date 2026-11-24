@@ -149,7 +149,7 @@ export const retentionL1ViewTimeoutMs = (input: {
 };
 
 /**
- * The retention exemption sets from the landed state queue (P1): the
+ * The retention exemption sets from the landed state queue: the
  * confirmed header and every live block header, and the greatest final
  * height at the queue's view (deeper than the deployment's k).
  */

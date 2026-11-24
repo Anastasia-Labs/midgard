@@ -226,7 +226,7 @@ export const NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ],
 );
 
-/** Complete replay for every transaction/output covered by the Q35 family. */
+/** Complete replay for every transaction/output covered by the network-id family. */
 export const NETWORK_ID_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["networkId"],
   async (evidence) => detectNetworkIds(evidence),
@@ -264,7 +264,7 @@ export const NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
 );
 
 /**
- * Complete Q44 absence decision after canonical reconstruction succeeds. A
+ * Complete da-hash-preimage absence decision after canonical reconstruction succeeds. A
  * malformed source leaf is routed before this replay by the authenticated raw
  * source-leaf branch; reaching canonical evidence proves every source leaf was
  * canonical and key/body-id bound, so the closed detector result is empty.

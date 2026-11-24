@@ -50,11 +50,9 @@ const signerFromSeed = (
 /**
  * The DA governance keys this process itself holds, operator first.
  *
- * Q63 (F04 §4) once made a 1-of-1 DA configuration unrepresentable, because
- * both governed thresholds carried a floor of at least two and the governor
- * carried an owner-set minimum beside them. Two owner rulings retired both —
- * 2026-08-11 for the committee floor, 2026-08-13 for the owner-set minimum — so
- * a node holding only its own key now writes a governor-valid `DaParamsDatum`,
+ * The governed floors (F04 §4, as amended by the 2026-08-11 and 2026-08-13
+ * owner rulings) admit a 1-of-1 DA configuration, so a node holding only its
+ * own key writes a governor-valid `DaParamsDatum`,
  * attests 1-of-1, and governs 1-of-1. `deriveOperatorDaParams` warns about each
  * of those topologies instead of refusing them.
  *

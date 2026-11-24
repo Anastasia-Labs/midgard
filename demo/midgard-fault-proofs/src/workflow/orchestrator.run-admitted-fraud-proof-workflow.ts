@@ -57,7 +57,7 @@ import {
 import type { WorkflowRun } from "./workflow-run.js";
 
 /**
- * Q51/W-O4 single-command core. Every step is derived from authenticated L1
+ * Single-command core. Every step is derived from authenticated L1
  * observation: the ledger at the node's tip with the node's mempool applied
  * (`next-state.ts`). After a submit the next iteration observes again, so
  * an action whose transaction waits in the mempool is no longer required and

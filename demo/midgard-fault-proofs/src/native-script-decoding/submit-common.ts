@@ -97,7 +97,7 @@ export const requireNativeScriptDecodingThreadUtxo = async ({
 };
 
 /**
- * Q3: validates a published reference-script UTxO against the step being
+ * Validates a published reference-script UTxO against the step being
  * spent. A carried script that does not hash to the step's own validator
  * would make the spend unexecutable, so it is refused before anything is
  * built.

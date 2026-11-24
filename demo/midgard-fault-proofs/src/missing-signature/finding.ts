@@ -24,15 +24,15 @@ export const MissingSignatureProvability = Object.freeze({
   MissingWitness: "missingWitness",
   /**
    * The required signer's witness is present but its signature fails
-   * verification — `invalidSignature`'s fault (Q15), not this family's;
-   * step-04's fold would find the key present and refuse (§7.3, D6).
+   * verification — `invalidSignature`'s fault, not this family's;
+   * step-04's fold would find the key present and refuse.
    */
   PresentButInvalid: "presentButInvalid",
   /**
-   * The §7.2 corner: the witness is absent but no vkey preimage of the
+   * The witness is absent but no vkey preimage of the
    * accused hash is recoverable, so no single-party prover can walk
    * step-03. Journaled, never routed to proving; the interactive
-   * `validationTraceDispute` machine covers the rule preimage-free (D4).
+   * `validationTraceDispute` machine covers the rule preimage-free.
    */
   UnknownVkeyPreimage: "unknownVkeyPreimage",
   /** Every required signer is witnessed — the commitment is honest. */

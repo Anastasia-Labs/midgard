@@ -70,16 +70,6 @@ export class RecordingProcesses extends StackProcesses {
       typeof response === "function" ? await response(call) : response
     ) as DerivedL1Origin;
   }
-  override async hostDatabaseIdentity() {
-    this.calls.push({
-      id: "host-database-identity",
-      args: [],
-      overrides: {},
-      env: { ...this.env },
-      scope: "host",
-    });
-    return this.responses["host-database-identity"] as string;
-  }
 }
 
 const temporary: string[] = [];

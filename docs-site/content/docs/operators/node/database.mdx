@@ -1,6 +1,6 @@
 ---
 title: "Database & State"
-description: "The node's PostgreSQL views, LevelDB Merkle Patricia Forestry state, and database migration commands."
+description: "The node's PostgreSQL views, LevelDB Merkle Patricia Forestry state, and database schema."
 ---
 
 <Callout type="error" title="Read the state-reset rules first">
@@ -23,23 +23,16 @@ Both are **durable**, not caches. The immutable history and the MPF roots cannot
 rebuilt from L1 alone, because L1 stores only the compact commitments. Treat neither as
 disposable.
 
-## Migrations
+## Schema
 
-Schema is managed through the `db:*` commands. Migrations are **explicit**: the node
-does not migrate itself on startup, and refuses to serve when the schema does not match.
+`listen` creates the node's schema on an empty database when it starts. The
+database records the checksum of the schema text that created it, and the node
+refuses a database created by a different schema, or one holding tables but no
+schema record: recreate such a database (drop it and create it empty). The
+schema is never altered in place.
 
-| Command                   | Effect                                                                                     |
-| ------------------------- | ------------------------------------------------------------------------------------------ |
-| `db:migrate`              | Applies pending schema migrations. Run before `listen`.                                    |
-| `db:status`               | Reports which migrations have been applied and which are pending. Read-only.               |
-| `db:verify`               | Checks that the live schema matches what the migrations describe. Read-only.               |
-| `db:checksum`             | Prints the compiled schema migration manifest checksums; it does not hash ledger contents. |
-| `db:backfill-da-payloads` | Reconstructs missing DA payload rows from finalized block journals.                        |
-
-<Callout type="info" title="Ordering">
-  Run `db:migrate`, confirm with `db:status` and `db:verify`, then start
-  `listen`. See the [CLI Reference](/docs/operators/node/cli-reference).
-</Callout>
+`db:backfill-da-payloads` reconstructs missing DA payload rows from finalized
+block journals. See the [CLI Reference](/docs/operators/node/cli-reference).
 
 ## Related
 

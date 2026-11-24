@@ -40,13 +40,11 @@ import { TxExpiredError } from "./utils.tx-expiry.js";
  * `committee` and `owners` with its `sorted_unique_*` walkers, which fail the
  * script outright on an out-of-order or duplicate element.
  *
- * ## A fully single-key deployment warns; it is no longer refused
+ * ## A fully single-key deployment warns
  *
- * F04 §4 carried a `max(2, …)` clamp and the governor carried an owner-set
- * minimum of two, so both a 1-of-1 committee and a lone owner were unmintable
- * and this function refused each. Two owner rulings retired both: 2026-08-11
- * (ruling 4) for the committee floor, and 2026-08-13 (in-session, recorded on
- * #602) for the owner-set minimum.
+ * F04 §4, as amended by the 2026-08-11 owner ruling (committee floor) and the
+ * 2026-08-13 owner ruling (owner-set minimum, recorded on #602), admits both a
+ * 1-of-1 committee and a lone owner, so this function warns about each.
  *
  * A node holding nothing but its own key therefore bootstraps end to end. It
  * emits a one-member committee and a one-member owner set, both of which the
@@ -87,7 +85,7 @@ export const deriveOperatorDaParams = (nodeConfig: {
     const committee = yield* resolveDaCommittee(nodeConfig, signers);
     const committeeLength = committee.length / VERIFICATION_KEY_HEX_LENGTH;
     if (committeeLength < MIN_RECOMMENDED_DA_COMMITTEE_SIZE) {
-      // The 2026-08-11 owner ruling 4's explanatory warning, at the one place a
+      // The explanatory warning the 2026-08-11 owner ruling asks for, at the one place a
       // deployment's committee size is decided. Warn, do not refuse: the
       // governor admits this datum, and refusing it here would reinstate the
       // prohibition the ruling lifted.

@@ -116,7 +116,7 @@ const missingRows: {
       "remove-fraudulent-block.ts",
     ],
     requiredClosure:
-      "install and exercise the manifest-bound Q44 runner in a compiled application with the concrete public retained-DA libp2p runtime loader",
+      "install and exercise the manifest-bound da-hash-preimage runner in a compiled application with the concrete public retained-DA libp2p runtime loader",
   },
   noReferenceInput: {
     existingSurface: [
@@ -560,7 +560,7 @@ const missingRows: {
  * Exact fail-closed registration audit for the current canonical catalogue.
  *
  * A directory full of submitters is not called a production workflow adapter.
- * Registration requires all Q51 properties at once: canonical prepared input,
+ * Registration requires all of these properties at once: canonical prepared input,
  * per-transaction durable intent before network submission, local UPLC
  * evaluation, reference-script identity, authenticated reconciliation, and
  * chain-state resume. This list names the concrete gap for every family rather

@@ -32,7 +32,7 @@ export * from "./observers-forbidden-on-untagged-network/index.js";
 export * from "./output-reference-script-decoding/index.js";
 export * from "./own-thread-cancel.js";
 export * from "./proven-correction-removal.js";
-// RF-043: legacy diagnostic submit-init/submit-step APIs are intentionally not
+// Legacy diagnostic submit-init/submit-step APIs are intentionally not
 // part of the production package surface.  The CLI and file entrypoints retain
 // the same retirement guard until an authenticated canonical submitter exists.
 export * from "./invalid-signature/artifact.js";

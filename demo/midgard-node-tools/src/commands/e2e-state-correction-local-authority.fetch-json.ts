@@ -184,7 +184,7 @@ export const stateCorrectionValueDigest = (
   value: Readonly<Record<string, string>>,
 ): string => {
   for (const [unit, quantity] of Object.entries(value)) {
-    unsignedDecimal(quantity, `Q57 value.${unit}`);
+    unsignedDecimal(quantity, `value.${unit}`);
   }
   return createHash("sha256")
     .update(

@@ -31,11 +31,9 @@ export const watcherObjectiveScope = (
   headerHash: string,
 ): string => `${category}:${headerHash}`;
 
-export const WATCHER_JOURNAL_MIGRATION_NAMESPACE = "midgard-watcher-journals";
-
 const rowTable = (table: string, retention: string): string => `
 -- class: B; retention: ${retention}
-CREATE TABLE IF NOT EXISTS ${table} (
+CREATE TABLE ${table} (
   row_key TEXT PRIMARY KEY,
   scope TEXT NOT NULL,
   state TEXT NOT NULL,
@@ -43,31 +41,26 @@ CREATE TABLE IF NOT EXISTS ${table} (
   body TEXT NOT NULL,
   mac TEXT NOT NULL
 ) STRICT;
-CREATE INDEX IF NOT EXISTS ${table}_scope ON ${table} (scope);
-CREATE INDEX IF NOT EXISTS ${table}_state ON ${table} (state);
-CREATE INDEX IF NOT EXISTS ${table}_revision ON ${table} (revision);
+CREATE INDEX ${table}_scope ON ${table} (scope);
+CREATE INDEX ${table}_state ON ${table} (state);
+CREATE INDEX ${table}_revision ON ${table} (revision);
 `;
 
-const JOURNAL_TABLES_SQL = `
+/**
+ * The journals' tables, created whole on an empty file. Each journal's head
+ * keeps only its revision counter and the key its rows are written under:
+ * the per-row MAC catches a row the disk corrupted, and whole-row
+ * deletions, replays and reorders come from hand edits or restores, which
+ * the watcher does not defend against. `watcher_unproven_fault_merges` holds
+ * the detected faults whose header merged unproven: the durable record
+ * behind the `unproven_fault_merged` alert (watcher-unproven-fault-merges.ts).
+ */
+export const WATCHER_JOURNAL_SCHEMA_SQL = `
 -- class: B; retention: one row per journal, kept while the journal directory exists
-CREATE TABLE IF NOT EXISTS watcher_journal_heads (
+CREATE TABLE watcher_journal_heads (
   journal TEXT PRIMARY KEY,
   revision INTEGER NOT NULL,
-  chain TEXT NOT NULL,
-  live_rows INTEGER NOT NULL,
-  accumulator TEXT NOT NULL,
-  key_id TEXT NOT NULL,
-  mac TEXT NOT NULL
-) STRICT;
-
--- class: B; retention: the latest 64 revisions of each journal; each commit prunes older ones
-CREATE TABLE IF NOT EXISTS watcher_journal_revisions (
-  journal TEXT NOT NULL,
-  revision INTEGER NOT NULL,
-  chain TEXT NOT NULL,
-  delta TEXT NOT NULL,
-  mac TEXT NOT NULL,
-  PRIMARY KEY (journal, revision)
+  key_id TEXT NOT NULL
 ) STRICT;
 ${rowTable(
   WATCHER_JOURNAL_TABLES.fault_decisions,
@@ -78,48 +71,12 @@ ${rowTable(
 )}${rowTable(
   WATCHER_JOURNAL_TABLES.fault_proof_objectives,
   "one row per proof objective; a completion verified at least k deep marks it, and the next start prunes it",
-)}`;
-
-/** Each journal's head keeps only its revision counter and the key its rows
- * are written under: the per-row MAC catches a row the disk corrupted, and
- * whole-row deletions, replays and reorders come from hand edits or
- * restores, which the watcher does not defend against. */
-const HEAD_COUNTER_SQL = `
-ALTER TABLE watcher_journal_heads DROP COLUMN chain;
-ALTER TABLE watcher_journal_heads DROP COLUMN live_rows;
-ALTER TABLE watcher_journal_heads DROP COLUMN accumulator;
-ALTER TABLE watcher_journal_heads DROP COLUMN mac;
-DROP TABLE watcher_journal_revisions;
-`;
-
-/** Detected faults whose header merged unproven: the durable record behind
- * the `unproven_fault_merged` alert (watcher-unproven-fault-merges.ts). */
-const UNPROVEN_FAULT_MERGES_SQL = rowTable(
+)}${rowTable(
   WATCHER_JOURNAL_TABLES.unproven_fault_merges,
   "one row per detected fault whose header merged unproven, at most 1024; the oldest goes first",
-);
-
-/** The migration ledger, created before any migration. */
-export const WATCHER_JOURNAL_LEDGER_SQL = `
--- class: A; retention: one row per applied migration, forever
-CREATE TABLE IF NOT EXISTS watcher_journal_migrations (
-  namespace TEXT NOT NULL,
-  id TEXT NOT NULL,
-  checksum TEXT NOT NULL,
-  PRIMARY KEY (namespace, id)
+)}
+-- class: A; retention: one row, forever: the checksum of the schema text that created the file
+CREATE TABLE watcher_journal_schema (
+  checksum TEXT NOT NULL
 ) STRICT;
 `;
-
-/** The journals' migrations, in the follower's `MigrationSet` shape. */
-export const WATCHER_JOURNAL_MIGRATIONS = Object.freeze({
-  namespace: WATCHER_JOURNAL_MIGRATION_NAMESPACE,
-  migrations: Object.freeze([
-    Object.freeze({ id: "0000_ledger", sql: WATCHER_JOURNAL_LEDGER_SQL }),
-    Object.freeze({ id: "0001_journal_tables", sql: JOURNAL_TABLES_SQL }),
-    Object.freeze({ id: "0002_head_counter", sql: HEAD_COUNTER_SQL }),
-    Object.freeze({
-      id: "0003_unproven_fault_merges",
-      sql: UNPROVEN_FAULT_MERGES_SQL,
-    }),
-  ]),
-});

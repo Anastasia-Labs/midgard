@@ -1,6 +1,6 @@
 //// Source index built once from authenticated input/witness passes. Every
 //// priority comparison uses locations already committed by the field walk.
-//// The selected source for a script hash is the first one the T224 lookup
+//// The selected source for a script hash is the first one the source lookup
 //// visits, named by the shared source-order function: the physical frontier
 //// holds inline witnesses in item order, then the reference scripts of
 //// resolved outputs (spent and reference inputs) in canonical out-ref order,

@@ -189,7 +189,7 @@ it("admits a landed correction, recomputes its rollback at cd + 1 and its reland
       expect(await observe(h, b1)).toEqual(readmitted);
     }
 
-    // P7: the next commit builds on the parent, never on the removed B1, and
+    // The next commit builds on the parent, never on the removed B1, and
     // carries D1; merge and settlement follow with no intervention.
     const merged = await commitLandAndMerge({
       fixture,

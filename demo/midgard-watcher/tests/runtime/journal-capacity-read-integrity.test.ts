@@ -40,7 +40,7 @@ afterEach(removeJournalDirectories);
 
 const DEPLOYMENT = "dd".repeat(28);
 
-describe("readiness over a capacity read that meets corruption (R7)", () => {
+describe("readiness over a capacity read that meets corruption", () => {
   it("answers /readyz 503 journal_integrity, never 400", async () => {
     const journalRoot = await journalDirectory("midgard-journal-capacity");
     const supervisor = createWatcherFaultProofSupervisor({

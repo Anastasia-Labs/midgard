@@ -54,11 +54,11 @@ const source = (preimage: Buffer, sourceKind: 0n | 1n = 0n) => {
       : encodeMidgardNativeTxCompact)(compact).toString("hex"),
     fieldPreimage: preimage,
     owner: OWNER,
-    label: "T235 exact raw field",
+    label: "exact raw field",
   };
 };
 
-describe("T235 exact raw field-opening planner", () => {
+describe("exact raw field-opening planner", () => {
   for (const sourceKind of [0n, 1n] as const) {
     it(`preserves a committed malformed fixed wrapper for source ${sourceKind.toString()}`, () => {
       const preimage = Buffer.concat([Buffer.from([0x81]), malformedInput]);
@@ -148,7 +148,7 @@ describe("T235 exact raw field-opening planner", () => {
       faultProofFieldOpening({
         planned,
         referenceInputs: [publication, unrelated],
-        label: "T235 actual reference positions",
+        label: "actual reference positions",
       }),
     ).toEqual({
       BodyFieldOpening: {
@@ -160,7 +160,7 @@ describe("T235 exact raw field-opening planner", () => {
       faultProofFieldOpening({
         planned,
         referenceInputs: [unrelated],
-        label: "T235 absent raw publication",
+        label: "absent raw publication",
       }),
     ).toThrow();
   });

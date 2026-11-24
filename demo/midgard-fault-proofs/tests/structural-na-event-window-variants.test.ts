@@ -1,8 +1,8 @@
 /**
- * Q47 structural-N/A executable twins (`docs/spec/protocol-decisions.md#structural-na`).
+ * Structural-N/A executable twins (`docs/spec/protocol-decisions.md#structural-na`).
  *
- * Q47 (omitted / out-of-window deposit, withdrawal and forced-event variants)
- * has no standalone proof family: all six violation variants are constructors
+ * The omitted / out-of-window deposit, withdrawal and forced-event variants
+ * have no standalone proof family: all six violation variants are constructors
  * of the shared `transitionTrace` family. The on-chain half of the disposition
  * lives in
  * `onchain/aiken/lib/midgard/fraud-proofs/transition-trace/structural-na-q47-event-window-variants.test.ak`.
@@ -59,7 +59,7 @@ import {
   outOfWindowWithdrawalFault,
 } from "./structural-na-event-window-variants.omitted-withdrawal-fault.js";
 
-describe("Q47 omitted / out-of-window event-window variants", () => {
+describe("omitted / out-of-window event-window variants", () => {
   it("encodes the omitted-due deposit variant exactly as the Aiken constructor", () => {
     expectArmMatchesBlueprint({
       fault: omittedDepositFault(),

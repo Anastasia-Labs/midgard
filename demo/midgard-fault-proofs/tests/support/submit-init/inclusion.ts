@@ -213,7 +213,7 @@ export const buildTransactionInclusionFixture = async ({
   /**
    * How many inputs each conflicting transaction spends. The default is the
    * fixture's minimal two; larger values drive the spend-input preimage
-   * cardinality axis (finding Q1X-F6) with the double-spent input last.
+   * cardinality axis with the double-spent input last.
    */
   readonly spendInputCardinality?: number;
   /**

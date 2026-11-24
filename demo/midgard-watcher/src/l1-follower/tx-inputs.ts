@@ -19,8 +19,7 @@ import {
 } from "./tables.js";
 
 /**
- * The resolved inputs of every tx a unit history records (E1 ruling, facet
- * 2). A proof reads such a tx with every input and reference input
+ * The resolved inputs of every tx a unit history records. A proof reads such a tx with every input and reference input
  * resolved; an input whose creating tx the follower never stored (an
  * operator's untracked UTxO) resolves only from the node's ledger state at
  * the inclusion block's predecessor, which the node serves only while that

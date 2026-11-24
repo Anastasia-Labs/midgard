@@ -27,7 +27,7 @@ type CanonicalStateQueueHeader = {
 const stateQueueOutRef = (utxo: SDKStateQueue.StateQueueUTxO): string =>
   `${utxo.utxo.txHash}#${utxo.utxo.outputIndex.toString()}`;
 
-/** The landed queue's blocks (P1), root excluded, in list order. */
+/** The landed queue's blocks, root excluded, in list order. */
 export const fetchCanonicalStateQueueHeaders = Effect.gen(function* () {
   const contracts = yield* MidgardContracts;
   const sorted = yield* landedStateQueueUTxOs(

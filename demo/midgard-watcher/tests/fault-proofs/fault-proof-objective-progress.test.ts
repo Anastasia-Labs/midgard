@@ -865,7 +865,7 @@ describe("proof objective progress with journals", () => {
 
   it.each([
     ["marked beyond k is final and pruned once its header leaves", 2_160, true],
-    // Depth > k is final (plan section 9): one verified at or below k is not
+    // Depth > k is final: one verified at or below k is not
     // applicable, so it is never marked; it stays open and pinned and is
     // verified again on each observation until it is beyond k, its header
     // in the queue or not.

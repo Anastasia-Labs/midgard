@@ -68,7 +68,7 @@ export type DaBondPoolCommitteeEnv = Readonly<{
 }>;
 
 /**
- * The committee node's environment (P27(1)). Refuses a signer or auto-fund
+ * The committee node's environment. Refuses a signer or auto-fund
  * variable, a port-owned variable in `settings`, equal submitter keys, a
  * submitter key equal to an operational key, and a relative journal path.
  */

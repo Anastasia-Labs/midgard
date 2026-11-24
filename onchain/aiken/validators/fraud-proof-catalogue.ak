@@ -30,7 +30,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
   }
 }
 
-// ## Q01 catalogue-immutability selectors
+// ## Catalogue-immutability selectors
 
 fn run_catalogue_mint(minted: assets.Value) -> Bool {
   let unit_redeemer: Data = 0

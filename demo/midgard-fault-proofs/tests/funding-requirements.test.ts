@@ -297,7 +297,7 @@ describe("production workflow funding requirements V1", () => {
     ).toThrow("funding-controlled value is not conserved");
   });
 
-  it("admits the distinct authenticated Q58 availability lifecycle scope", () => {
+  it("admits the distinct authenticated availability lifecycle scope", () => {
     const profile = createWorkflowFundingRequirements({
       ...input(),
       scope: {

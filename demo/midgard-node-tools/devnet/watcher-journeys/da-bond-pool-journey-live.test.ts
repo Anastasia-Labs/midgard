@@ -83,7 +83,7 @@ it.skipIf(runDirectory === undefined)(
         record = await runDaBondPoolJourney(port, {
           stageTimer: (name, action) =>
             measureJourneyStage(port.artifactDirectory, name, action),
-          // P16/P18: the devnet evidence counts only with the real
+          // The devnet evidence counts only with the real
           // da-committee-node process and the real da-bond CLI.
           requireProcessEvidence: true,
           ...(port.resume === undefined ? {} : { resume: port.resume }),
@@ -100,7 +100,7 @@ it.skipIf(runDirectory === undefined)(
           ? [...DA_BOND_POOL_JOURNEY_CHRONOLOGY]
           : [2, 6],
       );
-      // P27(3): the checked stop at the end of step 6 ran; dispose's
+      // The checked stop at the end of step 6 ran; dispose's
       // teardown would stop the node without its exit and UTxO checks.
       expect(port.committeeRunning()).toBe(false);
     } finally {

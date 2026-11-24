@@ -29,7 +29,7 @@ export type AvailabilityOperationLease = Readonly<{
   generation: number;
 }>;
 
-/** One live challenge workflow row of an actor (P9), as listed for release. */
+/** One live challenge workflow row of an actor, as listed for release. */
 export type AvailabilityOperationWorkflow = Readonly<{
   hubOraclePolicyId: string;
   headerHash: string;
@@ -38,7 +38,7 @@ export type AvailabilityOperationWorkflow = Readonly<{
 }>;
 
 /**
- * Why a workflow row ended in a terminal step someone else landed (P20): a
+ * Why a workflow row ended in a terminal step someone else landed: a
  * finalized, verified transaction burned the header's queue node or closed
  * its challenge. The journal checks only its own facts; the L1 evidence is
  * the caller's to verify.
@@ -159,7 +159,7 @@ export interface AvailabilityOperationJournal {
   workflows(actor: string): readonly AvailabilityOperationWorkflow[];
   /**
    * Retires the lease actor's workflow row for (deployment, header) once its
-   * challenge ended in someone else's terminal step (P20), or refreshes the
+   * challenge ended in someone else's terminal step, or refreshes the
    * evidence of a row it retired that is not yet final. The evidence is kept
    * until `confirmationDepth` exceeds `recoveryDepth`. Refuses unless the
    * actor has no pending, included or conflicting intent for that header and

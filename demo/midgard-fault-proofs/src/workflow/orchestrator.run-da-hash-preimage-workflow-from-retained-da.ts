@@ -75,9 +75,9 @@ export const runFraudProofWorkflow = async ({
 };
 
 /**
- * Dedicated Q44 entry. It owns the public-DA fetch and typed raw-leaf route,
+ * Dedicated da-hash-preimage entry. It owns the public-DA fetch and typed raw-leaf route,
  * so no caller-authored classification or durable proof artifact can enter the
- * shared lifecycle. A canonical payload is not silently treated as Q44.
+ * shared lifecycle. A canonical payload is not silently treated as da-hash-preimage.
  */
 export const runDaHashPreimageWorkflowFromRetainedDa = async ({
   hubOraclePolicyId,
@@ -103,7 +103,7 @@ export const runDaHashPreimageWorkflowFromRetainedDa = async ({
   const scope = [...registry.keys()];
   if (scope.length !== 1 || scope[0] !== "daHashPreimage") {
     throw new Error(
-      `dedicated Q44 workflow requires the exact daHashPreimage registry; found=${scope.join(",")}`,
+      `dedicated da-hash-preimage workflow requires the exact daHashPreimage registry; found=${scope.join(",")}`,
     );
   }
   const verified = await verifiedReleaseFinality({
@@ -121,7 +121,7 @@ export const runDaHashPreimageWorkflowFromRetainedDa = async ({
     routed.kind !== "da_hash_preimage"
   ) {
     throw new Error(
-      "dedicated Q44 workflow found no authenticated raw source-leaf defect",
+      "dedicated da-hash-preimage workflow found no authenticated raw source-leaf defect",
     );
   }
   const familyArtifact = normalizeWorkflowJson({

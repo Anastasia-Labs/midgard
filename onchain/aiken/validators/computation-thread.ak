@@ -165,7 +165,7 @@ validator mint(
   }
 }
 
-// ## Q01 shared-machinery selectors (thread lifecycle entry/exit)
+// ## Shared-machinery selectors (thread lifecycle entry/exit)
 
 const test_catalogue_root =
   #"1212121212121212121212121212121212121212121212121212121212121212"

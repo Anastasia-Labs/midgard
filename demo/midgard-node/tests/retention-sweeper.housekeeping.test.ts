@@ -198,7 +198,7 @@ const sweep = (setup: { readonly driverRecomputing?: boolean } = {}) =>
 
 const hex = (label: string) => header(`tx:${label}`).toString("hex");
 
-describe("a retention sweep with RETENTION_DAYS unset (B5)", () => {
+describe("a retention sweep with RETENTION_DAYS unset", () => {
   it("prunes housekeeping by the verified manifest's window and keeps what is still needed", async () => {
     const now = new Date();
     // Precondition: the DA challenge horizon is shorter than the window, so

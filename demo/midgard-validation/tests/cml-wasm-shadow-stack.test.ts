@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { runMaxDepthCmlOperation } from "./helpers/cml-max-depth-runner.js";
 
 /**
- * C26 Step 2 — the CML that Lucid resolves reads maximum-depth Plutus Data.
+ * The CML that Lucid resolves reads maximum-depth Plutus Data.
  *
  * History: `@anastasia-labs/cardano-multiplatform-lib-*@6.2.0-1` shipped a
  * 1 MiB wasm shadow stack, trapping the recursive CBOR decoders at Plutus Data
@@ -98,7 +98,7 @@ const readStackPointerGlobal = (wasm: Buffer): number => {
   throw new Error("no global section found in wasm binary");
 };
 
-describe("C26 CML wasm shadow stack (@lucid-evolution/cml)", () => {
+describe("CML wasm shadow stack (@lucid-evolution/cml)", () => {
   it("resolves the pinned published artifact through lucid-evolution", () => {
     const manifest = JSON.parse(
       readFileSync(installedCmlManifestPath, "utf8"),

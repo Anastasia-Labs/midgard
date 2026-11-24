@@ -1,4 +1,4 @@
-/** Wire twin of N6 SourceBoundV1, written only by authenticated step01. */
+/** Wire twin of the on-chain SourceBoundV1, written only by authenticated step01. */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 

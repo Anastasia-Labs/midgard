@@ -443,7 +443,7 @@ describe("commit end-time resolver", () => {
     const slotStartMs = lucid.slotToUnixTime(currentSlot);
     const nowMs = slotStartMs + 250;
     const headEndTimeMs = slotStartMs - 20_000;
-    // Q61: an unattested head admits appends whose inclusive upper bound is
+    // An unattested head admits appends whose inclusive upper bound is
     // strictly before its end plus the attestation timeout.
     const appendFenceEndTimeMs =
       headEndTimeMs + TESTING_DA_ATTESTATION_TIMEOUT_MS - 1;

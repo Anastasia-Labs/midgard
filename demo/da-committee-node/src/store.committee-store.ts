@@ -343,7 +343,7 @@ export interface CommitteeStore {
   saveDaPayload(record: DaPayloadRecord): Promise<DaPayloadRecord>;
   getDaPayload(headerHash: string): Promise<DaPayloadRecord | undefined>;
   /**
-   * Q54 retention enforcement: up to `limit` retained DA payloads after
+   * Retention enforcement: up to `limit` retained DA payloads after
    * `afterHeaderHash`, in header-hash order, as the metadata their release is
    * decided on. Never the payload bytes.
    */

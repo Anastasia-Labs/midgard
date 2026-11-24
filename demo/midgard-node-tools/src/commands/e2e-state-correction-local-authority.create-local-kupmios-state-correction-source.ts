@@ -54,57 +54,57 @@ const readEconomicOgmiosTransaction = async ({
       await session.request("findIntersection", {
         points: [{ slot: intersection.slot, id: intersection.headerHash }],
       }),
-      "Q57 Ogmios intersection",
+      "Ogmios intersection",
     );
     if (found.intersection === undefined) {
-      throw new Error("Q57 Ogmios did not accept the Kupo ancestor");
+      throw new Error("Ogmios did not accept the Kupo ancestor");
     }
     let acknowledgedIntersection = false;
     for (let scanned = 0; scanned < 1_000; scanned += 1) {
       const next = record(
         await session.request("nextBlock", {}),
-        "Q57 Ogmios nextBlock",
+        "Ogmios nextBlock",
       );
       if (next.direction === "backward") {
         if (acknowledgedIntersection) {
-          throw new Error("Q57 Ogmios rolled back during economic observation");
+          throw new Error("Ogmios rolled back during economic observation");
         }
         acknowledgedIntersection = true;
         scanned -= 1;
         continue;
       }
       if (next.direction !== "forward") {
-        throw new Error("Q57 Ogmios nextBlock has no direction");
+        throw new Error("Ogmios nextBlock has no direction");
       }
-      const block = record(next.block, "Q57 Ogmios block");
+      const block = record(next.block, "Ogmios block");
       if (block.id !== includedAt.blockHash) {
         if (
           typeof block.slot === "number" &&
           block.slot > Number(includedAt.slot)
         ) {
-          throw new Error("Q57 Ogmios passed the Kupo economic block");
+          throw new Error("Ogmios passed the Kupo economic block");
         }
         continue;
       }
       if (block.slot?.toString() !== includedAt.slot) {
-        throw new Error("Q57 Ogmios economic block slot disagrees with Kupo");
+        throw new Error("Ogmios economic block slot disagrees with Kupo");
       }
       if (!Array.isArray(block.transactions)) {
-        throw new Error("Q57 Ogmios economic block has no transactions");
+        throw new Error("Ogmios economic block has no transactions");
       }
       const transaction = block.transactions.find(
-        (value) => record(value, "Q57 Ogmios transaction").id === txHash,
+        (value) => record(value, "Ogmios transaction").id === txHash,
       );
       if (transaction === undefined) {
-        throw new Error(`Q57 Ogmios block does not contain ${txHash}`);
+        throw new Error(`Ogmios block does not contain ${txHash}`);
       }
       return parseOgmiosEconomicTransaction(
         transaction,
         txHash,
-        `Q57 Ogmios transaction ${txHash}`,
+        `Ogmios transaction ${txHash}`,
       );
     }
-    throw new Error("Q57 Ogmios did not reach the economic transaction");
+    throw new Error("Ogmios did not reach the economic transaction");
   } finally {
     session.close();
   }
@@ -237,7 +237,7 @@ export const createLocalKupmiosStateCorrectionSource = (
           url: joinUrl(kupoUrl, `/matches/*@${txHash}?resolve_hashes`),
           timeoutMs,
         }).then((value) =>
-          parseKupoOutputs(value, `Q57 Kupo transaction outputs ${txHash}`),
+          parseKupoOutputs(value, `Kupo transaction outputs ${txHash}`),
         ),
         fetchKupoAncestorPoint({
           kupoUrl,
@@ -251,9 +251,7 @@ export const createLocalKupmiosStateCorrectionSource = (
         kupoOutputs.some((output) => output.txHash !== txHash) ||
         !kupoOutputs.some((output) => output.outputIndex === outputIndex)
       ) {
-        throw new Error(
-          `Q57 Kupo returned an incomplete output set for ${txHash}`,
-        );
+        throw new Error(`Kupo returned an incomplete output set for ${txHash}`);
       }
       const outputIndices = kupoOutputs
         .map(({ outputIndex: index }) => index)
@@ -262,7 +260,7 @@ export const createLocalKupmiosStateCorrectionSource = (
         outputIndices.some((index, position) => index !== position) ||
         new Set(outputIndices).size !== outputIndices.length
       ) {
-        throw new Error(`Q57 Kupo output set is non-contiguous for ${txHash}`);
+        throw new Error(`Kupo output set is non-contiguous for ${txHash}`);
       }
       const ogmios = await readEconomicOgmiosTransaction({
         ogmiosUrl,

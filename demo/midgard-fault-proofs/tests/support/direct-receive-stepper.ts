@@ -86,7 +86,7 @@ export const createDirectReceiveStepper = ({
               fieldIndex === 2 ? plan.openingPlan : sourcePlan.openingPlan,
             referenceInputs: ctx.referenceInputs,
             certificatePolicyId,
-            label: "N6 actual receive field",
+            label: "actual receive field",
           }),
         });
       }) satisfies BuildTxWithRedeemer;

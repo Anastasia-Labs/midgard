@@ -1,18 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
-import {
-  Duration,
-  Effect,
-  Fiber,
-  Option,
-  Ref,
-  Schedule,
-  TestClock,
-} from "effect";
+import { Effect, Fiber, Option, Ref, Schedule, TestClock } from "effect";
 
 import {
   OPERATOR_REMOVED,
   type OperatorMembership,
   publishOperatorMembership,
+  untilOperatorRemoved,
 } from "../src/l1-operator-set/membership.js";
 import {
   Globals,
@@ -21,7 +14,6 @@ import {
 import {
   activeLivenessReasons,
   FIBER_HALT_SOURCES,
-  HALT_POLL_MS,
   HaltSource,
   pausedWhileHalted,
 } from "../src/services/liveness-halt.js";
@@ -66,46 +58,32 @@ describe("operator membership holds duties", () => {
       }).pipe(Effect.provide(Globals.Default)),
   );
 
-  it.effect(
-    "holds every duty while removed, exits nothing, and resumes when a rollback undoes it",
-    () =>
-      Effect.gen(function* () {
-        const globals = yield* Globals;
-        let ticks = 0;
-        // Each held fiber's schedule, as `nodeFibers` runs it.
-        const fibers = yield* Effect.forEach(
-          Object.values(FIBER_HALT_SOURCES),
-          (sources) =>
-            Effect.fork(
-              Effect.repeat(
-                Effect.sync(() => {
-                  ticks += 1;
-                }),
-                pausedWhileHalted(
-                  Schedule.spaced("10 millis"),
-                  globals,
-                  sources,
-                ),
-              ),
+  it.effect("holds every duty while removed", () =>
+    Effect.gen(function* () {
+      const globals = yield* Globals;
+      let ticks = 0;
+      // Each held fiber's schedule, as `nodeFibers` runs it.
+      const fibers = yield* Effect.forEach(
+        Object.values(FIBER_HALT_SOURCES),
+        (sources) =>
+          Effect.fork(
+            Effect.repeat(
+              Effect.sync(() => {
+                ticks += 1;
+              }),
+              pausedWhileHalted(Schedule.spaced("10 millis"), globals, sources),
             ),
-        );
-        yield* TestClock.adjust("10 millis");
-        expect(ticks).toBeGreaterThan(0);
+          ),
+      );
+      yield* TestClock.adjust("10 millis");
+      expect(ticks).toBeGreaterThan(0);
 
-        yield* publishOperatorMembership(membership("removed"));
-        const held = ticks;
-        yield* TestClock.adjust("10 seconds");
-        expect(ticks).toBe(held);
-        // Nothing exited: every duty fiber is still there, held.
-        for (const fiber of fibers)
-          expect(Option.isNone(yield* Fiber.poll(fiber))).toBe(true);
-
-        // A rollback that undoes the removal: the next read is active.
-        yield* publishOperatorMembership(membership("active"));
-        yield* TestClock.adjust(Duration.millis(2 * HALT_POLL_MS));
-        expect(ticks).toBeGreaterThan(held);
-        for (const fiber of fibers) yield* Fiber.interrupt(fiber);
-      }).pipe(Effect.provide(Globals.Default)),
+      yield* publishOperatorMembership(membership("removed"));
+      const held = ticks;
+      yield* TestClock.adjust("10 seconds");
+      expect(ticks).toBe(held);
+      for (const fiber of fibers) yield* Fiber.interrupt(fiber);
+    }).pipe(Effect.provide(Globals.Default)),
   );
 
   it.effect("leaves non-duty L1 work to run while removed", () =>
@@ -123,6 +101,36 @@ describe("operator membership holds duties", () => {
         }),
       );
       expect(ran).toBe(true);
+    }).pipe(Effect.provide(Globals.Default)),
+  );
+});
+
+describe("operator membership ends the node", () => {
+  it.effect(
+    "ends the node's run one second after a published removal, with /readyz failing on it first",
+    () =>
+      Effect.gen(function* () {
+        const globals = yield* Globals;
+        const node = yield* Effect.fork(untilOperatorRemoved(Effect.never));
+        yield* publishOperatorMembership(membership("removed"));
+        const reasons = yield* activeLivenessReasons(globals);
+        expect(reasons.map(({ reason }) => reason)).toContain(OPERATOR_REMOVED);
+        yield* TestClock.adjust("999 millis");
+        expect(Option.isNone(yield* Fiber.poll(node))).toBe(true);
+        yield* TestClock.adjust("1 millis");
+        // A clean end: the listen command exits with code 0.
+        expect(yield* Fiber.join(node)).toBeUndefined();
+      }).pipe(Effect.provide(Globals.Default)),
+  );
+
+  it.effect("never ends it while active, awaiting activation or unknown", () =>
+    Effect.gen(function* () {
+      const node = yield* Effect.fork(untilOperatorRemoved(Effect.never));
+      for (const state of ["active", "awaiting_activation", "unknown"] as const)
+        yield* publishOperatorMembership(membership(state));
+      yield* TestClock.adjust("1 minute");
+      expect(Option.isNone(yield* Fiber.poll(node))).toBe(true);
+      yield* Fiber.interrupt(node);
     }).pipe(Effect.provide(Globals.Default)),
   );
 });

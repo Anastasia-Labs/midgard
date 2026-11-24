@@ -68,19 +68,15 @@ describe("fraud-prover reward builder exactness", () => {
       requireFraudProverRewardRouting(
         context([output({ address: "addr_test1vother" }), output()]),
         reward,
-        "Q53 reward",
+        "reward",
       ),
     ).not.toThrow();
   });
 
   it("rejects a bond-consuming slash planned without a reward", () => {
     expect(() =>
-      requireFraudProverRewardRouting(
-        context([output()]),
-        undefined,
-        "Q53 reward",
-      ),
-    ).toThrow(/Q53 reward: a bond-consuming slash must route/);
+      requireFraudProverRewardRouting(context([output()]), undefined, "reward"),
+    ).toThrow(/reward: a bond-consuming slash must route/);
   });
 
   it("rejects a slash that pays the prover nothing", () => {
@@ -88,7 +84,7 @@ describe("fraud-prover reward builder exactness", () => {
       requireFraudProverRewardRouting(
         context([output({ address: "addr_test1vother" })]),
         reward,
-        "Q53 reward",
+        "reward",
       ),
     ).toThrow(/exactly one output/);
   });
@@ -108,7 +104,7 @@ describe("fraud-prover reward builder exactness", () => {
     ],
   ])("rejects %s mutation", (_label, mutated) => {
     expect(() =>
-      requireFraudProverRewardRouting(context([mutated]), reward, "Q53 reward"),
+      requireFraudProverRewardRouting(context([mutated]), reward, "reward"),
     ).toThrow(/must pay exactly/);
   });
 
@@ -117,7 +113,7 @@ describe("fraud-prover reward builder exactness", () => {
       requireFraudProverRewardRouting(
         context([output(), output({ assets: { lovelace: 2_000_000n } })]),
         reward,
-        "Q53 reward",
+        "reward",
       ),
     ).toThrow(/exactly one output/);
   });

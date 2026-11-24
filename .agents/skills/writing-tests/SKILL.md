@@ -9,11 +9,6 @@ A test is worth its runtime only if it catches a realistic regression that no
 existing test catches, at the cheapest level that can see it, and only if it
 can go **red**. Every rule below serves one of those three.
 
-The bugs this repository has shipped, and the tests that missed them, are in
-[references/mistakes-we-make.md](references/mistakes-we-make.md). Read it when
-you are choosing what a new test should assert, or when a green result looks
-too easy.
-
 ## 1. The gate: two questions
 
 Answer both, one sentence each, before writing anything. Put the answers in
@@ -98,12 +93,17 @@ this section is how to make the negative real. [review]
   check is satisfied, so the changed field is the only thing left to fail.
 - **Kill the guard.** Delete or weaken the check you are covering as a
   temporary edit, run the negative, and undo the edit. The negative must go
-  red; if nothing fails, it covers something else. In TypeScript,
+  red; if nothing fails, it covers something else. If it survives, add the
+  negative that kills it or record why it cannot die. In TypeScript,
   `node scripts/contrib.mjs mutate` makes the edit, refuses one that changes
   nothing, and restores the file. [review]
 - **Adversary against honest.** A real fault succeeds (the fraud proof mints,
   the dispute resolves). An adversary replaying an honest commitment is
   refused at the exact check.
+- **A substitute proves nothing about what it replaces.** An always-succeeds
+  validator, a raised emulator limit, a test-only branch past the decision, or
+  an emulator too permissive to refuse the negative: name the test for what
+  ran, and update a permissive emulator. [review]
 
 ## 5. Keep it able to fail
 
@@ -125,8 +125,8 @@ a timeout or skipping it.
   `aiken check -m` is still unguarded. Repo Tools CI runs the runner's own
   `run-focused-check.test.mjs`.
 - **`test t() fail { and { a, b, c } }` in Aiken.** Green as soon as any
-  conjunct is false, so it cannot tell the intended rejection from an
-  unrelated one. Pin one disposition per test, asserted directly. [review]
+  conjunct is false or setup aborts, so it cannot tell the intended rejection
+  from an unrelated one. Pin one disposition per test, asserted directly. [review]
 - **vitest `-t "<name>"` matching nothing.** Exits 0 with every test reported
   skipped (vitest 3.0.7 and 5.0.3, checked 2026-10-06). Read `Tests N passed` in the
   summary and check N. [review]
@@ -169,6 +169,19 @@ a timeout or skipping it.
   blueprint whose source/compiler stamp is stale through
   `demo/midgard-test-support/blueprint-stamp-setup.js`; focused runs can
   still execute stale subprocess `dist` files.
+- **A suite that skips itself on a missing prerequisite.** Required coverage
+  vanishes in a green run. A required suite fails; an optional one prints its
+  skip reason. A committed vitest `bail` hides the unrun files the same way;
+  opt in per run (`MIDGARD_NODE_TEST_BAIL`). [review]
+- **`every`, `arrayContaining` or a loop over what the code returned.** An
+  empty or strict-subset list passes vacuously. Assert the expected members
+  and count, and test a list shorter than the configured set. [review]
+- **A gate driven by inputs production never sends.** It fires only in the
+  test. Use what the production caller passes. [review]
+- **A loose oracle for a named failure.** A bare `toThrow()`, a non-empty
+  message or a 64-character hash shows that something happened, not what.
+  Assert the error's `code` where it has one, and the ledger effect where the
+  test claims a submission. [review]
 - **`it.only` / `describe.only`.** Every other test in the file is skipped.
   vitest refuses `.only` when `CI` is set (`allowOnly: !isCI`), so CI catches
   it; a local run does not. [review]
@@ -206,6 +219,9 @@ that feeds it the failing case and asserts a nonzero exit or a refusal:
 against a stub that returns a well-formed report with zero tests collected
 [ci: Aiken CI/Self-test the fail-closed focused-selector guard].
 Scripts under `.agents/skills/*/scripts/` follow the same rule.
+
+When a gate refuses a claim, change the claim or the trigger; never widen its
+allowlist or weaken the gate. [review]
 
 ## 8. Report what ran
 

@@ -17,6 +17,6 @@ export {
 export {
   QUEUE_TERMINAL_TABLES,
   QUEUE_TERMINALS_TABLE,
-  queueTerminalMigrations,
+  queueTerminalSchema,
 } from "./schema.js";
 export { newestTerminalOutcome } from "./terminal-outcome.js";

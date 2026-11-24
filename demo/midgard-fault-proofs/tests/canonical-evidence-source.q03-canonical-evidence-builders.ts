@@ -28,7 +28,7 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 
-describe("Q03 canonical-evidence builders", () => {
+describe("canonical-evidence builders", () => {
   it("exposes authenticated transaction material for detection", async () => {
     const fixture = await doubleSpendBlock();
     const evidence = await evidenceFor(fixture);

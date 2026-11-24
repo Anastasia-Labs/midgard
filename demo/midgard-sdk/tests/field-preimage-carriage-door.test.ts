@@ -13,7 +13,7 @@ import {
 } from "@/fraud-proof/field-preimage-carriage.js";
 
 /**
- * Ruling D3-A's door guard, exercised directly (#600).
+ * The #600 door guard, exercised directly.
  *
  * The guard's production wiring point is the observe-stage dispute builder and
  * is deferred to #579, so these rows are the only thing that can make its

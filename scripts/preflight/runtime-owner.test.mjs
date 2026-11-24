@@ -169,10 +169,6 @@ test("Node CI covers every package build, typecheck and full suite", () => {
           ? [`${prefix} test`, `${prefix} run test`]
           : [`${prefix} run ${script}`];
       // These package commands declare actual build prerequisites in CI.
-      if (script === "build" && pkg.name === "midgard-node") {
-        assert.match(pkg.scripts["db:migrate"], /^pnpm run build &&/u);
-        invocations.push(`${prefix} run db:migrate`);
-      }
       if (script === "build" && pkg.name === "da-committee-node") {
         assert.ok(
           packageTestTask(pkg)?.prerequisites?.some(

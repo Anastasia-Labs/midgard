@@ -8,7 +8,8 @@ This package owns:
 
 - the `FactStore`, with a Postgres adapter (node, committee) and a SQLite
   adapter (`node:sqlite`, watcher only);
-- the follower schema as namespaced migrations, each table headed
+- the follower schema as namespaced schema sets, each created whole on an
+  empty database and each table headed
   `-- class: <A|B|C|D-t|D-x>; retention: <rule>`;
 - the sequential block writer: qualification, facts, the role's S3
   derivations and the cursor advance in one transaction per block;
@@ -58,11 +59,11 @@ const store = openPostgresFactStore({
   trackedSet, // protocol addresses, payment credentials and policies (hex); recorded
   wallets, // own wallet addresses: tracked, seeded, never recorded
   temporalTables, // the role's D-t tables
-  migrations: [roleMigrations], // creates them, with class headers
+  schemas: [roleSchema], // creates them, with class headers
   derivations: [roleDerivation], // writes them, in the block's transaction
 });
 
-const started = await store.start(); // lease, migrate, INV1–INV6, load live outrefs
+const started = await store.start(); // lease, schema, INV1–INV6, load live outrefs
 if (started.kind === "store_locked") retryWithBackoff(); // transient
 if (started.kind === "intervention") markUnready(started.reason);
 await store.initialize({ point: origin, height: originHeight });
@@ -226,9 +227,9 @@ transaction it:
 
 - deletes every row of every catalog table of class A, D-t or D-x: the
   facts, the seeds, the cursor, the rollback log, and every such role table
-  migrated through the follower;
+  created through the follower;
 - never deletes a class B row (own signed material), a class C row, the
-  migration ledger, the catalog or the writer row. Class C rows (`l1_scripts`,
+  schema ledger, the catalog or the writer row. Class C rows (`l1_scripts`,
   foreign payloads) are immutable and content-addressed, so they are correct
   for any chain and are kept while referenced (§7): the next `prune()`
   removes the `l1_scripts` rows no retained output references, and a role's
@@ -313,7 +314,7 @@ type FactStoreOptions = {
   trackedSet: TrackedSet; // the protocol set, recorded (above)
   wallets?: readonly Buffer[]; // own wallet addresses, tracked but never recorded
   temporalTables?: readonly TemporalTableSpec[];
-  migrations?: readonly MigrationSet[];
+  schemas?: readonly SchemaSet[];
   derivations?: readonly DerivationHook[];
   retentionPins?: RetentionPins; // columns that keep txs/blocks from pruning
 };
@@ -326,7 +327,7 @@ and every write below can also return `StoreLocked` (the lease was lost).
 
 | Member                                                | Result                                                                                                                                                                                    |
 | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `start()`                                             | `{ kind: "ready", cursor, liveOutRefs, migrated, trackedSet, replaying } \| Intervention \| StoreLocked` (`trackedSet`: `unchecked`, `equal`, `removed` or `reset`, above)                |
+| `start()`                                             | `{ kind: "ready", cursor, liveOutRefs, trackedSet, replaying } \| Intervention \| StoreLocked` (`trackedSet`: `unchecked`, `equal`, `removed` or `reset`, above)                          |
 | `initialize({ point, height })`                       | `initialized \| already_initialized \| origin_mismatch` (with `cursor`), or `StoreError`                                                                                                  |
 | `applyBlock(block)`                                   | `BlockApplied { cursor, qualified, created, spent } \| ApplyRejection { reason: "not_initialized" \| "not_on_cursor" } \| Intervention \| StoreError`                                     |
 | `rewind(target: Point)`                               | `Rewound { generation, from, to, depth, cursor, unspent, deleted } \| RewindNoop \| Intervention \| StoreError`                                                                           |
@@ -460,23 +461,26 @@ No module outside `src/heads.ts` compares a value against
 ### Lints (`@al-ft/midgard-l1-follower/lint`)
 
 ```ts
-lintSchema(sets: readonly MigrationSet[], registry?: TemporalRegistry): SchemaLintProblem[]
-declaredTables(sets: readonly MigrationSet[]): DeclaredTable[]
+lintSchema(sets: readonly SchemaSet[], registry?: TemporalRegistry): SchemaLintProblem[]
+declaredTables(sets: readonly SchemaSet[]): DeclaredTable[]
 ```
 
 `lintSchema` fails a `CREATE TABLE` without a class and retention header, an
 unknown class, an empty rule, a D-t table that is not registered, a
 registered table not declared D-t or D-x, and a class B table with a foreign
 key (inline or by `ALTER TABLE`) into a table that is not class B, or that no
-migration declares: a reset or a rewind must never be blocked by, or cascade
+schema declares: a reset or a rewind must never be blocked by, or cascade
 into, class B rows.
 
-The migration runner records every table a migration declares, with its
-class, in the catalog `l1_follower_tables`, and refuses a migration whose
-table lacks its header. The bookkeeping tables (`l1_follower_migrations`,
-`l1_follower_tables`, `l1_follower_writer`, `l1_follower_tracked_set`, in
-`FOLLOWER_BOOKKEEPING_DDL`)
-are created before any migration and are not in the catalog. Only tests use
+`applySchemas` creates each schema set the database does not hold yet,
+records its checksum in `l1_follower_schemas`, and records every table it
+declares, with its class, in the catalog `l1_follower_tables`. It refuses a
+set whose table lacks its header, and a set the database holds under a
+different checksum: that database was created by a different schema and is
+recreated (dropped and created empty), never altered. The bookkeeping tables
+(`l1_follower_schemas`, `l1_follower_tables`, `l1_follower_writer`,
+`l1_follower_tracked_set`, in `FOLLOWER_BOOKKEEPING_DDL`) are created before
+any schema set and are not in the catalog. Only tests use
 the lint, so it is kept out of the runtime entry point.
 
 ### Wallet seed (§5.3 step 4)
@@ -628,7 +632,7 @@ own concern (the loop never makes the process unhealthy). Its reasons:
 | `store_integrity` (R5)              | the store fails INV1–INV6 at start or after a rewind. Stops the loop.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `origin_mismatch`                   | the store was initialized at another origin. Stops the loop.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `l1_follower_apply_stuck`           | one event failed to apply `stuckAfter` times in a row, or once with a deterministic failure (an undecodable block, a constraint or data error, or an L1 node transport that failed for good, such as a refused handshake). Stops the loop: the process stays up and unready under it until the operator fixes the cause and restarts it.                                                                                                                                                                                                       |
-| `l1_follower_migration_failed`      | the store refused its migrations at start: a recorded migration whose text changed, a duplicate migration id, or a migration the schema lint refuses. A migration whose SQL fails to run is not this reason: it is a failed start like any other, sorted by `classifyFailure` (`l1_follower_waiting`, or `l1_follower_apply_stuck` once stuck). Stops the loop: the process stays up and unready under it until a restart with migrations that apply.                                                                                          |
+| `l1_follower_schema_refused`        | the store refused its schema at start: the store was created by a different schema, or a schema set the schema lint refuses. A schema whose SQL fails to run is not this reason: it is a failed start like any other, sorted by `classifyFailure` (`l1_follower_waiting`, or `l1_follower_apply_stuck` once stuck). Stops the loop: the process stays up and unready under it until the store is recreated (dropped and created empty) and the process restarted.                                                                              |
 | `l1_follower_waiting`               | backing off from a transient failure: the writer lease (`store_locked`; with a lent lease, the instance lock's refusal), a stream failure or end, or a stream that failed and reopened `STREAM_INTERRUPTED_AFTER` (3) times in a row with no event between (`stream`), a failed start or read (`store`), an apply failure below the stuck threshold (`apply`). Cleared by the next applied event.                                                                                                                                              |
 | `l1_follower_transient_exhausted`   | a store that does not answer (a transient failure) outlasted `transientBudgetMs` (15 min) with no event settled. Stops the loop `exhausted`; its host logs one named line and exits non-zero, the supervisor's restart being the backoff.                                                                                                                                                                                                                                                                                                      |
 | `tracked_set_changed`               | a start found an addition to the protocol tracked set (or no record) and reset the store; the loop replays from the origin. Transient; cleared, in the store too, at the first report at the node tip.                                                                                                                                                                                                                                                                                                                                         |
@@ -667,7 +671,7 @@ result, or `undefined` once `signal` aborts.
 ### Role projections
 
 A role's `FollowerProjection` (main entry) bundles its tracked set, D-t
-tables, migrations, derivations and retention pins, plus the fork
+tables, schemas, derivations and retention pins, plus the fork
 simulator's optional `traffic`, `protects` and `check`.
 `projectionStoreOptions(projections, { securityParameter, trackedSet },
 dialect)` merges them into the `FactStoreOptions` the role opens its store
@@ -724,7 +728,7 @@ did, and once the seeder is ready the store's live rows at every wallet must
 be exactly the ledger's UTxOs there (no phantom, none missing).
 
 A role ticket adds cases by passing a `FollowerProjection`: its tracked set,
-D-t tables, migrations, derivations and retention pins, optional `traffic`
+D-t tables, schemas, derivations and retention pins, optional `traffic`
 (transactions the simulator mixes into blocks, so the role's own outputs
 appear on both branches) and an optional `check` run after every event. Role
 packages run their cases from a `test:fork-sim` script; CI runs every

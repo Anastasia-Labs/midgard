@@ -37,7 +37,7 @@
 //// spend / common (every arm)
 ////   exactly one input at `Script(own)`
 ////     -> da_bond_pool_spend_rejects_a_second_pool_input  (control: top-up)
-////   continuing output carries an inline datum (G1)
+////   continuing output carries an inline datum
 ////     -> da_bond_pool_top_up_rejects_datum_hash  (control: top-up)
 ////   script purposes other than mint / spend
 ////     -> da_bond_pool_else_rejects_other_purpose

@@ -148,9 +148,9 @@ export const buildSlashingInputs = ({
   readonly hubOracleUtxo: UTxO;
   readonly registeredOperatorsElementUtxo?: UTxO;
   /**
-   * D3 reward routing. Only the bond-consuming approaches can carry it;
+   * Reward routing. Only the bond-consuming approaches can carry it;
    * `OperatorAlreadySlashed` consumes no bond and pays no reward, which is the
-   * D4 exclusivity ruling expressed in the redeemer's own shape.
+   * reward exclusivity rule expressed in the redeemer's own shape.
    */
   readonly fraudProverReward?: FraudProverRewardPlan;
   /**

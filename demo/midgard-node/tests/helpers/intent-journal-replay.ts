@@ -42,7 +42,7 @@ import { PgClient } from "@effect/sql-pg";
 import type { Emulator } from "@lucid-evolution/lucid";
 import { Effect, Either, ManagedRuntime, Redacted } from "effect";
 
-import * as MigrationRunner from "../../src/database/migrations/runner.js";
+import * as NodeSchema from "../../src/database/schema.js";
 import type { NodeConfigDep } from "../../src/services/config.js";
 import { Database } from "../../src/services/database.js";
 import {
@@ -228,16 +228,14 @@ export const replayJournaledOnFollower = async (input: {
     PgClient.layer({ url: Redacted.make(connectionString) }),
   );
   try {
-    // The node's schema, as the node migrates its database before its
+    // The node's schema, as the node creates it before its
     // follower opens there, and the node's own block journal and forced
     // transactions, which the commit predicate reads: the flow's rows as
     // they stand at its end. The fixtures prepare a block without the
     // history producer's permit, so its event members carry no follower
     // admission identity; each gets its event row's, which is what the
     // production prepare binds.
-    await runtime.runPromise(
-      MigrationRunner.migrate({ appVersion: "test", actor: "intent-replay" }),
-    );
+    await runtime.runPromise(NodeSchema.ensure);
     for (const [table, events] of NODE_TABLES_THE_PREDICATES_READ) {
       const [read] = await Effect.runPromise(
         Effect.flatMap(SqlClient.SqlClient, (flow) =>

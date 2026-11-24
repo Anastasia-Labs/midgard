@@ -309,10 +309,9 @@ export default tseslint.config(
     // `lucid-midgard` surfaces every builder failure through typed Effect
     // errors (`BuilderInvariantError` and friends); an escape hatch that
     // converts a typed failure into a defect, swallows a cause, or runs an
-    // Effect synchronously would silently change that contract. This used to
-    // be a `readFileSync` grep inside tests/safe-program.test.ts, which
-    // section 7 of docs/research/testing-best-practices.md prohibits as proof
-    // of runtime behavior.
+    // Effect synchronously would silently change that contract. A lint rule
+    // carries this because a test that scans source text proves nothing about
+    // runtime behavior.
     files: ["lucid-midgard/src/**/*.ts"],
     rules: {
       "no-restricted-syntax": [
@@ -357,10 +356,8 @@ export default tseslint.config(
     // package, reported as lint rather than as a test. The watcher is an
     // adversarial verifier: it must never link the operator's own node, its
     // admin/database surface, or the DA committee service into its runtime.
-    // This used to be a `readFileSync` grep over src inside
-    // tests/runtime/scaffold.test.ts, which section 7 of
-    // docs/research/testing-best-practices.md prohibits as proof of runtime
-    // behavior.
+    // A lint rule carries this because a test that scans source text proves
+    // nothing about runtime behavior.
     files: ["midgard-watcher/src/**/*.ts"],
     rules: {
       ...restrictImports(typescriptCompiler, {

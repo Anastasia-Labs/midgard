@@ -100,7 +100,7 @@ const withdrawalMistagAt = (
 const doubleWithdrawDetections = async (evidence: CanonicalBlockEvidence) =>
   (await DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY.replay(evidence)).detections;
 
-describe("Q55/W-O6 deterministic violation classification", () => {
+describe("deterministic violation classification", () => {
   it("covers every registered family exactly once in catalogue order", () => {
     expect(
       FRAUD_PROOF_CLASSIFICATION_RULES.map((rule) => rule.category),

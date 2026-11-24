@@ -25,7 +25,7 @@ import {
   unit,
 } from "./e2e-state-correction-local-authority.make-source.js";
 
-describe("Q57 local Kupmios authority", () => {
+describe("state-correction local Kupmios authority", () => {
   it("derives same-network release economics from the authenticated manifest profile", async () => {
     const boundedManifest = await makeFinalizedDeploymentManifestFixture();
     expect(

@@ -76,7 +76,7 @@ import {
   publicationTransactionBytes,
 } from "./availability-challenge.publication-transaction-bytes.js";
 
-describe("Q58 canonical DA availability commitment V1", () => {
+describe("canonical DA availability commitment V1", () => {
   it("fixes the approved deadlines and binds the DA amounts to the profile", () => {
     expect(daAvailabilityResponseWindowMs(64 * 1024)).toBe(
       DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS,

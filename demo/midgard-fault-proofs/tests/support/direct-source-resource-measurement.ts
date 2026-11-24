@@ -432,7 +432,7 @@ export const measureDirectSourceResourcePath = async (
         ]),
       });
       console.log(
-        "N6 F2 singleton differential",
+        "singleton differential",
         JSON.stringify(changed, (_, value: unknown) =>
           typeof value === "bigint" ? value.toString() : value,
         ),

@@ -88,7 +88,7 @@ const sameTxs = (
 
 /**
  * The watcher's own checks at every step, against the independent chain
- * model: the queue view, the tip block's checkpoints, and (ruling 2) every
+ * model: the queue view, the tip block's checkpoints, and every
  * read a live decision needs past k: the unit history of each queued header,
  * each history tx's body and checkpoint, and each DAAT-creating tx.
  */

@@ -11,7 +11,7 @@ import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { beforeAll, describe, expect } from "vitest";
 
-import { MempoolDB, MigrationRunner } from "../src/database/index.js";
+import { MempoolDB, NodeSchema } from "../src/database/index.js";
 import type * as Tx from "../src/database/utils/tx.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
@@ -24,14 +24,7 @@ const isolatedDb = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   );
 
 beforeAll(async () => {
-  await Effect.runPromise(
-    provideDatabaseLayers(
-      MigrationRunner.migrate({
-        appVersion: "mempool-retrieve-page-order-test",
-        actor: "mempool-retrieve-page-order-test",
-      }),
-    ),
-  );
+  await Effect.runPromise(provideDatabaseLayers(NodeSchema.ensure));
 });
 
 const BATCH = new Date("2026-10-09T12:00:00.000Z");

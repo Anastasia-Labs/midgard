@@ -56,12 +56,13 @@ describe("pooled DA bond journey on the emulator", () => {
 
   it("observes every assertion, and none fails", () => {
     // The emulator composes the committee view and the da-bond commands in
-    // process, so only the P16/P18/P27 process evidence may be
+    // process, so only the committee-view, CLI-chain and committee-node process
+    // evidence may be
     // not-observable here; the live devnet run requires it.
     const processOnly = (name: string) =>
-      name.startsWith("P16: ") ||
-      name.startsWith("P18: ") ||
-      name.startsWith("P27: ");
+      name.startsWith("committee view: ") ||
+      name.startsWith("CLI chain: ") ||
+      name.startsWith("committee node: ");
     const unmet = record.stages.flatMap((stage) =>
       stage.assertions
         .filter(
@@ -78,7 +79,7 @@ describe("pooled DA bond journey on the emulator", () => {
     expect(record.stages.every((stage) => stage.assertions.length > 0)).toBe(
       true,
     );
-    // An emulator run never counts as P16/P18/P27 process evidence.
+    // An emulator run never counts as process evidence.
     const processRows = record.stages.flatMap((stage) =>
       stage.assertions.filter((assertion) => processOnly(assertion.name)),
     );

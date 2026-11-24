@@ -1,4 +1,4 @@
-//// Q35 network-id forced scan: the resumable §10 walk over the rejected
+//// network-id forced scan: the resumable §10 walk over the rejected
 //// forced transaction's `outputs` field.
 ////
 //// The thread arrives here from `forced_step`, which has already

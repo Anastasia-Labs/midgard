@@ -504,14 +504,12 @@ test("a failing run with a named file left unrun stays failed", async (t) => {
 test("a gate refuses a registered file its package's run does not collect, and fails on a code it does not know", async (t) => {
   const { root, env, calls } = workspace(
     t,
-    { command: ["vitest", "run", "--exclude", "tests/migration-locking*"] },
+    { command: ["vitest", "run", "--exclude", "tests/node-schema*"] },
     Object.fromEntries(
-      [
-        "database",
-        "migration-runner",
-        "migration-locking",
-        "tx-admissions-claim-load",
-      ].map((name) => [`${name}.test.ts`, ""]),
+      ["database", "node-schema", "tx-admissions-claim-load"].map((name) => [
+        `${name}.test.ts`,
+        "",
+      ]),
     ),
   );
   const manifest = resolve(root, "demo/example/package.json");
@@ -524,7 +522,7 @@ test("a gate refuses a registered file its package's run does not collect, and f
       sourceOnly: true,
       env: { ...env, MIDGARD_SKIP_NATIVE_BUILD: "1" },
     }),
-    /does not collect tests\/migration-locking\.test\.ts/u,
+    /does not collect tests\/node-schema\.test\.ts/u,
   );
   assert.deepEqual(calls(), []);
   for (const [codes, gate] of [

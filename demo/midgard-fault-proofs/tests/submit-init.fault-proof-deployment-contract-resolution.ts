@@ -69,7 +69,7 @@ describe("fault-proof deployment contract resolution", () => {
   it("preflights no-index init from exact deployed bytes and catalogue membership", async () => {
     const blueprint = readBlueprint();
     const contracts = await buildAllFaultProofContracts(blueprint);
-    // Q13/F20-01: the no-index first step is now derived from the compiled
+    // The no-index first step is derived from the compiled
     // blueprint like every other family, so the deployment must record exactly
     // the applied `input_no_idx/step_01` script.
     const noIndexFirstStep = contracts.nonExistentInputNoIndex.firstStep;

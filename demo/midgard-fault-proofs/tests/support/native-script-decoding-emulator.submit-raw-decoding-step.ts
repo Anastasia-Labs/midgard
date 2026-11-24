@@ -37,7 +37,7 @@ export type RawDecodingStepLayout = {
 /**
  * A test-only raw thread advancement — the same transaction shape the
  * step-02/step-03 submitters build (fee input, thread spend, advanced state
- * paid to `destinationAddress`, carriage read as reference inputs, Q3
+ * paid to `destinationAddress`, carriage read as reference inputs,
  * step-script sourcing), with NONE of their fail-closed pre-checks.
  *
  * The adversarial suite needs this because every attack it exercises is one

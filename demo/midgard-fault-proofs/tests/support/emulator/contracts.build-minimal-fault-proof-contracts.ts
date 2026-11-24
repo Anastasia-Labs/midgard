@@ -722,7 +722,7 @@ export const buildMinimalFaultProofContracts = async (
       })()
     : productionStateQueue;
 
-  // The Q39/Q40 submitters take an explicit focused contracts record. Assemble
+  // The fabricated-family submitters take an explicit focused contracts record. Assemble
   // it from the same parameterized chains whose step-01 hashes occupy their
   // canonical production catalogue categories.
   const fabricatedDeposit: FabricatedDepositContracts | undefined =

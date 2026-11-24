@@ -217,7 +217,7 @@ export const openAttachedJourneySession = async (
     guardOperatorSignatures(context.deployment.operatorLucid, operator2);
     context.daProducer.guard(operator2);
     // A run that ends with operator-2 still held starts it again; only a
-    // completed run proves its liveness (`operator2.resume`).
+    // completed run proves how it comes back (`operator2.resume`).
     onClose(operator2.release);
     // Closes run in reverse order and each runs even if a later one throws,
     // so operator-2 is started again whatever the ledger close does.

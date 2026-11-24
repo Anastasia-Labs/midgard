@@ -125,7 +125,7 @@ export const driveDirectSourceLifecycle = async (
         await publishPlainReferenceScriptUtxo({
           lucid,
           script: role.spendingScript,
-          label: `N6 source ${name}`,
+          label: `source ${name}`,
         })
       ).utxo,
     );

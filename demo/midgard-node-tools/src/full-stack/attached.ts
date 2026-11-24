@@ -294,7 +294,7 @@ function attachedConfigurationStep(processes: StackProcesses): StackStep {
           `${JSON.stringify(rebindProducer(source, peerId, port), null, 2)}\n`,
         );
       }
-      // Only the node, its migration and its Postgres: never the stack's
+      // Only the node and its Postgres: never the stack's
       // Cardano node, which this node reads through its socket. On a public
       // stack, the stack's release image with its release read-only, and its
       // own TLS ingress on the loopback, its only HTTP entry.
@@ -326,9 +326,6 @@ function attachedConfigurationStep(processes: StackProcesses): StackStep {
               ...node["midgard-node"],
               depends_on: override({
                 postgres: { condition: "service_healthy" },
-                "midgard-node-migrate": {
-                  condition: "service_completed_successfully",
-                },
               }),
             },
           },
@@ -414,7 +411,7 @@ function attachedServicesStep(processes: StackProcesses): StackStep {
       } else
         await processes.compose(
           "services-build",
-          ["build", "midgard-node", "midgard-node-migrate"],
+          ["build", "midgard-node"],
           runtime.compose,
         );
       const nodeEnv = nodeEnvironment(

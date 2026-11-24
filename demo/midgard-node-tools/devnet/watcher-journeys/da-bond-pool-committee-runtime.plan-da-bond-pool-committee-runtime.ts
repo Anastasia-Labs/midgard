@@ -46,7 +46,7 @@ export const DA_BOND_POOL_COMMITTEE_MEMBER_ROLES = Object.freeze([
 export class DaBondPoolCommitteeRuntimeError extends Error {
   constructor(problem: string, options?: ErrorOptions) {
     super(
-      `The DA bond pool journey cannot produce its committee runtime (ruling P31): ${problem}`,
+      `The DA bond pool journey cannot produce its committee runtime: ${problem}`,
       options,
     );
     this.name = "DaBondPoolCommitteeRuntimeError";

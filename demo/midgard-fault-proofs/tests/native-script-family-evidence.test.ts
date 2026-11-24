@@ -62,7 +62,7 @@ const ledgerEntry = (lovelace: bigint) => ({
   ),
 });
 
-describe("Q33/Q34 retained-DA evidence", () => {
+describe("native-script family retained-DA evidence", () => {
   it("prepares an authenticated evaluation-false native witness", async () => {
     const evidence = await canonicalEvidence(
       nativeTx({ scripts: [nativeScript] }),

@@ -135,7 +135,7 @@ artifacts are described in
 
 ## Demo-node Docker stack
 
-`demo/midgard-node/docker-compose.yaml` (node, one-shot migration, Postgres,
+`demo/midgard-node/docker-compose.yaml` (node, Postgres,
 Prometheus, Loki, Promtail, cAdvisor, Grafana, Tempo) plus
 `docker-compose.kupmios.yaml` (Mithril bootstrap, cardano-node, Ogmios, Kupo).
 It follows the network named by `NETWORK`, restored from a Mithril snapshot;
@@ -158,17 +158,16 @@ port or `COMPOSE_PROJECT_NAME` already set in the environment or `.env` wins.
 | ----------------------- | ---------------------------------------------------------------------------- |
 | L1 and Postgres first   | `docker compose $F up -d postgres cardano-node cardano-config-export`        |
 | Check health            | `docker compose $F ps`                                                       |
-| Schema                  | `docker compose $F run --rm midgard-node-migrate`                            |
 | Full stack              | `docker compose $F up -d`                                                    |
 | Relaunch after a change | `docker compose $F stop midgard-node` then `docker compose $F up -d --build` |
 
-- `up` runs `midgard-node-migrate` first and starts `midgard-node` only after
-  it exits successfully (`depends_on: service_completed_successfully`).
+- `midgard-node` creates its database schema when it starts, on an empty
+  database.
 - `midgard-node` waits for healthy Postgres and cardano-node and the finished
   config export, and its own healthcheck is `/readyz` (5 s interval, 60
   retries, 30 s start period).
 - `listen` fails closed without `deploymentInfo/contract-deployment-info.json`
-  and the DA producer manifest (README step 6).
+  and the DA producer manifest (README step 5).
 - `midgard-node` and Postgres have `restart: always`. A node that crashes on
   start restarts forever; check `docker compose $F ps` for a restart loop
   rather than waiting on it.
@@ -177,8 +176,7 @@ port or `COMPOSE_PROJECT_NAME` already set in the environment or `.env` wins.
   deployment; the e2e skill forbids deleting them for a Midgard reset.
 
 Without Docker, the node runs as `node dist/index.js listen` from
-`demo/midgard-node` after `pnpm build` and `node dist/index.js db:migrate`
-(README, "Without Docker").
+`demo/midgard-node` after `pnpm build` (README, "Without Docker").
 
 ## DA committee node
 

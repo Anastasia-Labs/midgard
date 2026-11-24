@@ -289,7 +289,7 @@ describe("availability operation journal durability and fencing", () => {
     }
   });
 
-  describe("releasing a workflow someone else's terminal step ended (P20)", () => {
+  describe("releasing a workflow someone else's terminal step ended", () => {
     const evidence = (openIntentId = "open") => ({
       openIntentId,
       reason: "challenge-closed" as const,

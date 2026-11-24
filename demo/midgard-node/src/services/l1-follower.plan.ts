@@ -35,7 +35,7 @@ export type NodeIndexPlan = Readonly<{
   projection: EventProjectionConfig;
   /** The forced orders the follower projects and the node ingests. */
   forcedOrders: ForcedOrderConfig;
-  /** The landed state queue (P1). */
+  /** The landed state queue. */
   stateQueue: StateQueueProjectionConfig;
   /** The operator lists, the scheduler and the hub oracle. */
   operatorSet: OperatorSetConfig;

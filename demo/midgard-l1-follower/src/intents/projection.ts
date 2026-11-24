@@ -1,6 +1,6 @@
 import type { FollowerProjection } from "../projection.js";
 import { INTENT_PRUNE_FLOOR, INTENT_PRUNE_HOOK } from "./prune.js";
-import { intentMigrations } from "./schema.js";
+import { intentSchema } from "./schema.js";
 
 /**
  * The intent journal as a follower projection: its class B tables and the
@@ -14,7 +14,7 @@ import { intentMigrations } from "./schema.js";
  */
 export const intentJournalProjection: FollowerProjection = {
   name: "intent-journal",
-  migrations: intentMigrations,
+  schema: intentSchema,
   pruneHooks: [INTENT_PRUNE_HOOK],
   pruneFloor: INTENT_PRUNE_FLOOR,
 };

@@ -184,7 +184,7 @@ surprises you or a run printed nothing.
   [ci: Aiken CI/Compile and run the Aiken test suite with the pinned fork].
 - `test … fail` over a multi-conjunct `and {}` passes when any conjunct is
   false. See
-  [`7d01f2b71` in the writing-tests catalogue](../writing-tests/references/mistakes-we-make.md#green-whatever-the-code-does)
+  [writing-tests §5](../writing-tests/SKILL.md#5-keep-it-able-to-fail)
   [review].
 
 ## Measured Limits

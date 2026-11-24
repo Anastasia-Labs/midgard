@@ -223,8 +223,8 @@ export const openProductionLifecycle = async (
       throw error;
     }
     const scope = await runtime.runPromise(Scope.make());
-    // The follower follows the emulator while the generation runs: P1 and
-    // the node's fibers read its facts.
+    // The follower follows the emulator while the generation runs: the
+    // landed queue and the node's fibers read its facts.
     await runtime.runPromise(
       followEmulatorChain(fixture.operatorLucid).pipe(
         Effect.provideService(Scope.Scope, scope),

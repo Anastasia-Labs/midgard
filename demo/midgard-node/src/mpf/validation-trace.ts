@@ -1,7 +1,7 @@
 /**
  * Validation-trace member construction and event-key set validation.
  *
- * P1 commits a placeholder descriptor per transaction event and retains no
+ * The node commits a placeholder descriptor per transaction event and retains no
  * validation-machine state.
  */
 

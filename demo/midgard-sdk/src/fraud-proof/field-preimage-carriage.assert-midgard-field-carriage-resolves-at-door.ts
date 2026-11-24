@@ -86,8 +86,8 @@ export const resolveMidgardFieldCarriageAgainstReferenceInputs = ({
 
 /**
  * Refuses a carriage whose positional indices would not resolve to the same
- * UTxOs in the transaction that actually runs the §8.8 door (#600 ruling
- * D3-A, re-scoped by #619/#621).
+ * UTxOs in the transaction that actually runs the §8.8 door (#600,
+ * re-scoped by #619/#621).
  *
  * When this guard was written, the auxiliary — carriage included — was hashed
  * into `evidence_hash` at PrepareSelected and dereferenced three transactions

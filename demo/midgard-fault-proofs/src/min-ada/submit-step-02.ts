@@ -1,4 +1,4 @@
-/** Q27 step 02: open the produced output named by the fault. */
+/** Min-Ada step 02: open the produced output named by the fault. */
 
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/lucid-data";

@@ -144,7 +144,7 @@ it.each(["A-N", "A-F", "R-F"] as const)(
           await publishPlainReferenceScriptUtxo({
             lucid,
             script: role.spendingScript,
-            label: "N6 custody",
+            label: "custody",
           })
         ).utxo,
       );
@@ -198,9 +198,9 @@ it.each(["A-N", "A-F", "R-F"] as const)(
       // An adversary uses the real completed input/withdrawal slots, but asks for
       // an unrelated output state. It must reach the actual spending refusal.
       const adversarial = ((ctx) => {
-        SDK.requireOwnSpendPurpose(ctx, thread, "N6 adversary");
+        SDK.requireOwnSpendPurpose(ctx, thread, "adversary");
         const indices = {
-          input_index: SDK.requireInputIndex(ctx, thread, "N6 adversary"),
+          input_index: SDK.requireInputIndex(ctx, thread, "adversary"),
           output_index: SDK.requireUniqueOutputIndex(
             ctx.outputs,
             computationThreadOutputPredicate({
@@ -208,7 +208,7 @@ it.each(["A-N", "A-F", "R-F"] as const)(
               datum: badDatum,
               unit,
             }),
-            "N6 adversary output",
+            "adversary output",
           ),
         };
         return stage === 0
@@ -221,7 +221,7 @@ it.each(["A-N", "A-F", "R-F"] as const)(
                       witness: material.eventMembership,
                       ctx,
                       directRewardAddress: reward,
-                      label: "N6 event adversary",
+                      label: "event adversary",
                     }),
                   },
                 ],
@@ -237,7 +237,7 @@ it.each(["A-N", "A-F", "R-F"] as const)(
                       witness: material.transitionMembership,
                       ctx,
                       directRewardAddress: reward,
-                      label: "N6 transition adversary",
+                      label: "transition adversary",
                     }),
                   },
                 ],
@@ -302,10 +302,10 @@ it("publishes every physical direct receive stage within the unchanged L1 envelo
     const { publicationMeasurement } = await publishPlainReferenceScriptUtxo({
       lucid,
       script: role.spendingScript,
-      label: `N6 receive ${name}`,
+      label: `receive ${name}`,
     });
     console.log(
-      "N6 actual signed receive publication",
+      "actual signed receive publication",
       JSON.stringify({
         name,
         appliedBytes: role.spendingScript.script.length / 2,
@@ -322,7 +322,7 @@ it("executes bounded receive batches and sorted ordinal custody without trace st
   const measurements = await driveDirectReceiveLifecycle();
   expect(measurements).toHaveLength(10);
   console.log(
-    "N6 ordinary receive four outputs/two credentials, two output batches",
+    "ordinary receive four outputs/two credentials, two output batches",
     JSON.stringify(measurements),
   );
 }, 300_000);
@@ -344,7 +344,7 @@ it.each(["Base", "Enterprise"] as const)(
       measurements.filter((m) => m.label.startsWith("sorted exact")),
     ).toHaveLength(8);
     console.log(
-      "N6 maximum receive sixty-four credentials",
+      "maximum receive sixty-four credentials",
       JSON.stringify(measurements),
     );
   },
@@ -394,7 +394,7 @@ it.each(["Base", "Enterprise"] as const)(
     for (const [name, role] of Object.entries(roles)) {
       const appliedBytes = role.spendingScript.script.length / 2;
       console.log(
-        "N6 actual applied source",
+        "actual applied source",
         walletAddressType,
         name,
         appliedBytes,
@@ -403,7 +403,7 @@ it.each(["Base", "Enterprise"] as const)(
       const { publicationMeasurement } = await publishPlainReferenceScriptUtxo({
         lucid,
         script: role.spendingScript,
-        label: `N6 source ${name} ${walletAddressType}`,
+        label: `source ${name} ${walletAddressType}`,
       });
       measurements.push({
         name,
@@ -416,7 +416,7 @@ it.each(["Base", "Enterprise"] as const)(
     }
     expect(measurements).toHaveLength(8);
     console.log(
-      "N6 actual signed source publications",
+      "actual signed source publications",
       walletAddressType,
       JSON.stringify(measurements),
     );
@@ -431,7 +431,7 @@ it("executes source field-authentication-map custody in ordinary eight-item batc
   expect(result.index.count).toBe(8n);
   expect(result.measurements).toHaveLength(16);
   console.log(
-    "N6 actual ordinary source prefix",
+    "actual ordinary source prefix",
     JSON.stringify(result, (_, value: unknown) =>
       typeof value === "bigint" ? value.toString() : value,
     ),
@@ -444,7 +444,7 @@ it("source batch serviceability drains 100 genuine descriptors with budget1", as
   const json = JSON.stringify(result, (_, value: unknown) =>
     typeof value === "bigint" ? value.toString() : value,
   );
-  console.log("N6 F2 accepted-selection resource measurement", json);
+  console.log("accepted-selection resource measurement", json);
   expect(result.protocol).toEqual({
     maxTxSize: 16_384,
     maxTxExMem: "16500000",
@@ -475,7 +475,7 @@ it.each(["Base", "Enterprise"] as const)(
     expect(result.index.count).toBe(8n);
     expect(result.measurements).toHaveLength(16);
     console.log(
-      "N6 actual maximum source prefix",
+      "actual maximum source prefix",
       walletAddressType,
       JSON.stringify(result, (_, value: unknown) =>
         typeof value === "bigint" ? value.toString() : value,

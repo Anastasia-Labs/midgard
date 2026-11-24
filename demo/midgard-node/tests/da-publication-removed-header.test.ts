@@ -12,7 +12,7 @@ import {
   DaPayloadsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
-import * as MigrationRunner from "../src/database/migrations/runner.js";
+import * as NodeSchema from "../src/database/schema.js";
 import { land, ownLandedRow } from "./helpers/own-block-facts.js";
 import { insertQueueTerminal } from "./helpers/queue-terminal-rows.js";
 import {
@@ -101,10 +101,7 @@ const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
-        yield* MigrationRunner.migrate({
-          appVersion: "test",
-          actor: "da-publication-removed-header.test",
-        });
+        yield* NodeSchema.ensure;
         yield* resetApplicationTables;
         return yield* effect;
       }),

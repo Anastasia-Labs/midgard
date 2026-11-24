@@ -15,7 +15,7 @@
  * measure a real instance at branch depth 0 and at the grinded adversarial
  * depth, derive the constant marginal cost per further branch level from the
  * difference, and turn the envelope into an exact exhaustion depth. The
- * conclusion for work-bounded axes follows the Q1X-F5 convention — record that
+ * conclusion for work-bounded axes is to record that
  * a 2^128 adversary can exhaust the envelope, do not pretend safety.
  *
  * Everything here is `Data.to` byte measurement plus blueprint arithmetic; no

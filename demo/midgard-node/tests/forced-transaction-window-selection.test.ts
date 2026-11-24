@@ -20,10 +20,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect } from "vitest";
 
-import {
-  ForcedTransactionsDB,
-  MigrationRunner,
-} from "../src/database/index.js";
+import { ForcedTransactionsDB, NodeSchema } from "../src/database/index.js";
 import { resolveIncludedForcedTransactionEntriesForWindow } from "../src/mpf/event-window.resolve-included-forced-transaction-entries-for-window.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
@@ -36,14 +33,7 @@ const isolatedDb = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   );
 
 beforeAll(async () => {
-  await Effect.runPromise(
-    provideDatabaseLayers(
-      MigrationRunner.migrate({
-        appVersion: "forced-transaction-window-selection-test",
-        actor: "forced-transaction-window-selection-test",
-      }),
-    ),
-  );
+  await Effect.runPromise(provideDatabaseLayers(NodeSchema.ensure));
 });
 
 const BLOCK_START = new Date("2026-10-09T12:00:00.000Z");

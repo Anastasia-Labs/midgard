@@ -399,7 +399,7 @@ export const resolveDaAvailabilityForeignSpend = async (
   };
 };
 
-/** Why a stranded challenge workflow row may be released (P20). */
+/** Why a stranded challenge workflow row may be released. */
 export type DaAvailabilityWorkflowRelease = Readonly<{
   /**
    * `header-node-burned`: a transaction burned the header's queue node.

@@ -134,8 +134,7 @@ export const GATES = {
       "midgard-node",
       [
         "tests/database.test.ts",
-        "tests/migration-runner.test.ts",
-        "tests/migration-locking.test.ts",
+        "tests/node-schema.test.ts",
         "tests/tx-admissions-claim-load.test.ts",
       ],
     ],

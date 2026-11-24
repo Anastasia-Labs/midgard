@@ -402,7 +402,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
           context,
           input.pinJournalTransactions,
         );
-        // P20: after our own steps reconcile and before any admission, rows
+        // After our own steps reconcile and before any admission, rows
         // whose challenge someone else's terminal step ended are released,
         // in every deployment of this actor.
         const workflowRelease = await releaseWatcherAvailabilityWorkflows(

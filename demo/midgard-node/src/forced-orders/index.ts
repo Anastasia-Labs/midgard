@@ -48,5 +48,5 @@ export {
 export {
   FORCED_ORDER_TABLES,
   FORCED_ORDERS_TABLE,
-  forcedOrderMigrations,
+  forcedOrderSchema,
 } from "./schema.js";

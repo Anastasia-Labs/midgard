@@ -346,7 +346,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
   );
 
   /**
-   * §3.2 complete-item-first ordering for C23/C24/C25.
+   * Complete-item-first ordering for the three inline-datum breadth maxima.
    *
    * Before any bounded Data traversal is admitted as a fallback, the complete
    * proof item carrying the maximum Data must be constructed and measured on
@@ -452,8 +452,8 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       });
 
       // The genuine Cardano maximum for this kind, measured against both
-      // complete routes. Its overflow is the §3.2 necessity for the bounded
-      // Data traversal the sibling cases exercise.
+      // complete routes. Its overflow is why the sibling cases need the
+      // bounded Data traversal.
       const buildCandidate = (breadth: number) =>
         buildSignedCardanoNestedDatumCandidate({
           privateKeyBech32: privateKey.to_bech32(),

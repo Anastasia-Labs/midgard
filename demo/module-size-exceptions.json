@@ -472,7 +472,7 @@
   {
     "file": "midgard-fault-proofs/tests/workflow.q51-w-o4-resumable-workflow.ts",
     "max": 1327,
-    "reason": "Retained test registration “Q51/W-O4 resumable workflow” (1340 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "reason": "Retained test registration “resumable workflow” (1340 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/zero-input-wrongful-rejection-lifecycle.test.ts",
@@ -522,7 +522,7 @@
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-process-evidence.da-bond-cli-submit-evidence-p18.ts",
     "max": 575,
-    "reason": "Retained test registration “da-bond CLI submit evidence (P18)” (556 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "reason": "Retained test registration “da-bond CLI submit evidence” (556 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/history-event-cases.test.ts",
@@ -603,11 +603,6 @@
     "file": "midgard-node/scripts/throughput-valid-stress.mjs",
     "max": 3536,
     "reason": "The stress CLI retains its main execution and coupled producer, submission, metrics and cleanup state. Independent schema/reporting helpers were extracted. Dividing this remaining cohort requires an explicit lifecycle API so cancellation, admission order and resource cleanup remain consistent."
-  },
-  {
-    "file": "midgard-node/src/database/migrations/sql/0001_initial_schema.sql",
-    "max": 1875,
-    "reason": "An existing durable initial migration is one ordered atomic schema change with a tracked migration identity/checksum. Splitting or reordering it changes upgrade behavior; line-count cleanup does not justify changing deployed migration semantics."
   },
   {
     "file": "midgard-node/src/mpf/process.process-mpfs.ts",
@@ -897,7 +892,7 @@
   {
     "file": "midgard-sdk/tests/availability-challenge.q58-canonical-da-availability-commitment-v1.ts",
     "max": 1729,
-    "reason": "Retained test registration “Q58 canonical DA availability commitment V1” (1652 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "reason": "Retained test registration “canonical DA availability commitment V1” (1652 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-sdk/tests/event-abi.vectors.ts",

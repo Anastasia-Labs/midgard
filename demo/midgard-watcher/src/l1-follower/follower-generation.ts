@@ -9,25 +9,18 @@ import type { DialectName, FactStore, SqlTx } from "@al-ft/midgard-l1-follower";
  * the driver was not yet subscribed to, or a rewind its process stopped
  * before handling. The row moves only after the user-event history went
  * back to the target, so every rewind is handled at least once. A reset
- * keeps it (class B), which is what lets the driver see the reset.
- *
- * The migration seeds the row from the cursor of a store that already has
- * one (a store from before the row existed: what that process handled is
- * not known, so it is taken as handled); a store with no cursor gets no
- * row, and the driver's first pull then reads every logged rewind.
+ * keeps it (class B), which is what lets the driver see the reset. With
+ * no row, the driver's first pull reads every logged rewind.
  */
 export const WATCHER_FOLLOWER_GENERATION_TABLE = "watcher_follower_generation";
 
-export const followerGenerationMigrationSql = (dialect: DialectName): string =>
+export const followerGenerationSchemaSql = (dialect: DialectName): string =>
   `
 -- class: B; retention: one row forever; reset keeps it
 CREATE TABLE ${WATCHER_FOLLOWER_GENERATION_TABLE} (
   id integer PRIMARY KEY CHECK (id = 1),
   generation ${dialect === "postgres" ? "bigint" : "INTEGER"} NOT NULL
 );
-
-INSERT INTO ${WATCHER_FOLLOWER_GENERATION_TABLE} (id, generation)
-  SELECT 1, generation FROM l1_follower_cursor;
 `;
 
 const readIn = async (tx: SqlTx): Promise<number | null> => {

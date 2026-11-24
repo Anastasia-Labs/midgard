@@ -1147,7 +1147,7 @@ test script_decode_value_currency_order_is_checked_in_a_list_of_values() {
   class == 17
 }
 
-// ## Cardano differential rows (E3)
+// ## Cardano differential rows
 //
 // Raw Flat programs with the result the Plutus V3 evaluator (plutus-core
 // 1.71, protocol version 11) gives them through `deserialiseScript`, each

@@ -394,9 +394,7 @@ describe("wallet journey resume", () => {
     expect(
       value.processes.calls
         .map((call) => call.id)
-        .filter((id) =>
-          ["storage-identity", "host-database-identity"].includes(id),
-        ),
+        .filter((id) => id === "storage-identity"),
     ).toEqual([]);
   });
 });

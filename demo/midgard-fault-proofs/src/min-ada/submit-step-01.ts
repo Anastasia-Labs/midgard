@@ -1,4 +1,4 @@
-/** Bind Q27's accepted transaction to the challenged header. */
+/** Bind the min-Ada family's accepted transaction to the challenged header. */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   getHeaderFromStateQueueDatum,

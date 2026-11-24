@@ -36,7 +36,7 @@ import {
   withTempDir,
 } from "./prepare-input-no-idx.make-native-tx.js";
 
-describe("Q13 input-no-idx valid-block negatives", () => {
+describe("input-no-idx valid-block negatives", () => {
   it("refuses to prove non-existence of an input the producing transaction really created", async () => {
     const producer = producerTx(3, 1n);
     const spender = spenderTx(producer.nodeTxId, 2n, 2n);
@@ -132,7 +132,7 @@ describe("Q13 input-no-idx valid-block negatives", () => {
   });
 });
 
-describe("Q13 input-no-idx resumable artifacts", () => {
+describe("input-no-idx resumable artifacts", () => {
   it("writes the four submit-step artifacts and the plan", async () => {
     const block = await violatingBlock();
     await withTempDir(async (dir) => {
@@ -198,7 +198,7 @@ describe("Q13 input-no-idx resumable artifacts", () => {
   });
 });
 
-describe("Q13 input-no-idx Q03 evidence gates", () => {
+describe("input-no-idx evidence gates", () => {
   const DA_PROVENANCE: SDK.EvidenceProvenance = {
     trustClass: "public_or_permissionless_da",
     sourceId: "libp2p/peer-a",
@@ -207,7 +207,7 @@ describe("Q13 input-no-idx Q03 evidence gates", () => {
 
   /**
    * A block whose producer commits no outputs at all, so its single spender
-   * challenges index 0. Built through the shared Q03 payload fixture so the
+   * challenges index 0. Built through the shared payload fixture so the
    * evidence really is DA + L1 derived.
    */
   const canonicalViolatingFixture = async (

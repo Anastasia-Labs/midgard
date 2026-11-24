@@ -1,5 +1,5 @@
 /**
- * `Q03` — canonical evidence-source API.
+ * Canonical evidence-source API.
  *
  * Builders consume verified `DaPayloadV1`/proof bundles and authenticated L1
  * observations, not operator-private REST/DB/files except labelled

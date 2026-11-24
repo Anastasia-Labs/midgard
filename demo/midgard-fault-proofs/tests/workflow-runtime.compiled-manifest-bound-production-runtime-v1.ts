@@ -172,7 +172,7 @@ describe("compiled manifest-bound production runtime V1", () => {
 
   it("installs an immutable deployment-bound application overlay without mutating the static catalogue", () => {
     const runner = WORKFLOW_RUNNER_FACTORIES.daHashPreimage(async () => {
-      throw new Error("installed Q44 loader reached");
+      throw new Error("installed da-hash-preimage loader reached");
     });
     const registry = installWorkflowApplicationRegistry({
       hubOraclePolicyId: DEPLOYMENT,

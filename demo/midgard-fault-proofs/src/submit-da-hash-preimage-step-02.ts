@@ -4,7 +4,7 @@
  * Finalizes the proof: burns the computation thread, mints the permanent
  * fraud-proof token and locks it at the always-fails fraud-proof address. The
  * evidence triple is read back from the on-chain step-01 datum and re-checked
- * against the Q44 rule before anything is submitted, so a thread carrying a
+ * against the da-hash-preimage rule before anything is submitted, so a thread carrying a
  * non-violating triple cannot be finalized off-chain either.
  */
 import {

@@ -102,11 +102,11 @@ const publishAsProverSigner = async ({
       signer,
       planned: plan,
       publisherAddress: signer.proofMaterialsAddress,
-      label: "N6 actual receive field",
+      label: "actual receive field",
     }),
   );
   console.log(
-    "N6 actual chunk publication components",
+    "actual chunk publication components",
     JSON.stringify(
       publication.measurements.map((m) => ({
         ...m,
@@ -116,7 +116,7 @@ const publishAsProverSigner = async ({
     ),
   );
   console.log(
-    "N6 actual chunk publication encoded body",
+    "actual chunk publication encoded body",
     JSON.stringify(
       publication.transactionCbors.map((cbor) => {
         const tx = CML.Transaction.from_cbor_hex(cbor);
@@ -150,7 +150,7 @@ const publishAsProverSigner = async ({
     await publishPlainReferenceScriptUtxo({
       lucid,
       script: certificate.mintingScript,
-      label: "N6 actual receive certificate",
+      label: "actual receive certificate",
     })
   ).utxo;
   const certified = await captureEmulatorSubmission(emulator, () =>
@@ -176,7 +176,7 @@ const publishAsProverSigner = async ({
   );
   references.push(certified.result.certificateUtxo);
   console.log(
-    "N6 actual receive field carriage",
+    "actual receive field carriage",
     JSON.stringify({
       tier: plan.plan.tier,
       walletAddressType,

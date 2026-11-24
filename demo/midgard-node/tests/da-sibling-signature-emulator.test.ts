@@ -1,5 +1,5 @@
 /**
- * C4 (#792): a committee member who signs two sibling headers is not
+ * A committee member (#792) who signs two sibling headers is not
  * slashable for it.
  *
  * One member signs the availability commitments of two sibling headers, A and

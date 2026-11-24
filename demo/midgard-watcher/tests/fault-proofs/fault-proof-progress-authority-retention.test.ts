@@ -15,7 +15,7 @@ import {
   TEST_JOURNAL_KEY,
 } from "../support/watcher-journal-fixture.js";
 
-// The progress authority holds each open objective's L1 history (E1 ruling)
+// The progress authority holds each open objective's L1 history
 // and releases it only once the objective's completion marker holds. The
 // decision journal reader returns minimal decisions; only the pin and
 // release calls are under test.

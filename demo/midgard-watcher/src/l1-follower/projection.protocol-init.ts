@@ -28,9 +28,7 @@ export const PROTOCOL_INIT_FAULTS_TEMPORAL_TABLE: TemporalTableSpec = {
   retention: { kind: "closed_k_deep" },
 };
 
-export const protocolInitFaultsMigrationSql = (
-  dialect: DialectName,
-): string => {
+export const protocolInitFaultsSchemaSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
   const int8 = dialect === "postgres" ? "bigint" : "INTEGER";
   return `

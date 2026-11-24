@@ -25,7 +25,7 @@ import {
 import { Effect } from "effect";
 
 /**
- * Phase-4 carriage exit measurements and the §8.7 healing path, against a real
+ * Carriage exit measurements and the §8.7 healing path, against a real
  * emulator ledger — `docs/spec/midgard-tx.md` §8.
  *
  * Three things happen here, and only the first is a test in the ordinary sense.
@@ -38,12 +38,10 @@ import { Effect } from "effect";
  *      UTxO spent out from under the dispute — and re-published by a second
  *      identity with no relationship to the first. The original certificate
  *      still describes the healed bytes, and the read that broke succeeds again.
- *   3. **The tier-2 byte frontier is measured**, because §8.3's `K` was
- *      *provisional pending Phase-4 measurement* and this is that measurement —
- *      the one that falsified 15,900 and re-pinned `K` to what it now is:
- *      the largest preimage whose real signed key-address publication clears
- *      `maxTxSize`, and the largest that clears it with the 512-byte
- *      reliability reserve the counted era used.
+ *   3. **The tier-2 byte frontier is measured**: the largest preimage whose
+ *      real signed key-address publication clears `maxTxSize`, and the
+ *      largest that clears it with the 512-byte reliability reserve the
+ *      counted era used, which is §8.3's `K`.
  *
  * **One emulator now, at the real limit — and that is E1's repair, visible.**
  * `setupEmulator` runs at the **real** `maxTxSize` (16,384) by default, so

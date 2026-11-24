@@ -1,6 +1,6 @@
 /**
  * The node intent stage's test scenario (`l1-follower-intents*.test.ts`): a
- * SQLite or Postgres follower store carrying the landed state queue (P1)
+ * SQLite or Postgres follower store carrying the landed state queue
  * and the intent journal, a simulated chain holding a queue (root plus one
  * node, header `first`) and `SPARES` plain outputs at the tracked address,
  * and a fake node transport whose mempool and ledger refusals a test sets.

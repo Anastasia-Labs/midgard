@@ -42,6 +42,11 @@ from the running node's index, so run them while the node runs; a node that has
 not initialized its store fails the read, and `--l1 kupmios|blockfrost` reads
 without it.
 
+A node whose operator leaves the active set (retired, force-retired or
+slashed) reports `operator_removed` on `/readyz`, then shuts down with exit
+code 0, and shuts down again on each restart while its operator stays
+removed. Recover the bond and re-register with `--l1 kupmios|blockfrost`.
+
 Check `operator-status` before each lifecycle action. Registration locks a bond
 and waits for activation; activation makes the key eligible for shifts;
 retirement stops participation but leaves the bond locked until its reported

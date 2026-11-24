@@ -1,4 +1,4 @@
-//// Q27 min-Ada terminal: all authenticated semantic phases have completed.
+//// min-Ada terminal: all authenticated semantic phases have completed.
 
 use midgard/computation_thread as ct
 

@@ -22,7 +22,7 @@ import {
 } from "../src/index.js";
 
 /**
- * C26 depth regression: the exact Cardano-derived maximum unary datum
+ * Depth regression: the exact Cardano-derived maximum unary datum
  * (depth 4,043 inside a 16,384-byte signed transaction) must pass full
  * canonical decode, consensus validation, and the complete retained
  * reconstruction fold with stock, unpatched CML.

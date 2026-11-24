@@ -70,7 +70,7 @@ const stabilizedRecordMinimumLovelace = (input: {
   throw new Error("challenge record min-Ada did not stabilise");
 };
 
-describe("challenge record min-UTxO (A9)", () => {
+describe("challenge record min-UTxO", () => {
   const widest = COMMITMENT_GOLDENS.vectors.find(
     (vector) => vector.label === "tranches_64",
   );

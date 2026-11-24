@@ -244,7 +244,7 @@ export const decodeTransactions = async ({
     if (committedFieldDefect !== undefined) {
       throw transitionTraceError(
         "authenticatedCommittedFieldDefect",
-        `L1-authenticated transaction ${txId} commits Q17 field ${committedFieldDefect.fieldIndex.toString()} verdict ${committedFieldDefect.verdict.toString()}.`,
+        `L1-authenticated transaction ${txId} commits defective field ${committedFieldDefect.fieldIndex.toString()} verdict ${committedFieldDefect.verdict.toString()}.`,
       );
     }
     let full: ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>;

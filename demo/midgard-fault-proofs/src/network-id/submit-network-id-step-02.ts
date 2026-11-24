@@ -1,4 +1,4 @@
-/** Open Q35's committed output field (when needed) and mint the proof token. */
+/** Open the committed output field (when needed) and mint the proof token. */
 
 import "@al-ft/midgard-sdk/core";
 import "@al-ft/midgard-sdk/state-queue";

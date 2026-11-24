@@ -80,6 +80,7 @@ const startedNode = async () => {
             }
           : { reachable: false },
       ),
+    exitCode: () => Promise.resolve(undefined),
   };
   return { started, control };
 };

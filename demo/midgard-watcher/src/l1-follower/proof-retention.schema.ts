@@ -8,12 +8,11 @@ import {
 } from "./tables.js";
 
 /**
- * The proof-retention tables (E1 ruling, see proof-retention.ts and
- * tx-inputs.ts). The pins are the watcher's own records (class B: a rewind
+ * The proof-retention tables (see proof-retention.ts and tx-inputs.ts). The pins are the watcher's own records (class B: a rewind
  * or a reset never touches them); the resolved inputs are immutable output
  * bytes per outref (class C), kept while their tx is retained.
  */
-export const proofRetentionMigrationSql = (dialect: DialectName): string => {
+export const proofRetentionSchemaSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
   return `
 -- class: B; retention: the watcher deletes a row once the objective's completion marker is verified past k
@@ -46,7 +45,7 @@ CREATE INDEX ${WATCHER_TX_INPUTS_TABLE}_out ON ${WATCHER_TX_INPUTS_TABLE} (out_t
  * events a held objective's proof reads, registered as row pins on the
  * event projection's `node_l1_events` (`watcherEventProjection`).
  */
-export const proofEventPinsMigrationSql = (dialect: DialectName): string => {
+export const proofEventPinsSchemaSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
   return `
 -- class: B; retention: the watcher deletes a header's rows when it releases the header's last proof pin

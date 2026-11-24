@@ -65,8 +65,8 @@ intent without repeating the check.
 The Compose wrapper derives operator host ports in linked worktrees. Configure
 the node endpoint and local provider URLs to match those ports
 (`demo/midgard-node/scripts/operator-compose.sh --print-env --env-file .env`). DA ports are explicit and must not collide with
-another stack. Host database commands such as `db:migrate` use loopback
-Postgres at `MIDGARD_POSTGRES_HOST_PORT`; containers use `postgres:5432`. The
+another stack. The stack's Postgres is published on loopback at
+`MIDGARD_POSTGRES_HOST_PORT`; containers use `postgres:5432`. The
 journey's deposits and withdrawals use no database: it runs the user's own
 `midgard-user` tool against the stack's Kupo and Ogmios. Set `MIDGARD_POSTGRES_HOST_PORT` explicitly in
 the `.env`; 5433 and 55433 are refused because they belong to test databases.
@@ -215,8 +215,8 @@ volume deletion, database wipes or fresh-redeploy flags. Preserve the run
 directory, signing keys, `.env` and service volumes.
 
 Fresh setup requires fresh local storage: a Postgres volume that was never used
-or was only migrated, with no deployment rows (the migrations' own tables and
-the unchanged calibration seed are allowed), and an empty or absent node `db`
+or holds only the node's schema, with no deployment rows (the schema records
+and the unchanged calibration seed are allowed), and an empty or absent node `db`
 directory. To get one without deleting existing volumes, run from a separate
 linked worktree: the Compose wrapper gives it its own project, volumes, host
 ports and node directory.
@@ -386,7 +386,7 @@ MIDGARD_SKIP_DB_TESTS=1 pnpm --dir demo/midgard-node-tools exec vitest run tests
 
 Build the Preprod blueprint first (`pnpm --dir demo deployment:build preprod-testing`).
 Without `MIDGARD_SKIP_DB_TESTS=1`, the run also executes the storage queries
-against a migrated test Postgres. These tests cover unrecorded confirmations,
+against a test Postgres holding the node schema. These tests cover unrecorded confirmations,
 ambiguous submissions, durable intents, configuration drift, corruption, exact
 balances and payouts, transfer resends and service readiness. The lock tests
 drive the controller and command locks with real processes, including a holder

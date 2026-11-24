@@ -22,27 +22,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      midgard-node-migrate:
-        condition: service_completed_successfully
-    networks:
-      midgard_net:
-
-  midgard-node-migrate:
-    build:
-      context: ..
-      additional_contexts:
-        - onchain=../../onchain/aiken
-      dockerfile: midgard-node/Dockerfile
-    env_file:
-      - .env
-    command:
-      - node
-      - ./dist/index.js
-      - db:migrate
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
     networks:
       midgard_net:
 

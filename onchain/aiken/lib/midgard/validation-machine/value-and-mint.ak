@@ -445,7 +445,7 @@ fn value_and_mint_output_descriptor(
     // output is convictable from the single descriptor step, with no asset
     // steps and no dependence on the rest of the transaction. This is the
     // MIN-ADA-TX shape of technical-spec §5 (5-ledger-rules); MIN-ADA-UTXO,
-    // the same floor over a member of the post-block UTxO set, is Q27's own
+    // the same floor over a member of the post-block UTxO set, is a separate
     // membership shape and is deliberately not reachable from here.
     //
     // The rate is `env.coins_per_utxo_byte`, a compiled deployment constant
@@ -740,7 +740,7 @@ fn value_and_mint_verified_body_v1(
     })
 }
 
-/// Per-kind ValueAndMint semantic resolvers (R5 item 1). Each one decodes
+/// Per-kind ValueAndMint semantic resolvers. Each one decodes
 /// the control, runs the shared guard list, pins its stage and the auxiliary
 /// discriminator the stage body branches on, and calls that stage body with
 /// the auxiliary it reconstructs from the validator's action fields, so the

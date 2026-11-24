@@ -22,6 +22,7 @@ import {
   refreshAdmissionBacklogGaugeOnStartup,
 } from "../fibers/admission-backlog-gauge.js";
 import { requestTxQueueProcessorWakeup } from "../fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
+import { untilOperatorRemoved } from "../l1-operator-set/membership.js";
 import { rebuildAdmissionInputClaimsOnStartup } from "../services/admission-input-claims.rebuild.js";
 import { AdmissionWriter } from "../services/admission-writer.validate-options.js";
 import {
@@ -207,8 +208,8 @@ export const runNode = (
           startupPreparation: prepareNodeOnStartup,
           writerLease: instanceLock.followerWriterLease,
         }).pipe(Effect.provideService(IntentJournal, intentJournal));
-        // Startup recovery seeds the commit base from the landed state queue
-        // (P1): wait, unready, until the follower is at the tip and P1
+        // Startup recovery seeds the commit base from the landed state queue:
+        // wait, unready, until the follower is at the tip and the queue
         // is healthy there. A transient database failure is ridden out
         // within `STARTUP_DATABASE_BUDGET`; past it, or on any other read
         // failure, startup fails by step and reason.
@@ -292,23 +293,25 @@ export const runNode = (
 
     // Membership comes from the follower's operator-set hook; no duty waits
     // on its first run. A removed operator's duties are held through
-    // `HaltSource.operatorMembership` and the process stays up.
+    // `HaltSource.operatorMembership`, and the node then shuts down.
     const program = publishHttp.pipe(
       Effect.zipRight(
-        Effect.all(
-          runNodeFiberSet({
-            nodeConfig,
-            withMonitoring,
-            startupFibers: {
-              retainedPayloadServer: retainedPayloadServerThread({
-                retrieveByHeaderHash: retrieveRetainedDaPayload,
-                ledgerEntries: ledgerSnapshotEntries,
-              }),
+        untilOperatorRemoved(
+          Effect.all(
+            runNodeFiberSet({
+              nodeConfig,
+              withMonitoring,
+              startupFibers: {
+                retainedPayloadServer: retainedPayloadServerThread({
+                  retrieveByHeaderHash: retrieveRetainedDaPayload,
+                  ledgerEntries: ledgerSnapshotEntries,
+                }),
+              },
+            }),
+            {
+              concurrency: "unbounded",
             },
-          }),
-          {
-            concurrency: "unbounded",
-          },
+          ),
         ),
       ),
       Effect.provideService(IntentJournal, intentJournal),

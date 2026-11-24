@@ -38,7 +38,8 @@ export type OperatorNodeReadiness =
 /**
  * What the drill does to operator-2's node: stop and start its Compose
  * service (never remove it or its volumes), list the project's running
- * services and read its `/readyz`.
+ * services, read its `/readyz` and read the exit code of a service that
+ * stopped by itself.
  */
 export type OperatorNodeControl = Readonly<{
   /** The Compose project and service, for reports. */
@@ -53,14 +54,19 @@ export type OperatorNodeControl = Readonly<{
   runningServices(): Promise<readonly string[]>;
   /** Refused connections are `reachable: false`; any other failure throws. */
   readReadiness(): Promise<OperatorNodeReadiness>;
+  /** The node service's exit code once it exited; undefined while it runs. */
+  exitCode(): Promise<number | undefined>;
 }>;
 
 /** How long one `docker compose` command may run before it is killed. */
 export const OPERATOR_COMPOSE_TIMEOUT_MS = 120_000;
 /** How long one `/readyz` read of an operator's node may take. */
 export const OPERATOR_READINESS_READ_TIMEOUT_MS = 5000;
-/** How long a resume waits between readiness reads, by default. */
-export const OPERATOR_RESUME_POLL_INTERVAL_MS = 5000;
+/**
+ * How long a resume waits between readiness reads, by default: short enough
+ * to read a removed node's `/readyz` in the second before it shuts down.
+ */
+export const OPERATOR_RESUME_POLL_INTERVAL_MS = 250;
 /**
  * The longest a resume with the default options takes on a Compose-run
  * node: its start command up to the compose timeout, then readiness reads
@@ -149,6 +155,20 @@ export const composeOperatorNodeControl = ({
         .split("\n")
         .map((line) => line.trim())
         .filter((line) => line !== ""),
+    exitCode: async () => {
+      const [state, code] = (
+        await compose(composeProject, [
+          "ps",
+          "--all",
+          "--format",
+          "{{.State}} {{.ExitCode}}",
+          OPERATOR_NODE_SERVICE,
+        ])
+      )
+        .trim()
+        .split(" ");
+      return state === "exited" ? Number(code) : undefined;
+    },
     readReadiness: async (): Promise<OperatorNodeReadiness> => {
       let response: Response;
       try {
@@ -181,9 +201,9 @@ export type OperatorStoppedEvidence = Readonly<{
 }>;
 
 /**
- * How a resumed operator-2 node ended: ready, or live but out of the active
- * set because the drill's convictions slashed its operator
- * (`operator_removed`) or it is registered again and not yet active
+ * How a resumed operator-2 node ended: ready; shut down with exit code 0
+ * after it reported that the drill's convictions slashed its operator
+ * (`operator_removed`); or live and registered again, not yet active
  * (`operator_not_yet_active`).
  */
 export type OperatorResumedTerminal =
@@ -195,6 +215,7 @@ export type OperatorResumedTerminal =
 export type OperatorResumedEvidence = Readonly<{
   node: string;
   startedAt: string;
+  /** When it was ready, awaiting activation, or seen exited after removal. */
   readyAt: string;
   terminal: OperatorResumedTerminal;
   /** Every distinct set of `/readyz` reasons seen while it caught up. */
@@ -228,7 +249,7 @@ const readinessReasons = (body: unknown): readonly string[] | undefined => {
  * Whether a resumed node's `/readyz` is a terminal state for the drill: ready
  * with no reason, or out of the active set (removed, or awaiting activation)
  * with its L1 follower at the node's tip and no replay hold on any block.
- * Removal holds the node's duties for good, so it never reports ready.
+ * A removed node then shuts down, so `resume` waits for its exit.
  */
 export const resumedOperatorTerminal = (
   readiness: Extract<OperatorNodeReadiness, { reachable: true }>,
@@ -288,8 +309,9 @@ export const proveOperatorNodeStopped = async (
  * node (stop only: its containers, volumes and journal stay) and proves it
  * stopped; `assertStopped` proves it again, before every signature made with
  * its key; `resume` starts it only if this hold stopped it, then waits until
- * its `/readyz` reaches a terminal state (`resumedOperatorTerminal`),
- * refusing a node that took a drill block for its own. While it holds the
+ * its `/readyz` reaches a terminal state (`resumedOperatorTerminal`) and,
+ * for a removed operator, its service exited with code 0, refusing a node
+ * that took a drill block for its own or exited otherwise. While it holds the
  * node, a guard process starts it again if this process dies first
  * (`armOperatorReleaseGuard`, for a control with a `startCommand`).
  */
@@ -348,6 +370,15 @@ export const createOperatorPause = (
       guard?.disarm();
       await control.start();
       const observedReasons: string[][] = [];
+      let removed = false;
+      const evidence = (terminal: OperatorResumedTerminal) =>
+        Object.freeze({
+          node: control.name,
+          startedAt,
+          readyAt: new Date().toISOString(),
+          terminal,
+          observedReasons: Object.freeze(observedReasons),
+        });
       const deadline = performance.now() + resumeTimeoutMs;
       for (;;) {
         // A node restarting resets or times out reads before it serves;
@@ -376,14 +407,20 @@ export const createOperatorPause = (
               `Resumed operator-2 node ${control.name} holds ${OWN_JOURNAL_MISMATCH}: it did not replay the drill's blocks as foreign`,
             );
           const terminal = resumedOperatorTerminal(readiness, reasons);
-          if (terminal !== undefined)
-            return Object.freeze({
-              node: control.name,
-              startedAt,
-              readyAt: new Date().toISOString(),
-              terminal,
-              observedReasons: Object.freeze(observedReasons),
-            });
+          if (terminal === "operator_removed") removed = true;
+          else if (terminal !== undefined) return evidence(terminal);
+        }
+        // Once it answered, a node that no longer does may have exited.
+        if (reasons === undefined && observedReasons.length > 0) {
+          const code = await control.exitCode().catch((error: unknown) => {
+            if (error instanceof JourneyTransportError) return undefined;
+            throw error;
+          });
+          if (code === 0 && removed) return evidence("operator_removed");
+          if (code !== undefined)
+            throw new Error(
+              `Resumed operator-2 node ${control.name} exited with code ${code.toString()}${removed ? "" : " before it reported operator_removed at the tip"} (reasons seen: ${JSON.stringify(observedReasons)})`,
+            );
         }
         if (performance.now() >= deadline)
           throw new Error(

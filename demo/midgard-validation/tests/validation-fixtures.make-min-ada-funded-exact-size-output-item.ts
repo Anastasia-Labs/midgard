@@ -121,7 +121,7 @@ export const outRefFromTxId = (txId: Buffer, index = 0n): Buffer =>
  * Pre-state (input and reference) outputs are deliberately NOT re-funded: the
  * wiring gates outputs a transaction produces (MIN-ADA-TX), not outputs it
  * resolves from prior state, whose under-funding is the separate
- * MIN-ADA-UTXO shape Q27 owns.
+ * MIN-ADA-UTXO shape the min-ada family owns.
  */
 export const FUNDED_OUTPUT_LOVELACE = 10_000_000n;
 

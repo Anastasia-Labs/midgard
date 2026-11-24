@@ -4,14 +4,14 @@
  * (`follower:not_initialized` before the first cursor, never a ledger scan).
  * The startup sequence (`runDaIdentityGatedStartupSequence`) therefore starts
  * following before the DA provider assertions read the on-chain DA threshold:
- * here over the node's real reader (`nodeL1AccessOver`) on a new, migrated
+ * here over the node's real reader (`nodeL1AccessOver`) on a new
  * database, with `listen`'s follower store as the following step.
  */
 import type { LedgerQuery } from "@al-ft/l1-node-transport";
 import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
 import {
   applyChainSyncEvent,
-  applyMigrations,
+  applySchemas,
   type FactStore,
   openPostgresBackend,
   openPostgresFactStore,
@@ -196,12 +196,12 @@ const startOnFreshDatabase = async (daThreshold: bigint) => {
         steps.push("local_preflight");
         return { transportThreshold: TRANSPORT_THRESHOLD };
       }),
-      // A migrated node database: the follower's tables, with no cursor.
+      // A node database: the follower's tables, with no cursor.
       initializeDatabase: Effect.promise(async () => {
         steps.push("database_initialization");
         const backend = openPostgresBackend({ connectionString });
         try {
-          await applyMigrations(backend, NODE_FOLLOWER_SCHEMA);
+          await applySchemas(backend, NODE_FOLLOWER_SCHEMA);
         } finally {
           await backend.close();
         }

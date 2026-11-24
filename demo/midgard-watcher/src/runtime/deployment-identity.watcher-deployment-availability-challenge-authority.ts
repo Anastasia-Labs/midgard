@@ -60,7 +60,7 @@ export const assertWatcherDeploymentAvailabilityChallengeAuthority = (
 };
 
 /**
- * Returns the exact Q58 geometry, bonds, owner, response classes and every
+ * Returns the exact availability geometry, bonds, owner, response classes and every
  * lifecycle fee ceiling admitted by the signed deployment manifest. A plain
  * object with the same fields is not production authority.
  */

@@ -39,8 +39,9 @@ authenticated subject needed to adjudicate the fault, covering:
 - native execution and Plutus/CEK failures; and
 - asset-accumulation, min-Ada, and value-preservation failures.
 
-Constructor order is wire identity. Additions, removals, or reorderings require
-a new protocol/deployment identity.
+Constructor order is wire identity. An addition, removal, or reordering is a
+leaf-schema format revision (`docs/spec/midgard-tx.md` §13.1) and a new
+deployment identity.
 
 ## 3. Subject discipline
 
@@ -71,8 +72,8 @@ registered families follow this rule.
 
 `PlutusExecutionFailed` remains on the interactive CEK/validation-dispute path
 because resolving it requires authenticated execution traces. Static selection
-or malformed-data facts that share a coarse Plutus code do not inherit that
-interactive classification. One case needs no trace: a forced
+or malformed-data facts about Plutus material have their own reasons and do
+not inherit that interactive classification. One case needs no trace: a forced
 `PlutusExecutionFailed` rejection of a transaction whose redeemer field 8 has
 an authenticated count of zero runs no Plutus script, so `redeemerCanonicity`
 (`00000028`) contradicts it single-party. That family therefore answers two

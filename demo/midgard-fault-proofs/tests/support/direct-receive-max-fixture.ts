@@ -54,7 +54,7 @@ export const maximumDirectReceiveOutputs = (): readonly Buffer[] => {
     if (bytes > target) break;
   }
   throw new Error(
-    "N6 maximum receive fixture cannot fill the exact aggregate allowance",
+    "maximum receive fixture cannot fill the exact aggregate allowance",
   );
 };
 

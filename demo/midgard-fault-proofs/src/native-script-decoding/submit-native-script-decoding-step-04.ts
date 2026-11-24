@@ -149,7 +149,7 @@ export const buildNativeScriptDecodingStep04 = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  /** Q3: the mandatory published step-04 reference script. */
+  /** The mandatory published step-04 reference script. */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;

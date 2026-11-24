@@ -4,7 +4,7 @@
  * A fault-proof step that carries its membership proof in the step
  * transaction's redeemers pays ~276 complete-signed-transaction bytes per
  * forced branch level, which exhausts the 16,384-byte L1 envelope at branch
- * level 21..23 (finding `Q1X-F5`). The on-chain remediation
+ * level 21..23. The on-chain remediation
  * (`midgard/mpf_chunked_proof_v1`, wired into the four foundational families by
  * `midgard/fraud_proofs/chunked_inclusion_v1`) takes the proof out of the step
  * transaction entirely: the very same canonical `ProofStep` list is published

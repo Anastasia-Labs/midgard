@@ -13,7 +13,7 @@ import {
 import { configDefaults, defineConfig } from "vitest/config";
 
 // The shard vocabulary is midgard-node's: tooling tests reuse its per-worker
-// Postgres sharding and its migration runner. This is a config-time import, so
+// Postgres sharding and its schema. This is a config-time import, so
 // it reaches the file directly; test-time code imports the same helpers by
 // package name (`midgard-node/tests/test-env`).
 import {

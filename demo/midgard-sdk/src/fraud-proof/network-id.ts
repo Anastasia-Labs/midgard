@@ -1,5 +1,5 @@
 /**
- * Q35 `network-id` fault-proof wire types.
+ * `network-id` fault-proof wire types.
  *
  * Constructor order is consensus wire format. `TransactionNetwork` is Constr
  * 0 and `OutputNetwork` is Constr 1, matching the Aiken family modules. The

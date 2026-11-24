@@ -345,7 +345,7 @@ fn descriptor_min_ada_floor() -> Int {
 /// their original 3-lovelace descriptor. That asymmetry is the rule, not an
 /// oversight -- the wiring gates outputs a transaction PRODUCES (MIN-ADA-TX),
 /// not inputs it resolves from prior state, whose under-funding is the
-/// separate MIN-ADA-UTXO shape Q27 owns.
+/// separate MIN-ADA-UTXO shape.
 fn descriptor_with_assets(
   asset_count: Int,
   lovelace: Int,

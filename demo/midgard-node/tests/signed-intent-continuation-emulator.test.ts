@@ -286,7 +286,7 @@ it("retains the original signed intent through landing and an accepted queue poi
     const recordedAtTtl = await readSignedCommitJournal(accepted.txHash);
     expectSignedCommit(recordedAtTtl, accepted.txHash, accepted.signedCbor);
     expect(recordedAtTtl).toEqual(priorToContinuation);
-    // The child takes the latest planner end allowed by the Q61 attestation
+    // The child takes the latest planner end allowed by the attestation
     // fence, history horizon, submit validity and current scheduler window.
     const childWindow = await Effect.runPromise(
       resolveCurrentOperatorSchedulerWindow(lucid, fixture.contracts),

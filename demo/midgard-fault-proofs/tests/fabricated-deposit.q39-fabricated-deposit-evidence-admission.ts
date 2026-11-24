@@ -196,7 +196,7 @@ export const mmStep03State: SDKFraudProof.FabricatedDepositStep03State = {
   },
 };
 
-describe("Q39 fabricated-deposit evidence admission", () => {
+describe("fabricated-deposit evidence admission", () => {
   it("admits a deposits-bearing block and extracts its committed leaves", async () => {
     const fixture = await buildDepositsBlockFixture({ leaves: [MM_LEAF] });
     const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayload({

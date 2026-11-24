@@ -109,7 +109,7 @@ export const stateQueueBaseHeaderHash = (
     return yield* hashBlockHeaderLocal(header);
   });
 
-/** The landed queue's tail: the latest committed block (P1). */
+/** The landed queue's tail: the latest committed block. */
 export const fetchLatestCommittedBlockLocal = (
   fetchConfig: SDKStateQueue.StateQueueFetchConfig,
 ): Effect.Effect<
@@ -187,7 +187,7 @@ const unexpiredUnattestedSuffixBlockTimes = (
   });
 
 /**
- * Q61's append fence as a cap on the new block's block_time, the append's
+ * The append fence as a cap on the new block's block_time, the append's
  * inclusive upper bound: it must fall strictly before the DA attestation
  * deadline (block_time + timeout) of every unattested node still in the queue,
  * not only the head's: an append landing after a pending tail's deadline
@@ -222,7 +222,7 @@ export const resolveCommitAppendFenceEndTimeCapLocal = (
 
 /**
  * Resolves the exact singleton root/current-head reference inputs required by
- * Q61's append fence. The landed queue is read again immediately before the
+ * The append fence. The landed queue is read again immediately before the
  * transaction is built; if the expected tail changed, this attempt aborts and
  * the caller rebuilds from canonical state instead of journaling a stale
  * append.

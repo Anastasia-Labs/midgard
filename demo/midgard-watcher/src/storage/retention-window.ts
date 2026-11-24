@@ -1,8 +1,8 @@
 /**
- * The watcher's public-DA retention window (R5), bound to the signed
+ * The watcher's public-DA retention window, bound to the signed
  * deployment identity. It never invents a window: the window is derived from
  * `da.transportProfile.retentionDays` in the verified manifest and validated
- * against the Q54 core contract; a caller-supplied window is not accepted.
+ * against the core retention contract; a caller-supplied window is not accepted.
  */
 
 import {
@@ -23,10 +23,10 @@ const WATCHER_RETENTION_WINDOW_SCHEMA_VERSION =
   "midgard-watcher-retention-window-v1" as const;
 
 /**
- * Cardano slot length. Retention is a wall-clock quantity in the Q54 contract;
+ * Cardano slot length. Retention is a wall-clock quantity in the core retention contract;
  * the window is also expressed in slots because that is the only clock the
  * watcher shares with L1. The conversion is a chain constant, not window
- * arithmetic - every duration still comes from the Q54 helpers.
+ * arithmetic - every duration still comes from the core retention helpers.
  */
 export const WATCHER_RETENTION_SLOT_LENGTH_MS = 1_000 as const;
 
@@ -97,7 +97,7 @@ const manifestRetentionDays = (manifest: unknown, path: string): unknown => {
 const assertRetentionDays = (value: unknown, path: string): number => {
   let retentionDays: number;
   try {
-    // Q54 is the single authority for maturity + worst-case proof-time bound.
+    // The core retention contract is the single authority for maturity + worst-case proof-time bound.
     retentionDays = assertRetentionDaysCoverWindow(value, path);
   } catch {
     return fail("retention_window_insufficient", path);
@@ -113,7 +113,7 @@ const assertRetentionDays = (value: unknown, path: string): number => {
 const makeRetentionWindow = (
   retentionDays: number,
 ): WatcherCanonicalRetentionWindow => {
-  // Duration arithmetic is delegated to the Q54 helper so a profile change
+  // Duration arithmetic is delegated to the core retention helper so a profile change
   // propagates instead of being restated here.
   const deadline = retentionDeadlineForBlock({
     blockTimeMs: 0,

@@ -1,6 +1,6 @@
 import { Duration, Effect } from "effect";
 
-import { hasCauseCode, isConnectionClassError } from "../provider-retry.js";
+import { isConnectionClassError } from "../provider-retry.js";
 // Imported from the module itself, not the services barrel: a value import
 // of the barrel here closes an import cycle through the database tables.
 import {
@@ -12,48 +12,31 @@ import {
   DATABASE_SCHEMA_INCOMPATIBLE,
   DATABASE_UNREACHABLE,
   retryStartupStep,
-  SCHEMA_MIGRATION_IN_PROGRESS,
 } from "../services/startup-waiting.js";
-import * as MigrationRunner from "./migrations/runner.js";
+import * as NodeSchema from "./schema.js";
 import { DatabaseError } from "./utils/common.js";
-
-/**
- * A compatibility check that could not run yet: the server dropped or
- * refused the connection, a `db:migrate` holds the schema lock, or a lock
- * wait timed out. A schema verdict (not migrated, unversioned, a ledger or
- * shape mismatch) is never one.
- */
-export const isTransientSchemaCheckFailure = (
-  error: MigrationRunner.MigrationError,
-): boolean =>
-  error.code === "schema_migration_in_progress" ||
-  isConnectionClassError(error) ||
-  hasCauseCode(error, "55P03"); // lock_not_available
 
 const SCHEMA_CHECK_KEY = "database_schema_check";
 
 /**
- * Runs `assertCompatible`, waiting out transient failures
- * (`isTransientSchemaCheckFailure`) with backoff for at most the database
- * budget (15 min by default), the startup waiting under
- * `schema_migration_in_progress` or `database_unreachable`. A schema verdict
- * fails at once under `database_schema_incompatible`; a transient failure
+ * Runs the schema step, waiting out a dropped or refused connection with
+ * backoff for at most the database budget (15 min by default), the startup
+ * waiting under `database_unreachable`. Any other failure (a schema refusal)
+ * fails at once under `database_schema_incompatible`; a connection failure
  * past the budget fails under its waiting reason. Either way the
  * `DatabaseError` carries the step's `StartupStepFailedError`.
  */
-export const assertCompatibleWithStartupRetry = <R>(
-  assertCompatible: Effect.Effect<void, MigrationRunner.MigrationError, R>,
+export const ensureSchemaWithStartupRetry = <E, R>(
+  ensure: Effect.Effect<void, E, R>,
   options: DatabaseStartupRetryOptions = DATABASE_STARTUP_RETRY,
 ): Effect.Effect<void, DatabaseError, R> =>
-  retryStartupStep(assertCompatible, {
+  retryStartupStep(ensure, {
     key: SCHEMA_CHECK_KEY,
-    retryable: isTransientSchemaCheckFailure,
+    retryable: isConnectionClassError,
     reason: (error) =>
-      error.code === SCHEMA_MIGRATION_IN_PROGRESS
-        ? SCHEMA_MIGRATION_IN_PROGRESS
-        : isTransientSchemaCheckFailure(error)
-          ? DATABASE_UNREACHABLE
-          : DATABASE_SCHEMA_INCOMPATIBLE,
+      isConnectionClassError(error)
+        ? DATABASE_UNREACHABLE
+        : DATABASE_SCHEMA_INCOMPATIBLE,
     budget: { maxElapsed: options.budget },
     initialMs: Duration.toMillis(Duration.decode(options.baseDelay)),
     maxMs: Duration.toMillis(Duration.decode(options.maxDelay)),
@@ -63,17 +46,14 @@ export const assertCompatibleWithStartupRetry = <R>(
         new DatabaseError({
           message: failure.message,
           cause: failure,
-          table: "<schema_migrations>",
+          table: "<node_schema>",
         }),
     ),
   );
 
 /**
- * Startup schema gate for the long-running node.
- *
- * Production startup must not create, alter, or repair application tables. The
- * node only verifies that explicit migrations have already brought the database
- * to the exact schema version supported by this binary.
+ * Startup schema step for the long-running node: creates the schema on an
+ * empty database, and refuses a database created by a different schema.
  */
 export const program: Effect.Effect<void, DatabaseError, Database> =
-  assertCompatibleWithStartupRetry(MigrationRunner.assertCompatible);
+  ensureSchemaWithStartupRetry(NodeSchema.ensure);

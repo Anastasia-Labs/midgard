@@ -2,7 +2,7 @@ import {
   type DerivationHook,
   type DialectName,
   encodeOutRef,
-  type MigrationSet,
+  type SchemaSet,
   type TemporalTableSpec,
 } from "../../src/index.js";
 
@@ -69,9 +69,9 @@ CREATE INDEX fixture_spend_log_slot ON fixture_spend_log (spent_slot);
 `;
 };
 
-export const fixtureMigrations = (dialect: DialectName): MigrationSet => ({
+export const fixtureSchema = (dialect: DialectName): SchemaSet => ({
   namespace: "fixture",
-  migrations: [{ id: "0001_fixture_tables", sql: fixtureSql(dialect) }],
+  sql: fixtureSql(dialect),
 });
 
 const number = (value: unknown): number => Number(value as string | number);

@@ -189,7 +189,7 @@ describe.each(resetAdapters(databases, scratch))(
           ]),
         ).toEqual([[1, fill(0xb0, 8).toString("hex")]]);
         expect(await count(store, "role_content")).toBe(1);
-        expect(await count(store, "l1_follower_migrations")).toBeGreaterThan(0);
+        expect(await count(store, "l1_follower_schemas")).toBeGreaterThan(0);
       } finally {
         await store.close();
       }

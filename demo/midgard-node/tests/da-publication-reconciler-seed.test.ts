@@ -11,7 +11,7 @@ import {
   DaPayloadPublicationsDB,
   DaPayloadsDB,
 } from "../src/database/index.js";
-import * as MigrationRunner from "../src/database/migrations/runner.js";
+import * as NodeSchema from "../src/database/schema.js";
 import {
   type DaPublicationSeedState,
   seedPublicationOutboxes,
@@ -110,10 +110,7 @@ const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
-        yield* MigrationRunner.migrate({
-          appVersion: "test",
-          actor: "da-publication-reconciler-seed.test",
-        });
+        yield* NodeSchema.ensure;
         yield* resetApplicationTables;
         return yield* effect;
       }),

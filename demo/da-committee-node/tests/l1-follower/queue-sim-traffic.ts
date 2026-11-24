@@ -244,7 +244,7 @@ const relinked = (element: Element, link: string | null): SimOutput => {
 const commitmentHash = (nonce: number): string => hex32(nonce + 0xa77e57);
 
 export type QueueTrafficOptions = Readonly<{
-  /** Appends a node nothing links to, at this chance per block (P1's orphan). */
+  /** Appends a node nothing links to, at this chance per block. */
   orphanChance?: number;
 }>;
 

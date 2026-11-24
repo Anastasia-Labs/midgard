@@ -128,7 +128,7 @@ export type ValidationTraceClaimMaterial = {
   /** State `stepCount`: Terminal Rejected. */
   readonly terminal: MidgardValidationMachineState;
   readonly terminalLeafProof: MidgardValidationTraceProof;
-  /** State 0, which VerifySource re-derives from committed data (N5). */
+  /** State 0, which VerifySource re-derives from committed data. */
   readonly initialState: MidgardValidationMachineState;
   /** The proof of any leaf under `challengerRoot`, for later moves. */
   readonly leafProof: (index: number) => MidgardValidationTraceProof;

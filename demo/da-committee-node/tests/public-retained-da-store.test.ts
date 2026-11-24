@@ -86,7 +86,7 @@ describe("PostgresPublicRetainedDaStore", () => {
   });
 
   it("rejects a role granted DELETE on committee_da_payloads at open()", async () => {
-    // Q54 adversarial: the public retained-DA plane must be structurally
+    // Adversarial: the public retained-DA plane must be structurally
     // incapable of pruning still-challengeable evidence. A login that merely
     // *holds* DELETE (even without exercising it) is refused at open().
     const fake = fakePool({

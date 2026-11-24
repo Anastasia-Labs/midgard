@@ -1,4 +1,4 @@
-//// Cross-language wire pins for the Q35 `network-id` forced door.
+//// Cross-language wire pins for the `network-id` forced door.
 ////
 //// Every constant below is an **absolute** hex literal shared verbatim with
 //// `demo/midgard-sdk/tests/network-id.test.ts`. Nothing here compares one

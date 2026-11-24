@@ -27,7 +27,7 @@ export const INPUT_NO_IDX_FAULT_PROOF_TITLES = {
 } as const;
 
 /**
- * Q13 `input-no-idx` (`nonExistentInputNoIndex`): a committed transaction
+ * `input-no-idx` (`nonExistentInputNoIndex`): a committed transaction
  * spends an output index its in-block producing transaction never created.
  */
 export type InputNoIdxFaultProofContracts = {

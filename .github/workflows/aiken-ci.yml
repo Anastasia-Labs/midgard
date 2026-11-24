@@ -95,10 +95,8 @@ jobs:
 
   # The gates that prove the other gates can fail. They run the pinned
   # compiler on tiny throwaway projects and finish quickly, so they run in their
-  # own job where no other failure can take them offline. (They used to sit behind the
-  # formatter check, where a formatting drift in any one .ak file took the
-  # gate-can-fail evidence offline along with the suite — which is exactly
-  # what had happened, in nine files, when #577's round-2 review looked.)
+  # own job where no other failure, such as a formatting drift in one .ak
+  # file, can take them offline.
   guard-self-tests:
     name: Guard self-tests
     runs-on: ubuntu-latest

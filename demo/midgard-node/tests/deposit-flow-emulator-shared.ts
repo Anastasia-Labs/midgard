@@ -148,7 +148,7 @@ import {
   ImmutableDB,
   MempoolDB,
   MempoolLedgerDB,
-  MigrationRunner,
+  NodeSchema,
   PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
@@ -256,7 +256,7 @@ import {
 import { resetApplicationTables } from "./utils.js";
 
 // `EMULATOR_DEPLOYMENT_IDENTITY` is a `derived` identity with no finalized
-// manifest, so the wave's Q58 script derivation takes the
+// manifest, so the wave's availability script derivation takes the
 // `availabilityParametersFromExplicitEnvironment()` branch
 // (`src/transactions/da-attestation.ts`), which fails closed unless the whole
 // availability block is present in the environment. These are the same values
@@ -319,8 +319,8 @@ export const TEST_DA_PRIVATE_KEY_SOURCE = `seed:${"00".repeat(31)}01`;
 /**
  * Dev/emulator DA cosigner seed.
  *
- * Q63 (F04 §4) floors `da_threshold` at two, so the emulator's DA params carry
- * a 2-of-2 committee and an attestation needs two genuine signatures. There is
+ * The emulator's DA params carry a 2-of-2 committee (the F04 §4 floor for two
+ * members), so an attestation needs two genuine signatures. There is
  * no committee peer in the emulator, so the harness holds the second key itself
  * and passes it as `DA_COSIGNER_SEED_PHRASE`; the node then signs once per
  * locally held key. The same seed must reach both the bootstrap that writes the
@@ -430,8 +430,8 @@ beforeAll(async () => {
       },
       public_retained_da: publicRetainedDaBlock(),
       da_committee: {
-        // Q63 floors the on-chain `da_threshold` at two; the transport
-        // threshold must be at least that.
+        // The on-chain `da_threshold` is two; the transport threshold must be
+        // at least that.
         threshold: 2,
         members: [
           {
@@ -564,12 +564,7 @@ export const initializeProtocol = async ({
  * Initializes the runtime used by the deposit-flow emulator tests.
  */
 export const initializeNodeRuntime = async () => {
-  await runNodeDatabaseEffect(
-    MigrationRunner.migrate({
-      appVersion: "test",
-      actor: "deposit-flow-emulator.test",
-    }),
-  );
+  await runNodeDatabaseEffect(NodeSchema.ensure);
   // Every file on a worker shares its database and restarts its chain from
   // the same genesis, so nothing a previous file left may survive: follower
   // facts, a forced order or a projection row would read as this chain's.
@@ -619,7 +614,7 @@ const unownedNativeOwner = (
     const running = unownedNativeOwners.get(nodeConfig.LEDGER_MPF_DB_PATH);
     if (running !== undefined) return running;
     const globals = yield* Globals.pipe(Effect.provide(Globals.Default));
-    // Its startup reads the landed queue (P1) at the emulator's tip.
+    // Its startup reads the landed queue at the emulator's tip.
     yield* syncEmulatorChain(lucidService.api);
     const owner = yield* initializeArchitectureGOwner(globals, nodeConfig).pipe(
       Effect.provideService(LucidService, lucidService as any),
@@ -704,7 +699,7 @@ const runFixtureCommitProgram = (
   nodeConfig: NodeConfigDep | undefined,
   production: OwnedCommitFixture | undefined,
 ) => {
-  // The commit path reads the landed queue (P1): follow the emulator's.
+  // The commit path reads the landed queue: follow the emulator's.
   const followed = withEmulatorChain(lucidService.api);
   if (production === undefined)
     return followed(
@@ -1350,8 +1345,8 @@ export const configureEmulatorDaRuntimeManifest = async (published?: {
     },
     public_retained_da: publicRetainedDaBlock(),
     da_committee: {
-      // Q63 floors the on-chain `da_threshold` at two, and node startup asserts
-      // the transport threshold is at least the on-chain one.
+      // Node startup asserts the transport threshold is at least the on-chain
+      // `da_threshold`, which is two here unless a manifest is published.
       threshold: published?.manifest.da.threshold ?? 2,
       members: [
         {

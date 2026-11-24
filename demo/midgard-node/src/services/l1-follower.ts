@@ -24,7 +24,7 @@
  *   `l1_events_orphan_recovery`; a failure is the held
  *   `l1_driver_recompute_failed` or `startup_preparation_failed`, retried
  *   on the driver's backoff.
- * - The driver's first hook reads the landed state queue (P1) at the
+ * - The driver's first hook reads the landed state queue at the
  *   view it applies: it publishes the queue length, bumps the head signal
  *   the planner fibers wake on (`l1-head-trigger.ts`) and holds
  *   `state_queue_unhealthy` while the queue is unhealthy.
@@ -32,7 +32,7 @@
  *   facts (only the rows that changed since its last read), publishes it
  *   with the landed queue's tail for the watchdog, and derives this
  *   operator's membership: a removed operator is unready `operator_removed`
- *   with its duties held, and stays up.
+ *   with its duties held, and then shuts down.
  * - The driver's landed-block hook (`landed-blocks/`) processes each
  *   landed block once, in queue order, folding merges into `confirmed_ledger`
  *   (its position joins the handle); what it cannot do is a named hold.
@@ -239,7 +239,7 @@ const followL1 = <R>(
       globals,
     );
     const admissionDivergences = forcedAdmissionDivergences();
-    // The blocks processing commits: progress past a local fault (R1).
+    // The blocks processing commits: progress past a local fault.
     const progress = localFaultProgress();
     const driver = createFollowerDriver({
       failureHold,
@@ -332,7 +332,7 @@ const followL1 = <R>(
       recompute,
       refreshJournal: () => journal.refresh(),
     });
-    // A database transient that outlives its bound exits the node (R2), as
+    // A database transient that outlives its bound exits the node, as
     // does a local fault on landed blocks processing makes no progress past.
     const trigger = coalescedRunner(
       () => Runtime.runPromise(runtime)(tick).then((ran) => ran.holds),
@@ -376,7 +376,7 @@ const followL1 = <R>(
       },
     });
     // A follower whose transient store failures outlived their bound stops
-    // `exhausted`; the node exits non-zero (R2).
+    // `exhausted`; the node exits non-zero.
     void running.then(
       (final) => {
         if (final.state === "exhausted" && !abort.signal.aborted)

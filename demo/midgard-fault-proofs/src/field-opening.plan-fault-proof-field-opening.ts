@@ -177,8 +177,8 @@ const committedFieldCommitment = ({
  *
  * `fieldPreimage` instead preserves an already committed envelope byte for
  * byte. Fixed fields authenticate the canonical count and total stride length
- * without decoding individual wrappers; T235 must be able to dispute those
- * wrappers. Variable fields retain the strict envelope walk. The two inputs
+ * without decoding individual wrappers; a raw field opening must be able to dispute
+ * those wrappers. Variable fields retain the strict envelope walk. The two inputs
  * are exclusive, and both use the same compact/id/field/witness hash checks.
  */
 type FaultProofFieldOpeningAnchor = {

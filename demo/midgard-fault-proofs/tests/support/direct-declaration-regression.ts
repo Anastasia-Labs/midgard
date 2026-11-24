@@ -129,7 +129,7 @@ export const driveDirectDeclarationRegression = async (
         await publishPlainReferenceScriptUtxo({
           lucid: ownerLucid,
           script: role.spendingScript,
-          label: "N6 declaration regression",
+          label: "declaration regression",
         })
       ).utxo,
     );
@@ -145,7 +145,7 @@ export const driveDirectDeclarationRegression = async (
         planned: plan.openingPlan,
         referenceInputs,
         certificatePolicyId: certificate,
-        label: "N6 declaration",
+        label: "declaration",
       }),
   });
   await run.accept(
@@ -348,7 +348,7 @@ export const driveDirectDeclarationRegression = async (
     ownerLucid,
   );
   console.log(
-    "N6 actual declaration authorization",
+    "actual declaration authorization",
     JSON.stringify({
       attack,
       prover,

@@ -30,7 +30,8 @@ import {
 describe("DeploymentManifestV1 shared identity", () => {
   it("includes every registered fraud-proof validator in the canonical registry", () => {
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain("fraudProofZeroInput");
-    // #547 added the Q18/Q31/Q15 first-step validators. Each must be present
+    // #547 added the no-reference-input, reference-input-no-idx and
+    // invalid-signature first-step validators. Each must be present
     // and the catalogue order must name exactly the same set of categories in
     // the same positions.
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(
@@ -540,7 +541,7 @@ describe("DeploymentManifestV1 shared identity", () => {
     ).toThrow(/proverCollateralFloorLovelace must equal/u);
   });
 
-  it("keeps activated Q58 chunk geometry separate from the 4,095-byte proof-field limit", () => {
+  it("keeps activated availability chunk geometry separate from the 4,095-byte proof-field limit", () => {
     const availability = identityInput().availabilityChallenge;
     expect(
       parseDeploymentManifestAvailabilityChallenge({

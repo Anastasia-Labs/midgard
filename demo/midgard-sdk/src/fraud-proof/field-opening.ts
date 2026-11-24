@@ -32,7 +32,7 @@
  * plain hashing a field commitment carries no field index and no domain tag, so
  * a hash on its own says nothing about which slot it came from — and carrying
  * one forward is what forced every downstream step to re-hash a whole reproduced
- * item list to use it (the Q1X-F6 defect, #551). The id costs the same 32 bytes
+ * item list to use it (#551). The id costs the same 32 bytes
  * of thread state and buys the door instead.
  *
  * **Why `WitnessAnchor` has a second component.** §3's transaction-id preimage

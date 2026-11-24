@@ -22,7 +22,7 @@ import {
 } from "./da-bond-pool-committee-process.the-journey-committee-node.js";
 import { DA_BOND_POOL_JOURNEY_CHRONOLOGY } from "./da-bond-pool-journey.js";
 
-describe("the committee node's lifecycle (P27(3))", () => {
+describe("the committee node's lifecycle", () => {
   it("runs through steps 1, 3, 4, 5 and 6, is stopped for step 2, and ends stopped", () => {
     let running = false;
     const runningDuring: number[] = [];

@@ -5,11 +5,11 @@ import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { DaPayloadsDB } from "../src/database/index.js";
-import * as MigrationRunner from "../src/database/migrations/runner.js";
 import {
   computeChallengeableCutoff,
   computeRetentionCutoff,
 } from "../src/database/retention-policy.js";
+import * as NodeSchema from "../src/database/schema.js";
 import {
   deploymentManifest,
   NOW,
@@ -56,12 +56,10 @@ describe.skipIf(process.env.MIDGARD_SKIP_DB_TESTS === "1")(
   () => {
     beforeAll(async () => {
       await Effect.runPromise(
-        provideDatabaseLayers(
-          MigrationRunner.migrate({
-            appVersion: "test",
-            actor: "da-terminal-finality",
-          }),
-        ) as Effect.Effect<unknown, never>,
+        provideDatabaseLayers(NodeSchema.ensure) as Effect.Effect<
+          unknown,
+          never
+        >,
       );
     }, 120_000);
 

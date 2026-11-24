@@ -303,20 +303,15 @@ describe("temporal row pins (SQLite)", () => {
           pinnedBy: [{ column: "id", table: "keeper", tableColumn: "id" }],
         },
       ],
-      migrations: [
+      schemas: [
         {
           namespace: "pins",
-          migrations: [
-            {
-              id: "0001",
-              sql: `
+          sql: `
 -- class: D-t; retention: closed rows once to_slot is k deep
 CREATE TABLE keeper (id integer NOT NULL, from_slot INTEGER NOT NULL, to_slot INTEGER);
 -- class: D-t; retention: rows once slot is k deep, unless a keeper row names them
 CREATE TABLE log (id integer NOT NULL, slot INTEGER NOT NULL);
 `,
-            },
-          ],
         },
       ],
     });
@@ -369,13 +364,10 @@ CREATE TABLE log (id integer NOT NULL, slot INTEGER NOT NULL);
           pinnedBy: [{ column: "id", table: "keeper", tableColumn: "id" }],
         },
       ],
-      migrations: [
+      schemas: [
         {
           namespace: "pins",
-          migrations: [
-            {
-              id: "0001",
-              sql: `
+          sql: `
 -- class: B; retention: the owner deletes a row when its hold ends
 CREATE TABLE hold (id integer NOT NULL);
 -- class: D-t; retention: closed rows once to_slot is k deep, unless a hold row names them
@@ -383,8 +375,6 @@ CREATE TABLE keeper (id integer NOT NULL, from_slot INTEGER NOT NULL, to_slot IN
 -- class: D-t; retention: rows once slot is k deep, unless a keeper row names them
 CREATE TABLE log (id integer NOT NULL, slot INTEGER NOT NULL);
 `,
-            },
-          ],
         },
       ],
     });

@@ -1,5 +1,5 @@
 /**
- * Proof retention on the fork simulator with pruning on (E1 ruling): a
+ * Proof retention on the fork simulator with pruning on: a
  * removed header's L1 history is held past k while a proof objective over
  * it is open and pruned on schedule once released (or when never pinned);
  * the inputs of every tx a unit history records are stored at ingest, so a

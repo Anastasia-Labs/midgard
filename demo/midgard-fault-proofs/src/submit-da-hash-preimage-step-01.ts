@@ -1,14 +1,14 @@
 /**
  * `da-hash-preimage` step-01 submitter.
  *
- * Unlike the retired RF-043 step routes, nothing in the prepared JSON is
+ * Unlike the retired step routes, nothing in the prepared JSON is
  * trusted. Before a transaction is built this module re-derives, from the
  * **on-chain** state-queue block header:
  *
  * - the counted `transactions_root` over the supplied raw PHAS root and the
  *   header's own `l2TransactionCount`, which must equal the committed
  *   `transactionsRoot`; and
- * - the violation itself, by re-running the Q44 rule over the committed leaf
+ * - the violation itself, by re-running the da-hash-preimage rule over the committed leaf
  *   bytes.
  *
  * A prepared file that claims a violation the chain does not support is

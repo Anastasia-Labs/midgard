@@ -86,7 +86,7 @@ describe("retention policy", () => {
   });
 });
 
-describe("resolveHousekeepingRetentionDays (B5)", () => {
+describe("resolveHousekeepingRetentionDays", () => {
   const resolve = (
     configured: number | undefined,
     manifestRetentionDays: number | undefined,

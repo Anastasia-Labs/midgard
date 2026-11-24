@@ -1,7 +1,7 @@
 /**
- * The DA libp2p runtime of the pooled DA bond journey's committee node
- * (ruling P31): the libp2p keys and the committee-target runtime manifest
- * that the observer of ruling P27 loads.
+ * The DA libp2p runtime of the pooled DA bond journey's committee node: the
+ * libp2p keys and the committee-target runtime manifest that the node's
+ * observer loads.
  *
  * The journey deployment writes neither, so the live adapter produces both
  * after the deploy and before the node's first spawn, through the same path
@@ -12,7 +12,7 @@
  *
  * The observer loads one member's libp2p identity, so the manifest's peer set
  * admits it. It never loads that member's DA signing key: libp2p identity is
- * transport-only, and `DA_SIGNER_INDEX` stays unset (P27(1)).
+ * transport-only, and `DA_SIGNER_INDEX` stays unset.
  *
  * Planning and the evidence checks are pure; the key writer, the process run
  * and the configuration check take their inputs explicitly, so both

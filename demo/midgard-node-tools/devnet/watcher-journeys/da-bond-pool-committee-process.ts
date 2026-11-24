@@ -1,6 +1,6 @@
 /**
- * The real committee node behind the live pooled DA bond journey's P16
- * evidence (ruling P27): one unmodified `da-committee-node`, run from its
+ * The real committee node behind the live pooled DA bond journey's
+ * committee-view evidence: one unmodified `da-committee-node`, run from its
  * built `dist/index.js`, whose `GET /readyz` body and stderr pool events the
  * journey driver judges.
  *

@@ -61,7 +61,7 @@ afterAll(async () => {
   );
 });
 
-describe("the committee runtime plan (P31)", () => {
+describe("the committee runtime plan", () => {
   it("plans one fresh key per member, the producer and public retained-DA keys, and this checkout's ports", () => {
     const plan = planDaBondPoolCommitteeRuntime({
       runDirectory: "/run",
@@ -219,7 +219,7 @@ describe("the committee runtime plan (P31)", () => {
   });
 });
 
-describe("fresh libp2p keys (P31(1))", () => {
+describe("fresh libp2p keys", () => {
   it("writes a 0600 key the node's identity loader reads, fresh each time", async () => {
     const directory = await freshDirectory("keys");
     const a = await writeFreshDaLibp2pKey(join(directory, "a.key"));
@@ -248,7 +248,7 @@ describe("fresh libp2p keys (P31(1))", () => {
   });
 });
 
-describe("the generator process (P31(2))", () => {
+describe("the generator process", () => {
   const planIn = async (): Promise<DaBondPoolCommitteeRuntimePlan> => {
     const runDirectory = await freshDirectory("process");
     await mkdir(join(runDirectory, "secrets"));

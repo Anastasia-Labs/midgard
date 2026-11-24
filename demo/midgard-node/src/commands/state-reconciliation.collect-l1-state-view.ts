@@ -106,7 +106,7 @@ export const collectL1StateView: Effect.Effect<
   const { api: lucid } = yield* Lucid;
   const contracts = yield* MidgardContracts;
   const nodeConfig = yield* NodeConfig;
-  // The queue as the node's follower landed it (P1).
+  // The queue as the node's follower landed it.
   const queue = yield* landedStateQueueUTxOs(
     contracts.stateQueue,
     "state reconciliation",

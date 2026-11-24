@@ -31,7 +31,7 @@ import {
 import type { WatcherL1Degradation } from "./tx-inputs.js";
 
 /**
- * Proof retention (E1 ruling, option (a)): while a proof objective over a
+ * Proof retention: while a proof objective over a
  * header is open, the header's L1 history is pinned past the follower's
  * pruning (at its retained depth, never less than k); once its completion
  * marker is verified past k the pin releases and normal pruning applies.

@@ -208,7 +208,7 @@ export const openOgmiosSession = async ({
   };
   socket.addEventListener("message", ((event: { readonly data: unknown }) => {
     if (typeof event.data !== "string") {
-      fail(new Error("Q57 Ogmios chain-sync sent a non-text frame"));
+      fail(new Error("Ogmios chain-sync sent a non-text frame"));
       return;
     }
     let message: {
@@ -219,7 +219,7 @@ export const openOgmiosSession = async ({
     try {
       message = JSON.parse(event.data) as typeof message;
     } catch (cause) {
-      fail(new Error("Q57 Ogmios chain-sync sent malformed JSON", { cause }));
+      fail(new Error("Ogmios chain-sync sent malformed JSON", { cause }));
       return;
     }
     if (typeof message.id !== "number") return;
@@ -228,24 +228,22 @@ export const openOgmiosSession = async ({
     pending.delete(message.id);
     if (message.error !== undefined) {
       waiter.reject(
-        new Error(
-          `Q57 Ogmios chain-sync error: ${JSON.stringify(message.error)}`,
-        ),
+        new Error(`Ogmios chain-sync error: ${JSON.stringify(message.error)}`),
       );
     } else {
       waiter.resolve(message.result);
     }
   }) as (event: never) => void);
   socket.addEventListener("error", (() => {
-    fail(new Error("Q57 Ogmios chain-sync socket failed"));
+    fail(new Error("Ogmios chain-sync socket failed"));
   }) as (event: never) => void);
   socket.addEventListener("close", (() => {
-    fail(new Error("Q57 Ogmios chain-sync socket closed"));
+    fail(new Error("Ogmios chain-sync socket closed"));
   }) as (event: never) => void);
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
       socket.close();
-      reject(new Error("Q57 Ogmios chain-sync open timed out"));
+      reject(new Error("Ogmios chain-sync open timed out"));
     }, timeoutMs);
     socket.addEventListener(
       "open",
@@ -259,7 +257,7 @@ export const openOgmiosSession = async ({
       "error",
       (() => {
         clearTimeout(timeout);
-        reject(new Error("Q57 Ogmios chain-sync failed while opening"));
+        reject(new Error("Ogmios chain-sync failed while opening"));
       }) as (event: never) => void,
       { once: true },
     );
@@ -271,7 +269,7 @@ export const openOgmiosSession = async ({
       return await new Promise<unknown>((resolve, reject) => {
         const timeout = setTimeout(() => {
           pending.delete(id);
-          reject(new Error(`Q57 Ogmios ${method} timed out`));
+          reject(new Error(`Ogmios ${method} timed out`));
         }, timeoutMs);
         pending.set(id, {
           resolve: (result) => {

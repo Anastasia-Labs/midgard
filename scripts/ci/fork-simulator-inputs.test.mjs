@@ -98,7 +98,7 @@ const pkg = (name, scripts = {}, workspaceDependencies = []) => ({
 });
 const forkSim = { "test:fork-sim": "vitest run tests/fork-sim" };
 
-// A role package that adds cases (C1, W1, N1) declares the script; it and
+// A role package that adds cases declares the script; it and
 // everything it depends on become inputs without editing this script.
 test("a package that declares test:fork-sim brings in its dependency closure", () => {
   const { runners, inputs } = forkSimulatorInputs([

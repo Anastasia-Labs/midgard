@@ -1,4 +1,4 @@
-//// Q27 min-Ada step 01: authenticate the transaction source, either an
+//// min-Ada step 01: authenticate the transaction source, either an
 //// accepted normal transaction or a forced leaf, and freeze the claimed output.
 
 use aiken/crypto.{ScriptHash}

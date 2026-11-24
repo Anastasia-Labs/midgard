@@ -1,5 +1,5 @@
 import type { TemporalTableSpec } from "./registry.js";
-import type { MigrationSet } from "./schema/migrate.js";
+import type { SchemaSet } from "./schema/apply.js";
 import type { DialectName } from "./sql/backend.js";
 import type {
   DerivationHook,
@@ -15,7 +15,7 @@ import type { TrackedSet } from "./types.js";
 
 /**
  * A role's projection over the follower's facts. Its tracked set, D-t
- * tables, migrations and derivations join the store (`projectionStoreOptions`);
+ * tables, schema and derivations join the store (`projectionStoreOptions`);
  * in the fork simulator its D-t tables join the after-every-event comparison
  * with a fresh replay, its `traffic` joins the filler and `check` adds the
  * projection's own cases.
@@ -24,7 +24,7 @@ export type FollowerProjection = Readonly<{
   name: string;
   trackedSet?: TrackedSet;
   temporalTables?: readonly TemporalTableSpec[];
-  migrations?: (dialect: DialectName) => MigrationSet;
+  schema?: (dialect: DialectName) => SchemaSet;
   derivations?: readonly DerivationHook[];
   retentionPins?: RetentionPins;
   pruneHooks?: readonly PruneHook[];
@@ -88,8 +88,8 @@ export const projectionStoreOptions = (
       ),
     ),
     temporalTables: projections.flatMap((p) => p.temporalTables ?? []),
-    migrations: projections.flatMap((p) =>
-      p.migrations === undefined ? [] : [p.migrations(dialect)],
+    schemas: projections.flatMap((p) =>
+      p.schema === undefined ? [] : [p.schema(dialect)],
     ),
     derivations: projections.flatMap((p) => p.derivations ?? []),
     pruneHooks: projections.flatMap((p) => p.pruneHooks ?? []),

@@ -175,7 +175,7 @@ pub type CompletedFraudWitness {
 /// address (`operator_directory.bounty_routing_is_exact_v1`).
 /// `OperatorAlreadySlashed` consumes no operator-directory node, so it has no
 /// bond to route, and the handler refuses any reward-shaped output on that arm
-/// (D4, 2026-08-11 owner ruling 7).
+/// (2026-08-11 owner ruling).
 pub type SlashingApproach {
   SlashActiveOperator { active_operators_redeemer_index: Int }
   SlashRetiredOperator { retired_operators_redeemer_index: Int }
@@ -270,7 +270,7 @@ pub type MintRedeemer {
     active_operators_input_index: Int,
     active_operators_redeemer_index: Int,
     /// Required exactly when the queue is non-empty. The singleton root binds
-    /// the append to the current head for Q61's timeout fence.
+    /// the append to the current head for the timeout fence.
     m_confirmed_state_ref_input_index: Option<Int>,
     /// Required when the current head differs from the consumed append anchor
     /// (the tail). Omitted for a one-node queue, where the authenticated anchor
@@ -549,7 +549,7 @@ pub fn validate_da_availability_status_transition(
 
 /// The one decode of both node sides. Only the status may change: the node's
 /// full value, address, link, header, commit time and fraud marker are carried
-/// exactly (HAZ-13), and the output carries no reference script (the
+/// exactly, and the output carries no reference script (the
 /// state-queue element invariant, `element_output_has_no_reference_script`).
 /// The continuation receives the node's commit time, `block_time`.
 fn da_availability_status_transition(

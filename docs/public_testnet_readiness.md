@@ -70,6 +70,9 @@ P1 has these limits, and the security claim (R1) must state each one:
   transaction needs.
 - The Plutus dispute game proves every execution step that fits in one L1
   transaction; a step that does not fit is documented as unprovable.
+- Each fault-proof gap that [remaining gaps](fault-proofs/remaining-gaps.md)
+  shows open or partly implemented is a named limit of the claim, not a launch
+  requirement.
 
 ## Schedule
 

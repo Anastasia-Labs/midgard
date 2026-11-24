@@ -6,17 +6,18 @@
  *   been active (its active node in the follower's retained facts, or a
  *   recorded activation at a final block). Removal is the `/readyz` reason
  *   `operator_removed` under `HaltSource.operatorMembership`, which holds
- *   every operator duty (`FIBER_HALT_SOURCES`). The process stays up.
+ *   every operator duty (`FIBER_HALT_SOURCES`), and then shuts the node down
+ *   (`untilOperatorRemoved`) with exit code 0.
  * - `awaiting_activation`: registered, not yet active (also after a
  *   re-registration that follows a bond recovery).
  * - `unknown`: none of these (never registered, or no evidence left).
  *
- * The state is a view of the facts at the set's view: a rollback that undoes
- * the removal makes the next read `active` again and clears the reason, and
- * a restart reads the same facts back to the same state. Nothing is sticky
- * and nothing exits.
+ * The state is a view of the facts at the set's view, and a restart reads
+ * the same facts back to the same state: a node still removed shuts down
+ * again. A removed operator recovers its bond and re-registers with
+ * `--l1 kupmios|blockfrost`, since `--l1 node` reads this node's follower.
  */
-import { Effect, Ref } from "effect";
+import { Deferred, Effect, Ref } from "effect";
 
 import { Globals } from "../services/globals.globals.js";
 import {
@@ -70,7 +71,7 @@ export const classifyOperatorMembership = (
   if (set.ownRetired !== null)
     return {
       state: "removed",
-      detail: `operator ${key} is in the retired list${atPoint(removedAt)}; recover the bond and re-register, or shut the node down`,
+      detail: `operator ${key} is in the retired list${atPoint(removedAt)}; recover the bond and re-register with --l1 kupmios|blockfrost`,
     };
   // A registered node is keyed by its activation time and names its
   // operator in its datum.
@@ -82,7 +83,7 @@ export const classifyOperatorMembership = (
   if (set.ownActivity.length > 0 || recordedActivity)
     return {
       state: "removed",
-      detail: `operator ${key} was active and is in no operator list${atPoint(removedAt)} (slashed or bond recovered); re-register to return`,
+      detail: `operator ${key} was active and is in no operator list${atPoint(removedAt)} (slashed or bond recovered); re-register with --l1 kupmios|blockfrost to return`,
     };
   return {
     state: "unknown",
@@ -92,7 +93,7 @@ export const classifyOperatorMembership = (
 
 /**
  * Publishes a membership: removal raises `operator_removed` (duties held,
- * `/readyz` failing, the process up); every other state clears it.
+ * `/readyz` failing) and starts the shutdown; every other state clears it.
  */
 export const publishOperatorMembership = (
   membership: OperatorMembership,
@@ -100,12 +101,35 @@ export const publishOperatorMembership = (
   Effect.gen(function* () {
     const globals = yield* Globals;
     yield* Ref.set(globals.OPERATOR_MEMBERSHIP, membership.state);
-    if (membership.state === "removed")
-      yield* raiseLivenessIncident(
+    if (membership.state !== "removed")
+      return yield* clearLivenessIncident(
         globals,
         HaltSource.operatorMembership,
-        OPERATOR_REMOVED,
-        membership.detail,
       );
-    else yield* clearLivenessIncident(globals, HaltSource.operatorMembership);
+    yield* raiseLivenessIncident(
+      globals,
+      HaltSource.operatorMembership,
+      OPERATOR_REMOVED,
+      membership.detail,
+    );
+    if (yield* Deferred.succeed(globals.OPERATOR_REMOVED, undefined))
+      yield* Effect.logError(
+        `${OPERATOR_REMOVED}: ${membership.detail}; the node is shutting down`,
+      );
   });
+
+/**
+ * Runs `node` until a published removal, then gives `/readyz` one second to
+ * be read and ends it, so the node stops cleanly with exit code 0.
+ */
+export const untilOperatorRemoved = <A, E, R>(
+  node: Effect.Effect<A, E, R>,
+): Effect.Effect<void, E, R | Globals> =>
+  Effect.flatMap(Globals, (globals) =>
+    Effect.raceFirst(
+      Effect.asVoid(node),
+      Deferred.await(globals.OPERATOR_REMOVED).pipe(
+        Effect.zipRight(Effect.sleep("1 second")),
+      ),
+    ),
+  );

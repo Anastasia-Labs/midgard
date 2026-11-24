@@ -14,10 +14,9 @@ import { DataI, DataList } from "../../src/uplc-data.js";
  * removes it; the class goes when that fix composes. The CI rows pin every
  * catalogued step to its vector (`cek-step-fuzz.pins.ts`).
  *
- * - `computationCost`: a step of a computation-cost kind of §P3, or a
- *   large-Data step, whose adjudication goes over the evaluator's budget.
- *   Owner: the §P3 computation-cost rows and E-N6 (ii). Pending the E-N6 (ii)
- *   cost update for the large-Data steps.
+ * - `computationCost`: a step of a computation-cost kind, or a large-Data
+ *   step, whose adjudication goes over the evaluator's budget. Owner: the
+ *   computation-cost rows. Pending the cost update for the large-Data steps.
  * - `nestedConstantCost`: a step revealing a constant whose type nests one
  *   compound in another (a pair, or a list of lists), whose adjudication goes
  *   over the evaluator's budget. Owner: the on-chain constant step. Pending
@@ -70,8 +69,8 @@ const revealsNestedConstant = (witness: StepWitness): boolean =>
   revealedConstants(witness).some(({ typeCbor }) => typeIsNested(typeCbor));
 
 /**
- * The builtins, as this tree numbers them, of the computation-cost rows of
- * §P3 and of the large-Data steps that wait on E-N6 (ii): multiplyInteger (2),
+ * The builtins, as this tree numbers them, of the computation-cost rows and
+ * of the large-Data steps that wait on a cost update: multiplyInteger (2),
  * appendString (22), bData (41), unBData (46), serialiseData (51), final
  * verification (70), shiftByteString (82) and rotateByteString (83). The rows
  * for tags above 86 have no executor here yet.

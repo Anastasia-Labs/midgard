@@ -90,12 +90,11 @@ rebuild of the TypeScript workspace (deployments README).
 
 ## Database schema
 
-`listen` checks the schema before anything else and refuses any version other
-than the one the binary expects: "Database schema is not compatible: …"
-[runtime: `MigrationRunner.assertCompatible` via
-`demo/midgard-node/src/database/init.ts`]. Apply migrations with
-`node dist/index.js db:migrate` (or the compose `midgard-node-migrate`
-service); this is a relaunch, not a redeploy.
+`listen` creates the schema on an empty database before anything else, and
+refuses a database created by a different schema: "This database was created
+by a different node schema; …" [runtime: `NodeSchema.ensure` via
+`demo/midgard-node/src/database/init.ts`]. After a schema change, recreate the
+database (drop it and create it empty) and relaunch.
 
 ## Phase4 runs
 
@@ -122,7 +121,7 @@ Ask, in order:
 1. Did `consensus-profile.ts` change? Redeploy.
 2. Did a `config/deployments/*.yaml` or any validator change? Run
    `deployment:build`, rebuild, redeploy.
-3. Did a migration land? `db:migrate`, then relaunch.
+3. Did a database schema change? Recreate the database, then relaunch.
 4. Otherwise relaunch. For a phase4 run, any code change still means a new run.
 
 When unsure whether a running deployment still matches, run

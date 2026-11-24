@@ -109,7 +109,7 @@ describe("DA bond pool live port: endpoints and preconditions", () => {
     expect(findJourneyDaemons(processes, run, new Set(), 10)).toHaveLength(1);
   });
 
-  describe("admits only the adapter's own committee node, by pid (P27(5))", () => {
+  describe("admits only the adapter's own committee node, by pid", () => {
     const run = "/runs/journey-a";
     const committeeArgv = [
       "/usr/bin/node",

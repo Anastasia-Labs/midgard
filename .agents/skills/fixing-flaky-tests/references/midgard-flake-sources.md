@@ -2,8 +2,8 @@
 
 Each entry gives the symptom you see, the mechanism, the evidence in this
 tree, and the fix. Checked against the tree on 2026-11-23. Mistakes that make
-a test _wrong_ rather than intermittent live in the sibling catalogue,
-[mistakes-we-make.md](../../writing-tests/references/mistakes-we-make.md).
+a test _wrong_ rather than intermittent are in the
+[writing-tests skill](../../writing-tests/SKILL.md).
 
 ## Timing and clocks
 
@@ -56,8 +56,8 @@ a test _wrong_ rather than intermittent live in the sibling catalogue,
 
 ### Shard names shared across checkouts
 
-- **Symptom:** rows vanish mid-assertion, a migration error such as
-  `schema_version_ahead`, or `DROP DATABASE` refused because another session
+- **Symptom:** rows vanish mid-assertion, a schema refusal such as
+  `created by a different node schema`, or `DROP DATABASE` refused because another session
   is connected, when two raw runs of the node suites share a checkout, or share
   one `MIDGARD_TEST_DATABASE_PREFIX`.
 - **Mechanism:** shards are named `<prefix>_w${VITEST_POOL_ID}` on the same
@@ -68,8 +68,8 @@ a test _wrong_ rather than intermittent live in the sibling catalogue,
   `midgard_tools_test` family the same way
   (`demo/midgard-node-tools/vitest.config.ts`). The scheme keeps files of one
   run and different checkouts apart; nothing keeps two runs in one checkout
-  apart. Global setup recreates a shard whose schema belongs to another
-  migration set with a plain `DROP` (`dropShard` in
+  apart. Global setup recreates a shard created by a different schema with a
+  plain `DROP` (`dropShard` in
   `demo/midgard-node/tests/global-setup.ts`), which fails loudly if the other
   run is connected and succeeds under it if it is between files.
 - **Fix:** run suites through `node scripts/contrib.mjs test`, which gives

@@ -113,7 +113,7 @@ export const rejectionCode = async (
   return "no_rejection";
 };
 
-describe("Q03 provenance admission", () => {
+describe("provenance admission", () => {
   it("exports the W20 evidence API from both package roots", () => {
     expect(SDK.admitEvidenceProvenance).toBeTypeOf("function");
     expect(SDK.assertSecurityGradeEvidence).toBeTypeOf("function");
@@ -217,7 +217,7 @@ describe("Q03 provenance admission", () => {
   });
 });
 
-describe("Q03 authenticated L1 observation admission", () => {
+describe("authenticated L1 observation admission", () => {
   it("admits a well-formed local-node header observation", async () => {
     const fixture = await validBlock();
     const admitted = await SDK.admitAuthenticatedStateQueueHeaderObservation({

@@ -26,22 +26,22 @@ export type FraudProofs = {
   validationTraceDispute: ValidationTraceDisputeValidators;
   zeroInput: SpendingValidator;
   /**
-   * Q44 `da-hash-preimage`: a committed `transactions_root` leaf whose key is
+   * `da-hash-preimage`: a committed `transactions_root` leaf whose key is
    * not the canonical native-V1 transaction id of its own value.
    */
   daHashPreimage: SpendingValidator;
   /**
-   * Q18 `no-reference-input`: a committed transaction reads an input that
+   * `no-reference-input`: a committed transaction reads an input that
    * never existed in the block's prev ledger and was not produced in-block.
    */
   noReferenceInput: SpendingValidator;
   /**
-   * Q31 `reference-input-no-idx`: a committed transaction reads an output
+   * `reference-input-no-idx`: a committed transaction reads an output
    * index its in-block producing transaction never created.
    */
   referenceInputNoIdx: SpendingValidator;
   /**
-   * Q15 `invalid-signature`: a committed transaction's address-witness set
+   * `invalid-signature`: a committed transaction's address-witness set
    * does not authorize one of the inputs it spends.
    */
   invalidSignature: SpendingValidator;
@@ -73,13 +73,13 @@ export type FraudProofs = {
    */
   mintAuthorization: SpendingValidator;
   /**
-   * Q35 `network-id`: a committed accepted native transaction or one of its
+   * `network-id`: a committed accepted native transaction or one of its
    * protected output addresses targets a network other than the deployment.
    */
   networkId: SpendingValidator;
-  /** Q34: an authenticated native script evaluates false in tx context. */
+  /** An authenticated native script evaluates false in tx context. */
   nativeScriptInvalid: SpendingValidator;
-  /** Q27: an accepted output or newly introduced UTxO is below min-Ada. */
+  /** An accepted output or newly introduced UTxO is below min-Ada. */
   minAda: SpendingValidator;
   /** A committed field preimage disagrees with its authenticated byte length. */
   fieldPreimageLengthMismatch: SpendingValidator;

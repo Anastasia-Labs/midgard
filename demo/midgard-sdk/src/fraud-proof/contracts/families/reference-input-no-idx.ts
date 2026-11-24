@@ -27,7 +27,7 @@ export const REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES = {
 } as const;
 
 /**
- * Q31 `reference-input-no-idx`: a committed transaction *reads* an output index
+ * `reference-input-no-idx`: a committed transaction *reads* an output index
  * its in-block producing transaction never created. The reference-input mirror
  * of `input-no-idx`: steps 01 and 02 are distinct scripts, while steps 03 and 04
  * compile to the same UPLC as that chain's and are therefore shared, as with the

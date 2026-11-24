@@ -29,7 +29,7 @@ export type DaBondPoolCommitteeObservation = Readonly<{
      * The distinct `availability_responder` JSON lines this pid wrote since
      * the previous observation, stderr's (failed, unavailable) before
      * stdout's (pending, included, confirmed, each with its `action`), each
-     * in first-seen order (P27(2)).
+     * in first-seen order.
      */
     availabilityResponder: readonly string[];
   }>;
@@ -62,7 +62,7 @@ export class DaBondPoolCommitteeProcessError extends Error {
 }
 
 /**
- * The node's lifecycle (P27(3)): start, observe, stop, teardown. Every
+ * The node's lifecycle: start, observe, stop, teardown. Every
  * failure throws, so the step it happens in fails; there is no fallback.
  *
  * - `start`: the submitter UTxOs are the baseline (the first start records

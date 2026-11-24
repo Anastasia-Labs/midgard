@@ -120,7 +120,7 @@ export const main = async (): Promise<void> => {
     return;
   }
 
-  // RF-043: admit only the allow-listed submission routes, and reject every
+  // Admit only the allow-listed submission routes, and reject every
   // retired or unadmitted one, before any blueprint/deployment read or
   // provider/wallet construction.
   rejectUnadmittedSubmissionRoute({
@@ -182,7 +182,7 @@ export const main = async (): Promise<void> => {
     );
   }
 
-  // Q03: the executable CLI has no operator-private compatibility route. The
+  // The executable CLI has no operator-private compatibility route. The
   // current REST/file/sample flags are retained solely as clearly labelled
   // diagnostic imports and are rejected by the same security-grade gate every
   // canonical builder uses. Security-grade callers route all four verbs through

@@ -31,7 +31,7 @@ import {
   sealManifestBoundNetworkIdRuntime,
 } from "./workflow-adapter.seal-manifest-bound-network-id-runtime.js";
 
-/** Manifest-closed production construction for Q35. */
+/** Manifest-closed production construction for network-id. */
 export const createManifestBoundNetworkIdWorkflow = async (
   config: ManifestBoundNetworkIdWorkflowConfig,
 ): Promise<ManifestBoundNetworkIdWorkflow> => {

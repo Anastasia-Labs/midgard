@@ -145,22 +145,28 @@ branch has passed the corresponding startup, load, redaction or incident drills.
 ## P1 limitations
 
 P1 does not provide fault-proof coverage of every invalid state. Curated
-operator trust remains necessary for fabricated forced transactions, the
-documented censorship hole, and a wrong Plutus verdict that depends on an execution step too large to prove in a
+operator trust remains necessary for fabricated or substituted forced
+transactions, the other open gaps the
+[P1 security claim](docs/public-testnet-security-claim.md) names, and a wrong
+Plutus verdict that depends on an execution step too large to prove in a
 single L1 transaction. Other Plutus verdicts are challengeable through the
-interactive validation dispute game. DA payloads carry no validation-trace
-states; the nine trace-relative fault-proof families prove their faults
+interactive validation dispute game. DA payloads carry neither validation-trace
+states nor the UTxO set; the nine trace-relative fault-proof families prove their faults
 directly, and the public profile enables all nine. Watchers submit proofs
 automatically; a watcher that reaches a proof after its latest safe start
 still runs it until the block matures, and raises a late-start alert. At
-maturity it holds the objective visibly. Strikes
+maturity it holds the objective visibly, and no command re-drives it. Strikes
 rotate shifts; the public profile sets the ejection threshold out of reach for
 P1 operation.
 
-A forced exit cannot execute Plutus or satisfy a native script's expiry branch.
+A forced exit cannot execute Plutus or satisfy a native script's expiry branch,
+and its L1 order carries a closed validity range of at most ten minutes. A
+withdrawal request waits for seven-day block maturity.
 Escape hatch and settlement claims are unsupported. There is no bootstrap state
 snapshot; joining parties replay from genesis using payloads retained for 120
-days and must join while that history is available.
+days and must join while that history is available. An unclassified withdrawal
+order, even an unsigned one, blocks L2 spends of the output reference it names
+(issue #819).
 
 The node's transaction status API reports its own diagnostic rejection codes,
 not the typed rejection reasons committed for forced transactions. Split cadence, hourly

@@ -1,4 +1,4 @@
-import type { MigrationSet } from "@al-ft/midgard-l1-follower";
+import type { SchemaSet } from "@al-ft/midgard-l1-follower";
 import type { Pool } from "pg";
 
 import type { PostgresStoreInstanceLock } from "./postgres.instance-lock.js";
@@ -27,7 +27,7 @@ const SUBMITTED_PREDICATE = `record->>'resultStatus' IN ('submitted', 'confirmed
 /**
  * The committee store's tables, each with its class and retention rule
  * (`lintSchema`). The store applies this itself when it opens,
- * idempotently; the follower's migration runner never runs it, so
+ * idempotently; the follower's `applySchemas` never runs it, so
  * `follower reset --to-origin` (which deletes the catalogued A, D-t and D-x
  * tables) never reaches a committee store row.
  */
@@ -350,15 +350,13 @@ $$;
 `;
 
 /**
- * The committee store schema as a migration set, for the schema lint
- * (`lintSchema`). The store does not run it through the follower
- * runner; see `COMMITTEE_STORE_TABLES_SQL`.
+ * The committee store schema as a schema set, for the schema lint
+ * (`lintSchema`). The store does not run it through the follower's
+ * `applySchemas`; see `COMMITTEE_STORE_TABLES_SQL`.
  */
-export const committeeStoreMigrations: MigrationSet = {
+export const committeeStoreSchema: SchemaSet = {
   namespace: "committee-store",
-  migrations: [
-    { id: "committee_store_tables", sql: COMMITTEE_STORE_TABLES_SQL },
-  ],
+  sql: COMMITTEE_STORE_TABLES_SQL,
 };
 
 /**

@@ -1,7 +1,7 @@
 /** The challenger's claim material for a committed transaction whose
  * PlutusV3 script fails: its trace proofs verify against its own root, and
  * its state 0 is the initial state VerifySource derives from the header, the
- * source and the step's pre-state root (N5). */
+ * source and the step's pre-state root. */
 import {
   deriveMidgardValidationInitialStateV1,
   hashMidgardValidationMachineState,

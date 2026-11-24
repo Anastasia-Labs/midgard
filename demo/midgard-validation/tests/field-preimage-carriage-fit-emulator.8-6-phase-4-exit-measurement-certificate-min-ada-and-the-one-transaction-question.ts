@@ -40,7 +40,7 @@ import {
   TX_ID,
 } from "./field-preimage-carriage-fit-emulator.publish.js";
 
-describe("§8.6 Phase-4 exit measurement — certificate min-Ada and the one-transaction question", () => {
+describe("§8.6 exit measurement — certificate min-Ada and the one-transaction question", () => {
   it("reports min-Ada at the sizes the ladder really uses", async () => {
     const harness = await setupEmulator();
     const protocolParameters = harness.lucid.config().protocolParameters;

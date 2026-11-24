@@ -234,8 +234,7 @@ fn out_of_range_bad_tx() -> MidgardTransaction {
 
 /// A native-V1 transaction whose validity interval is inverted (`start` 9 above
 /// the exclusive `end` 5, normalizing to `InvalidRange`). This is the malformed
-/// interval concern the coverage matrix routes to `invalid-range` (F21 physical
-/// structural row L302, Q49-L302).
+/// interval concern the coverage matrix routes to `invalid-range`.
 fn inverted_interval_bad_tx() -> MidgardTransaction {
   let base = fixture.valid_native_tx_v1()
   MidgardTransaction {

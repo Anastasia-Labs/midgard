@@ -6,7 +6,7 @@
  */
 import type {
   DialectName,
-  MigrationSet,
+  SchemaSet,
   TemporalTableSpec,
 } from "@al-ft/midgard-l1-follower";
 
@@ -70,9 +70,7 @@ CREATE INDEX ${FORCED_ORDERS_TABLE}_spent ON ${FORCED_ORDERS_TABLE} (spent_slot)
 `;
 };
 
-export const forcedOrderMigrations = (dialect: DialectName): MigrationSet => ({
+export const forcedOrderSchema = (dialect: DialectName): SchemaSet => ({
   namespace: "node_l1_forced_orders",
-  migrations: [
-    { id: "0001_node_l1_forced_orders", sql: forcedOrderSql(dialect) },
-  ],
+  sql: forcedOrderSql(dialect),
 });

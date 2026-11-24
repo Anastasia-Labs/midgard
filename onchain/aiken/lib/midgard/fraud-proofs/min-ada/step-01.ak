@@ -1,4 +1,4 @@
-//// Q27 `min-ada`: bind a transaction output, from an accepted normal
+//// `min-ada`: bind a transaction output, from an accepted normal
 //// transaction or a forced leaf, before adjudicating the exact compiled
 //// minimum-Ada rule.
 

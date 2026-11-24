@@ -167,7 +167,7 @@ export const finalizeE2ESummaryProgram = (
                 `);
                 if (row === undefined) {
                   throw new Error(
-                    "live Q57 database observation returned no row",
+                    "live state-correction database observation returned no row",
                   );
                 }
                 return {

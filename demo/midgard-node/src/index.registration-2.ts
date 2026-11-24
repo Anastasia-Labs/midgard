@@ -2,12 +2,7 @@ import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-prof
 import { Effect } from "effect";
 
 import * as AddressFromSeed from "./commands/address-from-seed.js";
-import {
-  failCli,
-  provideDatabaseServices,
-  runCliEffect,
-  writeJson,
-} from "./commands/cli-runtime.js";
+import { failCli, runCliEffect, writeJson } from "./commands/cli-runtime.js";
 import { parseAddressArgument } from "./commands/command-utils.js";
 import * as DaBondCommand from "./commands/da-bond.js";
 import * as DaBondFiles from "./commands/da-bond-files.js";
@@ -18,13 +13,7 @@ import {
   isPublicDeploymentProfile,
   readMountedHttpFile,
 } from "./commands/listen-public-http.js";
-import * as MigrationRunner from "./database/migrations/runner.js";
-import {
-  daBond,
-  daBondChainOptions,
-  program,
-  VERSION,
-} from "./index.registration.js";
+import { daBond, daBondChainOptions, program } from "./index.registration.js";
 import * as Services from "./services/index.js";
 import { openNodeLedgerAccessFromConfig } from "./services/l1-node-ledger-access.js";
 
@@ -281,44 +270,6 @@ program
 
     const { withMonitoring } = options.opts();
     const mainEffect = runListen(withMonitoring);
-
-    runCliEffect(mainEffect);
-  });
-
-program
-  .command("db:migrate")
-  .description("Apply pending Midgard node schema migrations explicitly")
-  .action(async () => {
-    const mainEffect = provideDatabaseServices(
-      MigrationRunner.migrate({
-        appVersion: VERSION,
-        actor: "midgard-node db:migrate",
-      }).pipe(
-        Effect.tap((status) =>
-          Effect.sync(() => {
-            process.stdout.write(`${MigrationRunner.formatStatus(status)}\n`);
-          }),
-        ),
-      ),
-    );
-
-    runCliEffect(mainEffect);
-  });
-
-program
-  .command("db:status")
-  .description("Print Midgard node schema migration status")
-  .option("--json", "Print machine-readable JSON status", true)
-  .action(async () => {
-    const mainEffect = provideDatabaseServices(
-      MigrationRunner.getStatus.pipe(
-        Effect.tap((status) =>
-          Effect.sync(() => {
-            process.stdout.write(`${MigrationRunner.formatStatus(status)}\n`);
-          }),
-        ),
-      ),
-    );
 
     runCliEffect(mainEffect);
   });

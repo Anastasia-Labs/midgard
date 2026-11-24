@@ -1,5 +1,5 @@
 /**
- * State-queue fixtures for the node's P1 tests: the simulator's queue
+ * State-queue fixtures for the node's landed-queue tests: the simulator's queue
  * address and policy, V1 headers, root and node datums, and queue outputs.
  */
 import {

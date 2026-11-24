@@ -25,7 +25,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("A5 authority semantics under SDK scopes", () => {
+describe("authority semantics under SDK scopes", () => {
   it("bounds the expiry pruning boundary read and fences a late pruning mutation", async () => {
     const s = scene();
     let finish!: (v: { blockNo: number }) => void;
@@ -60,7 +60,7 @@ describe("A5 authority semantics under SDK scopes", () => {
     expect(prune).toHaveBeenCalledTimes(1);
   });
 
-  it("retains expired history until the canonical A5 recovery horizon is crossed", async () => {
+  it("retains expired history until the canonical recovery horizon is crossed", async () => {
     const s = scene();
     await runDaAvailabilityOperation(s.context, s.operation);
     const intent = s.journal.pending(

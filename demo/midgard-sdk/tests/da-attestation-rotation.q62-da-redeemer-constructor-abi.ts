@@ -17,7 +17,7 @@ import {
   ROTATED_COMMITTEE_HASH,
 } from "./da-attestation-rotation.make-fixture.js";
 
-describe("Q62 DA redeemer constructor ABI", () => {
+describe("DA redeemer constructor ABI", () => {
   it("abi 1 — mint constructors keep the declared Aiken order on the wire", () => {
     const declared = aikenConstructorOrder("MintRedeemer");
     expect(declared).toStrictEqual([
@@ -200,7 +200,7 @@ describe("DA redeemer field ABI", () => {
   );
 });
 
-describe("Q62 rotation predicate", () => {
+describe("rotation predicate", () => {
   it("predicate 1 — an attestation matching both governed values is not stranded", () => {
     expect(
       daAttestationIsStranded({

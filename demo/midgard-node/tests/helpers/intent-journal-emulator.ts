@@ -47,8 +47,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Layer, ManagedRuntime, Redacted } from "effect";
 
-import { migrationByVersion } from "../../src/database/migrations/index.js";
-import * as MigrationRunner from "../../src/database/migrations/runner.js";
+import * as NodeSchema from "../../src/database/schema.js";
 import {
   IntentJournal,
   intentJournalOver,
@@ -65,8 +64,15 @@ import { SIM_QUEUE_CONFIG } from "./state-queue-sim.fixtures.js";
 
 export const EMULATOR_K = 6;
 
-/** `0010_intent_refusal_holds`. */
-const INTENT_REFUSAL_HOLDS_MIGRATION = 10;
+/** `intent_refusal_holds` as `schema.sql` creates it. */
+const INTENT_REFUSAL_HOLDS_SQL = `CREATE TABLE intent_refusal_holds (
+  family text PRIMARY KEY,
+  reason text NOT NULL,
+  detail text NOT NULL,
+  tx_hash bytea NOT NULL CHECK (octet_length(tx_hash) = 32),
+  inputs bytea[] NOT NULL,
+  raised_at timestamptz NOT NULL DEFAULT NOW()
+)`;
 
 const addressBytes = (bech32: string): Buffer =>
   Buffer.from(getAddressDetails(bech32).address.hex, "hex");
@@ -105,7 +111,7 @@ export type IntentEmulator = Awaited<ReturnType<typeof attachIntentFollower>>;
  * receives (`payee`), and the node's follower store at the emulator's
  * origin, tracking the own wallet.
  *
- * With `nodeSchema`, the database is migrated to the node's full schema
+ * With `nodeSchema`, the database gets the node's full schema
  * before the follower store opens there, as the node does, so a test can
  * run the node's own durable writes (a pending block finalization, the
  * history authority) in the database the journal records in.
@@ -220,10 +226,7 @@ export const attachIntentFollower = async (
     PgClient.layer({ url: Redacted.make(connectionString) }),
   );
   const sql = await runtime.runPromise(SqlClient.SqlClient);
-  if (options.nodeSchema === true)
-    await runtime.runPromise(
-      MigrationRunner.migrate({ appVersion: "test", actor: "intent-emulator" }),
-    );
+  if (options.nodeSchema === true) await runtime.runPromise(NodeSchema.ensure);
   const store: FactStore = openPostgresFactStore({
     ...projectionStoreOptions(
       [intentJournalProjection],
@@ -364,9 +367,7 @@ export const attachIntentFollower = async (
   // The node table the journal keeps its refusal holds in, as the node
   // database (where the follower's tables live) has it.
   if (options.nodeSchema !== true)
-    await runtime.runPromise(
-      sql.unsafe(migrationByVersion.get(INTENT_REFUSAL_HOLDS_MIGRATION)!.sql),
-    );
+    await runtime.runPromise(sql.unsafe(INTENT_REFUSAL_HOLDS_SQL));
   const isOwnOutput = (output: OutputSummary) =>
     ownHex.has(output.address.toString("hex"));
   /** The production journal over the node database (`IntentJournalLive`'s). */

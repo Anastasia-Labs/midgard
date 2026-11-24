@@ -10,7 +10,7 @@ it.each(["64Branch", "63LongFork"] as const)(
     const result = await runDirectSourceMaximumProof(kind, "authenticate");
     expect(result.proofSteps).toBe(64);
     expect(result.measurements).toHaveLength(1);
-    console.log("N6 actual maximum proof envelope", JSON.stringify(result));
+    console.log("actual maximum proof envelope", JSON.stringify(result));
   },
   300_000,
 );
@@ -20,7 +20,7 @@ it.each(["64Branch", "63LongFork"] as const)(
     const result = await runDirectSourceMaximumProof(kind, "map");
     expect(result.proofSteps).toBe(64);
     expect(result.measurements).toHaveLength(1);
-    console.log("N6 actual maximum proof envelope", JSON.stringify(result));
+    console.log("actual maximum proof envelope", JSON.stringify(result));
   },
   300_000,
 );

@@ -236,8 +236,8 @@ export const makeFixture = () => {
     stateQueueNode,
     headerHash,
   };
-  // Q63 (F04 §4) floors both governed thresholds at two, so the fixture is a
-  // 2-of-2 committee over a 2-of-2 owner set. Both sets are sorted-unique.
+  // A 2-of-2 committee over a 2-of-2 owner set, each at its F04 §4 floor.
+  // Both sets are sorted-unique.
   const daParamsDatum: DaParamsDatum = {
     committee: h32(0x11) + h32(0x22),
     committee_signers_hash: h32(0x33),

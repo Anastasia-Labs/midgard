@@ -46,7 +46,7 @@ export const percentile = (
 /**
  * The availability runtime's `onDaBondPool` hook as the watcher runtime wires
  * it: each reconciliation's pool readout becomes the served `daBondPool` and
- * sets or clears the two pool alerts for this deployment (spec #685 E5).
+ * sets or clears the two pool alerts for this deployment (spec #685).
  */
 export const watcherDaBondPoolReporter =
   (

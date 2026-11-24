@@ -51,7 +51,7 @@ export const insertMany = (
     sqlErrorToDatabaseError(tableName, "Failed to insert tx rejections"),
   );
 
-/** The rejected transactions a rejection follows from (migration 0019). */
+/** The rejected transactions a rejection follows from. */
 export const causesTableName = "tx_rejection_causes";
 
 export type Cause = Readonly<{ txId: Buffer; causeTxId: Buffer }>;

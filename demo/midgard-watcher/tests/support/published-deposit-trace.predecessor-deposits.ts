@@ -21,7 +21,7 @@ import type {
   PublishedDepositTraceCheckpoint,
 } from "./published-deposit-trace.published-deposit-trace-checkpoint.js";
 
-/** C3's first predecessor contains real authenticated admission material, including on a fresh deployment. */
+/** The first predecessor contains real authenticated admission material, including on a fresh deployment. */
 export const preparePredecessorDeposits = async (input: {
   deployment: Pick<Published, "contracts" | "chain" | "references">;
   lucid: LucidEvolution;

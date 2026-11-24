@@ -664,7 +664,7 @@ describe("fault-proof emulator integration", () => {
     expect(outRefLabel(retainedFraudProof)).toBe(outRefLabel(fraudProofUtxo));
     expect(retainedFraudProof.assets[step02Result.fraudProofUnit]).toBe(1n);
 
-    // Q14 zero-input proof fit. Every transaction of the
+    // Zero-input proof fit. Every transaction of the
     // complete correction path is measured, not just the largest one.
     expect(Object.keys(proofFit)).toEqual([
       "init",

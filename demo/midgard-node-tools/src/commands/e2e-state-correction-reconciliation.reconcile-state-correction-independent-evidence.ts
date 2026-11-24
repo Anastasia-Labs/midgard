@@ -181,7 +181,7 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
   }
   if (observationByTxHash.size !== requiredHashes.size) {
     throw new Error(
-      "authenticated L1 observations contain transactions outside the required Q57 set",
+      "authenticated L1 observations contain transactions outside the required state-correction set",
     );
   }
   const terminalPoint = (txHash: string): ChainPoint => {
@@ -392,7 +392,7 @@ export const reconcileStateCorrectionIndependentEvidence = async ({
   );
   if (finalOgmiosTip.height < newestRequiredInclusionHeight) {
     throw new Error(
-      "final raw Ogmios tip precedes a required Q57 transaction inclusion",
+      "final raw Ogmios tip precedes a required state-correction transaction inclusion",
     );
   }
   const derivedFinalObservedAt = {

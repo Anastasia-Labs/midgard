@@ -26,7 +26,7 @@ export const identityOf = (event: ProjectedEvent) => ({
   l1_origin_outref: admissionOutRefBytes(event.admission.outRef),
 });
 
-/** The node row of a projected event (ruling 2: a deposit's L1 tx hash is its admission tx). */
+/** The node row of a projected event (a deposit's L1 tx hash is its admission tx). */
 export const rowOf = (
   event: ProjectedEvent,
   decoded: UserEventEntry,

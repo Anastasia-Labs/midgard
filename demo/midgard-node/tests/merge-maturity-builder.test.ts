@@ -49,7 +49,7 @@ vi.mock("@al-ft/midgard-sdk/state-queue", async (importOriginal) => {
   };
 });
 
-// The landed queue (P1) the builder reads its length, root and link from.
+// The landed queue the builder reads its length, root and link from.
 vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => {
   const actual =
     await importOriginal<

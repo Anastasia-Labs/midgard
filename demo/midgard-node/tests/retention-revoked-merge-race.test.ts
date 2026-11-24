@@ -5,12 +5,12 @@ import { Effect } from "effect";
 import { beforeAll, expect, it } from "vitest";
 
 import { DaPayloadsDB } from "../src/database/index.js";
-import * as MigrationRunner from "../src/database/migrations/runner.js";
 import { pruneFoldedBeyondChallengeability } from "../src/database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
 import {
   computeChallengeableCutoff,
   computeRetentionCutoff,
 } from "../src/database/retention-policy.js";
+import * as NodeSchema from "../src/database/schema.js";
 import { prepareUnderTestLease } from "./helpers/mutation-lease.js";
 import { journalFixture } from "./helpers/own-journal-fixture.js";
 import { insertLiveQueueNode } from "./helpers/queue-terminal-rows.js";
@@ -37,12 +37,7 @@ const identity = () => deploymentManifestHubOraclePolicyId(deploymentManifest);
 const OLD = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
 
 beforeAll(async () => {
-  await run(
-    MigrationRunner.migrate({
-      appVersion: "review",
-      actor: "review-da-merge-race",
-    }),
-  );
+  await run(NodeSchema.ensure);
 }, 120_000);
 
 /**

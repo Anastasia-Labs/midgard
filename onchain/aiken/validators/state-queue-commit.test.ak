@@ -1260,7 +1260,7 @@ test state_queue_commit_rejects_min_fee_b_at_the_bound() fail {
   )
 }
 
-// ## Commit time (C2: R1-R3 over the full commit transaction)
+// ## Commit time (R1-R3 over the full commit transaction)
 //
 // The honest controls above are normal-mode commits (`block_time ==
 // end_time`). The fixtures below add an event-only catch-up commit and probe

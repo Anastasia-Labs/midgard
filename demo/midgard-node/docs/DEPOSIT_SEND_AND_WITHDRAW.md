@@ -74,7 +74,6 @@ cd demo/midgard-node
 pnpm install
 pnpm build
 pnpm --dir ../midgard-user-cli build
-pnpm db:migrate
 pnpm listen
 ```
 

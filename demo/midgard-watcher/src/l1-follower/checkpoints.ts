@@ -78,7 +78,7 @@ export const CHECKPOINT_TEMPORAL_TABLES: readonly TemporalTableSpec[] = [
   },
 ];
 
-export const checkpointMigrationSql = (dialect: DialectName): string => {
+export const checkpointSchemaSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
   const int8 = dialect === "postgres" ? "bigint" : "INTEGER";
   return `

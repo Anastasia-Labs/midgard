@@ -49,7 +49,7 @@ export const FOLLOWED_UNITS_TEMPORAL_TABLES: readonly TemporalTableSpec[] = [
   },
 ];
 
-export const followedUnitsMigrationSql = (dialect: DialectName): string => {
+export const followedUnitsSchemaSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";
   const int8 = dialect === "postgres" ? "bigint" : "INTEGER";
   return `

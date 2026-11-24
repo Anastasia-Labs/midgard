@@ -1,5 +1,5 @@
 /**
- * The committee node's DA libp2p runtime (ruling P31): the plan, the fresh
+ * The committee node's DA libp2p runtime: the plan, the fresh
  * keys, the generator process, and, on an emulator deployment's finalized
  * manifest, the committee node's own configuration loader and peer check over
  * a runtime the real generator produced, in both polarities.

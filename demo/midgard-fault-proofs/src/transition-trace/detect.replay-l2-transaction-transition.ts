@@ -170,8 +170,7 @@ const replayL2TransactionTransition = ({
       outputIndex: index,
     });
     // The ledger trie *value* is the output's LedgerOutputCommitmentV1
-    // descriptor, not the full output bytes (spec §5.3: "recomputed with that
-    // descriptor as the MPT value, not with the full output bytes"). Every
+    // descriptor, not the full output bytes. Every
     // other producer of `utxos_root` — the node, the validation machine, the
     // watcher's block replay and DA reconstruction — commits the descriptor,
     // and on-chain `apply_l2_outputs` derives the same descriptor from the

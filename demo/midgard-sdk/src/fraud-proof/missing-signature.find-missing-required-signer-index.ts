@@ -67,7 +67,7 @@ export const missingSignatureVkeyHash = (verificationKey: string): string => {
  * accused verification key. The validator applies the same comparison to one
  * bounded batch at a time. Byte equality on the key, never signature
  * verification — a *present but invalid* witness is `invalid-signature`'s
- * fault (Q15), not this family's.
+ * fault, not this family's.
  */
 export const missingSignatureRequiredSignerIsPresent = ({
   verificationKey,

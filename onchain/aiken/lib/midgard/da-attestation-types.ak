@@ -61,7 +61,7 @@ pub type DaParamsDatum {
 /// `RescueStrandedAttestation.da_params_ref_input_index` both point at the
 /// authenticated DA params UTxO holding the *current* governed committee and
 /// threshold. Every redeemer that consumes an attestation reads them, which is
-/// what makes committee rotation retroactive (decision row D-DA4): a quorum
+/// what makes committee rotation retroactive: a quorum
 /// frozen under a rotated-out committee no longer matches the governed values
 /// and can no longer apply.
 pub type MintRedeemer {
@@ -85,7 +85,7 @@ pub type MintRedeemer {
     refund_output_index: Int,
   }
   /// Refunds an attestation that a mid-flight committee rotation stranded
-  /// (decision row D-DA5 clause c). Authorization is a *state condition*, not a
+  /// (the partial-attestation rescue). Authorization is a *state condition*, not a
   /// deadline and not a new governed value: the attestation's pinned
   /// `committee_signers_hash` must no longer equal the current authenticated DA
   /// params' governed value. Such an attestation can never reach quorum again —

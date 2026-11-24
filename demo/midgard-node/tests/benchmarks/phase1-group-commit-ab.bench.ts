@@ -20,7 +20,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { MigrationRunner } from "../../src/database/index.js";
+import { NodeSchema } from "../../src/database/index.js";
 import { NodeConfig } from "../../src/services/config.make-config.js";
 import { AdmissionSql, Database } from "../../src/services/database.js";
 import {
@@ -68,10 +68,7 @@ describe("Phase 1 global group-commit PostgreSQL A/B diagnostic", () => {
           expect(identity[0]?.database).toBe(database);
           expect(identity[0]?.server_version.startsWith("15.")).toBe(true);
           yield* batchSql`DROP SCHEMA public CASCADE; CREATE SCHEMA public`;
-          yield* MigrationRunner.migrate({
-            appVersion: "phase1-group-commit-ab",
-            actor: "phase1-group-commit-ab",
-          });
+          yield* NodeSchema.ensure;
           const fixture = buildFixture();
           expect(fixture.mergedRequests).toHaveLength(mergedRows);
           expect(

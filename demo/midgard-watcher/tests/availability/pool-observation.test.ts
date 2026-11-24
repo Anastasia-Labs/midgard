@@ -33,7 +33,7 @@ const derive = (pool: UTxO | undefined, nowMs = UNLOCK_AT - 1n) =>
     nowMs,
   });
 
-describe("watcher DA bond pool readout (spec #685 E5, #691)", () => {
+describe("watcher DA bond pool readout (spec #685, #691)", () => {
   it("reports a Bonded pool backing a full bond with no alert", () => {
     expect(derive(poolUtxo(FULL))).toEqual({
       state: "bonded",

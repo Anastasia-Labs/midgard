@@ -38,7 +38,7 @@ pub const thread_fee_reserve_lovelace: Int =
 pub const case_open_window_milliseconds: Int =
   env.block_maturity_duration_v1 / 2
 
-/// The case open guard (M1): VerifySource's validity upper bound is at most
+/// The case open guard: VerifySource's validity upper bound is at most
 /// `block_end + M/2`, where `block_end` is the challenged block's state-queue
 /// `block_time`. The post-game allowance P = M - M/2 - D_case then covers the
 /// closes and the removal before the block can merge.

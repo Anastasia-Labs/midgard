@@ -3,9 +3,9 @@
  * follower cursor advance and every rewind (a generation change), and is the
  * one place the node's L1-derived state catches up with the follower:
  *
- * - it reads the event projection at the follower's current view (P2) and
+ * - it reads the event projection at the follower's current view and
  *   hands the whole set to a sink, which ingests the admissions it lacks,
- *   moves locations and finds orphaned admissions (ruling 3);
+ *   moves locations and finds orphaned admissions;
  * - it then runs its typed hooks, which recompute from the change, in a
  *   fixed order.
  *
@@ -179,9 +179,9 @@ const refusalDetail = (refusal: EventRefusal): string =>
  * `DRIVER_HOOK_ORDER`; a hook returns a hold to keep the node unready.
  */
 export type DriverHooks = Readonly<{
-  /** The landed state queue (P1), its health and the head signal. */
+  /** The landed state queue, its health and the head signal. */
   landedStateQueue?: DriverHook;
-  /** Inclusion of events in foreign blocks (P3 beyond own blocks). */
+  /** Inclusion of events in foreign blocks, beyond the node's own. */
   foreignBlockInclusion?: DriverHook;
   /** The correction recompute after a rewind. */
   correctionRecompute?: DriverHook;
@@ -206,7 +206,7 @@ export const DRIVER_HOOK_ORDER = [
   "forcedOrderIngestion",
 ] as const satisfies readonly (keyof DriverHooks)[];
 
-/** Every event of the projection at the view, both lists (P2). */
+/** Every event of the projection at the view, both lists. */
 export type IngestionPlan = Readonly<{
   view: View;
   events: readonly ProjectedEvent[];

@@ -5,8 +5,8 @@
  * derives this operator's membership from it and publishes both.
  *
  * - Membership is a view of the facts: a removal raises `operator_removed`
- *   and a later read without it (a rollback that undid it, a re-activation)
- *   clears it. No journal, no provider, no exit.
+ *   and shuts the node down (`publishOperatorMembership`). No journal, no
+ *   provider.
  * - The evidence that this operator was once active outlives the facts'
  *   retention through the activity record (`activity.ts`), written the first
  *   time the set holds an own active-node row, at any landed depth, and

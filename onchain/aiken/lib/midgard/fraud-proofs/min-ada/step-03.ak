@@ -1,4 +1,4 @@
-//// Q27 min-Ada predicate step. The preceding step opened the claimed output;
+//// min-Ada predicate step. The preceding step opened the claimed output;
 //// this step scans it to its descriptor and applies the compiled production
 //// min-Ada predicate.
 

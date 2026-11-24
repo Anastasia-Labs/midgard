@@ -120,7 +120,7 @@ export const driveDirectHandoffRegression = async ({
         await publishPlainReferenceScriptUtxo({
           lucid: ownerLucid,
           script: role.spendingScript,
-          label: "N6 handoff regression",
+          label: "handoff regression",
         })
       ).utxo,
     );
@@ -144,15 +144,15 @@ export const driveDirectHandoffRegression = async ({
     const lucid = asProver ? ownerLucid : strangerLucid;
     let outputIndex: bigint | undefined;
     const spend = ((ctx) => {
-      SDK.requireOwnSpendPurpose(ctx, thread, "N6 handoff");
+      SDK.requireOwnSpendPurpose(ctx, thread, "handoff");
       outputIndex = SDK.requireUniqueOutputIndex(
         ctx.outputs,
         computationThreadOutputPredicate({ address: destination, datum, unit }),
-        "N6 handoff output",
+        "handoff output",
       );
       return redeemer(
         {
-          input_index: SDK.requireInputIndex(ctx, thread, "N6 handoff input"),
+          input_index: SDK.requireInputIndex(ctx, thread, "handoff input"),
           output_index: outputIndex,
         },
         (index) =>
@@ -160,7 +160,7 @@ export const driveDirectHandoffRegression = async ({
             planned: plan(index).openingPlan,
             referenceInputs: ctx.referenceInputs,
             certificatePolicyId: certificate,
-            label: "N6 handoff opening",
+            label: "handoff opening",
           }),
       );
     }) satisfies BuildTxWithRedeemer;
@@ -191,7 +191,7 @@ export const driveDirectHandoffRegression = async ({
     expect(measurement.executionSteps).toBeLessThanOrEqual(8_000_000_000n);
     const hash = await signed.submit();
     await lucid.awaitTx(hash);
-    if (outputIndex === undefined) throw new Error("N6 handoff output absent");
+    if (outputIndex === undefined) throw new Error("handoff output absent");
     thread = (
       await lucid.utxosByOutRef([
         { txHash: hash, outputIndex: Number(outputIndex) },
@@ -480,7 +480,7 @@ export const driveDirectHandoffRegression = async ({
     }
   }
   console.log(
-    "N6 actual handoff regression",
+    "actual handoff regression",
     JSON.stringify({
       family,
       empty,

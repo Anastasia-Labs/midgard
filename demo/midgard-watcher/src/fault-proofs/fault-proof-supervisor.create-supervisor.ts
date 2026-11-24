@@ -107,7 +107,7 @@ export const createSupervisor = (input: {
   readonly nowMs: () => number;
   readonly dependencies: SupervisorDependencies;
   readonly exposeUnsafeRunnerForTest: boolean;
-  /** Holds each open objective's L1 history past k (E1 ruling). */
+  /** Holds each open objective's L1 history past k. */
   readonly proofRetention?: WatcherProofRetention;
   /** What a fresh process does after requeueing work after journal_busy. */
   readonly journalBusyRequeue?: WatcherJournalBusyRequeue;
@@ -275,7 +275,7 @@ export const createSupervisor = (input: {
     if (processedContexts.size > MAX_RECOVERABLE_WORKFLOWS)
       processedContexts.delete(processedContexts.keys().next().value!);
   };
-  // One finality threshold (plan section 9: depth > k is final): a completion
+  // One finality threshold (depth > k is final): a completion
   // applies only beyond rollback recovery, the depth its marker needs; one
   // verified at exactly k waits a block rather than finish unmarked with its
   // L1 history pinned. Without a k nothing is marked.

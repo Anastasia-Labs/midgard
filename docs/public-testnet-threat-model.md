@@ -156,8 +156,11 @@ establish alert delivery, incident ownership and drills.
   challengeable through the interactive dispute game (`validationTraceDispute`)
   for every execution step that fits in a single L1 transaction. Faults in
   excluded categories, wrong verdicts that depend on a step that does not fit,
-  fabricated forced transactions and the stated censorship hole retain
-  curated-operator trust.
+  fabricated or substituted forced transactions (which can censor a valid one)
+  and the other
+  [open fault-proof gaps](fault-proofs/remaining-gaps.md) retain
+  curated-operator trust. A wrongful forced rejection is challengeable under
+  every rejection reason.
 - Strikes are permissionless and rotate operator shifts. They can still rotate
   shifts during catch-up and slow its progress. The public P1 ejection threshold
   is set out of reach, so strikes do not provide an operator ejection mechanism.

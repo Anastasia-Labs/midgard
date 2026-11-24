@@ -292,7 +292,7 @@ const run = <R>(
 ) =>
   Effect.gen(function* () {
     const decoded = yield* decodeQueue(queue);
-    if (decoded === undefined) return undefined; // P1 holds an unhealthy queue
+    if (decoded === undefined) return undefined; // the read holds an unhealthy queue
     const { root, nodes, point } = decoded;
     const holds: DriverHold[] = [];
     let read: QueueHistory | undefined;
@@ -438,7 +438,7 @@ const writeRefusedHold = (error: unknown) => {
 };
 
 /**
- * Processes the landed queue `queue` (a healthy P1 read at the run's view).
+ * Processes the landed queue `queue` (a healthy read at the run's view).
  * Never fails: what it cannot do yet is the hold it returns.
  */
 export const processLandedQueue = <R>(

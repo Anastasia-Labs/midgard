@@ -188,7 +188,7 @@ export const REPOSITORY_ROOT = fileURLToPath(
 );
 
 /**
- * The committee node cannot be started against this run (P27(8), P31): a file
+ * The committee node cannot be started against this run: a file
  * it needs is missing, its DA libp2p runtime could not be produced, or its
  * runtime manifest's peer set does not admit its libp2p identity. A missing
  * file or a refused runtime stops the journey before any transaction; a
@@ -198,7 +198,7 @@ export const REPOSITORY_ROOT = fileURLToPath(
 export class DaBondPoolCommitteeUnavailableError extends Error {
   constructor(problem: string, options?: ErrorOptions) {
     super(
-      `The DA bond pool journey cannot start its committee node (ruling P27): ${problem}`,
+      `The DA bond pool journey cannot start its committee node: ${problem}`,
       options,
     );
     this.name = "DaBondPoolCommitteeUnavailableError";
@@ -258,7 +258,7 @@ export type LiveDaBondPoolJourneyPort = DaBondPoolJourneyPort &
     challengerAddress: string;
     /**
      * Whether the committee node still runs. False after a passed journey
-     * only when the checked stop at the end of step 6 ran (P27(3)); `dispose`
+     * only when the checked stop at the end of step 6 ran; `dispose`
      * tears a running node down without those checks.
      */
     committeeRunning: () => boolean;

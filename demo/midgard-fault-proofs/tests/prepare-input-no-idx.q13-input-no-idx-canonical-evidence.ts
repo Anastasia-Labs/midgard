@@ -18,7 +18,7 @@ import {
   violatingBlock,
 } from "./prepare-input-no-idx.make-native-tx.js";
 
-describe("Q13 input-no-idx canonical evidence", () => {
+describe("input-no-idx canonical evidence", () => {
   it("selects the input whose producing transaction is committed but has no such output", async () => {
     const block = await violatingBlock();
     const output = await prepareInputNoIdxFromTransactions({

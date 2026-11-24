@@ -72,9 +72,9 @@ export const watcherJournalUnavailable = (journalRoot: string): string | null =>
 
 /**
  * The process's one connection to the journals under `journalRoot`. The
- * first open migrates and verifies every journal in full; later opens share
- * that connection and must present the same key. A failed open throws an
- * integrity error (latched), a configuration error, or
+ * first open creates or checks the schema and verifies every journal in
+ * full; later opens share that connection and must present the same key. A
+ * failed open throws an integrity error (latched), a configuration error, or
  * `WatcherJournalUnavailableError`, which the next open retries.
  */
 export const openWatcherJournalDatabase = (input: {

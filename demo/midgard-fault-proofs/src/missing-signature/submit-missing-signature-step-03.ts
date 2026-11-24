@@ -4,7 +4,7 @@
  * The lift: hands the validator the verification-key preimage of the accused
  * signer hash (`get_verification_key_hash(vkey) == hash`, blake2b-224 on raw
  * bytes) and forwards the anchor. The one check the validator makes is made
- * locally first with the exact twin, so a wrong preimage — the §7.2
+ * locally first with the exact twin, so a wrong preimage — the
  * `UnknownVkeyPreimage` corner's tell — is refused before anything is paid
  * for. Pure computation on-chain: no reference inputs beyond the optional
  * step script, no withdrawal, no opening.
@@ -104,7 +104,7 @@ export const buildMissingSignatureStep03 = async ({
   const derivedHash = missingSignatureVkeyHash(vkey);
   if (derivedHash !== state.missing_required_signer_hash) {
     throw missingSignatureSubmitError(
-      `supplied verification key hashes to ${derivedHash}, not the thread's accused required signer ${state.missing_required_signer_hash} — no known preimage means this finding is the §7.2 UnknownVkeyPreimage corner, which this family cannot prove.`,
+      `supplied verification key hashes to ${derivedHash}, not the thread's accused required signer ${state.missing_required_signer_hash} — no known preimage means this finding is the UnknownVkeyPreimage corner, which this family cannot prove.`,
     );
   }
 

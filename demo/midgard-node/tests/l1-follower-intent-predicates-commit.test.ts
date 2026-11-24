@@ -5,7 +5,7 @@
  * - its block journal row exists, the tail it spends is still the landed
  *   tail, and the scheduler names this operator at the lower validity bound;
  *   each failing condition is `false`;
- * - the queue's head allows the append (the Q61 fence,
+ * - the queue's head allows the append (the append fence,
  *   `state-queue.ak:137-158`): a Challenged head, a head with a completed
  *   fraud proof, or an Unattested head whose timeout boundary the inclusive
  *   upper validity bound reaches is `false`;

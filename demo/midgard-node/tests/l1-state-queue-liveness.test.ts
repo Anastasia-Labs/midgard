@@ -3,7 +3,7 @@
  * from the node database: an unhealthy queue stops every proposal with its
  * named reason while reads keep serving its walk, and startup waits on it
  * without failing or exiting, naming what it waits on, until it is healthy.
- * The wait for P1 to show a confirmed transaction re-reads it only while it
+ * The wait for the landed queue to show a confirmed transaction re-reads it only while it
  * waits on the follower or the database failed transiently, at most its
  * retries; an unhealthy queue or any other read failure ends it at once.
  * (`/readyz` naming `state_queue_unhealthy` while the process stays live is
@@ -167,7 +167,7 @@ describe("the landed state queue's liveness", () => {
         expect(yield* landedStateQueueStartupReasons).toEqual([
           "l1_follower_catching_up",
         ]);
-        // At the tip without a view: P1 cannot be read.
+        // At the tip without a view: the queue cannot be read.
         yield* Ref.set(globals.L1_FOLLOWER, runningFollower());
         yield* clearFollowerView;
         expect(yield* landedStateQueueStartupReasons).toEqual([
@@ -206,7 +206,7 @@ describe("the landed state queue's liveness", () => {
   });
 });
 
-/** The real database, counting P1's read transactions. */
+/** The real database, counting the queue's read transactions. */
 const countingReads = <A, E, R>(
   effect: Effect.Effect<A, E, R | SqlClient.SqlClient>,
   reads: { count: number },
@@ -243,7 +243,7 @@ const snapshotWhen = (landed: () => boolean) =>
     ),
   );
 
-describe("the wait for P1 to show a transaction, by failure class", () => {
+describe("the wait for the landed queue to show a transaction, by failure class", () => {
   it("re-reads while the queue does not show it yet, and fails once its retries run out", async () => {
     const globals = await Effect.runPromise(
       Globals.pipe(Effect.provide(Globals.Default)),

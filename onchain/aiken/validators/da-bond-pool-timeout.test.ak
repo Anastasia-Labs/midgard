@@ -1,5 +1,5 @@
 //// End-to-end coverage of the availability timeout with the pooled DA bond
-//// slash (spec #685 §5; tickets #687, #693).
+//// slash (spec #685; tickets #687, #693).
 ////
 //// Each scenario is ONE Transaction: the first step of an unavailable-block
 //// removal, taken on the Idle correction lock. It is built as the ledger

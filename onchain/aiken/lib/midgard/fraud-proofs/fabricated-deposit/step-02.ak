@@ -118,7 +118,8 @@ pub fn verify_deposit_evidence_v1(
 // Test-fixture support for this family's step selectors, unreachable from any
 // on-chain validator entry point. It extends
 // `midgard/fraud_proofs/native_binding_fixture_v1` rather than editing it,
-// because Q39 and Q40 must keep disjoint family paths.
+// because the fabricated-deposit and fabricated-withdrawal families must keep
+// disjoint paths.
 
 /// Inclusion time of the fixture's authentic deposit event, inside the
 /// fixture header's `(start_time, end_time]` window (10, 20].

@@ -175,7 +175,7 @@ export type ManifestBoundDaHashPreimageWorkflow =
   ManifestBoundLinearFamilyWorkflow<"daHashPreimage", false>;
 
 /**
- * Q44 manifest-bound definition. It is deliberately not an admitted runner
+ * The da-hash-preimage manifest-bound definition. It is deliberately not an admitted runner
  * yet: the generic canonical classifier cannot route a raw source-leaf defect,
  * so the workflow launches through the dedicated evidence route below rather
  * than the generic retained-DA runner. Readiness remains missing until that
@@ -223,7 +223,7 @@ export const createManifestBoundDaHashPreimageWorkflow = (
   );
 
 /**
- * Exact public-DA Q44 route into the shared durable lifecycle. It does not
+ * Exact public-DA da-hash-preimage route into the shared durable lifecycle. It does not
  * alias the generic run-or-resume: the raw source-leaf defect is routed by
  * the authenticated evidence fetch, not by a canonical replayer, so the
  * dedicated orchestrator entry stays the launch path.

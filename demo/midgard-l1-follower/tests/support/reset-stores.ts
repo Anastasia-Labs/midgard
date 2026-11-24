@@ -4,17 +4,17 @@ import {
   type DialectName,
   type FactStore,
   type FactStoreOptions,
-  type MigrationSet,
   openPostgresBackend,
   openPostgresFactStore,
   openSqliteBackend,
   openSqliteFactStore,
+  type SchemaSet,
   type SqlBackend,
 } from "../../src/index.js";
 import {
   FIXTURE_DERIVATION,
   FIXTURE_TABLES,
-  fixtureMigrations,
+  fixtureSchema,
 } from "./fixture.js";
 import type { testDatabases } from "./postgres.js";
 import { options } from "./small-chain.js";
@@ -40,15 +40,15 @@ CREATE TABLE role_content (
 `;
 };
 
-export const roleMigrations = (dialect: DialectName): MigrationSet => ({
+export const roleSchema = (dialect: DialectName): SchemaSet => ({
   namespace: "role",
-  migrations: [{ id: "0001_role_tables", sql: roleSql(dialect) }],
+  sql: roleSql(dialect),
 });
 
 export const roleOptions = (dialect: DialectName): FactStoreOptions => ({
   ...options(2),
   temporalTables: FIXTURE_TABLES,
-  migrations: [fixtureMigrations(dialect), roleMigrations(dialect)],
+  schemas: [fixtureSchema(dialect), roleSchema(dialect)],
   derivations: [FIXTURE_DERIVATION],
 });
 

@@ -108,7 +108,7 @@ type AlreadySlashedRemoveParams = {
 
 /**
  * The fraud-prover reward a bond-consuming removal must route (F04 §2.3;
- * 2026-08-11 owner ruling 7, D3).
+ * 2026-08-11 owner ruling).
  *
  * `proverEnterpriseAddress` is the enterprise address of the `fraud_prover`
  * key hash carried by the fraud-proof token's datum — never a submitter,

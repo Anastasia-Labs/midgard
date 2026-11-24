@@ -15,7 +15,7 @@
  * 2. the exact `DaPayloadEnvelopeV1` bytes retrieved over the public retained-DA
  *    protocol (`public_or_permissionless_da`),
  *
- * reduced by the Q03 evidence-source API to a `CanonicalBlockEvidence` whose
+ * reduced by the evidence-source API to a `CanonicalBlockEvidence` whose
  * transaction leaves re-commit to the header's counted `transactions_root`
  * under `TransactionsV1RootDomain`. Two committed transactions of that single
  * block are the whole evidence: the **bad** transaction, which spends

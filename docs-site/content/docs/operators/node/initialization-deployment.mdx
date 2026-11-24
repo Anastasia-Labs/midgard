@@ -8,13 +8,13 @@ identity that every operator and watcher must agree on. This page covers that fl
 
 <Callout type="error" title="This flow writes to Cardano L1">
   `init` initializes **protocol state on Layer 1**, not local node state. Local
-  database state is handled separately by
-  [`db:migrate`](/docs/operators/node/database). Once `init` has succeeded, the
-  deployment exists on chain. The command recognizes a complete existing
-  deployment rather than creating another one; it can also reconcile PHAS
-  registration. Prefer attach/resume for ongoing operation. Never pair a wiped
-  local database with an existing on-chain deployment. See [Compatibility &amp;
-  State-Reset Rules](/docs/operators/node/compatibility-rules).
+  database state is handled separately: the node creates its [database
+  schema](/docs/operators/node/database) when it starts. Once `init` has
+  succeeded, the deployment exists on chain. The command recognizes a complete
+  existing deployment rather than creating another one; it can also reconcile
+  PHAS registration. Prefer attach/resume for ongoing operation. Never pair a
+  wiped local database with an existing on-chain deployment. See [Compatibility
+  &amp; State-Reset Rules](/docs/operators/node/compatibility-rules).
 </Callout>
 
 ## Prerequisites
@@ -24,7 +24,7 @@ identity that every operator and watcher must agree on. This page covers that fl
   [Local Development](/docs/getting-started/local-dev).
 - A reachable [L1 backend](/docs/getting-started/l1-backend) and a funded operator
   wallet.
-- Applied database migrations (`db:migrate`).
+- PostgreSQL with an empty database or one holding the node's schema.
 - A node never deploys or initializes the protocol at startup.
 
 ## The flow

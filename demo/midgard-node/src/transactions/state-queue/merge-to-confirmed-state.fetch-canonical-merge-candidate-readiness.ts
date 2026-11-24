@@ -128,7 +128,7 @@ export const fetchCanonicalMergeCandidateReadiness = (
   SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
-    // The root and its link, from the healthy landed queue (P1).
+    // The root and its link, from the healthy landed queue.
     const queue = yield* requireLandedStateQueue(
       stateQueueContractOf(fetchConfig),
       "merge",
@@ -274,7 +274,7 @@ export const preflightDecodeBlockTxs = (
     { concurrency: "unbounded" },
   );
 
-/** Blocks in the healthy landed queue (P1), published to the queue gauges. */
+/** Blocks in the healthy landed queue, published to the queue gauges. */
 export const getStateQueueLength = (
   fetchConfig: SDKStateQueue.StateQueueFetchConfig,
 ): Effect.Effect<

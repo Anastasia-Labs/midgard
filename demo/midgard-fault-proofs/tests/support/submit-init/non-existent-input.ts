@@ -40,7 +40,7 @@ export const buildNonExistentInputFixture = async ({
   /**
    * How many inputs the challenged transaction spends. The default is the
    * fixture's minimal one; larger values drive the spend-input preimage
-   * cardinality axis (finding Q1X-F6) with the phantom input last.
+   * cardinality axis with the phantom input last.
    */
   readonly spendInputCardinality?: number;
 } = {}): Promise<{

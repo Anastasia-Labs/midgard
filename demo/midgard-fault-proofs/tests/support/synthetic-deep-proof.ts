@@ -107,8 +107,9 @@ export const syntheticDeepMembershipProof = ({
 // ---------------------------------------------------------------------------
 // Several deep openings of ONE trie (issue #549)
 //
-// Q12 and Q14 open the challenged block's transactions trie exactly once, so a
-// standalone ladder per proof is all #545 needed. Q10 and Q11 do not: the
+// The invalid-range and zero-input families open the challenged block's
+// transactions trie exactly once, so a standalone ladder per proof suffices.
+// The double-spend and no-input families do not: the
 // double-spend family opens the SAME root twice (tx1 at step-01, tx2 at
 // step-02) and the no-input family opens it twice as well (the challenged
 // transaction's membership at step-01, the phantom input's producing

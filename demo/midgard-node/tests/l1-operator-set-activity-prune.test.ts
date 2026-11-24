@@ -6,7 +6,6 @@
  * reads `operator_removed`; on Postgres also through the node database's
  * record, in the prune step's transaction.
  */
-import { readFileSync } from "node:fs";
 
 import {
   type FactStore,
@@ -19,6 +18,7 @@ import { PgClient } from "@effect/sql-pg";
 import { Effect, Redacted } from "effect";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { NodeSchema } from "../src/database/index.js";
 import {
   databaseActivityRecord,
   memoryActivityRecord,
@@ -171,19 +171,7 @@ describe("the node database's activity record in the follower prune step (postgr
           PgClient.layer({ url: Redacted.make(url), maxConnections: 1 }),
         ),
       );
-    await run(
-      Effect.flatMap(SqlClient.SqlClient, (sql) =>
-        sql.unsafe(
-          readFileSync(
-            new URL(
-              "../src/database/migrations/sql/0003_operator_membership.sql",
-              import.meta.url,
-            ),
-            "utf8",
-          ),
-        ),
-      ),
-    );
+    await run(NodeSchema.ensure);
     const record = databaseActivityRecord({
       run,
       hubOraclePolicyId: "ab".repeat(28),

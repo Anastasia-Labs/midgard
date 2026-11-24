@@ -147,7 +147,7 @@ const artifactInput = (
 };
 
 /**
- * Reopens the counted transactions root and re-runs Q44 from the artifact's raw
+ * Reopens the counted transactions root and re-runs the rule over the artifact's raw
  * leaves. No verdict, proof, or decoded transaction claim is trusted from the
  * durable artifact.
  */

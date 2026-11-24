@@ -9,11 +9,11 @@ import {
   openPostgresFactStore,
   openSqliteFactStore,
 } from "../src/index.js";
-import { followerMigrations } from "../src/schema/follower-migrations.js";
+import { followerSchema } from "../src/schema/follower-schema.js";
 import { declaredTables } from "../src/schema/lint.js";
 import { testDatabases } from "../tests/support/postgres.js";
 import {
-  benchMigrations,
+  benchSchema,
   linearFit,
   now,
   Workload,
@@ -59,13 +59,12 @@ afterAll(async () => {
 });
 
 const TABLES = [
-  ...declaredTables([
-    followerMigrations("postgres"),
-    benchMigrations("postgres"),
-  ]).map(({ table, tableClass }) => ({
-    table,
-    tableClass,
-  })),
+  ...declaredTables([followerSchema("postgres"), benchSchema("postgres")]).map(
+    ({ table, tableClass }) => ({
+      table,
+      tableClass,
+    }),
+  ),
 ];
 
 const counts = (store: FactStore): Promise<Record<string, number>> =>

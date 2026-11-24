@@ -1,5 +1,5 @@
 /**
- * Out-of-process runner for the C26 maximum-depth CML work.
+ * Out-of-process runner for the maximum-depth CML work.
  *
  * Each maximum-depth operation runs in its own short-lived process, on Node's
  * default machine stack unless the caller sets one with `--stack-size`, so

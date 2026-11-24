@@ -269,10 +269,7 @@ describe("second-instance workflow", () => {
     expect(
       node.volumes?.find((volume) => volume.target === "/ipc")?.source,
     ).toBe(join(fixture.primary.directory, "cardano/ipc"));
-    expect(Object.keys(node.depends_on ?? {}).sort()).toEqual([
-      "midgard-node-migrate",
-      "postgres",
-    ]);
+    expect(Object.keys(node.depends_on ?? {})).toEqual(["postgres"]);
   });
   it("confirms an attached node on a later run without attaching or starting it again", async () => {
     const { processes, run } = await attachedRun();

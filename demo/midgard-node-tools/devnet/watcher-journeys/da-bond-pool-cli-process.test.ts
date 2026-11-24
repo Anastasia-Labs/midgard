@@ -66,7 +66,7 @@ const cli = (
 
 const CHAIN = ["--manifest", "/run/deploymentInfo/manifest.json"];
 
-describe("the da-bond CLI chain (P18, P27(6))", () => {
+describe("the da-bond CLI chain", () => {
   it("tops up through status, top-up and status, with the seed only in the top-up's env", async () => {
     const runner = fakeRunner();
     const confirmed: string[] = [];

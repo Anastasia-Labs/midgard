@@ -147,7 +147,7 @@ const canonicalEvidence = async (tx: ReturnType<typeof nativeTx>) => {
   };
 };
 
-describe("Q35 network-id DA-first evidence", () => {
+describe("network-id DA-first evidence", () => {
   it("orders a body mismatch before output mismatches", () => {
     expect(
       findNetworkIdFaults({

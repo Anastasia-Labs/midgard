@@ -14,7 +14,7 @@ import { landedStateQueueUTxOs } from "../services/landed-state-queue.js";
 import { outRefLabel } from "../tx-context.js";
 import { type OperatorDaConfig } from "./da-attestation.fetch-da-attestation-reference-scripts.js";
 
-/** The landed queue's blocks without a DA attestation (P1, never L1). */
+/** The landed queue's blocks without a DA attestation (never L1). */
 export const fetchUnattestedHeaders = (
   contracts: SDK.MidgardValidators,
   headerHash?: string,
@@ -74,11 +74,10 @@ export const fetchUnattestedHeaders = (
 /**
  * Every attestation witness this process can produce for `headerHash`.
  *
- * Since Q63 the governed floor puts `da_threshold` at two or more, so a single
- * operator signature can never reach threshold alone. A node holding more than
- * one DA key (dev and emulator bootstrap, via `DA_COSIGNER_SEED_PHRASE`)
- * contributes one genuine Ed25519 signature per key here; a production node
- * holds one key and the remaining witnesses arrive from peers over libp2p.
+ * A node holding more than one DA key (dev and emulator bootstrap, via
+ * `DA_COSIGNER_SEED_PHRASE`) contributes one genuine Ed25519 signature per key
+ * here; a production node holds one key and any further witnesses its
+ * threshold needs arrive from peers over libp2p.
  *
  * The signer index is looked up in the on-chain committee rather than assumed,
  * because the committee is emitted sorted-unique and the operator's key is not
@@ -252,7 +251,7 @@ export const DA_ATTESTATION_APPLY_POOL_CHURN_ATTEMPTS = 3;
 
 /**
  * Runs `apply` (build, sign, submit) with a bounded retry on pool outref
- * churn (decision G8). Apply reads the pool as a reference input, and any
+ * churn. Apply reads the pool as a reference input, and any
  * TopUp, Slash or withdrawal step spends the pool and invalidates a built
  * Apply. A failed attempt is retried only when the pool's outref changed
  * since the attempt read it, that is, when the pool moved rather than the

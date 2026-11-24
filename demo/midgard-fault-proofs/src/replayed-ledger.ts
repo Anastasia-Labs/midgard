@@ -1,5 +1,5 @@
 /**
- * The ledger a watcher keeps by replaying blocks (DS-3).
+ * The ledger a watcher keeps by replaying blocks.
  *
  * No DA payload carries a UTxO set, so the ledger after a block is derived by
  * replaying that block's retained payload over its parent's ledger with the

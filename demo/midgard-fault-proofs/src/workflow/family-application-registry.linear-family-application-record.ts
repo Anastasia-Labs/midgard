@@ -52,7 +52,7 @@ import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-
 import { withDoubleSpendOwnThreadReclaim } from "./own-thread-reclaim.special-families.js";
 
 /**
- * Q44 is the one linear family that does not launch through the generic
+ * da-hash-preimage is the one linear family that does not launch through the generic
  * retained-DA runner: it fetches its raw source leaf through the dedicated
  * orchestrator entry, so no canonical replayer is consulted.
  *

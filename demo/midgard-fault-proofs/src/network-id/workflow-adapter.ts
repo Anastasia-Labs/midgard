@@ -1,7 +1,7 @@
 /**
- * Resumable Q35 workflow adapter for a current-head proof whose field-2
- * opening fits inline. Larger tiered openings remain a fail-closed Q38
- * dependency because every publication/certificate needs its own workflow
+ * Resumable network-id workflow adapter for a current-head proof whose field-2
+ * opening fits inline. Larger tiered openings remain fail-closed
+ * because every publication/certificate needs its own workflow
  * action before the final proof transaction.
  */
 

@@ -31,7 +31,7 @@ pub type ResolutionScheduleTerminalVectorV1 {
 
 /// One honest PlutusV3 execution selection over the maximum program
 /// envelope, plus the tampered successor the same evidence must refuse.
-/// Shared by the selection test below and the R5 item 1 route-agreement
+/// Shared by the selection test below and the route-agreement
 /// controls at the end of this module.
 pub type CekSelectionFixtureV1 {
   pre: validation_trace_v1.ValidationMachineStateV1,

@@ -230,8 +230,7 @@ pub fn hash_work_witness(
 }
 
 /// The rejection preimage: the domain-separated blake2b-256 of the reason's
-/// Plutus Data CBOR. The machine's terminal rejection and the forced-verdict
-/// check both bind this hash.
+/// Plutus Data CBOR. The machine's terminal rejection binds this hash.
 pub fn hash_rejection_code(reason: RejectionReasonV1) -> ByteArray {
   rejection_code_domain
     |> bytearray.concat(cbor.serialise(reason))

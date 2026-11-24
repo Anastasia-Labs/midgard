@@ -43,10 +43,10 @@ export {
   type FollowChainOptions,
   FOLLOWER_APPLY_STUCK,
   FOLLOWER_CATCHING_UP,
-  FOLLOWER_MIGRATION_FAILED,
   FOLLOWER_NODE_BEHIND,
   FOLLOWER_NODE_UNAVAILABLE,
   FOLLOWER_PRUNE_FAILING,
+  FOLLOWER_SCHEMA_REFUSED,
   FOLLOWER_TRACKED_SET_CHANGED,
   FOLLOWER_TRANSIENT_BUDGET_MS,
   FOLLOWER_TRANSIENT_EXHAUSTED,
@@ -144,9 +144,9 @@ export {
 } from "./intents/reconcile.js";
 export {
   INTENT_EVENT_KINDS,
-  INTENT_MIGRATION_NAMESPACE,
+  INTENT_SCHEMA_NAMESPACE,
   type IntentEventKind,
-  intentMigrations,
+  intentSchema,
 } from "./intents/schema.js";
 export {
   deriveIntentStatusesIn,
@@ -239,16 +239,15 @@ export {
   RoleL1AccessRefusedError,
 } from "./role-l1-env.js";
 export {
-  FOLLOWER_MIGRATION_NAMESPACE,
-  followerMigrations,
-} from "./schema/follower-migrations.js";
-export {
-  applyMigrations,
+  applySchemas,
   FOLLOWER_BOOKKEEPING_DDL,
-  FollowerMigrationError,
-  type Migration,
-  type MigrationSet,
-} from "./schema/migrate.js";
+  FollowerSchemaError,
+  type SchemaSet,
+} from "./schema/apply.js";
+export {
+  FOLLOWER_SCHEMA_NAMESPACE,
+  followerSchema,
+} from "./schema/follower-schema.js";
 export {
   type Dialect,
   type DialectName,

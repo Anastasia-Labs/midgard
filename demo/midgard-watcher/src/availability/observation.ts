@@ -51,7 +51,7 @@ export const createWatcherAvailabilityObservation = (input: {
   confirmationDepth: number;
   deployment: SDKDa.DaAvailabilityDeployment;
   scope?: SDKDa.DaAvailabilityReadScope;
-  /** Resolves hashed DAAT datums during commitment recovery (E1). */
+  /** Resolves hashed DAAT datums during commitment recovery. */
   lucid?: Pick<LucidEvolution, "config">;
 }) => {
   const { confirmationDepth } = input;
@@ -179,7 +179,7 @@ export const createWatcherAvailabilityObservation = (input: {
     /**
      * The full commitment behind an `Attested{commitment_hash}` node, recovered
      * from the node's canonical Apply transaction at the finalized point and
-     * verified against that hash (spec #685 E1).
+     * verified against that hash (spec #685).
      */
     async attestedCommitment(
       observation: WatcherAuthenticatedStateQueueObservation,
@@ -243,7 +243,7 @@ export const createWatcherAvailabilityObservation = (input: {
     },
     /**
      * Whether this actor's challenge workflow for `headerHash` ended in a
-     * terminal step someone else landed (P20), walked from its confirmed Open
+     * terminal step someone else landed, walked from its confirmed Open
      * at the finalized point with the same follower reads as the foreign
      * spends of {@link operation}. Every spend is verified from its raw bytes
      * and counted `finalityDepth` deeper than the point it lies below. A

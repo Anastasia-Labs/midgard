@@ -23,11 +23,11 @@ export const FOLLOWER_WAITING = "l1_follower_waiting";
  */
 export const FOLLOWER_APPLY_STUCK = "l1_follower_apply_stuck";
 /**
- * The store refused its migrations at start (an applied migration changed
- * or is unknown): every start fails the same way, so the loop stops at once
- * and an operator has to look; the process stays up, unready.
+ * The store refused its schema at start (the database was created by a
+ * different schema text): every start fails the same way, so the loop stops
+ * at once and an operator has to look; the process stays up, unready.
  */
-export const FOLLOWER_MIGRATION_FAILED = "l1_follower_migration_failed";
+export const FOLLOWER_SCHEMA_REFUSED = "l1_follower_schema_refused";
 /**
  * Transient store failures (`store`, `apply`: the store did not answer) went
  * on for `transientBudgetMs` with no event settled between them, and the
@@ -87,7 +87,7 @@ export type FollowReadinessReason =
   | typeof FOLLOWER_CATCHING_UP
   | typeof FOLLOWER_WAITING
   | typeof FOLLOWER_APPLY_STUCK
-  | typeof FOLLOWER_MIGRATION_FAILED
+  | typeof FOLLOWER_SCHEMA_REFUSED
   | typeof FOLLOWER_TRANSIENT_EXHAUSTED
   | typeof FOLLOWER_NODE_UNAVAILABLE
   | typeof FOLLOWER_NODE_BEHIND
@@ -290,10 +290,10 @@ export const readinessOf = (
           : `node tip slot ${tipSlot} is ${Math.round(lagMs / 1000)} s behind wall-clock time ${bound}`,
     });
   }
-  if (status.stuck?.at === "migration")
+  if (status.stuck?.at === "schema")
     reasons.push({
-      reason: FOLLOWER_MIGRATION_FAILED,
-      detail: `the store refused its migrations: ${status.stuck.detail}`,
+      reason: FOLLOWER_SCHEMA_REFUSED,
+      detail: `the store refused its schema: ${status.stuck.detail}`,
     });
   else if (status.stuck !== null)
     reasons.push({

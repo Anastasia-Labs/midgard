@@ -267,13 +267,13 @@ export const tryRunDaBondPoolJourney = async (
     else ctx.notObservable(name, detail);
   };
 
-  /** P16: this observation's committee view is the node process's. */
+  /** This observation's committee view is the node process's. */
   const checkCommitteeProcess = (
     ctx: StageContext,
     observed: DaBondPoolJourneyAlerts,
     label: string,
   ): void => {
-    const name = `P16: ${label}: committee reasons from the da-committee-node /readyz, events from its stderr`;
+    const name = `committee view: ${label}: committee reasons from the da-committee-node /readyz, events from its stderr`;
     const process = observed.committee.process;
     if (process === undefined) {
       missingProcess(
@@ -283,7 +283,7 @@ export const tryRunDaBondPoolJourney = async (
       );
       return;
     }
-    // P27: the reasons are exactly the body's pool reasons, so a reason
+    // The reasons are exactly the body's pool reasons, so a reason
     // raised or cleared is checked against the node's own answer; a 503 alone
     // proves nothing, since a signerless node is 503 for other reasons.
     const problems: string[] = [];
@@ -324,7 +324,7 @@ export const tryRunDaBondPoolJourney = async (
   };
 
   /**
-   * P27 negative control: the first observation after a node start reads a
+   * Negative control: the first observation after a node start reads a
    * backed, Bonded pool, so the node reports no pool reason and no event; a
    * later event is then a real transition, never a first read.
    */
@@ -356,7 +356,7 @@ export const tryRunDaBondPoolJourney = async (
   };
 
   /**
-   * P27: the committee node holds no payload, so its availability responder
+   * The committee node holds no payload, so its availability responder
    * reports B1's challenge `unavailable` and never acts on it. Every
    * responder line since the previous observation is read, so the check
    * sees the whole challenge window when that observation preceded Open.
@@ -367,7 +367,7 @@ export const tryRunDaBondPoolJourney = async (
     headerHash: string,
   ): void => {
     const name =
-      "P27: the committee node reported B1's challenge unavailable and never acted on it";
+      "committee node: the committee node reported B1's challenge unavailable and never acted on it";
     const lines = observed.committee.process?.availabilityResponder;
     if (lines === undefined) {
       missingProcess(
@@ -407,7 +407,7 @@ export const tryRunDaBondPoolJourney = async (
       };
       if (typeof reported !== "string" || reported.toLowerCase() !== target)
         continue;
-      // P27(2): a payload-free node can only report B1 unavailable. Its
+      // A payload-free node can only report B1 unavailable. Its
       // actions carry `action` (on stdout); a failed execution carries none
       // and reads like a failure before execution, so every B1 failure
       // counts as acting.
@@ -426,7 +426,7 @@ export const tryRunDaBondPoolJourney = async (
     );
   };
 
-  /** P18: the transaction was submitted by the real da-bond CLI chain. */
+  /** The transaction was submitted by the real da-bond CLI chain. */
   const checkCli = (
     ctx: StageContext,
     label: string,
@@ -438,7 +438,7 @@ export const tryRunDaBondPoolJourney = async (
     if (cli === undefined) {
       missingProcess(
         ctx,
-        `P18: ${label} submitted by the real da-bond CLI`,
+        `CLI chain: ${label} submitted by the real da-bond CLI`,
         "the adapter ran the da-bond command functions in process",
       );
       return;
@@ -460,7 +460,7 @@ export const tryRunDaBondPoolJourney = async (
       txId: result.txId,
       chainAfter,
     }))
-      ctx.check(`P18: ${label}: ${found.name}`, found.ok, found.detail);
+      ctx.check(`CLI chain: ${label}: ${found.name}`, found.ok, found.detail);
   };
 
   const withdrawBegins = async (
@@ -799,7 +799,7 @@ export const tryRunDaBondPoolJourney = async (
       const after = await snapshot(ctx, "pool after Close");
       checkPoolUntouched(ctx, "pool untouched: no slash", before, after);
       const status = await blockStatus(ctx, b3, "B3 after Close");
-      // Close sets the node to Published (spec §2.3); a Published block may
+      // Close sets the node to Published; a Published block may
       // mature and merge before this read.
       ctx.require(
         "B3 is Published (or has since merged)",
@@ -815,7 +815,7 @@ export const tryRunDaBondPoolJourney = async (
         start.state === "bonded",
         describePool(start),
       );
-      // The committee node was restarted for this step (P27).
+      // The committee node was restarted for this step.
       const restarted = await alerts(ctx, "alerts before the withdrawal cycle");
       checkFreshStart(ctx, restarted, "alerts before the withdrawal cycle");
       await withdrawBegins(ctx, "begin withdraw #1");

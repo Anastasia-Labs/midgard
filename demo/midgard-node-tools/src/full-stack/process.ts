@@ -205,36 +205,6 @@ export class StackProcesses {
   deriveL1Origin(nonceTxHash: string, recorded: L1Origin) {
     return deriveL1Origin({ node: hostL1Node(this), nonceTxHash, recorded });
   }
-  /** The cluster that host commands reach at 127.0.0.1 on the stack's Postgres host port. */
-  async hostDatabaseIdentity(): Promise<string> {
-    const [{ SqlClient }, { PgClient }, { Effect, Redacted }] =
-      await Promise.all([
-        import("@effect/sql"),
-        import("@effect/sql-pg"),
-        import("effect"),
-      ]);
-    const query = Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const rows = yield* sql.unsafe<{ id: string }>(
-        "SELECT system_identifier::text AS id FROM pg_control_system()",
-      );
-      return rows[0]!.id;
-    });
-    return Effect.runPromise(
-      query.pipe(
-        Effect.provide(
-          PgClient.layer({
-            host: "127.0.0.1",
-            port: Number(this.env.MIDGARD_POSTGRES_HOST_PORT),
-            username: this.env.POSTGRES_USER,
-            password: Redacted.make(this.env.POSTGRES_PASSWORD ?? ""),
-            database: this.env.POSTGRES_DB,
-            maxConnections: 1,
-          }),
-        ),
-      ),
-    );
-  }
   compose(id: string, args: readonly string[], ...extraFiles: string[]) {
     return this.command(id, "bash", [
       "scripts/operator-compose.sh",

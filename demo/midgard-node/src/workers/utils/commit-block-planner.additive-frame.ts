@@ -20,7 +20,7 @@ export type AdditiveCommitFramePlan =
 
 /** Linear source scan plus ordered complete instants. Withdrawal effects never
  * subtract bytes, nor can a shared program or an earlier creator lower this
- * budget. Under-fill is the explicit C2 technical ruling; no exact maximal
+ * budget. Under-fill is accepted; no exact maximal
  * prefix or monotonic actual-serialization assumption is claimed. */
 export const selectAdditiveCommitFrame = ({
   initialWindow,

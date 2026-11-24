@@ -341,7 +341,7 @@ describe("follower raw reads on the simulator chain", () => {
 });
 
 describe("follower raw reads: collateral returns and pruning across rollbacks", () => {
-  it("a failed transaction's collateral return reads at index outputs.len() (ruling 6)", async () => {
+  it("a failed transaction's collateral return reads at index outputs.len()", async () => {
     const h = await harness();
     const A: SimTx = {
       inputs: [h.chain.outsideInput()],
@@ -391,7 +391,7 @@ describe("follower raw reads: collateral returns and pruning across rollbacks", 
     );
   });
 
-  it("prunes before and after deep rollbacks: retention exact, reads match the oracle (ruling 9)", async () => {
+  it("prunes before and after deep rollbacks: retention exact, reads match the oracle", async () => {
     const { w, A, a, B, b, unit, landedCommit, r, landedR } =
       await twinScenario();
     // Prune, then roll back the k blocks the pruning left.

@@ -130,7 +130,7 @@ const economicSource = ({
   };
 };
 
-describe("Q57 local Kupmios raw economic source", () => {
+describe("state-correction local Kupmios raw economic source", () => {
   it("derives exact fee and output value from matching raw sources", async () => {
     const fixture = economicSource({ kupoLovelace: "3000000" });
     await expect(

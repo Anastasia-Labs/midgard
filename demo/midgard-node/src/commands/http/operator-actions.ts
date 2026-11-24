@@ -11,7 +11,7 @@ import { COMMIT_ENDPOINT, INIT_ENDPOINT } from "./routes.js";
 
 /**
  * `GET /init`: initializes protocol state when startup policy and the landed
- * state queue (P1) allow it.
+ * state queue allow it.
  */
 export const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);

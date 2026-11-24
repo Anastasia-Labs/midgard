@@ -109,7 +109,7 @@ export const registerWalletViewTests = () => {
           );
           const elapsedMs = performance.now() - started;
           expect(elapsedMs).toBeLessThan(WITHDRAWAL_OUTREF_DECODE_BUDGET_MS);
-          console.info("R7 legacy outref decode", {
+          console.info("legacy outref decode", {
             bytes: raw.length,
             elapsedMs,
           });
@@ -278,7 +278,7 @@ export const registerWalletViewTests = () => {
               compiled![1],
             );
             const plan = JSON.stringify(explained[0]!["QUERY PLAN"]);
-            console.info("R7 bounded UTXO query EXPLAIN", plan);
+            console.info("bounded UTXO query EXPLAIN", plan);
             expect(plan).toContain("idx_mempool_ledger_address_outref");
             expect(plan).toContain("idx_withdrawal_ledger_outref_pending");
           }),

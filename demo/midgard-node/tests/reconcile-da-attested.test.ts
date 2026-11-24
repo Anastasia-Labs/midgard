@@ -14,7 +14,7 @@ import { Lucid } from "../src/services/lucid.js";
 import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
-// The canonical queue is the landed state queue (P1); the stub stands in for
+// The canonical queue is the landed state queue; the stub stands in for
 // the follower's facts.
 vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => ({
   ...(await importOriginal<

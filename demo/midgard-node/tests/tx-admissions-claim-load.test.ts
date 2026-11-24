@@ -3,7 +3,7 @@ import { it } from "@effect/vitest";
 import { Deferred, Duration, Effect, Fiber } from "effect";
 import { beforeAll, describe, expect } from "vitest";
 
-import { MigrationRunner, TxAdmissionsDB } from "../src/database/index.js";
+import { NodeSchema, TxAdmissionsDB } from "../src/database/index.js";
 import {
   deterministicFixtureBytes,
   deterministicFixtureTxHash,
@@ -41,14 +41,7 @@ const isolatedDb = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   );
 
 beforeAll(async () => {
-  await Effect.runPromise(
-    provideDatabaseLayers(
-      MigrationRunner.migrate({
-        appVersion: "tx-admissions-claim-load-test",
-        actor: "tx-admissions-claim-load-test",
-      }),
-    ),
-  );
+  await Effect.runPromise(provideDatabaseLayers(NodeSchema.ensure));
 });
 
 describe("durable admission lightweight claim and payload load", () => {

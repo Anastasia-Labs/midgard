@@ -115,7 +115,7 @@ export const buildMissingSignatureStep04 = async ({
     stepIndex: 3,
   });
 
-  // The absence fold, locally first (§7.3, D6): a present key — valid or
+  // The absence fold, locally first: a present key — valid or
   // not — is not this family's fault, and the validator would refuse it.
   if (
     missingSignatureRequiredSignerIsPresent({
@@ -124,7 +124,7 @@ export const buildMissingSignatureStep04 = async ({
     })
   ) {
     throw missingSignatureSubmitError(
-      `the accused verification key ${state.missing_required_signer_vkey} appears in the address-witness preimage — a present-but-invalid witness is invalid-signature's fault (Q15), and a valid one is no fault at all.`,
+      `the accused verification key ${state.missing_required_signer_vkey} appears in the address-witness preimage — a present-but-invalid witness is invalid-signature's fault, and a valid one is no fault at all.`,
     );
   }
 

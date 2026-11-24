@@ -22,10 +22,10 @@
  *   Preview; the devnet is `Custom`;
  * - top-up and the withdrawal quorum (build, one witness per owner and the
  *   fee payer, assemble): the real `midgard-node da-bond` CLI, run as
- *   processes bracketed by `da-bond status` processes (P18,
- *   `da-bond-pool-cli-process.ts`); each chain is the step's `cli` evidence,
+ *   processes bracketed by `da-bond status` processes
+ *   (`da-bond-pool-cli-process.ts`); each chain is the step's `cli` evidence,
  *   and its transaction is confirmed by the adapter's own pool read. The
- *   `da-bond` CLI admits the devnet's `Custom` network (P25, #691) with the
+ *   `da-bond` CLI admits the devnet's `Custom` network (#691) with the
  *   slot mapping from the local node's ledger, and reads through the node's
  *   L1 access (the local node and the node database);
  * - the pool snapshot: `da-bond status` over a `DaBondContext` built as
@@ -33,13 +33,13 @@
  *   the ledger tip as its clock. That context never submits;
  * - alerts: the watcher's `deriveWatcherDaBondPoolObservation` over its
  *   authenticated pool read, and the committee view of one real
- *   `da-committee-node` process (P16, P27, `da-bond-pool-committee-process.ts`):
+ *   `da-committee-node` process (`da-bond-pool-committee-process.ts`):
  *   the reasons and the verbatim body of its `GET /readyz`, and the pool
  *   events on its stderr, tied to its pid. Each observation first waits,
  *   within a bound, until the node has read the pool after the call and
  *   agrees with the adapter's snapshot.
  *
- * The committee node (ruling P27) runs from its built `dist/index.js` with L1
+ * The committee node runs from its built `dist/index.js` with L1
  * submission on and preflight on, no DA signer key, no auto-fund key, and two
  * fresh submitter keys distinct from each other and from every operational
  * key. It never holds a journey payload, so it cannot attest, answer the
@@ -51,7 +51,7 @@
  * hold the same UTxOs before each start and after each stop. Each
  * observation's wait for the node to read the pool is bounded by ten of its
  * polls plus twice the ideal time for the release confirmation depth. Its DA runtime manifest and
- * libp2p keys (ruling P31, `da-bond-pool-committee-runtime.ts`) come from the
+ * libp2p keys (`da-bond-pool-committee-runtime.ts`) come from the
  * real `midgard-node da-libp2p-generate-manifest --target committee` process
  * over fresh keys, before the first transaction; it loads one member's libp2p
  * identity, never that member's DA signing key. If the runtime cannot be
@@ -81,7 +81,7 @@
  * (mode 0600), distinct from every operational key, funded from the journey's
  * availability account with one exact Open coin per challenge, one collateral
  * coin that covers the worst Timeout fee at the ledger's collateral percentage
- * (G9), and one operating coin for the removal fee and the capital checks.
+ * and one operating coin for the removal fee and the capital checks.
  *
  * Nothing here enforces operator liveness: inactivity strikes and the
  * scheduler shift act only through strike and advance transactions, a strike

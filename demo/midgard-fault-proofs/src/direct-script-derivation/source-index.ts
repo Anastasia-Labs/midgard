@@ -26,7 +26,7 @@ const descriptorBytes = (source: SDKFraudProof.DirectScriptSource) =>
 const inlineSource = (source: SDKFraudProof.DirectScriptSource) =>
   source.field_index === 6n;
 
-/** The selected source for a script hash is the first one the T224 lookup
+/** The selected source for a script hash is the first one the source lookup
  * visits, named by the shared source-order function. Two same-hash candidates
  * form a two-entry physical frontier: inline witnesses first in item order,
  * then resolved-output reference scripts (spent and reference inputs) in

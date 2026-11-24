@@ -46,7 +46,7 @@ import { Effect, ManagedRuntime, Redacted } from "effect";
 import fc from "fast-check";
 import { afterAll, describe, expect, it } from "vitest";
 
-import * as MigrationRunner from "../src/database/migrations/runner.js";
+import * as NodeSchema from "../src/database/schema.js";
 import * as Journal from "../src/database/settlement.js";
 import { readIntentStatus } from "../src/services/intent-journal.js";
 import { settlementProjection } from "../src/services/settlement.final-hook.js";
@@ -309,9 +309,7 @@ describe("settlement confirmation in the fork simulator (Postgres, node database
         PgClient.layer({ url: Redacted.make(connectionString) }),
       );
       const run: Run = (effect) => runtime.runPromise(effect);
-      await run(
-        MigrationRunner.migrate({ appVersion: "test", actor: "n6b-fork-sim" }),
-      );
+      await run(NodeSchema.ensure);
       current = { run, close: () => runtime.dispose() };
       const store: FactStore = openPostgresFactStore({
         ...optionsFor("postgres"),

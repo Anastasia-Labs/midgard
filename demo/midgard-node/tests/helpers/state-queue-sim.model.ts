@@ -1,8 +1,8 @@
 /**
  * The independent model of the landed state queue that the fork simulator
- * checks P1 against: it decodes the queue outputs itself (the datum as
+ * checks the node's read against: it decodes the queue outputs itself (the datum as
  * a linked-list datum, the asset name as root or node key) from the
- * canonical blocks and walks them, sharing nothing with P1's decode or walk.
+ * canonical blocks and walks them, sharing nothing with the node's decode or walk.
  */
 import {
   type BlockSummary,
@@ -23,7 +23,7 @@ export const isQueueOutput = (output: {
   readonly assets?: ReadonlyMap<string, unknown>;
 }): boolean => output.assets?.has(QUEUE_POLICY) === true;
 
-/** One queue output as the model reads it, independently of P1. */
+/** One queue output as the model reads it, independently of the node. */
 export type ModelElement = Readonly<{
   outRef: OutRef;
   output: SimOutput;
@@ -80,7 +80,7 @@ export type ModelQueue = Readonly<{
   thirdParty: number;
 }>;
 
-/** `<tx hash hex>#<index>`, as P1 names an output. */
+/** `<tx hash hex>#<index>`, as the node names an output. */
 const label = (outRef: OutRef): string =>
   `${outRef.txHash.toString("hex")}#${outRef.index.toString()}`;
 

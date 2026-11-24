@@ -9,10 +9,6 @@ import {
   watcherFaultProofQueueIdentityDigest,
 } from "../../src/fault-proofs/fault-proof-queue-journal.js";
 import {
-  createWatcherJournalCodec,
-  sha256Hex,
-} from "../../src/fault-proofs/watcher-journal-database.codec.js";
-import {
   closeWatcherJournalDatabase,
   isWatcherJournalConfigurationError,
   isWatcherJournalIntegrityError,
@@ -23,10 +19,7 @@ import {
   watcherJournalIntegrityFailure,
   watcherJournalUnavailable,
 } from "../../src/fault-proofs/watcher-journal-database.js";
-import {
-  WATCHER_JOURNAL_MIGRATIONS,
-  watcherObjectiveScope,
-} from "../../src/fault-proofs/watcher-journal-schema.js";
+import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-schema.js";
 import {
   journalDirectory,
   removeJournalDirectories,
@@ -121,61 +114,6 @@ describe("watcher journal database integrity at startup", () => {
       "UPDATE watcher_journal_heads SET revision = 3 WHERE journal = 'fault_proof_queue'",
     );
     expect(restart(root)).toThrow("row a is newer than the head");
-  });
-
-  it("opens a journals file written before migration 0002, keeping its rows and counter", async () => {
-    const root = await journalDirectory("midgard-journal-integrity");
-    const raw = new DatabaseSync(join(root, WATCHER_JOURNAL_DATABASE_FILE));
-    const [ledger, tables] = WATCHER_JOURNAL_MIGRATIONS.migrations;
-    for (const migration of [ledger!, tables!]) {
-      raw.exec(migration.sql);
-      raw
-        .prepare(
-          "INSERT INTO watcher_journal_migrations (namespace, id, checksum) VALUES (?, ?, ?)",
-        )
-        .run(
-          WATCHER_JOURNAL_MIGRATIONS.namespace,
-          migration.id,
-          sha256Hex(migration.sql),
-        );
-    }
-    const codec = createWatcherJournalCodec(TEST_JOURNAL_KEY);
-    const row = {
-      row_key: "a",
-      scope: "doubleSpend:a",
-      state: "queued",
-      revision: 7,
-      body: JSON.stringify({ key: "a", state: "queued" }),
-    };
-    raw
-      .prepare(
-        `INSERT INTO ${QUEUE} (row_key, scope, state, revision, body, mac) VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .run(...Object.values(row), codec.rowMac("fault_proof_queue", row));
-    const digest = "00".repeat(32);
-    raw
-      .prepare(
-        "INSERT INTO watcher_journal_heads (journal, revision, chain, live_rows, accumulator, key_id, mac) VALUES ('fault_proof_queue', 7, ?, 1, ?, ?, ?)",
-      )
-      .run(digest, digest, codec.keyId, digest);
-    raw
-      .prepare(
-        "INSERT INTO watcher_journal_revisions (journal, revision, chain, delta, mac) VALUES ('fault_proof_queue', 7, ?, '[]', ?)",
-      )
-      .run(digest, digest);
-    raw.close();
-    const database = open(root);
-    expect(database.head("fault_proof_queue")).toEqual({
-      revision: 7,
-      liveRows: 1,
-    });
-    expect(database.row("fault_proof_queue", "a")?.state).toBe("queued");
-    put(database, "a", "active");
-    closeWatcherJournalDatabase(root);
-    expect(open(root).head("fault_proof_queue")).toEqual({
-      revision: 8,
-      liveRows: 1,
-    });
   });
 
   it("refuses a key the journals were not written under as configuration, not corruption", async () => {

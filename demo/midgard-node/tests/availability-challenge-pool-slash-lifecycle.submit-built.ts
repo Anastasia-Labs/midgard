@@ -15,7 +15,7 @@ import {
 // File-local helpers.
 // ---------------------------------------------------------------------------
 
-/** H12: the ledger and budget bounds every submitted transaction meets. */
+/** The ledger and budget bounds every submitted transaction meets. */
 export const MAX_SIGNED_BYTES = 15_872;
 
 export const MAX_MEMORY = 13_200_000n;
@@ -50,7 +50,7 @@ const measure = (cbor: string): Measurement => {
 
 /**
  * Signs and submits an SDK-built availability transaction after checking the
- * H12 bounds and the G9/H1 collateral rule: one to three plain-ADA coins
+ * ledger and budget bounds and the collateral rule: one to three plain-ADA coins
  * covering 150% of the exact fee.
  */
 export const submitBuilt = async (

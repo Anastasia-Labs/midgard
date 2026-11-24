@@ -1,4 +1,4 @@
-/** Authenticated retained-DA preparation for the Q35 network-id family. */
+/** Authenticated retained-DA preparation for the network-id family. */
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import { type NetworkIdFault } from "@al-ft/midgard-sdk/fraud-proof";
 
@@ -44,7 +44,7 @@ const wireFault = (claim: NetworkIdFaultClaim): NetworkIdFault =>
       } as NetworkIdFault);
 
 /**
- * Selects the first deterministic Q35 violation from authenticated public
+ * Selects the first deterministic network-id violation from authenticated public
  * block evidence and emits the exact native inclusion proof consumed by step
  * 01. A requested transaction must both exist and convict.
  */

@@ -163,7 +163,7 @@ export const COMMITTEE_NODE = /da-committee-node/u;
  * Journey daemons that must not run: a watcher CLI
  * (`midgard-watcher/dist/cli.js`) or a committee node whose argument vector
  * or environment names a path inside the run directory, other than the pids
- * in `admitted` (ruling P27(5)). A daemon whose environment cannot be read
+ * in `admitted`. A daemon whose environment cannot be read
  * counts, since it may name the run. Each admitted pid must itself be a
  * running committee node; one that is not, or is gone, is reported too.
  */

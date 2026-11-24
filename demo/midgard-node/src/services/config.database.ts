@@ -49,7 +49,7 @@ export const databaseConfig = Config.all({
   /** Explicit housekeeping window in days; undefined when unset, which means
    * the verified deployment manifest's window
    * (`resolveHousekeepingRetentionDays`). A shorter explicit value refuses
-   * startup in assertDeploymentManifestMatchesConfig (B5). DA payload
+   * startup in assertDeploymentManifestMatchesConfig. DA payload
    * pruning ignores it. */
   RETENTION_DAYS: Config.option(Config.integer("RETENTION_DAYS")).pipe(
     Config.mapAttempt((value) =>

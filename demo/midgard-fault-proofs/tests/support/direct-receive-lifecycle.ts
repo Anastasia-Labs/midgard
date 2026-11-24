@@ -166,7 +166,7 @@ export const driveDirectReceiveLifecycle = async (
         await publishPlainReferenceScriptUtxo({
           lucid,
           script: role.spendingScript,
-          label: `N6 receive ${name}`,
+          label: `receive ${name}`,
         })
       ).utxo,
     );
@@ -375,7 +375,7 @@ export const driveDirectReceiveLifecycle = async (
       ),
   );
   const target = evidence.entries[targetOrdinal];
-  if (target === undefined) throw new Error("N6 fixture target ordinal absent");
+  if (target === undefined) throw new Error("fixture target ordinal absent");
   const selected: SDKFraudProof.DirectReceivePurpose = {
     purpose: {
       coordinate: { kind: 3n, index: BigInt(targetOrdinal) },

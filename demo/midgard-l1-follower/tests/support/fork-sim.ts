@@ -6,14 +6,14 @@ import type { ForkRunOptions } from "../../src/testing/index.js";
 import {
   FIXTURE_DERIVATION,
   FIXTURE_TABLES,
-  fixtureMigrations,
+  fixtureSchema,
 } from "./fixture.js";
 
 /** The property test's sample D-t tables, plugged in as a projection. */
 export const FIXTURE_PROJECTION: FollowerProjection = {
   name: "fixture",
   temporalTables: FIXTURE_TABLES,
-  migrations: fixtureMigrations,
+  schema: fixtureSchema,
   derivations: [FIXTURE_DERIVATION],
 };
 

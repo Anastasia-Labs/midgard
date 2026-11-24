@@ -149,11 +149,11 @@ export const reconstructDaPayload = async ({
   }
   const counts = headerCounts(header);
 
-  // Q44 is the one family for which canonical reconstruction is expected to
+  // da-hash-preimage is the one family for which canonical reconstruction is expected to
   // reject the payload. Detect it only after the raw transactions MPF/count
   // and embedded header have been authenticated against L1. This typed error
   // is therefore not a generic decode/fetch fallback: it proves an exact
-  // committed source leaf is itself a total Q44 violation.
+  // committed source leaf is itself a total da-hash-preimage violation.
   const authenticatedSourceLeafDefect = rawTransactions.find(
     ({ key, value }) =>
       SDKFraudProof.daHashPreimageEvidenceFromCommittedLeaf({
@@ -164,7 +164,7 @@ export const reconstructDaPayload = async ({
   if (authenticatedSourceLeafDefect !== undefined) {
     throw transitionTraceError(
       "authenticatedSourceLeafDefect",
-      `L1-authenticated transactions_root contains a Q44 source-leaf defect at ${authenticatedSourceLeafDefect.key.toString("hex")}.`,
+      `L1-authenticated transactions_root contains a da-hash-preimage source-leaf defect at ${authenticatedSourceLeafDefect.key.toString("hex")}.`,
     );
   }
 

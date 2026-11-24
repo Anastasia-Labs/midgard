@@ -7,8 +7,8 @@
  *   reads no row, and the rows every run's statements return stay the same
  *   however long the retired list grows.
  * - A retirement or a slash reads `removed` and raises `operator_removed`
- *   with the process up; a rollback deeper than cd that undoes the removal
- *   reads `active` again and clears it.
+ *   (the node then shuts down: `operator-membership.duties.test.ts`); a
+ *   rollback deeper than cd that undoes the removal reads `active` again.
  * - A restart (a fresh mirror, hook and globals over the same facts and
  *   activity record) reads the same state back.
  * - The activity record keeps a slashed operator removed once the facts

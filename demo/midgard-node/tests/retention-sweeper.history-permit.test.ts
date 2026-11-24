@@ -1,6 +1,6 @@
 /**
- * The retention sweep's journal prune runs under a follower write permit
- * (W5-F): taken at once at the follower-change driver's applied view, or
+ * The retention sweep's journal prune runs under a follower write permit:
+ * taken at once at the follower-change driver's applied view, or
  * refused while the driver recomputes or has applied no view; a refused or
  * stalled prune deletes nothing more and the sweep goes on.
  */
@@ -85,7 +85,7 @@ beforeEach(async () => {
   await onDatabase(resetApplicationTables);
 });
 
-describe("retention journal prune under a follower write permit (W5-F)", () => {
+describe("retention journal prune under a follower write permit", () => {
   it("runs the prune holding a permit at the driver's applied view", async () => {
     const ran: { permit?: boolean } = {};
     const { result } = await runWith(withRetentionHistoryProducer(work(ran)), {

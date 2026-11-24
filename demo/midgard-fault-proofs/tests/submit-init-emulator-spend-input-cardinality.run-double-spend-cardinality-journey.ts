@@ -70,9 +70,9 @@ export const executionCeilings = () => ({
  * the shared 20%-reserve memory ceiling, derived from the emulator protocol
  * parameters rather than transcribed from a run.
  *
- * A tenth is the Q1X-F6 margin. The counted scheme billed ~276,000 memory
- * units per spend input, so at any admissible cardinality it left this band
- * far behind; under the flat commitment the binding step bills a constant.
+ * A tenth is the margin for a per-item cost. Re-hashing a counted collection
+ * costs ~276,000 memory units per spend input, so at any admissible
+ * cardinality it would leave this band far behind; under the flat commitment the binding step bills a constant.
  * The band therefore fails the moment a per-item cost of even ~2,500 units
  * an input returns at the 296-input shape — long before the ledger's own cap
  * would notice.
@@ -100,8 +100,8 @@ export const ADMISSIBLE_CARDINALITY_BY_PREIMAGE_BYTES = Math.floor(
  * Derived, not measured: the memory band above, divided by the largest
  * admissible cardinality. A per-input cost at this rate would exhaust the
  * whole band across the admissible range on its own, so anything at or above
- * it is a per-item cost in the Q1X-F6 sense. The counted scheme's ~276,000
- * units an input clears it by more than two orders of magnitude.
+ * it is a per-item cost. Re-hashing a counted collection, ~276,000
+ * units an input, clears it by more than two orders of magnitude.
  */
 export const maxBindingStepMemoryPerInput = (): bigint =>
   bindingStepMemoryBand() / BigInt(ADMISSIBLE_CARDINALITY_BY_PREIMAGE_BYTES);
@@ -117,7 +117,7 @@ export const printCardinalityFit = (
   });
 
 /**
- * Q10's complete correction path with each conflicting transaction spending
+ * The double-spend family's complete correction path with each conflicting transaction spending
  * `cardinality` inputs, the double-spent one last.
  *
  * Returns the two stages the axis reaches — the spend-inputs witness

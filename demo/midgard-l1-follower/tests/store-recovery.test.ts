@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import {
   type BlockSummary,
-  FOLLOWER_MIGRATION_FAILED,
+  FOLLOWER_SCHEMA_REFUSED,
   type FollowerProjection,
   openSqliteFactStore,
 } from "../src/index.js";
@@ -16,7 +16,7 @@ import {
   forkCorpus,
   simStoreOptions,
 } from "../src/testing/index.js";
-import { fixtureMigrations } from "./support/fixture.js";
+import { fixtureSchema } from "./support/fixture.js";
 import { follow, script } from "./support/follow-loop.js";
 import { FIXTURE_PROJECTION, SIM_K } from "./support/fork-sim.js";
 import { testDatabases } from "./support/postgres.js";
@@ -78,16 +78,16 @@ describe.each(resetAdapters(databases, scratch))(
   },
 );
 
-describe("followChain: a migration the store refuses at start", () => {
+describe("followChain: a schema the store refuses at start", () => {
   const events: readonly ChainSyncEvent[] = buildForkSteps(
     forkCorpus(SIM_K)[0]!.scenario,
     [FIXTURE_PROJECTION],
   ).steps.map((step) => step.event);
 
   it("stops at once under a named reason, and the process stays up", async () => {
-    // The store applied the fixture's migration; the next build ships the
-    // same migration id with different text.
-    const path = join(scratch, "changed-migration.sqlite");
+    // The store was created by the fixture's schema; the next build ships
+    // different text for it.
+    const path = join(scratch, "changed-schema.sqlite");
     const first = openSqliteFactStore({
       ...simStoreOptions([FIXTURE_PROJECTION], SIM_K, "sqlite"),
       path,
@@ -96,26 +96,15 @@ describe("followChain: a migration the store refuses at start", () => {
     await first.close();
     const changed: FollowerProjection = {
       ...FIXTURE_PROJECTION,
-      migrations: (dialect) => {
-        const set = fixtureMigrations(dialect);
-        return {
-          ...set,
-          migrations: set.migrations.map((migration, index) =>
-            index === 0
-              ? {
-                  ...migration,
-                  sql: `${migration.sql}\n-- edited after it was applied\n`,
-                }
-              : migration,
-          ),
-        };
+      schema: (dialect) => {
+        const set = fixtureSchema(dialect);
+        return { ...set, sql: `${set.sql}\n-- edited after it was applied\n` };
       },
     };
     const store = openSqliteFactStore({
       ...simStoreOptions([changed], SIM_K, "sqlite"),
       path,
     });
-    const id = fixtureMigrations("sqlite").migrations[0]!.id;
     try {
       const { statuses } = await follow({
         store,
@@ -124,10 +113,10 @@ describe("followChain: a migration the store refuses at start", () => {
         until: () => false,
       });
       const stuck = statuses.find((status) => status.stuck !== null)!;
-      expect(stuck.stuck).toMatchObject({ at: "migration", failures: 1 });
+      expect(stuck.stuck).toMatchObject({ at: "schema", failures: 1 });
       expect(stuck.readiness[0]).toEqual({
-        reason: FOLLOWER_MIGRATION_FAILED,
-        detail: `the store refused its migrations: migration ${fixtureMigrations("sqlite").namespace}/${id} changed after it was applied`,
+        reason: FOLLOWER_SCHEMA_REFUSED,
+        detail: `the store refused its schema: schema ${fixtureSchema("sqlite").namespace}: this database was created by a different schema; recreate it (drop it and create it empty)`,
       });
       expect(stuck.state).toBe("intervention");
     } finally {

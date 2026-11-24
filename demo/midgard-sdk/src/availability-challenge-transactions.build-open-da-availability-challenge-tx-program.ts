@@ -109,7 +109,7 @@ export const assertDaAvailabilityOpeningWorkingCapital = (
 };
 
 /**
- * Opens a challenge (spec #685 E1). Inputs: the challenger's exact funding
+ * Opens a challenge (spec #685). Inputs: the challenger's exact funding
  * coin and the Attested queue node. Outputs, in this order: the challenge
  * record (0), the queue node now `Challenged` (1), one thread per tranche
  * (2..), the terminal accumulator (last). The DACH identity derives from the

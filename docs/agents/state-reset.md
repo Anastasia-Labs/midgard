@@ -10,7 +10,7 @@ This includes:
 - `docker compose down -v`
 - Deleting or recreating Postgres volumes
 - Clearing local ledger/MPT databases
-- Deleting migration, mempool, block, deposit, admission, finalization, or
+- Deleting schema, mempool, block, deposit, admission, finalization, or
   confirmed-ledger state
 - Using any reset script that discards local node state
 

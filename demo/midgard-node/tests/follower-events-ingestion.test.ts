@@ -256,7 +256,7 @@ describe("follower event ingestion (Postgres)", () => {
         }),
       ),
     ).toEqual([identityOf(early), identityOf(late)]);
-    // Ruling 2: a deposit's L1 tx hash is its admission tx.
+    // A deposit's L1 tx hash is its admission tx.
     expect(result.once.deposits[0]!.deposit_l1_tx_hash).toEqual(
       early.admission.outRef.txHash,
     );

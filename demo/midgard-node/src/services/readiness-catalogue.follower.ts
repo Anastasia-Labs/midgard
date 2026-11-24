@@ -97,7 +97,7 @@ const FOLLOW_REASONS = members<FollowReadinessReason>({
   l1_follower_catching_up: null,
   l1_follower_waiting: null,
   l1_follower_apply_stuck: null,
-  l1_follower_migration_failed: null,
+  l1_follower_schema_refused: null,
   l1_follower_transient_exhausted: null,
   l1_node_unavailable: null,
   l1_node_behind: null,

@@ -323,7 +323,7 @@ export const buildWatcherAvailabilityOperation = async (
       };
       if (action.action === "timeout") {
         // The record, terminal and pool pay the exact fee
-        // min(penalty, taken) + c, so no wallet coin funds it (E2). The
+        // min(penalty, taken) + c, so no wallet coin funds it. The
         // pool is the one read at the tip for this step.
         const built = await Effect.runPromise(
           SDKDa.buildTimeoutDaAvailabilityChallengeTxProgram(

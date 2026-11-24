@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   MempoolDB,
-  MigrationRunner,
+  NodeSchema,
   TxAdmissionsDB,
   TxRejectionsDB,
 } from "../../src/database/index.js";
@@ -233,10 +233,7 @@ describe("Phase 1 real-Postgres query/write operator benchmark", () => {
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           yield* sql`DROP SCHEMA public CASCADE; CREATE SCHEMA public`;
-          yield* MigrationRunner.migrate({
-            appVersion: "phase1-query-write-benchmark",
-            actor: "phase1-query-write-benchmark",
-          });
+          yield* NodeSchema.ensure;
           type PageDepth = "onePage" | "threePages" | "tenPages";
           const depthByLabel: Record<PageDepth, number> = {
             onePage: pageSize,

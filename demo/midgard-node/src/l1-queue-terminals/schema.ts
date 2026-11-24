@@ -8,7 +8,7 @@
  */
 import type {
   DialectName,
-  MigrationSet,
+  SchemaSet,
   TemporalTableSpec,
 } from "@al-ft/midgard-l1-follower";
 
@@ -53,11 +53,7 @@ CREATE INDEX ${QUEUE_TERMINALS_TABLE}_height ON ${QUEUE_TERMINALS_TABLE} (height
 `;
 };
 
-export const queueTerminalMigrations = (
-  dialect: DialectName,
-): MigrationSet => ({
+export const queueTerminalSchema = (dialect: DialectName): SchemaSet => ({
   namespace: QUEUE_TERMINALS_TABLE,
-  migrations: [
-    { id: "0001_node_l1_queue_terminals", sql: queueTerminalSql(dialect) },
-  ],
+  sql: queueTerminalSql(dialect),
 });

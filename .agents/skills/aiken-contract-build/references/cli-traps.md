@@ -59,9 +59,7 @@ This is why the two repository scripts exist:
   wrapper that parses the report (both repository scripts do) must not run
   `aiken` under `script`. On a failing test the piped run still prints the
   JSON report and exits 1.
-- An older pin (v1.1.22, commit `f9310109b`) showed a silent-exit pathology
-  on detached runs; see the writing-tests catalogue,
-  [Green because nothing ran](../../writing-tests/references/mistakes-we-make.md#green-because-nothing-ran).
+- An older pin (v1.1.22) showed a silent-exit pathology on detached runs.
   Not re-probed on the current fork beyond the two points above.
 
 ## Processes and build directories
@@ -80,9 +78,8 @@ This is why the two repository scripts exist:
   `aiken::check::illegal::logical_op_chain` ("an and chain with less than 2
   expressions"). Write the single expression without the `and`.
 - **`test … fail` over a multi-conjunct `and {}`** passes as soon as any
-  conjunct is false. The case and its rule are in the writing-tests
-  catalogue:
-  [`7d01f2b71`](../../writing-tests/references/mistakes-we-make.md#green-whatever-the-code-does).
+  conjunct is false. The rule is in
+  [writing-tests §5](../../writing-tests/SKILL.md#5-keep-it-able-to-fail).
 
 ## Measured limits
 

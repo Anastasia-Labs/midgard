@@ -283,7 +283,6 @@ describe.each(adapters)("fact store ($name)", (adapter) => {
       expect(await again.start()).toMatchObject({
         kind: "ready",
         liveOutRefs: 1,
-        migrated: [],
         cursor: { height: 53 },
       });
       expect(again.isTrackedLive({ txHash: TX3, index: 1 })).toBe(true);

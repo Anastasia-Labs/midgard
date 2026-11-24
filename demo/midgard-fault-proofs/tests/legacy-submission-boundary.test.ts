@@ -41,7 +41,7 @@ const retiredInitCategories = [
   "nonExistentInputNoIndex",
 ] as const;
 
-describe("RF-043 legacy submission boundary", () => {
+describe("legacy submission boundary", () => {
   it("covers every retired command and leaves canonical controls available", () => {
     for (const command of retiredCommands) {
       expect(isRetiredUnauthenticatedSubmissionRoute({ command })).toBe(true);

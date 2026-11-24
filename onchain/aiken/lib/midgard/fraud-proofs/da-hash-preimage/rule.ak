@@ -389,7 +389,7 @@ pub fn field_lengths_are_canonical_v1(lengths_cbor: ByteArray) -> Bool {
   }
 }
 
-/// Total Q44 verdict. Ordering is deliberate and stable: outer source shape,
+/// Total da-hash-preimage verdict. Ordering is deliberate and stable: outer source shape,
 /// MPF-key agreement, proof-source integrity, then compact-body id agreement.
 pub fn adjudicate_committed_source_leaf_v1(
   committed_tx_id: ByteArray,

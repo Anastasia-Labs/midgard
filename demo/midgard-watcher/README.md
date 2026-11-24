@@ -155,8 +155,9 @@ MAC, does not parse, or differs from its key. Rows deleted, replayed or
 restored by hand are not detected. A refusal holds for the rest of the process:
 the watcher stays up, `/readyz` reports `journal_integrity`, and `/v1/status`
 names the failure in `supervisor.journalIntegrity` until an operator repairs
-the journals (below) and restarts the watcher. A journal migration whose SQL
-changed after it was applied is such a refusal (`migrations`). If the journals cannot be opened at
+the journals (below) and restarts the watcher. A journals file created by a
+different schema is such a refusal (`schema`): delete the journals file and
+start again. If the journals cannot be opened at
 all (a busy, locked or unreadable file), the watcher stays up, `/readyz`
 reports `journal_unavailable` and `supervisor.journalUnavailable` names the
 failure, while the watcher retries the open, backing off from 1 s to 30 s; the

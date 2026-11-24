@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { main as cliMain } from "../src/bin.js";
 
-describe("Q03 labelled diagnostics", () => {
+describe("labelled diagnostics", () => {
   it("rejects diagnostic grade on every prepare CLI verb before proof construction", async () => {
     const priorArgv = process.argv;
     const stderr = vi

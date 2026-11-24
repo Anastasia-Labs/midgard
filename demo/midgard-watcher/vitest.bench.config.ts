@@ -1,7 +1,7 @@
 import { midgardSourceEnvironments } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
 
-// Benchmarks (B6). Not part of `test`: they preload 10^5 journal
+// Benchmarks. Not part of `test`: they preload 10^5 journal
 // rows and time single-row commits.
 export default defineConfig({
   test: {

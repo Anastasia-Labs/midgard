@@ -117,7 +117,7 @@ const isPlain = (output: OutputSummary): boolean =>
   output.scriptRef === null;
 
 /**
- * Reference-script funding (E2): the target is in the intent, set at record
+ * Reference-script funding: the target is in the intent, set at record
  * time, and the intent is wanted while the facts show it unreached.
  *
  * - Working capital, key `reference_funding:<scope>:<address hex>:<lovelace>`:

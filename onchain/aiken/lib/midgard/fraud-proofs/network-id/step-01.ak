@@ -1,4 +1,4 @@
-//// Q35 `network-id`: bind one operator-accepted native-V1 transaction and
+//// `network-id`: bind one operator-accepted native-V1 transaction and
 //// freeze the exact network claim that the final step will adjudicate.
 ////
 //// `TransactionNetwork` follows Cardano's optional transaction-body field:

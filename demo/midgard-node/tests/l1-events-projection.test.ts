@@ -295,7 +295,7 @@ describe.each(["sqlite", "postgres"] as const)(
       ).toEqual([due.key, later.key]);
     });
 
-    it("makes a deposit spendable only by own-block inclusion, never by a clock ahead of the tip (P4)", async () => {
+    it("makes a deposit spendable only by own-block inclusion, never by a clock ahead of the tip", async () => {
       const d = await driver();
       await d.forward([]);
       const tipMs = slotToPosixMs(SLOT_TIME, d.tip.point.slot + 1);

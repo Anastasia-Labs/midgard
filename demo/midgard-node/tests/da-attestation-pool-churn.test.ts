@@ -46,7 +46,7 @@ const applies = (failures: readonly Error[]) => {
 const run = <A, E>(effect: Effect.Effect<A, E>) =>
   Effect.runPromise(Effect.either(effect));
 
-describe("DA attestation apply pool churn retry (G8)", () => {
+describe("DA attestation apply pool churn retry", () => {
   it("rebuilds the apply when the pool outref moved under a failed attempt", async () => {
     const pool = poolReads(["pool#0", "pool#1"]);
     const apply = applies([new ApplyFailure("reference input already spent")]);

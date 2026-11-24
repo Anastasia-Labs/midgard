@@ -1,6 +1,6 @@
 import {
   createTemporalRegistry,
-  followerMigrations,
+  followerSchema,
 } from "@al-ft/midgard-l1-follower";
 import { declaredTables, lintSchema } from "@al-ft/midgard-l1-follower/lint";
 import { Client, Pool } from "pg";
@@ -9,11 +9,11 @@ import { describe, expect, it } from "vitest";
 import {
   COMMITTEE_QUEUE_TABLE,
   COMMITTEE_QUEUE_TABLE_SPEC,
-  committeeMigrations,
+  committeeSchema,
 } from "../src/l1/follower/queue-table.js";
 import type { CommitteeStoreReadinessCounts } from "../src/store.js";
 import {
-  committeeStoreMigrations,
+  committeeStoreSchema,
   initializeCommitteeSchema,
 } from "../src/store/postgres.schema.js";
 import {
@@ -85,21 +85,21 @@ describe("committee store schema", () => {
     expect(
       lintSchema(
         [
-          followerMigrations("postgres"),
-          committeeMigrations("postgres"),
-          committeeStoreMigrations,
+          followerSchema("postgres"),
+          committeeSchema("postgres"),
+          committeeStoreSchema,
         ],
         createTemporalRegistry([COMMITTEE_QUEUE_TABLE_SPEC]),
       ),
     ).toEqual([]);
-    const declared = declaredTables([committeeStoreMigrations]);
+    const declared = declaredTables([committeeStoreSchema]);
     expect(
       declared.find((table) => table.table === "committee_da_signatures")
         ?.tableClass,
     ).toBe("B");
   });
 
-  it("creates exactly the tables its lint migration declares", async () => {
+  it("creates exactly the tables its schema declares", async () => {
     const database = await testStoreDatabase();
     const store = await openTestCommitteeStore(database);
     await closeTestCommitteeStore(store);
@@ -112,7 +112,7 @@ describe("committee store schema", () => {
     );
     expect(created).not.toContain(COMMITTEE_QUEUE_TABLE);
     expect(created).toEqual(
-      declaredTables([committeeStoreMigrations])
+      declaredTables([committeeStoreSchema])
         .map((table) => table.table)
         .sort(),
     );

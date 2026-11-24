@@ -162,7 +162,8 @@ export const eventRecorder =
     );
 /** Keeps services until abort; restarts transient exits/hangs with backoff.
  * Exit 78 persists a refusal until one explicit retry answers readiness.
- * Each decision is recorded as one JSON line. */
+ * Exit 0 the service chose itself (a node whose operator was removed) stops
+ * it for good. Each decision is recorded as one JSON line. */
 export const superviseServices = async (
   services: readonly ServiceSpec[],
   paths: SupervisorPaths,
@@ -294,6 +295,7 @@ export const superviseServices = async (
         });
       record({ event: "start", service: service.name, pid: child.pid });
       const watchdog = new AbortController();
+      let hung = false;
       const watching = (async () => {
         if (service.healthUrl === undefined && refusal === undefined) return;
         let answered = false;
@@ -345,6 +347,7 @@ export const superviseServices = async (
               pid: child.pid,
               lastProbe: result.body.slice(0, 200),
             });
+            hung = true;
             await stop(service.name, child);
             return;
           }
@@ -381,6 +384,10 @@ export const superviseServices = async (
         });
       }
       if (signal.aborted) break;
+      if (result.code === 0 && !hung) {
+        record({ event: "stopped", service: service.name });
+        break;
+      }
       if (serviceRefusal(paths, service.name) !== undefined) continue;
       backoff = uptimeMs >= policy.stableMs ? policy.initialBackoffMs : backoff;
       record({

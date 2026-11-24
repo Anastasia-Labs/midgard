@@ -1,6 +1,7 @@
-//// VerifySource, driven through the deployed validator: the C1 order (source
-//// authenticated, R-DESC, the challenger's claim, N5, the open guard, the
-//// bond), each in both polarities, and the case output it starts.
+//// VerifySource, driven through the deployed validator: its checks in order
+//// (source authenticated, R-DESC, the challenger's claim, the agreed initial
+//// state, the open guard, the bond), each in both polarities, and the case
+//// output it starts.
 
 use aiken/builtin
 use aiken/cbor
@@ -1082,7 +1083,7 @@ test only_a_state_at_s_other_than_the_challengers_opens_a_thread() {
   }
 }
 
-// ## 4. N5: the agreed initial state
+// ## 4. The agreed initial state
 
 /// The open recording `initial_hash` as the agreed initial state.
 fn opens_agreeing_on(initial_hash: ByteArray) -> Bool {
@@ -1119,7 +1120,7 @@ test n5_an_initial_state_that_is_not_derived_cannot_open() fail {
   )
 }
 
-// ## Q1: the case is named from the claim's event
+// ## The case is named from the claim's event
 
 /// The open naming its case, bond and case datum from `event_key`.
 fn opens_naming_event(event_key: ledger_state.EventKey) -> Bool {

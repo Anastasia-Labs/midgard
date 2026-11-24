@@ -106,7 +106,7 @@ export const availabilityParametersFromExplicitEnvironment =
     availabilityParametersFromManifest(
       daAvailabilityChallengeEnvironmentInput(
         (name) =>
-          `${name} must be set to an explicit positive integer before deriving Q58 scripts without a finalized manifest`,
+          `${name} must be set to an explicit positive integer before deriving availability scripts without a finalized manifest`,
       ),
     );
 

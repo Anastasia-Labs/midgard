@@ -63,7 +63,7 @@ import { describe, expect, it } from "vitest";
 import {
   DepositsDB,
   MempoolLedgerDB,
-  MigrationRunner,
+  NodeSchema,
 } from "../../src/database/index.js";
 import {
   validationBatchDurationSummary,
@@ -637,10 +637,7 @@ const prepareBenchmarkDatabases = async (
     templateDatabase,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* MigrationRunner.migrate({
-        appVersion: "phase2-stage-b-benchmark",
-        actor: "phase2-stage-b-benchmark",
-      });
+      yield* NodeSchema.ensure;
       yield* MempoolLedgerDB.insert(fundingRows);
       yield* Effect.tryPromise(() => preloadAdmissions(sql, manifest));
       yield* sql`ANALYZE tx_admissions`;

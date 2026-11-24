@@ -43,8 +43,7 @@ import type { TxFuzzScenario } from "./tx-fuzz.scenario.js";
 export type TxKnownClass =
   /**
    * A script naming a BLS builtin of flat tags 58–60 or 65–67, which the
-   * reference leg skips. Owner: C1. Pending the C1 builtin tag numbering
-   * (SH-2).
+   * reference leg skips until the builtin tag numbering is fixed.
    */
   "blsTagNumbering";
 

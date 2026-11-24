@@ -16,7 +16,7 @@ import {
 import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "../src/linked-list.js";
 
 /**
- * P20: a watcher's challenge workflow row is released only on a finalized,
+ * A watcher's challenge workflow row is released only on a finalized,
  * verified transaction that burns the header's queue node or closes its
  * challenge, found by walking the node chain from the watcher's own Open.
  * The transactions here are synthetic; each carries only what the walk reads

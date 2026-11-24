@@ -1,7 +1,7 @@
 /**
  * The follower's L1 degradations, and the own-thread sweep's beside them,
  * reach status and metrics without failing
- * readiness (ruling C on permanently unresolvable tx inputs), while the same
+ * readiness (permanently unresolvable tx inputs included), while the same
  * name as a follower readiness reason makes the watcher not ready; the
  * decision driver's reasons reach readiness the same way.
  */

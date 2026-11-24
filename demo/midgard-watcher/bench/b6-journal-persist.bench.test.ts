@@ -12,7 +12,7 @@ import {
 } from "../src/fault-proofs/watcher-journal-database.js";
 
 /**
- * B6: one journal persist at 10^5 stored rows. A persist is one
+ * One journal persist at 10^5 stored rows. A persist is one
  * write transaction of one row: its row, the journal head and one retained
  * revision, committed with `synchronous = FULL`.
  *
@@ -70,7 +70,7 @@ const summarize = (samples: number[]) => {
   };
 };
 
-describe("B6 watcher journal persist", () => {
+describe("watcher journal persist", () => {
   it(`commits one row at ${ROWS.toString()} stored rows with p99 <= ${TARGET_P99_MS.toString()} ms`, async () => {
     const root =
       process.env.WATCHER_B6_DIRECTORY ??

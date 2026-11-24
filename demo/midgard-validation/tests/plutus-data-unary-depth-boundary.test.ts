@@ -435,10 +435,9 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     expect(decodeMidgardTxOutput(outputs[0]!).datum?.cbor.toString("hex")).toBe(
       maximumDatumCborHex,
     );
-    // Canonical maximum-shape byte count pinned by the C26 investigation
-    // record's depth-4,043 row, re-measured for §5.3's fixed 38-byte
-    // spend-input item (one input, so two bytes wider than the depth-4,043 row
-    // measured against CML's minimal-index out-ref CBOR).
+    // Canonical maximum-shape byte count of the depth-4,043 datum, measured for
+    // §5.3's fixed 38-byte spend-input item (one input, so two bytes wider
+    // than the same datum measured against CML's minimal-index out-ref CBOR).
     expect(canonical.length).toBe(16_472);
     const completeFoldStepCount =
       countedMachineTransactionChunkSteps(canonical).length;
