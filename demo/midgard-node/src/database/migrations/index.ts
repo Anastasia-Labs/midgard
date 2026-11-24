@@ -36,9 +36,8 @@ import admissionPayloadBytesSql from "./sql/0034_admission_payload_bytes.sql";
 import admissionTerminalRetentionSql from "./sql/0035_admission_terminal_retention.sql";
 import ownLandedBlocksUnappliedSql from "./sql/0036_own_landed_blocks_unapplied.sql";
 import ownBlockDerivedStatusSql from "./sql/0037_own_block_derived_status.sql";
-import confirmedLedgerGenerationSql from "./sql/0038_confirmed_ledger_generation.sql";
-import landedProducedOutrefIndexSql from "./sql/0039_landed_produced_outref_index.sql";
-import confirmedLedgerSpentOutrefIndexSql from "./sql/0040_confirmed_ledger_spent_outref_index.sql";
+import landedProducedOutrefIndexSql from "./sql/0038_landed_produced_outref_index.sql";
+import confirmedLedgerSpentOutrefIndexSql from "./sql/0039_confirmed_ledger_spent_outref_index.sql";
 
 export type Migration = {
   readonly version: number;
@@ -310,20 +309,13 @@ export const MIGRATIONS: readonly Migration[] = [
   },
   {
     version: 38,
-    name: "confirmed_ledger_generation",
-    checksumSha256: sha256Hex(confirmedLedgerGenerationSql),
-    sql: confirmedLedgerGenerationSql,
-    transactional: true,
-  },
-  {
-    version: 39,
     name: "landed_produced_outref_index",
     checksumSha256: sha256Hex(landedProducedOutrefIndexSql),
     sql: landedProducedOutrefIndexSql,
     transactional: true,
   },
   {
-    version: 40,
+    version: 39,
     name: "confirmed_ledger_spent_outref_index",
     checksumSha256: sha256Hex(confirmedLedgerSpentOutrefIndexSql),
     sql: confirmedLedgerSpentOutrefIndexSql,

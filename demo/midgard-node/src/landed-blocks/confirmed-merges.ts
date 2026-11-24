@@ -75,12 +75,11 @@ const hex = (value: Uint8Array) => Buffer.from(value).toString("hex");
 const mismatch = (detail: string) =>
   Effect.fail(new ConfirmedLedgerBaseMismatch({ detail }));
 
-/** The frontier and its generation, row-locked for the rest of the
- * transaction. */
+/** The frontier, row-locked for the rest of the transaction. */
 const lockedFrontier = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const [row] = yield* sql<RawFrontier>`
-    SELECT header_hash, utxos_root, generation
+    SELECT header_hash, utxos_root
     FROM node_confirmed_ledger_frontier FOR UPDATE`;
   return row === undefined ? undefined : decodeFrontier(row);
 });
@@ -189,10 +188,9 @@ const markEvents = (row: LandedBlockRow, header: Buffer) =>
  * Folds `row` into `confirmed_ledger` at the frontier, in the caller's
  * write transaction; `merge` is the root output its merge created, when
  * known. Fails `ConfirmedLedgerBaseMismatch` (writing nothing) when the
- * frontier is not `row`'s parent or `confirmed_ledger` is not its base.
- * Returns the frontier generation it read under its lock and the one it
- * left: with no duplicate outref, its counts mean every output the delta
- * spends was held and none it produces was.
+ * frontier is not `row`'s parent or `confirmed_ledger` is not its base:
+ * with no duplicate outref, its counts mean every output the delta spends
+ * was held and none it produces was.
  */
 export const foldMerge = (row: LandedBlockRow, merge: MergePoint | null) =>
   Effect.gen(function* () {
@@ -279,10 +277,7 @@ export const foldMerge = (row: LandedBlockRow, merge: MergePoint | null) =>
         );
     }
     yield* deleteRows([row.headerHash]);
-    return {
-      readGeneration: frontier.generation,
-      generation: yield* Frontier.upsert(row),
-    };
+    yield* Frontier.upsert(row);
   }).pipe(
     sqlErrorToDatabaseError(mergesTableName, "Failed to fold a landed block"),
   );

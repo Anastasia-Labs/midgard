@@ -157,25 +157,17 @@ export type LandedChain = Readonly<{
   chain: readonly LandedBlockRow[];
 }>;
 
-/** The frontier and the processed chain after it, with the frontier
- * generation read with them (migration 0038). */
-export type GeneratedLandedChain = LandedChain &
-  Readonly<{ generation: string }>;
-
-/** The ledger at the frontier and the processed chain after it, with the
- * frontier generation read with them. */
-export type LandedLedger = GeneratedLandedChain &
+/** The ledger at the frontier and the processed chain after it. */
+export type LandedLedger = LandedChain &
   Readonly<{ confirmed: readonly Ledger.EntryNoTimeStamp[] }>;
 
 export const landedLedger = (rows: readonly LandedBlockRow[]) =>
   Effect.gen(function* () {
-    const read = yield* Frontier.retrieveWithGeneration;
-    if (read === undefined) return undefined;
-    const { generation, ...frontier } = read;
+    const frontier = yield* Frontier.retrieve;
+    if (frontier === undefined) return undefined;
     const confirmed = yield* ConfirmedLedgerDB.retrieve;
     return {
       frontier,
-      generation,
       confirmed,
       chain: processedChain(rows, frontier.headerHash),
     } satisfies LandedLedger;
@@ -189,21 +181,6 @@ export const landedChain = (rows: readonly LandedBlockRow[]) =>
         ? undefined
         : { frontier, chain: processedChain(rows, frontier.headerHash) },
     ),
-  );
-
-/** The frontier, its generation and the processed chain after it, reading
- * no ledger row. */
-export const generatedLandedChain = (rows: readonly LandedBlockRow[]) =>
-  Frontier.retrieveWithGeneration.pipe(
-    Effect.map((read): GeneratedLandedChain | undefined => {
-      if (read === undefined) return undefined;
-      const { generation, ...frontier } = read;
-      return {
-        frontier,
-        generation,
-        chain: processedChain(rows, frontier.headerHash),
-      };
-    }),
   );
 
 /**
