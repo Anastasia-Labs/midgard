@@ -31,16 +31,13 @@ export type AdmissionBacklogGaugeState = {
 export type AdmissionBacklogGauge =
   MutableRef.MutableRef<AdmissionBacklogGaugeState>;
 
-export type MempoolLedgerDelta = {
-  readonly version: number;
-  readonly full: boolean;
-  readonly upserts: ReadonlyArray<readonly [outRefHex: string, output: Buffer]>;
-  readonly deletes: readonly string[];
-};
-
-export type MempoolLedgerDeltaLog = {
-  readonly version: number;
-  readonly entries: readonly MempoolLedgerDelta[];
+/**
+ * What the validation cache must read again from `mempool_ledger`: every key
+ * (`all`), or the hex outrefs in `keys`.
+ */
+export type MempoolLedgerStale = {
+  readonly all: boolean;
+  readonly keys: ReadonlySet<string>;
 };
 
 export type L1ProviderHealthEvidence = {

@@ -31,7 +31,6 @@ export { buildAndSubmitCommitmentBlockAction } from "./block-commitment.build-an
 export {
   type CommitWorkerMessage,
   promoteOrRecoverNativeMpf,
-  publishFullMempoolLedgerReload,
   recoverNativeMpfAfterCommitWorkerFailure,
   recoverNativeMpfFromSignedJournal,
   takeCommitWorkerOutput,

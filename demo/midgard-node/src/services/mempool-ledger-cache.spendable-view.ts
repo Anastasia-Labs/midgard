@@ -8,67 +8,40 @@ import {
   type SpendableView,
   UNKNOWN_SPENDABLE_VIEW,
 } from "./admission-input-claims.js";
-import type { MempoolLedgerDelta, MempoolLedgerDeltaLog } from "./globals.js";
+import type { MempoolLedgerStale } from "./globals.js";
 import type { MempoolLedgerState } from "./mempool-ledger-cache.mempool-ledger-cache-service.js";
 
 /**
- * The journal entries after `fromVersion`, when they are contiguous and none
- * is a full-reload marker; `undefined` otherwise.
- */
-export const contiguousEntriesAfter = (
-  journal: MempoolLedgerDeltaLog,
-  fromVersion: number,
-): readonly MempoolLedgerDelta[] | undefined => {
-  const needed = journal.entries.filter((entry) => entry.version > fromVersion);
-  return needed.length === journal.version - fromVersion &&
-    needed.every((entry, index) => entry.version === fromVersion + index + 1) &&
-    needed.every((entry) => !entry.full)
-    ? needed
-    : undefined;
-};
-
-/**
  * Membership in the cache's working ledger (`state`, the durable ledger with
- * the live patches over it), with the journal entries published since it was
- * last synchronized laid over it, so a deposit projected while validation is
- * idle is already spendable. `state` changes only inside synchronous
+ * the live patches over it). `state` changes only inside synchronous
  * sections, so a caller that uses the view synchronously never sees half a
  * patch or half a load. The view cannot tell (`undefined`) before `state` is
- * first loaded, while canonical recovery repairs it, or when the journal has
- * a gap or a full-reload marker past it.
+ * first loaded, while canonical recovery repairs it, at a key marked stale or
+ * being read again, and at every key while all of them are.
  */
 export const makeSpendableView = ({
   pipeline,
-  journal,
-  synced,
-  entriesAfter,
+  stale,
+  current,
 }: {
   readonly pipeline: Effect.Effect<{ readonly canonicalSuspended: boolean }>;
-  readonly journal: Effect.Effect<MempoolLedgerDeltaLog>;
-  /** `state` and the journal version it reflects (-1: not loaded yet). */
-  readonly synced: () => {
+  /** The keys writers have marked and the cache has not taken yet. */
+  readonly stale: Effect.Effect<MempoolLedgerStale>;
+  readonly current: () => {
     readonly state: MempoolLedgerState;
-    readonly version: number;
+    readonly loaded: boolean;
+    /** The marks the cache has taken and is reading again. */
+    readonly inFlight: MempoolLedgerStale;
   };
-  /** The contiguous incremental entries after a version, or `undefined`. */
-  readonly entriesAfter: (
-    journal: MempoolLedgerDeltaLog,
-    version: number,
-  ) => readonly MempoolLedgerDelta[] | undefined;
 }): Effect.Effect<SpendableView> =>
   Effect.gen(function* () {
     const { canonicalSuspended } = yield* pipeline;
-    const log = yield* journal;
-    const { state, version } = synced();
-    if (canonicalSuspended || version < 0) return UNKNOWN_SPENDABLE_VIEW;
-    const newer = entriesAfter(log, version);
-    if (newer === undefined) return UNKNOWN_SPENDABLE_VIEW;
-    const holds = (outRefHex: string) => state.get(outRefHex) !== undefined;
-    if (newer.length === 0) return holds;
-    const overlay = new Map<string, boolean>();
-    for (const entry of newer) {
-      for (const outRefHex of entry.deletes) overlay.set(outRefHex, false);
-      for (const [outRefHex] of entry.upserts) overlay.set(outRefHex, true);
-    }
-    return (outRefHex) => overlay.get(outRefHex) ?? holds(outRefHex);
+    const marked = yield* stale;
+    const { state, loaded, inFlight } = current();
+    if (canonicalSuspended || !loaded || marked.all || inFlight.all)
+      return UNKNOWN_SPENDABLE_VIEW;
+    return (outRefHex) =>
+      marked.keys.has(outRefHex) || inFlight.keys.has(outRefHex)
+        ? undefined
+        : state.get(outRefHex) !== undefined;
   });

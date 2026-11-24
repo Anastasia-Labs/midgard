@@ -53,7 +53,8 @@ export type MempoolLedgerCacheService = {
     sequence: bigint,
     patch: UTxOStatePatch,
   ) => Effect.Effect<void, DatabaseError | ValidationPipelineEpochError>;
-  /** Reloads durable state and advances beyond a poisoned validation epoch. */
+  /** Reads again the keys of the patches never promoted and advances beyond
+   * a poisoned validation epoch. */
   readonly recoverPoisonedEpoch: Effect.Effect<void, DatabaseError>;
   /** Immediately fence every old sequence, without awaiting the cache locks.
    * Commit durable authority suspension before running the returned recovery. */
@@ -63,8 +64,8 @@ export type MempoolLedgerCacheService = {
    * check (design D6). Lock-free: it never waits for the Phase B lock, and
    * a caller must use the view synchronously. It cannot tell (answers
    * `undefined`) before the cache is first loaded, while canonical recovery
-   * rebuilds it, or when the delta journal has a gap or a full-reload marker
-   * the cache has not applied yet.
+   * repairs it, at a key marked stale or being read again, and at every key
+   * while all of them are marked.
    */
   readonly spendableView: Effect.Effect<SpendableView>;
 };
@@ -81,10 +82,11 @@ export type DurableChanges = Readonly<{
 export type CanonicalCacheRecovery = {
   readonly epoch: number;
   /** Runs under claim -> Phase B -> persistence. Both callbacks may take the
-   * SQL authority lock, but must not reacquire cache locks or publish deltas.
-   * The owner must first drain all external delta producers/worker sessions.
-   * The cache then reloads in full, or, when `durableChanges` names the
-   * keys the repair changed, at those keys only. */
+   * SQL authority lock, but must not reacquire cache locks. The cache then
+   * reloads in full, or, when `durableChanges` names the keys the repair
+   * changed, sets those keys from it and reads again the keys of the
+   * patches it dropped. Keys writers marked stale are read at the next
+   * synchronization. */
   readonly runRecovery: <A, E, R, E2, R2>(
     repairDurable: Effect.Effect<A, E, R>,
     publishReady: Effect.Effect<void, E2, R2>,
@@ -101,20 +103,11 @@ export class MempoolLedgerCache extends Context.Tag("MempoolLedgerCache")<
   MempoolLedgerCacheService
 >() {}
 
-export const validationLedgerCacheDeltaApplyCounter = Metric.counter(
-  "validation_ledger_cache_delta_apply_count",
-  {
-    description: "Incremental mempool-ledger cache deltas applied",
-    bigint: true,
-    incremental: true,
-  },
-);
-
 export const validationLedgerCacheFullReloadCounter = Metric.counter(
   "validation_ledger_cache_full_reload_count",
   {
     description:
-      "Full mempool-ledger cache reloads after startup or a delta gap",
+      "Full mempool-ledger cache reloads at startup or when every key is marked stale",
     bigint: true,
     incremental: true,
   },

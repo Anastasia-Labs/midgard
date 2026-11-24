@@ -2,7 +2,7 @@ import "./mempool-ledger-cache.canonical-history-cache-retirement.js";
 
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
-import { Deferred, Effect, Fiber, Metric, Ref } from "effect";
+import { Deferred, Effect, Fiber, Metric } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -12,13 +12,10 @@ import {
   outRefFromByte,
 } from "../../midgard-validation/tests/validation-fixtures.js";
 import { MempoolLedgerDB } from "../src/database/index.js";
-import { publishCommitMempoolLedgerMutation } from "../src/fibers/block-commitment.should-skip-for-detailed-scheduler-due-work.js";
 import { Globals } from "../src/services/globals.globals.js";
-import { publishMempoolLedgerDelta } from "../src/services/globals.with-l1-control-plane-held.js";
+import { markMempoolLedgerStale } from "../src/services/globals.with-l1-control-plane-held.js";
 import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.make-mempool-ledger-cache-service.js";
 import { validationPhaseBLockWaitTimer } from "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
-import { takeCommitWorkerOutput } from "../src/workers/commit-worker-message.js";
-import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
 import {
   fullReloads,
   keyedReadsOver,
@@ -29,248 +26,6 @@ import {
 } from "./mempool-ledger-cache.row.js";
 
 describe("mempool ledger cache", () => {
-  it("replays a delta published while the full snapshot is loading", async () => {
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const globals = yield* Globals;
-        const inserted = outRefFromByte(0x70);
-        const insertedOutput = makeOutput(12n);
-        let loads = 0;
-        const service = yield* makeMempoolLedgerCacheService(
-          globals,
-          Effect.gen(function* () {
-            loads += 1;
-            const snapshot: readonly MempoolLedgerDB.EntryWithTimeStamp[] = [];
-            yield* publishMempoolLedgerDelta(
-              globals,
-              {
-                full: false,
-                upserts: [[inserted.toString("hex"), insertedOutput]],
-                deletes: [],
-              },
-              64,
-            );
-            return snapshot;
-          }),
-          noKeyedReads,
-        );
-
-        const state = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot([inserted]))),
-        );
-        expect(loads).toBe(1);
-        expect(state.get(inserted.toString("hex"))).toEqual(insertedOutput);
-      }).pipe(Effect.provide(Globals.Default)),
-    );
-  });
-
-  it("reloads again when a full marker is published during the snapshot", async () => {
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const globals = yield* Globals;
-        const inserted = outRefFromByte(0x6f);
-        const insertedOutput = makeOutput(13n);
-        let loads = 0;
-        const service = yield* makeMempoolLedgerCacheService(
-          globals,
-          Effect.gen(function* () {
-            loads += 1;
-            if (loads === 1) {
-              yield* publishMempoolLedgerDelta(
-                globals,
-                { full: true, upserts: [], deletes: [] },
-                64,
-              );
-              return [];
-            }
-            return [row(inserted, insertedOutput)];
-          }),
-          noKeyedReads,
-        );
-
-        const state = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot([inserted]))),
-        );
-        expect(loads).toBe(2);
-        expect(state.get(inserted.toString("hex"))).toEqual(insertedOutput);
-      }).pipe(Effect.provide(Globals.Default)),
-    );
-  });
-
-  it("applies contiguous deltas and reloads on gaps and full markers", async () => {
-    let backing: readonly MempoolLedgerDB.EntryWithTimeStamp[] = [];
-    let loads = 0;
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const globals = yield* Globals;
-        const service = yield* makeMempoolLedgerCacheService(
-          globals,
-          Effect.sync(() => {
-            loads += 1;
-            return backing;
-          }),
-          noKeyedReads,
-        );
-        const first = outRefFromByte(0x71);
-        const second = outRefFromByte(0x72);
-        const firstOutput = makeOutput(10n);
-        const secondOutput = makeOutput(11n);
-
-        let state = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot([first, second]))),
-        );
-        expect(state.size).toBe(0);
-        expect(loads).toBe(1);
-
-        yield* publishMempoolLedgerDelta(
-          globals,
-          {
-            full: false,
-            upserts: [[first.toString("hex"), firstOutput]],
-            deletes: [],
-          },
-          64,
-        );
-        state = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot([first, second]))),
-        );
-        expect(state.get(first.toString("hex"))?.equals(firstOutput)).toBe(
-          true,
-        );
-        expect(loads).toBe(1);
-
-        backing = [row(second, secondOutput)];
-        yield* Ref.update(globals.MEMPOOL_LEDGER_DELTA_LOG, (journal) => ({
-          ...journal,
-          version: journal.version + 1,
-        }));
-        state = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot([first, second]))),
-        );
-        expect(state.has(first.toString("hex"))).toBe(false);
-        expect(state.get(second.toString("hex"))?.equals(secondOutput)).toBe(
-          true,
-        );
-        expect(loads).toBe(2);
-
-        backing = [row(first, firstOutput)];
-        yield* publishMempoolLedgerDelta(
-          globals,
-          { full: true, upserts: [], deletes: [] },
-          64,
-        );
-        state = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot([first, second]))),
-        );
-        expect(state.get(first.toString("hex"))?.equals(firstOutput)).toBe(
-          true,
-        );
-        expect(state.has(second.toString("hex"))).toBe(false);
-        expect(loads).toBe(3);
-      }).pipe(Effect.provide(Globals.Default)),
-    );
-  });
-
-  it("publishes exact commit deletes and a full recovery marker only for failure", async () => {
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const globals = yield* Globals;
-        const deletedOutRefHex = outRefFromByte(0x75).toString("hex");
-        yield* publishCommitMempoolLedgerMutation(
-          globals,
-          {
-            type: "SuccessfulSubmissionOutput",
-            submittedTxHash: "commit-tx",
-            txSize: 1,
-            mempoolTxsCount: 1,
-            sizeOfBlocksTxs: 1,
-            blockEndTimeMs: 1,
-            mempoolLedgerDeletedOutRefHexes: [deletedOutRefHex],
-          },
-          64,
-        );
-        yield* publishCommitMempoolLedgerMutation(
-          globals,
-          {
-            type: "SubmittedAwaitingConfirmationOutput",
-            submittedTxHash: "commit-tx",
-            txSize: 1,
-            mempoolTxsCount: 1,
-            sizeOfBlocksTxs: 1,
-            blockEndTimeMs: 1,
-            submittedHeaderHash: "aa".repeat(28),
-            submittedUtxosRoot: "bb".repeat(32),
-          },
-          64,
-        );
-        yield* publishCommitMempoolLedgerMutation(
-          globals,
-          { type: "FailureOutput", error: "submission failed" },
-          64,
-        );
-        yield* publishCommitMempoolLedgerMutation(
-          globals,
-          { type: "NothingToCommitOutput" },
-          64,
-        );
-        const journal = yield* Ref.get(globals.MEMPOOL_LEDGER_DELTA_LOG);
-        expect(journal.version).toBe(2);
-        expect(journal.entries).toStrictEqual([
-          {
-            version: 1,
-            full: false,
-            upserts: [],
-            deletes: [deletedOutRefHex],
-          },
-          { version: 2, full: true, upserts: [], deletes: [] },
-        ]);
-      }).pipe(Effect.provide(Globals.Default)),
-    );
-  });
-
-  it("reloads from the table on a commit worker's mempool_ledger revert notice", async () => {
-    let backing: readonly MempoolLedgerDB.EntryWithTimeStamp[] = [];
-    let loads = 0;
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const globals = yield* Globals;
-        const service = yield* makeMempoolLedgerCacheService(
-          globals,
-          Effect.sync(() => {
-            loads += 1;
-            return backing;
-          }),
-          noKeyedReads,
-        );
-        const restored = outRefFromByte(0x76);
-        const restoredOutput = makeOutput(14n);
-        const readState = service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot([restored]))),
-        );
-        expect((yield* readState).size).toBe(0);
-
-        // A commit-stage rejection restores an input in the table, with no
-        // delta for the cache.
-        backing = [row(restored, restoredOutput)];
-        const output: WorkerOutput = { type: "NothingToCommitOutput" };
-        expect(takeCommitWorkerOutput(globals, output, 64)).toBe(output);
-        expect((yield* readState).size).toBe(0);
-        expect(loads).toBe(1);
-
-        expect(
-          takeCommitWorkerOutput(
-            globals,
-            { type: "MempoolLedgerRevertedNotice" },
-            64,
-          ),
-        ).toBeUndefined();
-        const state = yield* readState;
-        expect(state.get(restored.toString("hex"))).toEqual(restoredOutput);
-        expect(loads).toBe(2);
-      }).pipe(Effect.provide(Globals.Default)),
-    );
-  });
-
   it("serializes concurrent Phase B critical sections", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -439,7 +194,7 @@ describe("mempool ledger cache", () => {
     );
   });
 
-  it("reapplies an unpersisted ordered overlay after an external full marker", async () => {
+  it("reapplies an unpersisted ordered overlay after every key is marked stale", async () => {
     const durable = outRefFromByte(0x69);
     const speculative = outRefFromByte(0x6a);
     const output = makeOutput(10n);
@@ -466,11 +221,7 @@ describe("mempool ledger cache", () => {
           }),
         );
 
-        yield* publishMempoolLedgerDelta(
-          globals,
-          { full: true, upserts: [], deletes: [] },
-          64,
-        );
+        yield* markMempoolLedgerStale(globals, "all");
         const duringPersistence = yield* readAt(service, [
           durable,
           speculative,
@@ -505,7 +256,7 @@ describe("mempool ledger cache", () => {
         const service = yield* makeMempoolLedgerCacheService(
           globals,
           Effect.sync(() => durableRows),
-          noKeyedReads,
+          keyedReadsOver(() => durableRows).spendableAt,
         );
         yield* service.withPhaseBLock(service.currentState);
         const sequence = yield* service.withClaimLock(
@@ -525,21 +276,13 @@ describe("mempool ledger cache", () => {
         yield* sequence.cancel;
 
         durableRows = [row(persisted, output), row(external, output)];
-        yield* publishMempoolLedgerDelta(
-          globals,
-          {
-            full: false,
-            upserts: [[external.toString("hex"), output]],
-            deletes: [],
-          },
-          64,
-        );
-        const afterExternalDelta = yield* readAt(service, [
+        yield* markMempoolLedgerStale(globals, [external.toString("hex")]);
+        const afterExternalWrite = yield* readAt(service, [
           spent,
           persisted,
           external,
         ]);
-        expect([...afterExternalDelta.keys()]).toStrictEqual([
+        expect([...afterExternalWrite.keys()]).toStrictEqual([
           persisted.toString("hex"),
           external.toString("hex"),
         ]);
@@ -574,7 +317,7 @@ describe("mempool ledger cache", () => {
             }
             return captured;
           }),
-          noKeyedReads,
+          keyedReadsOver(() => durableRows).spendableAt,
         );
         yield* service.withPhaseBLock(service.currentState);
         const sequence = yield* service.withClaimLock(
@@ -586,11 +329,7 @@ describe("mempool ledger cache", () => {
             upsertedOutRefs: [[persisted.toString("hex"), output]],
           }),
         );
-        yield* publishMempoolLedgerDelta(
-          globals,
-          { full: true, upserts: [], deletes: [] },
-          64,
-        );
+        yield* markMempoolLedgerStale(globals, "all");
 
         const reloadFiber = yield* Effect.fork(
           service.withPhaseBLock(service.currentState),
@@ -615,21 +354,13 @@ describe("mempool ledger cache", () => {
         yield* Fiber.join(persistenceFiber);
 
         durableRows = [row(persisted, output), row(external, output)];
-        yield* publishMempoolLedgerDelta(
-          globals,
-          {
-            full: false,
-            upserts: [[external.toString("hex"), output]],
-            deletes: [],
-          },
-          64,
-        );
-        const afterExternalDelta = yield* readAt(service, [
+        yield* markMempoolLedgerStale(globals, [external.toString("hex")]);
+        const afterExternalWrite = yield* readAt(service, [
           spent,
           persisted,
           external,
         ]);
-        expect([...afterExternalDelta.keys()]).toStrictEqual([
+        expect([...afterExternalWrite.keys()]).toStrictEqual([
           persisted.toString("hex"),
           external.toString("hex"),
         ]);
@@ -777,7 +508,7 @@ describe("mempool ledger cache", () => {
         const service = yield* makeMempoolLedgerCacheService(
           globals,
           Effect.sync(() => retrieveSpendableRows),
-          noKeyedReads,
+          keyedReadsOver(() => retrieveSpendableRows).spendableAt,
         );
         const read = () =>
           service.withPhaseBLock(
@@ -792,15 +523,7 @@ describe("mempool ledger cache", () => {
         expect(cached.size).toBe(retrieveSpendableRows.length);
 
         retrieveSpendableRows = [row(spent, output)];
-        yield* publishMempoolLedgerDelta(
-          globals,
-          {
-            full: false,
-            upserts: [[spent.toString("hex"), output]],
-            deletes: [],
-          },
-          64,
-        );
+        yield* markMempoolLedgerStale(globals, [spent.toString("hex")]);
         cached = yield* read();
         expect([...cached.keys()]).toStrictEqual(
           retrieveSpendableRows.map((entry) =>

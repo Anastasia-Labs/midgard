@@ -11,12 +11,11 @@ export {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
   L1ControlPlaneTimeoutError,
   type L1ProviderHealthEvidence,
-  type MempoolLedgerDelta,
-  type MempoolLedgerDeltaLog,
+  type MempoolLedgerStale,
   nextL1ProviderHealthEvidence,
 } from "./globals.next-l1-provider-health-evidence.js";
 export {
-  publishMempoolLedgerDelta,
+  markMempoolLedgerStale,
   withL1ControlPlaneIfAvailable,
   withL1ControlPlaneWaitTimeout,
 } from "./globals.with-l1-control-plane-held.js";

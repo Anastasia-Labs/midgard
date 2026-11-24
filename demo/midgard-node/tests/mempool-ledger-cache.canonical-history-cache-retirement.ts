@@ -91,7 +91,8 @@ describe("canonical history cache retirement", () => {
         yield* service.recoverPoisonedEpoch;
         expect(loads).toBe(1);
         expect(yield* fullReloads).toBe(reloadsBefore);
-        expect(reads.asked).toStrictEqual([[]]);
+        // No patch was live, so no key is read.
+        expect(reads.asked).toStrictEqual([]);
       }).pipe(Effect.provide(Globals.Default)),
     );
   });

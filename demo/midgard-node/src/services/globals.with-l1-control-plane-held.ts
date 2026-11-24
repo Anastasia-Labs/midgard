@@ -2,7 +2,7 @@ import { Duration, Effect, Option, Ref } from "effect";
 
 import { Globals } from "./globals.globals.js";
 import { runRegisteredL1ControlPlaneHold } from "./globals.l1-control-plane.js";
-import { type MempoolLedgerDelta } from "./globals.next-l1-provider-health-evidence.js";
+import type { MempoolLedgerStale } from "./globals.next-l1-provider-health-evidence.js";
 
 /** Runs `effect` only when the permit is free, as a registered hold: the
  * wedge and hold-timeout readiness reasons see it like any other scope. */
@@ -62,27 +62,18 @@ export const withL1ControlPlaneWaitTimeout = <A, E, R>(
     }),
   );
 
-export const publishMempoolLedgerDelta = (
+/**
+ * Marks `mempool_ledger` rows the validation cache must read again: the hex
+ * outrefs `keys`, or every row (`"all"`). Called once the write committed.
+ */
+export const markMempoolLedgerStale = (
   globals: Globals,
-  delta: Omit<MempoolLedgerDelta, "version">,
-  maxEntries: number,
-): Effect.Effect<number> =>
-  Ref.modify(globals.MEMPOOL_LEDGER_DELTA_LOG, (state) => {
-    const version = state.version + 1;
-    const entry: MempoolLedgerDelta = {
-      version,
-      full: delta.full,
-      upserts: delta.upserts.map(([outRefHex, output]) => [
-        outRefHex,
-        Buffer.from(output),
-      ]),
-      deletes: [...delta.deletes],
-    };
-    return [
-      version,
-      {
-        version,
-        entries: [...state.entries, entry].slice(-Math.max(1, maxEntries)),
-      },
-    ];
-  });
+  keys: Iterable<string> | "all",
+): Effect.Effect<void> =>
+  Ref.update(
+    globals.MEMPOOL_LEDGER_STALE,
+    (stale): MempoolLedgerStale =>
+      keys === "all"
+        ? { all: true, keys: stale.keys }
+        : { all: stale.all, keys: new Set([...stale.keys, ...keys]) },
+  );

@@ -10,7 +10,7 @@ import {
   settleCommitBuildAlarms,
 } from "../services/globals.commit-build-alarms.js";
 import type { Globals } from "../services/globals.globals.js";
-import { publishMempoolLedgerDelta } from "../services/globals.with-l1-control-plane-held.js";
+import { markMempoolLedgerStale } from "../services/globals.with-l1-control-plane-held.js";
 import type { UnwrittenHold } from "../services/intent-journal.holds.js";
 import {
   applyCommitPlanningNotice,
@@ -20,19 +20,10 @@ import {
   type CommitBuildAlarmNotice,
   type IntentRefusalHoldsNotice,
   type MempoolLedgerRevertedNotice,
+  revertedOutRefs,
   WorkerOutput,
 } from "./utils/commit-block-header.js";
 import { type CommitDaFrameNotice } from "./utils/commit-block-planner.commit-da-frame-notice.js";
-
-export const publishFullMempoolLedgerReload = (
-  globals: Globals,
-  deltaLogMax: number,
-): Effect.Effect<void> =>
-  publishMempoolLedgerDelta(
-    globals,
-    { full: true, upserts: [], deletes: [] },
-    deltaLogMax,
-  ).pipe(Effect.asVoid);
 
 /** A message the commit worker posts: its output, or a notice ahead of it. */
 export type CommitWorkerMessage =
@@ -47,8 +38,9 @@ export type CommitWorkerMessage =
  * Applies a notice the commit worker posts while it still runs and returns
  * undefined; any other message is the worker's output and is returned. A
  * commit-stage rejection rewrites mempool_ledger rows (reverted outputs,
- * restored inputs, rejected descendants) without a delta, so its notice
- * reloads the cache from the durable table. A DA frame notice raises or
+ * restored inputs, rejected descendants), so its notice marks the outrefs it
+ * names stale in the ledger cache, or every key when its payload is
+ * malformed. A DA frame notice raises or
  * clears the commit DA frame liveness reason; the worker's output never does,
  * because a "nothing to commit" output also ends a tick whose step-down
  * dropped every transaction from an over-frame ledger. A notice of refusal
@@ -60,7 +52,6 @@ export type CommitWorkerMessage =
 export const takeCommitWorkerOutput = (
   globals: Globals,
   message: CommitWorkerMessage,
-  deltaLogMax: number,
   adoptRefusalHolds?: (holds: readonly UnwrittenHold[]) => void,
 ): WorkerOutput | undefined => {
   if (message.type === "CommitPlanningNotice") {
@@ -93,6 +84,8 @@ export const takeCommitWorkerOutput = (
     );
     return message;
   }
-  Effect.runSync(publishFullMempoolLedgerReload(globals, deltaLogMax));
+  Effect.runSync(
+    markMempoolLedgerStale(globals, revertedOutRefs(message) ?? "all"),
+  );
   return undefined;
 };

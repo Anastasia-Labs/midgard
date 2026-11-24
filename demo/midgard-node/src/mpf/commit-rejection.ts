@@ -239,8 +239,8 @@ const withDepositOrigin = (row: MempoolLedgerDB.EntryNoTimeStamp) =>
  * `reverted` is the rejection closure, `remaining` every other pending
  * transaction. Their outputs are deleted, and each input they spent from
  * outside the closure comes back when the block leaves it unspent, or when a
- * remaining transaction produced it. Returns whether `mempool_ledger`
- * changed.
+ * remaining transaction produced it. Returns the hex outrefs of the
+ * `mempool_ledger` rows it deleted or inserted.
  */
 export const revertCommitStageRejectedLedgerEffects = ({
   reverted,
@@ -250,9 +250,9 @@ export const revertCommitStageRejectedLedgerEffects = ({
   readonly reverted: readonly CommitStageTxEffects[];
   readonly remaining: readonly CommitStageTxEffects[];
   readonly resolveInputPostState: CommitStageInputPostState;
-}): Effect.Effect<boolean, DatabaseError, Database> =>
+}): Effect.Effect<readonly string[], DatabaseError, Database> =>
   Effect.gen(function* () {
-    if (reverted.length === 0) return false;
+    if (reverted.length === 0) return [];
     const sql = yield* SqlClient.SqlClient;
     const producerByOutRef = new Map(
       reverted.flatMap((tx) =>
@@ -326,7 +326,7 @@ export const revertCommitStageRejectedLedgerEffects = ({
       }),
     );
 
-    return deleted.length > 0 || inserted.length > 0;
+    return [...deleted, ...inserted].map((row) => hex(row.outref));
   }).pipe(
     sqlErrorToDatabaseError(
       MempoolLedgerDB.tableName,

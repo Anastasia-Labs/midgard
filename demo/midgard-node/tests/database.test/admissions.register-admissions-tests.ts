@@ -348,6 +348,14 @@ export const registerAdmissionsTests = () => {
               yield* depositStatus(childDeposit[DepositsDB.Columns.ID]),
             ).toEqual(Option.some(DepositsDB.Status.Consumed));
 
+            const outRefsHeld = MempoolLedgerDB.retrieve.pipe(
+              Effect.map((rows) =>
+                rows.map((row) =>
+                  row[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
+                ),
+              ),
+            );
+            const heldBefore = yield* outRefsHeld;
             const outcome = yield* persistCommitStageRejectedTransactions({
               rejectionEntries: [
                 {
@@ -385,10 +393,18 @@ export const registerAdmissionsTests = () => {
               }),
             });
 
-            expect(outcome).toMatchObject({
-              _tag: "Persisted",
-              ledgerChanged: true,
-            });
+            // The outcome names every row the revert deleted or restored.
+            const heldAfter = yield* outRefsHeld;
+            expect(
+              outcome._tag === "Persisted"
+                ? [...outcome.ledgerReverted].sort()
+                : outcome,
+            ).toEqual(
+              [
+                ...heldBefore.filter((key) => !heldAfter.includes(key)),
+                ...heldAfter.filter((key) => !heldBefore.includes(key)),
+              ].sort(),
+            );
             const ledger = (yield* MempoolLedgerDB.retrieve)
               .map((row) => ({
                 [MempoolLedgerDB.Columns.TX_ID]:

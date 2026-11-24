@@ -13,7 +13,6 @@ export {
   type MempoolLedgerCacheService,
   type MempoolLedgerState,
   type PhaseBSequence,
-  validationLedgerCacheDeltaApplyCounter,
   validationLedgerCacheEntryWriteCounter,
   validationLedgerCacheFullReloadCounter,
   validationPhaseBLockWaitTimer,

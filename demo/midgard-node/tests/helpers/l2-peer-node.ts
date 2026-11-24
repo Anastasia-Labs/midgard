@@ -60,10 +60,10 @@ import {
   ContractDeploymentIdentity,
   Globals,
   Lucid,
+  markMempoolLedgerStale,
   MidgardContracts,
   NodeConfig,
   type NodeConfigDep,
-  publishMempoolLedgerDelta,
   rebuildAdmissionInputClaimsOnStartup,
   ValidationPool,
   type ValidationPoolService,
@@ -401,8 +401,8 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
     mempool,
     /** How many requests this node's server received at `path`. */
     received: (path: string) => received.get(path) ?? 0,
-    /** Seeds this node's ledger with spendable L2 outputs, and publishes
-     * them to its validation cache as a deposit projection does. */
+    /** Seeds this node's ledger with spendable L2 outputs, and marks them
+     * stale in its validation cache as any outside writer does. */
     seedLedger: (outputs: readonly L2Output[]) =>
       run(
         testWrite(
@@ -417,17 +417,9 @@ export const startPeerNode = async (options: PeerNodeOptions) => {
           ),
         ).pipe(
           Effect.zipRight(
-            publishMempoolLedgerDelta(
+            markMempoolLedgerStale(
               globals,
-              {
-                full: false,
-                upserts: outputs.map((output) => [
-                  output.outrefCbor.toString("hex"),
-                  output.outputCbor,
-                ]),
-                deletes: [],
-              },
-              config.VALIDATION_LEDGER_DELTA_LOG_MAX,
+              outputs.map((output) => output.outrefCbor.toString("hex")),
             ),
           ),
         ),

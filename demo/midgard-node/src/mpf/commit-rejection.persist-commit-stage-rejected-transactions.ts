@@ -42,7 +42,9 @@ export type CommitStageRejectionOutcome =
       readonly _tag: "Persisted";
       /** Every rejection recorded, the closure's included. */
       readonly recorded: readonly RejectionEntry[];
-      readonly ledgerChanged: boolean;
+      /** Hex outrefs of the `mempool_ledger` rows the revert deleted or
+       * inserted. */
+      readonly ledgerReverted: readonly string[];
     }
   | {
       /** Nothing was written: the closure reaches these block members. */
@@ -84,7 +86,7 @@ export const persistCommitStageRejectedTransactions = ({
     return Effect.succeed({
       _tag: "Persisted",
       recorded: [],
-      ledgerChanged: false,
+      ledgerReverted: [],
     });
   const direct = new Map(
     rejectionEntries.map((entry) => [entryId(entry), entry] as const),
@@ -145,7 +147,7 @@ export const persistCommitStageRejectedTransactions = ({
             _tag: "BlockMembersRejected",
             txIds: reached,
           } satisfies CommitStageRejectionOutcome;
-        const ledgerChanged = yield* revertCommitStageRejectedLedgerEffects({
+        const ledgerReverted = yield* revertCommitStageRejectedLedgerEffects({
           reverted: [...rejected.values()].map(({ tx }) => effectsOf(tx)),
           remaining: pending
             .filter((tx) => !rejected.has(txIdHex(tx)))
@@ -176,7 +178,7 @@ export const persistCommitStageRejectedTransactions = ({
               [TxRejectionsDB.Columns.REJECT_DETAIL]: detail,
             };
           }),
-          ledgerChanged,
+          ledgerReverted,
         } satisfies CommitStageRejectionOutcome;
       }),
     );
@@ -216,7 +218,10 @@ export const settleCommitStageRejections = <
   readonly resolveInputPostState: (
     accepted: readonly C[],
   ) => CommitStageInputPostState;
-  readonly onLedgerReverted?: Effect.Effect<void, DatabaseError>;
+  /** Called with the outrefs a committed revert changed, when there are any. */
+  readonly onLedgerReverted?: (
+    outRefs: readonly string[],
+  ) => Effect.Effect<void, DatabaseError>;
 }) =>
   Effect.gen(function* () {
     const candidateId = (candidate: C) =>
@@ -252,8 +257,11 @@ export const settleCommitStageRejections = <
         yield* Effect.logWarning(
           `Dropping ${outcome.recorded.length} transaction(s) from MempoolDB`,
         );
-      if (outcome.ledgerChanged && input.onLedgerReverted !== undefined)
-        yield* input.onLedgerReverted;
+      if (
+        outcome.ledgerReverted.length > 0 &&
+        input.onLedgerReverted !== undefined
+      )
+        yield* input.onLedgerReverted(outcome.ledgerReverted);
       const candidateIds = new Set((input.candidates ?? []).map(candidateId));
       const known = new Set(
         [...input.rejectionEntries, ...phaseBEntries].map(entryId),
