@@ -1,7 +1,7 @@
 /**
  * Read-side helpers over a `Ledger`: a ledger over nodes the caller can only
- * read, the library trie of a ledger for code that takes a `Trie`, and the
- * SDK proof of one key.
+ * read, the node and output source a ledger reads, the library trie of a
+ * ledger for code that takes a `Trie`, and the SDK proof of one key.
  */
 import type { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import type * as SDK from "@al-ft/midgard-sdk/core";
@@ -19,6 +19,18 @@ import { type Ledger, type LedgerSource, LedgerValue } from "./ledger.js";
  */
 export const ledgerAt = (root: string, source: LedgerSource): Ledger =>
   new LedgerValue(root, undefined, undefined, source);
+
+/**
+ * Where `ledger` reads its nodes and outputs from: its overlay first, then
+ * its store. `ledgerAt(ledger.root, ledgerReads(ledger))` reads as `ledger`
+ * does, for a reader that holds the source and not the ledger (a worker
+ * thread served over a message port).
+ */
+export const ledgerReads = (ledger: Ledger): LedgerSource => {
+  if (!(ledger instanceof LedgerValue))
+    throw new Error("ledgerReads: not a ledger store ledger");
+  return { node: ledger.readNode, outputs: ledger.readOutputs };
+};
 
 /**
  * A fresh library trie of `ledger`: it reads the ledger's nodes, and its own

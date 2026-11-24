@@ -1,5 +1,6 @@
 /**
- * The read-side helpers: `ledgerAt`, `ledgerTrie`, `ledgerProof`. Expected
+ * The read-side helpers: `ledgerAt`, `ledgerReads`, `ledgerTrie`,
+ * `ledgerProof`. Expected
  * proof bytes and mutation steps come from whole-trie functions
  * (`keyValuePhasProof`, `keyValuePhasNonMembershipProof`, and the
  * validation test support's `mutationStepsOver`), which build a fresh trie
@@ -29,6 +30,7 @@ import {
   ledgerAt,
   LedgerNodeMissing,
   ledgerProof,
+  ledgerReads,
   type LedgerSource,
   type LedgerStorage,
   ledgerTrie,
@@ -39,6 +41,7 @@ import {
   keyValuePhasRootWithCount,
 } from "../src/transition-trace/phas.js";
 import {
+  appliedEntries,
   event,
   expectLedgerMatches,
   storedNodesOf,
@@ -232,5 +235,32 @@ describe("ledgerAt", () => {
       .catch((error: unknown) => error);
     expect(refusal).toBeInstanceOf(LedgerNodeMissing);
     expect((refusal as LedgerNodeMissing).hash).toBe(missing);
+  });
+});
+
+describe("ledgerReads", () => {
+  it("opens, under ledgerAt, the reads, proofs and root of a store ledger and of one with an applied overlay", async () => {
+    const entries = testLedgerEntries(0, 40);
+    const { ledger } = await persistedLedger(entries);
+    await expectLedgerMatches(
+      ledgerAt(ledger.root, ledgerReads(ledger)),
+      entries,
+    );
+    const mutations = event([3, 17], [200, 201]);
+    const applied = await ledger.apply(mutations);
+    await expectLedgerMatches(
+      ledgerAt(applied.root, ledgerReads(applied)),
+      appliedEntries(entries, mutations),
+    );
+  });
+
+  it("refuses a ledger that is not a ledger store ledger", () => {
+    const foreign: Ledger = {
+      root: EMPTY_LEDGER_ROOT,
+      read: async () => new Map(),
+      apply: async () => foreign,
+      entries: async function* () {},
+    };
+    expect(() => ledgerReads(foreign)).toThrow(/not a ledger store ledger/);
   });
 });

@@ -5,12 +5,16 @@
  * Defends, a second active operator, the expiry references, the close of
  * a case its defender won, references published under their roles' tokens,
  * the operator's later commits, and the emulator's transaction limits, and
- * the longest-running passing script admission takes. */
+ * the longest-running passing script admission takes; and the one-event
+ * Plutus block fixture with predecessor filler entries, for builds outside
+ * the emulator. */
 export { completeCanonicalReplayPredecessorStoreLedger } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 export {
   ADMITTED_TX_EX_UNITS,
   LONGEST_PASSING_SCRIPT,
+  plutusExecutionBlockFixture,
 } from "../helpers/plutus-execution-block-fixture.js";
+export { filler } from "../helpers/trie-leaves.js";
 export { network } from "./emulator/blueprints.js";
 export { publishAuthenticatedValidationDisputeControl } from "./emulator/reference-scripts.js";
 export { enrollSuccessor } from "./rotated-successor-operator.js";
