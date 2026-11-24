@@ -11,6 +11,7 @@ import type * as SDK from "@al-ft/midgard-sdk/core";
 import * as LE from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
+import { ownerRetainedLedger } from "../landed-blocks/node-ports.js";
 import { Globals } from "../services/globals.globals.js";
 import { Database, NodeConfig } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
@@ -104,6 +105,7 @@ export const validationTraceDefenseReferences = (
 
 /** The defender's port over the node's services. */
 const makePort = Effect.gen(function* () {
+  const globals = yield* Globals;
   const lucidService = yield* Lucid;
   const nodeConfig = yield* NodeConfig;
   const contracts = yield* MidgardContracts;
@@ -154,6 +156,10 @@ const makePort = Effect.gen(function* () {
     tickMs: VALIDATION_TRACE_DEFENSE_TICK_MS,
     pollMs: POLL_MS,
     cache: new Map(),
+    // The ledgers the native MPF owner's store retains: a lookup before
+    // the owner has started fails, and the case's material is unavailable
+    // until it has.
+    ledgers: { retainedLedger: ownerRetainedLedger(globals.NATIVE_MPF_OWNER) },
   };
   return port;
 });

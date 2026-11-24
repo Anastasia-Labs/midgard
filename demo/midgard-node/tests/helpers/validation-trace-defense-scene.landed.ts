@@ -1,9 +1,17 @@
 /**
  * The node's landed rows for the validation-trace Open scene: the scene's
  * blocks as processed own rows on a confirmed frontier at the failing
- * block's parent, each with its payload retained; and the node's wallet
- * configuration for the scene's operator.
+ * block's parent, each with its payload retained; the ledgers the node's
+ * store holds for them (each block's parent ledger and its post-state, as
+ * processing persists them); and the node's wallet configuration for the
+ * scene's operator.
  */
+import {
+  createLedgerStore,
+  createMemoryLedgerStorage,
+  type LedgerStorage,
+  type LedgerStore,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import type {
   Block,
   Scene,
@@ -11,9 +19,10 @@ import type {
 import { Effect } from "effect";
 
 import { foreignRetainedDaInsert } from "../../src/da/foreign-retained-da.js";
-import { ConfirmedLedgerDB, DaPayloadsDB } from "../../src/database/index.js";
-import { ledgerMap, ledgerRows } from "../../src/landed-blocks/ledger.js";
+import { DaPayloadsDB } from "../../src/database/index.js";
+import { ledgerMap } from "../../src/landed-blocks/ledger.js";
 import { Frontier, insertRow } from "../../src/landed-blocks/store.js";
+import type { DefenseLedgers } from "../../src/validation-trace-defense/material.js";
 
 type Entry = Readonly<{ outRef: Buffer; output: Buffer }>;
 const minimal = (entries: readonly Entry[]) =>
@@ -80,9 +89,6 @@ export const seedLanded = (scene: Scene) =>
   Effect.gen(function* () {
     const { failing, passing, forced } = scene;
     yield* frontierAtStart(scene);
-    yield* ConfirmedLedgerDB.insertMultiple(
-      yield* ledgerRows(minimal(failing.predecessorEntries), new Map()),
-    );
     for (const block of [failing, passing, forced]) {
       const { header, headerHash } = block.evidence;
       yield* insertRow({
@@ -102,3 +108,37 @@ export const seedLanded = (scene: Scene) =>
       yield* retain(block);
     }
   });
+
+/**
+ * A ledger store over `storage` (memory by default) retaining the ledgers
+ * of `roots` among the scene's blocks' parent ledgers and post-states;
+ * every one of them by default.
+ */
+export const sceneLedgerStore = async (
+  scene: Scene,
+  {
+    roots,
+    storage = createMemoryLedgerStorage(),
+  }: Readonly<{ roots?: readonly string[]; storage?: LedgerStorage }> = {},
+): Promise<LedgerStore> => {
+  const store = createLedgerStore(storage);
+  const ledgers = new Map<string, readonly Entry[]>();
+  for (const { evidence, predecessorEntries, postEntries } of [
+    scene.failing,
+    scene.passing,
+    scene.forced,
+  ]) {
+    ledgers.set(evidence.header.prevUtxosRoot, predecessorEntries);
+    ledgers.set(evidence.header.utxosRoot, postEntries);
+  }
+  for (const [root, entries] of ledgers)
+    if (roots === undefined || roots.includes(root))
+      await store.admit(entries, root);
+  return store;
+};
+
+/** The defense's ledgers over `store`, as the native owner gives them. */
+export const ledgersOf = (store: LedgerStore): DefenseLedgers => ({
+  retainedLedger: (root) =>
+    Effect.tryPromise({ try: () => store.at(root), catch: (cause) => cause }),
+});

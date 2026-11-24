@@ -7,7 +7,8 @@
  *   (attached after the scene's setup, so it sees every later
  *   transaction), and the scene's protocol outputs are seeded;
  * - the node's landed rows hold the scene's three blocks, each retained, on
- *   a confirmed frontier at the failing block's parent;
+ *   a confirmed frontier at the failing block's parent, and the node's
+ *   ledger store holds their parent ledgers and post-states;
  * - the defender's port plays with the node's own Lucid (the operator wallet
  *   with its pocket selected) against the scene's published references; the
  *   follower also seeds the deployment's reference-script address;
@@ -78,14 +79,18 @@ import {
 } from "./intent-journal-emulator.js";
 import type { testDatabases } from "./l1-events-store.js";
 import {
+  ledgersOf,
   operatorConfig,
+  sceneLedgerStore,
   seedLanded,
 } from "./validation-trace-defense-scene.landed.js";
 
 export {
   frontierAtStart,
+  ledgersOf,
   operatorConfig,
   retain,
+  sceneLedgerStore,
   seedLanded,
 } from "./validation-trace-defense-scene.landed.js";
 
@@ -205,6 +210,7 @@ export const openDefenseScene = async (
     tickMs: 1_000,
     pollMs: 25,
     cache: new Map(),
+    ledgers: ledgersOf(await sceneLedgerStore(scene)),
   };
 
   const pending = () =>
