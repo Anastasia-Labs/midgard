@@ -246,18 +246,34 @@ it("processes a block and rebases onto it at the keys the rebase names, with no 
             ),
         ),
       );
-      const spendableKeys = MempoolLedgerDB.retrieveSpendable.pipe(
-        Effect.map((rows) =>
-          rows.map((row) => hex(row[MempoolLedgerDB.Columns.OUTREF])).sort(),
+      // Every output the test writes, and what each holds spendable: in
+      // `mempool_ledger`, and in the cache.
+      const written = [X1, X2, ...BASE, ...pending.produced, OUTSIDE].map(
+        (item) => hex(item.outref),
+      );
+      const spendableAtWritten = MempoolLedgerDB.retrieveSpendable.pipe(
+        Effect.map((rows) => {
+          const spendable = new Map(
+            rows.map((row) => [
+              hex(row[MempoolLedgerDB.Columns.OUTREF]),
+              hex(row[MempoolLedgerDB.Columns.OUTPUT]),
+            ]),
+          );
+          return written.map((key) => [key, spendable.get(key)]);
+        }),
+      );
+      const cacheAtWritten = cache.withPhaseBLock(cache.currentState).pipe(
+        Effect.map((current) =>
+          written.map((key) => {
+            const output = current.get(key);
+            return [key, output && hex(output)];
+          }),
         ),
       );
-      const cacheKeys = cache
-        .withPhaseBLock(cache.currentState)
-        .pipe(Effect.map((current) => [...current.keys()].sort()));
 
       // The cache loads once, in full.
       yield* recompute.run("load the cache");
-      expect(yield* cacheKeys).toEqual(yield* spendableKeys);
+      expect(yield* cacheAtWritten).toEqual(yield* spendableAtWritten);
 
       for (const [label, nodes] of [
         ["process f1", [f1]],
@@ -313,7 +329,7 @@ it("processes a block and rebases onto it at the keys the rebase names, with no 
         expect(kept.map(([key]) => key)).toContain(hex(OUTSIDE.outref));
         for (const [key, row] of kept)
           expect([key, row.xmin], label).toEqual([key, before.get(key)!.xmin]);
-        expect(yield* cacheKeys, label).toEqual(yield* spendableKeys);
+        expect(yield* cacheAtWritten, label).toEqual(yield* spendableAtWritten);
       }
 
       // The working ledger the two blocks, the pending transaction and the

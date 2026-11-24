@@ -275,6 +275,7 @@ export const openProductionLifecycle = async (
       expect(appliedViews.has(viewKey(receipt.permit.view))).toBe(true);
       commitAttempts.push(structuredClone(receipt));
     };
+    const ledgerKeys = new Set<string>(); // every outref the ledger has held
     const synchronize = async (): Promise<void> => {
       requireRunning();
       if (observing) await recorded.observer.flush();
@@ -295,17 +296,17 @@ export const openProductionLifecycle = async (
         cache.withPhaseBLock(
           Effect.gen(function* () {
             const state = yield* cache.currentState;
+            const outref = (row: MempoolLedgerDB.Entry) =>
+              row[MempoolLedgerDB.Columns.OUTREF].toString("hex");
             const rows = yield* MempoolLedgerDB.retrieveSpendable;
-            const cached = [...state]
-              .map(([key, value]) => [key, value.toString("hex")])
-              .sort();
-            const durable = rows
-              .map((row) => [
-                row[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
-                row[MempoolLedgerDB.Columns.OUTPUT].toString("hex"),
-              ])
-              .sort();
-            expect(cached).toEqual(durable);
+            const durable = new Map(rows.map((row) => [outref(row), row]));
+            for (const row of yield* MempoolLedgerDB.retrieve)
+              ledgerKeys.add(outref(row));
+            const at = (read: (key: string) => Buffer | undefined) =>
+              [...ledgerKeys].map((key) => [key, read(key)?.toString("hex")]);
+            expect(at((key) => state.get(key))).toEqual(
+              at((key) => durable.get(key)?.[MempoolLedgerDB.Columns.OUTPUT]),
+            );
           }),
         ),
       );

@@ -9,6 +9,7 @@ import {
   UNKNOWN_SPENDABLE_VIEW,
 } from "./admission-input-claims.js";
 import type { MempoolLedgerDelta, MempoolLedgerDeltaLog } from "./globals.js";
+import type { MempoolLedgerState } from "./mempool-ledger-cache.mempool-ledger-cache-service.js";
 
 /**
  * The journal entries after `fromVersion`, when they are contiguous and none
@@ -27,13 +28,14 @@ export const contiguousEntriesAfter = (
 };
 
 /**
- * Membership in the cache's `state`, with the journal entries published since
- * `state` was last synchronized laid over it, so a deposit projected while
- * validation is idle is already spendable. `state` changes only inside
- * synchronous sections, so a caller that uses the view synchronously never
- * sees half a patch or half a rebuild. The view cannot tell (`undefined`)
- * before `state` is first built, while canonical recovery rebuilds it, or
- * when the journal has a gap or a full-reload marker past it.
+ * Membership in the cache's working ledger (`state`, the durable ledger with
+ * the live patches over it), with the journal entries published since it was
+ * last synchronized laid over it, so a deposit projected while validation is
+ * idle is already spendable. `state` changes only inside synchronous
+ * sections, so a caller that uses the view synchronously never sees half a
+ * patch or half a load. The view cannot tell (`undefined`) before `state` is
+ * first loaded, while canonical recovery repairs it, or when the journal has
+ * a gap or a full-reload marker past it.
  */
 export const makeSpendableView = ({
   pipeline,
@@ -43,9 +45,9 @@ export const makeSpendableView = ({
 }: {
   readonly pipeline: Effect.Effect<{ readonly canonicalSuspended: boolean }>;
   readonly journal: Effect.Effect<MempoolLedgerDeltaLog>;
-  /** `state` and the journal version it reflects (-1: not built yet). */
+  /** `state` and the journal version it reflects (-1: not loaded yet). */
   readonly synced: () => {
-    readonly state: ReadonlyMap<string, unknown>;
+    readonly state: MempoolLedgerState;
     readonly version: number;
   };
   /** The contiguous incremental entries after a version, or `undefined`. */
@@ -61,11 +63,12 @@ export const makeSpendableView = ({
     if (canonicalSuspended || version < 0) return UNKNOWN_SPENDABLE_VIEW;
     const newer = entriesAfter(log, version);
     if (newer === undefined) return UNKNOWN_SPENDABLE_VIEW;
-    if (newer.length === 0) return (outRefHex) => state.has(outRefHex);
+    const holds = (outRefHex: string) => state.get(outRefHex) !== undefined;
+    if (newer.length === 0) return holds;
     const overlay = new Map<string, boolean>();
     for (const entry of newer) {
       for (const outRefHex of entry.deletes) overlay.set(outRefHex, false);
       for (const [outRefHex] of entry.upserts) overlay.set(outRefHex, true);
     }
-    return (outRefHex) => overlay.get(outRefHex) ?? state.has(outRefHex);
+    return (outRefHex) => overlay.get(outRefHex) ?? holds(outRefHex);
   });

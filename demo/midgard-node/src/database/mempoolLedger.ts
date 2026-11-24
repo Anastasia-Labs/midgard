@@ -324,6 +324,27 @@ export const retrieveSpendableByTxOutRefs = (
     ),
   );
 
+/**
+ * The spendable outputs at the hex outrefs `keys`, read in chunks; a key with
+ * no spendable row is absent from the result.
+ */
+export const spendableAt = (
+  keys: ReadonlySet<string>,
+): Effect.Effect<ReadonlyMap<string, Buffer>, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const outRefs = [...keys].map((key) => Buffer.from(key, "hex"));
+    const spendable = new Map<string, Buffer>();
+    for (let start = 0; start < outRefs.length; start += 1_000)
+      for (const row of yield* retrieveSpendableByTxOutRefs(
+        outRefs.slice(start, start + 1_000),
+      ))
+        spendable.set(
+          row[Columns.OUTREF].toString("hex"),
+          Buffer.from(row[Columns.OUTPUT]),
+        );
+    return spendable;
+  });
+
 export const retrieveBySourceEventIds = (
   eventIds: readonly Buffer[],
 ): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>

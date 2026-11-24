@@ -14,6 +14,7 @@ export {
   type MempoolLedgerState,
   type PhaseBSequence,
   validationLedgerCacheDeltaApplyCounter,
+  validationLedgerCacheEntryWriteCounter,
   validationLedgerCacheFullReloadCounter,
   validationPhaseBLockWaitTimer,
   ValidationPipelineEpochError,

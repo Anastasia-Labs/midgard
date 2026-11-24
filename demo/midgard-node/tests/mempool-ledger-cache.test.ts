@@ -9,6 +9,8 @@ import "../src/services/globals.globals.js";
 import "../src/services/globals.with-l1-control-plane-held.js";
 import "../src/services/mempool-ledger-cache.make-mempool-ledger-cache-service.js";
 import "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
+import "../src/services/mempool-ledger-cache.working-ledger.js";
 import "./mempool-ledger-cache.row.js";
 import "./mempool-ledger-cache.canonical-history-cache-retirement.js";
 import "./mempool-ledger-cache.mempool-ledger-cache.js";
+import "./mempool-ledger-cache.working-ledger.js";

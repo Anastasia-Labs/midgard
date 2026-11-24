@@ -1,7 +1,3 @@
-import {
-  applyUTxOStatePatch,
-  type UTxOStatePatch,
-} from "@al-ft/midgard-validation/phase-b";
 import { Deferred, Duration, Effect, Metric, Ref } from "effect";
 
 import { MempoolLedgerDB } from "../database/index.js";
@@ -14,9 +10,9 @@ import type {
 import {
   type CanonicalCacheRecovery,
   type MempoolLedgerCacheService,
-  type MempoolLedgerState,
   type PhaseBSequence,
   validationLedgerCacheDeltaApplyCounter,
+  validationLedgerCacheEntryWriteCounter,
   validationLedgerCacheFullReloadCounter,
   validationPhaseBLockWaitTimer,
   ValidationPipelineEpochError,
@@ -25,6 +21,7 @@ import {
   contiguousEntriesAfter,
   makeSpendableView,
 } from "./mempool-ledger-cache.spendable-view.js";
+import { makeWorkingLedger } from "./mempool-ledger-cache.working-ledger.js";
 
 export const makeMempoolLedgerCacheService = (
   globals: Globals,
@@ -32,6 +29,10 @@ export const makeMempoolLedgerCacheService = (
     readonly MempoolLedgerDB.EntryWithTimeStamp[],
     DatabaseError
   >,
+  /** The spendable outputs at hex outrefs; a key with none is absent. */
+  spendableAt: (
+    keys: ReadonlySet<string>,
+  ) => Effect.Effect<ReadonlyMap<string, Buffer>, DatabaseError>,
 ): Effect.Effect<MempoolLedgerCacheService> =>
   Effect.gen(function* () {
     const lock = yield* Effect.makeSemaphore(1);
@@ -52,39 +53,29 @@ export const makeMempoolLedgerCacheService = (
       readonly poison: EpochPoison | undefined;
       readonly canonicalSuspended: boolean;
     }>({ epoch: 0, poison: undefined, canonicalSuspended: false });
-    const durableState: MempoolLedgerState = new Map();
-    const state: MempoolLedgerState = new Map();
-    const speculativePatches = new Map<bigint, UTxOStatePatch>();
+    const ledger = makeWorkingLedger();
+    // The delta-log version the durable entries reflect; -1 until first loaded.
     let cachedVersion = -1;
-    // The delta-log version `state` reflects; -1 until it is first built.
-    let stateVersion = -1;
 
-    const rebuildCombinedState = (): void => {
-      state.clear();
-      for (const [outRefHex, output] of durableState) {
-        state.set(outRefHex, Buffer.from(output));
-      }
-      for (const [, patch] of [...speculativePatches].sort(([left], [right]) =>
-        left < right ? -1 : left > right ? 1 : 0,
-      )) {
-        applyUTxOStatePatch(state, patch);
-      }
-      stateVersion = cachedVersion;
-    };
+    const countWrites = (written: number) =>
+      Metric.incrementBy(
+        validationLedgerCacheEntryWriteCounter,
+        BigInt(written),
+      );
 
     const contiguousIncrementalEntries = (journal: MempoolLedgerDeltaLog) =>
       contiguousEntriesAfter(journal, cachedVersion);
 
+    /** Applies journal entries to the durable ledger; the entries written. */
     const applyIncrementalEntries = (
       entries: readonly MempoolLedgerDelta[],
-    ): void => {
+    ): number => {
+      let written = 0;
       for (const entry of entries) {
-        for (const outRefHex of entry.deletes) durableState.delete(outRefHex);
-        for (const [outRefHex, output] of entry.upserts) {
-          durableState.set(outRefHex, Buffer.from(output));
-        }
+        written += ledger.applyDelta(entry);
         cachedVersion = entry.version;
       }
+      return written;
     };
 
     const fullReload: Effect.Effect<void, DatabaseError> = Effect.gen(
@@ -95,30 +86,20 @@ export const makeMempoolLedgerCacheService = (
           // than `before` closes the load/publish race without ever skipping a
           // committed change. A full marker or ring gap forces another load.
           const before = yield* Ref.get(globals.MEMPOOL_LEDGER_DELTA_LOG);
-          const entries = yield* loadSpendable;
-          durableState.clear();
-          for (const entry of entries) {
-            durableState.set(
-              entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
-              Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]),
-            );
-          }
+          const written = ledger.loadAll(yield* loadSpendable);
           cachedVersion = before.version;
           yield* Metric.increment(validationLedgerCacheFullReloadCounter);
+          yield* countWrites(written);
 
           const after = yield* Ref.get(globals.MEMPOOL_LEDGER_DELTA_LOG);
-          if (after.version === cachedVersion) {
-            rebuildCombinedState();
-            return;
-          }
+          if (after.version === cachedVersion) return;
           const replay = contiguousIncrementalEntries(after);
           if (replay !== undefined) {
-            applyIncrementalEntries(replay);
+            yield* countWrites(applyIncrementalEntries(replay));
             yield* Metric.incrementBy(
               validationLedgerCacheDeltaApplyCounter,
               BigInt(replay.length),
             );
-            rebuildCombinedState();
             return;
           }
         }
@@ -139,8 +120,7 @@ export const makeMempoolLedgerCacheService = (
           yield* fullReload;
           return;
         }
-        applyIncrementalEntries(needed);
-        rebuildCombinedState();
+        yield* countWrites(applyIncrementalEntries(needed));
         yield* Metric.incrementBy(
           validationLedgerCacheDeltaApplyCounter,
           BigInt(needed.length),
@@ -239,9 +219,17 @@ export const makeMempoolLedgerCacheService = (
                   current.canonicalSuspended
                 )
                   return;
-                speculativePatches.clear();
-                yield* fullReload;
-                // Canonical retirement can arrive while fullReload awaits SQL.
+                // Every earlier persistence has finished and every later one
+                // is fenced, and each commits its ledger effects in one
+                // transaction, at keys its patch names. So the durable
+                // entries can differ from the table only at the keys of the
+                // patches never promoted.
+                const unknown = ledger.dropPatches();
+                yield* synchronize;
+                yield* countWrites(
+                  ledger.repair(unknown, yield* spendableAt(unknown)),
+                );
+                // Canonical retirement can arrive while the reads await SQL.
                 // An older poisoned recovery must never clear that suspension.
                 yield* Ref.update(pipeline, (latest) =>
                   latest.epoch === current.epoch &&
@@ -300,7 +288,7 @@ export const makeMempoolLedgerCacheService = (
                   yield* requireCurrent;
                   const result = yield* repairDurable;
                   yield* requireCurrent;
-                  speculativePatches.clear();
+                  ledger.dropPatches();
                   const changes = durableChanges?.(result);
                   if (changes === undefined) yield* fullReload;
                   else {
@@ -308,10 +296,9 @@ export const makeMempoolLedgerCacheService = (
                     // state to the repair's start, then its changed keys
                     // are read again.
                     yield* synchronize;
-                    for (const key of changes.keys) durableState.delete(key);
-                    for (const [key, output] of changes.spendable)
-                      durableState.set(key, Buffer.from(output));
-                    rebuildCombinedState();
+                    yield* countWrites(
+                      ledger.repair(changes.keys, changes.spendable),
+                    );
                   }
                   yield* requireCurrent;
                   // Parked retired Phase-A jobs retain old ordering tails.
@@ -346,7 +333,7 @@ export const makeMempoolLedgerCacheService = (
     const spendableView = makeSpendableView({
       pipeline: Ref.get(pipeline),
       journal: Ref.get(globals.MEMPOOL_LEDGER_DELTA_LOG),
-      synced: () => ({ state, version: stateVersion }),
+      synced: () => ({ state: ledger.lookup, version: cachedVersion }),
       entriesAfter: contiguousEntriesAfter,
     });
 
@@ -442,14 +429,9 @@ export const makeMempoolLedgerCacheService = (
                       withPhaseBLock(
                         assertSequenceMayAdvance(currentEpoch, sequence).pipe(
                           Effect.zipRight(
-                            Effect.sync(() => {
-                              const patch = speculativePatches.get(sequence);
-                              if (patch !== undefined) {
-                                applyUTxOStatePatch(durableState, patch);
-                              }
-                              speculativePatches.delete(sequence);
-                            }),
+                            Effect.sync(() => ledger.promote(sequence)),
                           ),
+                          Effect.flatMap(countWrites),
                         ),
                       ),
                     ),
@@ -471,26 +453,13 @@ export const makeMempoolLedgerCacheService = (
       currentState: requireCanonicalReady.pipe(
         Effect.zipRight(synchronize),
         Effect.zipRight(requireCanonicalReady),
-        Effect.as(state),
+        Effect.as(ledger.lookup),
       ),
-      applyPatchAndSync: (patch) =>
-        requireCanonicalReady.pipe(
-          Effect.zipRight(synchronize),
-          Effect.zipRight(requireCanonicalReady),
-          Effect.tap(() =>
-            Effect.sync(() => applyUTxOStatePatch(state, patch)),
-          ),
-        ),
       applySpeculativePatch: (sequence, patch) =>
         requireCanonicalReady.pipe(
           Effect.zipRight(synchronize),
           Effect.zipRight(requireCanonicalReady),
-          Effect.tap(() =>
-            Effect.sync(() => {
-              speculativePatches.set(sequence, patch);
-              applyUTxOStatePatch(state, patch);
-            }),
-          ),
+          Effect.tap(() => Effect.sync(() => ledger.setPatch(sequence, patch))),
         ),
       recoverPoisonedEpoch,
       retireCanonicalEpoch,

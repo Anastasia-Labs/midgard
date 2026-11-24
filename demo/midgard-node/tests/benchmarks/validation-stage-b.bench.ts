@@ -714,11 +714,11 @@ const drainReplica = async (
         VALIDATION_WORKER_CHUNK_SIZE: chunkSize,
       };
       const globals = yield* Globals;
+      const withSql = Effect.provideService(SqlClient.SqlClient, sql);
       const cache = yield* makeMempoolLedgerCacheService(
         globals,
-        MempoolLedgerDB.retrieveSpendable.pipe(
-          Effect.provideService(SqlClient.SqlClient, sql),
-        ),
+        MempoolLedgerDB.retrieveSpendable.pipe(withSql),
+        (keys) => MempoolLedgerDB.spendableAt(keys).pipe(withSql),
       );
       const writeBehind = yield* makeWriteBehind.pipe(
         Effect.provideService(NodeConfig, nodeConfig),
@@ -877,9 +877,11 @@ const drainReplica = async (
       if (p99 !== undefined && Option.isSome(p99)) {
         p99BatchMs = p99.value;
       }
-      const cachedLedgerRows = yield* cache.withPhaseBLock(
-        cache.currentState.pipe(Effect.map((state) => state.size)),
-      );
+      const ledgerRows = yield* MempoolLedgerDB.retrieve;
+      const ledger = yield* cache.withPhaseBLock(cache.currentState);
+      const cachedLedgerRows = ledgerRows.filter((row) =>
+        ledger.get(row[MempoolLedgerDB.Columns.OUTREF].toString("hex")),
+      ).length;
       const counts = yield* sql<{
         readonly status: string;
         readonly count: bigint | string;
@@ -893,9 +895,6 @@ const drainReplica = async (
       const payloadCount = yield* sql<{
         readonly count: bigint | string;
       }>`SELECT COUNT(*) AS count FROM tx_admission_payloads`;
-      const ledgerCount = yield* sql<{
-        readonly count: bigint | string;
-      }>`SELECT COUNT(*) AS count FROM mempool_ledger`;
       const identityCounts = yield* sql<{
         readonly missingExpectedTxIds: bigint | string;
         readonly unexpectedAcceptedTxIds: bigint | string;
@@ -962,7 +961,7 @@ const drainReplica = async (
         rejectedAdmissionRows: countByStatus.get("rejected") ?? 0,
         admissionPayloadRows: Number(payloadCount[0]?.count ?? 0),
         mempoolRows: Number(mempoolCount[0]?.count ?? 0),
-        mempoolLedgerRows: Number(ledgerCount[0]?.count ?? 0),
+        mempoolLedgerRows: ledgerRows.length,
         cachedLedgerRows,
         missingExpectedTxIds: Number(
           identityCounts[0]?.missingExpectedTxIds ?? 0,

@@ -88,7 +88,7 @@ import {
   run,
   seed,
 } from "./landed-blocks-rebase.fixture.js";
-import { snapshot } from "./mempool-ledger-cache.row.js";
+import { noKeyedReads } from "./mempool-ledger-cache.row.js";
 
 const databases = testDatabases();
 const opened: FactStore[] = [];
@@ -264,10 +264,9 @@ const admit = (
           const cache = yield* makeMempoolLedgerCacheService(
             globals,
             Effect.succeed(rows),
+            noKeyedReads,
           );
-          const state = yield* cache.withPhaseBLock(
-            cache.currentState.pipe(Effect.map(snapshot)),
-          );
+          const state = yield* cache.withPhaseBLock(cache.currentState);
           return yield* runPhaseBValidationWithPatch([candidate], state, {
             l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             nowCardanoSlotNo: 0n,

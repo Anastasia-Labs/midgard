@@ -46,22 +46,6 @@ export type RepairFound = {
   heldOrphansDetail: string;
 };
 
-/** The spendable outputs at the hex outrefs `keys`, read in chunks. */
-const spendableAt = (keys: ReadonlySet<string>) =>
-  Effect.gen(function* () {
-    const outRefs = [...keys].map((key) => Buffer.from(key, "hex"));
-    const spendable = new Map<string, Buffer>();
-    for (let start = 0; start < outRefs.length; start += 1_000)
-      for (const row of yield* MempoolLedgerDB.retrieveSpendableByTxOutRefs(
-        outRefs.slice(start, start + 1_000),
-      ))
-        spendable.set(
-          row[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
-          Buffer.from(row[MempoolLedgerDB.Columns.OUTPUT]),
-        );
-    return { keys, spendable } satisfies DurableChanges;
-  });
-
 export const followerRepair =
   (input: {
     readonly plan: IngestionPlan;
@@ -136,6 +120,11 @@ export const followerRepair =
       yield* describeHeld;
       return {
         outcome: rebased,
-        changes: keyed ? yield* spendableAt(keys) : undefined,
+        changes: keyed
+          ? ({
+              keys,
+              spendable: yield* MempoolLedgerDB.spendableAt(keys),
+            } satisfies DurableChanges)
+          : undefined,
       };
     });

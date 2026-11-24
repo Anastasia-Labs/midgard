@@ -1170,11 +1170,14 @@ export const registerAdmissionsTests = () => {
             const validationStarted = yield* Deferred.make<void>();
             const finishValidation = yield* Deferred.make<void>();
             let validationRuns = 0;
+            const withSql = Effect.provideService(
+              SqlClient.SqlClient,
+              batchSql,
+            );
             const cache = yield* makeMempoolLedgerCacheService(
               globals,
-              MempoolLedgerDB.retrieveSpendable.pipe(
-                Effect.provideService(SqlClient.SqlClient, batchSql),
-              ),
+              MempoolLedgerDB.retrieveSpendable.pipe(withSql),
+              (keys) => MempoolLedgerDB.spendableAt(keys).pipe(withSql),
             );
             const validationPool: ValidationPoolService = {
               ...testingInlineCekVerdicts,

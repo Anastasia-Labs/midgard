@@ -7,7 +7,13 @@ import {
 } from "../../midgard-validation/tests/validation-fixtures.js";
 import { Globals } from "../src/services/globals.globals.js";
 import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.make-mempool-ledger-cache-service.js";
-import { row, snapshot } from "./mempool-ledger-cache.row.js";
+import {
+  fullReloads,
+  keyedReadsOver,
+  noKeyedReads,
+  row,
+  snapshot,
+} from "./mempool-ledger-cache.row.js";
 
 describe("canonical history cache retirement", () => {
   it("fresh sequences do not wait on a retired Phase A job after recovery", async () => {
@@ -17,6 +23,7 @@ describe("canonical history cache retirement", () => {
         const service = yield* makeMempoolLedgerCacheService(
           globals,
           Effect.succeed([]),
+          noKeyedReads,
         );
         const parked = yield* service.withClaimLock(
           service.registerPhaseBSequence,
@@ -44,12 +51,14 @@ describe("canonical history cache retirement", () => {
       Effect.gen(function* () {
         const globals = yield* Globals;
         let loads = 0;
+        const reads = keyedReadsOver(() => []);
         const service = yield* makeMempoolLedgerCacheService(
           globals,
           Effect.sync(() => {
             loads += 1;
             return [];
           }),
+          reads.spendableAt,
         );
         const oldFirst = yield* service.withClaimLock(
           service.registerPhaseBSequence,
@@ -78,8 +87,11 @@ describe("canonical history cache retirement", () => {
           (yield* Effect.either(newSecond.runDecision(Effect.void)))._tag,
         ).toBe("Left");
         yield* newFirst.cancel;
+        const reloadsBefore = yield* fullReloads;
         yield* service.recoverPoisonedEpoch;
-        expect(loads).toBe(2);
+        expect(loads).toBe(1);
+        expect(yield* fullReloads).toBe(reloadsBefore);
+        expect(reads.asked).toStrictEqual([[]]);
       }).pipe(Effect.provide(Globals.Default)),
     );
   });
@@ -97,6 +109,7 @@ describe("canonical history cache retirement", () => {
         const service = yield* makeMempoolLedgerCacheService(
           globals,
           Effect.sync(() => rows),
+          noKeyedReads,
         );
         const sequence = yield* service.withClaimLock(
           service.registerPhaseBSequence,
@@ -136,7 +149,9 @@ describe("canonical history cache retirement", () => {
           }),
         );
         const state = yield* service.withPhaseBLock(
-          service.currentState.pipe(Effect.map(snapshot)),
+          service.currentState.pipe(
+            Effect.map(snapshot([orphan, speculative, canonical])),
+          ),
         );
         expect([...state.keys()]).toEqual([canonical.toString("hex")]);
         expect(writes).toBe(0);
@@ -162,6 +177,7 @@ describe("canonical history cache retirement", () => {
         const service = yield* makeMempoolLedgerCacheService(
           globals,
           Effect.sync(() => rows),
+          noKeyedReads,
         );
         const sequence = yield* service.withClaimLock(
           service.registerPhaseBSequence,
@@ -198,7 +214,9 @@ describe("canonical history cache retirement", () => {
         yield* Deferred.succeed(finish, undefined);
         yield* Fiber.join(repair);
         expect((yield* Fiber.join(writer))._tag).toBe("Left");
-        const state = yield* service.withPhaseBLock(service.currentState);
+        const state = yield* service.withPhaseBLock(
+          service.currentState.pipe(Effect.map(snapshot([old, canonical]))),
+        );
         expect([...state.keys()]).toEqual([canonical.toString("hex")]);
       }).pipe(Effect.provide(Globals.Default)),
     );
@@ -221,6 +239,7 @@ describe("canonical history cache retirement", () => {
             }
             return [];
           }),
+          noKeyedReads,
         );
         const first = yield* service.retireCanonicalEpoch;
         const pending = yield* Effect.fork(
@@ -260,6 +279,7 @@ describe("canonical history cache retirement", () => {
         const service = yield* makeMempoolLedgerCacheService(
           globals,
           Effect.succeed([]),
+          noKeyedReads,
         );
         const entered = yield* Deferred.make<void>();
         const finish = yield* Deferred.make<void>();
@@ -295,6 +315,7 @@ describe("canonical history cache retirement", () => {
         const service = yield* makeMempoolLedgerCacheService(
           globals,
           Effect.succeed([]),
+          noKeyedReads,
         );
         const old = yield* service.withClaimLock(
           service.registerPhaseBSequence,
@@ -318,33 +339,55 @@ describe("canonical history cache retirement", () => {
     );
   });
 
-  it("a poisoned-epoch reload cannot clear canonical suspension that arrives while SQL is pending", async () => {
+  it("a poisoned-epoch recovery cannot clear canonical suspension that arrives while its keyed read is pending", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const globals = yield* Globals;
+        const spent = outRefFromByte(0xb5);
+        const produced = outRefFromByte(0xb6);
+        const output = makeOutput(10n);
         const entered = yield* Deferred.make<void>();
         const finish = yield* Deferred.make<void>();
         let loads = 0;
+        const reads = keyedReadsOver(() => [row(spent, output)]);
         const service = yield* makeMempoolLedgerCacheService(
           globals,
-          Effect.gen(function* () {
-            if (++loads === 1) {
-              yield* Deferred.succeed(entered, undefined);
-              yield* Deferred.await(finish);
-            }
-            return [];
+          Effect.sync(() => {
+            loads += 1;
+            return [row(spent, output)];
           }),
+          (keys) =>
+            Deferred.succeed(entered, undefined).pipe(
+              Effect.zipRight(Deferred.await(finish)),
+              Effect.zipRight(reads.spendableAt(keys)),
+            ),
         );
+        yield* service.withPhaseBLock(service.currentState);
         const failed = yield* service.withClaimLock(
           service.registerPhaseBSequence,
         );
-        yield* Effect.either(failed.runDecision(Effect.fail("phase B failed")));
+        yield* Effect.either(
+          failed.runDecision(
+            service
+              .applySpeculativePatch(failed.sequence, {
+                deletedOutRefs: [spent.toString("hex")],
+                upsertedOutRefs: [[produced.toString("hex"), output]],
+              })
+              .pipe(Effect.zipRight(Effect.fail("phase B failed"))),
+          ),
+        );
         yield* failed.cancel;
+        const reloadsBefore = yield* fullReloads;
         const poisoned = yield* Effect.fork(service.recoverPoisonedEpoch);
         yield* Deferred.await(entered);
         const canonical = yield* service.retireCanonicalEpoch;
         yield* Deferred.succeed(finish, undefined);
         yield* Fiber.join(poisoned);
+        expect(loads).toBe(1);
+        expect(yield* fullReloads).toBe(reloadsBefore);
+        expect(reads.asked).toStrictEqual([
+          [spent, produced].map((key) => key.toString("hex")).sort(),
+        ]);
         expect(
           (yield* Effect.either(service.withPhaseBLock(service.currentState)))
             ._tag,
