@@ -24,7 +24,6 @@ const values = (): Record<string, string> => ({
   MIDGARD_PHASE4_KUPO_PORT: "2442",
   MIN_FEE_A: "0",
   MIN_FEE_B: "0",
-  RUN_GENESIS_ON_STARTUP: "false",
   MIDGARD_DOTENV_MODE: "disabled",
   NETWORK: "Custom",
   TESTNET_GENESIS_WALLET_SEED_PHRASE_A: "test-only-a",

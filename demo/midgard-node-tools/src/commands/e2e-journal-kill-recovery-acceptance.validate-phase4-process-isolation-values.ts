@@ -204,9 +204,6 @@ export const validatePhase4ProcessIsolationValues = (
       "Phase 4 process acceptance requires pinned MIN_FEE_A=0 and MIN_FEE_B=0",
     );
   }
-  if (requiredValue(values, "RUN_GENESIS_ON_STARTUP") !== "false") {
-    throw new Error("Phase 4 isolated nodes must use attach/resume");
-  }
   if (requiredValue(values, "MIDGARD_DOTENV_MODE") !== "disabled") {
     throw new Error(
       "Phase 4 isolated nodes must disable checkout dotenv loading",

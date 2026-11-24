@@ -134,7 +134,7 @@ describe("a second instance of a public stack", () => {
     fixture.env.MIDGARD_DEPLOYMENT_PROFILE = "preprod-testing";
     await fixture.writeEnv();
     await expect(loadAttachedStackConfig(fixture.path)).rejects.toThrow(
-      `A second instance of a public stack requires Preprod, MIDGARD_DEPLOYMENT_PROFILE=${SELECTED_DEPLOYMENT_PROFILE.name}`,
+      `A second instance of a public stack requires Preprod and MIDGARD_DEPLOYMENT_PROFILE=${SELECTED_DEPLOYMENT_PROFILE.name}`,
     );
   });
 });

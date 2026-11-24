@@ -341,11 +341,10 @@ export async function loadStackConfig(path: string) {
     throw new Error("Node endpoint does not match Compose host port");
   if (
     env.NETWORK !== "Preprod" ||
-    !STACK_PROFILES.includes(env.MIDGARD_DEPLOYMENT_PROFILE ?? "") ||
-    env.RUN_GENESIS_ON_STARTUP !== "false"
+    !STACK_PROFILES.includes(env.MIDGARD_DEPLOYMENT_PROFILE ?? "")
   )
     throw new Error(
-      `Require Preprod with one of the profiles ${STACK_PROFILES.join(", ")} and RUN_GENESIS_ON_STARTUP=false`,
+      `Require Preprod with one of the profiles ${STACK_PROFILES.join(", ")}`,
     );
   // The node, deploy and journey commands run the profile this checkout compiled.
   const compiled: string = SELECTED_DEPLOYMENT_PROFILE.name;

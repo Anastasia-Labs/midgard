@@ -241,20 +241,18 @@ export async function loadAttachedStackConfig(path: string) {
     if (
       env.NETWORK !== "Preprod" ||
       env.MIDGARD_DEPLOYMENT_PROFILE !== "preprod-testing" ||
-      compiled !== "preprod-testing" ||
-      env.RUN_GENESIS_ON_STARTUP !== "false"
+      compiled !== "preprod-testing"
     )
       throw new Error(
-        "A second instance requires Preprod, MIDGARD_DEPLOYMENT_PROFILE=preprod-testing in a checkout compiled for it, and RUN_GENESIS_ON_STARTUP=false",
+        "A second instance requires Preprod and MIDGARD_DEPLOYMENT_PROFILE=preprod-testing in a checkout compiled for it",
       );
   } else if (
     !isProductionDeploymentProfileName(compiled) ||
     env.NETWORK !== "Preprod" ||
-    env.MIDGARD_DEPLOYMENT_PROFILE !== compiled ||
-    env.RUN_GENESIS_ON_STARTUP !== "false"
+    env.MIDGARD_DEPLOYMENT_PROFILE !== compiled
   )
     throw new Error(
-      `A second instance of a public stack requires Preprod, MIDGARD_DEPLOYMENT_PROFILE=${compiled} in a checkout compiled for the stack's production profile, and RUN_GENESIS_ON_STARTUP=false`,
+      `A second instance of a public stack requires Preprod and MIDGARD_DEPLOYMENT_PROFILE=${compiled} in a checkout compiled for the stack's production profile`,
     );
   for (const key of ["MIN_FEE_A", "MIN_FEE_B"])
     if (!/^[0-9]+$/.test(env[key] ?? ""))

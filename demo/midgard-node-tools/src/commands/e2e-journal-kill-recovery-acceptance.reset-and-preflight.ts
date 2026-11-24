@@ -37,7 +37,6 @@ const scenarioProcessEnv = ({
     "MIDGARD_DEPLOYMENT_MANIFEST_PATH",
   ),
   MIDGARD_DA_DEPLOYMENT_MANIFEST_PATH: undefined,
-  RUN_GENESIS_ON_STARTUP: "false",
 });
 
 export const makeNodeSpec = ({

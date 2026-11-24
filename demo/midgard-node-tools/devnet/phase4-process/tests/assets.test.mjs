@@ -159,7 +159,6 @@ test("acceptance env is canonical when node.env lacks run-scoped values", async 
     'POSTGRES_HOST="127.0.0.1"',
     'POSTGRES_PORT="5544"',
     'POSTGRES_DB="midgard_phase4_process_asset_test"',
-    'RUN_GENESIS_ON_STARTUP="false"',
   ]) {
     assert.match(output, new RegExp(`^${expected}$`, "m"));
   }

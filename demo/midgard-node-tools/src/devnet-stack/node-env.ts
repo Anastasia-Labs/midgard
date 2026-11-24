@@ -121,7 +121,6 @@ export const nodeEnvironment = (input: {
     MIDGARD_NODE_URL: `http://127.0.0.1:${ports.nodeHttp}`,
     PROM_METRICS_PORT: String(ports.nodeMetrics),
     ADMIN_API_KEY: identities.adminApiKey,
-    RUN_GENESIS_ON_STARTUP: "false",
     // Small journeys never queue eight blocks; the default would park merges.
     MIN_QUEUE_LENGTH_FOR_MERGING: "1",
     ...(oneShot === undefined

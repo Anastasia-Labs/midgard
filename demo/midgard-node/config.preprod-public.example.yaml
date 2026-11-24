@@ -23,8 +23,6 @@
 # preprod-public) and that profile's network.
 MIDGARD_DEPLOYMENT_PROFILE: "preprod-public"
 NETWORK: "Preprod"
-# The public runtime refuses runtime genesis.
-RUN_GENESIS_ON_STARTUP: "false"
 
 # --- Wallets (required secrets) ------------------------------------------------
 # Four distinct wallets; config load refuses two roles that derive the same

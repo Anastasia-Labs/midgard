@@ -80,7 +80,6 @@ export async function configFixture(example = "preprod-stack.example.json") {
   const env: Record<string, string> = {
     NETWORK: "Preprod",
     MIDGARD_DEPLOYMENT_PROFILE: "preprod-testing",
-    RUN_GENESIS_ON_STARTUP: "false",
     MIN_FEE_A: "10",
     MIN_FEE_B: "10",
     DA_THRESHOLD: "2",

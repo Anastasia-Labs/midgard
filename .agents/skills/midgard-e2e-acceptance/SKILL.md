@@ -83,8 +83,8 @@ by `docs/agents/state-reset.md`. [review]
   for attach and resume. A changed identity field stops the run.
   [runtime: runStackController]
 - The configuration must name Preprod, the `preprod-testing`,
-  `preprod-rehearsal` or `preprod-public` profile,
-  `RUN_GENESIS_ON_STARTUP=false`, the exact L2 fees, and a Postgres host port
+  `preprod-rehearsal` or `preprod-public` profile, the exact L2 fees, and a
+  Postgres host port
   other than 5433 and 55433; setup refuses anything else. A
   `preprod-rehearsal` or `preprod-public` run also needs the `public` section.
   [runtime: loadStackConfig]

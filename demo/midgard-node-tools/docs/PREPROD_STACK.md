@@ -28,8 +28,7 @@ Copy `config/preprod-stack.example.json` and replace its absolute paths. This
 file contains names of secret environment variables, never their values. It
 uses the existing operator stack's `.env`, provider data, deployment directory
 and Docker volumes. Set `NETWORK=Preprod`, `MIDGARD_DEPLOYMENT_PROFILE=preprod-testing`
-(or `preprod-public`, below),
-`RUN_GENESIS_ON_STARTUP=false`, and the exact L2
+(or `preprod-public`, below), and the exact L2
 `MIN_FEE_A`/`MIN_FEE_B`. Keep the operator deployment profile settings from
 `demo/midgard-node/.env.example`. Define all wallet and DA secret variables named
 by the stack configuration in that `.env`. The stack-only secrets (user,
@@ -272,7 +271,7 @@ kept beside the generated peer.
 
 A second instance of a public stack (`preprod-rehearsal` or `preprod-public`)
 runs from a linked worktree built for the stack's profile, with
-`MIDGARD_DEPLOYMENT_PROFILE` naming it and `RUN_GENESIS_ON_STARTUP=false`; copy
+`MIDGARD_DEPLOYMENT_PROFILE` naming it; copy
 `config/preprod-rehearsal-operator2.example.json`. Its configuration also names
 `nodeConfigFile`, its own private node configuration (mode 0600: its admin API
 key, Postgres password and four node seeds, none of them in its `.env`, which

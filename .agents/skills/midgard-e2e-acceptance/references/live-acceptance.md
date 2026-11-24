@@ -34,7 +34,7 @@ points at, without printing seed phrases:
 
 - `NETWORK=Preprod` and `MIDGARD_DEPLOYMENT_PROFILE=preprod-testing` (for
   `preprod-public`, see `docs-site/content/docs/operators/node/preprod-public-deploy.mdx`);
-- `RUN_GENESIS_ON_STARTUP=false` and the exact L2 `MIN_FEE_A`/`MIN_FEE_B`;
+- the exact L2 `MIN_FEE_A`/`MIN_FEE_B`;
 - an explicit `MIDGARD_POSTGRES_HOST_PORT` that is neither 5433 nor 55433
   (both belong to test databases);
 - every wallet, DA member, transport and DA password variable the

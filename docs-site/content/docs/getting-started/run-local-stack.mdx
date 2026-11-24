@@ -96,8 +96,8 @@ Rebuilding the owner changes the hash, so pin it again after every rebuild. See
 ### Initialize the protocol
 
 Configure the node (see
-[Initialization &amp; Deployment](/docs/operators/node/initialization-deployment);
-keep `RUN_GENESIS_ON_STARTUP=false`). Start PostgreSQL and install its schema
+[Initialization &amp; Deployment](/docs/operators/node/initialization-deployment)).
+Start PostgreSQL and install its schema
 with `node dist/index.js db:migrate` from `demo/midgard-node`; startup verifies
 the schema rather than creating it. Prepare the funded one-shot nonce and
 reference scripts through that deployment guide, then initialize:
