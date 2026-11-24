@@ -16,13 +16,10 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Option, Ref } from "effect";
 import { expect, vi } from "vitest";
 
+import * as ConfirmedLedger from "../../src/database/confirmedLedger.js";
 import * as MempoolLedger from "../../src/database/mempoolLedger.js";
 import * as Pending from "../../src/database/pendingBlockFinalizations.js";
-import {
-  applyDelta,
-  landedLedger,
-  ledgerMap,
-} from "../../src/landed-blocks/ledger.js";
+import { landedChain } from "../../src/landed-blocks/ledger.js";
 import { retrieveRows } from "../../src/landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/ledger-hydration.js";
 import { Database } from "../../src/services/database.js";
@@ -41,6 +38,7 @@ import {
   SDK,
   submitWithdrawalWithDiagnostics,
 } from "../deposit-flow-emulator-shared.js";
+import { applyDelta, ledgerMap } from "./ledger-map.js";
 import type { ProductionLifecycle } from "./production-lifecycle.js";
 
 /** Bounded wait: `work` must settle within `ms` of real time, so a wedge
@@ -262,11 +260,16 @@ export const observe = async (
       const rows = yield* retrieveRows;
       // Landed-block processing bootstraps its frontier at the first merged
       // root it folds; before that there is nothing to replay.
-      const landed = yield* landedLedger(rows);
+      const landed = yield* landedChain(rows);
       const replay =
         landed === undefined
           ? undefined
-          : [...landed.chain.reduce(applyDelta, ledgerMap(landed.confirmed))]
+          : [
+              ...landed.chain.reduce(
+                applyDelta,
+                ledgerMap(yield* ConfirmedLedger.retrieve),
+              ),
+            ]
               .sort(([left], [right]) => (left < right ? -1 : 1))
               .map(([outref, output]) => ({
                 outref: Buffer.from(outref, "hex"),

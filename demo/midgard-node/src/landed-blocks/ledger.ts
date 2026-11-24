@@ -13,7 +13,7 @@ import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect } from "effect";
 
-import { ConfirmedLedgerDB, DepositsDB } from "../database/index.js";
+import { DepositsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
 import {
@@ -22,28 +22,6 @@ import {
   type LandedBlockRow,
   tableName,
 } from "./store.js";
-
-/** A ledger by hex outref. */
-export type LedgerMap = Map<string, Buffer>;
-
-export const ledgerMap = (entries: readonly Ledger.MinimalEntry[]): LedgerMap =>
-  new Map(
-    entries.map((entry) => [
-      Buffer.from(entry[Ledger.Columns.OUTREF]).toString("hex"),
-      Buffer.from(entry[Ledger.Columns.OUTPUT]),
-    ]),
-  );
-
-/** `ledger` with `row`'s delta applied, in place. */
-export const applyDelta = (
-  ledger: LedgerMap,
-  row: Pick<LandedBlockRow, "spent" | "produced">,
-): LedgerMap => {
-  for (const outRef of row.spent) ledger.delete(outRef.toString("hex"));
-  for (const entry of row.produced)
-    ledger.set(entry.outref.toString("hex"), Buffer.from(entry.output));
-  return ledger;
-};
 
 /**
  * The processed rows that chain from `from` by parent links, in order. The
@@ -156,22 +134,6 @@ export type LandedChain = Readonly<{
   frontier: HeaderRoot;
   chain: readonly LandedBlockRow[];
 }>;
-
-/** The ledger at the frontier and the processed chain after it. */
-export type LandedLedger = LandedChain &
-  Readonly<{ confirmed: readonly Ledger.EntryNoTimeStamp[] }>;
-
-export const landedLedger = (rows: readonly LandedBlockRow[]) =>
-  Effect.gen(function* () {
-    const frontier = yield* Frontier.retrieve;
-    if (frontier === undefined) return undefined;
-    const confirmed = yield* ConfirmedLedgerDB.retrieve;
-    return {
-      frontier,
-      confirmed,
-      chain: processedChain(rows, frontier.headerHash),
-    } satisfies LandedLedger;
-  });
 
 /** The frontier and the processed chain after it, reading no ledger row. */
 export const landedChain = (rows: readonly LandedBlockRow[]) =>
