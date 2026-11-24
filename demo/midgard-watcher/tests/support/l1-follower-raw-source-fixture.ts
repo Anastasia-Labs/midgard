@@ -23,7 +23,7 @@ import { D, K } from "./l1-follower-raw-reads-fixture.js";
 
 /**
  * The release policy, snapshot request, signed bytes and node double the
- * watcher's fault-proof L1 source tests (ticket W1) use over the raw-read
+ * watcher's fault-proof L1 source tests use over the raw-read
  * fixture chain (`l1-follower-raw-reads-fixture.ts`, k = 3).
  */
 

@@ -1,5 +1,5 @@
 /**
- * `native-script-decoding` evidence assembly (offchain plan §4.2).
+ * `native-script-decoding` evidence assembly.
  *
  * Everything a decoding-fault redeemer carries that is not positional (the
  * submitters resolve input/output/reference indices against the transaction
@@ -12,7 +12,7 @@
  *   `src/field-opening.ts` — nothing here re-implements the door;
  * - what THIS module owns: the accused outpoint's trie key (twin of
  *   `encode_midgard_tx_input`), the pre-state ledger-trie membership proof
- *   behind an injected trie handle (the plan's §4.2 rule — the evidence
+ *   behind an injected trie handle (the evidence
  *   module never owns ledger reconstruction), the bounded-item chunk proofs
  *   in the wire shape the redeemers spell, the planner→wire converters for
  *   scan windows and frame witnesses, and the §7.2 out-of-domain face
@@ -101,7 +101,7 @@ export const nativeScriptDecodingSubjectFieldIndex = (
   );
 };
 
-// ## Pre-state ledger membership (injected trie handle, §4.2)
+// ## Pre-state ledger membership (injected trie handle)
 
 /**
  * The one thing the evidence module needs from the pre-state ledger: its

@@ -1,38 +1,16 @@
-# Oversized files and earlier splits
+# Size limits and earlier splits
 
-Historical inventory measured 2026-09-25 at `94b70237e`. The 2026-09-28
-follow-up splits these modules, the enlarged database and committee suites, and
-the generated CEK suite in `codex/agent-preflight`. Re-measure before choosing
-new work:
+ESLint caps every TypeScript and JavaScript file under `demo` at 500 lines
+(`max-lines` in `demo/eslint.config.mjs`); a file listed in
+`demo/module-size-exceptions.json` is capped at its recorded size instead,
+and `demo/scripts/check-module-size-exceptions.mjs` holds the native, SQL and
+out-of-demo entries to their counts. [eslint: max-lines] Aiken modules have no
+line limit. Find the largest files before choosing work:
 
 ```bash
 git ls-files 'demo/*.ts' 'onchain/aiken/*.ak' | xargs wc -l | grep -v ' total$' \
-  | awk '$1 > 5000' | sort -rn
+  | sort -rn | head -20
 ```
-
-## Files over 5,000 lines
-
-Nine files, not "more than 20" as the hardening plan said; the largest,
-18,590 lines, matches its "18.6k". Churn is `git log --since=2026-08-26
---oneline -- <file> | wc -l`.
-
-<!-- doc-links:historical -->
-
-| Lines  | File                                                              | Commits since 2026-08-26 | Note                                                                                                                                           |
-| ------ | ----------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| 18,590 | `onchain/aiken/lib/midgard/validation-machine-v1.test.ak`         | 18                       | Aiken test module. `generate-ordered-collection-boundary-aiken-goldens.mjs` rebinds named constants inside it by path.                         |
-| 9,242  | `demo/midgard-fault-proofs/src/validation-dispute/submit.ts`      | 31                       | The most active file on the list.                                                                                                              |
-| 9,230  | `demo/midgard-node/tests/database.test.ts`                        | 7                        | Test file.                                                                                                                                     |
-| 7,127  | `onchain/aiken/lib/midgard/cek-core-step-v1-golden.test.ak`       | 2                        | **Generated** by `demo/midgard-validation/scripts/generate-cek-core-step-v1-goldens.mjs` ("Do not edit"). Change the generator, not this file. |
-| 6,901  | `demo/midgard-watcher/src/indexers/user-event-indexer.ts`         | 12                       |                                                                                                                                                |
-| 6,777  | `demo/midgard-validation/src/validation-machine/trace-builder.ts` | 10                       | Mostly one generator function; see `d7368bc37` below.                                                                                          |
-| 5,476  | `demo/midgard-node-tools/src/commands/stress-wallets.ts`          | 2                        | Tooling; little churn.                                                                                                                         |
-| 5,328  | `demo/midgard-watcher/src/l1/rollback-engine.ts`                  | 6                        |                                                                                                                                                |
-| 5,043  | `demo/midgard-core/src/deployment-manifest-identity.ts`           | 28                       |                                                                                                                                                |
-
-Counts at other thresholds, same command: 14 files over 4,000 lines, 34 over
-3,000, 87 over 2,000, 320 over 1,000. No lint rule or CI step limits file
-length (`git grep -n max-lines` finds nothing).
 
 ## Earlier splits and what they taught
 

@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last reviewed: 2026-10-26 (source inventory and installation scope).
+Last reviewed: 2026-11-23 (source inventory, installation scope and ID source).
 
 ## Source inventory
 
@@ -13,14 +13,16 @@ is empty.
 This is source coverage, not a claim that a particular network has these
 contracts deployed or that every acceptance suite passed on this revision.
 
-Category IDs come from `FRAUD_PROOF_CATALOGUE_CATEGORY_IDS` in
-[`catalogue.ts`](../../demo/midgard-sdk/src/fraud-proof/catalogue.ts).
-`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` is presentation order; do not derive IDs
+Category IDs come from `DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS` in
+[`catalogue-roles.protocol-categories.ts`](../../demo/midgard-core/src/deployment-manifest-identity/catalogue-roles.protocol-categories.ts),
+re-exported by the SDK
+[`catalogue.ts`](../../demo/midgard-sdk/src/fraud-proof/catalogue.ts) as
+`FRAUD_PROOF_CATALOGUE_CATEGORY_IDS`. The `_ORDER` list is presentation order; do not derive IDs
 from array position. Installation comes from the
 [family application registry](../../demo/midgard-fault-proofs/src/workflow/family-application-registry.ts):
 its keys are the installed set, and the
-[watcher application](../../demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts)
-derives `WATCHER_INSTALLED_WORKFLOW_CATEGORIES` from them in catalogue order.
+[watcher production dependencies](../../demo/midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts)
+derive `WATCHER_INSTALLED_WORKFLOW_CATEGORIES` from them in catalogue order.
 This table is not machine-checked against those sources; verify it by reading
 them when you edit it.
 
@@ -80,7 +82,7 @@ them when you edit it.
 | `00000036` | `mintItemNonCanonical`                | Yes               |
 
 Shared verifier directories, including `mpf-chunked-proof`, are not additional
-catalogue categories. Count categories from the SDK map, not directories or
+catalogue categories. Count categories from the ID map, not directories or
 blueprint entrypoints (multiple entrypoints can share one compiled body).
 
 ## Deployment identity
@@ -104,10 +106,9 @@ current workflows are described
 in [installed validation disputes](validation-trace-dispute-installed-workflow.md)
 and [installed transition replay](transition-trace-installed-replay.md).
 
-The [availability challenge size plan](size-plans/availability-challenge.md)
-retains the unresolved publication work and its dated measurements. Rebuild and
-measure the complete signed publication before declaring that blocker closed.
-Raw blueprint size alone does not prove transaction fit.
+The availability challenge is implemented
+([size plan](size-plans/availability-challenge.md)); its live acceptance is
+open. Raw blueprint size alone does not prove transaction fit.
 
 For each enabled category, acceptance must cover real-blueprint publication,
 positive and valid-block negative paths, maximum supported shapes, interruption
@@ -116,5 +117,3 @@ shared limits. Test presence and installation counts do not substitute for a
 retained passing result. See [testing status](testing-status.md),
 [remaining acceptance](execution-plan.md), and
 [public-testnet readiness](../public_testnet_readiness.md).
-The [emulator scheduling measurements](testing-status.md#emulator-gate-performance)
-retain the same test cases and do not change category or installation inventory.

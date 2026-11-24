@@ -18,9 +18,9 @@ const HASH = "ab".repeat(32);
 
 /**
  * L1_ORIGIN is the operator-config form of the deployment origin until the
- * redeploy carries it in the manifest (l1-architecture-plan §5.3, §14).
- * Unset, it is not configured; malformed, the node refuses to load config,
- * before any readiness listener is bound.
+ * redeploy carries it in the manifest (`demo/midgard-l1-follower/README.md`,
+ * Origin). Unset, it is not configured; malformed, the node refuses to load
+ * config, before any readiness listener is bound.
  */
 describe("L1_ORIGIN config", () => {
   it("is null when unset or empty", async () => {

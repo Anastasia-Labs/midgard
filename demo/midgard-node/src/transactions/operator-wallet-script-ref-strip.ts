@@ -247,7 +247,7 @@ export const stripOperatorWalletScriptRefsProgram = ({
       deploymentInitializationNonceOutRefKeys(contracts);
     const spentOutRefs = new Set<string>();
 
-    // S5: each round's plan opens before the view its batch is built on.
+    // Each round's plan opens before the view its batch is built on.
     const planFromView = Effect.gen(function* () {
       const intentPlan = yield* openPlan;
       const view = yield* readSelectedWalletView(lucid);

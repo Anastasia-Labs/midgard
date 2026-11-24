@@ -54,8 +54,7 @@ export const createdOutputOf = (
  * the tracked set, while it is retained). Any output of a stored body
  * resolves, tracked or not: the body's bytes are the L1 fact. Null when the
  * creating transaction is not stored (untracked, pruned, or created before
- * the origin: a seed row carries no creating body), which plan §12.3 resolves
- * in phase B (ruling 2).
+ * the origin: a seed row carries no creating body).
  */
 export const resolveRawUtxoIn = async (
   tx: SqlTx,

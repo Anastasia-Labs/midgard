@@ -108,7 +108,7 @@ export type PreparedInputNoIdxOutputsPreimageJson = {
 };
 
 /**
- * Complete-item proof-fit measurement (§3.2/§3.3). Byte counts are of the
+ * Complete-item proof-fit measurement. Byte counts are of the
  * serialized PlutusData each step redeemer carries directly; no chunked or
  * multi-output representation is produced.
  */

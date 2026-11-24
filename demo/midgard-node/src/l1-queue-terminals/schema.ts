@@ -1,5 +1,5 @@
 /**
- * The queue-terminal projection's D-t table (plan §5.5 P8, §7.4, N4): one
+ * The queue-terminal projection's D-t table: one
  * row per state-queue header a landed tx took out of the queue, merged into
  * the confirmed state or removed. The follower's registry generates its
  * rewind: a rollback past the tx's block deletes the row, and the header is

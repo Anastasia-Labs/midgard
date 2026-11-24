@@ -1,4 +1,4 @@
-//// ## Mint-Authorization Fault Proof — Step 04 (W-C14)
+//// ## Mint-Authorization Fault Proof — Step 04
 ////
 //// Direction A's resolved-input scan (self-loop). The machine's stage-nine
 //// source surface has two halves: the inline field-6 witnesses (cleared by

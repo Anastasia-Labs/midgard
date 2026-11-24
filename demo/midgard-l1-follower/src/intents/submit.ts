@@ -1,5 +1,5 @@
 /**
- * S6 for a role's own send of journaled bytes (§8.1): the decision to send,
+ * S6 for a role's own send of journaled bytes: the decision to send,
  * taken in one transaction with the view check. The network send follows
  * the commit; S6's reconciler (`reconcile.ts`) takes the same decision for
  * its resends under the pass's view.
@@ -40,8 +40,7 @@ export type SubmitDecision =
  * Residual window: the send happens after this transaction commits, so a
  * rewind that commits between the commit and the node's mempool admitting
  * the bytes is not seen here. Such a transaction can still land only if
- * its inputs survived the rewind; that is the plan's residual risk 1
- * (§8.1), bounded by the commit anchor d blocks below the planning view and
+ * its inputs survived the rewind; that risk is bounded by the commit anchor d blocks below the planning view and
  * whichever-lands-wins.
  */
 export const decideSubmitIn = async (

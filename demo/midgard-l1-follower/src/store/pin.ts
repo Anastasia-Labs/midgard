@@ -27,7 +27,7 @@ export type PinResult =
   | Readonly<{ kind: "already_pruned" }>;
 
 /**
- * Pins under the cursor lock (§11), in the caller's write transaction. It
+ * Pins under the cursor lock, in the caller's write transaction. It
  * takes the cursor row lock every prune step takes first, so a prune step
  * either committed before the `retained` check (which then sees its
  * deletions) or starts after this transaction commits (and then sees the

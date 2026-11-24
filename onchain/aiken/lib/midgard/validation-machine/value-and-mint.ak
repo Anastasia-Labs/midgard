@@ -452,7 +452,7 @@ fn value_and_mint_output_descriptor(
     // (owner ruling 2026-08-23 on #627, option B) rather than a header field
     // or a context element: the rate that convicts a block is not the block
     // producer's to declare. Its TypeScript mirror is
-    // `MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte`.
+    // `MIDGARD_CONSENSUS_LIMITS.coinsPerUtxoByte`.
     if !output_meets_min_ada_v1(
       env.coins_per_utxo_byte,
       descriptor.total_length,

@@ -1,5 +1,5 @@
 /**
- * `native-script-decoding` segment planner (offchain plan §5.2/§5.3).
+ * `native-script-decoding` segment planner.
  *
  * Cuts the engine twin's whole-item trace into an ordered list of Scan
  * transaction plans plus one final Verdict plan, such that every plan's

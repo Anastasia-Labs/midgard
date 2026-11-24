@@ -1,5 +1,5 @@
 /**
- * The own-landed-block test's fixture (plan §7.3, §15 N3): a genesis
+ * The own-landed-block test's fixture: a genesis
  * ledger, an own block A on it with its journal and a foreign block F on A,
  * their landed queue, and stub landed-block ports over the node database
  * that record replays and rebases (held pending: the driver's recompute

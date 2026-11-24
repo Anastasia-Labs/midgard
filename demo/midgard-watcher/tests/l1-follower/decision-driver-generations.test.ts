@@ -1,6 +1,6 @@
 /**
  * The decision driver's handled-generation marker (`follower-generation.ts`)
- * and its pull by generation (lane SI-fix2, ruling SIFIX-R2):
+ * and its pull by generation:
  *
  * - push and pull meet in one handler that deduplicates by generation;
  * - a pull of a generation this process already handled handles nothing

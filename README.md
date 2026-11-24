@@ -49,13 +49,14 @@ implementations, and the LaTeX technical specification in a single repository.
 
 ## Build the On-Chain Code
 
-Use the Aiken fork pinned in [.github/workflows/aiken-ci.yml](./.github/workflows/aiken-ci.yml).
-The upstream version number alone does not identify the repository compiler.
-With that compiler on `PATH`, build the demo/preprod environment:
+The compiler is the Aiken fork locked as the `aiken` input of
+`demo/flake.nix`; the upstream version number alone does not identify it.
+`scripts/aiken` builds exactly that commit with nix and runs it. Build the
+demo/preprod environment:
 
 ```sh
 cd onchain/aiken
-aiken build --env testnet
+../../scripts/aiken build --env testnet
 ```
 
 ## Technical Specification

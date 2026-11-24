@@ -51,7 +51,7 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
     for (const { withdrawalScript: script } of validators) {
       scripts.set(validatorToScriptHash(script), script);
     }
-    // S5: the plan opens before the registration reads the batches rest on.
+    // The plan opens before the registration reads the batches rest on.
     const plan = yield* openPlan;
     const before = yield* Effect.forEach(
       [...scripts.values()],
@@ -137,7 +137,7 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
     const history = Object.values(
       SDKUsers.requireEventHistoryContracts(contracts),
     );
-    // S5: the plan opens before the registration and wallet reads.
+    // The plan opens before the registration and wallet reads.
     const plan = yield* openPlan;
     const registrations = yield* Effect.forEach(
       history.flatMap(({ list, retirement }) => [list, retirement]),

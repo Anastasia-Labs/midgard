@@ -1,7 +1,6 @@
 /**
  * The intent journal's prune floor across a store reset's replay
- * (`INTENT_PRUNE_FLOOR`, §8.2 retention over §5's reset and §11's role
- * floors), on a SQLite and a Postgres store. While the tracked-set record
+ * (`INTENT_PRUNE_FLOOR`), on a SQLite and a Postgres store. While the tracked-set record
  * says `replaying`, the prune step skips the journal's retention hook, and
  * the floor holds the class A boundary at the boundary in the hook's mark
  * (`l1_intent_prune_mark`), or, with no mark, where the replay began. The

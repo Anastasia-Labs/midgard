@@ -2,27 +2,26 @@
 
 Status: Active
 
-Last reviewed: 2026-09-07 (integration and build commands).
+Last reviewed: 2026-11-23 (integration and build commands).
 
 This Rust crate supplies the native `architecture-g-owner` binary used by the
 node's MPF service and the WASM differential oracle. Runtime integration lives
 in `../../src/services/mpf-native-owner/`; the commit path uses it through
-`../../src/mpf/transition-trace.ts`. This is no longer an unintegrated prototype.
+`../../src/mpf/transition-trace.ts`.
 
 From this directory:
 
 ```sh
 make check
 make build
-make differential
 ```
 
 The Makefile uses locked Cargo dependencies. The WASM output is generated in
 `../../.architecture-f-wasm`. From `demo/midgard-node`, build the runtime binary
-with `pnpm run native:mpf-owner:build`. The configured owner path is defined in
-`src/services/config.ts`; package/release verification must bind the binary and
-ABI to the deployed node. Prototype benchmark scripts remain measurement tools,
-not startup or recovery procedures.
+with `pnpm run native:mpf-owner:build`, and replay the adversarial corpus
+against it with `pnpm run test:mpf:differential`. The configured owner path is
+defined in `src/services/config.mpf.ts`; package/release verification must bind
+the binary and ABI to the deployed node.
 
 The following describes the one-shot differential ABI; the native service's
 RPC, journal, and recovery implementation is maintained alongside the runtime.

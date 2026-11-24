@@ -16,7 +16,7 @@ import {
 
 /**
  * The intents that may be terminal at or below `boundarySlot`, read by
- * index (§8.2 retention, bounded per step). An intent's terminal slot is
+ * index (bounded per step). An intent's terminal slot is
  * the least of its landing slot, its earliest conflicting spend, its
  * `invalid_hereafter` once passed, a dead dependency's terminal slot, and
  * its first abandon event's tip slot. So an intent terminal at or below the
@@ -77,7 +77,7 @@ const fullRunDue = async (
 };
 
 /**
- * Deletes every intent terminal for k blocks (§8.2 retention): its
+ * Deletes every intent terminal for k blocks: its
  * `terminalSlot` is at or below the prune boundary (the block the store's
  * retained depth, at least k, below the cursor). Runs in the follower's prune
  * step before spent outputs are deleted at the same boundary, so a retained

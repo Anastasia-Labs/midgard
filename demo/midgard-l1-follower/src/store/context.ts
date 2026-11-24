@@ -16,7 +16,7 @@ export type DerivationContext = Readonly<{
 }>;
 
 /**
- * An S3 derivation (§4.1, §7.2): a pure function of facts, class B/C content
+ * An S3 derivation: a pure function of facts, class B/C content
  * and the manifest, run in the writer's transaction after the block's facts
  * are inserted. It writes only the D-t tables it lists, all registered, so
  * the generated rewind covers every row it writes.
@@ -43,13 +43,13 @@ export type PruneHookContext = Readonly<{
 }>;
 
 /**
- * A role's hook in the prune step (§11). It runs after the boundary is
+ * A role's hook in the prune step. It runs after the boundary is
  * fixed and before any row at or below it is deleted, in the step's
  * transaction, so it reads every fact and every D-t row the step is about
  * to delete. Each hook declares its kind:
  *
  * - `retention`: decides, from the facts, which rows of its role's class B
- *   table to delete (the intent journal, §8.2), deletes them and returns how
+ *   table to delete (the intent journal), deletes them and returns how
  *   many; it is not budgeted. It is skipped while a store reset replays
  *   (the tracked-set record's `replaying` mark): the facts below the cursor
  *   are incomplete until the replay passes them.
@@ -75,7 +75,7 @@ export type PruneHook =
     }>;
 
 /**
- * A role's floor on the prune boundary (§11): the boundary never passes the
+ * A role's floor on the prune boundary: the boundary never passes the
  * slot it returns, so every fact spent or closed after that slot is kept
  * while the role still needs it; null sets no floor. It runs at the start of
  * each prune step, in its transaction. With several floors the lowest holds.

@@ -1,13 +1,13 @@
 /**
- * The node's follower-change driver (plan §7.3, N1). It runs on every
+ * The node's follower-change driver. It runs on every
  * follower cursor advance and every rewind (a generation change), and is the
  * one place the node's L1-derived state catches up with the follower:
  *
  * - it reads the event projection at the follower's current view (P2) and
  *   hands the whole set to a sink, which ingests the admissions it lacks,
  *   moves locations and finds orphaned admissions (ruling 3);
- * - it then runs one typed hook per ticket that recomputes from the change
- *   (N2, N3, N4, I1, I3, N6, N10), in a fixed order.
+ * - it then runs its typed hooks, which recompute from the change, in a
+ *   fixed order.
  *
  * It holds no loop of its own: the shared follow loop (`followChain`) calls
  * it through the node follower service. Every condition it cannot clear by
@@ -179,17 +179,17 @@ const refusalDetail = (refusal: EventRefusal): string =>
  * `DRIVER_HOOK_ORDER`; a hook returns a hold to keep the node unready.
  */
 export type DriverHooks = Readonly<{
-  /** N2: the landed state queue (P1), its health and the head signal. */
+  /** The landed state queue (P1), its health and the head signal. */
   landedStateQueue?: DriverHook;
-  /** N3: inclusion of events in foreign blocks (P3 beyond own blocks). */
+  /** Inclusion of events in foreign blocks (P3 beyond own blocks). */
   foreignBlockInclusion?: DriverHook;
-  /** N4: the correction recompute after a rewind. */
+  /** The correction recompute after a rewind. */
   correctionRecompute?: DriverHook;
-  /** I1: the status of the node's signed commit intents. */
+  /** The status of the node's signed commit intents. */
   intentStatus?: DriverHook;
-  /** N6: settlement and the operator set. */
+  /** Settlement and the operator set. */
   settlementAndOperatorSet?: DriverHook;
-  /** N10: forced-order carriage resolution and ingestion. */
+  /** Forced-order carriage resolution and ingestion. */
   forcedOrderIngestion?: DriverHook;
 }>;
 

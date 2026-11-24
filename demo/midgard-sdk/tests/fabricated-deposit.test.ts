@@ -1,6 +1,5 @@
 /**
- * Aiken/TypeScript byte twins for the `fabricated-deposit` family (Goal task
- * `Q39`).
+ * Aiken/TypeScript byte twins for the `fabricated-deposit` family.
  *
  * Every expectation below is an **absolute** hex constant measured out of the
  * Aiken family modules

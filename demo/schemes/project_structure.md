@@ -2,7 +2,7 @@
 
 Status: Current high-level orientation.
 
-Last reviewed: 2026-09-07
+Last reviewed: 2026-11-23
 
 ```mermaid
 flowchart LR
@@ -17,9 +17,7 @@ flowchart LR
   L1 --> W
 ```
 
-The node is not organized around the former `GET /reset`, `GET /tx`, or
-`GET /block` sketch. Current route and command references live in the
-documentation site:
+Route and command references live in the documentation site:
 
 - `docs-site/content/docs/operators/node/server-http-api.mdx`
 - `docs-site/content/docs/operators/node/cli-reference.mdx`

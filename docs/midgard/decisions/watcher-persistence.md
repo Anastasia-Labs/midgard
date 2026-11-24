@@ -1,7 +1,10 @@
 # Persist watcher progress over retained state
 
-Status: Implemented and verified by the local installed runtime journey on
-2026-09-09. This is emulator evidence, not live Preprod acceptance.
+Status: Superseded on 2026-10-08 (#798). The watcher reads L1 through its
+follower's facts and derives proof progress from the ledger and the mempool,
+so the records below describe the earlier watcher. The current rules are in
+[watcher verification boundaries](watcher-verification-boundaries.md).
+Implemented and verified by the local installed runtime journey on 2026-09-09.
 
 ## Record inventory
 

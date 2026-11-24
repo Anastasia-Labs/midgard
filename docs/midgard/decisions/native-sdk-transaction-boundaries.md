@@ -49,5 +49,4 @@ those suites or live acceptance were rerun during documentation maintenance.
 
 Use the [package README](../../../demo/lucid-midgard/README.md) and
 [maintained SDK documentation](../../../docs-site/content/docs/sdk/lucid-midgard)
-for current APIs and executable examples. The delivered design-plan chapters
-are retained in Git history under `docs/lucid-midgard/`.
+for current APIs and executable examples.

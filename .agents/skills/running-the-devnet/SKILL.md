@@ -32,7 +32,7 @@ Commands, relaunch and reset for each are in
 [references/stacks.md](references/stacks.md). Read it before you start, stop
 or reset anything.
 
-As of 2026-09-25 other sessions and worktrees on this machine run their own
+Other sessions and worktrees on this machine can run their own
 devnets. A devnet you did not start is not yours to stop, restart, reset or
 probe.
 

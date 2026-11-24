@@ -1,5 +1,5 @@
 /**
- * The foreign replayer bench's honest withdrawal block (N3): the block on
+ * The foreign replayer bench's honest withdrawal block: the block on
  * an empty parent that names the view's one withdrawal, for the production
  * replayer.
  */

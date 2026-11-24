@@ -20,7 +20,7 @@ import {
   type SeedResult,
 } from "./seed.js";
 
-// The own wallets' seed points (`l1_wallet_seeds`, plan §5.3 step 4): a
+// The own wallets' seed points (`l1_wallet_seeds`): a
 // wallet with one has been read from the ledger at it, and tracked by every
 // block applied since, so it is not read again. A rewind below the point
 // deletes it with the wallet's seed rows (`rewindIn`); a start that does not

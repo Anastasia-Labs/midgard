@@ -1,13 +1,15 @@
 # Measuring a failure rate
 
-Commands checked against `Anastasia-Labs/midgard` on 2026-09-25. All of them
-are read-only; never rerun, cancel or comment on a CI run from this skill.
+The `gh` commands were checked against `Anastasia-Labs/midgard` on
+2026-09-25 and the step names against `.github/workflows/` on 2026-11-23. All
+of them are read-only; never rerun, cancel or comment on a CI run from this skill.
 
 ## From CI history
 
 Workflows and step names live in `.github/workflows/*.yml`. The test steps
-are coarse: one step, such as `Test Midgard node` or `Build, typecheck, and
-test fault-proof tooling`, runs a whole package.
+are coarse: one step, such as `Test Midgard node` or `Test fault-proof
+tooling`, runs a whole package or one shard of it, and a sharded package has
+one job per shard.
 
 List recent runs of a workflow:
 
@@ -29,8 +31,8 @@ done
 
 Read the output this way:
 
-- **`skipped` means CI never looked.** Every step after the first failure in a
-  job is skipped, so a run that failed on a documentation check says nothing
+- **`skipped` means CI never looked.** A step after the first failure in a
+  job is skipped unless it runs `if: ${{ !cancelled() }}`, so a run that failed on a documentation check says nothing
   about the node tests. Leave skipped runs out of the denominator.
 - **The same SHA failing and then passing** (a second `attempt`, or a second
   run on the same `headSha`) is the strongest flake evidence CI gives: the
@@ -73,9 +75,10 @@ Escalate only until it reproduces, and record which level did it:
 1. The one test, alone, N times.
 2. The whole file, N times. A test that only fails after its neighbours
    shares state with them.
-3. CI's settings: `CI=true`, which GitHub sets on every run. As of
-   2026-09-25 no workflow sets a `MIDGARD_*_FORKS` variable, so CI uses each
-   package's default fork count.
+3. CI's settings: `CI=true`, which GitHub sets on every run, and the fork
+   count. On 2026-11-23 the `midgard-fault-proofs` job in
+   `.github/workflows/midgard-node-ci.yml` sets `MIDGARD_FAULT_PROOF_FORKS: "2"`;
+   every other package runs its default fork count.
 4. The whole package, so forks run other files at the same time.
 5. Under load, with the load recorded (`uptime`, `nproc`).
 

@@ -6,22 +6,22 @@ A split inside one package is a change of relative imports. A split that moves
 code into another package adds a dependency edge, and the lint rules below
 decide whether that edge is allowed. All of them are
 `[eslint: no-restricted-imports]` in `demo/eslint.config.mjs`, run in CI by
-`[ci: midgard-node-ci.yml/Lint and format-check the demo workspace]`:
+`[ci: midgard-node-ci.yml/Lint the demo workspace]`:
 
 - Every package: never import a sibling through `../<package>/src` or
   `../<package>/dist`; import it by name (`@al-ft/midgard-core/hex`) and add
   a workspace dependency and an `exports` entry if one is missing
-  (`workspacePackageBoundary`, lines 11–22).
+  (`workspacePackageBoundary`).
 - `midgard-watcher/src`: never import `midgard-node`, `midgard-node-tools` or
-  `da-committee-node` (lines 243–268). The watcher verifies the operator
+  `da-committee-node`. The watcher verifies the operator
   independently; moving shared code into the node makes it unreachable from
   the watcher.
 - `midgard-sdk/src`, `midgard-node`, `midgard-node-tools`: no `@/` alias;
-  use relative specifiers (lines 170–188, 271–287).
+  use relative specifiers.
 
 New files must also sort their imports and exports:
 `[eslint: simple-import-sort/imports]` and
-`[eslint: simple-import-sort/exports]` (lines 124–125).
+`[eslint: simple-import-sort/exports]`.
 
 Blind spot: the lint rules see import specifiers only. Nothing checks that a
 module stays in the package whose concern it is.
@@ -43,14 +43,14 @@ git grep -n -F -e '<package>/src/<old-path-without-.ts>' -e '<old-basename>'
   (`d7368bc37` changed `src/validation-machine.ts` to
   `src/validation-machine/index.ts`). <!-- doc-links:historical -->
 - **Tests and scripts that read source as text.**
-  `demo/midgard-node/tests/da-payload-libp2p-producer.test.ts:824` reads
-  `demo/midgard-node/src/commands/listen-router.ts` and asserts what it does _not_ contain;
-  `demo/da-committee-node/scripts/check-no-http-da-transport.mjs` lists six
-  source files by path. When the named file is deleted they fail loudly;
+  `demo/midgard-node/tests/da-payload-libp2p-producer.test.ts` reads every
+  module under `demo/midgard-node/src/commands/http/` and asserts what they do
+  _not_ contain; `demo/da-committee-node/scripts/check-no-http-da-transport.mjs`
+  lists its source files and directories by path. When the named file is deleted they fail loudly;
   when it survives holding less code, they pass while checking less. Point
   them at every module that now holds the code (`2547227ea`). Tests that load
   a module by path, such as
-  `demo/midgard-core/tests/availability-operation-journal.test.ts:48`, fail
+  `demo/midgard-core/tests/availability-operation-journal.test.ts`, fail
   loudly when it moves.
 - **Path-pinned guards**, such as a test that pins the only file allowed to
   call a function (`72e2ef761`).

@@ -55,7 +55,7 @@ import { keptStatusesDiffer } from "./intent-sim.view-check.js";
  * - runs S6 with a submit spy: only the exact journaled bytes of a live
  *   intent are ever sent, at most once per tip, and every live, wanted
  *   intent outside the mempool with its inputs live is sent;
- * - I5 (§8.1): records and send decisions taken late, across rewinds
+ * - records and send decisions taken late, across rewinds
  *   (`intent-sim.late.ts`).
  */
 export type IntentSimStats = LateStats & {
@@ -136,7 +136,7 @@ export const intentSimulation = (): {
     );
     const child = parents.length > 0 && rng.chance(0.3);
     const parent = child ? rng.pick(parents) : null;
-    // A failed parent's child may spend its collateral return (§8.2: that
+    // A failed parent's child may spend its collateral return (that
     // output exists on a phase-2 failure).
     const input: OutRef | null =
       parent === null
@@ -355,7 +355,7 @@ export const intentSimulation = (): {
           return `intent ${key} pruned while live on the chain`;
       stats.pruned = [...known.keys()].filter((k) => !retained.has(k)).length;
       lastStates = new Map(mine.states.map((s) => [hex(s.intent.txHash), s]));
-      // I5: the plans recorded late, then the send decisions taken late.
+      // The plans recorded late, then the send decisions taken late.
       const generation = cursor?.generation ?? 0;
       const check = { store, journal, blocks, generation, prunedThrough };
       const lateFailure = await late.run(check);

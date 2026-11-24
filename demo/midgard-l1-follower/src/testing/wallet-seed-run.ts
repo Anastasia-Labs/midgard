@@ -19,7 +19,7 @@ import {
 } from "./sim-wallet-ledger.js";
 
 /**
- * Own wallets seeded from the simulated ledger (plan §5.3 step 4, F4): the
+ * Own wallets seeded from the simulated ledger: the
  * wallets join the tracked set, the ledger starts with `preOrigin`, and the
  * wallet seeder runs after every event from event `startAfter` on, so later
  * rollbacks cross its seed points. `added` wallets join through
@@ -221,7 +221,7 @@ export const createSeedRun = (
         rebuild = true;
       }
       if (index + 1 < walletSeed.startAfter) {
-        // A rewind deletes exactly the seed rows above its target (§7.1).
+        // A rewind deletes exactly the seed rows above its target.
         const touched = seedRowsDiffer(
           expectedInStore(),
           await readSeedRows(store),

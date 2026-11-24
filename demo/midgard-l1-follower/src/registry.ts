@@ -1,5 +1,5 @@
 /**
- * The temporal-table registry (§7.2). Every D-t projection registers its
+ * The temporal-table registry. Every D-t projection registers its
  * shape, slot columns, parents and retention; the rewind and the pruning SQL
  * are generated from it, so a new projection is rewound, pruned and covered
  * by the property test without new code.

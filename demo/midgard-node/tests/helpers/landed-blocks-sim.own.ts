@@ -1,5 +1,5 @@
 /**
- * This node's own blocks in the landed-block fork simulator (N3): the block
+ * This node's own blocks in the landed-block fork simulator: the block
  * journals the node keeps for blocks it committed, written as the commit
  * leaves them (one live journal at a time, its ledger delta and the
  * mempool transactions it included, its signed commit in the intent

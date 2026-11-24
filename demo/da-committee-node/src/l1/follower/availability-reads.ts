@@ -1,5 +1,5 @@
 // The availability responder's, promise admission's and retirement's L1
-// reads, all from the committee follower's facts (plan §8.1–§8.4): the
+// reads, all from the committee follower's facts: the
 // boundary is the follower's view, canonicity is the store's point status,
 // spends and transactions are stored facts. Nothing here reads a chain index.
 import { createHash } from "node:crypto";
@@ -43,7 +43,7 @@ export type FollowerPoint = Readonly<{
 
 /**
  * The canonical boundary every availability, promise and retirement read is
- * bracketed by: the follower's view (§8.1). Two boundaries are the same view
+ * bracketed by: the follower's view. Two boundaries are the same view
  * when their `pointId`, height and `generation` agree.
  */
 export type FollowerBoundary = FollowerPoint &
@@ -162,7 +162,7 @@ export type CommitteeAvailabilityReadsInput = Readonly<{
 
 /**
  * The availability responder's own transactions, pinned on the follower so
- * their history outlives a downtime longer than k (plan §11).
+ * their history outlives a downtime longer than k.
  */
 export type CommitteeIntentPins = Readonly<{
   /** Pins `txHash` now: called before it is submitted. */
@@ -179,7 +179,7 @@ export type CommitteeAvailabilityReads = Readonly<{
    * the committee unready, naming its reasons.
    */
   readBoundary: () => Promise<FollowerBoundary>;
-  /** Whether work built at `view` is still current (§8.1). */
+  /** Whether work built at `view` is still current. */
   viewValid: (view: View) => Promise<boolean>;
   /**
    * The block `point` on the follower's chain, read under `boundary`: null

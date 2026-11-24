@@ -1,5 +1,5 @@
 /**
- * `da-hash-preimage` DA-first evidence builder (Goal task `Q44`, §9.1 output 7).
+ * `da-hash-preimage` DA-first evidence builder.
  *
  * The fault this family proves is a committed `transactions_root` leaf whose
  * key is not the canonical native-V1 transaction id of its own value. Such a

@@ -1,6 +1,6 @@
 /**
- * Shared steps for the tests of builders funded from the node's wallet view
- * (plan §8.5, I2b), over `openIntentEmulator`.
+ * Shared steps for the tests of builders funded from the node's wallet view,
+ * over `openIntentEmulator`.
  */
 import {
   CML,
@@ -25,7 +25,7 @@ import type { IntentEmulator } from "./intent-journal-emulator.js";
 /**
  * An own payment's journaled intent (a payout funding step's; content: a
  * settled event's id) under `plan`, opened before the wallet-view read its
- * build rests on (S5).
+ * build rests on.
  */
 const ownPaymentIntent = (label: string, plan: IntentPlan) =>
   journaledIntent(

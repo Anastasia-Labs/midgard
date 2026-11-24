@@ -8,13 +8,13 @@ Each entry gives the rule, where it is enforced, the history that earned it,
 how many times it has been broken or nearly broken ("recurrence"), and a
 status:
 
-- **VERIFIED**: the code site and at least one refusing test were read at the
-  cited lines, and the provenance was checked in git or the issue tracker.
+- **VERIFIED**: the code site and at least one refusing test were read when
+  the entry was written, and the provenance was checked in git or the issue
+  tracker. Re-read the named symbol or test before relying on it.
 - **PARTIAL**: the code site was read, but a test, the provenance, or part of
   the rule is missing. The missing part is named.
 
-Line numbers are as of the commit this skill was written against; re-find the
-symbol if they drift.
+Entries cite files, symbols and test titles, not line numbers.
 
 ## SQ1. A node's block time is the commit's inclusive upper bound
 
@@ -36,16 +36,16 @@ Maturity, the attestation timeout and the fraud-record window run from
 `block_time`, not `end_time`.
 
 Enforced: `commit_bound_header_time_is_valid`
-(`lib/midgard/state-queue.ak:82`), called from the commit arm
-(`validators/state-queue.ak:1171-1176`)
-`[aiken-test: midgard/state-queue.test/]`. The boundary tests at
-`lib/midgard/state-queue.test.ak:197-330` accept a normal block and an
+(`lib/midgard/state-queue.ak`), called from the commit arm
+(`validators/state-queue.ak`)
+`[aiken-test: midgard/state-queue.test/]`. The boundary tests in
+`lib/midgard/state-queue.test.ak` accept a normal block and an
 event-only catch-up block, and refuse a backdated or future `block_time`, an
 end after `block_time`, a non-advancing interval, an L2 block ending before
 `block_time`, a `block_slot` that disagrees and a `block_time` inside a slot.
-The commit arm refuses a backdated `block_time` (`:1289`), an L2 block ending
-before it (`:1302`), a disagreeing `block_slot` (`:1329`) and a re-commit of a
-header at a later time (`:1349`) `[aiken-test: state-queue-commit.test/]`.
+The commit arm refuses a backdated `block_time`, an L2 block ending
+before it, a disagreeing `block_slot` and a re-commit of a
+header at a later time `[aiken-test: state-queue-commit.test/]`.
 
 Provenance: `18c3c56ba` (#400) and `bdded5380` set the bound. `c07ac1326`
 ("Queue Block Submission in `midgard-node`", #424, 2026-04-07), an off-chain
@@ -66,9 +66,8 @@ Status: PARTIAL (no validator-level test pins the derivation).
 Rule: a state-queue node's key is `blake2b_224` of the serialised header, the
 same derivation at commit and at every reader.
 
-Enforced: commit at `validators/state-queue.ak:1106-1108`; readers at
-`:171`, `:741`, `:761`, `:900` and `lib/midgard/state-queue.ak:457`, `:495`,
-`:544` `[review]`.
+Enforced: the commit arm and every reader in `validators/state-queue.ak` and
+`lib/midgard/state-queue.ak` `[review]`.
 
 Provenance: `ab96b2457` (PR #437, "Fix output_header_hash calculation in
 state queue policy") replaced a derivation that applied `un_b_data` to a
@@ -85,11 +84,8 @@ Rule: an appended header carries the previous head's hash, its UTxO root, a
 `start_time` equal to the previous `end_time`, and the same protocol version.
 The genesis protocol sentinel is never copied into an ordinary header.
 
-Enforced: `validators/state-queue.ak:72-101` and `:1186-1226`
-`[aiken-test: state-queue/]` (`q49_l295_previous_header_control_and_independent_mutations`
-`:1936`, `q49_l295_confirmed_genesis_control_and_independent_mutations`
-`:1980`, `q49_l295_confirmed_ordinary_control_and_independent_mutations`
-`:2032`); sentinel refusal at `lib/midgard/state-queue.test.ak:52`
+Enforced: `validators/state-queue.ak`
+`[aiken-test: state-queue/]` (`q49_l295_previous_header_control_and_independent_mutations`, `q49_l295_confirmed_genesis_control_and_independent_mutations`, `q49_l295_confirmed_ordinary_control_and_independent_mutations`); sentinel refusal in `lib/midgard/state-queue.test.ak`
 `[aiken-test: midgard/state-queue.test/]`.
 
 Provenance: #313, #314, and the `66d2d5d54` watcher-checkpoint hardening.
@@ -106,12 +102,10 @@ Attested or Published, whose `proven_fraud` marker is `None`, and whose
 redeemer roots equal the header. A settlement is spawned if and only if the
 header carries L2 material. The correction lock must be Idle.
 
-Enforced: `validators/state-queue.ak:386-496` (unproven and matured `:426-432`, DA status
-`:441-442`, roots `:452-472`, settlement `:474-493` with
-`header_carries_l2_material` at `:377`), lock at `:1611-1616`
-`[aiken-test: state-queue-merge.test/]` (`:148`, `:155`, `:260`, `:336`,
-`:359`). Off-chain readiness refusals:
-`demo/midgard-node/tests/merge-readiness.test.ts:102`, `:160`.
+Enforced: the merge arm of `validators/state-queue.ak` (unproven and matured,
+DA status, roots, settlement with `header_carries_l2_material`, Idle lock)
+`[aiken-test: state-queue-merge.test/]`. Off-chain readiness refusals:
+`demo/midgard-node/tests/merge-readiness.test.ts`.
 
 Provenance: #314; `bf79ece94` (no settlement for empty trees); `668673e9f`
 (merge trusted the redeemer's roots without equating them to the header);
@@ -132,20 +126,18 @@ What the code does:
 
 - The terminal arm binds it:
   `expect removed_header_view.operator_vkey == fraudulent_operator`
-  (`validators/state-queue.ak:717`), refused by
+  (`validators/state-queue.ak`), refused by
   `state_queue_removal_rejects_wrong_target_operator`
-  (`validators/state-queue-removal.test.ak:377`)
+  (`validators/state-queue-removal.test.ak`)
   `[aiken-test: state-queue-removal.test/]`.
 - The link arm does not. `remove_fraudulent_blocks_link_v1`
-  (`validators/state-queue.ak:637-675`) takes no operator and discards the
+  (`validators/state-queue.ak`) takes no operator and discards the
   anchor's own node data (`_fraudulent_header_data`).
 - `fraudulent_operator` is a redeemer field
-  (`validate_remove_fraudulent_v1`, `:1327`). The slashing arms
-  (`:1393-1518`) only require the operator-directory redeemer's
+  (`validate_remove_fraudulent_v1`). The slashing arms only require the operator-directory redeemer's
   `slashed_operator` to equal it (`cross_validate_slashing_reason`,
-  `lib/midgard/operator-directory.ak:531`), and the directory's
-  `SlashOperatorForBadState` arm only checks the same equality back
-  (`:473-491`). Neither directory validator reads the state queue.
+  `lib/midgard/operator-directory.ak`), and the directory's
+  `SlashOperatorForBadState` arm only checks the same equality back. Neither directory validator reads the state queue.
 
 Consequence if the reading is right: with a valid fraud proof for a block
 that still has a descendant, the link-removal transaction can name any
@@ -176,14 +168,14 @@ Rule: the arm that consumes an operator bond pays exactly
 already-slashed arm and the validation-trace descendant exemption pay nothing.
 
 Enforced: the shared `operator_directory.bounty_routing_is_exact_v1`
-(`lib/midgard/operator-directory.ak:182-239`, also used by the
+(`lib/midgard/operator-directory.ak`, also used by the
 duplicate-registration and bad-settlement slashes) on the bond-consuming arms
-of `validators/state-queue.ak` (`:1442`, `:1468`), and
-`no_output_pays_fraud_prover_reward_v1` (`:219`) on the already-slashed arm
-(`:1487`) and the exemption arm (`:1513`) `[aiken-test: state-queue/]`
-(`d3_reward_output_exactness_control_and_mutations` `:2180`,
-`d3_reward_routing_control_and_mutations` `:2243`,
-`d4_reward_exclusivity_control_and_double_claim` `:2303`; through the whole
+of `validators/state-queue.ak`, and
+`no_output_pays_fraud_prover_reward_v1` on the already-slashed arm
+and the exemption arm `[aiken-test: state-queue/]`
+(`d3_reward_output_exactness_control_and_mutations`,
+`d3_reward_routing_control_and_mutations`,
+`d4_reward_exclusivity_control_and_double_claim`; through the whole
 handler in `validators/state-queue-removal.test.ak`,
 `bad_state_reward_routing_does_not_require_the_prover_signature` and the
 `bad_state_{active,retired}_slash_rejects_*` refusals); SDK side
@@ -204,9 +196,7 @@ commit messages only).
 Rule: a fraud-proof token can never be spent. Proving fraud mints exactly one
 proof token and burns exactly one computation-thread token.
 
-Enforced: `validators/fraud-proof.ak:9-16` (spend always fails), `:50-58`
-(mint shape) `[aiken-test: fraud-proof/]` (`:108`, `:121`, `:134`, `:151`,
-`:166`).
+Enforced: `validators/fraud-proof.ak` (spend always fails; mint shape) `[aiken-test: fraud-proof/]`.
 
 Provenance: #603.
 
@@ -223,12 +213,10 @@ by the emulator suite
 `demo/midgard-fault-proofs/tests/submit-init-emulator-record-completed-fraud-by-reference.test.ts`.
 
 Enforced: `validate_completed_fraud_record`
-(`lib/midgard/state-queue.ak:470-512`, which requires `None` before and
-`Some(proof_asset)` after at `:496` and `:510`) and its reader at `:519-548`;
-the append guard `head.proven_fraud == None` at `validators/state-queue.ak:117`,
-the merge guard at `:426`, and the commit output at `:1101`
-`[aiken-test: state-queue-removal.test/]` (`:1199-1496`, including `:1248`,
-`:1372`, `:1485`).
+(`lib/midgard/state-queue.ak`, which requires `None` before and
+`Some(proof_asset)` after) and its reader; the append guard
+`head.proven_fraud == None` in `validators/state-queue.ak`, the merge guard,
+and the commit output `[aiken-test: state-queue-removal.test/]`.
 
 Provenance: `090436fc3` (2026-09-23, commit only; no issue).
 
@@ -260,31 +248,30 @@ and after: a node carrying a script made fraud unprovable, and the fraudulent
 block would merge.
 
 Enforced: one predicate, `element_output_has_no_reference_script`
-(`lib/midgard/state-queue.ak:88`). Creation: the `InitV1` genesis root
-(`validators/state-queue.ak:1724`) and the commit arm's new node (`:1099`).
-Continuation: the commit arm's anchor (`:1098`), the merge root (`:428`),
-the fraud link and last removals (`:671`, `:718`), the unattested prune and
-last removals (`:832`, `:885`), the unavailable prune and head removals
-(`:970`, `:1018`), and the DA core used by Apply, Open and Close
-(`da_availability_status_transition`, `lib/midgard/state-queue.ak:522`).
-`validate_completed_fraud_record` pins `None` itself (`:583-584`). Refused,
+(`lib/midgard/state-queue.ak`). Creation: the `InitV1` genesis root
+(`validators/state-queue.ak`) and the commit arm's new node.
+Continuation: the commit arm's anchor, the merge root,
+the fraud link and last removals, the unattested prune and
+last removals, the unavailable prune and head removals, and the DA core used by Apply, Open and Close
+(`da_availability_status_transition`, `lib/midgard/state-queue.ak`).
+`validate_completed_fraud_record` pins `None` itself. Refused,
 each beside its honest control, all fail:
 
 - commit `[aiken-test: state-queue-commit.test/]`:
-  `state_queue_commit_rejects_new_node_reference_script_on_root_anchor` `:860`,
-  `..._on_node_anchor` `:872`,
-  `state_queue_commit_rejects_continued_root_anchor_reference_script` `:884`,
-  `..._continued_tail_anchor_reference_script` `:897`,
-  `state_queue_init_rejects_root_reference_script` `:1273`;
+  `state_queue_commit_rejects_new_node_reference_script_on_root_anchor`,
+  `..._on_node_anchor`,
+  `state_queue_commit_rejects_continued_root_anchor_reference_script`,
+  `..._continued_tail_anchor_reference_script`,
+  `state_queue_init_rejects_root_reference_script`;
 - merge `[aiken-test: state-queue-merge.test/]`:
-  `merge_rejects_continued_root_reference_script` `:618`;
+  `merge_rejects_continued_root_reference_script`;
 - removals `[aiken-test: state-queue-removal.test/]`: the six
-  `*_rejects_continued_anchor_reference_script` tests (fraud link `:1726`,
-  fraud last `:1764`, unattested prune `:1808`, unattested last `:1844`,
-  unavailable prune `:1888`, unavailable head `:1924`);
+  `*_rejects_continued_anchor_reference_script` tests (fraud link, fraud
+  last, unattested prune, unattested last, unavailable prune, unavailable
+  head);
 - the DA core `[aiken-test: midgard/state-queue.test/]`:
-  `da_core_apply_rejects_node_output_reference_script` `:667`,
-  `da_core_open_...` `:675`, `da_core_close_...` `:683`, and through each
+  `da_core_apply_rejects_node_output_reference_script`,
+  `da_core_open_...`, `da_core_close_...`, and through each
   user (Apply, Open, Close) as listed under DA6 in
   [invariants-da.md](invariants-da.md).
 
@@ -316,35 +303,32 @@ root anchor gain lovelace: merge and the unavailable-head removal leave the
 root's lovelace free, and an exact pin there would let whoever empties the
 queue leave the root too poor to relink and halt every later commit.
 
-Enforced: the constant (`lib/midgard/state-queue.ak:110`). Creation: the
+Enforced: the constant (`lib/midgard/state-queue.ak`). Creation: the
 commit arm's new node `output_header_lovelace >=
-state_queue_node_min_lovelace_v1` (`validators/state-queue.ak:1128`).
+state_queue_node_min_lovelace_v1` (`validators/state-queue.ak`).
 Continuation, per arm that continues an element:
 
-- commit anchor (`:1129-1133`): a node anchor `== 0`, a root anchor `>= 0`;
-- fraud link and last removals: `>= 0` (`:692`, `:739`), because their
+- commit anchor: a node anchor `== 0`, a root anchor `>= 0`;
+- fraud link and last removals: `>= 0`, because their
   builders fold the removed node's lovelace into the continued anchor;
-- unattested prune and last removal: `== 0` (`:853`, `:904`);
-- unavailable prune: `== 0` (`:991`);
-- merge root and unavailable-head removal: free (`_confirmed_state_lovelace_change`
-  `:433`, `_root_lovelace_change` `:1022`); both continue the root only;
+- unattested prune and last removal: `== 0`;
+- unavailable prune: `== 0`;
+- merge root and unavailable-head removal: free (`_confirmed_state_lovelace_change`, `_root_lovelace_change`); both continue the root only;
 - the DA core used by Apply, Open and Close: value equality
-  (`lib/midgard/state-queue.ak:521`, DA6 in [invariants-da.md](invariants-da.md)).
+  (`lib/midgard/state-queue.ak`, DA6 in [invariants-da.md](invariants-da.md)).
 
-Width: `commit_block_header_width_is_bounded_v1` (`validators/state-queue.ak:79`,
-called at `:1169`) requires a 32-byte `utxos_root` and `min_fee_a`,
-`min_fee_b` below `commit_header_int_exclusive_bound_v1` (2^64, `:63`).
+Width: `commit_block_header_width_is_bounded_v1` (`validators/state-queue.ak`)
+requires a 32-byte `utxos_root` and `min_fee_a`,
+`min_fee_b` below `commit_header_int_exclusive_bound_v1` (2^64).
 `block_slot` is bounded by R3 instead (SQ1): it must name the commit's slot. Tests `[aiken-test: state-queue-commit.test/]`: the constant pinned at
-5 ADA `:969` and the bound at 2^64 `:974`; fixtures at exactly the floor
-`:980`; above the floor accepted `:999`; floor − 1 refused on a root anchor
-`:1012` and a node anchor `:1025`; a root anchor losing one lovelace `:1038`,
-a node anchor losing one `:1052` and a tail anchor gaining one `:1066`, all
-refused; a root anchor topped up after a drain accepted `:1083`; every bounded
-Int at 2^64 − 1 accepted `:1164`; a 33- and a 31-byte `utxos_root` `:1181`,
-`:1194` and `min_fee_a`, `min_fee_b` at the bound `:1207`, `:1223`, all
-refused. Removals `[aiken-test: state-queue-removal.test/]`:
-fraud link and last gains accepted and losses refused (`:1955-1974`),
-unattested and unavailable prune loss and gain refused (`:1981-2002`). The
+5 ADA and the bound at 2^64; fixtures at exactly the floor; above the floor
+accepted; floor − 1 refused on a root anchor and a node anchor; a root anchor
+losing one lovelace, a node anchor losing one and a tail anchor gaining one,
+all refused; a root anchor topped up after a drain accepted; every bounded Int
+at 2^64 − 1 accepted; a 33- and a 31-byte `utxos_root` and `min_fee_a`,
+`min_fee_b` at the bound, all refused. Removals `[aiken-test: state-queue-removal.test/]`:
+fraud link and last gains accepted and losses refused,
+unattested and unavailable prune loss and gain refused. The
 SDK codec test `demo/midgard-sdk/tests/state-queue-node-min-lovelace.test.ts`
 measures the largest admissible node against the floor with CML min-UTxO and
 pins the SDK constant at `5_000_000n`.
@@ -380,16 +364,16 @@ data nobody can check. An unattested head past its timeout is waiting to be
 removed, with the same result.
 
 Enforced: `state_queue_head_allows_append_v1`
-(`validators/state-queue.ak:137-157`), called from the commit arm
-(`:1223-1228`) on the head the root names. Refused:
+(`validators/state-queue.ak`), called from the commit arm
+on the head the root names. Refused:
 `state_queue_commit_rejects_node_anchor_behind_challenged_head`
-(`validators/state-queue-commit.test.ak:761`, fails at the fence)
+(`validators/state-queue-commit.test.ak`, fails at the fence)
 `[aiken-test: state-queue-commit.test/]`; `append_fence_refuses_challenged_head`
-(`validators/state-queue-removal.test.ak:759`), with the controls
-`append_fence_accepts_attested_head` `:739` and
-`append_fence_accepts_published_head` `:747`, and the timeout boundary and
+(`validators/state-queue-removal.test.ak`), with the controls
+`append_fence_accepts_attested_head` and
+`append_fence_accepts_published_head`, and the timeout boundary and
 marker identity pinned by
-`attestation_timeout_append_fence_pins_boundary_and_marker_identity` `:676`
+`attestation_timeout_append_fence_pins_boundary_and_marker_identity`
 `[aiken-test: state-queue-removal.test/]`.
 
 Provenance: `3e3090aa1` (2026-08-31, the Q61 starvation fence) added the fence
@@ -418,15 +402,14 @@ block's own operator is always slashed.
 
 Enforced:
 
-- `slashing_approach_admits_removal_v1` (`lib/midgard/state-queue.ak:214`),
+- `slashing_approach_admits_removal_v1` (`lib/midgard/state-queue.ak`),
   called from `validate_remove_fraudulent_v1`
-  (`validators/state-queue.ak:1376`) after the header equality. The prefix is
+  (`validators/state-queue.ak`) after the header equality. The prefix is
   read only from the asset name of the token under the fraud-proof policy
   parameter (`get_proven_fraud_record_with_identity`), by
-  `is_validation_trace_dispute` (`lib/midgard/fraud-proof-catalogue.ak:18`).
+  `is_validation_trace_dispute` (`lib/midgard/fraud-proof-catalogue.ak`).
   The arm itself checks `no_output_pays_fraud_prover_reward_v1`
-  (`validators/state-queue.ak:1513`), as `OperatorAlreadySlashed` does
-  (`:1487`). The check stays although neither arm consumes a bond: a
+  (`validators/state-queue.ak`), as `OperatorAlreadySlashed` does. The check stays although neither arm consumes a bond: a
   directory spend in the same transaction that releases a bond
   (`SlashDuplicateOperator` and `SlashOperatorForBadSettlement`, which pay
   their own claimant, or `RecoverOperatorBond`) could otherwise fund an
@@ -438,19 +421,18 @@ Enforced:
   share a transaction with a 2c or 2d removal; the two go through as separate
   transactions `[aiken-test: state-queue/]`
   (`d4_refuses_a_bundled_slash_bounty_to_the_fraud_prover`,
-  `validators/state-queue.ak:2328`).
+  `validators/state-queue.ak`).
 - The operator directory's `SlashOperatorForBadState` reads the state-queue
   redeemer's `slashing_approach` and requires its own slash arm
   (`bad_state_slashing_approach_matches_directory`,
-  `lib/midgard/operator-directory.ak:38`, called at `:493`), so a directory
+  `lib/midgard/operator-directory.ak`), so a directory
   slash is never paired with a removal whose arm slashes nothing.
 - Refused `[aiken-test: state-queue-removal.test/]`:
-  `descendant_of_validation_trace_conviction_must_use_the_exemption` `:2584`,
-  `descendant_of_other_conviction_refuses_the_exemption` `:2590`,
-  `convicted_block_refuses_the_exemption_under_every_category` `:2601`,
-  `bad_state_directory_slash_requires_its_own_slash_arm` `:2612`, and the
-  prefix read `validation_trace_prefix_is_read_from_the_first_four_bytes`
-  `:2569`.
+  `descendant_of_validation_trace_conviction_must_use_the_exemption`,
+  `descendant_of_other_conviction_refuses_the_exemption`,
+  `convicted_block_refuses_the_exemption_under_every_category`,
+  `bad_state_directory_slash_requires_its_own_slash_arm`, and the
+  prefix read `validation_trace_prefix_is_read_from_the_first_four_bytes`.
 - Refused in built transactions `[runtime: expectOnchainRefusal]`:
   `demo/midgard-fault-proofs/tests/submit-init-emulator-validation-trace-descendant-exemption.test.ts`,
   each refusal paired with the transaction that verifies from the same

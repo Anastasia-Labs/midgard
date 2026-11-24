@@ -1,16 +1,16 @@
 /**
- * The node follower's intent stage (plan §8.3 S6, I1): after each driver
+ * The node follower's intent stage: after each driver
  * run at the node's tip it seeds the node's own wallets (once, and again
  * after a rewind below a seed), then reconciles every journaled intent from
  * the facts. A live intent the node's mempool lacks gets its exact journaled
  * bytes again, at most once per tip; a dead one is never sent; a live one
  * whose family predicate fails is abandoned.
  *
- * - The tracked set covers the journal's invariant (§8.2): the node's own
+ * - The tracked set covers the journal's invariant: the node's own
  *   wallets, the reference-script addresses, and the protocol validators'
  *   payment credentials, with the hub-oracle policy for the protocol-init tx
  *   (`nodeIndexSpec`, `l1-follower.index-spec.ts`).
- * - Family predicates (§8.4) are reads over projections
+ * - Family predicates are reads over projections
  *   (`l1-follower.intent-predicates.ts`), passed in as `wanted`.
  * - A failed pass, or an intent whose mempool read, predicate or submission
  *   failed, is a named transient `/readyz` hold, retried on the follower's
@@ -48,7 +48,7 @@ export const INTENT_RECONCILE_FAILED = "intent_reconcile_failed";
 export const INTENT_RECONCILE_TRANSIENT = "intent_reconcile_transient";
 /**
  * The node's ledger refused S6's resend of a live intent at
- * `RESUBMIT_REJECTIONS_TO_HOLD` tips in a row (I1-R3 refusal hold, one per
+ * `RESUBMIT_REJECTIONS_TO_HOLD` tips in a row (a refusal hold, one per
  * family). It clears without operator action once the intent is no longer
  * live (it landed, another landed transaction spent one of its inputs, its
  * upper validity bound passed, a dependency died, it was abandoned or

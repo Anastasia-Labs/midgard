@@ -1,5 +1,5 @@
 /**
- * Head-change triggering of the planner fibers (plan §4.1, N2): a fiber on
+ * Head-change triggering of the planner fibers: a fiber on
  * `onL1HeadChange` ticks when the follower driver publishes a new view, at
  * most one tick per `minSpacing`, and otherwise only once `maxIdle` passed.
  */

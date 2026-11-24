@@ -1,5 +1,5 @@
 /**
- * Derived-status, S6 and retention edges of the intent journal (I1-fix),
+ * Derived-status, S6 and retention edges of the intent journal,
  * over the same harness as `intents.test.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -34,7 +34,7 @@ afterEach(async () => {
   await h.store.close();
 });
 
-describe("derived status edges (I1-fix)", () => {
+describe("derived status edges", () => {
   it("a child spending only a failed parent's collateral return is not dependency_dead; one spending its regular output is", async () => {
     await h.store.initialize(SIM_ORIGIN);
     const failing = spend(h.chain, await h.fund(), {
@@ -208,7 +208,7 @@ describe("derived status edges (I1-fix)", () => {
   });
 });
 
-describe("S6 edges (I1-fix)", () => {
+describe("S6 edges", () => {
   it("follows a landing up to depth k and calls it terminal only deeper than k", async () => {
     await h.store.initialize(SIM_ORIGIN);
     const tx = spend(h.chain, await h.fund());
@@ -252,7 +252,7 @@ describe("S6 edges (I1-fix)", () => {
   });
 });
 
-describe("retention edges (I1-fix)", () => {
+describe("retention edges", () => {
   it("an abandoned intent is terminal from its abandon tip and prunes k blocks after it, not before", async () => {
     await h.store.initialize(SIM_ORIGIN);
     const tx = spend(h.chain, await h.fund());

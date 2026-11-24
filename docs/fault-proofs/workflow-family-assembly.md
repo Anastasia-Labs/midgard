@@ -2,8 +2,7 @@
 
 Each derived record in `FAMILY_APPLICATION_REGISTRY`
 (`demo/midgard-fault-proofs/src/workflow/family-application-registry.ts`)
-carries the definition it is built from: 16 linear and 30 cursor definitions as
-of 2026-11-04. Each declares its datum schemas, published step and
+carries the definition it is built from, linear or cursor. Each declares its datum schemas, published step and
 witness scripts, certificate requirement, transaction port, complete replayer,
 and ordered field/raw-datum and proof-chunk prerequisites.
 
@@ -23,9 +22,9 @@ both the transaction port and adapter decoration.
 Historical families retain their public-DA reconstruction, authenticated L1
 boundaries, and corpus-digest checks across resume. Their complete replayers are
 created through the admitted replay factories and resolve history only after the
-workflow has derived it. Saved-intent recovery continues through
-`executeManifestBoundFamilyRecovery`, retaining decision-digest and actuation
-checks. The generic retained-DA runner does not replace those guards.
+workflow has derived it. Recovery runs through
+`executeManifestBoundFamilyRecovery`, which keeps the decision-digest and
+actuation checks. The generic retained-DA runner does not replace those guards.
 
 The table-driven assembly tests exercise every registered definition, including exact
 reference-script rejection and prerequisite wiring. Family recovery and emulator

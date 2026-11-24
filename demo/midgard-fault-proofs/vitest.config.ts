@@ -23,17 +23,8 @@ import { curatedTests, interactiveTests } from "./vitest.interactive-tests.mjs";
 /**
  * How many test files may run at once. Overridable with
  * `MIDGARD_FAULT_PROOF_FORKS`; anything that is not a positive integer falls
- * back to the default.
- *
- * The 434-case emulator stage on a 32-CPU/61-GiB host took 23.1 minutes at
- * four forks and 21.2 at eight, with peak aggregate RSS of 6.5 and 10.1 GiB.
- * See docs/fault-proofs/testing-status.md for scope and measurements.
- *
- * On the same host the whole suite (392 files, 4,466 cases) took 20.5
- * minutes at eight forks on 2026-09-21. Its tail is one case, the 1,295-asset
- * depth-64 deep-deposit transition trace, which alone spends about eleven
- * minutes inside genuine UPLC evaluation of near-budget scripts; more forks
- * cannot shorten that, only a smaller shape or splitting its hops can.
+ * back to the default. Each fork is its own process, so lower it on smaller
+ * machines. See docs/fault-proofs/testing-status.md for the gate commands.
  */
 const DEFAULT_MAX_FORKS = 8;
 

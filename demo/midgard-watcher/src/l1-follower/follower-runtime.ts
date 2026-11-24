@@ -48,7 +48,7 @@ import {
 import { readWatcherQueueView } from "./view.js";
 
 /**
- * The watcher's L1 chain follower (ticket W1): one SQLite fact store with
+ * The watcher's L1 chain follower: one SQLite fact store with
  * the watcher projection, one node transport, the follow loop, and the
  * seed of the watcher's own wallets (prover and availability). Every L1 read the watcher makes goes through it.
  *
@@ -247,7 +247,7 @@ export const openWatcherFollowerRuntime = (
       roster.floor,
       ...(input.replayPruneFloor === undefined ? [] : [input.replayPruneFloor]),
     ],
-    // Seeded (§5.3 step 4), never in the tracked-set record.
+    // Seeded, never in the tracked-set record.
     wallets,
     path: input.storePath,
   });

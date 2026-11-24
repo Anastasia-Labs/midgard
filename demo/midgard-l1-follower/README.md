@@ -31,8 +31,7 @@ It also owns the bridge from the node transport's chain-sync events to the
 store (`applyChainSyncEvent`, `intersectionPoints`, `startWhenFree`), the
 role projection seam (`FollowerProjection`, `projectionStoreOptions`) and the
 fork simulator (`./testing`). The live chain-sync client itself
-(`@al-ft/l1-node-transport`), the decode pool and the role wiring live
-elsewhere. The library entry points never open a connection to a Cardano
+(`@al-ft/l1-node-transport`) and the role wiring live elsewhere. The library entry points never open a connection to a Cardano
 node: the origin gate and `find-origin` (below) read the chain through a
 caller-supplied `L1NodeTransport`. Only the `find-origin` CLI and the
 reward-account reader below open one.
@@ -733,8 +732,7 @@ package's `test:fork-sim` (see below).
 
 ## Fresh-replay gate
 
-The follower's correctness gate is the fork simulator, not a comparison with
-the code it replaces. After every operation of every scenario (each
+The follower's correctness gate is the fork simulator. After every operation of every scenario (each
 roll-forward, rollback, prune and wallet seed), every fact table and every
 projection's D-t table must equal a fresh forward-only replay of the
 current canonical chain (once pruned: hold only its rows and every row

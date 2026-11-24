@@ -1,5 +1,5 @@
 /**
- * The node event projection in the fork simulator (plan §15 F8, N1): its
+ * The node event projection in the fork simulator: its
  * traffic (admissions inline and external, continuations, retirements,
  * resubmitted keys, the same key under the other kind) and its check, which
  * compares the projection at every step with an independent in-memory model

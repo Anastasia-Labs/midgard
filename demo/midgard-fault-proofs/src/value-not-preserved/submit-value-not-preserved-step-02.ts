@@ -1,5 +1,5 @@
 /**
- * `value-not-preserved` step-02 submitters (offchain plan §4): the
+ * `value-not-preserved` step-02 submitters: the
  * spent-input accumulation self-loop.
  *
  * - `buildValueNotPreservedStep02Fold` — one `FoldInput` iteration: opens
@@ -13,7 +13,7 @@
  *   cursor must equal the field's item count, and the accumulated inflow
  *   moves to step-03.
  *
- * One transaction per input by design (plan §4.1): each iteration is an
+ * One transaction per input by design: each iteration is an
  * independent, resumable L1 transaction, so a fold interrupted at any depth
  * continues from the thread UTxO it left behind.
  */

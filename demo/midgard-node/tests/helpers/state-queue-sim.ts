@@ -1,5 +1,5 @@
 /**
- * The node's landed state queue (P1, N2) in the fork simulator: honest
+ * The node's landed state queue (P1) in the fork simulator: honest
  * state-queue traffic, orphans with valid datums, third-party payments to
  * the queue address, and a check that compares P1 at the tip after every
  * chain-sync event with an independent model replayed from the canonical

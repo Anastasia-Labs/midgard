@@ -7,7 +7,7 @@ description: Use when a GitHub Actions run on Anastasia-Labs/midgard is red, whe
 
 A CI answer is a **verdict**, and a verdict is only as good as its evidence.
 Midgard CI has two ways to mislead: a gate that did not run looks the same as a
-gate that passed, and one red step hides every gate after it. Work the steps
+gate that passed, and a red step or job can skip the gates after it. Work the steps
 in order; each ends on a condition you can check.
 
 Every rule names what enforces it. `[review]` means only a reader does.
@@ -53,24 +53,17 @@ Blind spots: it reads only the `push` and `pull_request` triggers, and it
 cannot decide a `paths:` filter over a pull request of more than 300 changed
 files; such workflows are reported `UNDETERMINED` (exit 2), not passed.
 
-Why a run can be missing (as of 2026-09-26):
+Why a run can be missing:
 
 - **Triggers.** `aiken-ci.yml`, `midgard-node-ci.yml` and
-  `midgard-watcher-ci.yml` trigger only on push to `main` and on
-  `pull_request`, each behind a `paths:` filter (`aiken-ci.yml:3-10`,
-  `midgard-node-ci.yml:3-41`, `midgard-watcher-ci.yml:3-28`). A push to any
+  `midgard-watcher-ci.yml` trigger on push to `main` and on `pull_request`,
+  each behind a `paths:` filter (and on `workflow_dispatch`). A push to any
   other branch runs nothing until a pull request exists.
 - **Merge conflicts.** GitHub creates no `pull_request` run while the pull
-  request is conflicting. PR #471 (checkpoint branch into `tx-validation`) is
-  `CONFLICTING`; its last run was 2026-09-22 on `1b53eafd8`, and its head
-  `71e605e46`, 65 commits later, has no run at all.
-- **Path filters over large diffs.** On PR #471, aiken-ci last ran on
-  2026-09-04 (`a0a56e280`). 93 later commits touched `onchain/aiken/`, and
-  node and watcher CI kept running on those pushes until 2026-09-22, but
-  aiken-ci did not run again. The PR has 4,919 changed files. This fits GitHub
-  reading only the first 300 changed files for path filters; the cause is not
-  confirmed. Either way, no formatter, `aiken check` or ledger gate has run on
-  that branch's on-chain code since 2026-09-04.
+  request is conflicting.
+- **Path filters over large diffs.** A pull request of more than 300 changed
+  files can skip a workflow whose paths it touches; `ci-status.mjs` reports
+  such a workflow `UNDETERMINED`.
 
 Done when: for each workflow you know it is passed, failed, missing,
 undetermined or not triggered, and for every non-pass you can state why
@@ -85,22 +78,6 @@ checks across jobs and collects their results in `Node CI gate`. Count the
 skipped checks separately from failures and passes; a skipped check measured
 nothing. `ci-status.mjs` reports failing and skipped steps per job. [review]
 
-Real case: node CI on `1b53eafd8` (2026-09-22) stopped at step 14, the 12th
-named step, `Check canonical V1 profile documentation`; 28 later steps were
-skipped. Fixing it in `71e605e46` also meant fixing three stale generators
-behind it that CI had not reached: the canonical-decodability and
-committed-field-shape generators emitted `CommittedFieldClaim` where the Aiken
-type is `CommittedFieldClaimV1`, and the ordered-collection generator targeted
-constants in `da-hash-preimage/step-02.ak` and bound only two of step-01's four
-leaf constants (`git show 71e605e46 -- docs/consensus-profile-v1.md
-demo/midgard-sdk/scripts demo/midgard-validation/scripts`).
-
-The same shape is waiting in aiken-ci: its formatter step
-(`aiken-ci.yml:177`) runs before `aiken check` and all seven ledger pins, and
-a reproduction of that step at `cfa726174` finds 15 of 1,193 tracked `.ak`
-files unformatted (as of 2026-09-26). Predicted, not observed: no aiken-ci run
-exists to show it.
-
 Done when: you have named the first failing step, counted the skipped steps
 after it, and, after fixing it, either run each later step's command locally
 or read a fresh run that reached them. List any later step you did not run
@@ -110,31 +87,28 @@ as "not measured" `[review]`.
 
 Read the log with `gh run view <run-id> -R Anastasia-Labs/midgard --log-failed`
 (the failed jobs only). Search only the failing step's output: the text
-between its `##[group]Run` line and the first `##[error]` `[review]`. Counts: the last 60 failed runs of aiken-ci
-(2026-08-10 to 09-04) and node CI (2026-08-28 to 09-22), and all 46 failed
-runs of watcher CI (2026-08-31 to 09-22), as of 2026-09-26.
+between its `##[group]Run` line and the first `##[error]` `[review]`.
 
-| Log signal in the failing step                                                                 | Class                        | Seen                         | First action                                                                                                                                                     |
-| ---------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No run on the head                                                                             | Not a CI result              | PR #471 since 2026-09-22     | Step 1. Report "not run", never "green".                                                                                                                         |
-| `A script budget failed`, with `over`, `missing`, `now-fits` or `out-of-band` rows             | Script budget over ceiling   | aiken 33/60 (exact pins)     | Decide whether the change was meant to move that validator's cost, then follow [regenerating-goldens-and-ledgers](../regenerating-goldens-and-ledgers/SKILL.md). |
-| Formatter step fails; log is a bare list of `.ak` paths                                        | Aiken formatter drift        | aiken 17/60 (08-12 to 08-16) | Run the step's three commands (`aiken-ci.yml:177-188`) with the pinned fork on your tree.                                                                        |
-| `"status": "fail"` in the `aiken check` JSON                                                   | Aiken test failure           | aiken 7/60                   | `grep -B8 '"status": "fail"'` for the titles; reproduce with a focused check.                                                                                    |
-| `Compiling …` lines, then exit 1, no diagnostic                                                | Silent compile exit          | aiken 3/60, node 2/60        | Reproduce with the pinned fork at that commit. Until then: could not determine.                                                                                  |
-| `docs/consensus-profile-v1.md is stale`                                                        | Generated doc drift          | node 31/60 (09-12 to 09-22)  | Confirm the profile change is intended, then `pnpm --dir demo/midgard-core run docs:consensus-profile-v1:sync`.                                                  |
-| `stale generated artifact: <path>`                                                             | Golden drift                 | node 12/60                   | The path names the artifact; follow [regenerating-goldens-and-ledgers](../regenerating-goldens-and-ledgers/SKILL.md).                                            |
-| Vitest `AssertionError`                                                                        | Test regression or stale pin | node 6/60, watcher 4/46      | Read expected against actual; decide which side is wrong before editing either.                                                                                  |
-| `ENOENT … onchain/aiken/plutus.json`                                                           | Missing blueprint in the job | watcher 30/46                | The job read a blueprint no step built. Removed from watcher CI by `aa68fdeeb` (2026-09-24); no run has confirmed it.                                            |
-| `error TS…` after `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL … typecheck`                              | Typecheck                    | watcher 5/46                 | Reproduce with the package's `typecheck` script after building its workspace dependencies.                                                                       |
-| `<line>:<col>  error  <message>  <rule>`                                                       | Lint                         | watcher 7/46                 | Run the package's `lint` script.                                                                                                                                 |
-| Service unhealthy, runner lost, exit 137, out of disk, failure before the repo's first command | Infrastructure               | 0/166                        | Quote the line. Without one, this class is not the answer.                                                                                                       |
+| Log signal in the failing step                                                                 | Class                        | First action                                                                                                                                                     |
+| ---------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No run on the head                                                                             | Not a CI result              | Step 1. Report "not run", never "green".                                                                                                                         |
+| `A script budget failed`, with `over`, `missing`, `now-fits` or `out-of-band` rows             | Script budget over ceiling   | Decide whether the change was meant to move that validator's cost, then follow [regenerating-goldens-and-ledgers](../regenerating-goldens-and-ledgers/SKILL.md). |
+| Formatter step fails; log is a bare list of `.ak` paths                                        | Aiken formatter drift        | Run the commands of "Run normalized Aiken auto-formatter check" in `aiken-ci.yml` with the pinned fork on your tree.                                             |
+| `"status": "fail"` in the `aiken check` JSON                                                   | Aiken test failure           | `grep -B8 '"status": "fail"'` for the titles; reproduce with a focused check.                                                                                    |
+| `Compiling …` lines, then exit 1, no diagnostic                                                | Silent compile exit          | Reproduce with the pinned fork at that commit. Until then: could not determine.                                                                                  |
+| `docs/consensus-profile-v1.md is stale`                                                        | Generated doc drift          | Confirm the profile change is intended, then `pnpm --dir demo/midgard-core run docs:consensus-profile-v1:sync`.                                                  |
+| `stale generated artifact: <path>`                                                             | Golden drift                 | The path names the artifact; follow [regenerating-goldens-and-ledgers](../regenerating-goldens-and-ledgers/SKILL.md).                                            |
+| Vitest `AssertionError`                                                                        | Test regression or stale pin | Read expected against actual; decide which side is wrong before editing either.                                                                                  |
+| `ENOENT … onchain/aiken/plutus.json`                                                           | Missing blueprint in the job | The job read a blueprint no step built: check the job's `needs` and the step that downloads the blueprint.                                                       |
+| `error TS…` after `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL … typecheck`                              | Typecheck                    | Reproduce with the package's `typecheck` script after building its workspace dependencies.                                                                       |
+| `<line>:<col>  error  <message>  <rule>`                                                       | Lint                         | Run the package's `lint` script.                                                                                                                                 |
+| Service unhealthy, runner lost, exit 137, out of disk, failure before the repo's first command | Infrastructure               | Quote the line. Without one, this class is not the answer.                                                                                                       |
 
 Choosing the row and taking its first action is `[review]`; the signal
-itself comes from the gate named in the row. The Postgres service in node CI
-reported healthy in all 60 node runs. Real
-excerpts, the per-workflow tables and the commands that produced these counts
-are in [references/failure-classes.md](references/failure-classes.md); read it
-when a log matches no row or you want to re-count.
+itself comes from the gate named in the row. Real excerpts and the commands
+that count failures per class are in
+[references/failure-classes.md](references/failure-classes.md); read it when a
+log matches no row or you want to count.
 
 ## 4. Measure the base rate before saying "flaky" or "transient"
 
@@ -142,7 +116,7 @@ Flaky and transient are claims about frequency. One run cannot show a
 frequency `[review]`. Count the job over the last N completed runs:
 
 ```bash
-export REPO=Anastasia-Labs/midgard WF=midgard-node-ci.yml JOB=test N=30
+export REPO=Anastasia-Labs/midgard WF=midgard-node-ci.yml JOB="Lint and format" N=30
 gh run list -R "$REPO" --workflow "$WF" --status completed --limit "$N" \
   --json databaseId --jq '.[].databaseId' |
 while read -r id; do
@@ -154,12 +128,11 @@ done | sort | uniq -c
 For one step, add `STEP="<step name>"` to the exports and use
 `--jq '[.jobs[] | select(.name == env.JOB) | .steps[] | select(.name == env.STEP) | .conclusion] | first // "step-absent"'`.
 A `skipped` count is runs where an earlier step failed: not measured, not
-passed. Job names: aiken-ci `build`, node CI `test`, watcher CI `watcher`.
+passed. `JOB` is the job's display name, its `name:` in the workflow with any
+matrix value filled in (`midgard-fault-proofs (3/9)`, `Aiken complete test
+shard 2`). A sharded job is one job per shard; count each shard.
 
-As of 2026-09-26 the base rates are high: node CI failed 198 of its last 200
-completed runs (last green 2026-08-21); aiken-ci failed 74 of 200 (last green
-2026-08-22). The step `Check canonical V1 profile documentation` failed 20 of
-the last 20. A step that fails every time with the same message is
+A step that fails every time with the same message is
 deterministic. Calling it flaky needs the same step on the same commit both
 passing and failing; for measuring and fixing a real flake, use
 [fixing-flaky-tests](../fixing-flaky-tests/SKILL.md).
@@ -187,17 +160,20 @@ local run can pass or fail for reasons CI does not see:
 
 - **Stale blueprint.** Suites read `onchain/aiken/plutus.json`, a build output
   of whichever compiler and profile last ran. Node CI rebuilds it at `Build
-testnet Aiken blueprint` (`midgard-node-ci.yml:187`) before any suite.
-  Rebuild before comparing. Nothing detects a stale local blueprint
-  `[review]`; the pre-commit hook only refuses to commit it `[hook:
-pre-commit]`.
+testnet Aiken blueprint` before any suite. Locally the suites' stamp setup
+  rebuilds a stale default blueprint and refuses a stale one named by
+  `MIDGARD_REAL_BLUEPRINT_PATH`
+  (`demo/midgard-test-support/blueprint-stamp-setup.js`)
+  `[runtime: blueprintStampDecision]`; a script
+  run outside a suite gets no such check. The pre-commit hook refuses to
+  commit it `[hook: pre-commit]`.
 - **A different Aiken.** CI and every repository script run the aiken
   `demo/flake.lock` pins, through `scripts/aiken`
   `[script: scripts/lib/aiken.mjs]`. A bare `aiken` from your `PATH` is not
   that compiler; reproduce Aiken steps with `scripts/aiken` only.
 - **No local Postgres.** Without a server on 5433 the node suites report "No
-  test files found" and about 150 files never run
-  (`scripts/start-test-postgres.sh:4-6`). That is a setup gap, not a pass.
+  test files found" (`scripts/start-test-postgres.sh`, header). That is a
+  setup gap, not a pass.
   Start it with that script; CI uses its own `postgres:16-alpine` service
   instead. [review]
 
@@ -205,7 +181,7 @@ pre-commit]`.
 
 - [references/failure-classes.md](references/failure-classes.md): read when a
   log matches no table row, you need a class's exact log text, or you want to
-  re-count.
+  count failures by class.
 - [references/verdict-contract.md](references/verdict-contract.md): read before
   writing a verdict someone else will act on.
 - [AGENTS.md](../../../AGENTS.md): verification and reporting rules.

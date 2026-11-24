@@ -1,5 +1,5 @@
 /**
- * `native-script-decoding` step-04 submitter (offchain plan §4.2): the
+ * `native-script-decoding` step-04 submitter: the
  * proven verdict finalizes — the computation-thread NFT burns and the
  * permanent fraud-proof token mints to the fraud-proof address under the
  * generic finalization validations.

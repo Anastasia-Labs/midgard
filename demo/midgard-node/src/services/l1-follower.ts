@@ -1,5 +1,5 @@
 /**
- * The node's L1 follower (plan §7.3, §7.5, N1): the shared follow loop
+ * The node's L1 follower: the shared follow loop
  * (`followChain`) over the node's own follower store (its tables in the node
  * database), with the event projection current, and the follower-change
  * driver it triggers on every cursor advance and every rewind.
@@ -12,7 +12,7 @@
  *   between the view the driver last applied and the next one at the tip.
  * - The driver's sink (`l1-follower.driver-sink.ts`) writes the node's
  *   event rows from the projection with the driver's write capability
- *   (`withDriverView`), which re-checks the follower view (plan §8.1) in
+ *   (`withDriverView`), which re-checks the follower view in
  *   the same transaction, and advances the view the gated writers run at
  *   (`follower-write-gate.ts`). The first view,
  *   a rewind, orphaned admissions, deposits whose spendable ledger row was
@@ -24,28 +24,28 @@
  *   `l1_events_orphan_recovery`; a failure is the held
  *   `l1_driver_recompute_failed` or `startup_preparation_failed`, retried
  *   on the driver's backoff.
- * - The driver's first hook reads the landed state queue (P1, N2) at the
+ * - The driver's first hook reads the landed state queue (P1) at the
  *   view it applies: it publishes the queue length, bumps the head signal
  *   the planner fibers wake on (`l1-head-trigger.ts`) and holds
  *   `state_queue_unhealthy` while the queue is unhealthy.
- * - The driver's operator-set hook (N6) keeps the operator set from the
+ * - The driver's operator-set hook keeps the operator set from the
  *   facts (only the rows that changed since its last read), publishes it
  *   with the landed queue's tail for the watchdog, and derives this
  *   operator's membership: a removed operator is unready `operator_removed`
  *   with its duties held, and stays up.
- * - The driver's landed-block hook (N3, N5, `landed-blocks/`) processes each
+ * - The driver's landed-block hook (`landed-blocks/`) processes each
  *   landed block once, in queue order, folding merges into `confirmed_ledger`
- *   (its position joins the handle, P10); what it cannot do is a named hold.
- * - The driver's forced-order hook (N10, plan §12.3) ingests the forced
+ *   (its position joins the handle); what it cannot do is a named hold.
+ * - The driver's forced-order hook ingests the forced
  *   orders the follower projects, resolving carriage its blocks did not
  *   carry through the local node's ledger and the configured content
  *   sources; carriage no source has yet is the transient
  *   `forced_order_carriage_pending`, retried on the driver's backoff. While
  *   the follower is caught up it also deletes the rows whose order left
  *   the chain.
- * - After each driver run, S6 (`l1-follower.intents.ts`, I1) seeds wallets
- *   and reconciles intents, the own commits it derived dead are disposed of
- *   (I3), and the journal re-reads its refusal holds; all join the driver's.
+ * - After each driver run, S6 (`l1-follower.intents.ts`) seeds wallets
+ *   and reconciles intents, the own commits it derived dead are disposed of,
+ *   and the journal re-reads its refusal holds; all join the driver's.
  *   One trigger's run is `followerTick` (`l1-follower.tick.ts`).
  * - Uncleared states are named `/readyz` reasons. The one exit: a database
  *   transient (the driver's or the follower store's) that outlives its bound
@@ -321,7 +321,7 @@ const followL1 = <R>(
       }),
       log: (line) => log(`intents: ${line}`),
     });
-    // S6 follows the driver in the same coalesced run (§8.3: every head and
+    // S6 follows the driver in the same coalesced run (every head and
     // generation change), then the rebase the own commits it derived dead
     // make due, then the journal's re-read of its refusal holds
     // (`followerTick`).

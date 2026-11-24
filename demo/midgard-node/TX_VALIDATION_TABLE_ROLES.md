@@ -29,27 +29,23 @@ Covered tables:
 
 ## High-Level Model
 
-These tables support four runtime concerns:
+These tables support three runtime concerns:
 
 - durable transaction admission and validation tracking;
 - durable pending block submission, applied locally once the block lands;
-- explicit migration metadata and fail-closed schema verification;
-- local mutation accountability after L1 submission or merge side effects.
+- explicit migration metadata and fail-closed schema verification.
 
-The current node no longer relies on startup-time `CREATE TABLE IF NOT
-EXISTS` as the production schema path. The long-running node verifies that
+The long-running node does not create tables at startup; it verifies that
 explicit migrations have already installed the exact expected schema
 ([init.ts](src/database/init.ts)). The migration manifest lists the
 application tables and indexes that must exist
 ([migrations/index.ts](src/database/migrations/index.ts)).
 
-The application schema is deliberately squashed into one migration
-([0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql)).
-It includes durable transaction admissions, immutable admission payloads,
-withdrawal and forced-transaction events, pending finalization journals, state-queue leases, and DA tables. The authoritative
+[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql)
+creates the tables below except `tx_rejection_causes`; later numbered
+migrations in `src/database/migrations/sql/` add that table and alter others. The authoritative ordered
 manifest is `MIGRATIONS` in
-[`migrations/index.ts`](src/database/migrations/index.ts); documentation must
-not refer to pre-squash migration files that are no longer shipped.
+[`migrations/index.ts`](src/database/migrations/index.ts).
 The migration runner creates `schema_migrations` and
 `schema_migration_events` as metadata tables
 ([runner.ts](src/database/migrations/runner.ts)).
@@ -78,13 +74,10 @@ The migration runner creates `schema_migrations` and
 
 `blocks` is the local membership index for L2 transactions included in a
 submitted state-queue block. It links a Midgard block header hash to the L2
-transaction ids that were locally finalized for that header.
+transaction ids that were locally applied for that header.
 
 The merge flow uses this table to find the tx payloads for the oldest queued
-state-queue block before updating `confirmed_ledger`
-([merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts)).
-After the merge side effects update `confirmed_ledger`, the block links for
-that header are removed
+state-queue block
 ([merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts)).
 
 ### Stored Information
@@ -112,11 +105,10 @@ row is linked to the same header
 
 ### Writers
 
-`blocks` is written during local commit finalization, in the same SQL
-transaction that inserts accepted txs into `immutable` and clears the
-corresponding `mempool` rows
-([commit-submission.ts](src/workers/utils/commit-submission.ts),
-[commit-submission.ts](src/workers/utils/commit-submission.ts)).
+Landed-block processing writes `blocks` when an own block lands, together
+with the block's `immutable` rows (`applyOwnBlocks`,
+[own-blocks.ts](src/landed-blocks/own-blocks.ts)). The block's `mempool` and
+`processed_mempool` rows stay, marked `included_by`, until its fold is final.
 
 ### Readers
 
@@ -132,14 +124,13 @@ Readers include:
 
 ### Lifecycle
 
-1. A commit transaction is submitted or recovered.
-2. Local block finalization inserts included tx payloads into `immutable`.
-3. The same finalization path inserts `(header_hash, tx_id)` links into
-   `blocks`.
-4. The merge worker later fetches the first queued block's tx ids from
+1. A commit transaction is submitted and the block lands on L1.
+2. Landed-block processing inserts the block's tx payloads into `immutable`
+   and its `(header_hash, tx_id)` links into `blocks`.
+3. The merge worker later fetches the first queued block's tx ids from
    `blocks` and their payloads from `immutable` to build the merge
    transaction.
-5. Once the merge lands, landed-block processing folds the block's effects
+4. Once the merge lands, landed-block processing folds the block's effects
    into `confirmed_ledger`; rows for that `header_hash` are removed once its
    fold is final (`releaseFinalFolds`).
 
@@ -156,7 +147,7 @@ Expected invariants:
 
 - each row should have exactly one matching immutable tx payload;
 - the same tx id must not be linked to two different headers;
-- after a merge finalizes locally, rows for the merged header should be gone.
+- once a merged block's fold is final, rows for its header are gone.
 
 Known gaps:
 
@@ -184,6 +175,7 @@ transaction.
 - `tx_id BYTEA PRIMARY KEY`
 - `tx BYTEA`, the canonical bytes
 - `time_stamp_tz TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+- `included_by BYTEA`, the inclusion mark, as in `processed_mempool` below
 
 The keyset index is `(time_stamp_tz, tx_id)`.
 
@@ -217,59 +209,42 @@ Schema:
 - `tx_id BYTEA PRIMARY KEY`
 - `tx BYTEA NOT NULL`
 - `time_stamp_tz TIMESTAMPTZ NOT NULL DEFAULT NOW()`
-
-Index:
-
-- `idx_processed_mempool_time_stamp_tz` on `time_stamp_tz`
-
-Defined in
-[0001_initial_schema.sql](src/database/migrations/sql/0001_initial_schema.sql).
-The adapter is a thin wrapper around the generic tx table helpers
-([processedMempool.ts](src/database/processedMempool.ts)).
+- `included_by BYTEA`, the header hash of the block that includes the row
+  ([0013_mempool_inclusion_marks.sql](src/database/migrations/sql/0013_mempool_inclusion_marks.sql));
+  a pending row is an unmarked one
+  ([mempoolInclusions.ts](src/database/mempoolInclusions.ts)).
 
 ### Writers
 
-`processed_mempool` is written by `skippedSubmissionProgram`, which transfers
-processed txs from `mempool` when a commit cannot yet be submitted because no
-confirmed predecessor block is available
-([commit-submission.ts](src/workers/utils/commit-submission.ts)).
-
-The main commit worker reaches this path after `processMpts` has already
-applied the txs to the persistent mempool MPT and discovered that
-`availableConfirmedBlock === ""`
-([commit-block-header.ts](src/workers/commit-block-header.ts),
-[commit-block-header.ts](src/workers/commit-block-header.ts)).
+`skippedSubmissionProgram` moves processed txs from `mempool` when a commit
+has no confirmed predecessor block to build on
+([commit-submission.ts](src/workers/utils/commit-submission.ts),
+[submission.defer-processed-commit-payload.ts](src/workers/commit-block-header/submission.defer-processed-commit-payload.ts)).
 
 ### Readers
 
-Readers include:
-
-- `establishEndTimeFromTxRequests`, which uses the oldest deferred payload when
-  there are no live `mempool` rows
-  ([commit-block-header.ts](src/workers/commit-block-header.ts));
-- local block finalization, which folds deferred payloads into successful
-  commit batches
-  ([commit-submission.ts](src/workers/utils/commit-submission.ts));
-- `/tx-status`, which reports whether a tx is in processed mempool
-  ([listen-router.ts](src/commands/listen-router.ts)).
+Readers include the commit worker, which builds on pending deferred rows
+([commit-block-header.build-on-verified-base-program.ts](src/workers/commit-block-header.build-on-verified-base-program.ts)),
+landed-block processing of an own block
+([own-blocks.ts](src/landed-blocks/own-blocks.ts)), and `/tx-status`.
 
 ### Lifecycle
 
 1. Accepted txs enter `mempool` and are reflected in `mempool_ledger`.
-2. The commitment worker processes them into the persistent mempool MPT.
-3. If the node cannot submit a new block yet, the tx rows are moved from
-   `mempool` into `processed_mempool`.
-4. On a later successful submission, deferred rows are combined with current
-   mempool rows in the block; landed-block processing inserts them into
-   `immutable`/`blocks` once the block lands.
-5. `processed_mempool` is cleared once the block's own effects are applied
-   ([own-blocks.ts](src/landed-blocks/own-blocks.ts)).
+2. If the node cannot submit a new block yet, the processed tx rows are moved
+   from `mempool` into `processed_mempool`.
+3. A later block includes deferred rows with current mempool rows; once it
+   lands, landed-block processing marks them `included_by` and inserts them
+   into `immutable`/`blocks`.
+4. The rows are deleted once that block's fold is final
+   ([final-folds.ts](src/landed-blocks/final-folds.ts)); a rollback that takes
+   the block off the landed chain clears the mark instead.
 
 ### Relationships
 
 - Related to the persistent mempool MPT root. The MPT contains the transaction
   root effects, while `processed_mempool` stores SQL-visible tx payloads needed
-  until the block lands and its own effects are applied.
+  until the including block's fold is final.
 - Related to `mempool`: rows are moved from live mempool to processed mempool.
 - Related to `immutable` and `blocks`: deferred rows eventually become
   immutable tx payloads and block membership rows.
@@ -285,8 +260,7 @@ Expected invariants:
 
 Known gaps:
 
-- There is no per-header or root fingerprint in `processed_mempool`.
-- The finalization path clears the whole table rather than only planned tx ids.
+- There is no root fingerprint in `processed_mempool`.
 - Startup integrity still needs to compare persistent mempool trie state with
   `processed_mempool` explicitly.
 
@@ -345,10 +319,10 @@ depending on the decoding outcome
 2. The tx is inserted into `mempool`.
 3. Its delta is upserted into `mempool_tx_deltas`.
 4. The commitment worker reads the delta to apply MPT batch operations.
-5. When txs are cleared from `mempool`, their deltas are also cleared
-   ([mempool.ts](src/database/mempool.ts)).
-6. A full `mempool` clear also clears all deltas
-   ([mempool.ts](src/database/mempool.ts)).
+5. A move into `processed_mempool` keeps the delta. The delta is deleted with
+   its pending row: once the including block's fold is final
+   (`deleteIncluded`, [mempoolInclusions.ts](src/database/mempoolInclusions.ts)),
+   or when a `mempool` row is cleared ([mempool.ts](src/database/mempool.ts)).
 
 ### Relationships
 
@@ -369,9 +343,6 @@ Expected invariants:
 Known gaps:
 
 - There is no foreign key to `mempool`, `processed_mempool`, or `immutable`.
-- When a tx is transferred into `processed_mempool`, the delta is cleared
-  because the MPT already contains the tx effects. That leaves no SQL delta
-  evidence for replay unless it can be reconstructed from payloads.
 - Orphan deltas remain ambiguous state and should fail closed during integrity
   checking.
 
@@ -1141,7 +1112,8 @@ The pending block recovery model spans:
 - persistent MPT state
 - L1 state queue headers
 
-`pending_block_finalizations` records lifecycle status and exact replay inputs.
+`pending_block_finalizations` records exact replay inputs; its status is
+derived from the follower's facts.
 The native replay variant binds the event log, event roots, owner identity, and
 base/candidate roots; the delta variant carries its ledger delta. Recovery uses
 these persisted inputs and checks the durable marker. A populated journal alone

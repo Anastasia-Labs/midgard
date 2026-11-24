@@ -1,5 +1,5 @@
 /**
- * `reference-input-no-idx` step-01 submitter (Goal task `Q31`).
+ * `reference-input-no-idx` step-01 submitter.
  *
  * The reference-input mirror of `submit-input-no-idx-step-01`: nothing in the
  * prepared JSON is trusted. Before a transaction is built this module

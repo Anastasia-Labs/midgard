@@ -403,7 +403,7 @@ const initializationAttempt = (
       `Fraud proof catalogue root prepared for initialization: ${fraudProofCatalogueDeploymentInfo.root}`,
     );
 
-    // S5: the plan opens before the deployment-status read the init rests on.
+    // The plan opens before the deployment-status read the init rests on.
     const plan = yield* openPlan;
     const reader = contractsDeploymentReader(lucidService, contracts);
     const keys = yield* configuredProtocolDeploymentKeys(runStatePath);

@@ -40,8 +40,8 @@ export type FollowStep =
   | Readonly<{ event: "roll_backward"; result: RewindResult }>;
 
 /**
- * The sequential writer's step for one transport event (plan §4.1, S1 with
- * F6 deferred): a block is decoded and applied in one transaction, a
+ * The sequential writer's step for one transport event (pipelining is
+ * deferred ticket F6): a block is decoded and applied in one transaction, a
  * rollback rewinds the store to its point. A rollback to the chain's genesis
  * lies below every origin, so it is the R1 case without touching the store.
  * The caller acknowledges `event.seq` only after a result that changed or
@@ -106,7 +106,7 @@ const MAX_POINTS = 256;
 
 /**
  * The intersection candidates for (re)opening chain-sync from the store
- * (§4.2), best first: the cursor and the 63 blocks below it, then blocks at
+ * best first: the cursor and the 63 blocks below it, then blocks at
  * exponentially growing distances and the block at the rewind limit (cursor -
  * k, the deepest legal rewind target, which prune always keeps: the retained
  * depth is never below k), in descending height, then the origin. The limit

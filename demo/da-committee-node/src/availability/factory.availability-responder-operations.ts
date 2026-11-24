@@ -15,7 +15,7 @@ import { AvailabilityResponderAwaitingScanError } from "./awaiting-scan-error.js
  * The responder's canonical boundary, operation context and reconcile step,
  * on the committee follower's facts.
  *
- * The boundary is the follower's view (plan §8.1): while the follower holds
+ * The boundary is the follower's view: while the follower holds
  * the committee unready, or once a rollback undid the view this pass
  * reconciled at, every boundary read throws
  * `AvailabilityResponderAwaitingScanError`. Transaction status, inputs and
@@ -60,7 +60,7 @@ export const availabilityResponderOperations = (input: {
       scope === undefined ? run() : scope.read(run);
     const boundary = await read(() => reads.readBoundary());
     input.l1Clock.observeTipSlot(boundary.slot);
-    // Work reconciled at a view a rollback since undid is stale (§8.1).
+    // Work reconciled at a view a rollback since undid is stale.
     if (
       reconciledView !== undefined &&
       !(await read(() => reads.viewValid(reconciledView!)))
@@ -79,7 +79,7 @@ export const availabilityResponderOperations = (input: {
     await readBoundary(scope);
   };
   // Every own transaction is pinned on the follower before it is submitted,
-  // and the pins then follow what the journal retains (plan §11): its
+  // and the pins then follow what the journal retains: its
   // status stays readable after a downtime longer than k.
   const { journal, actor, deploymentIdentity } = input.context;
   reads.intentPins.bind(() =>

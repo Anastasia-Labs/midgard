@@ -119,7 +119,7 @@ test("accepts a selector that collects and passes every test", () => {
   );
 });
 
-test("summarises the largest unit-test execution units against the §3.3 basis", () => {
+test("summarises the largest unit-test execution units against the execution basis", () => {
   const report = {
     modules: [
       {

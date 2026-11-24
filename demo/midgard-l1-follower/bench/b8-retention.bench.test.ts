@@ -21,7 +21,7 @@ import {
 } from "./support/workload.js";
 
 /**
- * B8 (plan §16.2): the retention soak, follower tables on a synthetic chain.
+ * B8: the retention soak, follower tables on a synthetic chain.
  * A constant flow holds the tracked live set fixed (each qualifying tx
  * spends one tracked output and creates one, with a token, a tracked mint
  * every fifth tx and a reference script every tenth) for 10 × (k + window)
@@ -42,7 +42,7 @@ import {
  * as a 1.2% slope although the final count is below the starting one.
  *
  * Target: every table's row count plateaus, slope ≤ 1% over the last third.
- * `l1_event_keys` is the §11 exception: it only ever grows, by one small row
+ * `l1_event_keys` is the exception: it only ever grows, by one small row
  * per event, so it is reported, not held to the plateau.
  */
 const LIVE = 2_000;

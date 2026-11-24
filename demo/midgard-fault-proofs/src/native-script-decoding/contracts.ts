@@ -1,10 +1,10 @@
 /**
- * `native-script-decoding` deployed-contract record (design §4.1/§8.2, Q2/Q3).
+ * `native-script-decoding` deployed-contract record.
  *
  * Like the two Q39/Q40 families, this family predates its catalogue
  * registration: the `SupportedFaultProofCategoryName` entry, the SDK
  * `contracts.ts` chain builder and the category-id constant are parent-owned
- * surfaces that land with registration (design §10 Q2). Until then, submitters
+ * surfaces that land with registration. Until then, submitters
  * take this explicit already-resolved record instead of going through
  * `resolveFaultProofDeploymentContracts`, and the emulator harness assembles it
  * from the same parameterized chain whose step-01 hash the tests register as an
@@ -55,7 +55,7 @@ export type NativeScriptDecodingStepContract = {
  * The already-resolved contracts a `native-script-decoding` submission needs.
  *
  * There is deliberately no `categoryId` field yet: the id is assigned at
- * catalogue registration (design §10 Q2; `0000000d` expected but not promised),
+ * catalogue registration (`0000000d` expected but not promised),
  * so callers that need one — thread-token asset names, catalogue lookups — take
  * it separately from the deployment they are actually talking to.
  */

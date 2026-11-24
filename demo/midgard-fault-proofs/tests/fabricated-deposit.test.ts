@@ -1,5 +1,5 @@
 /**
- * `fabricated-deposit` family (Goal task `Q39`) — evidence builder, L1 witness
+ * `fabricated-deposit` family — evidence builder, L1 witness
  * authentication and submit-side re-derivation.
  *
  * The family is reached by **direct module import**: the `fabricatedDeposit`

@@ -12,7 +12,7 @@ L1 confirmation evidence.
 The total unconfirmed signed-byte budget is 65,536 bytes. This is independent
 of the per-lane count bound. Transactions still start with four targets and
 split only when the existing SDK builder reports an oversized transaction.
-The byte budget is conservative; the local-stack measurements below verify
+The byte budget is conservative; the local-stack comparison below checks
 chaining against the actual submission stack.
 
 The publisher first consolidates fragmented plain wallet funding in confirmed
@@ -92,8 +92,7 @@ pnpm --dir demo/midgard-node exec vitest run tests/reference-publication-local-d
 ```
 
 Both runs publish eight copies of the real blueprint PlutusV3 script
-`fraud_proofs/missing_redeemer/step_02a.main.spend` (about 12.4 KB, the size of
-the script the recorded runs below published) under distinct
+`fraud_proofs/missing_redeemer/step_04.main.spend` under distinct
 authentication authorities and authenticated role names. The normal batching/splitting rule produces the
 transactions. The chained comparison requires a child submission while its parent inputs are
 still absent from Kupo and while the canonical tip remains unchanged from
@@ -107,9 +106,8 @@ startup reconciliation time, publication time, signed bytes, transaction count,
 submission/indexing observation latencies and peak outstanding counts/bytes.
 A rerun that only rediscovers references is labelled accordingly and is not a
 second timing sample. Raw test logs and aggregate measurements are evidence,
-not a scheduler recovery journal. This bounded repeated-script workload does not establish the
-30–60-minute hypothesis for the entire production roster. A Preprod pilot remains
-conditional on the required acceptance gates.
+not a scheduler recovery journal. This bounded repeated-script workload does
+not measure publication of the entire production roster.
 
 ## Recovery probes
 
@@ -138,136 +136,3 @@ rerun, and checks the canonical roster for duplicate or malformed roles.
 These marker files coordinate only the external fork operation. They contain
 no publication transaction state and cannot reconstruct or resume a publisher.
 All signed transactions and dependency records remain in process memory.
-
-## Recorded local comparison (2026-09-25 UTC)
-
-The isolated stack used Cardano node 11.1.0, Ogmios 7.0.0 and Kupo 2.11.0,
-with one-second slots, active-slot coefficient 0.05 and security parameter 2160. Serial and chained ran sequentially with eight 12,245-byte blueprint
-scripts. Each comparison used a fresh authentication authority and the same
-funded publisher wallet.
-
-| Measurement                                             |    Serial |   Chained |
-| ------------------------------------------------------- | --------: | --------: |
-| Total wall time                                         | 448.179 s | 425.865 s |
-| Startup reconciliation                                  | 323.002 s | 326.532 s |
-| First submission through verification                   | 125.177 s |  99.333 s |
-| Transactions, including funding split                   |         8 |         9 |
-| Signed bytes, including funding split                   |   102,470 |   102,801 |
-| Peak outstanding transactions                           |         1 |         5 |
-| Peak outstanding signed bytes                           |    12,822 |    63,968 |
-| Children before parent confirmation and Kupo visibility |         0 |         4 |
-
-The chained funding split took about 80 seconds to become observable; its
-eight publications then completed in about 19 seconds. The split remains part
-of the reported 99-second publication measurement. These are single samples
-with variable block arrival times, not a throughput guarantee. Per-transaction
-submission, inclusion and indexing-observation latencies are retained in the
-aggregate measurement files.
-
-Raw logs are `/tmp/issue-682-live-serial-plutus.log` and
-`/tmp/issue-682-live-chained.log`; aggregate files are under
-`/tmp/midgard-publication-682-20260925/work/`. A preliminary synthetic native
-script probe was stopped after Kupo returned a differently encoded script
-with a different hash. Canonical authentication refused completion. The real
-Plutus workload passed, and the malformed-role refusal has a regression test.
-
-The full workspace command `pnpm --dir demo test` was run. Workspace
-typechecking passed; the watcher prelude stopped with 45 failing tests in 14
-files, before the remaining package lanes could start. Most failures concern
-the existing fault-proof supervisor deadline configuration; other failures
-include attestation-timeout observations and historical capture. See
-`/tmp/issue-682-full-suite.log` and the pinned-toolchain rerun
-`/tmp/issue-682-node22-full-suite.log`, which reproduced the same 45 failures.
-This blocks a readiness claim and the
-conditional Preprod pilot. No gates or authority deadlines were relaxed.
-
-The full-roster initialization emulator fixture uses the default chained publisher.
-Serial publication of that roster crosses the unchanged authority safety
-reserve in emulator chain time and is correctly refused. Smaller serial
-equivalence and real-stack serial publication remain covered.
-
-Required checks completed so far:
-
-- `pnpm --dir demo run test:tx-prep:sdk`: 175 Lucid and 649 SDK tests passed.
-- `pnpm --dir demo run test:tx-prep:node`: 125 node and 51 tooling tests passed.
-- `pnpm --dir demo run test:tx-prep:emulator`: all 65 node emulator tests
-  passed, including chained full-roster initialization. The following fault-proof
-  suite failed: 263 failed, 352 passed, four skipped across 117 files. Failures
-  include dispute timing/maturity checks; see
-  `/tmp/issue-682-emulator-gate-chained-init.log`. The aggregate gate is red.
-- Focused publication/indexer tests: 30 passed after the rollback retry-cap
-  regression and fix. Registry and existing chain tests also passed.
-- Workspace typechecking, SDK/node builds, changed-file ESLint and Prettier
-  checks passed. The acceptance runbook and skill-frontmatter validators passed.
-
-Two earlier emulator attempts were interrupted during repeated script hashing.
-The content-hash cache and fresh canonical role index removed that unnecessary
-work; these interrupted runs are not counted as passing evidence. The serial
-full-roster deadline failure was retained as a diagnostic and the integration
-fixture now tests default chaining without changing deadlines.
-
-The initial checks used the shell's Node 24.13.1. After noticing the watcher
-engine constraint and `demo/.nvmrc`, the required gate sequence and workspace
-command were rerun with the pinned Node 22.22.2. The Node 24 local devnet
-measurements remain valid diagnostics for packages whose declared engine is
-Node >=22.16.0; they are not a watcher compatibility claim.
-
-Real-provider recovery results on the isolated devnet:
-
-- Lost acknowledgement: passed; eight unique publications reached the
-  authenticated canonical roster after 67 submission attempts.
-- Expiry: passed; 292 identical withheld attempts, other-lane publication before
-  expiry, then replacement after expiry and canonical catch-up.
-- Process death: the worker was intentionally killed after Ogmios accepted its
-  first publication. A fresh process waited 311 seconds before its first
-  submission, rediscovered that publication, and submitted only seven missing
-  roles. Final authentication passed.
-
-Recovery logs are `/tmp/issue-682-live-ambiguous.log`,
-`/tmp/issue-682-live-expiry.log`, `/tmp/issue-682-live-restart.log`, and
-`/tmp/issue-682-live-restart-resume.log`. Per-drill aggregate measurements are
-under `/tmp/midgard-publication-682-20260925/probes/*/work/`. The crash is an
-intentional failed process followed by verified recovery, not a clean first run.
-
-- Actual rollback: passed on two separately preserved forks of the isolated
-  chain. The switch changed height 125 to 96 and removed previously confirmed
-  reference outputs. The publisher withheld replay until validity expiry, then
-  rebuilt eight missing roles and authenticated the entire replacement roster.
-  Sixteen publication transactions were built across both branches; peak new
-  outstanding submissions stayed at five and 64,076 bytes. Raw evidence is
-  `/tmp/issue-682-live-rollback-final.log`,
-  `/tmp/issue-682-rollback-before-health.json`,
-  `/tmp/issue-682-rollback-after-health.json`, and
-  `/tmp/issue-682-rollback-missing-reference.json`. Aggregate measurements are
-  under `/tmp/midgard-publication-682-rollback-1/work/`. Both branch databases
-  were preserved; the test services were stopped after the drills.
-
-The committed probe uses the standard minimum authority reserve. All recorded
-probes finished with more than three hours of their four-hour authority left.
-The early probe version passed a one-millisecond minimum to the test seam; no
-recorded publication relied on that reduced reserve. The production publisher
-and full-roster initialization kept the standard reserve throughout.
-
-Final focused verification under Node 22.22.2: 54 publication, indexer, registry
-and existing-chain tests passed. The pinned-toolchain SDK, node/tooling and
-node-emulator portions also passed with the same counts above.
-
-The pinned aggregate completed with the same fault-proof totals: 263 failed,
-352 passed and four skipped. Its complete SDK/node/emulator output is
-`/tmp/issue-682-node22-required.log`; the aggregate remains an acceptance
-blocker. Final focused output is `/tmp/issue-682-node22-focused.log`, with
-formatting and lint output in `/tmp/issue-682-node22-format.log` and
-`/tmp/issue-682-node22-lint.log`. Standards and Spec reviews have no remaining
-implementation findings.
-
-Default-publication follow-up under Node 22.22.2: the runtime mode setting was
-removed, and the initialization fixture now exercises chaining without an
-explicit override. All 13 publication tests and all 65 node emulator tests
-passed. Workspace typechecking, the node build, changed-file ESLint and
-Prettier checks passed; Standards and Spec reviews reported no findings.
-Evidence is in `/tmp/issue-682-default-publication-green.log`,
-`/tmp/issue-682-default-emulator.log` and `/tmp/issue-682-default-build.log`.
-The full `pnpm test` rerun stopped in the watcher prelude with 45 failed,
-1,446 passed and nine skipped tests, plus two unhandled errors; subsequent
-lanes did not run. See `/tmp/issue-682-default-full-suite.log`. The workspace
-suite remains red.

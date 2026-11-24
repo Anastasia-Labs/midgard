@@ -13,7 +13,7 @@ import { createIntentStatesView } from "./reconcile.view.js";
 import type { IntentState, IntentStatus } from "./status.js";
 
 /**
- * What S6 does with one intent (§8.3). Only `resubmit` sends anything, and
+ * What S6 does with one intent. Only `resubmit` sends anything, and
  * it sends the journaled bytes; only `abandon` writes a status-relevant
  * event. Every other outcome follows from the facts with no write.
  */
@@ -45,7 +45,7 @@ export type ReconcileAction =
   /**
    * Live, the predicate said abandon, but the tip moved (a new block or a
    * rewind) between the status read and the abandon write; or it said
-   * resubmit, but a rewind removed the pass's view (§8.1) before the send
+   * resubmit, but a rewind removed the pass's view before the send
    * decision: nothing is written or sent, and the next pass (at the new
    * tip) decides again.
    */
@@ -86,8 +86,8 @@ export const settledAction = (
 
 /**
  * The action for a live intent, given what S6 read for it: whether it was
- * already sent at this tip, whether the node's mempool holds it (§8.3:
- * waiting wins), whether its inputs are live facts now, and the family
+ * already sent at this tip, whether the node's mempool holds it (waiting
+ * wins), whether its inputs are live facts now, and the family
  * predicate (read only when it is not in the mempool and its inputs are
  * live: a predicate read at a view that lacks the intent's inputs says
  * nothing about whether it is still wanted).
@@ -126,7 +126,7 @@ export type IntentReconcilerOptions = Readonly<{
   securityParameter: number;
   /** LocalTxMonitor `HasTx`. A throw ends this pass; the next pass retries. */
   inMempool: (intent: IntentHead) => Promise<boolean>;
-  /** The §8.4 family predicate, read over projections: can it still land and is it still wanted. */
+  /** The family predicate, read over projections: can it still land and is it still wanted. */
   wanted: (state: IntentState) => Promise<boolean>;
   /** LocalTxSubmission of the exact journaled bytes. A throw is transient. */
   submit: (intent: Intent) => Promise<SubmitOutcome>;
@@ -197,7 +197,7 @@ const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
 /**
- * S6 (§8.3): derives the intents' statuses from the facts, then waits,
+ * S6: derives the intents' statuses from the facts, then waits,
  * resubmits the exact bytes (at most once per tip), or abandons a live
  * intent whose predicate no longer holds or whose resend the ledger
  * refused at `abandonAfterRejections` distinct tips at or past its lower
@@ -275,7 +275,7 @@ export const createIntentReconciler = (
           action: (await refusedAbandon()) ? "abandon" : "wait_tip_moved",
         };
       if (action === "resubmit") {
-        // S6 (§8.1): the decision to send is taken under this pass's view,
+        // S6: the decision to send is taken under this pass's view,
         // checked in the transaction that records the attempt. A rewind that
         // removed the pass's point since its statuses were derived leaves
         // nothing sent; the next pass decides at the new tip. The send itself

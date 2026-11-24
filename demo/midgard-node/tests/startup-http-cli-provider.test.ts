@@ -6,7 +6,7 @@
  * admission and init refuse, and no database is acquired. A node not up yet
  * is waited through under its named reason, and startup passes the L1
  * services once the node answers; an answer no restart repairs holds the
- * process up and unready (plan §7.5, owner ruling 2026-10-09;
+ * process up and unready (owner ruling 2026-10-09;
  * `withStartupHttpServer`).
  */
 import type { Server } from "node:http";

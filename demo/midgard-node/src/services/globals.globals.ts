@@ -173,18 +173,18 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       state: "starting",
       detail: "settlement worker starting",
     });
-    // This process's side of the follower write gate (plan §8.1): the epoch
+    // This process's side of the follower write gate: the epoch
     // its driver took, whether a recompute is pending, and the producers
     // running under permits (`follower-write-gate.ts`).
     const FOLLOWER_WRITE_GATE = yield* Ref.make<FollowerWriteGateLocal>(
       initialFollowerWriteGateLocal(),
     );
-    // The node's L1 follower (N1): the shared follow loop and its
+    // The node's L1 follower: the shared follow loop and its
     // follower-change driver, or why the node has none.
     const L1_FOLLOWER = yield* Ref.make<L1FollowerState>(
       L1_FOLLOWER_NOT_STARTED,
     );
-    // Bumped by the follower driver each time it applies a new view (N2):
+    // Bumped by the follower driver each time it applies a new view:
     // the head change the planner fibers wake on (`l1-head-trigger.ts`).
     const L1_HEAD_SEQUENCE = yield* SubscriptionRef.make<number>(0);
     // Bumped after the tx-queue processor accepts transactions: the wake of

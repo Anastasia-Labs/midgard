@@ -11,7 +11,7 @@ import {
 import { SIM_DEPTHS } from "./queue-sim.js";
 
 /**
- * Plan §8.2 at rollback depths between cd and k: a rollback of k blocks
+ * At rollback depths between cd and k: a rollback of k blocks
  * (never final) takes back a header's attestation at depth k or k-1. The
  * member reads the output unattested again and posts once more: at once
  * when the header's node is still safe, or one block later when the

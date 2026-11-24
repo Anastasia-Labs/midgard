@@ -1,6 +1,6 @@
 /**
  * This node's landed blocks, applied locally by the rebase that takes them
- * in (plan §8.3), the same rebase that applies a foreign block: their
+ * in, the same rebase that applies a foreign block: their
  * events are projected and their delta reaches the working ledger and the
  * native MPF there. What only an own block has is written here, from its
  * journal, in the rebase's transaction: its transactions in `immutable` and

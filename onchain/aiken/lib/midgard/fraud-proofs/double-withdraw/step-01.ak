@@ -1,5 +1,5 @@
 //// ## `double-withdraw` step-01 — first payable withdrawal leaf
-//// (work item W-C3, catalogue row DOUBLE-WITHDRAW)
+//// (catalogue row DOUBLE-WITHDRAW)
 ////
 //// ### The rule this family adjudicates
 ////

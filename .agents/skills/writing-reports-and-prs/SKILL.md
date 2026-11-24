@@ -83,8 +83,9 @@ what this repository's best merged PRs already use (#466, #468; read with
   as an unrelated config or lockfile edit that rode along. `[review]`
 - **GitHub checks are evidence too.** Cite the workflow, its result and the
   commit it ran on; a PR with no checks attached says so. `[review]`
-- **Base branch.** No document fixes the base: open PRs as of 2026-09-25 target `tx-validation`, stacked `fp/*`
-  branches and a feature branch. Ask whoever requested the PR. `[review]`
+- **Base branch.** No document fixes the base: on 2026-11-23 the 30 open PRs
+  targeted `tx-validation` (10), `main` (9), `staging` (4), stacked `fp/*`
+  branches and feature branches. Ask whoever requested the PR. `[review]`
 - **Opening, editing, commenting on or merging a PR** happens only when you
   were asked to. Pushing is covered by committing-safely rule 10. `[review]`
 

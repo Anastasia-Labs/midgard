@@ -63,9 +63,8 @@ this with the transaction's `fee`, the candidate's `derived.mintDelta`, and its
 Canonical V1 enables mint and burn. Phase A authenticates the canonical mint
 field, and the signed mint delta participates in value preservation exactly as
 shown above. Every non-zero non-Ada policy must also pass its native, PlutusV3,
-or MidgardV1 execution; Ada minting remains forbidden. Release activation
-remains closed until the deployment-bound L1 dispute path covers both policy
-authorization and value preservation.
+or MidgardV1 execution; Ada minting is forbidden. Both failures are provable
+on L1 (`mintAuthorization` and `valueNotPreserved` fraud proofs).
 
 <Callout type="info">
 The reject detail is produced by **`describeValueDelta`**, which renders the

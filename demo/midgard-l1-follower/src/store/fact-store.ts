@@ -125,11 +125,11 @@ export type FactStoreOptions = Readonly<{
   securityParameter: number;
   /** The depth prune keeps facts down to, in blocks (`retainedDepthOf`). */
   retainedDepth?: number;
-  /** The role's protocol tracked set (§5.2), any-case hex, recorded (`tracked-set-record.ts`). */
+  /** The role's protocol tracked set, any-case hex, recorded (`tracked-set-record.ts`). */
   trackedSet: TrackedSet;
-  /** Own wallets: tracked by address, seeded (§5.3 step 4), never recorded. */
+  /** Own wallets: tracked by address, seeded, never recorded. */
   wallets?: readonly Buffer[];
-  /** The role's D-t tables (§7.2). */
+  /** The role's D-t tables. */
   temporalTables?: readonly TemporalTableSpec[];
   /** The role's migrations (D-t tables and others), applied after the follower's. */
   migrations?: readonly MigrationSet[];
@@ -170,8 +170,8 @@ export type FactStore = Readonly<{
     outputs: readonly SeedOutput[],
   ): Promise<SeedResult | SeedCursorMoved | StoreError | StoreLocked | null>;
   /**
-   * Seeds the wallets among `addresses` with no stored seed point (§5.3
-   * step 4) in the writer lane: `read` at the cursor, then their seed rows
+   * Seeds the wallets among `addresses` with no stored seed point
+   * in the writer lane: `read` at the cursor, then their seed rows
    * and seed points in one write (`wallet-seeds.ts`). Null before `initialize`.
    */
   seedWallets(
@@ -187,8 +187,8 @@ export type FactStore = Readonly<{
   setTrackedSet(trackedSet: TrackedSet): void;
   /**
    * The manifest's `hubOracleOneShot` outref: each applied block that holds
-   * a valid tx spending it records the durable protocol-init fact (§5.3
-   * step 3). Set it before following; `followChain` does.
+   * a valid tx spending it records the durable protocol-init fact.
+   * Set it before following; `followChain` does.
    */
   watchProtocolInit(oneShot: OutRef): void;
   /** The protocol-init fact for `oneShot`; it outlives the pruning of the init tx. */
@@ -228,7 +228,7 @@ export type FactStore = Readonly<{
   output(outRef: OutRef): Promise<StoredOutput | null>;
   spenderOf(outRef: OutRef): Promise<reads.Spender>;
   txByHash(hash: Buffer): Promise<StoredTx | null>;
-  /** The stored valid tx that spent `outRef`, tracked or not (§5.3 step 3). */
+  /** The stored valid tx that spent `outRef`, tracked or not. */
   txSpending(outRef: OutRef): Promise<reads.TxSpending | null>;
   isCanonical(blockHash: Buffer): Promise<boolean>;
   pointStatus(point: Point, options?: ReadOptions): Promise<reads.PointStatus>;

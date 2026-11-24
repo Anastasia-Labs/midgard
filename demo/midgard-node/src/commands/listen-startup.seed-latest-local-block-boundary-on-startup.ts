@@ -55,8 +55,8 @@ const seededLocalBlockBoundary = (
 /**
  * Startup's one-time repair of a `confirmed_ledger` that no landed-block run
  * anchored yet (no frontier): the applied (or folded) journal chain from the
- * ledger's root up to `journal` is folded through the stored-delta fold
- * (N5), with the frontier set at the chain's base header first, and the
+ * ledger's root up to `journal` is folded through the stored-delta fold,
+ * with the frontier set at the chain's base header first, and the
  * result's root must be `journal`'s. Undefined when the chain does not reach
  * the ledger's root or a journal on it is not its own header's
  * (`unboundJournalReason`); a wrong fold rolls back and fails startup as
@@ -142,7 +142,7 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
   );
   // Once a landed-block run anchored `confirmed_ledger` (a frontier), it
   // holds the ledger to the queue root itself, with a named hold for what it
-  // cannot do yet, so a lag here is no startup failure (N5).
+  // cannot do yet, so a lag here is no startup failure.
   const anchored = (yield* Frontier.retrieve) !== undefined;
   if (anchored && snapshot.blockCount === 0)
     yield* Effect.logInfo(

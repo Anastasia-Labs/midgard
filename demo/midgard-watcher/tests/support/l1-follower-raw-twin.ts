@@ -25,7 +25,7 @@ import {
 } from "./l1-follower-state-queue-traffic.js";
 
 /**
- * Two follower stores fed the same simulator events (ticket W1, ruling 9):
+ * Two follower stores fed the same simulator events (ruling 9):
  * `pruned` is pruned on demand, `reference` never is. After each prune the
  * pruned store must hold only rows of the reference and every row retention
  * keeps (`diffPruned`), across rollbacks before and after the pruning.

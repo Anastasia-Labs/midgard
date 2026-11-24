@@ -1,6 +1,6 @@
 /**
  * The named holds a refused native restore raises while the landed-block
- * rebase moves native MPF (plan §1.4 "MPF interim", N4): the only
+ * rebase moves native MPF: the only
  * `restoreCanonicalRoot` caller. A refusal comes before the owner changes
  * its marker, so nothing changed: the rebase fails under its source with
  * the refusal's reason, the process stays up, the follower write gate

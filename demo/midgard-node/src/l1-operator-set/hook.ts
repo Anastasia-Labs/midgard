@@ -1,5 +1,5 @@
 /**
- * The follower-change driver's operator-set hook (NC14, D-N7). On every
+ * The follower-change driver's operator-set hook. On every
  * driver run it brings the operator set up to the follower's view (only the
  * rows that changed since its last read; a load after a rewind or a prune),
  * derives this operator's membership from it and publishes both.

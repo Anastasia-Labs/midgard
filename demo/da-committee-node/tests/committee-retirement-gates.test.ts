@@ -16,7 +16,7 @@ import {
 import { openTestCommitteeStore } from "./helpers/committee-store.js";
 
 /**
- * Plan §5.1, §15 C3: retirement deletes a cohort only at finality, depth
+ * Retirement deletes a cohort only at finality, depth
  * k + 1 (`isFinal`: depth > k). It has three finality gates: the checkpoint
  * (the horizon point the source re-reads), every point the cohort's rows
  * name, and the horizon point the plan covers. Each test below closes

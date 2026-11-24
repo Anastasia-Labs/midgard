@@ -1,6 +1,6 @@
 /**
- * The intent prune hook across a store reset's replay (§8.2 retention over
- * §5's reset), on a SQLite and a Postgres store. While a reset replays, a
+ * The intent prune hook across a store reset's replay,
+ * on a SQLite and a Postgres store. While a reset replays, a
  * prune step skips the retention hook but still deletes spent outputs at or
  * below its boundary; the journal's floor (`INTENT_PRUNE_FLOOR`) holds that
  * boundary at the one in the hook's mark (`l1_intent_prune_mark`). The mark

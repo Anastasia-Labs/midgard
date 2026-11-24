@@ -1,6 +1,5 @@
 /**
- * Aiken/TypeScript byte twins for the `fabricated-withdrawal` family (Goal task
- * `Q40`).
+ * Aiken/TypeScript byte twins for the `fabricated-withdrawal` family.
  *
  * Every expectation below is an **absolute** hex constant measured out of the
  * Aiken family modules

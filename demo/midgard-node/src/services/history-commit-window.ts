@@ -23,7 +23,7 @@ export const configuredCommitAnchorClock = Effect.gen(function* () {
 });
 
 /**
- * The commit end-time horizon (plan §8.1, N10): min(the commit anchor's cap,
+ * The commit end-time horizon: min(the commit anchor's cap,
  * the forced-order bound), with the anchor the journal stores. The anchor
  * is the follower block d below the planning view (`readCommitAnchor`): the
  * write permit's view, or, for a model fixture without one, the view the

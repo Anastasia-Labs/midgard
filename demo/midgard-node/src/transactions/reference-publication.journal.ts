@@ -1,5 +1,5 @@
 /**
- * Reference publication's submissions (§8.2, I1): its funding transactions
+ * Reference publication's submissions: its funding transactions
  * and each chained publication tx go through the node's submit seam, which
  * journals the exact bytes before their first send.
  */
@@ -24,9 +24,9 @@ import { submitSignedTxWithRecovery } from "./utils.submit-signed-tx-with-recove
 
 /**
  * A funding step (consolidation or split), journaled under the
- * publication's `plan` (S5) and confirmed. Its content reference is its
+ * publication's `plan` and confirmed. Its content reference is its
  * target: the hashes (hex) of the scripts it funds (`funds`), concatenated,
- * so the §8.4 predicate wants it while one of them is not yet published.
+ * so the family predicate wants it while one of them is not yet published.
  */
 export const submitPublicationFunding = (
   journal: IntentJournalService,
@@ -65,7 +65,7 @@ const providerRejected = (error: unknown): boolean => {
 /**
  * Sends a chained publication tx through the node's one submit seam
  * (`submitSignedTxWithRecovery`): its exact bytes are journaled under the
- * publication's `plan` (S5) before the first send, and a journal refusal
+ * publication's `plan` before the first send, and a journal refusal
  * rejects, so nothing is sent. A send S6 holds (`IntentSubmitHeld`) is
  * `ambiguous`: S6's reconciler decides it under the current view. The seam
  * never waits inline here; the publication loop owns retries of the same

@@ -1,5 +1,5 @@
 /**
- * The node's wallet view (plan §8.5): what one of its own addresses may
+ * The node's wallet view: what one of its own addresses may
  * spend now. Every node builder selects its wallet inputs from it
  * (`presetWalletInputs`), and the submit seam signs over it, so a build can
  * spend the predicted change of the node's own live intents, and nothing a

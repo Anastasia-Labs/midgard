@@ -34,7 +34,7 @@ export type SettlementHealth = {
   reconcileStuck?: SettlementReconcileStuck;
   /**
    * Set by the worker when its intent journal holds refusals whose write to
-   * the node database has not landed (I1-H1): the worker hands them over,
+   * the node database has not landed: the worker hands them over,
    * and the node's journal takes them (`adopt`), names them on `/readyz`
    * and writes them until they land. The node strips it before publishing
    * the health.
@@ -237,8 +237,8 @@ export const reconcileAttempt = (
     yield* Journal.assertOwner(owner);
     // The journaled bytes have one sender, S6 (the node follower's intent
     // reconciler): it sends them at every tip while they are live, absent
-    // from the mempool and spendable, and never sends a dead intent (§8.2:
-    // an input spent by another tx, expired, failed). This tick only reads
+    // from the mempool and spendable, and never sends a dead intent (an
+    // input spent by another tx, expired, failed). This tick only reads
     // status; a dead body waits for the expiry decision above.
     if (status !== null && isDeadStatus(status))
       return `settlement transaction ${attempt.tx_hash} is dead (${status.kind}); not resubmitted`;

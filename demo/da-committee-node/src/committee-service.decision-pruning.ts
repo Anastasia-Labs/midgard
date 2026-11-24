@@ -25,7 +25,7 @@ export type DecisionPruneInputs = Readonly<{
 }>;
 
 /**
- * The signed decisions this tick deletes (plan §11, class B): those
+ * The signed decisions this tick deletes (class B): those
  * `obligations()` reads as `decisionDeletable`, and only once no row of
  * theirs can be read or decided on again.
  *

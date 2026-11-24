@@ -1,5 +1,5 @@
 /**
- * The forced-order projection's S3 derivation (plan §12.3 steps 0 and 1).
+ * The forced-order projection's S3 derivation.
  *
  * Per qualifying tx, in block order:
  * - a spend of a stored order closes its row (`spent_slot`);
@@ -17,8 +17,7 @@
  * is there, and a rollback that removes the order removes its key.
  *
  * A pure function of the block and the config: no clock, no network. The
- * rewind of the D-t row is the registry's; the key's is the follower's own
- * (§5.4).
+ * rewind of the D-t row is the registry's; the key's is the follower's own.
  */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
@@ -228,7 +227,7 @@ export const forcedOrderDerivation = (
 ): DerivationHook => ({
   name: "node_l1_forced_orders",
   // It also inserts into the follower's class A `l1_event_keys`, whose
-  // rewind is the follower's own (§5.4); only D-t tables are listed here.
+  // rewind is the follower's own; only D-t tables are listed here.
   writes: [FORCED_ORDERS_TABLE],
   apply: async (context) => {
     const { block, previous } = context;

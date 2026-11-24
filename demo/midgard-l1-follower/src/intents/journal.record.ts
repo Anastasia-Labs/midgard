@@ -1,5 +1,5 @@
 /**
- * Recording an intent (§8.2): its exact signed bytes, refused unless every
+ * Recording an intent: its exact signed bytes, refused unless every
  * input, reference input and collateral is a fact or a recorded intent's
  * output, and its first event.
  */
@@ -73,10 +73,10 @@ const slotBound = (bound: bigint | null): number | null | undefined =>
       : undefined;
 
 /**
- * S5: journals a newly signed transaction before its first submission
- * (§8.2), in the caller's write transaction. Idempotent per tx hash.
+ * Journals a newly signed transaction before its first submission,
+ * in the caller's write transaction. Idempotent per tx hash.
  * `viewValid(builtAt)` runs here, under the cursor share lock: a stale view
- * still records the row, with a `stale_at_write` event (§8.1), and the
+ * still records the row, with a `stale_at_write` event, and the
  * result says so; the caller must not send it on this write.
  */
 export const recordIntentIn = async (
@@ -198,7 +198,7 @@ export const recordIntentIn = async (
 };
 
 /**
- * Writes one intent row as given, without the §8.2 checks. Only
+ * Writes one intent row as given, without the record checks. Only
  * `recordIntentIn` and test tooling that copies a journal call it.
  */
 export const insertIntentIn = async (

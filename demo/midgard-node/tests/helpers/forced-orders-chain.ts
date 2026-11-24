@@ -1,5 +1,5 @@
 /**
- * Forced orders on a simulated chain (N10, plan §12): the deployment the
+ * Forced orders on a simulated chain: the deployment the
  * projection follows, real order material from the SDK, the §8 carriage it
  * publishes, and the order transaction whose mint redeemer names that
  * carriage. Also a ledger and content sources the resolver can be pointed

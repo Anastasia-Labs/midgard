@@ -69,7 +69,7 @@ export const attestHeader = ({
   readonly referenceScripts: SDKDa.DaAttestationReferenceScripts;
   readonly availabilityCommitment: SDKDa.DaAvailabilityCommitment;
   readonly availabilityParameters: SDKDa.DaAvailabilityParameters;
-  /** S5: the round's plan, opened before its first L1 read. */
+  /** The round's plan, opened before its first L1 read. */
   readonly plan: IntentPlan;
 }): Effect.Effect<
   AttestStateQueueHeaderResult,

@@ -1,5 +1,5 @@
 /**
- * User-event ingestion from the event projection (N1): the deposit and
+ * User-event ingestion from the event projection: the deposit and
  * withdrawal row content the node's L2 side reads, derived from a
  * projected event's immutable bytes and its location. Pure: no database,
  * no clock. The follower-change driver writes the node's event rows from

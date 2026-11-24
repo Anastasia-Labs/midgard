@@ -33,7 +33,7 @@ export type ForcedOrderRow = Readonly<{
   /** Its order output is spent at the point. */
   spent: boolean;
   status: ForcedOrderStatus;
-  /** The point before the order's block (§12.3 step 2 acquires here). */
+  /** The point before the order's block. */
   parent: Point;
   inclusionTime: bigint;
   referenceInputs: readonly OutRef[];

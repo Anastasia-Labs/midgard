@@ -1,10 +1,10 @@
 /**
- * `canonical-decodability` deployed-contract record (offchain plan §4.2).
+ * `canonical-decodability` deployed-contract record.
  *
  * The family predates its catalogue registration, like `native-script-decoding`
  * and the two Q39/Q40 families: the `SupportedFaultProofCategoryName` entry,
  * the SDK `contracts.ts` chain builder and the category-id constant are
- * parent-owned surfaces that land with registration (plan §2). Until then,
+ * parent-owned surfaces that land with registration. Until then,
  * submitters take this explicit already-resolved record instead of going
  * through `resolveFaultProofDeploymentContracts`, and the emulator harness
  * assembles it from the same parameterized chain whose step-01 hash the tests
@@ -38,7 +38,7 @@ export type CanonicalDecodabilityStepContract = {
  * The already-resolved contracts a `canonical-decodability` submission needs.
  *
  * There is deliberately no `categoryId` field yet: the id is assigned at
- * catalogue registration (plan §2; the emulator reserves `00000011`), so
+ * catalogue registration (the emulator reserves `00000011`), so
  * callers that need one — thread-token asset names, catalogue lookups — take
  * it separately from the deployment they are actually talking to.
  */

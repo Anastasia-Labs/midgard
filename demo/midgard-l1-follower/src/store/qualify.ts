@@ -7,7 +7,7 @@ import type {
   TxSummary,
 } from "../types.js";
 
-/** An output gets a row iff it matches the tracked set by address or credential (§5.2). */
+/** An output gets a row iff it matches the tracked set by address or credential. */
 export const isTrackedOutput = (
   output: OutputSummary,
   tracked: TrackedSet,
@@ -51,10 +51,10 @@ export const createdOutputs = (tx: TxSummary): CreatedOutput[] => {
 };
 
 /**
- * Qualification rules (a)–(d) of §5.2 for one block, in tx order. `isLive`
+ * The qualification rules for one block, in tx order. `isLive`
  * answers for the tracked-outref set before the block; outputs the block's
  * own earlier qualifying txs created are staged here, so a tx that spends or
- * references one of them qualifies too (§6 item 4).
+ * references one of them qualifies too.
  */
 export const qualifyBlock = (
   block: BlockSummary,

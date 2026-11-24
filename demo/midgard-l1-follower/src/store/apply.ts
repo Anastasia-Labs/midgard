@@ -67,7 +67,7 @@ const continuityProblem = (
 };
 
 /**
- * Records the protocol-init fact (§5.3 step 3) when a valid tx in the block
+ * Records the protocol-init fact when a valid tx in the block
  * spends the watched `hubOracleOneShot` outref, whether or not that tx
  * qualifies. The fact outlives the tx row: prune never removes it, and a
  * rewind below its slot does.
@@ -95,7 +95,7 @@ const recordProtocolInit = async (
 
 /**
  * Applies one block in the caller's write transaction (the sequential
- * writer, §6 item 4 with one transaction per block): qualification against
+ * writer, one transaction per block): qualification against
  * the tracked-outref set, fact rows, the S3 derivations, then the cursor.
  * `protocolInit` is the watched `hubOracleOneShot` outref, if any.
  */

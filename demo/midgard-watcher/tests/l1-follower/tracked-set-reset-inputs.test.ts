@@ -1,6 +1,5 @@
 /**
- * The tx-input sweep over a store reset (lane SI, ruling SI-R3; lane
- * SI-fix, ruling SIFIX-R1): it waits for the replay to end, after a
+ * The tx-input sweep over a store reset: it waits for the replay to end, after a
  * tracked-set reset and a manual `reset --to-origin` alike, so the inputs
  * stored at ingest (class C) survive it; and the watcher's wallets stay out
  * of the tracked-set record.

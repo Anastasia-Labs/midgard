@@ -1,5 +1,5 @@
 /**
- * Where `confirmed_ledger` stands, for status (plan §5.5 P10, N5): the
+ * Where `confirmed_ledger` stands, for status: the
  * frontier, the slot of the merge that made it the queue root, and that
  * merge's level at the follower's tip (`landed`, `safe` at confirmation
  * depth, `final` past the security parameter). A frontier behind the root

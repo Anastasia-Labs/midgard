@@ -180,7 +180,8 @@ mainnet `maxTxExUnits` caps of 16,500,000 memory and 10,000,000,000 CPU. The
 cap comes from the mainnet parameter snapshot in
 [decision 0001](../midgard/decisions/0001-cardano-l1-transaction-capability-floor.md),
 carried as the supported floor
-`MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits` and in
+`MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits`
+(`demo/midgard-core/src/consensus-profile.ts`) and in
 [`docs/consensus-profile-v1.md`](../consensus-profile-v1.md) §10. The live cap
 is pinned for a release by its target-network parameter binding. In TypeScript
 the basis is `SCRIPT_BUDGET_BASIS` in `demo/midgard-core/src/script-budgets.ts`.

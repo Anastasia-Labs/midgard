@@ -163,8 +163,7 @@ export const availabilityResponderValidityLimits = (
 
 /**
  * The times one responder build is taken at, kept apart so that only the
- * validity upper bound may come from anything but the committee's L1 clock
- * (plan §3.6):
+ * validity upper bound may come from anything but the committee's L1 clock:
  *
  * - `tipSlot`: the observed follower tip; the validity lower bound is
  *   anchored to it.

@@ -65,7 +65,7 @@ export const publishReferenceScripts = async ({
   };
   if (lucid.config().provider === undefined)
     throw new Error("Reference publication requires a provider");
-  // S5: one plan per invocation, opened before its first L1 read; a restart
+  // One plan per invocation, opened before its first L1 read; a restart
   // after a rollback opens a new one.
   const plan = await Effect.runPromise(journal.openPlan);
   const walletAddress = await lucid.wallet().address();
@@ -184,7 +184,7 @@ export const publishReferenceScripts = async ({
   const batches: SDK.ReferenceScriptTarget[][] = [];
   for (let i = 0; i < remaining.length; i += 4)
     batches.push(remaining.slice(i, i + 4));
-  // The wallet view (§8.5): own facts no live intent holds, plus the change
+  // The wallet view: own facts no live intent holds, plus the change
   // live own intents predict.
   const funding = (
     await Effect.runPromise(journal.walletView(lucid, walletAddress))

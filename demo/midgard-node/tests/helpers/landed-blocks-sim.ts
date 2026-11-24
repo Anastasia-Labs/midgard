@@ -1,5 +1,5 @@
 /**
- * Landed-block processing (N3) in the fork simulator. After every chain-sync
+ * Landed-block processing in the fork simulator. After every chain-sync
  * event the check runs the node's landed-block hook at the follower's view
  * and the working-ledger rebase it asks for (the native MPF move, then the
  * SQL recompute), until nothing is left to do, the way the follower-change
@@ -36,7 +36,7 @@
  *   whose base left the tip is dead, and one whose block lands anyway is
  *   applied like any other (both derived, never written); a candidate that
  *   lands with no journal is a foreign block.
- * - A merge a rollback undid is unfolded (N5): the frontier rewinds by
+ * - A merge a rollback undid is unfolded: the frontier rewinds by
  *   header identity to the root's lineage, also where another fork's header
  *   carries the same ledger, and `confirmed_ledger_behind` never holds. The
  *   retained folds are exactly the frontier's lineage's, each pruned only

@@ -130,9 +130,11 @@ serving traffic. This is where correctness is enforced:
 
 <Steps>
   <Step>
-    Preflight DA identity and verify that explicit migrations already brought
-    the database to the exact supported schema. Startup does not apply
-    migrations.
+    Local preflight: the pinned native MPF owner binary, the ledger signature
+    verifier, the single-process instance lock and the DA identity. Verify that
+    explicit migrations already brought the database to the exact supported
+    schema and that it is bound to the configured deployment. Startup does not
+    apply migrations.
   </Step>
   <Step>
     Verify the finalized deployment manifest the deployment commands wrote,
@@ -140,29 +142,26 @@ serving traffic. This is where correctness is enforced:
     accounts. The node never deploys or initializes the protocol.
   </Step>
   <Step>
-    Seed the latest local block boundary from the state-queue tip and reconcile
-    confirmed-ledger and commit MPFs against the on-chain root.
+    Start the L1 follower. Its first recompute seeds the latest local block
+    boundary from the landed state queue, hydrates any pending block
+    finalization, releases the previous process's leases, attempts a bounded DA
+    payload backfill (a backfill error is logged and skipped) and starts the
+    native MPF owner. Startup waits, unready, until the follower is at the tip.
   </Step>
   <Step>
-    Hydrate any pending block-finalization journal, then refuse to serve if
-    unfinished local mutation jobs remain.
+    Assert the DA parameters read at the tip, then wait for the follower's first
+    published view.
   </Step>
   <Step>
-    Run deposit, withdrawal and tx-order catch-up and deposit projection
-    reconciliation. Attempt a bounded DA payload backfill from finalized
-    journals; a backfill error is logged rather than silently counted as
-    completion.
-  </Step>
-  <Step>
-    Refresh the admission gauge, initialize the configured native MPF owner, and
-    launch the HTTP server and configured background services concurrently.
+    Refresh the admission gauge, rebuild the admission input claims, and launch
+    the HTTP server and configured background services concurrently.
   </Step>
 </Steps>
 
 <Callout type="info" title="Readiness vs. liveness">
   `GET /healthz` only confirms the process is up. `GET /readyz` is the real
   signal: it checks worker heartbeats, durable admission backlog and age,
-  unfinished local mutation jobs, unresolved block submissions, database
-  connectivity, provider reachability, and state-queue mutation-lease state,
-  returning `503` until the node is genuinely ready.
+  unresolved block submissions, the L1 follower, database connectivity, provider
+  reachability, and state-queue mutation-lease state, returning `503` until the
+  node is genuinely ready.
 </Callout>

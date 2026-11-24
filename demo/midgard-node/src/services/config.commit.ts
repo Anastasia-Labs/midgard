@@ -65,7 +65,7 @@ export const commitConfig = Config.all({
     "STATE_QUEUE_MUTATION_LEASE_MAX_HOLD_MS",
     10 * 60 * 1000,
   ),
-  /** The commit-event depth d (plan §8.1): the deployment profile's
+  /** The commit-event depth d: the deployment profile's
    * `l1_finality.commit_event_depth`. A commit's anchor is the follower
    * block d below the view it is planned at, and its header end is at most
    * the anchor's time + event_wait - 1 (`database/commit-anchor.ts`). */

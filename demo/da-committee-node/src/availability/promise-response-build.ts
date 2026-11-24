@@ -35,7 +35,7 @@ export const PROMISE_RESPONSE_BUILD_STAGE_MS = 2_000;
  * own propagation allowance), so the TTL clears the adopted calibration's
  * rule (`minimumEligibleFutureSlots`) however far the follower tip trails the
  * wall clock. The lower bound stays anchored to the observed tip, and every
- * deadline decision stays on the committee's L1 clock (plan §3.6: a
+ * deadline decision stays on the committee's L1 clock (a
  * wall-derived clock may pick valid_to, never decide due, expired or
  * deadline).
  *

@@ -27,7 +27,7 @@ const SUBMITTED_PREDICATE = `record->>'resultStatus' IN ('submitted', 'confirmed
 
 /**
  * The committee store's tables, each with its class and retention rule
- * (plan §5.1, schema lint F2). The store applies this itself when it opens,
+ * (`lintSchema`). The store applies this itself when it opens,
  * idempotently; the follower's migration runner never runs it, so
  * `follower reset --to-origin` (which deletes the catalogued A, D-t and D-x
  * tables) never reaches a committee store row.
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS committee_retirement_metadata (
   record jsonb NOT NULL
 );
 
--- class: A; retention: one row per observed state-queue header, pruned with the member's signed decision for it (plan §11), or with its payload, whichever goes last
+-- class: A; retention: one row per observed state-queue header, pruned with the member's signed decision for it, or with its payload, whichever goes last
 CREATE TABLE IF NOT EXISTS committee_state_queue_headers (
   header_hash text PRIMARY KEY,
   record jsonb NOT NULL,
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS committee_l1_source_state (
   updated_at timestamptz NOT NULL DEFAULT NOW()
 );
 
--- class: B; retention: one row per decision effect, pruned with its header's signed decision (plan §11), or by retirement under promise adoption
+-- class: B; retention: one row per decision effect, pruned with its header's signed decision, or by retirement under promise adoption
 CREATE TABLE IF NOT EXISTS committee_decision_outbox (
   effect_id text PRIMARY KEY,
   header_hash text NOT NULL,
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS committee_promise_capacity_evidence (
   record jsonb NOT NULL
 );
 
--- class: B; retention: one row per availability signature, the member's or a peer's, pruned with the member's signed decision for its header (plan §11), or with its payload when it has none; a row of the member's own (end_time_ms set) is its signed decision
+-- class: B; retention: one row per availability signature, the member's or a peer's, pruned with the member's signed decision for its header, or with its payload when it has none; a row of the member's own (end_time_ms set) is its signed decision
 CREATE TABLE IF NOT EXISTS committee_da_signatures (
   header_hash text NOT NULL,
   commitment_digest text NOT NULL CHECK (commitment_digest ~ '^[0-9a-f]{64}$'),
@@ -353,7 +353,7 @@ $$;
 
 /**
  * The committee store schema as a migration set, for the schema lint
- * (`lintSchema`, plan F2). The store does not run it through the follower
+ * (`lintSchema`). The store does not run it through the follower
  * runner; see `COMMITTEE_STORE_TABLES_SQL`.
  */
 export const committeeStoreMigrations: MigrationSet = {

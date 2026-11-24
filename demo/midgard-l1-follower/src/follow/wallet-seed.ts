@@ -13,7 +13,7 @@ import { transportPoint } from "./chain-sync.js";
 /** The ledger-state reads the seed needs (an `L1NodeTransport`). */
 export type WalletLedger = Pick<L1NodeTransport, "withLedgerState">;
 
-/** The readiness reason while a wallet's seed is owed (plan §5.3 step 4). */
+/** The readiness reason while a wallet's seed is owed. */
 export const WALLET_SEED_PENDING = "wallet_seed_pending";
 
 /** Why a seed did not happen yet. Every reason is transient: retry later. */
@@ -127,7 +127,7 @@ export const readWalletUtxos = async (
   );
 
 /**
- * The LSQ wallet seed (plan §5.3 step 4), once per wallet. A wallet whose
+ * The LSQ wallet seed, once per wallet. A wallet whose
  * seed point the store holds (`l1_wallet_seeds`) is not read again. The
  * others are read with `GetUTxOByAddress` from the ledger state at the
  * store's cursor P inside the store's writer lane (`FactStore.seedWallets`),
@@ -265,7 +265,7 @@ export const createWalletSeeder = (
   const owedHex = (): string[] =>
     [...wallets].flatMap(([hex, slot]) => (slot === null ? [hex] : []));
   const owed = (): Buffer[] => owedHex().map((hex) => Buffer.from(hex, "hex"));
-  /** Whether the rewind deleted a seed taken at `slot` (§7.1). */
+  /** Whether the rewind deleted a seed taken at `slot`. */
   const deletes = (rewound: Rewound, slot: number): boolean =>
     rewound.reset === true || rewound.to.slot < slot;
   /** The rewinds heard while a seed runs. */

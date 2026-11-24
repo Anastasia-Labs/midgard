@@ -1,5 +1,5 @@
 /**
- * The node's intent journal (plan §8.2, I1): every node L1 family journals
+ * The node's intent journal: every node L1 family journals
  * the exact signed bytes of a transaction in `l1_intents` before its first
  * submission, in the node database, through the follower's
  * `recordIntentIn`. The attestation-timeout correction is not a family: each
@@ -12,18 +12,18 @@
  *
  * - The submit seam (`submitSignedTxWithRecovery`) takes a `SubmissionIntent`
  *   and requires this service, so no family's submission can skip it.
- * - S5 (§8.1): every journaled intent carries its family's plan, opened
+ * - Every journaled intent carries its family's plan, opened
  *   (`openPlan`) before the family's first L1 read. The record compares the
  *   plan's generation with the cursor in its own transaction: a rewind
  *   between the two records the row with `stale_at_write`, never sent from
  *   that write. Otherwise the view recorded is the cursor there, at or above
  *   every read the plan made.
- * - S6 (§8.1): a role's own send is decided in the record's transaction
+ * - S6: a role's own send is decided in the record's transaction
  *   (`decideSubmitIn`, with the view check), and held while the follower's
  *   view is more than the node-behind bound behind wall-clock time. A held
  *   send fails with `IntentSubmitHeld`, not a refusal; S6's reconciler
  *   decides it under the current view. The network send follows the commit.
- * - A refusal (§8.2's tracked-input invariant, no follower view, bytes that
+ * - A refusal (the tracked-input invariant, no follower view, bytes that
  *   differ from the journaled ones) stops that submission and is held as a
  *   named `/readyz` reason until the family's next recording succeeds, or a
  *   landed transaction spends the refused one's input (for other bytes of a
@@ -128,7 +128,7 @@ import { NodeConfig } from "./config.js";
  * it must run inside a SQL transaction the caller opened and owns, on the
  * node database, and commits or rolls back with it. Outside a transaction it
  * refuses (`INTENT_GATE_UNJOURNALED`) and writes nothing. It fails with the
- * journal's refusal (§8.2), which the caller must let roll its transaction
+ * journal's refusal, which the caller must let roll its transaction
  * back. For an unjournaled submission it does nothing.
  */
 export type JournalInsert = Effect.Effect<void, IntentJournalRefused>;
@@ -178,7 +178,7 @@ export type IntentJournalService = Readonly<{
     IntentJournalRefused | IntentSubmitHeld | E
   >;
   /**
-   * Opens a family's plan (S5): the follower generation now. Call it
+   * Opens a family's plan: the follower generation now. Call it
    * before the family's first L1 read. Never fails: no view is `none`.
    */
   openPlan: Effect.Effect<IntentPlan>;
@@ -187,7 +187,7 @@ export type IntentJournalService = Readonly<{
   /**
    * Returns this journal's refusal holds whose write to the node database
    * has not landed yet, and forgets them. A worker thread's journal ends
-   * with the thread, so the worker hands them to the main process (I1-H1),
+   * with the thread, so the worker hands them to the main process,
    * which `adopt`s them.
    */
   handOff: () => readonly UnwrittenHold[];
@@ -206,7 +206,7 @@ export type IntentJournalService = Readonly<{
    */
   refresh: () => Effect.Effect<void>;
   /**
-   * The wallet view (§8.5) of one own address, read now
+   * The wallet view of one own address, read now
    * (`intent-journal.wallet-view.ts`): the facts and live intents under a
    * follower, the provider's UTxOs where none runs.
    */
@@ -241,7 +241,7 @@ const submitUnjournaled = (
   ).pipe(Effect.as({ kind: "unjournaled" as const, reason }));
 
 /**
- * The derived status (§8.2) of one journaled transaction at the follower's
+ * The derived status of one journaled transaction at the follower's
  * cursor, or null when it is not journaled (or was pruned). Reads only that
  * intent and its journaled dependencies, by key.
  */

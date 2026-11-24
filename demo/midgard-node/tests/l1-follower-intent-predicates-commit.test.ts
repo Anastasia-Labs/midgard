@@ -1,5 +1,5 @@
 /**
- * The node's commit predicate over the follower's projections (I1), each
+ * The node's commit predicate over the follower's projections, each
  * condition in both polarities, on the node database:
  *
  * - its block journal row exists, the tail it spends is still the landed

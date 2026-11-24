@@ -34,19 +34,15 @@ Start the DA committee and watcher from their signed manifests. Follow
 `demo/midgard-watcher/README.md` for configuration rather than copying
 environment variables here.
 
-The current production process launcher admits only the `acceptance` mode on
-Preprod with a `local_node` source. Its finality policy fixes confirmation depth
-and automatic pre-finality rollback depth at 30, and post-finality recovery depth
-at 2,160. Confirmation depth 30 is the anchor depth: it governs finalized audit
-anchors, incident records and evidence stamps. Proof actions proceed on
-authenticated inclusion at fixed depth 1. There is no runtime action-depth
-configuration field. A rollback invalidates cached authority and re-observes
+The production process launcher admits only the `acceptance` mode on Preprod
+or Custom with a `local_node` source. Its finality depth must equal the
+deployment profile's confirmation depth (30 on `preprod-public`), and
+post-finality recovery depth is 2,160. Proof actions proceed on authenticated
+inclusion at depth 1. A rollback invalidates cached authority and re-observes
 canonical state from the chain before the next build under fresh authority.
 A transaction the watcher sent is in a block or in its node's mempool, which
 every read overlays on the ledger; if it is in neither, the next pass builds
-it again. Generic nested
-configuration types do not enable additional launcher modes. Follow the watcher
-process configuration for these exact values.
+it again.
 
 The challenger path requires:
 
@@ -87,9 +83,9 @@ submitting transactions:
 node demo/midgard-fault-proofs/dist/bin.js workflow-readiness
 ```
 
-Do not invoke `run-workflow` as an authority bypass. Production workflow
-execution requires the watcher-created decision and actuation permits plus
-its application-installed runtime registry.
+`run-workflow` and `resume-workflow` refuse from the CLI: production
+actuation needs the admitted decision, its actuation permit and the objective
+wallet, which only the watcher's application supervisor supplies.
 
 Completion: the chain holds a permanent category-plus-header proof token, a
 confirmed state-queue removal that references it, and the exact slash and
@@ -123,9 +119,9 @@ next observation once its cause (prover wallet funds, the L1 provider,
 retained-DA reachability) is fixed, and a restart resumes every objective
 from what the chain holds. That restart is the
 manual fallback; it follows
-[`manual-recovery-runbook.md`](manual-recovery-runbook.md). There is no
-standalone submission command that bypasses the watcher's decision and
-actuation permits. An objective held as `fault_proof_start_deadline_passed`
+[`manual-recovery-runbook.md`](manual-recovery-runbook.md). The package's
+`submit-*` and `remove-*` commands are diagnostic routes without the watcher's
+permits; do not use them to drive a watcher objective. An objective held as `fault_proof_start_deadline_passed`
 cannot be resumed by this watcher;
 escalate it while the challenge window is open, since another independent
 challenger can still prove the same fault.

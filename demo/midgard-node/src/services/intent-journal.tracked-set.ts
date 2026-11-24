@@ -1,6 +1,6 @@
 /**
  * The addresses and credentials the node's follower tracks for the intent
- * journal's invariant (plan §8.2): the node's own wallets, the
+ * journal's invariant: the node's own wallets, the
  * reference-script addresses, and the protocol validators' payment
  * credentials.
  */
@@ -123,7 +123,7 @@ const VALIDATION_TRACE_DISPUTE_HOLDERS = [
 ] as const;
 
 /**
- * The payment credentials of the protocol addresses (§8.2: protocol
+ * The payment credentials of the protocol addresses (protocol
  * addresses are always tracked), the validation-trace dispute's holders
  * among them, and the case configuration's address, which a defense reads.
  * Every output there is created after the protocol-init transaction, which

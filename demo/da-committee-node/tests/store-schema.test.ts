@@ -81,7 +81,7 @@ const digest = (index: number): string =>
   index.toString(16).padStart(2, "0").repeat(32);
 
 describe("committee store schema", () => {
-  it("passes the F2 schema lint alongside the follower's tables, every committee table classed", () => {
+  it("passes the schema lint alongside the follower's tables, every committee table classed", () => {
     expect(
       lintSchema(
         [

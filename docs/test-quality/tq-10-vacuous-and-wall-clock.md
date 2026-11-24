@@ -1,9 +1,8 @@
 # TQ-10 — Strengthen weak refusal and timing oracles
 
 Status: Proposed
-Last reviewed: 2026-09-07 (semantic source review)
+Last reviewed: 2026-11-23 (cited tests)
 
-- **Audit sections**: §5 and §10
 - **Rules**: R1, R3, R4, R9, R11 in [principles](principles.md)
 - **Coordination**: TQ-04–06 cover refusal helpers; TQ-03 covers measurements.
 
@@ -25,8 +24,8 @@ A configured timeout is an allowance, not observed runtime.
 
 ## Review candidates
 
-- Refusal-message checks in the native-script-decoding,
-  committed-field-shape, and double-withdraw emulator suites: distinguish a
+- Refusal-message checks (`message.length > 0`) in the native-script-decoding
+  adversarial emulator suite: distinguish a
   diagnostic-presence claim from a specific guard claim. Add the appropriate
   oracle before removing a weaker one.
 - Artifact and roster loops: establish the required row/scenario set, not

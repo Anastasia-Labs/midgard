@@ -99,7 +99,7 @@ const readViewOfSelectedWallet = (
   );
 
 /**
- * The wallet view's UTxOs (plan §8.5) of the wallet selected on `lucid`.
+ * The wallet view's UTxOs of the wallet selected on `lucid`.
  * With `minimumPlainBalance`, it reads again until the view's plain balance
  * reaches it (a top-up the follower has not applied yet), and fails after
  * the retries.

@@ -1,5 +1,5 @@
 /**
- * Intent journals (§8.2) for tests whose subject is not the journal:
+ * Intent journals for tests whose subject is not the journal:
  *
  * - `withoutFollowerJournal` provides the journal of a process with no
  *   follower, as the CLI commands and protocol init run: every submission

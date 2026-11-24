@@ -14,7 +14,7 @@ import {
 } from "./watcher-journal-schema.js";
 
 /**
- * The proof objective table (ticket W2, L2): one row per objective, written
+ * The proof objective table: one row per objective, written
  * when its first job is queued. Startup lists these rows; only a marked one
  * says anything about the objective's progress, and every other one is
  * forgotten, since a live fault admits its objective again and its run

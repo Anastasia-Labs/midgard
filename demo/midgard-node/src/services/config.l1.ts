@@ -39,7 +39,7 @@ export const l1Config = Config.all([
       >,
     ).pipe(Config.mapAttempt(parseNativeLedgerSettings)),
     /**
-     * The node-behind bound (plan §9 Time): while the node's L1 tip is more
+     * The node-behind bound: while the node's L1 tip is more
      * than this many ms behind wall-clock time, the follower reports
      * `l1_node_behind` and the node holds its own sends (the intent
      * journal's S6 decision) until it catches up. Never an exit. Default

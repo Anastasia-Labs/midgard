@@ -1,6 +1,6 @@
 /**
- * The node intent journal (plan §8.2, §8.3, I1) on a Lucid emulator, in
- * both polarities, for a payout funding step (its §8.4 predicate holds
+ * The node intent journal on a Lucid emulator, in
+ * both polarities, for a payout funding step (its predicate holds
  * while every input is live):
  *
  * - honest: the signed transaction is journaled and its first send is lost
@@ -19,8 +19,8 @@
  * The submit seam itself (`handleSignSubmit`) journals the exact bytes
  * before the provider sees them, and those bytes are what lands.
  *
- * The seam sends only on S6's decision, taken in the record's transaction
- * (S5/S6, §8.1, I5), in both polarities: a plan a rewind passed before the
+ * The seam sends only on S6's decision, taken in the record's transaction,
+ * in both polarities: a plan a rewind passed before the
  * record is recorded `stale_at_write` and never sent from that write; a
  * rewind between the record and a retry's send removes its view and holds
  * the retry; a follower view behind wall-clock time past the bound holds

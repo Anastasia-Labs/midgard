@@ -1,5 +1,5 @@
 /**
- * The commit anchor (plan §8.1): an event is committed only below the commit
+ * The commit anchor: an event is committed only below the commit
  * anchor.
  *
  * A commit is planned at a follower view P (its write permit's view, the

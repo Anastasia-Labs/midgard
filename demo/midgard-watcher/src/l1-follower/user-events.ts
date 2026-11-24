@@ -29,7 +29,7 @@ import type { FollowerRawReads } from "./raw-reads.types.js";
 import { rawPointOf } from "./raw-reads.types.js";
 
 /**
- * The watcher's user events read from the L1 follower's facts (W3): the
+ * The watcher's user events read from the L1 follower's facts: the
  * deposit and withdrawal events from the shared event projection
  * (`@al-ft/midgard-l1-follower/events`), a forced order from the tx-order
  * unit's history and the stored mint transaction. Every read is pure over

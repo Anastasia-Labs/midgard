@@ -1,9 +1,9 @@
 # TQ-05 — Match negative-test assertions to their named failure
 
 Status: Proposed
-Last reviewed: 2026-09-07 (assertion and evaluator review)
+Last reviewed: 2026-11-23 (cited tests)
 
-Audit: §5. Rule: R3. Related: TQ-04, TQ-06, TQ-10.
+Rule: R3. Related: TQ-04, TQ-06, TQ-10.
 
 ## Problem and current evidence
 
@@ -11,9 +11,7 @@ A bare `toThrow()` proves that a call throws. That is adequate for some public
 refusal contracts, but cannot by itself establish a named validator or exact
 failure mode. Likewise, regex length is not a measure of discrimination. Review
 the scenario, fixture, preceding controls and exception source together.
-
-The old 153/300 counts used different textual methods and are not a current
-inventory. Candidate searches must distinguish `.not.toThrow()` and inspect
+Candidate searches must distinguish `.not.toThrow()` and inspect
 multiline or helper-based assertions before reporting totals.
 
 ## Candidates requiring individual decisions
@@ -24,14 +22,6 @@ multiline or helper-based assertions before reporting totals.
 - `not.toEqual(arrayContaining([a,b,c,d]))` rejects the complete conjunction,
   not every forbidden member individually. Confirm the intended exclusion
   contract before strengthening it.
-- `real-minting-policy-eval.test.ts` settled: for Plutus V3 the evaluator's
-  `ok` holds only when the script returns unit (a returned `False` is a
-  failure, `error_kind` 3), and refusal cases also assert `error_kind` 2, a
-  failure within budget.
-- `scalus-add-signatures-eval.test.ts` currently has one scenario that awaits
-  a real builder with local UPLC and rethrows failure. Completion without an
-  exception is already a test oracle despite zero `expect()` calls. Add
-  output or budget assertions only for additional claims the test must prove.
 - Decoder refusals, timeout aborts, lifecycle status and unique-token checks
   should assert the relevant public result where their titles promise it.
   A fixture helper that verifies useful shared preconditions is not inherently

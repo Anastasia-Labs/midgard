@@ -506,7 +506,7 @@ test decoding_step_02_rejects_direction_a_on_a_rejecting_leaf() fail {
   )
 }
 
-/// §2.4.3(e) leaf-internal authoritativeness: a leaf whose verdict disagrees
+/// Leaf-internal authoritativeness: a leaf whose verdict disagrees
 /// with its own compact bytes' validity scalar never opens.
 test decoding_step_02_rejects_an_obsolete_four_element_source() fail {
   let leaf = tf.forced_leaf_v1(

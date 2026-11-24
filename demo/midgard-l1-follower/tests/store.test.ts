@@ -246,7 +246,7 @@ describe.each(adapters)("fact store ($name)", (adapter) => {
     }
   });
 
-  it("invalidates a view only when a rewind dropped its point (§8.1)", async () => {
+  it("invalidates a view only when a rewind dropped its point", async () => {
     const { store } = await started(adapter, 3);
     const [b1, b2] = chain();
     try {

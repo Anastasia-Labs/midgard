@@ -1,5 +1,5 @@
 /**
- * `fabricated-withdrawal` family (Goal task `Q40`) — off-chain codec and rule
+ * `fabricated-withdrawal` family — off-chain codec and rule
  * twin.
  *
  * Proves a block header commits a withdrawal leaf that is not the authentic L1

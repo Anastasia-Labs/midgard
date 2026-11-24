@@ -1,7 +1,7 @@
 /**
- * The `native-script-decoding` finding record (offchain plan §3.4): the
+ * The `native-script-decoding` finding record: the
  * typed CONTRACT between detection and proving. It is the sole input the
- * proving core (§4.3) accepts, and it is deliberately self-contained —
+ * proving core accepts, and it is deliberately self-contained —
  * everything needed to start (or resume) a thread is derivable from it
  * plus chain state, so the same record drives the watcher's autonomous
  * path and an operator's manual CLI invocation alike.
@@ -16,17 +16,17 @@ import {
 import { nativeScriptDecodingSubmitError } from "./submit-common.js";
 
 /**
- * The §3.2/3.3 provability classification. The first three are the
+ * The provability classification. The first three are the
  * provable routes; the last two are refused at the proving core's API
  * boundary regardless of policy — the classification, not the consumer,
- * is the gate (§3.4).
+ * is the gate.
  */
 export const NativeScriptDecodingProvability = Object.freeze({
-  /** Direction B, descriptor language ≠ 0: provable at bind (§3.2). */
+  /** Direction B, descriptor language ≠ 0: provable at bind. */
   DescriptorContradiction: "descriptorContradiction",
   /**
    * A tag-0 descriptor whose scan runs to a terminal: direction B's exact
-   * canonical terminal, or direction A's refusing step (§3.2/3.3).
+   * canonical terminal, or direction A's refusing step.
    */
   MachineRoute: "machineRoute",
   /** Direction B accusing a pair outside the committed domain (§7.2). */
@@ -39,7 +39,7 @@ export const NativeScriptDecodingProvability = Object.freeze({
   WrapperContradiction: "wrapperContradiction",
   /**
    * The rejection is substantively right (or the acceptance sound); class
-   * misattribution is not provable by this family (design §7.6 residual).
+   * misattribution is not provable by this family.
    */
   NotAFault: "notAFault",
 } as const);
@@ -68,7 +68,7 @@ export type NativeScriptDecodingFindingEvent =
     };
 
 /**
- * The descriptor fields the detector already resolved (§3.4). `null` for
+ * The descriptor fields the detector already resolved. `null` for
  * the out-of-domain route, where no descriptor exists to resolve.
  */
 export type NativeScriptDecodingFindingDescriptor = {
@@ -102,7 +102,7 @@ export type NativeScriptDecodingFinding = {
 };
 
 /**
- * The §3.2/3.3 boundary gate plus the record's own structural coherence.
+ * The boundary gate plus the record's own structural coherence.
  * Refusals here are classification refusals — no policy can override them.
  */
 export const assertNativeScriptDecodingFindingProvable = (
@@ -110,7 +110,7 @@ export const assertNativeScriptDecodingFindingProvable = (
 ): void => {
   if (!NATIVE_SCRIPT_DECODING_PROVABLE_CLASSES.includes(finding.provability)) {
     throw nativeScriptDecodingSubmitError(
-      `finding class "${finding.provability}" is not provable by this family (§3.2/3.3) — it is journaled, never proven.`,
+      `finding class "${finding.provability}" is not provable by this family — it is journaled, never proven.`,
     );
   }
   const isDirectionB =

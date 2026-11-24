@@ -12,7 +12,7 @@ import {
 } from "../src/fault-proofs/watcher-journal-database.js";
 
 /**
- * B6 (plan §16.2): one journal persist at 10^5 stored rows. A persist is one
+ * B6: one journal persist at 10^5 stored rows. A persist is one
  * write transaction of one row: its row, the journal head and one retained
  * revision, committed with `synchronous = FULL`.
  *

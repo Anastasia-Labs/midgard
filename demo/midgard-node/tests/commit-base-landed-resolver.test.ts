@@ -1,5 +1,5 @@
 /**
- * The commit base on a foreign queue tail (plan §7.3, N3): the commit
+ * The commit base on a foreign queue tail: the commit
  * builds on it only once landed-block processing replayed it to its
  * header's root, the rebase applied it and the native root is that root.
  * Otherwise it waits (`LANDED_COMMIT_BASE_PENDING`), whichever of those is

@@ -1,5 +1,5 @@
 /**
- * Startup's wait for the landed state queue (N2). Startup recovery seeds the
+ * Startup's wait for the landed state queue. Startup recovery seeds the
  * node's commit base and journals from P1, so it waits until the follower is
  * caught up with the node's tip and P1 at its view is readable and healthy.
  *

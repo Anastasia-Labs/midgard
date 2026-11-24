@@ -1,5 +1,5 @@
 /**
- * `native-script-decoding` step-01 submitters (offchain plan §4.2).
+ * `native-script-decoding` step-01 submitters.
  *
  * Two arms, two entry points:
  *
@@ -7,7 +7,7 @@
  *   source. The accepted transaction is bound through the header's counted
  *   `transactions_root` via the shared inclusion machinery, on either
  *   carriage (redeemer-carried proof, or the #545 published chunks for a
- *   proof the 16,384-byte envelope cannot hold). The §2.4.3(d) predicate is
+ *   proof the 16,384-byte envelope cannot hold). The acceptance predicate is
  *   re-checked locally before anything is paid for: a leaf whose embedded
  *   validity scalar does not claim acceptance can never bind on-chain.
  * - `buildNativeScriptDecodingStep01RecordForced` — either direction over a

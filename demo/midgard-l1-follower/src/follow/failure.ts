@@ -11,7 +11,7 @@ import {
 import { classifyRoleFailure } from "../role-failure.js";
 
 /**
- * How the follow loop treats a failed store write (plan §7.5): `transient`
+ * How the follow loop treats a failed store write: `transient`
  * recovers by itself (a dropped or refused connection, a lock, a
  * serialization conflict) and is retried with backoff; `deterministic`
  * fails the same way on every retry (a constraint or data error, a

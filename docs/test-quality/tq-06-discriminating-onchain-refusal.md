@@ -1,9 +1,9 @@
 # TQ-06 — Attribute validator refusals where the scenario requires it
 
 Status: Proposed
-Last reviewed: 2026-09-07 (helper and caller review)
+Last reviewed: 2026-11-23 (helper and cited callers)
 
-Audit: §12, §5. Rule: R3. Related: TQ-04, TQ-05, TQ-17.
+Rule: R3. Related: TQ-04, TQ-05, TQ-17.
 
 ## Problem and current evidence
 
@@ -14,14 +14,8 @@ refusing validator. Callers may add checks, so this limitation must not be
 restated as absence of discrimination throughout the entire fault-proof suite.
 
 The invalid-signature lifecycle example additionally requires a `Spend[index]`
-marker and excludes `Mint`. That distinguishes purposes, not an exact validator
-hash or a unique failed guard. The old claim that it identifies the exact
-validator was too strong.
-
-`support/withdrawal-mistag-emulator.ts` interpolates `JSON.stringify(error)` in
-an error wrapper. Native Error objects can serialize to `{}`, while other
-structured errors retain fields. Inspect the actual error type and preserve
-its cause rather than assuming every failure has the same representation.
+marker. That distinguishes purposes, not an exact validator hash or a unique
+failed guard.
 
 ## Proposed work
 
@@ -49,5 +43,4 @@ its cause rather than assuming every failure has the same representation.
   underlying diagnostics.
 - Unit tests for the attribution adapter cover mismatched expected identity
   and malformed error data; the applicable emulator controls still run.
-- Migration proceeds by family with actual test outcomes, not an assumed
-  current count of 200 callers or a claim that all old cases were ineffective.
+- Migration proceeds by family with actual test outcomes.

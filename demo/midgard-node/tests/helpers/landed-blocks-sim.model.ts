@@ -1,5 +1,5 @@
 /**
- * The landed-block fork simulator's independent model (N3): what the node's
+ * The landed-block fork simulator's independent model: what the node's
  * landed-block rows, confirmed-ledger frontier, `confirmed_ledger`, working
  * ledger, mempool, rejections and deposit statuses must be after
  * processing, derived from the canonical queue, the traffic's registry, the
@@ -13,7 +13,7 @@
  * DA payload is still missing; the frontier ends at the last processed
  * header the root passed. A frontier off the root's lineage (a merge a
  * rollback undid) first unfolds back to the newest header its lineage
- * shares with the root's, by header identity (N5), even where the root's
+ * shares with the root's, by header identity, even where the root's
  * ledger equals the frontier's.
  */
 import { SqlClient } from "@effect/sql";
@@ -29,7 +29,7 @@ const hex = (value: Uint8Array) => Buffer.from(value).toString("hex");
 
 /**
  * The node's state the model is compared with. A consumed deposit names the
- * exact header it was consumed at: an unfold reopens it (N5).
+ * exact header it was consumed at: an unfold reopens it.
  */
 export const readActual = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

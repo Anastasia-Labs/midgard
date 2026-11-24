@@ -24,7 +24,7 @@ export type TxStatusMergeEvidence = Readonly<{
  * for the header is `safe` (at least cd deep at the follower's covered
  * tip). A rollback of the merge tx deletes its row. A dead journal (its
  * block can no longer land) holds no tx. The same statement
- * requires the follower write gate (plan §8.1) to hold an applied view with
+ * requires the follower write gate to hold an applied view with
  * no driver recompute pending, so a recompute under way cannot publish old
  * evidence. Missing retained evidence cannot assert completion, including
  * after legitimate pruning.

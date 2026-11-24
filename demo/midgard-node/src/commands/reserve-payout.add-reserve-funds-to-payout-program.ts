@@ -46,7 +46,7 @@ export const initializePayoutProgram = (
     const eventId = parseEventId(config.eventId, "--withdrawal-event-id");
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
-    // S5: the plan opens before the command's first L1 read.
+    // The plan opens before the command's first L1 read.
     const plan = yield* openPlan;
     yield* lucidService.switchToOperatorsMainWallet;
     const resolution = requireResolution(
@@ -170,7 +170,7 @@ export const addReserveFundsToPayoutProgram = (
     const eventId = parseEventId(config.eventId, "--withdrawal-event-id");
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
-    // S5: the plan opens before the command's first L1 read.
+    // The plan opens before the command's first L1 read.
     const plan = yield* openPlan;
     yield* lucidService.switchToOperatorsMainWallet;
     const { payout, payoutUnit } = yield* fetchPayoutByWithdrawalEvent(eventId);
@@ -277,7 +277,7 @@ export const concludePayoutProgram = (
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const nodeConfig = yield* NodeConfig;
-    // S5: the plan opens before the command's first L1 read.
+    // The plan opens before the command's first L1 read.
     const plan = yield* openPlan;
     yield* lucidService.switchToOperatorsMainWallet;
     const { payout, payoutUnit } = yield* fetchPayoutByWithdrawalEvent(eventId);

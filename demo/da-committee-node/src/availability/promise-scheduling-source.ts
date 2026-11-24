@@ -14,7 +14,7 @@ import {
 /** Keeps only one outstanding source certificate. Concurrent replacement
  * invalidates an older permit rather than letting it use another candidate's view.
  * Every canonical point is read from the committee follower under the
- * certificate's boundary; `generation` is the follower view's (plan §8.1). */
+ * certificate's boundary; `generation` is the follower view's. */
 export const promiseSchedulingSource = (
   args: Readonly<{
     lucid: LucidEvolution;

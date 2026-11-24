@@ -7,7 +7,7 @@ services, on-chain contracts, and protocol specification.
 
 Install the demo workspace dependencies first because the site links its SDK
 packages. From the repository root, using each directory's pinned pnpm version
-(demo: 9.15.4; docs-site: 10.11.0):
+(demo: 11.18.0; docs-site: 10.11.0):
 
 ```sh
 pnpm --dir demo install --frozen-lockfile
@@ -29,7 +29,7 @@ pnpm types:check
 exports the site to `out/`. The configured static
 export is not served by `next start`; use `pnpm dev` for local development or
 serve `out/` with a static file server. `types:check` also builds the SDKs,
-then runs `fumadocs-mdx`, `next typegen`, and `tsc --noEmit`.
+then runs `next typegen`, `fumadocs-mdx`, and `tsc --noEmit`.
 
 The [Pages workflow](../.github/workflows/pages-deploy.yml) builds the static
 site with `NEXT_PUBLIC_BASE_PATH=/midgard`, adds the compiled technical
@@ -62,7 +62,7 @@ the rendered sample. Plain `ts` fences are not checked by twoslash. Type
 checking verifies API shape, not balancing, state-dependent validation, or live
 network behavior. The homepage's string sample has a separate fixture in
 `app/(home)/homepage-sample.check.ts`; keep its calls aligned with the rendered
-sample. The site currently uses `rust` fences for Aiken highlighting.
+sample. The site uses `rust` fences for Aiken highlighting.
 
 Run the documentation link check from this directory:
 

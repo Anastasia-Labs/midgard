@@ -36,7 +36,7 @@ import { QueueChain } from "./queue-chain.js";
 import { SIM_DEPTHS, SIM_QUEUE, SIM_SLOT_TIME } from "./queue-sim.js";
 
 /**
- * §15 C3: releasing a retained payload is irreversible, so it waits for
+ * Releasing a retained payload is irreversible, so it waits for
  * `final` (depth > k). The committee service runs on its L1 follower's
  * facts over the simulator's chain, in both fact-store dialects, and the
  * runtime retention cycle runs on the view each tick accepted.

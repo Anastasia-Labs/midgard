@@ -1,4 +1,4 @@
-//// ## Double-Withdraw Fraud Proof — step-01 (work item W-C3)
+//// ## Double-Withdraw Fraud Proof — step-01
 ////
 //// Authenticates the challenged block header out of the state-queue node the
 //// computation thread names, and binds the **first** payable withdrawal leaf:

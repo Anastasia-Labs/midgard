@@ -1,5 +1,5 @@
 /**
- * The operator directory on a simulated chain (NC14 tests): the three
+ * The operator directory on a simulated chain: the three
  * operator lists, the scheduler and the hub oracle of a real deployment as
  * `SimOutput`s with their real datums, and the list transactions the
  * operator lifecycle submits (insert, remove, update in place), each as

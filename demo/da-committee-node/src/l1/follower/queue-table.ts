@@ -7,7 +7,7 @@ import type {
 } from "@al-ft/midgard-l1-follower";
 
 /**
- * The committee's D-t table on the L1 follower (plan §7.2, §7.3): one row per
+ * The committee's D-t table on the L1 follower: one row per
  * state-queue output the follower has seen on the current chain, versioned
  * by the slot that created it and the slot that spent it. The landed queue at
  * any point P is the rows live at P, so the follower's generated rewind (drop
@@ -19,7 +19,7 @@ export const COMMITTEE_QUEUE_TABLE = "committee_queue_outputs";
 export const COMMITTEE_MIGRATION_NAMESPACE = "committee-l1";
 
 /**
- * The committee's retention pin tables (plan §11; written only through
+ * The committee's retention pin tables (written only through
  * `retention-pins.ts`): the L1 history a committee record will read again
  * stays stored past the follower's k-deep pruning while the record exists.
  * They are the committee's own records (class B: a rewind or a reset never

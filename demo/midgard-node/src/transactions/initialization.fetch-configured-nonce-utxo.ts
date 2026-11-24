@@ -89,7 +89,7 @@ export const fetchConfiguredNonceUtxo = (
  * it is journaled as a list insert keyed by the one-shot nonce it spends
  * (`list_insert:protocol_init:<nonce outref>`): S6 resends it while no live
  * output carries the state-queue policy, under `plan`, opened before the
- * initialization's first L1 read (S5). Before the follower starts (and in a
+ * initialization's first L1 read. Before the follower starts (and in a
  * CLI process) it goes out unjournaled (`no_follower`). `recordSubmission`
  * receives the transaction's hash and validity bound before anything is
  * sent.

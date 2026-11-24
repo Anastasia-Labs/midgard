@@ -291,7 +291,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
     expect(SDK.encodeMidgardTxOutputCanonical(projected)).toEqual(bytes);
   });
 
-  it("measures the complete proof item carried by each step (§3.2 tier 1)", async () => {
+  it("measures the complete proof item carried by each step at tier 1", async () => {
     const block = await violatingBlock();
     const output = await prepareInputNoIdxFromTransactions({
       headerHash: h28(0xaa),

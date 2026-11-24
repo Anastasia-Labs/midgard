@@ -126,9 +126,9 @@ fn fixture_only(
 
 // Deep shape: byte budgets chosen so `deep_payload_nodes` lands exactly on
 // the row's node count (3 bytes per node). Node counts are small because the
-// rows must sit WITHIN the §3.3 basis: a first measurement put the realized
+// rows must sit WITHIN the execution basis: a first measurement put the realized
 // fold at ≈745K mem/node deep / ≈656K wide — ≈3.5× the one-shot rates the
-// design's §6 derived its throughput from — so 65-node vectors (48.4M /
+// design derived its throughput from — so 65-node vectors (48.4M /
 // 42.7M mem) are not pinnable as `within` rows at all. That multiple is the
 // ledger's headline finding, not a defect in these rows.
 const deep_small_budget: Int = 27

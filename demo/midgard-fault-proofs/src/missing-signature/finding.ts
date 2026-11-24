@@ -1,7 +1,7 @@
 /**
- * The `missing-signature` finding record (offchain plan §3.4): the typed
+ * The `missing-signature` finding record: the typed
  * CONTRACT between detection and proving. It is the sole input the proving
- * core (§4.3) accepts, and it is deliberately self-contained — everything
+ * core accepts, and it is deliberately self-contained — everything
  * needed to start (or resume) a thread is derivable from it plus chain
  * state, so the same record drives the watcher's autonomous path and an
  * operator's manual CLI invocation alike.
@@ -12,14 +12,14 @@ import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk/fraud-proof";
 import { missingSignatureSubmitError } from "./submit-common.js";
 
 /**
- * The §3.2 provability classification. Only `MissingWitness` is provable;
+ * The provability classification. Only `MissingWitness` is provable;
  * the other three are refused at the proving core's API boundary regardless
- * of policy — the classification, not the consumer, is the gate (§3.4).
+ * of policy — the classification, not the consumer, is the gate.
  */
 export const MissingSignatureProvability = Object.freeze({
   /**
    * A required signer's witness is absent and a vkey preimage for its hash
-   * is known (§3.3): provable end-to-end.
+   * is known: provable end-to-end.
    */
   MissingWitness: "missingWitness",
   /**
@@ -64,7 +64,7 @@ export type MissingSignatureFinding = {
   /** The accused required signer hash (28 bytes, lowercase hex). */
   readonly accusedRequiredSignerHash: string;
   /**
-   * The §3.3-recovered verification-key preimage of the accused hash, or
+   * The recovered verification-key preimage of the accused hash, or
    * `null` for the `UnknownVkeyPreimage` class. The finding carries the
    * resolved vkey so the proving core never searches.
    */
@@ -80,7 +80,7 @@ export type MissingSignatureFinding = {
 };
 
 /**
- * The §3.2 boundary gate plus the record's own structural coherence.
+ * The boundary gate plus the record's own structural coherence.
  * Refusals here are classification refusals — no policy can override them.
  */
 export const assertMissingSignatureFindingProvable = (
@@ -88,7 +88,7 @@ export const assertMissingSignatureFindingProvable = (
 ): void => {
   if (!MISSING_SIGNATURE_PROVABLE_CLASSES.includes(finding.provability)) {
     throw missingSignatureSubmitError(
-      `finding class "${finding.provability}" is not provable by this family (§3.2/§7.2/§7.3) — it is journaled or routed, never proven here.`,
+      `finding class "${finding.provability}" is not provable by this family — it is journaled or routed, never proven here.`,
     );
   }
   if (!/^[0-9a-f]{64}$/u.test(finding.txId)) {
@@ -126,7 +126,7 @@ export const assertMissingSignatureFindingProvable = (
   }
   if (finding.resolvedVkey === null) {
     throw missingSignatureSubmitError(
-      "a provable finding must carry the §3.3-resolved verification key — step-03 demands the preimage.",
+      "a provable finding must carry the resolved verification key — step-03 demands the preimage.",
     );
   }
   // Step-03's exact check, made before anything is paid for: the resolved

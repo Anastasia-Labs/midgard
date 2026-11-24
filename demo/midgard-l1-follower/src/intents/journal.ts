@@ -12,7 +12,7 @@ import {
 import type { Assets, OutputSummary, OutRef, View } from "../types.js";
 import type { IntentEventKind } from "./schema.js";
 
-/** A predicted own-wallet output of an intent (§8.5 reads them). */
+/** A predicted own-wallet output of an intent (the wallet view reads them). */
 export type OwnOutput = Readonly<{
   index: number;
   address: Buffer;
@@ -39,7 +39,7 @@ export type IntentHead = Readonly<{
   validToSlot: number | null;
   /** Recorded intents whose outputs this one spends, references or uses as collateral. */
   dependsOn: readonly Buffer[];
-  /** The view the planner built under (§8.1). */
+  /** The view the planner built under. */
   built: View;
   /** Class B/C content the tx commits to (an own block's header hash). */
   contentRef: Buffer | null;
@@ -69,7 +69,7 @@ export type RecordIntentInput = Readonly<{
   isOwnOutput: (output: OutputSummary) => boolean;
   contentRef?: Buffer | null;
   /**
-   * The planner's view V = (g, P_b) (§8.1): the generation it planned in and
+   * The planner's view V = (g, P_b): the generation it planned in and
    * a cursor point at or above every fact it read. Required: no record skips
    * the view. `viewValid(V)` runs in this transaction under the cursor share
    * lock (SQLite: the writer's `BEGIN IMMEDIATE`). A stale view still
@@ -101,7 +101,7 @@ export type RecordIntentResult =
    */
   | Readonly<{ kind: "already_recorded"; intent: Intent; identical: boolean }>
   /**
-   * §8.2's invariant: every input, reference input and collateral is a
+   * The journal's invariant: every input, reference input and collateral is a
    * tracked fact row or an output of a recorded intent, so reconciliation
    * can always decide from the facts. Refused, never recorded.
    */

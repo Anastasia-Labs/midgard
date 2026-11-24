@@ -89,13 +89,3 @@ A fiber whose ticks keep failing for more than ten dispute validity ranges
 adds `validation-trace-defense-stalled:<consecutive failures>` to the reasons.
 A failing tick never stops the node: it is recorded and retried at the next
 tick.
-
-## Upgrading
-
-The release that adds the defender also adds the dispute's holders to the
-L1 follower's tracked set. At the first start after the upgrade the follower
-resets its store and replays from the origin; the node is unready with
-`tracked_set_changed` and performs no duties until the replay reaches the tip.
-It needs no operator step, and a restart resumes the replay. Schedule the
-upgrade for a quiet period, with no forced transaction near its inclusion
-deadline (see the [node README](../README.md)).

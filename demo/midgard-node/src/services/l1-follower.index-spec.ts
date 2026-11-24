@@ -7,11 +7,11 @@
  * the store's facts (class A) and never deletes a wallet's seed rows.
  *
  * - Tracked set (recorded): the protocol validators' payment credentials
- *   and the hub-oracle policy, for the intent journal's invariant (§8.2)
+ *   and the hub-oracle policy, for the intent journal's invariant
  *   and the protocol-init tx, and every projection's own set (event lists,
  *   state queue, operator lists, tx orders).
  * - Wallets: the node's own wallets and reference-script addresses, tracked
- *   by address and seeded at the cursor (§5.3 step 4), never recorded.
+ *   by address and seeded at the cursor, never recorded.
  * - Projections: their tracked sets, tables and derivations; the writer
  *   binds their runtime inputs (`nodeFollowerProjections`).
  *
@@ -147,6 +147,6 @@ export const nodeFollowerStoreOptions = (
     },
     "postgres",
   ),
-  // Seeded (§5.3 step 4), never in the tracked-set record.
+  // Seeded, never in the tracked-set record.
   wallets: index.wallets,
 });

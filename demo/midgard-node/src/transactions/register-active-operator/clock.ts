@@ -3,7 +3,7 @@
  * This module centralizes current-time resolution and slot-boundary alignment
  * so register/activate flows share the same clock semantics.
  *
- * Two clocks, kept apart (plan §3.6): `resolveL1NowMs` is the L1 `slotNow`,
+ * Two clocks, kept apart: `resolveL1NowMs` is the L1 `slotNow`,
  * the only "now" for a decision (is the operator active, may it activate, is
  * a takeover due). `currentTimeMsForLucidOrEmulatorFallback` reads Lucid's
  * slot, which runs on the wall clock for a live network; it only picks the

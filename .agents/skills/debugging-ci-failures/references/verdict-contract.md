@@ -21,14 +21,14 @@ before repeating them.
 
 Give exactly one verdict per failing workflow, and only when its gate is met.
 
-| Verdict                  | Gate: all of these, cited by run ID or commit                                                                                                                                                                        |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Not run                  | `ci-status.mjs` exits 2 for this head, and you name its reason (conflicting PR, trigger or path filter, undetermined filter).                                                                                        |
-| Regression               | The same step fails with the same message on consecutive heads, the base rate shows it passing before a boundary, and a commit after the boundary changed an input that step reads. Name the commit.                 |
-| Stale generated artifact | The message names the artifact (`stale generated artifact: <path>`, `… is stale`, `drifted — ledger … measured …`), and you have checked whether the source change that moved it was intended.                       |
-| Flaky                    | The same step on the same commit both passed and failed (a rerun attempt, or two runs of one SHA). A pass on a different commit is not this evidence.                                                                |
-| Infrastructure           | The failure happens before the repository's first command, or the log carries a runner or service message (service unhealthy, runner lost, killed, out of disk). None of the 166 runs sampled on 2026-09-26 had one. |
-| Could not determine      | None of the gates above is met. Say so, and list what you checked.                                                                                                                                                   |
+| Verdict                  | Gate: all of these, cited by run ID or commit                                                                                                                                                        |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Not run                  | `ci-status.mjs` exits 2 for this head, and you name its reason (conflicting PR, trigger or path filter, undetermined filter).                                                                        |
+| Regression               | The same step fails with the same message on consecutive heads, the base rate shows it passing before a boundary, and a commit after the boundary changed an input that step reads. Name the commit. |
+| Stale generated artifact | The message names the artifact (`stale generated artifact: <path>`, `… is stale`), and you have checked whether the source change that moved it was intended.                                        |
+| Flaky                    | The same step on the same commit both passed and failed (a rerun attempt, or two runs of one SHA). A pass on a different commit is not this evidence.                                                |
+| Infrastructure           | The failure happens before the repository's first command, or the log carries a runner or service message (service unhealthy, runner lost, killed, out of disk).                                     |
+| Could not determine      | None of the gates above is met. Say so, and list what you checked.                                                                                                                                   |
 
 "I could not determine the cause" is a complete, correct answer. Silent
 compile exits (`Compiling …` then exit 1 with no diagnostic) usually end here

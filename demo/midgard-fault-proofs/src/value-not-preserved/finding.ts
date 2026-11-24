@@ -1,5 +1,5 @@
 /**
- * `value-not-preserved` prover-side search (offchain plan §3).
+ * `value-not-preserved` prover-side search.
  *
  * The chain verifies ONE single-asset conservation fold; finding which asset
  * to accuse is entirely offchain. This module takes the committed

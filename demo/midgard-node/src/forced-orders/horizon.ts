@@ -1,5 +1,5 @@
 /**
- * The commit end-time bound forced orders impose (plan §12.3, N10). A live
+ * The commit end-time bound forced orders impose. A live
  * order the follower recorded but the node has no `forced_transaction_utxos`
  * row for (its carriage not yet resolved, or its row not yet written) may
  * become eligible at its inclusion time, so no block may end at or after

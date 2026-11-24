@@ -141,7 +141,7 @@ const filterSql = (
 };
 
 /**
- * Tracked UTxOs live at the tip, or live at `at` (the §5.2 "live at slot s"
+ * Tracked UTxOs live at the tip, or live at `at` (the "live at slot s"
  * predicate), matching `filter`, in ledger order.
  */
 export const liveUtxosIn = async (
@@ -324,7 +324,7 @@ export type TxSpending = Readonly<{ txHash: Buffer; slot: number }>;
 /**
  * Finds the stored valid tx whose inputs hold `outRef`. Unlike `spenderOfIn`
  * it needs no `l1_outputs` row, so it sees spends of untracked outrefs (the
- * hub-oracle nonce, §5.3 step 3). It scans `l1_txs`; callers run it rarely.
+ * hub-oracle nonce). It scans `l1_txs`; callers run it rarely.
  */
 export const txSpendingIn = async (
   tx: SqlTx,
@@ -351,7 +351,7 @@ export const txSpendingIn = async (
 };
 
 /**
- * The protocol-init fact for `oneShot` (§5.3 step 3): the valid tx that
+ * The protocol-init fact for `oneShot`: the valid tx that
  * spent it and its slot, recorded when the block applied. Unlike
  * `txSpendingIn` it survives the pruning of that tx.
  */

@@ -91,7 +91,7 @@ const refKey = (ref: Readonly<{ txHash: string; outputIndex: number }>) =>
  * reads canonical exactly when it is on the model chain, at its height; a
  * named submission block is the model's block of that valid transaction; a
  * named spend is a model-chain transaction that consumes the output. And
- * `viewValid` (§8.1): a view the store calls valid has its point on the
+ * `viewValid`: a view the store calls valid has its point on the
  * chain, and a rollback invalidates the view read just before it.
  *
  * Which reads each event can change: a forward only those of its own

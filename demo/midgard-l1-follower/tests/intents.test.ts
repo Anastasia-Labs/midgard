@@ -36,7 +36,7 @@ afterEach(async () => {
   await h.store.close();
 });
 
-describe("recording an intent (§8.2)", () => {
+describe("recording an intent", () => {
   it("needs a view: nothing is recorded before the follower is initialized", async () => {
     const tx = spend(h.chain, h.chain.outsideInput());
     expect(await h.record(tx)).toMatchObject({ kind: "no_view" });
@@ -148,7 +148,7 @@ describe("recording an intent (§8.2)", () => {
   });
 });
 
-describe("derived status (§8.2)", () => {
+describe("derived status", () => {
   it("lands, un-lands on a rollback with no write, and lands again", async () => {
     await h.store.initialize(SIM_ORIGIN);
     const tx = spend(h.chain, await h.fund());
@@ -234,7 +234,7 @@ describe("derived status (§8.2)", () => {
   });
 });
 
-describe("S6 reconciliation (§8.3)", () => {
+describe("S6 reconciliation", () => {
   const reconciler = (
     store: FactStore,
     overrides: Partial<IntentReconcilerOptions> & { sent: Intent[] },

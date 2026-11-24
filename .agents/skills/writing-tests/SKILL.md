@@ -21,8 +21,8 @@ the commit message or the report. [review]
 
 1. **What realistic regression does this test catch that no existing test
    already catches?** Name the code path and the input that breaks it: "if
-   `externalProviderBindingsMatchPolicy` accepts a strict subset of the
-   configured providers, this fails". "Coverage", "good practice" and "the
+   `prepareWatcherJournalDirectory` accepts a journal root under `/tmp`, this
+   fails". "Coverage", "good practice" and "the
    function exists" are not answers. If you cannot answer, do not write it. [review]
 2. **Why can't this be a case in the nearest existing test?** Search first
    (`rg -l '<function or redeemer name>' demo/*/tests onchain/aiken`). Add a
@@ -89,7 +89,8 @@ this section is how to make the negative real. [review]
   "it threw". The operator-exit suite shows the shape: builder-side refusals
   are listed and rejected as proof of nothing, and the refusal must match
   `failed script execution (Spend|Mint)[n]`
-  (`demo/midgard-node/tests/operator-exit-emulator.test.ts:871-916`). A loose
+  (`expectOnChainRefusal` in
+  `demo/midgard-node/tests/operator-exit-emulator.force-activate-operator.ts`). A loose
   matcher also passes on a validity-window error or a balancing failure.
   [review]
 - **Use a differential pair.** An accepted control and the identical
@@ -179,7 +180,8 @@ a timeout or skipping it.
   creation instant as `zeroTime`, so a validity start before that instant is
   refused as "too far in the past". Write times as offsets from
   `emulator.now()`, clamp lower bounds to the instance's `zeroTime` or
-  `zeroSlot` (`demo/midgard-node/src/transactions/operators/exit.ts:186-213`),
+  `zeroSlot` (`exitValidityWindow` in
+  `demo/midgard-node/src/transactions/operators/exit.resolve-operator-script-refs-program.ts`),
   and advance the emulator to a window's first slot before building inside
   it. [review]
 - **Keep lower bounds off the wall clock.** Production and e2e builders follow
@@ -190,7 +192,7 @@ a timeout or skipping it.
   `setMinFee`. Build with `coinSelection: false` and an explicit remainder
   output (`demo/midgard-sdk/src/operator-lifecycle/exact-fee.ts`), and assert
   the completed body's fee and output count
-  (`demo/midgard-sdk/src/availability-challenge-transactions.ts:474-491`).
+  (`demo/midgard-sdk/src/availability-challenge-transactions.complete.ts`).
   Blind spot: the lint sees a completion only in the function that pins the
   fee, and never checks the remainder output.
   [eslint: midgard/exact-fee-no-change-output]

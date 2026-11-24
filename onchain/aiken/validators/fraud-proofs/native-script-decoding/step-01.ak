@@ -5,7 +5,7 @@
 //// - `BindNormalTransaction` (direction A only): the accepted transaction is
 ////   bound through the header's counted `transactions_root`. A normal leaf
 ////   IS an acceptance verdict, so the leaf's embedded validity scalar must
-////   claim `TxIsValid` — the §2.4.3(d) predicate.
+////   claim `TxIsValid`.
 //// - `RecordForcedSource` (either direction): only the direction is recorded
 ////   here; step-02 opens the forced leaf and its explicit operator verdict
 ////   under the header this thread's NFT names.
@@ -74,7 +74,7 @@ validator main(
         expect None = m_input_state_data
 
         // 2. The thread advances to step-02 carrying the bound subject. The
-        //    accepted-subject opener enforces §2.4.3(d): a leaf of the counted
+        //    accepted-subject opener enforces acceptance: a leaf of the counted
         //    `transactions_root` is an acceptance verdict only when its own
         //    embedded validity scalar claims `TxIsValid`. Direction A's
         //    accusation is against exactly that acceptance.
@@ -209,7 +209,7 @@ test decoding_step_01_rejects_a_substituted_pending_state() fail {
   True
 }
 
-/// §2.4.3(d) edge: a committed leaf whose own validity scalar claims
+/// A committed leaf whose own validity scalar claims
 /// `TxIsInvalid` is not an acceptance, so direction A cannot bind it as one.
 test decoding_step_01_rejects_a_normal_leaf_with_an_invalid_scalar() fail {
   let invalid_tx = native_types.MidgardTransaction {

@@ -1,5 +1,5 @@
 /**
- * The node §8.4 predicates of the families that settle events or move the
+ * The node predicates of the families that settle events or move the
  * node's own funds and certificates: payouts, reference-script publication,
  * sweep and funding, and stake registrations. Each reads the follower's
  * facts in the predicate's store transaction (`Read`).

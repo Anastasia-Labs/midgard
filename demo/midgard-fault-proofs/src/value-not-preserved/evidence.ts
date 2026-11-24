@@ -1,5 +1,5 @@
 /**
- * `value-not-preserved` evidence builders (offchain plan §1.5/§4).
+ * `value-not-preserved` evidence builders.
  *
  * Everything here produces the exact wire values the on-chain steps verify:
  *

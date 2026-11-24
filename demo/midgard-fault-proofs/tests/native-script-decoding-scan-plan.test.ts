@@ -1,6 +1,5 @@
 /**
- * `native-script-decoding` segment-planner unit suite (offchain plan
- * §8.2(3)). Pure unit tests — no emulator: the planner's contract is that
+ * `native-script-decoding` segment-planner unit suite. Pure unit tests — no emulator: the planner's contract is that
  * every plan it emits replays exactly on the engine twin's
  * `budgeted_scan_v1`, so the suite replays published plans from the outside
  * with nothing but the plan's own window/frames/budget.
@@ -109,7 +108,7 @@ const chainIsContinuous = (plan: NativeScriptDecodingScanPlan): void => {
   }
 };
 
-describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () => {
+describe("native-script-decoding scan planner", () => {
   it("derives the default 16-step budget and refuses over-basis overrides", () => {
     expect(NATIVE_SCRIPT_DECODING_DEFAULT_MAX_STEPS_PER_TX).toStrictEqual(16);
     // A deep chain with 26 primitive steps: 12 container tokens + the leaf

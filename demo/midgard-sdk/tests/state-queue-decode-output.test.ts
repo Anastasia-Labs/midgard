@@ -1,6 +1,6 @@
 /**
  * `decodeStateQueueOutput`, the one reading of a state-queue output every
- * role shares (plan §5.5 P1, N2), in both polarities: an output that is a
+ * role shares, in both polarities: an output that is a
  * queue element decodes with its key, link, header hash and DA status; an
  * output carrying nothing under the queue policy is not a queue output; a
  * queue output that is malformed decodes as `invalid` (or with its

@@ -334,10 +334,9 @@ export const openJourneySession = async (runDirectory: string) => {
       let watcher = launchJourneyWatcherProcess(watcherLaunch);
       onClose(() => watcher.close());
       // The watcher fails closed on transient conditions (local node
-      // disconnects, retained-DA fetches) and exits 70. Its
-      // journal makes a restart resume the same workflow, so relaunch a bounded
-      // number of times; a stalled workflow still ends the journey through the
-      // journal, and any other exit remains fatal.
+      // disconnects, retained-DA fetches) and exits 70. A restart derives the
+      // workflow's progress from the chain again, so relaunch a bounded number
+      // of times; any other exit remains fatal.
       let watcherRestarts = 0;
       let restartPending = false;
       const requireLive = () => {

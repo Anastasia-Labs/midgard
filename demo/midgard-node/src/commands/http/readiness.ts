@@ -246,7 +246,7 @@ export const getReadinessHandler = Effect.gen(function* () {
   // only a settlement worker that keeps dying does.
   const settlementReason = settlementReadinessReason(settlement, Date.now());
   if (settlementReason !== undefined) reasons.push(settlementReason);
-  // The follower write gate (plan §8.1): unready until this process's
+  // The follower write gate: unready until this process's
   // follower-change driver published a view, and while its recompute is
   // under way or held (the driver's holds below name why).
   const gateLocal = yield* Ref.get(globals.FOLLOWER_WRITE_GATE);
@@ -272,7 +272,7 @@ export const getReadinessHandler = Effect.gen(function* () {
   } else if (nativeMpfDiagnostics?._tag === "Left") {
     reasons.push("native_mpf_owner_unhealthy");
   }
-  // The L1 follower (N1): every named reason of the follow loop and of the
+  // The L1 follower: every named reason of the follow loop and of the
   // follower-change driver fails readiness; the process stays up.
   const l1Follower = l1FollowerReadiness(yield* Ref.get(globals.L1_FOLLOWER));
   for (const reason of l1Follower.reasons)

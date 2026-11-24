@@ -35,9 +35,10 @@ together. A running node is responsible for:
   history, and auxiliary indexes,
 - maintaining LevelDB-backed Merkle Patricia Forestry state for ledger and
   transaction roots,
-- running background fibers that monitor mempool state, commit blocks, confirm
-  block commitments, merge confirmed state, fetch deposit and withdrawal UTxOs,
-  and sweep old retention data.
+- following L1 to record deposit, withdrawal and forced-order events,
+- running background fibers that commit blocks, merge matured blocks into
+  confirmed state, settle withdrawals and payouts, watch operator shifts, and
+  sweep old retention data.
 
 Operating a deployment is therefore more than "start the server": it includes a
 one-time deployment flow (preparing a hub-oracle nonce, publishing reference

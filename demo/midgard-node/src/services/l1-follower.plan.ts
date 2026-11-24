@@ -1,5 +1,5 @@
 /**
- * Whether and how the node's L1 follower runs (N1), from the node's
+ * Whether and how the node's L1 follower runs, from the node's
  * configuration and its deployment.
  */
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -33,11 +33,11 @@ export type NodeIndexPlan = Readonly<{
   /** k: the manifest's automaticRecoveryMaxDepth. */
   securityParameter: number;
   projection: EventProjectionConfig;
-  /** N10: the forced orders the follower projects and the node ingests. */
+  /** The forced orders the follower projects and the node ingests. */
   forcedOrders: ForcedOrderConfig;
   /** The landed state queue (P1). */
   stateQueue: StateQueueProjectionConfig;
-  /** N6: the operator lists, the scheduler and the hub oracle. */
+  /** The operator lists, the scheduler and the hub oracle. */
   operatorSet: OperatorSetConfig;
   hubOraclePolicyId: string;
 }>;
@@ -53,7 +53,7 @@ export type L1FollowerPlan =
         binaryPath: string;
         nodeConfigPath: string;
         origin: OriginConfig;
-        /** §12.3 step 4: by-id L1 tx sources, hash-checked. */
+        /** By-id L1 tx sources, hash-checked. */
         contentSources: readonly string[];
       }>);
 

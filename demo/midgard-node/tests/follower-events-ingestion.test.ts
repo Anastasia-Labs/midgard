@@ -1,6 +1,6 @@
 /**
- * The follower-change driver's Postgres sink (`reconcileFollowerEvents`,
- * N1), on the node database: events
+ * The follower-change driver's Postgres sink (`reconcileFollowerEvents`),
+ * on the node database: events
  * the follower's own projection derives (a simulated chain on a SQLite
  * follower store) are ingested at a follower view written into the node
  * database's follower tables.

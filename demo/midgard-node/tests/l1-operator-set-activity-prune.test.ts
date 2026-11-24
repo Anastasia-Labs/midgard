@@ -1,5 +1,5 @@
 /**
- * The activity record in the follower's prune step (N6-R5), on SQLite and
+ * The activity record in the follower's prune step, on SQLite and
  * Postgres: the step drops a record whose activation a fork orphaned, so a
  * catch-up that prunes past the orphaned point before the operator-set hook
  * runs, or a prune while a store reset replays, never leaves a record that
@@ -58,7 +58,7 @@ const nodeProcess = (store: FactStore, activity: OperatorActivityRecord) =>
   operatorSetNodeProcess(fixture, store, activity);
 
 /**
- * The catch-up race (N6-R5): the node records its activation, then the
+ * The catch-up race: the node records its activation, then the
  * follower applies a fork that orphans it and more than k blocks, and
  * prunes, with no hook run in between. The prune step drops the record;
  * once a later prune passes the orphaned point a kept record would count

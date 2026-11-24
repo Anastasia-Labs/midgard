@@ -1,5 +1,5 @@
 /**
- * `missing-signature` step-02 submitter (offchain plan §4.2, §5 frontier 2).
+ * `missing-signature` step-02 submitter.
  *
  * Opens body field 4 (`required_signers`) through the §8.8 door against the
  * thread-anchored `verified_tx_id` — the **first offchain consumer of field

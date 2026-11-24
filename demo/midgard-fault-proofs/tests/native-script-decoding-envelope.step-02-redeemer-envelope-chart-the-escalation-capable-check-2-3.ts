@@ -162,7 +162,7 @@ describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)"
     );
 
     // THE gate. A failure here is a wave-branch on-chain format finding
-    // (design §2.3/§9): the step-02 argument layout would need to move
+    // The step-02 argument layout would need to move
     // openings out of the single redeemer. It must be escalated, not absorbed
     // by shrinking the fixture or the overhead allowance.
     expect(

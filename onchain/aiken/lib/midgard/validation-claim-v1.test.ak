@@ -1,4 +1,4 @@
-//// #640 gate-5 tests: the §2.4.3(d)/(e) source-authoritativeness predicates,
+//// #640 gate-5 tests: the source-authoritativeness predicates,
 //// each exercised positively and negatively.
 ////
 //// The predicate tests drive the public door
@@ -33,7 +33,7 @@ const h32_b =
 const zero_hash =
   #"0000000000000000000000000000000000000000000000000000000000000000"
 
-// ## Fixtures for the §2.4.3(d)/(e) predicate tests
+// ## Fixtures for the source-authoritativeness predicate tests
 
 fn native_tx_with(
   validity: native_types.MidgardTxValidity,
@@ -300,7 +300,7 @@ test forced_source_accepts_rejection_of_admission_valid_submission() {
   )
 }
 
-// ## §2.4.3(d) Normal-source authoritativeness (acceptance scalar)
+// ## Normal-source authoritativeness (acceptance scalar)
 
 test normal_source_accepts_validity_code_zero() {
   source_is_authenticated(normal_source(native_types.TxIsValid))

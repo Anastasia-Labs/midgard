@@ -17,16 +17,10 @@ otherwise the header's classification waits under the same reason. A claim
 whose build ends without a result is held as
 `validation-trace-claim-build-held` and rebuilt on the next observation.
 
-No off-chain workflow is installed for the trace-relative families listed in
-`UNINSTALLED_FRAUD_PROOF_CATEGORIES`
-([installed categories](../../demo/midgard-fault-proofs/src/workflow/installed-categories.ts)).
-Their evidence is read from per-transaction validation trace states. The DA
-payload does not carry them: its `validation_trace_witnesses` section is always
-empty, and each validation trace descriptor is a placeholder that binds the
-event key, the transaction commitment and the verdict. The watcher reports these
-categories in `WATCHER_MISSING_WORKFLOW_CATEGORIES`, the catalogue's complement
-of the
-[family application registry](../../demo/midgard-fault-proofs/src/workflow/family-application-registry.ts).
+The DA payload carries no per-transaction validation trace states: its
+`validation_trace_witnesses` section is always empty, and each validation trace
+descriptor is a placeholder that binds the event key, the transaction
+commitment and the verdict.
 
 ## Deployed chain
 
@@ -46,5 +40,5 @@ recorded step, not only the first, with the compiled step at its index.
 ## Verification
 
 [Resolver publication](../../demo/midgard-fault-proofs/tests/validation-trace-resolver-publication.test.ts)
-measures every current semantic resolver and compares the complete saved ledger
-on ordinary runs. It establishes publication only.
+publishes every applied semantic resolver under the real L1 limit and asserts
+the 512-byte publication reserve. It establishes publication only.

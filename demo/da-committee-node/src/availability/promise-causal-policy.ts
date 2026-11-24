@@ -11,7 +11,7 @@ import type {
 } from "./promise-runtime-policy.js";
 
 /**
- * A view of the committee's L1 follower (plan §8.1): its rollback
+ * A view of the committee's L1 follower: its rollback
  * generation and the block it was read at. Work bound to it stays current
  * while no rollback has undone that block.
  */

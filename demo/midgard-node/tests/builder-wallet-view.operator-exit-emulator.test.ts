@@ -1,5 +1,5 @@
 /**
- * Operator exits funded from the node's wallet view (plan §8.5, I2b) on the
+ * Operator exits funded from the node's wallet view on the
  * real compiled validators in the emulator, with the node's follower store
  * and intent journal attached to the submitting wallet:
  *

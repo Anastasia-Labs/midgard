@@ -1,5 +1,5 @@
 /**
- * The record that this operator was once active (D-N7). An operator that a
+ * The record that this operator was once active. An operator that a
  * slash or a bond recovery takes out of every list leaves only its spent
  * active node behind, and the follower prunes spent rows past k. The record
  * keeps the evidence: a block on whose chain this operator's active node
@@ -14,7 +14,7 @@
  * orphaned: the driver hook, when it runs (caught up), and the follower's
  * prune step, in its transaction (`activity-prune.ts`), so a catch-up that
  * prunes past the orphaned point before the driver runs again never leaves
- * it below the window, where it would count (N6-R5).
+ * it below the window, where it would count.
  */
 import type { Point, SqlTx } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";

@@ -42,10 +42,10 @@ import {
 
 /**
  * Submits signed bytes with recovery for provider races and early-validity
- * failures. The intent journal (§8.2) records the exact bytes immediately
+ * failures. The intent journal records the exact bytes immediately
  * before the first submission; a refusal stops the submission
  * (`IntentJournalRefused`). Every send here, retries included, follows S6's
- * decision taken in the record's transaction (§8.1); a held one stops the
+ * decision taken in the record's transaction; a held one stops the
  * submission (`IntentSubmitHeld`) and S6's reconciler decides it under the
  * current view. Every retry here sends the same bytes; after a send whose
  * outcome is unknown (the provider's `L1SubmitOutcomeUnknownError`) it first

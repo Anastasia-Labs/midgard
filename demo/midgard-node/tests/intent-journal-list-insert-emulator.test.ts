@@ -10,7 +10,7 @@
  *
  * Each is journaled as `list_insert` and sent; replayed, it is recorded
  * through the production journal at the block before it landed, where its
- * §8.4 predicate reads its target unreached on the real projections (no
+ * predicate reads its target unreached on the real projections (no
  * state-queue policy output; the event key not in the key set) and S6
  * resends it, and the landing block lands it. The flows run where no
  * follower runs, so both went out unjournaled (`no_follower`).

@@ -10,11 +10,11 @@
 //// (`ValueNotPreserved`). A block whose operator committed and
 //// **accepted** a transaction that violates this conservation rule has stolen
 //// or destroyed funds, and this family converts that machine-covered rule into
-//// a standalone L1 fault proof (execution-plan W-C14 single-party conversion).
+//// a standalone L1 fault proof.
 ////
-//// ### The single-asset claim (execution-plan D-C1, resolved here)
+//// ### The single-asset claim
 ////
-//// D-C1 asked for a bounded-size on-chain summation strategy for multi-asset
+//// It needed a bounded-size on-chain summation strategy for multi-asset
 //// value sums. The resolution is the owner-mandated **single-asset claim**:
 //// the prover names one specific asset — ADA, or one `(policy id, asset name)`
 //// unit — plus the direction of the imbalance, and the step chain accumulates

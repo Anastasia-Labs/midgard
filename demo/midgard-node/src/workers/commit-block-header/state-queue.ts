@@ -135,7 +135,7 @@ export type CommitAppendFenceReferences = {
  * node counts, including tails hidden behind an attested queue head. Both the
  * append-fence cap and the build's fence references go through this one check,
  * so a commit refuses an expired suffix with the same error wherever it first
- * meets it. "Now" is the L1 `slotNow` (plan §3.6), never the wall clock: a
+ * meets it. "Now" is the L1 `slotNow`, never the wall clock: a
  * clock that runs fast must not pause commits early. While no L1 tip has been
  * read the commit pauses the same way, and the next tick retries.
  */

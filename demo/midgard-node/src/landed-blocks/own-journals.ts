@@ -1,6 +1,6 @@
 /**
- * This node's dead block journals under whichever-lands-wins (plan §8.3,
- * I3): a journal whose block can no longer land (`deadJournals`) is
+ * This node's dead block journals under whichever-lands-wins:
+ * a journal whose block can no longer land (`deadJournals`) is
  * disposed of by the working-ledger rebase. Nothing is written to the
  * journal: its status is derived, and a dead block that lands after all is
  * landed, and taken in, like any other.

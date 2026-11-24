@@ -75,7 +75,7 @@ catches? (The gate in [writing-tests](../writing-tests/SKILL.md#1-the-gate-two-q
 
 These moves turn the test green without removing the cause. Each one is a
 fix only under the condition in the last column. `[review]` No check detects
-any of them; as of 2026-09-25 no vitest config sets `retry`
+any of them; as of 2026-11-23 no vitest config sets `retry`
 (`grep -rn "retry:" demo/*/vitest.config.*`), and nothing stops one being added.
 
 | Masking move                                                | What it hides                                        | Acceptable only when                                                                                                                                                                                                                     |
@@ -88,7 +88,7 @@ any of them; as of 2026-09-25 no vitest config sets `retry`
 | one fork (`MIDGARD_NODE_TEST_FORKS=1`)                      | a resource shared between files                      | as a diagnostic; to cut memory, lower the fork count and say so                                                                                                                                                                          |
 | a looser assertion (`toThrow()` without a matcher, a range) | the wrong failure passing as the right one           | the contract really is looser; cite the caller that shows it                                                                                                                                                                             |
 | regenerating a golden, pin or ledger to the observed value  | the nondeterminism, now committed                    | the output is deterministic and the change is intended ([regenerating-goldens-and-ledgers](../regenerating-goldens-and-ledgers/SKILL.md))                                                                                                |
-| raising `heapMb`                                            | wasm memory, which lives outside the V8 heap         | never for wasm; lower the fork count or split the file (`demo/midgard-test-support/vitest.js:50-53`)                                                                                                                                     |
+| raising `heapMb`                                            | wasm memory, which lives outside the V8 heap         | never for wasm; lower the fork count or split the file (the comment above `isolatedForksPool` in `demo/midgard-test-support/vitest.js`)                                                                                                  |
 
 ## 5. Validate with a sized rerun
 

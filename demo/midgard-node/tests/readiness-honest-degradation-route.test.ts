@@ -307,7 +307,7 @@ describe("GET /readyz under internal transients", () => {
   });
 });
 
-describe("GET /readyz names the L1 follower's reasons (N1)", () => {
+describe("GET /readyz names the L1 follower's reasons", () => {
   const holds = async (state: L1FollowerState, reason: string) => {
     const response = await readyz({ l1Follower: state });
     expect(response.status).toBe(503);
@@ -411,7 +411,7 @@ describe("GET /readyz names the L1 follower's reasons (N1)", () => {
       "l1_events_hook_failed",
       FORCED_ORDER_CARRIAGE_PENDING,
       FORCED_ORDER_INGESTION_FAILED,
-      // N2: the landed state queue (P1) is unhealthy; reads keep serving.
+      // The landed state queue (P1) is unhealthy; reads keep serving.
       STATE_QUEUE_UNHEALTHY,
     ])
       await holds(

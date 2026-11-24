@@ -1,6 +1,6 @@
 /**
- * `confirmed_ledger` follows the merged queue root (plan §7.3, §10.5, N3,
- * N5): every processed block the root has passed is folded in, in queue
+ * `confirmed_ledger` follows the merged queue root: every processed block
+ * the root has passed is folded in, in queue
  * order, through the stored-delta fold (`confirmed-merges.ts`), and the
  * frontier names the header `confirmed_ledger` is at.
  *

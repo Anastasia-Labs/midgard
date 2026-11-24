@@ -1,21 +1,19 @@
 //// The operator's per-transaction verdict on a forced-inclusion L2
 //// transaction, with the fully enumerated rejection-reason space.
 ////
-//// Normative inventory: `docs/fault-proofs/rejection-reason-catalogue-v1.md`
-//// (§5 arm table and coordinate conventions, §6 type). The constructor
-//// declaration order of `RejectionReasonV1` is **wire-normative** — it fixes
-//// the Plutus Data constructor indices of the forced leaf
-//// (`ledger_state.ForcedInclusionTxV1.verdict`), so arms must never be
-//// reordered, inserted, or removed except through a leaf-schema format
-//// revision (`RejectionReasonV2`; catalogue design note 1 — deliberately no
-//// in-band extension point).
+//// Design rules: `docs/fault-proofs/rejection-reason-catalogue-v1.md`. The
+//// constructor declaration order of `RejectionReasonV1` is
+//// **wire-normative** — it fixes the Plutus Data constructor indices of the
+//// forced leaf (`ledger_state.ForcedInclusionTxV1.verdict`), so arms must
+//// never be reordered, inserted, or removed except through a leaf-schema
+//// format revision (`RejectionReasonV2`).
 ////
 //// The constructor tag IS the rejection reason; payloads carry **only**
 //// subject coordinates (field/item/witness/output/redeemer/purpose
 //// ordinals) — never expected values, hashes, or recomputable arguments
-//// (catalogue design note 4).
+//// (catalogue §3).
 ////
-//// Coordinate conventions (catalogue §5):
+//// Coordinate conventions:
 ////   - field ordinal: the §2.5 slot index 0–8;
 ////   - item ordinal: 0-based position in that field's §5.1 preimage item
 ////     sequence (wire order, not visitation order);
@@ -33,9 +31,8 @@
 //// A reserved family, not populated in V1: `GuardrailExceeded { guardrail,
 //// field_index, item_index }` — kept unpopulated per the 2026-08-24 owner
 //// ruling that the L1 forced-order door (`docs/spec/midgard-tx.md` §8.11)
-//// excludes guardrail-violating preimages (catalogue §4.3 resolution,
-//// design note 6); enacting it would be a format revision like any other
-//// arm addition.
+//// excludes guardrail-violating preimages; enacting it would be a format
+//// revision like any other arm addition.
 
 /// The operator's recorded verdict on a forced-inclusion transaction, as the
 /// forced leaf carries it. The sum's collapse deliberately makes "valid with

@@ -1,5 +1,5 @@
 /**
- * `fabricated-deposit` DA-first evidence builder (Goal task `Q39`, §9.1 output 7).
+ * `fabricated-deposit` DA-first evidence builder.
  *
  * The fault this family proves is a committed `deposits_root` leaf that is not
  * the authentic L1 deposit event pair: either no deposit event with the

@@ -22,8 +22,8 @@ import {
 const databases = postgresTestDatabases("committee_public_reader");
 
 /**
- * The committee's store and the L1 follower's tables share one database
- * (§18.1 Q1). The public retained-DA reader serves two of its tables to
+ * The committee's store and the L1 follower's tables share one database.
+ * The public retained-DA reader serves two of its tables to
  * anyone; its role must reach nothing else, the follower's tables least of
  * all.
  */

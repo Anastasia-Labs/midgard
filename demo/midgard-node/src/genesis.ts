@@ -119,12 +119,12 @@ export const submitGenesisDeposits: Effect.Effect<
     return;
   }
 
-  // S5: the plan opens before the build's first L1 read.
+  // The plan opens before the build's first L1 read.
   const plan = yield* openPlan;
   yield* lucid.switchToOperatorsMainWallet;
 
-  // The deposit's nonce and funding come from the operator wallet's view
-  // (§8.5), never from the provider.
+  // The deposit's nonce and funding come from the operator wallet's view,
+  // never from the provider.
   const walletInputs = yield* readSelectedWalletViewInputs(
     lucid.api,
     "the genesis deposit",

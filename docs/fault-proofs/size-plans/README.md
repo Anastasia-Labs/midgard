@@ -1,7 +1,6 @@
 # Fault-proof fit evidence
 
-How a fault-proof transaction is shown to fit the Van Rossem limits, and the
-one measurement summary this directory keeps.
+How a fault-proof transaction is shown to fit the Van Rossem limits.
 
 ## Fit is enforced at submission
 
@@ -17,10 +16,8 @@ the axis and its negative margin. The limits live in
 The traced-refusal run is exempt, because its validators carry traces by
 design; the plain run is the one that proves fit.
 
-There are no fit ledgers. The per-family fit ledger JSON files, their
-writers and the `fit:regenerate` command were removed: the guard checks every
-transaction of every run against the current build, which a saved ledger could
-only restate.
+There are no saved fit ledgers: the guard checks every transaction of every
+run against the current build.
 
 | Contract                                                                                         | Executable authority                                                                                                                                                                          |
 | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -42,8 +39,7 @@ ScriptSources, Phase-A, LOP publication and transition test writers can emit
 measurement reports. They are run outputs, not repository regression inputs. Do
 not commit them.
 
-[Availability challenge](availability-challenge.md) is the remaining active
-publication plan; its [measurement summary](availability-challenge-fit.json)
-records the measurements that plan cites. Implemented resolver decisions live in
+The [availability challenge](availability-challenge.md) plan records that
+contract's decomposition and long-window gates. Implemented resolver decisions live in
 [ADR 0003](../decisions/0003-publishable-semantic-resolvers.md) and
 [ADR 0004](../decisions/0004-checkpointed-ledger-output-facts.md).

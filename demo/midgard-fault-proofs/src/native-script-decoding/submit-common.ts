@@ -1,6 +1,5 @@
 /**
- * Shared plumbing for the `native-script-decoding` step submitters (offchain
- * plan §4.2, Q3).
+ * Shared plumbing for the `native-script-decoding` step submitters.
  *
  * The family predates catalogue registration, so every submitter takes the
  * explicit `NativeScriptDecodingContracts` record plus the category id the

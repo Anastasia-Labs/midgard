@@ -6,7 +6,7 @@
  * through the §8.8 door and takes the compact witness set this module already
  * emits.
  *
- * `invalid-signature` evidence builder (Goal task `Q15`).
+ * `invalid-signature` evidence builder.
  *
  * Harvested from PR #474 (`fp/invalid-signature`) and reconciled against the
  * current native-codec boundary. It locates a committed transaction carrying an

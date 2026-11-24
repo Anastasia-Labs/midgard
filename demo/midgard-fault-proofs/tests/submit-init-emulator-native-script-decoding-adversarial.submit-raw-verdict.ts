@@ -30,7 +30,7 @@ type DecodingHarness = Awaited<ReturnType<typeof makeDecodingEmulatorHarness>>;
 
 type DecodingReferenceScripts = readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
 
-/** The §2.4.3(e) rejection direction B disputes, accusing (reference, 0). */
+/** The rejection direction B disputes, accusing (reference, 0). */
 export const MALFORMED_REJECTION_VERDICT: SDKCore.OperatorVerdict = {
   ForcedTxInvalid: {
     reason: {

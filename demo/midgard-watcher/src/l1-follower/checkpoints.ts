@@ -43,8 +43,8 @@ import {
 import { readWatcherQueueView } from "./view.js";
 
 /**
- * The watcher's state-queue transition checkpoints over the follower's facts
- * (ticket W1). One append-only D-t row per state-queue transaction of a
+ * The watcher's state-queue transition checkpoints over the follower's facts.
+ * One append-only D-t row per state-queue transaction of a
  * canonical block holds the transition the authenticated observation
  * records for it: mint policies, redeemers, spent and referenced outrefs,
  * the CorrectionLock witness and the queue before and after. A transaction

@@ -203,7 +203,7 @@ export const runNode = (
         // One journal for the node process, opened once its database is:
         // its refusals are `/readyz` holds.
         const intentJournal = yield* makeIntentJournal;
-        // The L1 follower (N1): its driver writes the event rows, and its
+        // The L1 follower: its driver writes the event rows, and its
         // first recompute runs the startup preparation, starts the native
         // MPF owner and recomputes the node's derived state from the
         // follower's view. Its intent stage (S6) may resend transactions an
@@ -214,7 +214,7 @@ export const runNode = (
           writerLease: instanceLock.followerWriterLease,
         }).pipe(Effect.provideService(IntentJournal, intentJournal));
         // Startup recovery seeds the commit base from the landed state queue
-        // (P1, N2): wait, unready, until the follower is at the tip and P1
+        // (P1): wait, unready, until the follower is at the tip and P1
         // is healthy there. A transient database failure is ridden out
         // within `STARTUP_DATABASE_BUDGET`; past it, or on any other read
         // failure, startup fails by step and reason.
@@ -314,7 +314,7 @@ export const runNode = (
 
     // Membership comes from the follower's operator-set hook; no duty waits
     // on its first run. A removed operator's duties are held through
-    // `HaltSource.operatorMembership` and the process stays up (§7.5 R7).
+    // `HaltSource.operatorMembership` and the process stays up.
     const program = publishHttp.pipe(
       Effect.zipRight(
         Effect.all(

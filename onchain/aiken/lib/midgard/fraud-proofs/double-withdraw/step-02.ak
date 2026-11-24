@@ -1,5 +1,5 @@
 //// ## `double-withdraw` step-02 — second payable leaf and finalization
-//// (work item W-C3, catalogue row DOUBLE-WITHDRAW)
+//// (catalogue row DOUBLE-WITHDRAW)
 ////
 //// The terminal step, and therefore the last place the family can refuse. It
 //// re-authenticates the challenged header out of the state-queue node the

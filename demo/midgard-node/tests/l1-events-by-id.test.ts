@@ -1,5 +1,5 @@
 /**
- * NC13: settlement opens one event by its id from the follower's facts.
+ * Settlement opens one event by its id from the follower's facts.
  * The lookup reads the event's projection row by key, its Order by the
  * token the key names and its retained payload by outref, so the rows it
  * reads do not grow with the list.

@@ -1,5 +1,5 @@
 /**
- * `da-hash-preimage` step-01 submitter (Goal task `Q44`, §9.1 output 8).
+ * `da-hash-preimage` step-01 submitter.
  *
  * Unlike the retired RF-043 step routes, nothing in the prepared JSON is
  * trusted. Before a transaction is built this module re-derives, from the

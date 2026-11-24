@@ -12,7 +12,7 @@ const message = (error: unknown): string =>
 
 /**
  * The loop's node-behind check (`FOLLOWER_NODE_BEHIND`): whether the node's
- * tip is behind wall-clock time by more than the bound (§9 Time: the wall
+ * tip is behind wall-clock time by more than the bound (the wall
  * clock only holds). `at` is checked on every applied event; while none
  * arrive (a stalled node at the cursor) a timer notices the tip aging and
  * publishes only while behind or when the result changes. `stop` clears

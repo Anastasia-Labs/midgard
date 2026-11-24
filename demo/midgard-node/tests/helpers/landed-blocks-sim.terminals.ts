@@ -1,5 +1,5 @@
 /**
- * The queue-terminal projection (N4, plan §5.5 P8) under the fork
+ * The queue-terminal projection under the fork
  * simulator: its rows must equal a fresh derivation from the canonical
  * chain after every event, so a correction that lands is a `removed` row at
  * once, a merge a `merged` one, and a rollback past either deletes the row

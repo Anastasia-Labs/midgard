@@ -94,7 +94,7 @@ export const runNativeScriptDecodingProver = async (
     return { kind: "stalled", reason, threadOutRef, cause };
   };
 
-  // 1. The non-negotiable §3.2/3.3 boundary: classification gates proving
+  // 1. The non-negotiable boundary: classification gates proving
   //    regardless of policy.
   try {
     assertNativeScriptDecodingFindingProvable(finding);
@@ -131,7 +131,7 @@ export const runNativeScriptDecodingProver = async (
       FraudProofComputationThreadStepDatum,
     );
     if (datum.fraud_prover !== signer.paymentKeyHash) {
-      // §3.4 dedup: a live third-party thread is sound; duplicating it
+      // Dedup: a live third-party thread is sound; duplicating it
       // only wastes fees.
       return refused(
         "duplicate",
@@ -324,7 +324,7 @@ export const runNativeScriptDecodingProver = async (
     cursor.at === "init" ? null : cursor.threadOutRef;
   try {
     while (true) {
-      // §4.3: the budget is re-checked as the loop progresses. A breach
+      // The budget is re-checked as the loop progresses. A breach
       // mid-thread stalls (the thread is real; cancellation is explicit).
       if (cursor.at !== "init") {
         const overBudget = requireBudget(cursor, txHashes.length);

@@ -1,5 +1,5 @@
 /**
- * The landed-block fork simulator's settle step (N3, I3): the node's
+ * The landed-block fork simulator's settle step: the node's
  * landed-block hook at the follower's view, then the driver's recompute it
  * holds for (the rebase, which applies landed own blocks and disposes of
  * dead own journals), until nothing is left to do. A rebase is deferred

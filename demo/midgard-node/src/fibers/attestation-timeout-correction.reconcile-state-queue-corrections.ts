@@ -68,7 +68,7 @@ export const attestationTimeoutCorrectionReadinessBounds = (
  * readiness. A classification failure is returned rather than raised, so the
  * tick raises it where it uses the classification and recording never moves
  * that failure ahead of the tick's earlier work. The deadline is judged
- * against `l1NowMs`, the L1 `slotNow` (plan §3.6); `readAtMs` is the local
+ * against `l1NowMs`, the L1 `slotNow`; `readAtMs` is the local
  * clock reading that readiness measures queue freshness with. */
 export const observeAndRecordAttestationTimeoutQueue = (
   health: Ref.Ref<AttestationTimeoutCorrectionHealth>,

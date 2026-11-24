@@ -67,7 +67,7 @@ const observe = (
     l1FreshnessMaximumAgeMs: 10_000,
   });
 
-describe("watcher journal capacity (L2)", () => {
+describe("watcher journal capacity", () => {
   it("reports journal_capacity for a cap reached by live rows, refuses only new objectives and stays live", async () => {
     const journalRoot = await atCapacity();
     const run = vi.fn(async () => undefined);

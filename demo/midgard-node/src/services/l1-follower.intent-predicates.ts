@@ -1,5 +1,5 @@
 /**
- * The node's §8.4 family predicates (I1): whether a live journaled intent
+ * The node's family predicates: whether a live journaled intent
  * can still land and is still wanted, read over the follower's projections
  * in one store transaction at the follower's current view. No L1 read.
  *
@@ -67,7 +67,7 @@ const queueNode = (queue: LandedStateQueue, headerHash: string) =>
 export const INTENT_COMMIT_ANCHOR_NOT_DEEP = "intent_commit_anchor_not_deep";
 
 /**
- * The height of the commit's anchor (plan §8.1), every included event's
+ * The height of the commit's anchor, every included event's
  * block being below it (`database/commit-anchor.ts`), or undefined when it
  * has no journal, its journal no anchor, or the anchor is no longer on the
  * follower's chain. A journal whose anchor left the chain is dead
@@ -277,7 +277,7 @@ const PREDICATES: Readonly<
   dispute_defense: allInputsLive,
 };
 
-/** The §8.4 predicate over the projections (see the module doc). */
+/** The family predicate over the projections (see the module doc). */
 export const nodeFamilyPredicate = (
   deps: NodeFamilyPredicateDeps,
 ): ((state: IntentState) => Promise<boolean>) => {
@@ -292,7 +292,7 @@ export const nodeFamilyPredicate = (
       >
     )[state.intent.family];
     if (predicate === undefined)
-      throw new Error(`no §8.4 predicate for family ${state.intent.family}`);
+      throw new Error(`no predicate for family ${state.intent.family}`);
     // A write transaction for its view check's FOR SHARE; it only reads.
     return deps.store.transaction(
       "write",

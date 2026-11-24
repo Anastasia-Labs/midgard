@@ -53,7 +53,7 @@ const stores: Record<DialectName, () => Promise<FactStore>> = {
 };
 
 /**
- * §15 I5: S5 and S6 against a planner racing a rewind. A role plans at a
+ * Recording and S6 against a planner racing a rewind. A role plans at a
  * view V = (g, P_b), records the signed bytes with `builtAt = V`, and sends
  * only on an S6 decision taken in one transaction with the view check.
  */

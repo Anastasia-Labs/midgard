@@ -1,5 +1,5 @@
 /**
- * The follower write gate's row (`node_follower_write_gate`, plan §8.1) as
+ * The follower write gate's row (`node_follower_write_gate`) as
  * the follower-change driver leaves it, for tests whose subject reads it
  * (the settlement fence) or writes under a producer's permit: open at an
  * applied view, or held by a pending recompute. A test of the driver's own

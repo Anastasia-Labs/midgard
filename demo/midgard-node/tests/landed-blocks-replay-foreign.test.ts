@@ -1,5 +1,5 @@
 /**
- * The production foreign replayer (`replayForeignBlock`, plan §7.3, N3) on
+ * The production foreign replayer (`replayForeignBlock`) on
  * a real Postgres follower store and the node's DA table: a block's event
  * sets must equal the in-window events and forced orders the follower
  * facts hold at the view, in both polarities (honest blocks replay; a known

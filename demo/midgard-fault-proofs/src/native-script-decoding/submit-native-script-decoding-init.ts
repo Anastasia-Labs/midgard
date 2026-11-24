@@ -1,5 +1,5 @@
 /**
- * `native-script-decoding` thread init (offchain plan §4.2, design §10 Q2).
+ * `native-script-decoding` thread init.
  *
  * Delegates to the shared `buildResolvedInit` in `src/submit-init.ts` with
  * the family's explicit contracts record and catalogue category: the

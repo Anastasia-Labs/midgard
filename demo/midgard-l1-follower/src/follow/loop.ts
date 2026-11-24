@@ -65,7 +65,7 @@ const describeEvent = (event: ChainSyncEvent): string =>
 type Handled = "continue" | "relock" | "backoff" | "intervention";
 
 /**
- * The shared follow loop (plan §4.3, §7.5): starts the store (waiting out
+ * The shared follow loop: starts the store (waiting out
  * the writer lease), starts from the configured origin or resumes from the
  * store's own points, applies chain-sync events and acknowledges each one
  * the store settled, checks `protocolInitStatus` at every tip, and prunes.

@@ -1,9 +1,8 @@
 # TQ-09 — Review runtime shape checks and strengthen their meaning
 
 Status: Proposed
-Last reviewed: 2026-09-07
+Last reviewed: 2026-11-23 (cited tests)
 
-- **Audit sections**: §9
 - **Rules**: R1
 - **Blocked by**: —
 
@@ -12,8 +11,7 @@ Last reviewed: 2026-09-07
 TypeScript `string` and branded hex types do not enforce a string's length or
 contents at runtime. A producer, cast, deserialiser, or package export can be
 wrong while the program still typechecks. A non-null assertion (`!`) is erased;
-it does not replace `toBeDefined()`. The earlier proposal to mechanically delete
-these assertions was based on an incorrect type-system guarantee.
+it does not replace `toBeDefined()`.
 
 ## Scope
 
@@ -21,8 +19,7 @@ Review hash and unit shape checks in `operator-lifecycle-emulator.test.ts`,
 `initialization-emulator.test.ts`, the `submit-init-emulator-*` suites,
 `midgard-contracts.test.ts`, watcher adapter/storage/replay tests, and lucid's
 native fixture tests. Also review runtime export checks in
-`execution-native-script-invalid.test.ts`, `canonical-evidence-source.test.ts`
-and `da-hash-preimage.test.ts`.
+`canonical-evidence-source.test.ts` and the `da-hash-preimage.test.ts` suites.
 
 These are candidates for stronger assertions, not confirmed redundant checks.
 `listen-admission-auth.test.ts` checks that a router exists under a name

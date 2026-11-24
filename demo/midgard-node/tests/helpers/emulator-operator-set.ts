@@ -1,5 +1,5 @@
 /**
- * The node's operator set (NC14) over an emulator, for the watchdog: the
+ * The node's operator set over an emulator, for the watchdog: the
  * follower bound to the deployment at the emulator's tip
  * (`syncEmulatorFollower`: the operator lists,
  * the scheduler, the hub oracle, the state queue and the user events are its

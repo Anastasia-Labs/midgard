@@ -1,5 +1,5 @@
 /**
- * The `/readyz` reasons landed-block processing holds (plan §7.3, N3). Each
+ * The `/readyz` reasons landed-block processing holds. Each
  * keeps the process up, and the reason clears once the condition does. A
  * wait (on DA peers, the follower, the rebase, this node's own commit path)
  * and a local fault of a foreign block's import (within the follower
@@ -151,7 +151,7 @@ export const LANDED_BLOCKS_WAITING = "landed_blocks_waiting";
 /**
  * The merged queue root is on no lineage `confirmed_ledger` can reach: not
  * forward from the frontier through the queue history, nor back through the
- * retained folds (N5). On an honest chain it cannot occur once the frontier
+ * retained folds. On an honest chain it cannot occur once the frontier
  * was set at genesis or on a fold this node made: every rollback a merge can
  * suffer is above the prune boundary, where its fold is retained.
  */

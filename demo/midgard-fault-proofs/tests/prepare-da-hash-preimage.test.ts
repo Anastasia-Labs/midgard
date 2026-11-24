@@ -1,5 +1,5 @@
 /**
- * `da-hash-preimage` DA-first evidence builder (Goal task `Q44`).
+ * `da-hash-preimage` DA-first evidence builder.
  *
  * Every case here goes through the same two security inputs the family is
  * allowed to consume: an authenticated L1 header observation and public

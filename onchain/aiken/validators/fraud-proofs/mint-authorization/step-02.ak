@@ -1,4 +1,4 @@
-//// ## Mint-Authorization Fault Proof — Step 02 (W-C14)
+//// ## Mint-Authorization Fault Proof — Step 02
 ////
 //// Binds the disputed block's header to the thread NFT, opens the committed
 //// claim (the transition step's `pre_utxos_root`, via the shared

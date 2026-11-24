@@ -7,7 +7,7 @@
  * authenticated rather than asserted. See
  * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  *
- * `invalid-signature` step-01 submitter (Goal task `Q15`, §9.1 output 8).
+ * `invalid-signature` step-01 submitter.
  *
  * Nothing in the prepared JSON is trusted. Before a transaction is built this
  * module re-derives, from evidence the chain itself authenticates:

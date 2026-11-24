@@ -1,5 +1,5 @@
 /**
- * What the node's event projection (N1, plan §5.4, §5.5 P2/P4) reads from
+ * What the node's event projection reads from
  * the deployment: per event list, its policy, its list and retention
  * addresses, and its retirement observer. Plain JSON, so a soak plugin can
  * take it from `soak.json`.

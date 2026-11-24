@@ -1,5 +1,5 @@
 /**
- * `fabricated-deposit` family (Goal task `Q39`) — off-chain codec and rule twin.
+ * `fabricated-deposit` family — off-chain codec and rule twin.
  *
  * Proves a block header commits a deposit leaf that is not the authentic L1
  * deposit event pair: either no deposit event with the committed `DepositId` was

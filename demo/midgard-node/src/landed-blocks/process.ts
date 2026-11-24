@@ -1,5 +1,5 @@
 /**
- * In-order landed-block processing (plan §7.3, §5.5 P3, P10, N3, N5). On
+ * In-order landed-block processing. On
  * every driver run, at the follower view the run applies:
  *
  * 1. `confirmed_ledger` is rewound to the merged queue root's lineage, then

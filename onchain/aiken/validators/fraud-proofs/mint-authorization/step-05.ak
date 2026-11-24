@@ -1,4 +1,4 @@
-//// ## Mint-Authorization Fault Proof — Step 05 (W-C14)
+//// ## Mint-Authorization Fault Proof — Step 05
 ////
 //// The terminal step. Everything substantive was proven upstream — step-01
 //// bound an operator-ACCEPTED committed transaction, step-02 bound the

@@ -1,7 +1,6 @@
 # Public Testnet Readiness
 
-Status: no-go. Reviewed 2026-11-05 against the integration branch at
-`2ad2f8418`.
+Status: no-go. Statuses and pointers reviewed 2026-11-23 against `5c3963c5b`.
 
 The first public testnet, P1, is a stage-0 network on Cardano Preprod, run from
 the `preprod-public` deployment profile. Its launch date follows its scope: the
@@ -12,7 +11,8 @@ This checklist owns the launch decision. It lists the implementation work that
 must merge before launch and the release gates that need evidence from the
 release revision. Proof coverage is tracked in the
 [fault-proof catalogue](fault-proofs/catalogue-status.md),
-[coverage matrix](fault-proofs/coverage-matrix.md) and
+[coverage matrix](fault-proofs/coverage-matrix.md),
+[remaining gaps](fault-proofs/remaining-gaps.md) and
 [testing status](fault-proofs/testing-status.md). Tags such as A1 or R6 are the
 release plan's ticket ids.
 
@@ -57,7 +57,7 @@ P1 has these limits, and the security claim (R1) must state each one:
   and all in the P1 catalogue; `excluded_fraud_proof_categories` in
   [`preprod-public.yaml`](../config/deployments/preprod-public.yaml) is empty.
   The Plutus execution dispute (`validationTraceDispute`) is in the catalogue
-  too (owner, 2026-10-21); `mainnet` still excludes it.
+  too (owner, 2026-10-21); `mainnet` excludes it.
 - Every party derives ledger state by replaying blocks from genesis. Payloads
   are retained for 120 days, and P1 has no state snapshot.
 - Inactivity strikes skip an operator's shift but never eject the operator.
@@ -150,8 +150,8 @@ Every contract item merges before the validator freeze.
 ### Contract release and deployment identity (R3, R4, R5)
 
 - **Reproducible blueprint.** Open. Rebuild the release blueprint with the fork
-  compiler pinned by `aiken.toml`; CI's rebuild must equal it. Record the source
-  revision, compiler, flags, `aiken.lock`, blueprint, script hashes, protocol
+  compiler locked in `demo/flake.lock`; CI's rebuild must equal it. Record the
+  source revision, compiler, flags, `aiken.lock`, blueprint, script hashes, protocol
   parameters and rule bundle.
 - **Signed manifest.** In progress. Publish a manifest with script hashes and
   parameters, signed by one release key, and say how anyone verifies it. The
@@ -180,7 +180,7 @@ Every contract item merges before the validator freeze.
   - Open: the block ex-units budget, which defaults to 33,000,000 memory and
     20,000,000,000 steps (`demo/midgard-node/src/services/config.block-ex-units-budget.ts`)
     and is to be re-measured on an idle machine.
-  - The `mainnet` profile still carries a placeholder operator key. It is not
+  - The `mainnet` profile carries a placeholder operator key. It is not
     a P1 target.
 - **Pooled DA bond.** Done ([decision record](midgard/decisions/da-committee-bond-pool.md),
   #686–#691). An attestation applies only while one bonded pool holds at least
@@ -226,12 +226,15 @@ Every contract item merges before the validator freeze.
   the node floor.
 
 - **Secrets.** In progress. Use mounted secret files and prove that startup
-  errors and logs redact them; node, Postgres and journey secrets now come from
+  errors and logs redact them; node, Postgres and journey secrets come from
   private files (`3a1cbf5d5`, `48020abb8`). Separate operator,
   reference-script, admin and release keys. Never take seeds from arguments.
-- **Action map.** Open. Classify every route and command as public, operator
-  only, admin or internal, and test the route graph. Protect `/init`,
-  `/commit`, `/stateQueue`, `/logBlocksDB` and `/logGlobals`.
+- **Action map.** In progress. `HTTP_ROUTE_ACTIONS`
+  (`demo/midgard-node/src/commands/http/routes.ts`) classes every HTTP route
+  public, peer or admin, and the ingress refuses any other. Admin mutations
+  (`/init`, `/commit`, `/logBlocksDB`, `/logGlobals`) need a signed request;
+  admin reads need the admin key (`listen-admin-access.ts`). Open: classify
+  every CLI command and test the route graph.
 - **Request limits.** In progress. Bound request bodies, content types, per-IP
   and global rates, and pagination at the proxy and in the app, including
   `/tx/evaluate`, and prove the bounds with a load test. The app limits every
@@ -239,7 +242,8 @@ Every contract item merges before the validator freeze.
   buckets, `/submit` per transaction and per /24 or /48 as well, and the other
   public routes globally, with stricter classes for `/tx/evaluate` and batch
   status and separate health and admin classes (`9b6994157`, `10fcf75c8`,
-  #880); the load test is open.
+  #880). The submit load harness is in the tree (#871); a load-test result on
+  the release revision is open.
 - **Log redaction.** Open. Public routes never log raw CBOR or request bodies.
   Test redaction of seeds, keys, credentials, transaction CBOR and addresses.
 
@@ -318,10 +322,11 @@ These capabilities are built; R6 supplies their release evidence:
   settlements, and expose readiness, worker staleness, admission depth,
   provider lag, database saturation, disk and payout state. Node and watcher
   alert rules ship (`700811aca`, `cf9303980`); alert delivery is open.
-- **Runbooks.** In progress. The [operational runbooks](../docs-site/content/docs/operators/node/operational-runbooks.mdx)
-  cover commit lag, catch-up, replay-root mismatch, forced-admission divergence,
-  follower refusals, stuck settlements and proof deadlines, linked from each
-  alert rule (`0b29bce56`). Recovery drills and release validation are open.
+- **Runbooks.** In progress. [Alert runbooks](operations/alerts.md), linked
+  from each node and watcher alert rule (`0b29bce56`), cover commit lag,
+  catch-up, replay-root mismatch, forced-admission divergence, follower
+  refusals, stuck settlements and proof deadlines. Recovery drills and release
+  validation are open.
 - **User and operator docs.** In progress. The docs describe
   [deposit/withdrawal milestones](../docs-site/content/docs/operators/node/deposits-withdrawals.mdx),
   [forced-transaction limits and the missing L2 upper bound](../docs-site/content/docs/sdk/midgard-sdk/user-events.mdx),

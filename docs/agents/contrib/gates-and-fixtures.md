@@ -12,17 +12,10 @@ node scripts/contrib.mjs gate input-envelopes
 node scripts/contrib.mjs gate database-isolation --seed 17
 ```
 
-The registry is executable: every literal file exists and every wildcard
-collects a nonempty set. Deployment fit runs the real signed runtime roster,
-persisted deployment/binder checks and family publication suites. Its focused
-runner captures the published-workflow measurement output inside the run
-directory. Recovery uses production workflow, storage and
-funding suites, including the shared descendant/operator cleanup cases.
-Boundary gates include actual compiled workers; lifecycle gates exercise the
-existing process/network consumers. Policy gates retain ordinary, adopted and
-restart coverage in the owning suites. Input-envelope gates run the owning
-maximum/first-fault/polarity and publication cases. These are synthetic/emulator
-engineering gates; each suite's assertions determine its coverage.
+Each gate runs the suites `GATES` in `scripts/contrib/gates.mjs` names for
+it. The registry is executable: every literal file exists and every wildcard
+collects a nonempty set. These are synthetic/emulator engineering gates; each
+suite's assertions determine its coverage.
 
 Shared test support exports `chain-fixture`, `witness-fixture`,
 `recovery-scenarios` and `database-identity`. Read those exports before writing

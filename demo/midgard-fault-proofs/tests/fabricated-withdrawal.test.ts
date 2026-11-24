@@ -1,5 +1,5 @@
 /**
- * `fabricated-withdrawal` family (Goal task `Q40`) — evidence builder, L1 witness
+ * `fabricated-withdrawal` family — evidence builder, L1 witness
  * authentication and submit-side re-derivation.
  *
  * The family is reached by **direct module import**: the `fabricatedWithdrawal`

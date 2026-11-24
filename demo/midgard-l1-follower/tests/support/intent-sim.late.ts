@@ -1,5 +1,5 @@
 /**
- * The intent simulation's I5 traffic (§8.1): some plans are recorded one to
+ * The intent simulation's late traffic: some plans are recorded one to
  * eight checks after they were planned, under the view they were planned
  * at, so rewinds can fall between plan and record; the record is
  * `stale_at_write` exactly when that view is no longer valid (the

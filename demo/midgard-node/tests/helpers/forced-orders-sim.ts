@@ -1,5 +1,5 @@
 /**
- * The forced-order projection in the fork simulator (plan §12, N10): its
+ * The forced-order projection in the fork simulator: its
  * traffic (carriage publications, orders whose carriage the same block or an
  * earlier one created, orders over tampered carriage, phase-2 failed orders,
  * spends of carriage and of orders) and its check, which compares the
@@ -274,7 +274,7 @@ export const forcedOrderSimProjection = (
       const isTampered = rng.chance(0.25);
       txs.push(order(material, publish(material, isTampered), isTampered));
     } else if (roll === 2 && carriage.length > 0) {
-      // Carriage from an earlier block (still live, or spent since: §12.3 steps 2-4).
+      // Carriage from an earlier block (still live, or spent since).
       const target = rng.pick(carriage);
       txs.push(order(target.material, target.outRef, target.tampered));
     } else if (roll === 3) {
@@ -402,7 +402,7 @@ export const forcedOrderSimProjection = (
     check,
     // Order outputs are script-locked on L1: only this traffic spends them.
     // Carriage at the wallet stays open to the filler (a carriage spent by
-    // anyone is the case §12.3 steps 2 to 4 exist for).
+    // anyone is the case resolution exists for).
     protects: (output) => output.address.toString("hex") === orderAddress,
   };
 };

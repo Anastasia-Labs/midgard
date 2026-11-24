@@ -58,12 +58,9 @@ reject code: a ledger-stage failure becomes `E_INVALID_OUTPUT` or
 
 After binding the decoded id to the queue id, Phase A requires the exact
 compiled V1 consensus profile and checks consensus size/count/encoding bounds.
-For normal transactions it also decodes every carried non-native script witness
-and output reference script, even when the transaction does not execute that
-script. A phase-one decoding refusal yields `E_SCRIPT_PROGRAM_ENCODING` with
-the carried item coordinate. Decoded version or scope failures are deferred to
-Phase B if the script executes. Missing or incompatible decoder capability
-raises an operational error. Reference inputs are resolved in Phase B.
+Carried Plutus programs are decoded later, whether or not the transaction runs
+them: witnesses at step 7, output reference scripts in Phase B. Reference
+inputs are resolved in Phase B.
 Configurable strictness does not bypass these checks.
 
 | Check          | Reject code                  | Condition                                                                    |
@@ -107,13 +104,13 @@ from `@al-ft/midgard-core`, which verifies exactly as the ledger does: the raw
 signature that does not verify yields `E_INVALID_SIGNATURE`. A failure of the
 check itself is raised and is never a verdict on the transaction.
 
-### 7. Native script witnesses: `validateNativeScriptWitnesses`
+### 7. Witness scripts: `validateWitnessScripts`
 
-For each script witness whose language is `NativeCardano`,
-`verifyMidgardNativeScript` evaluates the native script against the transaction's
-validity interval and the set of witness signer hashes. A failure yields
-`E_NATIVE_SCRIPT_INVALID`. Non-native scripts are skipped here, they are
-evaluated in [Phase B](/docs/validation/phase-b).
+In witness item order, `verifyMidgardNativeScript` evaluates each `NativeCardano`
+script against the transaction's validity interval and the witness signer
+hashes; a failure yields `E_NATIVE_SCRIPT_INVALID`. A Plutus witness's carried
+program must decode, else `E_SCRIPT_PROGRAM_ENCODING`; it is evaluated in
+[Phase B](/docs/validation/phase-b).
 
 ### 8. Required observers: `validateRequiredObservers`
 

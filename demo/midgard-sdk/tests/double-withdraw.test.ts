@@ -1,4 +1,4 @@
-/** Aiken/TypeScript codec and rule twins for `double-withdraw` (W-C3). */
+/** Aiken/TypeScript codec and rule twins for `double-withdraw`. */
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

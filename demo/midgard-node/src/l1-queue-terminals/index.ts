@@ -1,6 +1,6 @@
 /**
- * State-queue terminal transitions as a projection over L1 follower facts
- * (N4, plan §5.5 P8, §7.4): which headers a landed tx merged or removed,
+ * State-queue terminal transitions as a projection over L1 follower facts:
+ * which headers a landed tx merged or removed,
  * rewound with the facts, and the SQL the node reads them with.
  */
 export { queueTerminalDerivation } from "./derive.js";

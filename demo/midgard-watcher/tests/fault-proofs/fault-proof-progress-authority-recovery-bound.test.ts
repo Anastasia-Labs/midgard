@@ -19,7 +19,7 @@ import {
   TEST_JOURNAL_KEY,
 } from "../support/watcher-journal-fixture.js";
 
-// L2 (ticket W2): restart cost and the objective cap follow live rows only,
+// Restart cost and the objective cap follow live rows only,
 // and a restart remembers nothing an earlier process sent: no row drives
 // work by itself. The decision reader returns minimal records; the
 // objective table is the real SQLite table.
@@ -123,7 +123,7 @@ const restartOver = async (count: number, state: Seeded) => {
   };
 };
 
-describe("proof progress restart over the objective table (L2)", () => {
+describe("proof progress restart over the objective table", () => {
   it("skips and prunes marked completions: rows and decisions", async () => {
     const restart = await restartOver(MAX_OPEN_OBJECTIVES + 1, "marked");
     await expect(restart.admit()).resolves.toEqual([]);

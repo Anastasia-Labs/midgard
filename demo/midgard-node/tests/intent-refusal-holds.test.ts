@@ -1,5 +1,5 @@
 /**
- * An intent-journal refusal hold (I1-fix F8c) is a named `/readyz` reason
+ * An intent-journal refusal hold is a named `/readyz` reason
  * that clears only on that family's next successful record, or once a landed
  * transaction other than the refused one spends one of its inputs (a valid
  * one's input, or a phase-2-failed one's collateral). Nothing else clears it:

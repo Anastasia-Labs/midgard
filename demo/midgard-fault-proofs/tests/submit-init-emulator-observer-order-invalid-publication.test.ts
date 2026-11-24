@@ -21,7 +21,7 @@ const expectedStepCount = 4;
 describe("observerOrderInvalid signed publication fit", () => {
   it("publishes all four applied scripts below the reliability reserve", async () => {
     // Fail closed: a rebuilt blueprint that no longer carries the family must
-    // report a failure, not a silently skipped suite (§14).
+    // report a failure, not a silently skipped suite.
     expect(
       OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES.filter(
         (title) =>

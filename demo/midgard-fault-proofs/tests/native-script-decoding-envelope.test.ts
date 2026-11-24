@@ -1,9 +1,8 @@
 /**
- * `native-script-decoding` envelope/frontier measurement suite (offchain
- * design §8.2 item 1; #635).
+ * `native-script-decoding` envelope/frontier measurement suite (#635).
  *
  * This file runs FIRST in the family's §9 build order because its step-02
- * check is the one place the offchain wave can still escalate (design §2.3):
+ * check is the one place the offchain wave can still escalate:
  * the step-02 redeemer is the family's only step whose worst admissible
  * instance stacks three MPF membership openings, a full block header and a
  * forced leaf into one redeemer. If that worst case cannot fit the 16,384-byte

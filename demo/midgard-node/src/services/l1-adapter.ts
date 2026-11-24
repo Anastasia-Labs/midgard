@@ -125,7 +125,7 @@ export const refuseRoleL1Access =
  * naming the setting, and one with no local node. Both are deterministic
  * startup failures no restart repairs: each is a failed `l1_access` step
  * with its own reason, so `listen` holds up and unready and names it on
- * `/readyz` and in its log (plan §7.5).
+ * `/readyz` and in its log.
  */
 export const refuseNonFollowerL1 = (
   config: NodeConfigDep,

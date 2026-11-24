@@ -889,7 +889,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         ),
       ).toBe(true);
       // The node, following this chain, records each of its intents and
-      // judges it wanted at the block before it landed (I1-fix F5).
+      // judges it wanted at the block before it landed.
       const replayed = await expectFixtureFlowReplayed(
         fixture,
         [...TO_MERGED_BLOCK, "reserve_payout"],

@@ -17,8 +17,8 @@ entry point `src/index.ts` wires together several subsystems:
   validation logic.
 - **On-chain coordination** (`src/coordinator/`, `src/l1/`), an on-chain
   coordinator plus a submitter reconciler that reconciles committee state with L1.
-- **Store** (`src/store/`), the committee's persistent store, configured with either a file path or
-  PostgreSQL credentials. The separate public reader requires PostgreSQL.
+- **Store** (`src/store/`), the committee's PostgreSQL store, which the separate
+  public reader reads through its own role.
 
 <Mermaid
   chart={`flowchart TD

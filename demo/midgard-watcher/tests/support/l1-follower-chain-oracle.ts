@@ -1,6 +1,6 @@
 /**
  * An independent model of the canonical chain for the watcher's fork-
- * simulator tests (ticket W1): it follows the chain-sync events itself and
+ * simulator tests: it follows the chain-sync events itself and
  * replays the decoded blocks into a UTxO set, unit histories and the
  * state-queue linked list, without the watcher projection's code.
  */

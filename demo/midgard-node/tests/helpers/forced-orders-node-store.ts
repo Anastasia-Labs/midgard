@@ -1,5 +1,5 @@
 /**
- * The follower store in the node's own test database (plan §5.4: the
+ * The follower store in the node's own test database (the
  * follower's tables live there), and the node-side pieces a forced-order
  * test drives against it: the ingestion hook and the rows it wrote.
  */

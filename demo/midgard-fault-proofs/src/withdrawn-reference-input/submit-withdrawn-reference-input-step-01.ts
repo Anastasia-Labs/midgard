@@ -1,5 +1,5 @@
 /**
- * `withdrawn-reference-input` step-01 submitter (Q19 offchain plan §4.2).
+ * `withdrawn-reference-input` step-01 submitter.
  *
  * Thread state carries the §2.5 anchor — the disputed transaction's **id**.
  * Step-02 re-opens field 1 through the §8.8 door, which keeps field 1

@@ -1,5 +1,5 @@
 /**
- * The L1 follower's tables as the node's event ingestion reads them (N1),
+ * The L1 follower's tables as the node's event ingestion reads them,
  * written directly for tests without a followed chain: the cursor and its
  * tip block (one generation, synthetic hashes, height = slot unless given)
  * and the never-reuse key set `l1_event_keys`.

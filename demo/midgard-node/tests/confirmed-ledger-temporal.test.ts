@@ -1,6 +1,6 @@
 /**
- * The temporal `confirmed_ledger` on this node's own merged block (plan
- * §10.5, §15 N5), deterministic, on the node database: a merge a rollback
+ * The temporal `confirmed_ledger` on this node's own merged block,
+ * deterministic, on the node database: a merge a rollback
  * undid is unfolded back to the header the root returned to (its spent
  * outputs, its landed row and its consumed deposit come back); a fold on a
  * wrong base is refused by name and writes nothing; and a fork onto another

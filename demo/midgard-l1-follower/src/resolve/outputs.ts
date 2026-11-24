@@ -1,6 +1,6 @@
 /**
- * Resolution of outputs the follower does not hold, by outref (plan §12.3
- * steps 2 to 4). An outref names its creating transaction, and that
+ * Resolution of outputs the follower does not hold, by outref. An outref
+ * names its creating transaction, and that
  * transaction's id is the hash of its body, so an output's bytes are fixed by
  * its outref: whichever step finds them finds the same bytes. The steps
  * differ only in what they can still reach.
@@ -93,7 +93,7 @@ export const transportLedgerOutputs =
   };
 
 /**
- * A source of transaction bytes by id (§12.3 step 4): a peer operator, a
+ * A source of transaction bytes by id: a peer operator, a
  * public indexer, the order's creator. Answers null when it does not hold
  * the transaction. Its answer is never trusted: the resolver checks the
  * body's hash against the id before reading an output.

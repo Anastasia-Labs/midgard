@@ -21,7 +21,7 @@ import { retentionBlockTimeMs } from "./retention.block-time.js";
  * (`docs/spec/protocol-decisions.md#retention`).
  *
  * Releasing a payload cannot be undone, so it is decided only on what is
- * final (deeper than k, plan §9): a terminal record counts only when its
+ * final (deeper than k): a terminal record counts only when its
  * authenticated exit is final, and the challengeability horizon is measured
  * by the release clock, the start of the latest final block's slot, never by
  * the wall clock. A commit's validity ends at its node's `block_time`, so once

@@ -1,5 +1,5 @@
 /**
- * What a fold leaves until its merge is final (plan §9 `final`, §11, N5).
+ * What a fold leaves until its merge is final.
  *
  * A fold into `confirmed_ledger` happens once the merged queue root covers
  * the block, before its merge is final, so it is reversible: the unfold

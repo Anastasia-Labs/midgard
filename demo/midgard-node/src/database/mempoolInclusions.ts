@@ -1,6 +1,6 @@
 /**
  * Inclusion marks on the pending tables (`mempool`, `processed_mempool`;
- * migration 0013, plan §7.3, N3). A row a block includes keeps its bytes and
+ * migration 0013). A row a block includes keeps its bytes and
  * its delta, marked by that block's header hash (`included_by`), until the
  * block's fold into `confirmed_ledger` is final; the rollback that takes the
  * block off the landed chain clears the mark, and the row is pending again.

@@ -5,7 +5,7 @@
  * atomic protocol initialization (`list_insert:protocol_init:<nonce>`).
  *
  * - Each is recorded through the production journal and resent by S6 while
- *   its §8.4 predicate reads its target unreached: the deposit's event key
+ *   its predicate reads its target unreached: the deposit's event key
  *   absent from the follower's key set, no live output carrying the
  *   state-queue policy.
  * - Once a landed transaction that spends none of its inputs reaches the
@@ -266,7 +266,7 @@ describe.each(PATHS)("the list insert of $path", ({ key, reach }) => {
   it("a refused record raises the family's named hold, which the family's next record clears", async () => {
     const s = await open();
     await withJournals(async ({ worker, main }) => {
-      // An input the follower does not track: §8.2 refuses it.
+      // An input the follower does not track: the journal refuses it.
       const untracked = s.driver.chain.outsideInput();
       const refused = await record(
         worker,

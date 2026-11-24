@@ -89,7 +89,7 @@ the source change that caused it.
   the pull request's final state.
 - **`:check` compares, `:sync` writes.** `:check` regenerates into a temporary
   copy and fails on any byte difference, without writing the committed files
-  (`demo/midgard-core/scripts/golden-channel.mjs:202-210`). `:sync`
+  (`goldenChannelEmitter` in `demo/midgard-core/scripts/golden-channel.mjs`). `:sync`
   (and bare `fixtures:<name>` for the midgard-node and lucid-midgard channels)
   overwrites the committed files. A check that exits 0 prints nothing for some
   channels (`fixtures:transition-trace-abi:check`, measured 2026-09-25) [review].
@@ -101,10 +101,6 @@ the source change that caused it.
   reason [script: .agents/skills/regenerating-goldens-and-ledgers/scripts/affected-channels.mjs].
   At check time, a rebind whose constant is gone throws
   `missing Aiken constant <name>` from `rebindAikenConstants`.
-- **A red CI step hides every golden check after it.** Midgard Node CI stops at
-  the first failing step, and "Check canonical V1 profile documentation" runs
-  before every golden check. Run the listed checks locally rather than trusting
-  a red pull request to have reported them all [review].
 - **Generated Aiken is formatted by the pinned fork.** `golden-channel.mjs`,
   like every script here, runs the aiken `demo/flake.lock` pins
   [ci: Aiken CI/Run normalized Aiken auto-formatter check].
@@ -131,11 +127,11 @@ See [references/ledgers.md](references/ledgers.md#script-budgets).
 ## The blueprint
 
 `onchain/aiken/plutus.json` is a build output of whichever compiler and profile
-last ran. It is not tracked and, as of 2026-09-25, not gitignored.
+last ran. It is not tracked and, as of 2026-11-23, not gitignored.
 
 - **Never commit it.** The pre-commit hook refuses a staged `plutus.json`
-  (`.githooks/pre-commit:50-58`) [hook: pre-commit]. Blind spot: the hook only
-  runs where it is enabled (`make enable-git-hooks`), and
+  [hook: pre-commit]. Blind spot: the hook only
+  runs where it is enabled (`bash .githooks/install`), and
   `MIDGARD_SKIP_HOOKS=1` skips it.
 - **Build it fresh, with the pinned fork, before anything that reads it**:
   the fault-proof, node, watcher and DA committee suites (the last two derive
@@ -144,7 +140,6 @@ last ran. It is not tracked and, as of 2026-09-25, not gitignored.
   regenerates the profiles, refuses any compiler other than the pinned fork,
   runs `aiken build --env preprod_testing`, and records the blueprint hash in
   the gitignored `plutus.json.deployment.json`
-  (`demo/scripts/deployment-profiles.mjs:260-290`)
   [script: demo/scripts/deployment-profiles.mjs]. CI builds the same way in "Build
   testnet Aiken blueprint". The suites' stamp setup
   (`demo/midgard-test-support/blueprint-stamp-setup.js`) rebuilds a missing or
@@ -152,32 +147,6 @@ last ran. It is not tracked and, as of 2026-09-25, not gitignored.
 - The compiler pin is the `aiken` input of `demo/flake.lock`. Run the
   compiler only as `scripts/aiken`, never a bare `aiken` from `PATH`
   [script: scripts/lib/aiken.mjs].
-
-## Known failure: Wave 0 (fixed 2026-09-25 in `71e605e46`)
-
-Three generators had drifted from the Aiken they emit, and CI did not say so.
-
-- `11e1cb6ef` (2026-09-03) renamed `CommittedFieldClaimV1` to
-  `CommittedFieldClaim` across the SDK, including the string templates in
-  `generate-canonical-decodability-v1-goldens.mjs` (a `use` line, so the
-  generated module no longer compiled) and a doc comment in
-  `generate-committed-field-shape-v1-goldens.mjs`. The Aiken type is still
-  `CommittedFieldClaimV1` (`onchain/aiken/lib/midgard/fraud-proofs/canonical-decodability/rule.ak:292`).
-- `3e3090aa1` (2026-08-31) deleted `maximum_cardano_compact_cbor` and
-  `maximum_cardano_transaction_id` from
-  `validators/fraud-proofs/da-hash-preimage/step-02.ak`. The
-  ordered-collection generator still rebound them there.
-- Each check would have gone red: the regenerated modules no longer matched the
-  committed ones, and the rebind would throw `missing Aiken constant`. None
-  reported, because
-  "Check canonical V1 profile documentation" was red first and every later step
-  was skipped (Midgard Node CI run 35676544721, 2026-09-22).
-- `71e605e46` fixed the templates and pointed the ordered-collection family at
-  `step-01.ak` only, with the constants that module actually declares.
-
-The lesson is the rule above: a renamed Aiken symbol or a deleted rebound
-constant is a generator change, and a red earlier step is not evidence that
-later checks pass.
 
 ## References
 

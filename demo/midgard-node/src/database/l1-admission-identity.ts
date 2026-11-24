@@ -1,5 +1,5 @@
 /**
- * The follower admission identity an event row carries (plan §5.4, N1): the
+ * The follower admission identity an event row carries: the
  * event key and the immutable admission output, as the L1 follower's
  * never-reuse key set `l1_event_keys` records them. It replaces the
  * event-history journal's incarnation association. An admission is canonical

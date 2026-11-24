@@ -11,20 +11,20 @@ import {
 } from "../src/availability-response-loop.js";
 
 /**
- * The full availability response budget (owner ruling B1, 2026-10-01): a
+ * The full availability response budget (owner ruling 2026-10-01): a
  * committee answering a small-class challenge spends
  *
  *   (confirmation depth + chained publications + one poll block)
  *     x mean L1 block time x 2
  *
- * plus every other bounded wait on the way to its answer: the A7 one bounded
- * rebuild, the B6 bounded retries at the owning operation and the A5
+ * plus every other bounded wait on the way to its answer: one bounded
+ * rebuild, the bounded retries at the owning operation and the
  * rebroadcast-before-replace wait. All of it must fit the
  * profile's small response window, for both live testing profiles and both
  * public profiles. Each wait is read from the code that enforces it. A wait
  * with no time bound in this tree is listed as unbounded and fails the budget;
  * it is never given an assumed number. When the budget does not fit, the
- * failure message carries every term, for the owner to rule on (B1); the depth
+ * failure message carries every term, for the owner to rule on; the depth
  * is not changed to make it fit.
  *
  * Profiles are read from config/deployments through the profile generator
@@ -66,8 +66,8 @@ const BUDGETED_PROFILES = [
 ] as const;
 
 type BoundedWait = Readonly<{
-  /** The public-testnet decision item that introduces the wait. */
-  item: "A5" | "A7" | "B6";
+  /** A short label for the wait. */
+  item: "rebroadcast" | "rebuild" | "retries";
   name: string;
 }> &
   (
@@ -76,7 +76,7 @@ type BoundedWait = Readonly<{
   );
 
 /**
- * A5: a signed responder transaction that has not landed is rebroadcast with
+ * A signed responder transaction that has not landed is rebroadcast with
  * its exact bytes while it can still land, and is replaced only once the
  * journal marks it expired. Reconciliation (midgard-sdk
  * availability-challenge-operation.reconcile.ts) marks it expired when the
@@ -90,44 +90,41 @@ type BoundedWait = Readonly<{
  * counted like every other block: at the mean block time times the safety
  * factor.
  */
-const A5_VALIDITY_REMAINING_MS = DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS;
-const A5_EXPIRY_BLOCK_MS = script.l1BlocksBudgetMs(1);
+const REBROADCAST_VALIDITY_REMAINING_MS = DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS;
+const REBROADCAST_EXPIRY_BLOCK_MS = script.l1BlocksBudgetMs(1);
 
-const B6_RETRY_BOUND_MS = availabilityResponderRetryBoundMs();
+const RETRY_BOUND_MS = availabilityResponderRetryBoundMs();
 
-// A1's retrieval cooldown is not counted: it is the operator node's wait for
-// foreign payloads, not on the committee responder's path
-// (docs/exec-plans/public-testnet-decisions-2026-10-01/B1.md).
 const BOUNDED_WAITS: readonly BoundedWait[] = [
   // The committee responder has no protocol-parameter refresh yet; adding it
-  // is the separate committee A7 protocol-parameter refresh follow-up ticket,
-  // which must count its own bound here if it adds a wait.
+  // is separate follow-up work, which must count its own bound here if it
+  // adds a wait.
   {
-    item: "A7",
+    item: "rebuild",
     name: "one bounded rebuild after a protocol-parameter refresh",
     ms: 0,
     derivation:
       "no separate wait: the responder builds each action once per drain, so a " +
-      "rebuild is the next drain, a B6 retry, already counted there",
+      "rebuild is the next drain, a bounded retry, already counted there",
   },
   {
-    item: "B6",
+    item: "retries",
     name: "bounded retries at the owning operation",
-    ms: B6_RETRY_BOUND_MS,
+    ms: RETRY_BOUND_MS,
     derivation:
       `${AVAILABILITY_RESPONDER_RETRY_POLICY.retries.toString()} retries x backoff ceiling ` +
       `${AVAILABILITY_RESPONDER_RETRY_POLICY.backoffCeilingMs.toString()} ms ` +
       `(AVAILABILITY_RESPONDER_RETRY_POLICY, availability-response-loop.ts)`,
   },
   {
-    item: "A5",
+    item: "rebroadcast",
     name: "rebroadcast before replace",
-    ms: A5_VALIDITY_REMAINING_MS + A5_EXPIRY_BLOCK_MS,
+    ms: REBROADCAST_VALIDITY_REMAINING_MS + REBROADCAST_EXPIRY_BLOCK_MS,
     derivation:
       `validity lookahead ${DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS.toString()} ms past the L1 clock ` +
       `(DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS, midgard-sdk ` +
       `availability-challenge-transactions.validity-window.ts) + one expiry block ` +
-      `${A5_EXPIRY_BLOCK_MS.toString()} ms`,
+      `${REBROADCAST_EXPIRY_BLOCK_MS.toString()} ms`,
   },
 ];
 
@@ -175,8 +172,8 @@ const budgetTable = (selected: Profile): string => {
       `${base.toString()} ms`,
     ...BOUNDED_WAITS.map((wait) =>
       wait.ms === undefined
-        ? `  + ${wait.item} ${wait.name}: UNBOUNDED (${wait.unbounded})`
-        : `  + ${wait.item} ${wait.name}: ${wait.ms.toString()} ms (${wait.derivation})`,
+        ? `  + ${wait.name}: UNBOUNDED (${wait.unbounded})`
+        : `  + ${wait.name}: ${wait.ms.toString()} ms (${wait.derivation})`,
     ),
     `  = ${counted.toString()} ms counted` +
       (unboundedWaits.length === 0
@@ -191,7 +188,7 @@ const budgetTable = (selected: Profile): string => {
   ].join("\n");
 };
 
-describe("availability response budget (B1)", () => {
+describe("availability response budget", () => {
   it("runs the live testing profiles at 10 confirmations and the public profiles at 30", () => {
     expect(
       Object.fromEntries(
@@ -227,19 +224,19 @@ describe("availability response budget (B1)", () => {
 
   it("counts each named wait exactly once", () => {
     expect(BOUNDED_WAITS.map(({ item }) => item).sort()).toEqual([
-      "A5",
-      "A7",
-      "B6",
+      "rebroadcast",
+      "rebuild",
+      "retries",
     ]);
     for (const wait of BOUNDED_WAITS) {
       if (wait.ms === undefined) continue;
       expect(Number.isSafeInteger(wait.ms) && wait.ms >= 0).toBe(true);
     }
-    expect(B6_RETRY_BOUND_MS).toBeGreaterThan(0);
+    expect(RETRY_BOUND_MS).toBeGreaterThan(0);
   });
 
-  it("A5 waits out the 60 s validity lookahead, which fits the validator's range with the backdate", () => {
-    expect(A5_VALIDITY_REMAINING_MS).toBe(60_000);
+  it("rebroadcast before replace waits out the 60 s validity lookahead, which fits the validator's range with the backdate", () => {
+    expect(REBROADCAST_VALIDITY_REMAINING_MS).toBe(60_000);
     expect(
       DA_AVAILABILITY_VALIDITY_BACKDATE_MS +
         DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS,
@@ -248,9 +245,7 @@ describe("availability response budget (B1)", () => {
 
   it("every named wait has a time bound in the code", () => {
     expect(
-      unboundedWaits.map(
-        (wait) => `${wait.item} ${wait.name}: ${wait.unbounded}`,
-      ),
+      unboundedWaits.map((wait) => `${wait.name}: ${wait.unbounded}`),
       "a wait with no bound cannot be counted, so the budget cannot be shown to fit",
     ).toEqual([]);
   });

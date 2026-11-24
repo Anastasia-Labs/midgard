@@ -36,9 +36,8 @@ import {
 } from "./queue-table.js";
 
 /**
- * What the committee tracks on L1 beside the state queue (plan §4.4,
- * committee column): raw address bytes, script payment credentials (hex)
- * and policy ids (hex).
+ * What the committee tracks on L1 beside the state queue: raw address
+ * bytes, script payment credentials (hex) and policy ids (hex).
  */
 export type CommitteeTracked = Readonly<{
   addresses: readonly Buffer[];
@@ -47,7 +46,7 @@ export type CommitteeTracked = Readonly<{
 }>;
 
 /**
- * The committee's tracked set (plan §4.4, committee column): the state-queue
+ * The committee's tracked set: the state-queue
  * address and policy, plus every other address and policy the committee
  * reads (`tracked`). The own wallets join through the wallet seeder.
  */

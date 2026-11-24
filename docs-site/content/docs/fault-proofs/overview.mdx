@@ -11,8 +11,8 @@ the block be removed and its operator's bond slashed. A block can be challenged 
 is queued, before it merges into confirmed state.
 
 The `@al-ft/midgard-fault-proofs` package exposes low-level proof commands and
-durable workflow execution through `midgard-fault-proofs`. The independent
-watcher uses its workflow layer for supported installed categories.
+its workflow layer through `midgard-fault-proofs`. The independent watcher runs
+the workflow layer for its installed categories.
 
 The protocol concept is a **fraud proof**. The package, its binary, and its commands say
 **fault proof**. Both names refer to the same thing: the tooling and watcher design
@@ -37,8 +37,8 @@ then validates the command against a fixed allow-list and calls the matching
 module function, writing the result to stdout as JSON. Passing `--help` or `-h`
 prints the usage block and exits.
 
-The current command inventory lives in the `usage` template and dispatch
-branches in `bin.ts`. Help includes retired names so they can fail with a
+The command inventory lives in the `usage` template (`src/bin.parsed-args.ts`)
+and the dispatch branches (`src/bin.main.ts`). Help includes retired names so they can fail with a
 specific explanation; it is not a list of executable authenticated workflows.
 For example, `submit-input-no-idx-fold` is retired, and several older file-based
 step/init routes fail through `legacy-submission-boundary.ts`.
@@ -47,7 +47,7 @@ The main operational groups are:
 
 | Group                   | Surface                                                 | Boundary                                                              |
 | ----------------------- | ------------------------------------------------------- | --------------------------------------------------------------------- |
-| Readiness and recovery  | `workflow-readiness`, `run-workflow`, `resume-workflow` | Requires an admitted runner and deployment-bound infrastructure.      |
+| Workflow                | `workflow-readiness`, `run-workflow`, `resume-workflow` | Runs need the watcher supervisor's admitted decision.                 |
 | Retained-DA preparation | `prepare-transition-trace`                              | Reconstructs a pinned header and records which evidence is buildable. |
 | Deployment inspection   | `inspect-contracts`                                     | Reads the blueprint and deployment; does not submit.                  |
 | Category steps          | Supported `submit-*` routes                             | Each has its own evidence, thread, and reference-script requirements. |
@@ -69,9 +69,11 @@ for that distinction and the
 [challenger runbook](https://github.com/Anastasia-Labs/midgard/blob/main/docs/fault-proofs/challenger-runbook.md)
 for workflow operation.
 
-`workflow-readiness`, `run-workflow`, and `resume-workflow` expose the durable
-workflow lifecycle. The low-level step commands remain useful for individual
-proof stages; they are not an exhaustive inventory of installed workflows.
+`workflow-readiness` reports which categories have an executable runner.
+`run-workflow` and `resume-workflow` refuse from the command line: a run needs
+an admitted decision, its actuation permit and the objective wallet from the
+watcher's supervisor. The low-level step commands drive individual proof
+stages; they are not an inventory of installed workflows.
 Category-specific state machines and their token lifecycles are described by
 the [Protocol Spec](/docs/fault-proofs/protocol-spec) and the current catalogue.
 
@@ -101,68 +103,58 @@ Supported low-level submit/remove commands use the L1 wiring in `src/runtime.ts`
 
 ## Help inventory
 
-The 56 commands in the current help template are listed below. This inventory
+The commands in the help template are listed below. This inventory
 includes retired routes and category-dependent entry points; the boundary column
 describes routing, not deployment acceptance.
 
-| Command                                         | Routing boundary                                                              |
-| ----------------------------------------------- | ----------------------------------------------------------------------------- |
-| `workflow-readiness`                            | Readiness report; concrete runner admission still required.                   |
-| `run-workflow`                                  | Durable workflow runtime and persisted identity required.                     |
-| `resume-workflow`                               | Durable workflow runtime and persisted identity required.                     |
-| `inspect-contracts`                             | Read-only deployment inspection.                                              |
-| `prepare-transition-trace`                      | Pinned-header retained-DA preparation.                                        |
-| `submit-transition-trace-proof`                 | Category-specific evidence or correction route; consult current schema.       |
-| `submit-init`                                   | Rejected without an explicit supported category; see the retirement boundary. |
-| `submit-step-01`                                | Retired unauthenticated file route; rejects before submission.                |
-| `submit-step-02`                                | Retired unauthenticated file route; rejects before submission.                |
-| `submit-step-03`                                | Retired unauthenticated file route; rejects before submission.                |
-| `submit-step-04`                                | Retired unauthenticated file route; rejects before submission.                |
-| `submit-invalid-range-step-01`                  | Retired unauthenticated file route; rejects before submission.                |
-| `submit-invalid-range-step-02`                  | Retired unauthenticated file route; rejects before submission.                |
-| `submit-fabricated-deposit-step-01`             | Category-specific evidence or correction route; consult current schema.       |
-| `submit-fabricated-deposit-step-02`             | Category-specific evidence or correction route; consult current schema.       |
-| `submit-fabricated-deposit-step-03`             | Category-specific evidence or correction route; consult current schema.       |
-| `submit-fabricated-deposit-step-04`             | Category-specific evidence or correction route; consult current schema.       |
-| `submit-fabricated-withdrawal-step-01`          | Category-specific evidence or correction route; consult current schema.       |
-| `submit-fabricated-withdrawal-step-02`          | Category-specific evidence or correction route; consult current schema.       |
-| `submit-fabricated-withdrawal-step-03`          | Category-specific evidence or correction route; consult current schema.       |
-| `submit-fabricated-withdrawal-step-04`          | Category-specific evidence or correction route; consult current schema.       |
-| `submit-non-existent-input-step-01`             | Retired unauthenticated file route; rejects before submission.                |
-| `submit-non-existent-input-step-02`             | Retired unauthenticated file route; rejects before submission.                |
-| `submit-non-existent-input-step-03`             | Retired unauthenticated file route; rejects before submission.                |
-| `submit-non-existent-input-step-04`             | Retired unauthenticated file route; rejects before submission.                |
-| `submit-validation-dispute-open`                | Category-specific evidence or correction route; consult current schema.       |
-| `submit-validation-dispute-verify-source`       | Category-specific evidence or correction route; consult current schema.       |
-| `submit-validation-dispute-reveal`              | Category-specific evidence or correction route; consult current schema.       |
-| `submit-validation-dispute-enter-resolution`    | Category-specific evidence or correction route; consult current schema.       |
-| `submit-validation-dispute-prepare-resolution`  | Category-specific evidence or correction route; consult current schema.       |
-| `submit-validation-dispute-prepare-selected`    | Category-specific evidence or correction route; consult current schema.       |
-| `submit-validation-dispute-semantic-resolution` | Category-specific evidence or correction route; consult current schema.       |
-| `submit-validation-dispute-award`               | Category-specific evidence or correction route; consult current schema.       |
-| `submit-validation-dispute-enter-timeout`       | Category-specific evidence or correction route; consult current schema.       |
-| `submit-validation-dispute-timeout`             | Category-specific evidence or correction route; consult current schema.       |
-| `submit-zero-input-step-01`                     | Retired unauthenticated file route; rejects before submission.                |
-| `submit-zero-input-step-02`                     | Retired unauthenticated file route; rejects before submission.                |
-| `submit-da-hash-preimage-step-01`               | Category-specific evidence or correction route; consult current schema.       |
-| `submit-da-hash-preimage-step-02`               | Category-specific evidence or correction route; consult current schema.       |
-| `submit-input-no-idx-step-01`                   | Category-specific evidence or correction route; consult current schema.       |
-| `submit-input-no-idx-step-02`                   | Category-specific evidence or correction route; consult current schema.       |
-| `submit-input-no-idx-fold`                      | Retired; step 02 has one route.                                               |
-| `submit-input-no-idx-step-03`                   | Category-specific evidence or correction route; consult current schema.       |
-| `submit-input-no-idx-step-04`                   | Category-specific evidence or correction route; consult current schema.       |
-| `submit-no-reference-input-step-01`             | Category-specific evidence or correction route; consult current schema.       |
-| `submit-no-reference-input-step-02`             | Category-specific evidence or correction route; consult current schema.       |
-| `submit-no-reference-input-step-03`             | Category-specific evidence or correction route; consult current schema.       |
-| `submit-no-reference-input-step-04`             | Category-specific evidence or correction route; consult current schema.       |
-| `submit-reference-input-no-idx-step-01`         | Category-specific evidence or correction route; consult current schema.       |
-| `submit-reference-input-no-idx-step-02`         | Category-specific evidence or correction route; consult current schema.       |
-| `submit-reference-input-no-idx-step-03`         | Category-specific evidence or correction route; consult current schema.       |
-| `submit-reference-input-no-idx-step-04`         | Category-specific evidence or correction route; consult current schema.       |
-| `submit-invalid-signature-step-01`              | Category-specific evidence or correction route; consult current schema.       |
-| `submit-invalid-signature-step-02`              | Category-specific evidence or correction route; consult current schema.       |
-| `remove-fraudulent-block`                       | Category-specific evidence or correction route; consult current schema.       |
-| `remove-unattested-block`                       | Category-specific evidence or correction route; consult current schema.       |
+| Command                                 | Routing boundary                                                              |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| `workflow-readiness`                    | Readiness report; concrete runner admission still required.                   |
+| `run-workflow`                          | Refused without the watcher supervisor's admitted decision.                   |
+| `resume-workflow`                       | Refused without the watcher supervisor's admitted decision.                   |
+| `inspect-contracts`                     | Read-only deployment inspection.                                              |
+| `prepare-transition-trace`              | Pinned-header retained-DA preparation.                                        |
+| `submit-transition-trace-proof`         | Category-specific evidence or correction route; consult current schema.       |
+| `submit-init`                           | Rejected without an explicit supported category; see the retirement boundary. |
+| `submit-step-01`                        | Retired unauthenticated file route; rejects before submission.                |
+| `submit-step-02`                        | Retired unauthenticated file route; rejects before submission.                |
+| `submit-step-03`                        | Retired unauthenticated file route; rejects before submission.                |
+| `submit-step-04`                        | Retired unauthenticated file route; rejects before submission.                |
+| `submit-invalid-range-step-01`          | Retired unauthenticated file route; rejects before submission.                |
+| `submit-invalid-range-step-02`          | Retired unauthenticated file route; rejects before submission.                |
+| `submit-fabricated-deposit-step-01`     | Category-specific evidence or correction route; consult current schema.       |
+| `submit-fabricated-deposit-step-02`     | Category-specific evidence or correction route; consult current schema.       |
+| `submit-fabricated-deposit-step-03`     | Category-specific evidence or correction route; consult current schema.       |
+| `submit-fabricated-deposit-step-04`     | Category-specific evidence or correction route; consult current schema.       |
+| `submit-fabricated-withdrawal-step-01`  | Category-specific evidence or correction route; consult current schema.       |
+| `submit-fabricated-withdrawal-step-02`  | Category-specific evidence or correction route; consult current schema.       |
+| `submit-fabricated-withdrawal-step-03`  | Category-specific evidence or correction route; consult current schema.       |
+| `submit-fabricated-withdrawal-step-04`  | Category-specific evidence or correction route; consult current schema.       |
+| `submit-non-existent-input-step-01`     | Retired unauthenticated file route; rejects before submission.                |
+| `submit-non-existent-input-step-02`     | Retired unauthenticated file route; rejects before submission.                |
+| `submit-non-existent-input-step-03`     | Retired unauthenticated file route; rejects before submission.                |
+| `submit-non-existent-input-step-04`     | Retired unauthenticated file route; rejects before submission.                |
+| `submit-zero-input-step-01`             | Retired unauthenticated file route; rejects before submission.                |
+| `submit-zero-input-step-02`             | Retired unauthenticated file route; rejects before submission.                |
+| `submit-da-hash-preimage-step-01`       | Category-specific evidence or correction route; consult current schema.       |
+| `submit-da-hash-preimage-step-02`       | Category-specific evidence or correction route; consult current schema.       |
+| `submit-input-no-idx-step-01`           | Category-specific evidence or correction route; consult current schema.       |
+| `submit-input-no-idx-step-02`           | Category-specific evidence or correction route; consult current schema.       |
+| `submit-input-no-idx-fold`              | Retired; step 02 has one route.                                               |
+| `submit-input-no-idx-step-03`           | Category-specific evidence or correction route; consult current schema.       |
+| `submit-input-no-idx-step-04`           | Category-specific evidence or correction route; consult current schema.       |
+| `submit-no-reference-input-step-01`     | Category-specific evidence or correction route; consult current schema.       |
+| `submit-no-reference-input-step-02`     | Category-specific evidence or correction route; consult current schema.       |
+| `submit-no-reference-input-step-03`     | Category-specific evidence or correction route; consult current schema.       |
+| `submit-no-reference-input-step-04`     | Category-specific evidence or correction route; consult current schema.       |
+| `submit-reference-input-no-idx-step-01` | Category-specific evidence or correction route; consult current schema.       |
+| `submit-reference-input-no-idx-step-02` | Category-specific evidence or correction route; consult current schema.       |
+| `submit-reference-input-no-idx-step-03` | Category-specific evidence or correction route; consult current schema.       |
+| `submit-reference-input-no-idx-step-04` | Category-specific evidence or correction route; consult current schema.       |
+| `submit-invalid-signature-step-01`      | Category-specific evidence or correction route; consult current schema.       |
+| `submit-invalid-signature-step-02`      | Category-specific evidence or correction route; consult current schema.       |
+| `remove-fraudulent-block`               | Category-specific evidence or correction route; consult current schema.       |
+| `remove-unattested-block`               | Category-specific evidence or correction route; consult current schema.       |
 
 ## Next steps
 

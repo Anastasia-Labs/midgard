@@ -541,7 +541,7 @@ test min_ada_absolute_vectors_match_the_typescript_twin() {
 /// The compiled deployment pin itself. The rate the output-descriptor step
 /// convicts with is `env.coins_per_utxo_byte`, held identical in
 /// `env/default.ak` and `env/testnet.ak` and mirrored by
-/// `MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte`; no vector above pins its
+/// `MIDGARD_CONSENSUS_LIMITS.coinsPerUtxoByte`; no vector above pins its
 /// absolute value now that the local test constant reads it.
 ///
 /// ZERO-RATE: no on-chain guard rejects a zero rate, and one must not be added

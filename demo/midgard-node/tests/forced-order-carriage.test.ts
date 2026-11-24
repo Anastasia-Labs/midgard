@@ -1,5 +1,5 @@
 /**
- * Forced-order carriage resolution (N10, plan §12.3) on a simulated chain,
+ * Forced-order carriage resolution on a simulated chain,
  * with the follower store in the node database as in production: the
  * projection resolves carriage its own block created (step 1), the driver
  * hook resolves the rest through the ledger at the order block's parent
@@ -129,7 +129,7 @@ const expectIngested = async (submitted: Buffer, order: SimTx) => {
   expect(rows[0]!.status).toBe(ForcedTransactionsDB.Status.Awaiting);
 };
 
-describe("forced-order carriage resolution (§12.3)", () => {
+describe("forced-order carriage resolution", () => {
   it("step 1: carriage an earlier tx of the order's own block created resolves in the projection", async () => {
     const { store, chain, forward } = await follow();
     const f = fixture(chain.chain);

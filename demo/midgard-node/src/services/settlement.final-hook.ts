@@ -1,6 +1,6 @@
 /**
- * The settlement attempts' part in the follower's prune step (plan §8.2,
- * §11; §15 N6, D-N4): a pending attempt whose transaction landed valid at
+ * The settlement attempts' part in the follower's prune step: a pending
+ * attempt whose transaction landed valid at
  * or below the step's boundary (the block k below the cursor, so at depth
  * > k) is `final`. The intent journal's retention hook deletes that
  * attempt's journal entry in the same step, after which the journal derives

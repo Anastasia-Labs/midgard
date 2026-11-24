@@ -64,7 +64,7 @@ A channel is one generator, a JSON fixture that a vitest suite recomputes, and
 one or more generated Aiken test modules that the fork re-verifies. It pins TypeScript
 and Aiken to the same bytes, and each channel's negative vectors keep a
 verifier that accepts everything from passing
-(`demo/midgard-validation/scripts/generate-cek-staged-arm-v1-goldens.mjs:3-27`,
+(the header of `demo/midgard-validation/scripts/generate-cek-staged-arm-v1-goldens.mjs`,
 shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
 
 - **Add a case:** add the vector to the channel's vector source (for example
@@ -115,7 +115,7 @@ shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
   `test:tx-prep:emulator`, ...) are in `demo/midgard-node/package.json`.
 
 - **Cost:** the whole fault-proof suite took 20.5 minutes at eight forks on a
-  32-CPU host on 2026-09-21 (`demo/midgard-fault-proofs/vitest.config.ts:13-23`).
+  32-CPU host on 2026-09-21 (`demo/midgard-fault-proofs/vitest.config.ts`).
   Run one file.
 - **Rules:** local UPLC evaluation on every completion, refusals asserted as
   script failures, times relative to the emulator
@@ -141,7 +141,8 @@ shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
     listening; `start` starts one with those flags. The server may be shared
     with other checkouts, so leave a running one alone.
   - Built `dist/` for files that spawn plain `node` children or load
-    `dist/` (crash probes, `tests/validation-worker-pool.test.ts:41`).
+    `dist/` (crash probes, `workerEntry` in
+    `tests/validation-worker-pool.build-adversarial-corpus.ts`).
     `contrib test` builds `lucid-midgard`, `midgard-sdk` and the node first
     when they are stale.
 - **Focused run:**

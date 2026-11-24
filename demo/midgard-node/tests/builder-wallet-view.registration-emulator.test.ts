@@ -1,6 +1,6 @@
 /**
- * Reward-account registrations funded from the node's wallet view (plan
- * §8.5, I2b) on a Lucid emulator, over the node's follower store and intent
+ * Reward-account registrations funded from the node's wallet view
+ * on a Lucid emulator, over the node's follower store and intent
  * journal:
  *
  * - the PHAS membership registration builds from the view, signs over it and

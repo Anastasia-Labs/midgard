@@ -72,8 +72,8 @@ type ReservePayoutStep =
 
 /**
  * Sends one step. `eventId` is the settled event's id CBOR, the intent's
- * content reference (the §8.4 predicate reads the event by it); `plan` is
- * the command's plan, opened before its first L1 read (S5).
+ * content reference (the family predicate reads the event by it); `plan` is
+ * the command's plan, opened before its first L1 read.
  */
 const send = (
   lucid: LucidEvolution,
@@ -102,7 +102,7 @@ const send = (
   });
 
 /**
- * `config` with the selected wallet's view (§8.5) as its `walletInputs`: the
+ * `config` with the selected wallet's view as its `walletInputs`: the
  * builder selects its fee input, coins and collateral from exactly those and
  * never reads the provider. An empty view is refused by name.
  */

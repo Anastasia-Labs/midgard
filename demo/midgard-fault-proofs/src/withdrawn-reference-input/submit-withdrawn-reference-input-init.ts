@@ -1,10 +1,10 @@
 /**
- * `withdrawn-reference-input` thread init (offchain plan §4.2).
+ * `withdrawn-reference-input` thread init.
  *
  * Delegates to the shared `buildResolvedInit` in `src/submit-init.ts` with
  * the family's explicit contracts record and catalogue category: the
  * `withdrawnReferenceInput` entry in the production `buildInit` category
- * union is deliberately deferred to the registration wave (plan §2.2).
+ * union is deliberately deferred to the registration wave.
  */ import type {
   ResolvedInitBuild,
   SubmitResolvedInitParams,

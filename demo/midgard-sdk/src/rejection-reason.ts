@@ -16,17 +16,15 @@ import { Data } from "@lucid-evolution/lucid";
  * below is **wire-normative** — it fixes the Plutus Data constructor indices
  * of the forced leaf (`ForcedInclusionTxV1.verdict`), so arms must never be
  * reordered, inserted, or removed except through a leaf-schema format
- * revision (`RejectionReasonV2`; catalogue design note 1).
+ * revision (`RejectionReasonV2`).
  *
  * The constructor tag IS the rejection reason; payloads carry **only**
  * subject coordinates (field/item/witness/output/redeemer/purpose
- * ordinals) — never expected values, hashes, or recomputable arguments
- * (catalogue design note 4).
+ * ordinals) — never expected values, hashes, or recomputable arguments.
  *
  * A reserved family, not populated in V1: `GuardrailExceeded` — kept
  * unpopulated per the 2026-08-24 owner ruling that the L1 forced-order door
- * (`docs/spec/midgard-tx.md` §8.11) excludes guardrail-violating preimages
- * (catalogue §4.3 resolution, design note 6).
+ * (`docs/spec/midgard-tx.md` §8.11) excludes guardrail-violating preimages.
  */
 export const RejectionReasonSchema = Data.Enum([
   // ── CanonicalDecode ────────────────────────────────────────────────

@@ -181,7 +181,7 @@ export const fetchReferenceScripts = (
 /**
  * The live Order of the `kind` event with id CBOR `eventId`, opened as the
  * SDK opens it, read by key from the follower's event projection in the
- * node database (NC13): never a scan of the list or its retention address.
+ * node database: never a scan of the list or its retention address.
  * The settlement retries while the follower has not admitted the event yet;
  * an event already retired is the settlement job's to complete
  * (`settlement.settled-on-l1.ts`), never rebuilt here.
@@ -301,7 +301,7 @@ export const absorbConfirmedDepositToReserveProgram = (
     const eventId = parseEventId(config.eventId, "--deposit-event-id");
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
-    // S5: the plan opens before the command's first L1 read.
+    // The plan opens before the command's first L1 read.
     const plan = yield* openPlan;
     yield* lucidService.switchToOperatorsMainWallet;
     const resolution = requireResolution(

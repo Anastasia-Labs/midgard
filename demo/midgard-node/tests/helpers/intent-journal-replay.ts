@@ -1,5 +1,5 @@
 /**
- * Real transaction shapes for the node intent journal (I1-fix F5). A
+ * Real transaction shapes for the node intent journal. A
  * family's real emulator flow runs as it always does; this replays what it
  * journaled onto a production follower that followed the same chain.
  *
@@ -17,7 +17,7 @@
  *   intent through the production journal at the block before the one it
  *   landed in: the latest tip the flow could have recorded it at, with
  *   every input confirmed or created by an intent recorded before it. S6
- *   runs there, so the family's §8.4 predicate is evaluated on the intent's
+ *   runs there, so the family's predicate is evaluated on the intent's
  *   real content reference; then the landing block applies.
  *
  * The flows do not run on this follower in-flow: their fixtures stand in
@@ -115,7 +115,7 @@ export type ReplayedIntent = Readonly<{
    * was recorded at, so S6 waits on its inputs there.
    */
   chained: boolean;
-  /** The §8.4 predicate at the block before landing, or its error. */
+  /** The family predicate at the block before landing, or its error. */
   verdict: boolean | string | undefined;
   /** The S6 action at that tip, then once the landing block applied. */
   before: string | undefined;

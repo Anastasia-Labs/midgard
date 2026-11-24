@@ -26,11 +26,11 @@ export type Rewound = Readonly<{
   to: Point;
   depth: number;
   cursor: Cursor;
-  /** Outrefs the rewind made live again (cache patch, §6 item 5). */
+  /** Outrefs the rewind made live again (cache patch). */
   unspent: readonly OutRef[];
   /**
    * Outrefs whose rows the rewind deleted: created above the target, or
-   * seed rows whose seed point lies above it (§5.3 step 4).
+   * seed rows whose seed point lies above it.
    */
   deleted: readonly OutRef[];
 }>;
@@ -75,7 +75,7 @@ const outRefsFrom = (rows: readonly Record<string, unknown>[]): OutRef[] =>
   }));
 
 /**
- * `rewind(target)` per §7.1, in the caller's write transaction:
+ * `rewind(target)`, in the caller's write transaction:
  * cursor row lock, target resolution (R1/R2), registry-driven D-t truncation
  * in reverse dependency order, fact un-spend and delete, cursor and
  * generation, the `l1_rollbacks` row, the scoped invariant check (R5), and
@@ -147,7 +147,7 @@ export const rewindIn = async (
   );
   // A seed row is a fact observed at its seed point: a rewind below that
   // point rewinds it, and the wallet seeder reads the wallet again at a
-  // later cursor (§5.3 step 4). Seed rows at or below the target observed a
+  // later cursor. Seed rows at or below the target observed a
   // state that is still canonical and stay.
   if (fault === "keep_seed_rows_above_target")
     await tx.query("UPDATE l1_outputs SET seed_slot = ? WHERE seed_slot > ?", [

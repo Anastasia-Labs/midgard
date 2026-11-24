@@ -1,5 +1,5 @@
 /**
- * `fabricated-deposit` step-04 submitter (Goal task `Q39`, §9.1 output 8).
+ * `fabricated-deposit` step-04 submitter.
  *
  * Finalizes the thread into a permanent fraud-proof token: burns the computation
  * thread, mints the fraud-proof token under the *same* asset name and locks it at

@@ -1,5 +1,5 @@
 /**
- * `reference-input-no-idx` evidence builder (Goal task `Q31`).
+ * `reference-input-no-idx` evidence builder.
  *
  * Harvested from PR #473 (`fp/no-ref-input-idx`) and reconciled against the
  * current native-codec boundary. It locates a committed transaction that *reads*

@@ -4,7 +4,7 @@ import { parsePromiseCapacityEvidence } from "../src/availability/promise-capaci
 import { makeRetirementFloor } from "../src/store/retirement-model.js";
 
 /**
- * Plan §5.1: a block is final at depth k + 1 (`isFinal`: depth > k). The
+ * A block is final at depth k + 1 (`isFinal`: depth > k). The
  * stored certificates name a point and the block that certified it final, and
  * their parsers accept exactly the final depths: refused at depth k, accepted
  * at depth k + 1.

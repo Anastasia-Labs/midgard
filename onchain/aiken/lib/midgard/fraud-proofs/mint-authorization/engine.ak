@@ -1,5 +1,5 @@
-//// Shared engine for the mint-authorization fault-proof thread (W-C14,
-//// pre-registration; reserved emulator category id `0000001b`).
+//// Shared engine for the mint-authorization fault-proof thread
+//// (pre-registration; reserved emulator category id `0000001b`).
 ////
 //// Two pieces live here, both machine twins rather than fresh semantics:
 ////

@@ -1,5 +1,5 @@
 /**
- * Whichever lands wins (plan §8.3, I3) for two real state-queue commits on
+ * Whichever lands wins for two real state-queue commits on
  * one tail. The production commit worker builds both, journaling them in
  * the production intent journal over the follower's facts. The
  * follower-change driver's recompute runs the landed-block rebase. The
@@ -36,7 +36,7 @@
  *   the intent. Expiry is not usable here: an expired commit cannot land.
  * - (c) The rollback orphans a deposit it holds (`l1_event_keys`); the
  *   commit itself stays valid. The production disposition disposes of its
- *   journal, and an S6 pass with the §8.4 commit predicate abandons it.
+ *   journal, and an S6 pass with the commit predicate abandons it.
  *
  * S6 does not run in the emulator driver: the journey checks each landing
  * the follower store recorded (`recordLanding`), and writes (b)'s

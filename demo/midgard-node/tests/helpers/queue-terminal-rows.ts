@@ -1,5 +1,5 @@
 /**
- * Direct rows for the reads of the queue-terminal projection (N4): a
+ * Direct rows for the reads of the queue-terminal projection: a
  * terminal row as the projection derives it for a landed tx that took a
  * header out of the state queue, and a live state-queue node in the
  * follower's facts (a seed output carrying the node token).

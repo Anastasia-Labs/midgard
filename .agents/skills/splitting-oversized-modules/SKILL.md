@@ -162,8 +162,7 @@ the rest. Both scripts need their inputs; the TypeScript verifier also needs
 
 - [references/oversized-files.md](references/oversized-files.md): read this
   when choosing what to split, or before splitting a file next to an earlier
-  split. The files over 5,000 lines (measured 2026-09-25) and the lessons of
-  seven earlier splits.
+  split. The size limits and the lessons of seven earlier splits.
 - [references/typescript-split.md](references/typescript-split.md): read this
   for any TypeScript split. Package boundaries, what moves with the code,
   the verifier's options, output and blind spots.

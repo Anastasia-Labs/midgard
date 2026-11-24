@@ -64,8 +64,8 @@ that deposit plus 5 ADA of fee headroom; a resent deposit reuses its saved
 intent without repeating the check.
 
 The Compose wrapper derives operator host ports in linked worktrees. Configure
-the node endpoint and local provider URLs to match those ports (`scripts/operator-compose.sh
---print-env --env-file .env`). DA ports are explicit and must not collide with
+the node endpoint and local provider URLs to match those ports
+(`demo/midgard-node/scripts/operator-compose.sh --print-env --env-file .env`). DA ports are explicit and must not collide with
 another stack. Host database commands such as `db:migrate` use loopback
 Postgres at `MIDGARD_POSTGRES_HOST_PORT`; containers use `postgres:5432`. The
 journey's deposits and withdrawals use no database: it runs the user's own
@@ -106,7 +106,7 @@ signing is required. Fresh deployment authoring requires a JSON file with:
 ```
 
 The key must already exist. `fundingProfiles` may stay empty: the watcher
-prices its reservations from the runtime funding policy and never needs one. A
+admits the signed bundle but reads no measurement from it at runtime. A
 profile you do supply must be a genuine measurement for the exact blueprint,
 Cardano parameter snapshot, applied reference scripts, economics and prover
 wallet. Setup signs their canonical bundle and the rule

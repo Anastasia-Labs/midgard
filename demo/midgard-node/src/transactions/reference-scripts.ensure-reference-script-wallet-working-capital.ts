@@ -112,7 +112,7 @@ export const ensureReferenceScriptWalletWorkingCapital = (
   IntentJournal
 > =>
   Effect.gen(function* () {
-    // S5: the plan opens before the wallet read the top-up rests on.
+    // The plan opens before the wallet read the top-up rests on.
     const plan = yield* openPlan;
     const referenceScriptWalletUtxos = yield* awaitWalletViewUtxos(
       referenceScriptsLucid,
@@ -165,8 +165,8 @@ export const ensureReferenceScriptWalletWorkingCapital = (
     }
 
     const topUpAmount = targetPlainBalance - currentPlainBalance;
-    // Coin selection funds the top-up from the funding wallet's whole view
-    // (§8.5), tokens and script-reference outputs included, less only the
+    // Coin selection funds the top-up from the funding wallet's whole view,
+    // tokens and script-reference outputs included, less only the
     // deployment's reserved initialization nonces.
     const fundingWalletInputs = (yield* readSelectedWalletView(
       fundingLucid,
@@ -208,7 +208,7 @@ export const ensureReferenceScriptWalletWorkingCapital = (
     const txHash = yield* handleSignSubmit(
       fundingLucid,
       unsigned,
-      // The target (§8.4 E2): the plain balance at the reference-script
+      // The target: the plain balance at the reference-script
       // address this top-up reaches.
       journaledIntent(
         "reference_funding",

@@ -202,7 +202,7 @@ export const sweepRetiredReferenceScriptsProgram = ({
     const quarantineAddress = options.quarantineAddress ?? returnAddress;
     const spentOutRefs = new Set<string>();
 
-    // S5: each round's plan opens before the read its batch is built on.
+    // Each round's plan opens before the read its batch is built on.
     const planFromChain = Effect.gen(function* () {
       const intentPlan = yield* openPlan;
       const utxos = yield* fetchReferenceScriptUtxosAt(

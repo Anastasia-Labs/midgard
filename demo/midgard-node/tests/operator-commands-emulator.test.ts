@@ -427,7 +427,7 @@ describe("takeover planning, strike, and forced retirement", () => {
     );
 
     // Each operator's node, following this chain, records its own intents
-    // and judges them wanted at the tip before they landed (I1-fix F5).
+    // and judges them wanted at the tip before they landed.
     const journaled = drainJournaledWithoutFollower();
     for (const [operator, families] of [
       [successor.keyHash, ["takeover", "retire"]],

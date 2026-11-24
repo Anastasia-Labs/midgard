@@ -1,6 +1,5 @@
 /**
- * Shared plumbing for the `value-not-preserved` step submitters (offchain
- * plan §4).
+ * Shared plumbing for the `value-not-preserved` step submitters.
  *
  * The family predates catalogue registration, so every submitter takes the
  * explicit `ValueNotPreservedContracts` record plus the category id the

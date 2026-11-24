@@ -1,5 +1,5 @@
 /**
- * The node's §8.4 family predicates over the follower's projections (I1),
+ * The node's family predicates over the follower's projections,
  * each in both polarities, on the node database:
  *
  * - merge: the header it names is the queue's head, and it spends the head
@@ -35,7 +35,7 @@ afterEach(async () => {
 
 const open = () => openPredicateScenario(fixture, opened);
 
-describe("the node's §8.4 predicates over the follower's projections", () => {
+describe("the node's family predicates over the follower's projections", () => {
   it("merge: wanted while its header is the head and it spends the head and the root", async () => {
     const s = await open();
     const header = Buffer.from(s.firstHash, "hex");

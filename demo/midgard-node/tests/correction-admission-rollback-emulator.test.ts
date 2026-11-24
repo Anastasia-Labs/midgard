@@ -1,5 +1,5 @@
 /**
- * §15 N4 acceptance on the emulator (plan §7.4, §5.5 P7 and P8): a
+ * Correction admission on the emulator: a
  * correction is admitted when its removal lands, a rollback of it below k
  * recomputes with no halt and no intervention, the same removal landing
  * again rewinds exactly once, and commit, merge and settlement then resume

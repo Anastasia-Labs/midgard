@@ -28,7 +28,7 @@ import { recordAtCurrentView } from "../tests/support/record-at-view.js";
 import { now, writeReport } from "./support/workload.js";
 
 /**
- * I1-fix F4 (plan §3.4, §16.2): one S6 pass and one prune step against the
+ * One S6 pass and one prune step against the
  * size of the intent journal, on Postgres and on SQLite. The journal holds `TERMINAL`
  * intents terminal for less than k (a third landed, a third expired, a third
  * abandoned, so none is prunable yet) plus `LIVE` live intents in the
@@ -217,7 +217,7 @@ const measure = async (
   }
 };
 
-describe("I1-fix F4: S6 pass and prune step against the journal size", () => {
+describe("S6 pass and prune step against the journal size", () => {
   it.each(ADAPTERS)(
     "reports p50/p99 at 10^2 and 10^4 terminal intents against B2's bound on %s",
     async (adapter) => {

@@ -1,13 +1,13 @@
 /**
  * The operator watchdog's forced retirement, planned from the operator set
- * the follower-change driver publishes (NC14), against the real compiled
+ * the follower-change driver publishes, against the real compiled
  * validators.
  *
  * The set never holds the retired list: the retirement's insertion anchor is
  * read by asset name from the follower facts (`retiredInsertionAnchorIn`),
  * and it is the only retired node the planned transaction's snapshot holds.
  * Once the retirement lands, the retired operator's own set reads
- * `operator_removed` (D-N7) while the submitter stays active.
+ * `operator_removed` while the submitter stays active.
  *
  * Refusals: an anchor read that finds nothing submits nothing, and a set
  * still showing the scheduler this node's takeover spent rebuilds nothing.
@@ -257,7 +257,7 @@ describe("operator watchdog forced retirement from the operator set", () => {
     );
     expect(outcome.staleDue).toEqual(["operator_set_behind_own_takeover"]);
 
-    // D-N7: the retired operator's node reads removed, the submitter's
+    // The retired operator's node reads removed, the submitter's
     // reads active.
     const removed = await runAs(
       fixture.operators.find(({ keyHash }) => keyHash === target)!,

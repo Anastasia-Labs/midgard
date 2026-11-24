@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last reviewed: 2026-09-07 (ingress and validation source map).
+Last reviewed: 2026-11-23 (ingress and validation source map).
 
 This is an implementation guide to admission and validation, not another wire
 specification. [Midgard transaction format](../../../docs/spec/midgard-tx.md)

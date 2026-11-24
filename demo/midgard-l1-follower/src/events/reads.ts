@@ -1,6 +1,6 @@
 /**
- * Reads of the node event projection at a point (plan §5.5 P1 for the event
- * lists, P2, P4). Each read checks the point is canonical in the follower
+ * Reads of the node event projection at a point. Each read checks the point
+ * is canonical in the follower
  * store and answers from the temporal rows as of that point, in one
  * transaction, so it never mixes two chain states.
  */
@@ -34,7 +34,7 @@ export type Placement = Readonly<{
   txIndex: number;
 }>;
 
-/** One event of the projection (P2), as of a point. All bytes are hex. */
+/** One event of the projection, as of a point. All bytes are hex. */
 export type ProjectedEvent = Readonly<{
   kind: EventKind;
   key: string;
@@ -165,7 +165,7 @@ const eventFromRow = (
 
 /**
  * Every event of `list` admitted at or before the point, live or retired
- * there (P2), oldest admission first. Retired events whose rows pruning
+ * there, oldest admission first. Retired events whose rows pruning
  * removed (retired more than k deep) are absent.
  */
 export const eventsAt = (
@@ -188,7 +188,7 @@ export const eventsAt = (
 /** A cutoff inside a block: the block's point and the last tx index it admits. */
 export type EventCutoff = Readonly<{ point: Point; txIndex: number }>;
 
-/** An event's immutable admission content and placement (P2), without its retirement. */
+/** An event's immutable admission content and placement, without its retirement. */
 export type AdmittedEventAt = Omit<ProjectedEvent, "retirement" | "location">;
 
 /**
@@ -310,12 +310,12 @@ export const dueByCutoffNow = async (
   return dueByCutoff(store, list, at, { slot, slotTime });
 };
 
-/** One deposit spendable on L2 at the point (P4). */
+/** One deposit spendable on L2 at the point. */
 export type SpendableDeposit = Readonly<{ key: string; idCbor: string }>;
 
 /**
- * P4: a deposit is spendable iff it is included(h) for an own block h that
- * landed or is the one live own block (P3; N3 adds foreign blocks), and its
+ * A deposit is spendable iff it is included(h) for an own block h that
+ * landed or is the one live own block, and its
  * admission is canonical at the point. `included` holds the ids (event id
  * CBOR, hex) those blocks include. Time never makes a deposit spendable: a
  * clock ahead of the tip changes nothing here, and a rollback past the
@@ -342,7 +342,7 @@ export const spendableAt = (
   );
 };
 
-/** The list's linked walk at the point (P1 for the event lists). */
+/** The list's linked walk at the point. */
 export type EventList = Readonly<{
   /** Keys in list order, root excluded. */
   keys: readonly string[];

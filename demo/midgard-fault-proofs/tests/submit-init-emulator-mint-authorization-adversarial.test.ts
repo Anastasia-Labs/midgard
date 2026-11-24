@@ -6,7 +6,7 @@
  * family's:
  *
  * - a committed leaf RECORDED AS REJECTED, which l2TxMistag convicts, can
- *   never be bound — step-01's §2.4.3(d) acceptance guard refuses it;
+ *   never be bound — step-01's acceptance guard refuses it;
  * - a direction-A "the script is absent" claim is FALSE when the committed
  *   field 6 actually consulted a script hashing to the policy — step-03's
  *   absence fold refuses it;
@@ -119,7 +119,7 @@ describe("mint-authorization emulator adversarial polarity", () => {
     }
     const { initResult, refs } = await driveInit(harness, setup);
 
-    // §2.4.3(d): an operator-rejected leaf carries a non-zero validity code, so
+    // An operator-rejected leaf carries a non-zero validity code, so
     // step-01 refuses to bind it — l2TxMistag convicts that leaf, and this
     // family never convicts it a second time.
     await expect(

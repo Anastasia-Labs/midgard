@@ -1,6 +1,6 @@
 /**
- * The node's L1 intent families and the intent a submission carries (plan
- * §8.2, §8.4): its family, workflow key, plan (S5, §8.1) and content
+ * The node's L1 intent families and the intent a submission carries: its
+ * family, workflow key, plan and content
  * reference, and what a record returns. Re-exported by `intent-journal.ts`.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
@@ -10,7 +10,7 @@ import type {
   INTENT_JOURNAL_UNAVAILABLE,
 } from "./intent-journal.refusals.js";
 
-/** The node's L1 families (§8.4, Node rows). */
+/** The node's L1 families. */
 export const NODE_INTENT_FAMILIES = [
   "commit",
   "scheduler_refresh",
@@ -54,7 +54,7 @@ export const CONTENT_REF_FAMILIES: ReadonlySet<NodeIntentFamily> = new Set([
 export type UnjournaledReason = "no_follower";
 
 /**
- * A family's plan (S5, §8.1): the follower generation of the oldest view
+ * A family's plan: the follower generation of the oldest view
  * its reads rest on, taken before its first L1 read (`openPlan`), or the
  * view of follower-derived data it plans from (`intentPlanAt`). `none` when
  * the follower had no view to open it under (no cursor, or the read failed):

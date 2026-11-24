@@ -1,5 +1,5 @@
 /**
- * What the simulated node does around landed-block processing (N3, I3): it
+ * What the simulated node does around landed-block processing: it
  * admits pending transactions and commits its own block on the processed
  * tip (the journal, then the working-ledger move onto it). The rebase takes
  * a landed own block in, dead or not, and disposes of the dead journals;

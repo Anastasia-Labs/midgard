@@ -1,6 +1,6 @@
 /**
- * What the node's forced-order projection (N10, plan §12) reads from the
- * deployment: the tx-order policy and order address (§5.2 rule 3). Plain hex,
+ * What the node's forced-order projection reads from the
+ * deployment: the tx-order policy and order address. Plain hex,
  * so a soak plugin can take it from JSON.
  */
 import type { TrackedSet } from "@al-ft/midgard-l1-follower";

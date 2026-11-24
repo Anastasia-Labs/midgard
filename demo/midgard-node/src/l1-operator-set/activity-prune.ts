@@ -1,5 +1,5 @@
 /**
- * The activity record in the follower's prune step (N6-R5). The driver
+ * The activity record in the follower's prune step. The driver
  * hook drops a record whose block a fork orphaned, but it runs only while
  * the follower is caught up; a catch-up prune could otherwise pass the
  * orphaned point first, leaving it below the retained window, where

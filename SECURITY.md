@@ -149,8 +149,8 @@ operator trust remains necessary for fabricated forced transactions, the
 documented censorship hole, and a wrong Plutus verdict that depends on an execution step too large to prove in a
 single L1 transaction. Other Plutus verdicts are challengeable through the
 interactive validation dispute game. DA payloads carry no validation-trace
-states; the nine families that once read them prove their faults directly, and
-the public profile enables all nine. Watchers submit proofs
+states; the nine trace-relative fault-proof families prove their faults
+directly, and the public profile enables all nine. Watchers submit proofs
 automatically; a watcher that reaches a proof after its latest safe start
 still runs it until the block matures, and raises a late-start alert. At
 maturity it holds the objective visibly. Strikes

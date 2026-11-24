@@ -95,7 +95,7 @@ export const buildAndSubmitMergeTx = (
     const mergeStartedAt = Date.now();
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
-    // S5: the plan opens before the merge's first L1 read.
+    // The plan opens before the merge's first L1 read.
     const plan = yield* openPlan;
     const currentStateQueueLength = yield* getStateQueueLength(fetchConfig);
     const minQueueLengthForMerging =

@@ -89,7 +89,7 @@ Ogmios `127.0.0.1:2337`, Kupo `127.0.0.1:2442`, and Postgres
 `midgard_phase4_process_`; signing keys, wallet env files, and run credentials
 are mode 0600. In a linked git worktree the compose project also carries the
 checkout's hash and the default ports shift by the same checkout-specific
-offset (`scripts/lib/worktree-identity.mjs`), so two checkouts' devnets can run
+offset (`scripts/lib/worktree-identity.mjs` at the repository root), so two checkouts' devnets can run
 at once; the main checkout keeps the defaults above. Generation prints the
 project and ports it chose, and explicit `MIDGARD_PHASE4_*_PORT` values win.
 
@@ -121,15 +121,15 @@ The generated initial committee terms obey the current maximum term length.
 
 Recovery scenarios follow the chain's actual behavior:
 
-| Scenario                    | Chain behavior                                                                     | Required evidence                                                                                                                            |
-| --------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Watcher/operator restart    | Cardano continues producing blocks; preserve all workflow and transaction journals | Reconnect from the recorded point, replay the canonical suffix, reconcile submissions and process new blocks                                 |
-| Indexer or follower outage  | The canonical producer remains online                                              | Recover from retained history or synchronize from a canonical peer; verify exact checkpoint and hash agreement before accepting observations |
-| Short local rollback        | Restore a recent isolated fork and preserve the abandoned operator journal         | Prove the abandoned header disappeared, the replacement canonical branch advanced, and no double spend or duplicate workflow occurred        |
-| Frozen fork beyond forecast | No peer supplies missing history                                                   | Refuse isolated forging before restoring state; use peer synchronization or a fresh isolated chain                                           |
+| Scenario                    | Chain behavior                                                             | Required evidence                                                                                                                            |
+| --------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Watcher/operator restart    | Cardano continues producing blocks; preserve all node and watcher state    | Reconnect from the recorded point, replay the canonical suffix, reconcile submissions and process new blocks                                 |
+| Indexer or follower outage  | The canonical producer remains online                                      | Recover from retained history or synchronize from a canonical peer; verify exact checkpoint and hash agreement before accepting observations |
+| Short local rollback        | Restore a recent isolated fork and preserve the abandoned operator journal | Prove the abandoned header disappeared, the replacement canonical branch advanced, and no double spend or duplicate workflow occurred        |
+| Frozen fork beyond forecast | No peer supplies missing history                                           | Refuse isolated forging before restoring state; use peer synchronization or a fresh isolated chain                                           |
 
-The ledger forecast horizon with these parameters is `ceil(3k/f)=129600` slots
-(36 hours). This bounds how far a frozen isolated node can forecast; it is **not**
+The ledger forecast horizon with these parameters is `ceil(3k/f)=25920` slots
+(7.2 hours). This bounds how far a frozen isolated node can forecast; it is **not**
 a maximum supported outage for a follower of a continuing network. See the
 [consensus forecast explanation](https://ouroboros-consensus.cardano.intersectmbo.org/docs/references/miscellaneous/hard_won_wisdom/).
 `check-recovery-window.mjs` guards the destructive local-fork restore and checks
@@ -142,7 +142,7 @@ fixed to official immutable image digests. The node pin includes the genesis
 cost-model override fix. The generated run records the effective image IDs;
 reset refuses any image or artifact drift.
 
-The workspace uses Lucid Evolution 0.6, whose provider package natively
+The workspace uses Lucid Evolution 0.8.9, whose provider package natively
 supports Ogmios v7's canonical `maxReferenceScriptsSizePerTransaction`
 protocol-parameter field. No local provider patch is applied. The provider
 normalizes the legacy v6 `maxReferenceScriptsSize` spelling for compatibility
@@ -150,7 +150,7 @@ and fails closed when both spellings conflict or the value is missing or
 malformed. Verify the released behavior and fail-closed fixtures with:
 
 ```bash
-pnpm exec vitest run tests/kupmios-ogmios-v7-protocol-parameters.test.ts
+pnpm --dir ../midgard-node exec vitest run tests/kupmios-ogmios-v7-protocol-parameters.test.ts
 ```
 
 ## Bootstrap and capture one matched snapshot
@@ -232,8 +232,8 @@ pnpm run test:phase4:devnet-assets
 ```
 
 The fresh-chain funding policy is shared with `devnet-stack` in
-[`preprod/funding-policy.json`](../preprod/funding-policy.json). The legacy
-seven-wallet bootstrap now allocates 78 million ADA per wallet plus a separate
+[`preprod/funding-policy.json`](../preprod/funding-policy.json). The
+seven-wallet bootstrap allocates 78 million ADA per wallet plus a separate
 50 ADA pure collateral output, from a 1-billion-ADA spendable genesis UTxO
 (2 billion total, 1 billion delegated). This is local test funding only. The
 180-day, fivefold-margin fee model, observed evidence, all fourteen stack roles,

@@ -91,7 +91,7 @@ const journalRecheck = (
   );
 
 describe("authenticated commit window", () => {
-  // E-N1-2 item 3, plan §8.1: the end time is bounded by min(the commit
+  // The end time is bounded by min(the commit
   // anchor's cap, unbuilt forced orders); at d = 0 the anchor is the view.
   it("bounds the end time by the commit anchor of the ingested view, and rechecks it in the journal transaction", async () => {
     const ingestedSlot = 500;
@@ -120,7 +120,7 @@ describe("authenticated commit window", () => {
     ).rejects.toThrow(COMMIT_ANCHOR_UNAVAILABLE_MESSAGE);
   });
 
-  // N10: a live forced order the node has not rebuilt yet (carriage still
+  // A live forced order the node has not rebuilt yet (carriage still
   // pending) may fall due at its inclusion time, so no block reaches it.
   it("bounds the horizon below the earliest live forced order the node has not ingested", async () => {
     await run(

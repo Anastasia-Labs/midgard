@@ -87,10 +87,6 @@ rebuild of the TypeScript workspace (deployments README).
   gives new script hashes with nothing deployed at them, and no finalized
   manifest: startup fails under `deployment_manifest_missing`, since the node
   never deploys (`listen-startup.ts`). `[review]`
-- The watcher-journeys record states the same rule from experience: a source
-  change "cannot change the validators already deployed", and the remaining
-  families needed "a fresh deployment with the new applied scripts"
-  ([`docs/fault-proofs/automatic-watcher-journeys.md`](../../../../docs/fault-proofs/automatic-watcher-journeys.md)).
 
 ## Database schema
 

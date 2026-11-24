@@ -110,7 +110,7 @@ const firstBlockOutRef = (
 
 /**
  * Classifies the oldest queued block for merging. Maturity is judged at the
- * L1 `slotNow` (plan §3.6), never the wall clock: a clock that runs fast must
+ * L1 `slotNow`, never the wall clock: a clock that runs fast must
  * not call a block mature early. An unknown L1 slot fails the attempt with a
  * `StateQueueError`, and the merge fiber retries.
  */

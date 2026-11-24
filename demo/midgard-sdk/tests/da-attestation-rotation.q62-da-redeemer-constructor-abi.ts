@@ -119,7 +119,7 @@ describe("Q62 DA redeemer constructor ABI", () => {
   });
 
   it("abi 3 — the apply redeemer carries the governed-params reference index", () => {
-    // The field D-DA4 adds. Without it the apply handler has no way to reach
+    // The added field. Without it the apply handler has no way to reach
     // the current DA params, which is precisely how rotation stayed
     // non-retroactive.
     // The pooled-bond apply (#688 register C3) appends the pool reference and
@@ -232,7 +232,7 @@ describe("Q62 rotation predicate", () => {
   });
 
   it("predicate 3 — a governed threshold change strands the attestation even on an unchanged committee", () => {
-    // The second strand condition D-DA4 introduced. Apply requires both frozen
+    // The second strand condition. Apply requires both frozen
     // values to still match, so a threshold-only update makes an attestation
     // unappliable; if the predicate ignored the threshold there would be no
     // rescue for it and its ADA would be locked for good.

@@ -66,7 +66,7 @@ export type Obligation = Readonly<{
   /**
    * Keep this commit obligation record: until the commit is final or the
    * header is terminal. It governs the record only. The DA payload follows
-   * its own retention (plan §11, DA payloads: the retention window and a
+   * its own retention (the retention window and a
    * retirement proof deeper than k), never commit finality.
    */
   retainCommitRecord: boolean;

@@ -46,7 +46,7 @@ export const fetchRealStateQueueWitnessContext = (
   IntentJournal
 > =>
   Effect.gen(function* () {
-    // S5: the plan opens before the reads a scheduler refresh rests on.
+    // The plan opens before the reads a scheduler refresh rests on.
     const plan = yield* openPlan;
     const operatorKeyHash = yield* getOperatorKeyHash(lucid);
     const resolvedReferenceScripts =

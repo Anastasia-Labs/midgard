@@ -1,5 +1,5 @@
 /**
- * A signed own journal whose commit's intent row is gone (plan §8.3):
+ * A signed own journal whose commit's intent row is gone:
  *
  * - it is dead (`deadJournals`) only while the follower's facts hold no
  *   live queue node of its header: a block that landed and is not

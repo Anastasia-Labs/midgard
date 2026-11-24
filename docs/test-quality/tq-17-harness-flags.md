@@ -1,12 +1,11 @@
 # TQ-17 — Make emulator coverage boundaries explicit
 
 Status: Proposed
-Last reviewed: 2026-09-07 (semantic source review)
+Last reviewed: 2026-11-23 (cited harness sources)
 
-- **Audit section**: §12
 - **Rules**: R2, R3, R7, R9 in [principles](principles.md)
-- **Coordination**: TQ-06 improves refusal attribution; TQ-03 and TQ-15 cover
-  resource evidence and its live producers.
+- **Coordination**: TQ-06 improves refusal attribution; TQ-03 covers resource
+  evidence and its live producers.
 
 ## Problem and boundary
 
@@ -16,19 +15,12 @@ raised emulator limit can permit semantic exploration without proving real L1
 publication fit. The suite name and acceptance report must state which
 boundaries actually ran.
 
-## Current source corrections
+## Current source facts
 
-- [Contract options](../../demo/midgard-fault-proofs/tests/support/emulator/contracts.ts)
-  currently default `alwaysFraudProofCatalogue` and `alwaysStateQueue` to
-  `false`. Individual suites opt into substitutes. The old claim of a blanket
-  always-successful default is inaccurate; inspect each harness construction
+- [Contract options](../../demo/midgard-fault-proofs/tests/support/emulator/contracts.build-minimal-fault-proof-contracts.ts)
+  default `alwaysFraudProofCatalogue` and `alwaysStateQueue` to `false`.
+  Individual suites opt into substitutes; inspect each harness construction
   and real-family option separately.
-- [Reference publication](../../demo/midgard-fault-proofs/tests/support/emulator/reference-scripts.ts)
-  no longer uses the cited `> 14_000` predicate. The current waiver compares
-  raw script size to `PROTOCOL_PARAMETERS_DEFAULT.maxTxSize`; the helper
-  measures the complete signed publication and enforces its margin unless
-  `oversized` is enabled. A waiver or named allowlist remains diagnostic and
-  cannot establish release fit, regardless of how it is selected.
 - [Catalogue registration](../../demo/midgard-fault-proofs/tests/support/emulator/catalogue-registration.test.ts)
   compares the registered entry with the harness's first-step script. This
   checks internal wiring. A claim about every real canonical family additionally

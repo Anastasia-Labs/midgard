@@ -1,11 +1,9 @@
 # TQ-08 — Remove literal self-checks without deleting regression coverage
 
 Status: Proposed
-Last reviewed: 2026-09-07 (semantic source review)
+Last reviewed: 2026-11-23 (cited tests)
 
-- **Audit sections**: §1.2 and non-provenance candidates in §1.1
 - **Rules**: R1, R5, R8 in [principles](principles.md)
-- **Coordination**: TQ-01 owns provenance; TQ-15 (done) consolidated fit evidence.
 
 ## Problem and boundary
 
@@ -15,8 +13,7 @@ production helper, a derived field, a checksum, or a property the current
 producer guarantees. Those checks can detect changes to the producer, damaged
 saved artifacts, or disagreements between projections.
 
-The older audit's counts and deletion list are investigation leads, not a
-verified set of redundant assertions. Review both operands and the consumer
+Review both operands and the consumer
 before proposing deletion.
 
 ## Source corrections
@@ -37,9 +34,6 @@ before proposing deletion.
   invoke `Data.to` with SDK schemas. Comparing honest and mutated encodings
   legitimately establishes that a mutation landed. That check alone does not
   prove on-chain refusal; keep the test name and surrounding claim precise.
-- The previously cited literal self-comparison in the native-script lifecycle
-  and reverse-checkpoint example have changed. Re-read current source before
-  reopening either candidate.
 
 ## Focused work
 
@@ -50,12 +44,7 @@ before proposing deletion.
    previously recorded one. Equality immediately after overwriting the file
    is not an independent freshness check, but other schema/semantic assertions
    in the same test may remain useful.
-3. Review the final direct fake-client DML assertion in
-   [public-retained-da-store.test.ts](../../demo/da-committee-node/tests/public-retained-da-store.test.ts).
-   It checks the test stub's simulated rejection. Earlier calls exercise the
-   production store and must not be discarded with it. A real PostgreSQL
-   read-only claim needs a real PostgreSQL boundary test.
-4. Preserve round trips, mutation sensitivity, deterministic encoding checks,
+3. Preserve round trips, mutation sensitivity, deterministic encoding checks,
    and independently stated artifact invariants unless equivalent coverage is
    demonstrated elsewhere.
 

@@ -13,7 +13,7 @@ import {
 } from "./queue-table.js";
 
 /**
- * The committee's retention pins on its follower (plan §11): the L1 history
+ * The committee's retention pins on its follower: the L1 history
  * a committee record will read again stays stored past the follower's
  * k-deep pruning while the record exists. The pins are the committee's own
  * records (class B: a rewind or a reset never touches them), in the

@@ -346,8 +346,7 @@ CLI provider calls have their own timeouts; the attempt limit is not a precise
 20-minute wall-clock guarantee. An invalid withdrawal does not enter the valid
 payout path. Diagnose `validity` and `validityDetail` instead.
 
-Do not require `payoutUtxoCount == 0` or a live `settlementOutRef` before
-continuing: the settlement worker may already have initialized or concluded
+Do not require a live `settlementOutRef` before continuing: the settlement worker may already have initialized or concluded
 this payout. `resolve-event-settlement-proof` can inspect an available
 settlement reference, but its absence after automatic consumption is not proof
 that merge failed.

@@ -162,7 +162,7 @@ export type ValueNotPreservedFixture = {
  * the header committed for the scenario carries that trie's root as
  * `prev_utxos_root`.
  *
- * `validity: "TxIsInvalid"` builds the §1.4 negative — a normal leaf with a
+ * `validity: "TxIsInvalid"` builds the negative — a normal leaf with a
  * non-zero validity code, which is no acceptance claim: l2TxMistag convicts
  * it, and this family must never, however unbalanced its value equation
  * looks.

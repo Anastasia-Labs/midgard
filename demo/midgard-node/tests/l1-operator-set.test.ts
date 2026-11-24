@@ -1,5 +1,5 @@
 /**
- * The node's operator set (NC14) and this operator's membership (D-N7) over
+ * The node's operator set and this operator's membership over
  * a follower store, on SQLite and Postgres, through the production hook.
  *
  * - After its first load the set reads only the rows a block changed: a

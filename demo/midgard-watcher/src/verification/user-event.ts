@@ -5,7 +5,7 @@ import { Data } from "@lucid-evolution/lucid";
 /**
  * A user event as the watcher's validation replay binds it: the deposit,
  * withdrawal or forced order an operator committed, read from the L1
- * follower's facts at a state-queue header's cutoff (W3). The record is
+ * follower's facts at a state-queue header's cutoff. The record is
  * descriptive; the capability below is the authority.
  */
 

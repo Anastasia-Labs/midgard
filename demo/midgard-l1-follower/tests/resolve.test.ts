@@ -1,5 +1,5 @@
 /**
- * Output resolution by outref (plan §12.3 steps 2 to 4) and the transaction
+ * Output resolution by outref and the transaction
  * decoder it trusts only through the id: the step order, what makes a step
  * fall through, the hash check on content answers, the transport adapter's
  * refusal mapping and the HTTP source's answer forms.
@@ -159,7 +159,7 @@ describe("decodeTransaction", () => {
   });
 });
 
-describe("resolveOutputs (§12.3 steps 2 to 4)", () => {
+describe("resolveOutputs", () => {
   const a = tx(3);
   const b = tx(4);
   const d = tx(5);

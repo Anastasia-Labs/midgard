@@ -91,6 +91,7 @@ state view (base state plus the accumulating patch):
 | Input resolves in current state              | `E_INPUT_NOT_FOUND`                                   |
 | Missing witness / observer authorization     | `E_MISSING_REQUIRED_WITNESS`                          |
 | Reference input or output decode failure     | `E_INVALID_OUTPUT`                                    |
+| Output reference script does not decode      | `E_SCRIPT_PROGRAM_ENCODING`                           |
 | Script execution failure                     | `E_NATIVE_SCRIPT_INVALID` / `E_PLUTUS_SCRIPT_INVALID` |
 | Output below its size-based minimum Ada      | `E_MIN_ADA`                                           |
 | Value not preserved                          | `E_VALUE_NOT_PRESERVED`                               |

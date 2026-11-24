@@ -4,7 +4,7 @@ import { type PreparedInputNoIdxOutput } from "./prepare-input-no-idx.midgard-tx
 import { prepareInputNoIdxFromTransactions } from "./prepare-input-no-idx.prepare-input-no-idx-from-transactions.js";
 
 /**
- * The security-grade entry point (§9.2/§9.1 output 7): an authenticated L1
+ * The security-grade entry point: an authenticated L1
  * header observation plus public retained-DA block evidence, and nothing else.
  *
  * `admitCanonicalEvidenceForProofBuild` re-runs both Q03 gates —

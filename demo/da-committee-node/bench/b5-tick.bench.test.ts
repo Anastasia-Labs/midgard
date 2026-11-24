@@ -22,7 +22,7 @@ import { QueueChain } from "../tests/l1-follower/queue-chain.js";
 import { SIM_QUEUE, SIM_SLOT_TIME } from "../tests/l1-follower/queue-sim.js";
 
 /**
- * B5 (plan §16.2), the tick half: one committee tick on the follower
+ * B5, the tick half: one committee tick on the follower
  * projections at Q = 1,000 queue nodes. A tick applies the next block (its
  * projection maintenance included) and reads the committee view (landed
  * queue, headers awaiting attestation, obligations) in one snapshot, with
@@ -32,8 +32,6 @@ import { SIM_QUEUE, SIM_SLOT_TIME } from "../tests/l1-follower/queue-sim.js";
  * headers, one block each, and nothing prunes: every closed queue row and
  * spent output of that history stays in the store. The tick must not slow
  * down with that history.
- *
- * The mutation and readiness halves of B5 belong to C2.
  */
 const K = 2_160;
 const PARAMETERS = { confirmationDepth: 15, securityParameter: K } as const;
@@ -54,7 +52,7 @@ const percentile = (values: readonly number[], p: number): number => {
 
 /**
  * The member's signed decisions: every queue header, and each merged header
- * while its merge is at most k deep (plan §11: a decision is kept to k after
+ * while its merge is at most k deep (a decision is kept to k after
  * its header is gone). `COMMITTEE_B5_SIGNED=all` keeps every merged header's
  * decision instead.
  */

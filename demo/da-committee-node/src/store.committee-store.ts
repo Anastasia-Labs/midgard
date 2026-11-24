@@ -237,7 +237,7 @@ export interface CommitteeStore {
   readRetirementSnapshot(): Promise<CommitteeRetirementSnapshot>;
   /**
    * Every L1 point and submission the stored records read again, as the
-   * follower's retention pin targets (plan §11).
+   * follower's retention pin targets.
    */
   readL1PinTargets(): Promise<CommitteePinTargets>;
   applyRetirementCertificate(
@@ -327,7 +327,7 @@ export interface CommitteeStore {
   listSignedDecisions(): Promise<readonly SignedHeader[]>;
   /**
    * Deletes the member's signed decision for each of `headerHashes` with
-   * the rows keyed by its header hash (plan §11, class B): every
+   * the rows keyed by its header hash (class B): every
    * availability signature, the decision outbox, the peer broadcasts, the
    * L1 submissions and the header's L1 observation; the header row and its
    * attestation candidates too, unless a payload is still retained for it.

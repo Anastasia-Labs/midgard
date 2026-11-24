@@ -6,7 +6,7 @@ root unless a line says otherwise, and anything longer than a few seconds
 under `nice -n 19` with a `timeout`.
 
 CI step names below are those in `.github/workflows/midgard-node-ci.yml` and
-`.github/workflows/aiken-ci.yml` as of 2026-09-25.
+`.github/workflows/aiken-ci.yml` as of 2026-11-23.
 
 ## 1. Presence
 
@@ -27,7 +27,7 @@ selector (`onchain/aiken/scripts/guard-focused-selector.mjs`) rather than a
 bare `aiken check -m`, which exits 0 when it collects nothing.
 
 Format your new `.ak` files the way "Run normalized Aiken auto-formatter
-check" does (`.github/workflows/aiken-ci.yml:183–187`): `aiken fmt` on each
+check" in `.github/workflows/aiken-ci.yml` does: `aiken fmt` on each
 file, then strip trailing whitespace; a second pass must change nothing. The
 CI step formats only tracked files, so an untracked file is not
 checked until it is committed.
@@ -35,7 +35,8 @@ checked until it is committed.
 ## 3. Blueprint
 
 The fault-proofs emulator tests load `onchain/aiken/plutus.json`
-(`demo/midgard-fault-proofs/tests/support/emulator/blueprints.ts:29`).
+(`realBlueprintPath` in
+`demo/midgard-fault-proofs/tests/support/emulator/blueprints.ts`).
 `contrib test` rebuilds it after an Aiken change (`deployment:build`, as CI
 does in "Build testnet Aiken blueprint"), or copies a matching one from
 another checkout; the suites' global setup refuses a stale one. Never commit

@@ -93,8 +93,6 @@ ordering, and manifest verification. Its native reference-script policy and the
 hub oracle's mint-policy spending credential are intentional adapters. Runtime
 family adapters retain submission-specific reference outrefs, metadata, and the
 native-execution accepted prelude without reimplementing chain recipes.
-`measureBlueprintValidatorBytes` remains a runtime measurement-only operation;
-its raw body must never be used as a deployable parameterized script.
 
 ## Availability challenge transactions
 

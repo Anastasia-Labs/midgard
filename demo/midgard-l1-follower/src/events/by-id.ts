@@ -1,5 +1,5 @@
 /**
- * One event's live Order by its id (NC13): settlement opens the deposit or
+ * One event's live Order by its id: settlement opens the deposit or
  * withdrawal it settles from the follower's facts by key, never by scanning
  * the list or its retention address.
  *

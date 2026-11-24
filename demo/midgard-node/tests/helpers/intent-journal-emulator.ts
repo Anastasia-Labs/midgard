@@ -1,5 +1,5 @@
 /**
- * The node's intent journal (§8.2) and S6 (§8.3) over a Lucid emulator:
+ * The node's intent journal and S6 over a Lucid emulator:
  * a Postgres follower store carrying the intent journal, the emulator's
  * landed transactions applied to it as blocks, and a node transport whose
  * mempool, submission and ledger-state answers are the emulator's.
@@ -150,7 +150,7 @@ export const attachIntentFollower = async (
     /** The own wallets tracked, seeded and journaled as own; `own`'s address by default. */
     ownWallets?: readonly Buffer[];
     /**
-     * The deployed protocol, tracked as the node tracks it (§8.2): its
+     * The deployed protocol, tracked as the node tracks it: its
      * validators' payment credentials and the hub oracle policy, with the
      * reference-script addresses seeded beside the own wallet. Its outputs
      * already on the emulator's ledger are seeded too, standing in for the

@@ -1,5 +1,5 @@
 /**
- * The operator directory the watchdog plans from (NC14): the operator set's
+ * The operator directory the watchdog plans from: the operator set's
  * lists, scheduler and hub oracle, the landed state queue's tail, and only
  * the retired nodes a planned tx needs, each read by its asset name. The
  * retired list is never read whole.
@@ -161,7 +161,7 @@ export const retiredInsertionAnchorIn = async (
  * The directory snapshot the watchdog plans from: the published set's lists,
  * scheduler and hub oracle and the landed queue's tail, with no retired
  * nodes (a planned retirement reads its anchor by asset name), and the
- * set's follower view (what a plan from it records under, S5), or why there
+ * set's follower view (what a plan from it records under), or why there
  * is none.
  */
 export const publishedDirectoryOf = (

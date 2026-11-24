@@ -2,7 +2,8 @@
 
 Status: Active
 
-Last reviewed: 2026-09-19 (production contract construction ownership).
+Last reviewed: 2026-11-23 (catalogue ID authority, watcher progress, correction
+and trust boundaries).
 
 ## End-to-end path
 
@@ -47,7 +48,7 @@ to use funding-wallet authority; prover consumption is a separate operation.
 
 [Manifest-bound family assembly](workflow-family-assembly.md) centralizes deployment
 identity, exact published references, prerequisites, and authenticated completion
-for 18 linear and 31 cursor families. Family-specific transaction construction and
+for every family. Family-specific transaction construction and
 historical recovery checks remain in their family modules.
 
 ## Watcher proof progress
@@ -85,22 +86,17 @@ Typed transport failures use capped exponential backoff, and temporary funding
 unavailability waits for another observation. Corrupt records and
 authentication failures remain actionable hard failures.
 
-Active execution decisions stay pinned in memory; a bounded recent cache covers
-late observations of completed objectives. A genuine cache miss opens a fresh
-authenticated journal snapshot, since another journal handle may have appended
-decisions since startup. Repeated completion checks reuse validated identities.
-Decision records are published atomically after their bytes are synced, so a
-concurrent authenticated reader sees only complete records.
-
 The chain is authoritative for proof progress. The queue journal records
 scheduling activity: a finished queue entry never proves completion of the
 objective. No separate persistent objective state machine is introduced.
 
 ## Catalogue and deployment identity
 
-`FRAUD_PROOF_CATALOGUE_CATEGORY_IDS` in
-`demo/midgard-sdk/src/fraud-proof/catalogue.ts` is the explicit ID authority.
-`FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` controls presentation, not ID derivation.
+`DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS` in
+`demo/midgard-core/src/deployment-manifest-identity/catalogue-roles.protocol-categories.ts`
+is the explicit ID authority; the SDK `catalogue.ts` re-exports it as
+`FRAUD_PROOF_CATALOGUE_CATEGORY_IDS`. The `_ORDER` list controls presentation,
+not ID derivation.
 Every deployed family uses its applied first-step spending-script hash as the
 catalogue leaf value. [Catalogue status](catalogue-status.md) owns the inventory.
 
@@ -165,9 +161,9 @@ the original state transition checks.
 `RemoveFraudulentBlockHeader` consumes authenticated state-queue ancestry and
 the permanent proof token, prunes descendants structurally across operator
 rotation, removes the target header, and routes the exact slash/reward outputs.
-The SDK derives a digest-bound correction transition. The node reopens
-journaled transactions and L1 events transactionally after confirmed
-correction.
+The SDK derives a digest-bound correction transition. Once the removal lands,
+the node's landed-block rebase reopens the removed blocks' transactions and L1
+events.
 
 The routing logic and compiled economics are non-zero. The testnet profile uses
 a 900 ADA required bond, 500 ADA slash penalty, 400 ADA prover reward, and
@@ -176,8 +172,8 @@ a 900 ADA required bond, 500 ADA slash penalty, 400 ADA prover reward, and
 conservation, and duplicate-claim idempotency remain release gates.
 
 An unattested commitment anywhere in the pending queue has a separate no-slash
-correction path once the transaction's inclusive lower bound reaches its
-immutable header end time plus one hour. Its immediate predecessor may be the
+correction path once the transaction's inclusive lower bound reaches the
+queue node's block time plus `da_attestation_timeout_v1`. Its immediate predecessor may be the
 confirmed root or an immature queued commitment. Both the target and its queue
 links are authenticated by the state-queue policy.
 
@@ -191,9 +187,8 @@ Idle. The earlier prefix remains intact; maturity is not a prerequisite for
 discarding the suffix. Attested targets and premature removal reject.
 
 The operator node scans all pending commitments and drives this permissionless,
-resumable action; the watcher observes and alerts. Recovery retains signed
-attempts before submission, reconciles their exact effects against the canonical
-chain, and rebuilds only when the previous attempt is definitively invalidated.
+resumable action; the watcher observes and alerts. Each tick reads the queue
+and correction lock from L1 and builds the next step.
 Availability-challenge timeout removal retains its separate head-only rules.
 This DA/liveness remedy does not prove fraud or slash the operator.
 
@@ -212,12 +207,10 @@ establish runtime readiness or successful challenge acceptance.
 - Genesis must publish the intended applied first-step hashes and reference
   scripts; the immutable catalogue cannot repair a bad deployment.
 - Challengers require authentic evidence for the full challenge window.
-- DA attestation does not by itself provide an on-chain remedy for post-
-  attestation withholding.
-- Availability-challenge publication remains a release gate. Its
-  [size plan](size-plans/availability-challenge.md) owns the dated measurements
-  and required redesign; complete signed publication and lifecycle acceptance
-  must establish that the remedy can be deployed.
+- Post-attestation withholding is remedied by the availability challenge
+  ([operations](availability-challenge-operations.md),
+  [size plan](size-plans/availability-challenge.md)); its live acceptance is a
+  release gate.
 
 - The aggregate reserve remains an optimistic invariant protected by timely
   fault detection and correction.

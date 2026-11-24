@@ -30,7 +30,7 @@ export type RealStateQueueWitnessContext = {
   readonly stateQueueSpendingScriptRef?: UTxO;
   readonly stateQueueMintingScriptRef?: UTxO;
   readonly stateQueueCommitYieldScriptRef: UTxO;
-  /** The operator wallet view's UTxOs (§8.5), read after scheduler alignment. */
+  /** The operator wallet view's UTxOs, read after scheduler alignment. */
   readonly operatorWalletInputs: readonly UTxO[];
 };
 

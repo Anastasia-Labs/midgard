@@ -1,6 +1,6 @@
 /**
- * The working-ledger rebase onto the processed landed blocks (plan §7.3,
- * N3): after a landed block is processed (foreign or this node's own), or
+ * The working-ledger rebase onto the processed landed blocks:
+ * after a landed block is processed (foreign or this node's own), or
  * a rollback removed one the working ledger held, the follower-change driver's recompute
  * (`services/l1-follower.recompute.ts`) moves the native MPF to the
  * target's root and recomputes `mempool_ledger` and the event statuses from

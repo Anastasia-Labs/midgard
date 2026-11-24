@@ -5,7 +5,7 @@
  * until someone runs the CLI verbs by hand.
  *
  * Directory: the tick plans from the operator set the follower-change driver
- * publishes (`Globals.OPERATOR_SET`, NC14): the registered and active lists,
+ * publishes (`Globals.OPERATOR_SET`): the registered and active lists,
  * the scheduler, the hub oracle and the landed state queue's tail, brought
  * up to date from the facts that changed. The retired list is never read
  * whole; a forced retirement reads only its insertion anchor, by asset name.
@@ -149,7 +149,7 @@ export const makeOperatorWatchdogTick = <R = never>(
     const contracts = yield* MidgardContracts;
     const globals = yield* Globals;
 
-    // The L1 `slotNow` (plan §3.6) both gates the deferral and dates every
+    // The L1 `slotNow` both gates the deferral and dates every
     // decision below; while it is unknown the tick does nothing and the next
     // one retries.
     const slotNow = yield* Effect.either(l1SlotNow(lucid.api));
@@ -201,7 +201,7 @@ export const makeOperatorWatchdogTick = <R = never>(
         "state_queue_unavailable",
         "the landed state queue has no strike facts",
       );
-    // S5: a plan from the published set records under the set's view.
+    // A plan from the published set records under the set's view.
     const intentPlan = intentPlanAt(directory.view);
     citationFailures = citationFailuresAt(
       citationFailures,

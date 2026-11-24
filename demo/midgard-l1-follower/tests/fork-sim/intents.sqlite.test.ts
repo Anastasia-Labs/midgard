@@ -29,11 +29,11 @@ const total = (all: readonly IntentSimStats[]) => ({
 });
 
 /**
- * §15 I1 on the F8 simulator (SQLite): after every event the derived intent
+ * On the fork simulator (SQLite): after every event the derived intent
  * statuses equal those over a fresh replay, with prune on; a rollback
  * writes nothing to the journal (a landed intent it un-lands is live
  * again); S6 sends only a live intent's journaled bytes, never a dead one.
- * §15 I5: a rewind between plan and record makes the record
+ * A rewind between plan and record makes the record
  * `stale_at_write` exactly when the planned view is gone, and a rewind
  * between record and submit holds the send exactly then; a view whose
  * point survived an unrelated rewind is accepted at both.

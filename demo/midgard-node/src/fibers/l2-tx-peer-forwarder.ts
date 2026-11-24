@@ -54,7 +54,7 @@ import { MidgardContracts } from "../services/midgard-contracts.make-midgard-con
 
 /**
  * A full body (about 890 small txs) is checked and admitted in about 0.25 s
- * at worst on a single check worker (M3, 2026-11-08), so 10 s is 40x
+ * at worst on a single check worker (measured 2026-11-08), so 10 s is 40x
  * headroom; a peer slower than that is stuck, and the lane backs off and
  * catches up by inventory. Below the receiver's own 30 s request bound
  * (`listen-public-http`).

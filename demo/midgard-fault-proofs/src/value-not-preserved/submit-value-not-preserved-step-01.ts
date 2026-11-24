@@ -1,5 +1,5 @@
 /**
- * `value-not-preserved` step-01 submitter (offchain plan §4).
+ * `value-not-preserved` step-01 submitter.
  *
  * Binds the challenged, operator-ACCEPTED transaction out of the challenged
  * block's counted `transactions_root` via the one blessed binding path

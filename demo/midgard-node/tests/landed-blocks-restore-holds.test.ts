@@ -1,5 +1,5 @@
 /**
- * The landed-block rebase's native restore (N4, plan §1.4 "MPF interim"):
+ * The landed-block rebase's native restore:
  * a durable root off the target chain is restored with the native owner's
  * `restoreCanonicalRoot`, once per rewind, and every refusal is a named
  * hold with the process up (`restore-holds.ts`), never a halt.

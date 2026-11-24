@@ -16,7 +16,7 @@ import {
 } from "../support/l1-follower-raw-reads-fixture.js";
 
 /**
- * Behaviour of the follower-backed raw reads (ticket W1) once pruned, on a hand-built
+ * Behaviour of the follower-backed raw reads once pruned, on a hand-built
  * simulator chain (`l1-follower-raw-reads-fixture.ts`). The oracle is the
  * simulator's own transaction specs: the exact bytes an output must read
  * back as come from the spec's encoding, never from the store.

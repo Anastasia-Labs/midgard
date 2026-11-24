@@ -2,7 +2,7 @@
  * Wallet funding preflight for operator lifecycle commands. Every command that
  * locks a bond or pays a fee runs this first, so an underfunded wallet gets a
  * shortfall figure instead of a failed transaction build. It measures the
- * wallet view (plan §8.5) the build selects from and the signature covers.
+ * wallet view the build selects from and the signature covers.
  */
 import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
@@ -51,7 +51,7 @@ export class OperatorFundingShortfall extends Error {
  * An operator-lifecycle build was handed no wallet input. It is refused
  * rather than built: lucid's coin selection reads the provider's wallet when
  * `presetWalletInputs` is empty, which can spend an output a live intent
- * already spends (plan §8.5). The wallet is not ready to fund the command; a
+ * already spends. The wallet is not ready to fund the command; a
  * later attempt may succeed once the view holds an output.
  */
 export class OperatorWalletInputsEmpty extends Error {
@@ -230,7 +230,7 @@ export const requireOperatorFundingProgram = (
   });
 
 /**
- * The selected wallet's view (§8.5) as the explicit `walletInputs` an
+ * The selected wallet's view as the explicit `walletInputs` an
  * operator-lifecycle builder selects coins and collateral from. An empty view
  * is refused by name (`wallet_view_empty` in the cause). The builder does not
  * rely on that: it completes through `presetOperatorWalletInputs`, which

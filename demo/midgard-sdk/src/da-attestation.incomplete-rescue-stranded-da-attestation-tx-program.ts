@@ -35,8 +35,7 @@ import {
 } from "./tx-context-redeemer.js";
 
 /**
- * Refunds an attestation that a mid-flight committee rotation stranded
- * (decision row D-DA5 clause c).
+ * Refunds an attestation that a mid-flight committee rotation stranded.
  *
  * The transaction burns the DAAT and pays the attestation's entire remaining
  * value to one address. There is no state-queue leg: a stranded attestation is

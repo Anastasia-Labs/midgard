@@ -1,20 +1,19 @@
 # TQ-03 — Calibrate timeouts and state each execution-budget basis
 
 Status: Proposed
-Last reviewed: 2026-09-07 (configuration and ledger review)
+Last reviewed: 2026-11-23 (configuration and suite limits)
 
-Audit: §12, §10, §7.1. Rule: R9. Related: TQ-15.
+Rule: R9.
 
 ## Problem and current evidence
 
-The fault-proof Vitest configuration and shared preset do not set a package
-`testTimeout`. Suites without a local override can inherit Vitest's default,
+The fault-proof Vitest configuration does not set a package `testTimeout`. Suites without a local override can inherit Vitest's default,
 while others explicitly allow long emulator runs. A timeout is a hang-detection
 allowance, not measured runtime or a sum of expected CI duration.
 
-The zero-input lifecycle suite checks the hard 16.5M memory / 10G CPU
-limits; the network-id lifecycle suite checks 13.2M / 8G, a 20% headroom
-basis. These are not automatically contradictory measurements of the same
+The zero-input wrongful-rejection lifecycle suite checks the hard 16.5M
+memory / 10G CPU limits; the min-fee wrongful-rejection lifecycle suite checks
+13.2M / 8G, the 20% reserve basis. These are not automatically contradictory measurements of the same
 contract. The issue is whether the suite clearly states and enforces the
 required hard-fit or reliability-margin claim.
 

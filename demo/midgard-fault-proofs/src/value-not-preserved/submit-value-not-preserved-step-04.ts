@@ -1,5 +1,5 @@
 /**
- * `value-not-preserved` step-04 submitter (offchain plan §4): the proven
+ * `value-not-preserved` step-04 submitter: the proven
  * conservation violation finalizes — the computation-thread NFT burns and
  * the permanent fraud-proof token mints to the fraud-proof address under the
  * generic finalization validations.

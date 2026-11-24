@@ -1,9 +1,8 @@
 # TQ-14 — Review mocks and test seams against their claimed behavior
 
 Status: Proposed
-Last reviewed: 2026-09-07 (semantic source review)
+Last reviewed: 2026-11-23 (cited tests)
 
-- **Audit section**: §6
 - **Rules**: R2, R3, R10 in [principles](principles.md)
 
 ## Problem and boundary

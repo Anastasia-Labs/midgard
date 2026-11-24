@@ -1,6 +1,5 @@
 /**
- * The decision driver over a store reset (lane SI, ruling SI-R2; lane
- * SI-fix, ruling SIFIX-R1): the start that resets the store tells the
+ * The decision driver over a store reset: the start that resets the store tells the
  * driver as a rewind to the origin; a driver that was not subscribed (a
  * reset at a start before it subscribed, a rewind its process stopped
  * before handling) pulls it from the rollback log by generation, once; and

@@ -31,7 +31,7 @@ import type { SubmitStep01TxInclusion } from "../../src/step-support.js";
 import type { TransitionTraceReconstruction } from "../../src/transition-trace/reconstruct.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
 
-// ## Policy (§4.3, defaults per §10 Q5)
+// ## Policy
 
 export type NativeScriptDecodingProverPolicy = {
   /**
@@ -172,7 +172,7 @@ export type NativeScriptDecodingProverDeps = {
   readonly publishCarriage?: boolean;
 };
 
-// ## Outcome (§4.3: data, not exceptions)
+// ## Outcome (data, not exceptions)
 
 export type NativeScriptDecodingProofOutcome =
   | {

@@ -4,7 +4,7 @@ description: "The HTTP routes exposed by the Midgard node: unauthenticated route
 ---
 
 The `listen` command starts the node's HTTP server together with its configured background
-fibers. Every route below is registered in `src/commands/listen-router.ts`.
+fibers. Every route below is listed in `src/commands/http/routes.ts`.
 
 ## Starting the listener
 
@@ -41,21 +41,21 @@ public-deployment work is listed under
 see [Request rate limits](#request-rate-limits).
 
 <Callout type="warn" title="Always set ADMIN_API_KEY on shared nodes">
-  `ADMIN_API_KEY` gates the admin-only HTTP surface (init, commit, merge, state
-  queue inspection, operator status, and log routes). Keep it set in any shared
-  or remotely reachable environment.
+  `ADMIN_API_KEY` gates the admin-only HTTP surface (init, commit, state queue
+  inspection, operator status, and log routes). Keep it set in any shared or
+  remotely reachable environment.
 </Callout>
 
 ## Public routes
 
 ### Health and readiness
 
-| Method | Route              | Purpose                                                                                                                                                                                                   |
-| ------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/healthz`         | Liveness only: confirms the server is running.                                                                                                                                                            |
-| `GET`  | `/readyz`          | Readiness: worker heartbeats, admission backlog/age, unfinished mutation jobs, unresolved block submissions, DB connectivity, provider reachability, and mutation-lease state. Returns `503` until ready. |
-| `GET`  | `/pipeline-status` | Admission, mempool and validation pipeline counts and age diagnostics.                                                                                                                                    |
-| `GET`  | `/protocol-info`   | Stable public facts external transaction builders need (includes the current slot).                                                                                                                       |
+| Method | Route              | Purpose                                                                                                                                                                                          |
+| ------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET`  | `/healthz`         | Liveness only: confirms the server is running.                                                                                                                                                   |
+| `GET`  | `/readyz`          | Readiness: worker heartbeats, admission backlog/age, unresolved block submissions, the L1 follower, DB connectivity, provider reachability, and mutation-lease state. Returns `503` until ready. |
+| `GET`  | `/pipeline-status` | Admission, mempool and validation pipeline counts and age diagnostics.                                                                                                                           |
+| `GET`  | `/protocol-info`   | Stable public facts external transaction builders need (includes the current slot).                                                                                                              |
 
 ### Transaction submission and status
 

@@ -1,5 +1,5 @@
 /**
- * `missing-signature` step-04 submitter (offchain plan §4.2, §5 frontier 3).
+ * `missing-signature` step-04 submitter.
  *
  * Opens witness field 7 (`address_witnesses`) through the §8.8 door — the
  * `WitnessAnchor` arm, checked against the thread-anchored

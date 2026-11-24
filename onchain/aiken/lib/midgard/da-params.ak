@@ -79,7 +79,7 @@ pub fn get_da_params(
 
   expect datum: DaParamsDatum = datum_data
 
-  // W-C15 / decision row D-DA4. Until this line the committee hash was taken on
+  // Until this line the committee hash was taken on
   // the datum's word: every consumer compared its own frozen
   // `committee_signers_hash` against a field that nothing here re-derived, so a
   // params datum carrying a rotated `committee` under the *pre-rotation* hash

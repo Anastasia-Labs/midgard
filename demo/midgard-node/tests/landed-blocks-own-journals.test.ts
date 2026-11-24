@@ -1,5 +1,5 @@
 /**
- * This node's block journals under whichever-lands-wins (plan §8.3, I3), on
+ * This node's block journals under whichever-lands-wins, on
  * the node database: their derived status, which unlanded journals are dead
  * and why, and the disposal of a dead journal's pending effects. Nothing
  * is written to a journal: each check below also reads its row back

@@ -180,7 +180,7 @@ _Avoid_: family table, workflow registry (that is the adapter registration set)
 **Family record**:
 One row of the family application registry: the category, the roster of role
 to deployment-manifest contract name, the optional parts the family requires
-(replay context, validation challenge, historical native-script authority),
+(replay context),
 the callbacks that bind its config, construct its workflow and execute it,
 and whether the constructed workflow must carry the invocation's decision
 digest. Applying a record refuses when a required part is missing. Linear rows are derived from the

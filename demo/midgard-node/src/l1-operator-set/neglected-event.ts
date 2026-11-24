@@ -1,6 +1,6 @@
 /**
  * The undelivered user event a strike for inactivity cites, read from the
- * follower's projections at its tip (NC14): the earliest live deposit and
+ * follower's projections at its tip: the earliest live deposit and
  * withdrawal (`node_l1_events`) and tx order (`node_l1_forced_order_fields`)
  * whose inclusion time is after the state-queue tail's end time, by index
  * reads in inclusion order, never by walking a list. The SDK's

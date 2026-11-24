@@ -12,8 +12,9 @@
 - **Owner/approver:** repository owner (Philip DiSarro).
 - **Last semantic review:** 2026-08-09, with subsequent owner-approved errata
   incorporated in the affected sections. Git records their amendment history.
-- **Documentation maintenance:** 2026-09-07. Superseded measurement narratives
-  were removed; this maintenance did not change wire rules or rerun acceptance.
+- **Documentation maintenance:** 2026-11-23 for the implementation statements
+  of §§5.5, 8.2, 10.7, 10.9, 11 and 12; §13 is not covered. This maintenance
+  did not change wire rules or rerun acceptance.
 - **Version:** `native_tx_version_v1 = 1`. This is the sole pre-launch format;
   there is no compatibility path to the counted bounded-collection scheme.
 - **Carriage limits:** §8.3 defines the current constants and execution
@@ -482,13 +483,10 @@ native-script CBOR under the structure-scan bounds
 (`native_script_scan_v1` / `native-script.ts`), and
 `decode_canonical_output` is `None` for any output whose tag-0 payload is
 not — no descriptor exists for such an output, and no transaction carrying
-one is admissible into `transactions_root` as valid. (Ruled on #633.
-Delivery: decision 0005 R5 item 9 dropped out of the #617 wave under A3's
-ExUnits precondition — the measured one-shot cost is ~82x the
-[execution basis](protocol-decisions.md#execution-basis) at the reachable worst case — so the shipped one-shot decoder
-does not yet enforce this clause; enforcement rides the #633 re-ruling and
-the next regeneration. The staged machine (`ledger_output_proof_v1` →
-`native_script_scan_v1`) and the off-chain codec enforce it today.)
+one is admissible into `transactions_root` as valid. (Ruled on #633. The
+one-shot decoder `decode_canonical_output` does not enforce this clause; the
+staged machine (`ledger_output_proof_v1` → `native_script_scan_v1`) and the
+off-chain codec do.)
 
 ### 5.6 Mint items (field 5)
 
@@ -602,7 +600,7 @@ If the preimage fits one publication transaction (`preimage_len ≤ K`), it is
 published once as a **nothing-but-bytes inline datum** in a single output at
 the prover's own key address. Each consuming step references that output,
 hashes the whole preimage against the committed field hash, and slices.
-Execution costs and limits are recorded in §12.5. No certificate — the flat hash is directly checkable.
+§12.5 states the execution cost structure. No certificate — the flat hash is directly checkable.
 
 ### 8.3 Carriage constants
 
@@ -655,10 +653,10 @@ one-byte boundary controls; these are fixture-bound measurements.
 The current measurement input is the
 `fraud_proofs/q1x_spend_input_cardinality.test` entries of
 [`script-budgets.json`](../../demo/midgard-core/src/script-budgets.json), judged by
-[`script-budgets.mjs`](../../onchain/aiken/scripts/script-budgets.mjs). They measure the bounded steps
-that replaced direct absence walks at the admissible maximum: step-06 walks at
-most 64 script witnesses directly, and step-04 walks address witnesses in
-32-item batches with a checkpoint. Those readings do not show that a direct
+[`script-budgets.mjs`](../../onchain/aiken/scripts/script-budgets.mjs). They
+measure double-spend and missing-signature step-04 and no-input step-02 at one
+item and at the admissible maximum; missing-signature step-04 walks address
+witnesses in 32-item batches with a checkpoint. Those readings do not show that a direct
 whole-field walk fits at the admissible maximum; constraint 1 below still holds.
 They are paired harness costs, not complete signed-transaction fit.
 
@@ -1209,7 +1207,7 @@ both readers.
    §11.1 implementation MUST NOT answer "absent" without both halves of §11.1's
    evidence — the structural pass and the monotone floor — in place.
 7. §12's fault statements are held to items 4, 5 and 6 on the same terms:
-   §12.6 is their guard table and §12.5 identifies their measurement suites. Three
+   §12.6 is their guard table and §12.5 states their cost claims. Three
    §12-specific conditions join them. A statement MUST NOT carry preimage
    content, and the implementation MUST make that checkable rather than
    conventional — the wire length is a function of the named unit alone, and
@@ -1454,8 +1452,9 @@ is normative rather than structural.
 
 Measure walk costs in
 [`native-tx-machine-walk-v1.test.ak`](../../onchain/aiken/lib/midgard/native-tx-machine-walk-v1.test.ak)
-under the pinned compiler and GOAL*SPEC §3.3 basis. The
-`authenticate_once*\*` controls compare single-open access with repeated door
+under the pinned compiler and the
+[execution basis](protocol-decisions.md#execution-basis). The
+`authenticate_once_*` controls compare single-open access with repeated door
 opening while holding relocation work constant. They separate door cost from
 access-pattern cost; neither is a substitute for complete step-transaction fit.
 
@@ -1523,7 +1522,7 @@ attribute a refusal to one site rather than the other.
 
 ### 10.9 Current grammar-certification continuation
 
-The installed walk library extends the original direct-door API with an
+The walk library adds to the direct-door API an
 explicit grammar-certification phase for variable-width fields at all three
 carriage tiers. This implementation status qualifies the direct-view cost and
 availability limits in §§7–8, 10.2, and 12.5; it does not make a provisional
@@ -1557,8 +1556,8 @@ remains 53 bytes; neither checkpoint decoder nor constructor is public.
 The implementation and positive/refusal scenarios are in
 [`native-tx-machine-walk-v1.ak`](../../onchain/aiken/lib/midgard/native-tx-machine-walk-v1.ak)
 and its [seam suite](../../onchain/aiken/lib/midgard/native-tx-machine-walk-v1.test.ak),
-including the `grammar_*` cases. The original §10.8 guard inventory does not
-cover this added phase. Consumers and frozen-wire conformance channels must be
+including the `grammar_*` cases. The §10.8 guard inventory does not
+cover this phase. Consumers and frozen-wire conformance channels must be
 reviewed against the actual constructor inventory; source availability and
 library scenarios do not substitute for each installed family's measured
 lifecycle.
@@ -1581,19 +1580,18 @@ a different mechanism because each is a different shape:
 
 The reference implementation of case C is
 `onchain/aiken/lib/midgard/native-tx-script-pushdown-v1.ak`, with its seam
-suite at the same path plus `.test.ak`. Cases A and B have no implementation:
-their reference module, `native-tx-intra-item-v1.ak`, had no caller and was
-deleted when §5.5's key order became plain bytes (2026-10-12); it remains in
-git history. Sections 11.1, 11.2, 11.4 and 11.5 are the design an
-implementation of cases A and B must meet. The §6.2 predicate and its
+suite at the same path plus `.test.ak`. Cases A and B have no
+implementation: sections 11.1, 11.2, 11.4 and 11.5 are the design an
+implementation of them must meet. The §6.2 predicate and its
 recursive companion live in
 `onchain/aiken/lib/midgard/canonical-plutus-data-v1.ak`.
 
 All three interiors are three grammars spelled in one CBOR — a definite head of
 a known major type, minimal width, then bytes at an offset — so §6.1's
 one-grammar-one-verdict rule applies across them and not merely within each.
-The reference implementation reads all three through a single
-`onchain/aiken/lib/midgard/intra-item-bytes-v1.ak`; an implementation that gave
+The shared interior reader is
+`onchain/aiken/lib/midgard/intra-item-bytes-v1.ak`, which case C reads
+through; an implementation that gave
 each mechanism its own copy of the head reader would have three chances for one
 logical number to acquire a second spelling, and §11.5's guards 14–16 would have
 to be established three times over.
@@ -1870,8 +1868,7 @@ for §10.4's reason: the recursion stops at zero, so a negative budget would mea
 
 Use the `budget_*` controls in
 [`native-tx-script-pushdown-v1.test.ak`](../../onchain/aiken/lib/midgard/native-tx-script-pushdown-v1.test.ak)
-(and, for cases A and B, those of the deleted `native-tx-intra-item-v1.test.ak`)
-to measure these mechanisms under the pinned compiler and the
+to measure case C; cases A and B have no suite. Measure these mechanisms under the pinned compiler and the
 [execution basis](protocol-decisions.md#execution-basis).
 
 - Value-bookmark comparisons must separate the initial structural pass from
@@ -1893,29 +1890,32 @@ fit; a copied runner total is not current acceptance.
 §9's conformance item 6 requires every refusal on §11's operational paths to be
 either isolated by a vector or listed as a backstop with the check that makes it
 unreachable named, on the same terms §10.8 states for the walk. This is that
-list. **Thirty-six refusals: twenty-nine isolated, seven backstops.**
+list. **Thirty-six refusals.** Rows 1–20 are cases A and B, which have no
+implementation and so no vectors; rows 14–16 are also enforced by the shared
+interior reader that case C reads through, and no vector isolates them there.
+Rows 21–36 are case C: eleven isolated, five backstops.
 
 | #   | refusal                                                                                | isolated by / backstop because                                                                                                                                                                                                                                                                                                                     |
 | --- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | §5.5 — the output map head is `a2`/`a3`/`a4`                                           | `value_bookmark_refuses_a_non_output_map_head`                                                                                                                                                                                                                                                                                                     |
-| 2   | §5.5 — key `0`, the address, comes first                                               | `value_bookmark_refuses_a_first_key_that_is_not_the_address`                                                                                                                                                                                                                                                                                       |
-| 3   | §5.5 — the address wrapper is the two-byte `58 LL` form                                | `value_bookmark_refuses_a_non_two_byte_address_wrapper`                                                                                                                                                                                                                                                                                            |
-| 4   | §5.5 — the address payload is 29 or 57 bytes                                           | `value_bookmark_refuses_a_non_canonical_address_width`                                                                                                                                                                                                                                                                                             |
-| 5   | §5.5 — key `1`, the value, follows the address                                         | `value_bookmark_refuses_a_second_key_that_is_not_the_value`                                                                                                                                                                                                                                                                                        |
-| 6   | §5.5 — the value is the two-element `[coin, multiasset]`                               | `value_bookmark_refuses_a_value_that_is_not_a_pair`                                                                                                                                                                                                                                                                                                |
-| 7   | §5.5 — a policy id is 28 bytes                                                         | `value_bookmark_refuses_a_short_policy_id`                                                                                                                                                                                                                                                                                                         |
-| 8   | §5.5 — policy keys strictly increase                                                   | `value_bookmark_refuses_unordered_policies`, `value_bookmark_refuses_a_duplicate_policy`                                                                                                                                                                                                                                                           |
-| 9   | §5.5 — a policy group is non-empty                                                     | `value_bookmark_refuses_an_empty_policy_group`                                                                                                                                                                                                                                                                                                     |
-| 10  | §5.5 — an asset name is at most 32 bytes                                               | `value_bookmark_refuses_an_oversized_asset_name`                                                                                                                                                                                                                                                                                                   |
-| 11  | §5.5 — asset keys strictly increase within a group                                     | `value_bookmark_refuses_unordered_asset_names`                                                                                                                                                                                                                                                                                                     |
-| 12  | §5.5 — quantities are strictly positive                                                | `value_bookmark_refuses_a_zero_quantity`                                                                                                                                                                                                                                                                                                           |
+| 1   | §5.5 — the output map head is `a2`/`a3`/`a4`                                           | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
+| 2   | §5.5 — key `0`, the address, comes first                                               | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
+| 3   | §5.5 — the address wrapper is the two-byte `58 LL` form                                | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
+| 4   | §5.5 — the address payload is 29 or 57 bytes                                           | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
+| 5   | §5.5 — key `1`, the value, follows the address                                         | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
+| 6   | §5.5 — the value is the two-element `[coin, multiasset]`                               | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
+| 7   | §5.5 — a policy id is 28 bytes                                                         | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
+| 8   | §5.5 — policy keys strictly increase                                                   | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
+| 9   | §5.5 — a policy group is non-empty                                                     | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
+| 10  | §5.5 — an asset name is at most 32 bytes                                               | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
+| 11  | §5.5 — asset keys strictly increase within a group                                     | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
+| 12  | §5.5 — quantities are strictly positive                                                | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
 | 13  | §11.1 — the structural pass ends inside the item                                       | backstop: every read it makes goes through the shared reader below, which bound-checks before it reads, so a pass that would end past the item has already refused at the read that took it there. Kept, and not only for §9.5's reason: the scan's end offset has no other consumer, so an implementation that deletes this line deletes the pass |
-| 14  | §6.1 — an interior head is minimal-width                                               | `value_bookmark_refuses_a_non_minimal_interior_head`, `…_two_byte_head`, `…_four_byte_head`, `…_eight_byte_head` — one vector per wide form, because a bound that only runs at the width the fixtures happen to reach is a bound nobody has checked                                                                                                |
-| 15  | §6.1 — an interior head is one of the five definite widths                             | `value_bookmark_refuses_an_indefinite_interior_head`                                                                                                                                                                                                                                                                                               |
-| 16  | §6.1 — an interior head's major type is the one the call site names                    | `value_bookmark_refuses_an_interior_head_of_the_wrong_major_type`                                                                                                                                                                                                                                                                                  |
-| 17  | §5.5 — a lookup names a 28-byte policy id                                              | `value_quantity_refuses_a_short_policy_id`                                                                                                                                                                                                                                                                                                         |
-| 18  | §5.5 — a lookup names an asset name of at most 32 bytes                                | `value_quantity_refuses_an_oversized_asset_name`                                                                                                                                                                                                                                                                                                   |
-| 19  | §11.1 — the monotone floor                                                             | `value_bookmark_refuses_a_repeated_lookup`, `value_bookmark_refuses_a_backwards_lookup`                                                                                                                                                                                                                                                            |
+| 14  | §6.1 — an interior head is minimal-width                                               | no vector; isolating it needs one vector per wide form, because a bound that only runs at the width the fixtures happen to reach is a bound nobody has checked                                                                                                                                                                                     |
+| 15  | §6.1 — an interior head is one of the five definite widths                             | no vector                                                                                                                                                                                                                                                                                                                                          |
+| 16  | §6.1 — an interior head's major type is the one the call site names                    | no vector                                                                                                                                                                                                                                                                                                                                          |
+| 17  | §5.5 — a lookup names a 28-byte policy id                                              | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
+| 18  | §5.5 — a lookup names an asset name of at most 32 bytes                                | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
+| 19  | §11.1 — the monotone floor                                                             | no implementation (case A)                                                                                                                                                                                                                                                                                                                         |
 | 20  | §6.2 — a byte-string chunk is at most the chunk size                                   | backstop: the stitch is reached only through the §6.2 scan, which has already decided the chunked string and caps a chunk there, so the stitch never meets a longer one                                                                                                                                                                            |
 | 21  | §11.3 — a walk is opened over a non-empty payload                                      | `open_refuses_an_empty_payload`                                                                                                                                                                                                                                                                                                                    |
 | 22  | §11.3 — a payload is at most 2²⁴ − 1 bytes                                             | backstop: the cursor encoder asserts the same condition on the same field, which is a three-byte wire scalar, and §5.4's field byte bound is orders of magnitude below it — no §5-admissible payload reaches either. It is the line that notices if those two constants stop agreeing                                                              |
@@ -1934,7 +1934,7 @@ list. **Thirty-six refusals: twenty-nine isolated, seven backstops.**
 | 35  | §11.3 — `budget` is a count of steps                                                   | `run_refuses_a_negative_budget`                                                                                                                                                                                                                                                                                                                    |
 | 36  | §11.3 — a completed traversal consumed the payload exactly                             | `verdict_refuses_a_script_with_trailing_bytes`                                                                                                                                                                                                                                                                                                     |
 
-Four vectors in the suites are composites. They are marked as such and are not
+Four vectors in the case C suite are composites. They are marked as such and are not
 counted above, because each is the _natural_ shape of an attack and the
 isolating vector is the contrived one:
 
@@ -1945,10 +1945,9 @@ isolating vector is the contrived one:
   differently-shaped script is also a differently-sized one;
 - `run_refuses_more_nodes_than_the_bound` — 33 signatures under one `any` — is
   the ordinary shape of guard 26, and the child-count bound refuses it before
-  the running node count can. An earlier revision of this table cited that as
-  the reason guard 26 could not be isolated. It was wrong: a script gets big by
-  being _bushy_, not only by having one enormous node, and guard 26's vector is
-  49 nodes with no child count above sixteen.
+  the running node count can. Guard 26 is still isolable, because a script
+  gets big by being _bushy_, not only by having one enormous node: its vector
+  is 49 nodes with no child count above sixteen.
 
 Every "isolated by" row requires verification by neutralising the named check
 and confirming that exactly the listed vectors turn red. A backstop requires
@@ -1992,10 +1991,8 @@ inside them. This section says what a challenger **claims**, and it exists
 because the two layers below it make a much smaller claim possible than the
 counted scheme did.
 
-Sections 12.1–12.6 have no implementation. Their reference module,
-`native-tx-fault-statement-v1.ak`, had no caller and was deleted when §5.5's
-key order became plain bytes (2026-10-12); it remains in git history. They are
-the design an implementation must meet. Sections 12.7 and 12.8 are implemented
+Sections 12.1–12.6 have no implementation. They are the design an
+implementation must meet. Sections 12.7 and 12.8 are implemented
 by their registered families.
 
 ### 12.1 What a statement is
@@ -2024,8 +2021,7 @@ the `fault_item_predicate` form names no unit and is therefore a constant 55
 bytes whatever the field holds. And a single statement's wire bytes adjudicate
 the same logical fault in **two transactions that share no item at any index**,
 proving against both — which a witness carrying the fraudulent item could not
-do, since the item it carried would be wrong for one of the two. The seam suite
-runs exactly that, from one encoding decoded twice, rather than claiming it.
+do, since the item it carried would be wrong for one of the two.
 
 **A statement is an accusation, not state, and its type is public.** §10.6
 withholds `FieldWalkCheckpointV1`'s constructor because a caller that could
@@ -2090,7 +2086,7 @@ prohibited counted-scheme domains and neither §10.3's nor §11.3's.
 
 ### 12.3 Proving a single bad item
 
-`prove_item_fault` adjudicates a `fault_item_predicate` statement: is the item
+An item-fault adjudication decides a `fault_item_predicate` statement: is the item
 at `item_index` of `field_index` one the caller's predicate refuses?
 
 **Exactly one item is read.** The walk relocates to the named index — one
@@ -2165,9 +2161,8 @@ carries the residue itself; §12 does not pretend to.
 
 **The two sides are two types.** An implementation MUST NOT let one measurement
 stand for the other: the outputs fold's value is not a mint sweep's, they answer
-about different fields, and only one of them carries an order key. In the
-reference implementation `OutputUnitSweepV1` and `MintUnitSweepV1` are separate
-opaque types, which turns three of this section's conditions — an outputs fold
+about different fields, and only one of them carries an order key. Separate
+opaque types for the two sweeps turn three of this section's conditions — an outputs fold
 cannot be advanced by the mint sweep, a mint sweep cannot be advanced by the
 outputs fold, and the adjudication's two arguments cannot be exchanged — from
 runtime refusals into signatures.
@@ -2215,7 +2210,7 @@ adjacent machinery in §8.9's sense, outside this document — and a field that
 reached a commitment without satisfying it is faultable by the family that proves
 format faults, not by this one. A §12.4 verdict is therefore sound _relative to a
 field that satisfies §5.6_, and this sweep re-checks for free the part of that
-premise it can reach. §11.1's `sweep_to_unit` carries the identical residue one
+premise it can reach. §11.1's bookmark lookup carries the identical residue one
 level down, and neither is discharged by the other.
 
 **Budget exhaustion is not absence.** Each side's measurement carries whether it
@@ -2246,10 +2241,10 @@ the only way to obtain either of them.
 ### 12.5 Cost claims — the tier-2 per-step full-preimage re-hash
 
 A resuming tier-2 transaction must authenticate its own full preimage (§10.2).
-The `tier2_fixed_stride_*` and `tier2_variable_width_*` controls in the
-deleted `native-tx-fault-statement-v1.test.ak` measured one versus two door
-openings over the same boundary fixture. Compare the paired differences; their
-absolute runner cost includes fixture construction.
+No current suite measures this cost. A measurement compares one versus two
+door openings over the same boundary fixture, for a fixed-stride and a
+variable-width field, by paired differences, because absolute runner cost
+includes fixture construction.
 
 For fixed-stride fields, opening hashes the bytes and checks the count
 arithmetically. For variable-width fields, `whole_view` also walks every item to
@@ -2261,84 +2256,17 @@ carriage or trust an unauthenticated count.
 
 This is why §12.4's conservation sweeps are one invocation's work and have no
 wire form. A different bounded continuation needs its own authenticated state
-and fit evidence. Re-measure both fixture pairs against the release build before
-claiming a per-step budget; old runner totals are kept in Git rather than copied
-into this specification.
+and fit evidence. Measure both fixture pairs against the release build before
+claiming a per-step budget.
 
 ### 12.6 Guard coverage
 
 §9's conformance items 5 and 6 require every refusal on an operational path to
 be either isolated by a vector or listed as a backstop with the earlier check
-that makes it unreachable. This is that list for §12. **Thirty-eight refusals:
-twenty-one isolated, three composite, fourteen backstops.** Three further
-conditions are not refusals at all — the two sweep types discharge them at
-compile time. One of the three held a row here and keeps its number, marked; the
-other two are named in the note below the table.
-
-| #   | refusal                                                                                               | isolated by / backstop because                                                                                                                                                                                                                                                                                                     |
-| --- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | §12.1 — an item-fault statement names no unit                                                         | `encode_refuses_an_item_fault_that_names_a_unit`                                                                                                                                                                                                                                                                                   |
-| 2   | §12.1 — an item-fault statement claims no quantity                                                    | `encode_refuses_an_item_fault_that_claims_a_quantity`                                                                                                                                                                                                                                                                              |
-| 3   | §12.1 — a conservation statement names a 28-byte policy id                                            | `encode_refuses_a_short_policy_id`                                                                                                                                                                                                                                                                                                 |
-| 4   | §12.2 — the wire form has one admissible spelling (the decoder re-encodes and demands the input back) | `decode_refuses_an_unvalidated_wrapper_byte`                                                                                                                                                                                                                                                                                       |
-| 5   | §12.3 — the statement's field is the walk's                                                           | `item_fault_refuses_a_statement_about_another_field`                                                                                                                                                                                                                                                                               |
-| 6   | §12.3 — the code is an item-fault code                                                                | `item_fault_refuses_a_conservation_statement`                                                                                                                                                                                                                                                                                      |
-| 7   | §12.3 — the statement is well-shaped at adjudication                                                  | `item_fault_refuses_a_malformed_statement`                                                                                                                                                                                                                                                                                         |
-| 8   | §12.4 — an outputs sweep opens only on a field-2 walk                                                 | `conservation_refuses_a_walk_over_another_field` (composite: the guard is the first refusal, but §11.1's structural pass also declines a field-6 item, so the vector cannot attribute to one site)                                                                                                                                 |
-| 9   | §12.4 — a mint sweep opens only on a field-5 walk                                                     | `mint_unit_quantity_refuses_a_walk_over_another_field` (composite with guard 23, on the same terms)                                                                                                                                                                                                                                |
-| 10  | §12.4 — the code is a conservation code                                                               | `conservation_refuses_an_item_statement`                                                                                                                                                                                                                                                                                           |
-| 11  | §12.4 — the statement is well-shaped at adjudication                                                  | `conservation_refuses_a_malformed_statement`                                                                                                                                                                                                                                                                                       |
-| 12  | §5.6 — mint policy keys strictly increase                                                             | `mint_unit_quantity_refuses_an_unordered_field`                                                                                                                                                                                                                                                                                    |
-| 13  | §5.6 — a mint quantity is non-zero                                                                    | `mint_unit_quantity_refuses_a_zero_quantity`                                                                                                                                                                                                                                                                                       |
-| 14  | §10.4 — relocation is forward-only                                                                    | `item_fault_refuses_a_backwards_statement` (composite with §10.8 guard 19, which it re-uses rather than re-establishes)                                                                                                                                                                                                            |
-| 15  | §12.2 — the quantity element's `49` wrapper                                                           | backstop: guard 4's re-encode produces that byte, so an input carrying any other cannot equal it                                                                                                                                                                                                                                   |
-| 16  | §12.2 — the sign byte is `00` or `01`                                                                 | backstop **confirmed by neutralisation**: removing it turns nothing red, because guard 4's re-encode spells the sign from the decoded value's own sign. `decode_refuses_a_non_canonical_spelling` is the composite vector over the pair                                                                                            |
-| 17  | §12.2 — `claimed`'s magnitude fits eight bytes                                                        | backstop: the wire scalar's construction domain, kept for §7.3's reason — a wider number fails inside the integer-to-bytes builtin with nothing attributable said                                                                                                                                                                  |
-| 18  | §12.2 — a name encoding is at most 32 bytes                                                           | backstop: guards 1–3's shape rule already fixes both names, one step earlier and on the same values                                                                                                                                                                                                                                |
-| 19  | §12.4 — the outputs fold's unit is a 28-byte policy id                                                | backstop: §11.1's own lookup asserts the same condition on the same value (§11.5 guard 17)                                                                                                                                                                                                                                         |
-| 20  | §12.4 — the outputs fold's asset name is at most 32 bytes                                             | backstop: same, §11.5 guard 18                                                                                                                                                                                                                                                                                                     |
-| 21  | §12.4 — the mint sweep's unit is a 28-byte policy id                                                  | backstop: the §5.6 item's own policy width (guard 23) refuses every group the request could match, so a malformed request answers absent rather than wrongly                                                                                                                                                                       |
-| 22  | §12.4 — the mint sweep's asset name is at most 32 bytes                                               | backstop: the group scan's own name bound (guard 25) on the values it compares against                                                                                                                                                                                                                                             |
-| 23  | §5.6 — a mint item is `82 ‖ 58 1C policy_id ‖ …`                                                      | backstop: the item reached the sweep through §10's `walk_next`, and a field-5 item that is not this shape has no §5.6 spelling at all; kept as the line that notices if §5.6 and this reader stop agreeing                                                                                                                         |
-| 24  | §5.6 — a policy group is non-empty                                                                    | backstop: §5.5/§5.6's encoders give an empty group no spelling, and §11.5 guard 9 isolates the same condition one level down                                                                                                                                                                                                       |
-| 25  | §5.6 — a mint asset name is at most 32 bytes                                                          | backstop: §11.5 guard 10 isolates the same condition on the same grammar                                                                                                                                                                                                                                                           |
-| 26  | §5.6 — asset keys strictly increase within a group                                                    | backstop: §11.5 guard 11 isolates the same condition on the same grammar                                                                                                                                                                                                                                                           |
-| 27  | §12.4 — a fold's budget is a count of items                                                           | backstop: §10.8 guard 20 isolates the same condition on `walk_fold`, and these folds stop on the same zero                                                                                                                                                                                                                         |
-| 28  | §12.4 — a mint sweep's budget is a count of items                                                     | backstop: same                                                                                                                                                                                                                                                                                                                     |
-| 29  | §12.3 — the statement's transaction is the walk's                                                     | `item_fault_refuses_a_statement_about_another_transaction`                                                                                                                                                                                                                                                                         |
-| 30  | §12.4 — both sweeps were taken over the accused transaction                                           | `conservation_refuses_sweeps_of_another_transaction`                                                                                                                                                                                                                                                                               |
-| 31  | §12.4 — both sweeps are about the statement's own unit                                                | `conservation_refuses_a_sweep_about_another_unit`                                                                                                                                                                                                                                                                                  |
-| 32  | §12.4 — the outputs argument is an outputs sweep and the mint argument a mint sweep                   | **not a refusal**: `asset_conservation_fault_is_proven` takes an `OutputUnitSweepV1` and a `MintUnitSweepV1`, so a transposed call does not compile. `conservation_refuses_the_two_sides_transposed` was this row's vector and has been deleted — a `fail` test cannot be written against a type error                             |
-| 33  | §12.4 — the adjudication refuses an unfinished mint sweep                                             | `conservation_refuses_a_budget_exhausted_mint_sweep`                                                                                                                                                                                                                                                                               |
-| 34  | §12.4 — the adjudication refuses an unfinished outputs fold                                           | `conservation_refuses_a_budget_exhausted_outputs_fold`                                                                                                                                                                                                                                                                             |
-| 35  | §12.4 — an unfinished sweep will not report a quantity                                                | `conservation_refuses_the_running_total_of_an_unfinished_fold` and `mint_unit_quantity_refuses_a_budget_exhausted_sweep`, on the two sides                                                                                                                                                                                         |
-| 36  | §5.6 — mint policy keys strictly increase **across budget rounds**                                    | `mint_unit_quantity_refuses_an_unordered_field_across_budget_rounds` (guard 12 is the single-round vector; this is the one an order key scoped to a single `sweep_mint_unit` call would not catch. Renamed from `…_across_steps`: a sweep does not cross a step, and the old name claimed a protocol this section does not have)   |
-| 37  | §12.4 — a sweep begins at item 0 of its field                                                         | `conservation_refuses_a_fold_opened_past_the_start` and `mint_unit_quantity_refuses_a_sweep_opened_past_the_target`, on the two sides. The mint vector is the sharp one: opened one `walk_skip` past the accused policy's group, a neutralised sweep returns `is_final` with a fabricated `0` that guards 30, 31 and 33 all accept |
-| 38  | §12.1 — a conservation statement's `field_index` has one spelling                                     | `encode_refuses_a_conservation_statement_that_names_another_field` and `conservation_refuses_a_statement_that_names_another_field`, at the encoder and at the adjudication                                                                                                                                                         |
-| 39  | §12.1 — a conservation statement's `item_index` has one spelling                                      | `encode_refuses_a_conservation_statement_that_names_a_starting_item` and `conservation_refuses_a_statement_that_names_a_starting_item`, on the same two seams                                                                                                                                                                      |
-
-Guard coverage must be re-established when a refusal or fixture changes;
-this table does not retain prior mutation-run results.
-
-`accumulate_output_unit` takes an `OutputUnitSweepV1`, and `sweep_mint_unit`
-takes a `MintUnitSweepV1`. Interchanging the sweep kinds is a type error.
-
-Guards 8 and 9 have composite coverage: the structural pass and item shape can
-refuse the same fixtures after the field guard. Guard 16 is a backstop for the
-sign-byte condition. Guards 37–39 each require coverage at both seams named in
-the table; one vector cannot establish the other seam's refusal.
-
-Backstops 15, 17 and 18 are preceded by guard 4's re-encode or guards 1–3's shape
-rule. Neutralising one alone cannot distinguish a backstop from unreachable
-code. Cross-section backstops 19–28 also need their named upstream checks
-reviewed. These remain verification obligations, not measured acceptance.
-
-Two families of assertion are not itemised, for §10.8's and §11.5's reason —
-they are the construction domain of a value another guard already fixes, and no
-fixture can attribute a refusal to one site rather than the other: the range
-assertions inside `fault_statement_shape_is_exact` that guards 1–3 and 7/11
-already run, and the offset and length bounds in the shared interior reader
-(§11.5's second family), which run on every read this section makes.
+that makes it unreachable. Sections 12.1–12.6 have no implementation, so this
+section holds no guard table; an implementation of them supplies one on
+§10.8's terms. Three §12.4 conditions are not refusals: the two sweep types
+discharge them at compile time (§12.4, "The two sides are two types").
 
 ### 12.7 Canonical decodability of a committed field preimage
 
@@ -2607,11 +2535,9 @@ Five further conditions are normative:
   fields 0/1 and 3/4 commit identically for identical content — does not
   weaken this, because aliased slots commit the _same bytes_ and a
   non-envelope convicted under either index is a non-envelope under both.
-- **All three §8 tiers are admissible, at all nine fields.** Tier 3 was
-  admissible for the witness-set fields here even while erratum E2's limit-3
-  refusal held them shut at the lazy door (a distinction the #606 repair has
-  since dissolved — the lazy door now admits them too, through the welded
-  `field_hash` equality), and the reason is the same one §8.11 gives for the
+- **All three §8 tiers are admissible, at all nine fields.** The lazy door
+  admits the witness-set fields at tier 3 through the welded `field_hash`
+  equality; this path admits them for the same reason §8.11 gives for the
   tx-order mint: this path materialises the chunks and hashes the
   concatenation once against the committed commitment, so the §8.6 manifest
   authenticates nothing about content and a substituted chunk changes the
@@ -2946,9 +2872,8 @@ committed commitment, so a §8.6 manifest authenticates nothing about content
 and a substituted chunk changes the hash. That argument is inherited rather
 than re-derived — this family reuses §12.7's door entry point unchanged, and
 its own tier-3 vector is taken at a body field, so the witness-set half of the
-claim rests on §12.7's reasoning (the carve-out §8.3 erratum E2 used to make
-for this path is moot since #606 resolved limit 3 — every door admits the
-witness-set fields under tier 3 now).
+claim rests on §12.7's reasoning; every door admits the witness-set fields
+under tier 3.
 
 **The §5.4 shape has a defense-in-depth rule and no above-bound proof
 obligation.** [Decision 0006](../fault-proofs/decisions/0006-da-attestation-transaction-size-admission.md)

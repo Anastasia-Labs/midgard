@@ -2,7 +2,7 @@ import type { Dialect, SqlTx, SqlValue } from "../sql/backend.js";
 import type { View } from "../types.js";
 import { readCursor } from "./rows.js";
 
-/** The current view V = (g, P_b) (§8.1), read in the caller's transaction. */
+/** The current view V = (g, P_b), read in the caller's transaction. */
 export const currentViewIn = async (
   tx: SqlTx,
   dialect: Dialect,
@@ -18,7 +18,7 @@ export const currentViewIn = async (
 };
 
 /**
- * The §8.1 validity check as one statement. Returns one row with a `valid`
+ * The view validity check as one statement. Returns one row with a `valid`
  * column (boolean on Postgres, 0/1 on SQLite). On Postgres the statement
  * takes `FOR SHARE` on the cursor row, so a rewind cannot commit between
  * the check and the guarded write; on SQLite the caller's transaction must
@@ -35,7 +35,7 @@ const viewValidQuery = (
 });
 
 /**
- * `viewValid(V)` (§8.1) in the caller's transaction: no rewind since V was
+ * `viewValid(V)` in the caller's transaction: no rewind since V was
  * read, or V's point is still on the stored chain.
  */
 export const viewValidIn = async (

@@ -86,8 +86,8 @@ const committeeViewOf = (
   });
 
 /**
- * The committee projection with its simulator traffic and §5.5 checks (plan
- * CP and P1 rows). A member signs every header the projection reports
+ * The committee projection with its simulator traffic and checks. A member
+ * signs every header the projection reports
  * signable, keeping each decision forever (class B, never rewound). After
  * every event it checks, against the oracle:
  *
@@ -302,7 +302,7 @@ const checkView = (
 };
 
 /**
- * The committee's fork cases (plan CP, P1; C1 acceptance from L1): a signed
+ * The committee's fork cases: a signed
  * header rolled back by 1, cd, cd + 1 and k blocks, each followed by a long
  * enough new branch that the old header becomes provably unable to land and
  * its sibling becomes final.

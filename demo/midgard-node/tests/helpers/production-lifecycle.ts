@@ -1,6 +1,6 @@
 /**
- * The node's production pieces over an actual deployment on the emulator
- * (N1): the follower host following the emulator (`emulator-l1-follower.ts`)
+ * The node's production pieces over an actual deployment on the emulator:
+ * the follower host following the emulator (`emulator-l1-follower.ts`)
  * and the production follower's composition (`followerTick`) with the
  * follower-change driver over it (`makeEmulatorDriver`): its sink, its
  * recompute with the node's startup preparation (`prepareNodeOnStartup`)

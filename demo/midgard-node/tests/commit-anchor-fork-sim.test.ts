@@ -1,5 +1,5 @@
 /**
- * The commit anchor under the follower's fork simulator (plan §8.1): at
+ * The commit anchor under the follower's fork simulator: at
  * every chain-sync event a commit is planned at the follower's view P with
  * the anchor A, the block d below P, and the end-time cap
  * time(A) + event_wait - 1 (`commitAnchorCapMs`). Every event the cap

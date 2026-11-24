@@ -13,7 +13,7 @@ import { readCursor } from "./rows.js";
 import { readWriterStateIn, storeLocked } from "./writer-state.js";
 
 /**
- * The classes reset deletes (§5.1). Class B (own signed material) is never
+ * The classes reset deletes. Class B (own signed material) is never
  * deleted. Class C (immutable, content-addressed: `l1_scripts`, foreign
  * payloads) is kept: a row is correct for any chain, is kept while
  * referenced, and prune removes it once no retained row references it.
@@ -162,7 +162,7 @@ export const resetIn = async (
       "UPDATE l1_follower_tracked_set SET replaying = 1 WHERE id = 1",
     );
   if (dialect.name === "postgres")
-    // Delivered on commit, like a rewind's (§7.1 step 7).
+    // Delivered on commit, like a rewind's.
     await tx.query("SELECT pg_notify('l1_generation', ?)", [
       String(nextGeneration),
     ]);
@@ -190,7 +190,7 @@ export const resetIn = async (
 };
 
 /**
- * `follower reset --to-origin` (§7.5 R1, R2, R5): in one transaction, deletes
+ * `follower reset --to-origin` (R1, R2, R5): in one transaction, deletes
  * every row of every catalog table of class A, D-t or D-x (facts, seeds, the
  * cursor, the rollback log, and every such role table the follower
  * migrated), and never a class B or class C row or the bookkeeping. The

@@ -1,5 +1,5 @@
 /**
- * The follower-change driver's sink (plan §7.3, §8.1, N1): applies each
+ * The follower-change driver's sink: applies each
  * follower change to the node's event rows under the driver's write
  * capability, or runs the driver's recompute (`l1-follower.recompute.ts`).
  */

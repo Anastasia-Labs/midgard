@@ -1,5 +1,5 @@
 /**
- * What a node §8.4 family predicate reads (`l1-follower.intent-predicates.ts`):
+ * What a node family predicate reads (`l1-follower.intent-predicates.ts`):
  * the store transaction at the follower's current view, the intent's
  * derived state, and the landed state queue and operator set read lazily in
  * that transaction; with the small helpers the families share.

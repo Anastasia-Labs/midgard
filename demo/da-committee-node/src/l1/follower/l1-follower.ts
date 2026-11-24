@@ -122,7 +122,7 @@ export const depthParameters = (
   config: LoadedCommitteeConfig,
 ): DepthParameters => ({
   confirmationDepth: config.finalityDepth,
-  // k: the manifest's automaticRecoveryMaxDepth (plan §1, terms).
+  // k: the manifest's automaticRecoveryMaxDepth.
   securityParameter: config.automaticRecoveryMaxDepth,
 });
 
@@ -357,7 +357,7 @@ const openFollowerParts = async (
  *
  * `records` reads every L1 point and submission the committee store names:
  * before each prune step the loop brings their retention pins current, so
- * no history a stored record reads again is pruned (plan §11).
+ * no history a stored record reads again is pruned.
  *
  * `onExhausted` is called once the loop stopped because transient store
  * failures outlived its budget (`l1_follower_transient_exhausted`).

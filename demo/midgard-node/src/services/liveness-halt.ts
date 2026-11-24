@@ -18,7 +18,7 @@ import {
  * running.
  */
 export const HaltSource = {
-  /** This operator is removed (`operator_removed`, plan §7.5 R7): retired,
+  /** This operator is removed (`operator_removed`): retired,
    * or in no list after having been active, in the follower's operator set
    * (see `publishOperatorMembership`). Holds every operator duty; a rollback
    * that undoes the removal clears it. */
@@ -334,7 +334,7 @@ export const restartedAcrossHalts = <A, E, R>(
  * follower-change driver retries it on its backoff; the next rebase evaluation that runs, or
  * finds no rebase due, clears it. The node cannot put the root's closure back
  * itself: the operator stops it, installs a native MPF store that retains
- * the root in full, and restarts it (plan §7.5, R6). */
+ * the root in full, and restarts it. */
 export const MPF_CLOSURE_MISSING = "mpf_closure_missing";
 
 /** The landed-block rebase's native restore was refused because the target

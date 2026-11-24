@@ -1,5 +1,5 @@
 /**
- * The state queue's history at a follower view (plan §7.3, N3): every header
+ * The state queue's history at a follower view: every header
  * the retained queue outputs carried, merged or not, read from the follower
  * facts (spent queue outputs stay until the prune passes them, and the
  * landed frontier's prune floor keeps them while the frontier needs them).

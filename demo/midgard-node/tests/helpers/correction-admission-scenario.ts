@@ -1,5 +1,5 @@
 /**
- * The correction-admission scenario on the emulator (plan §7.4, §15 N4):
+ * The correction-admission scenario on the emulator:
  * an own block committed, confirmed and locally applied, never attested,
  * then removed on L1 by an attestation-timeout correction. The node learns
  * of the removal only from the follower's facts (the landed state queue),

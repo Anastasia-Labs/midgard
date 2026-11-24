@@ -52,9 +52,9 @@ const asOrigin = (point: ChainPoint): L1Origin | "genesis" =>
     : { slot: Number(point.slot), blockHash: point.hash };
 
 /**
- * Finds the deployment origin (l1-architecture-plan §5.3, §14 item 4): from
- * `from` (or genesis) it follows the node's chain to the block holding
- * `txHash` and returns the point immediately before that block. It stops
+ * Finds the deployment origin (README, Origin): from `from` (or genesis) it
+ * follows the node's chain to the block holding `txHash` and returns the
+ * point immediately before that block. It stops
  * with `not_found` at the node tip. A one-time step for an existing
  * deployment; the origin is never guessed.
  */

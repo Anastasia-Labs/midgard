@@ -1,5 +1,5 @@
 /**
- * The landed-block fork simulator's node side (N3): its statistics, the
+ * The landed-block fork simulator's node side: its statistics, the
  * environment a scenario runs in, the stub ports processing runs on (honest,
  * exactly-once-checked replays with late DA and transient faults, foreign
  * blocks that include pending transactions; own blocks read from the node's
@@ -55,7 +55,7 @@ export type LandedSimStats = TrafficStats & {
   deferredRebases: number;
   relands: number;
   folds: number;
-  /** Checks whose frontier unfolded back to the root's lineage (N5). */
+  /** Checks whose frontier unfolded back to the root's lineage. */
   unfolds: number;
   /** ...from a header whose ledger equals the root's (no equal-root re-anchor). */
   equalRootUnfolds: number;

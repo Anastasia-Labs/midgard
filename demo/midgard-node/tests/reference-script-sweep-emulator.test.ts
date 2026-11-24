@@ -391,7 +391,7 @@ describe("retired reference-script sweep on the emulator", () => {
     expect(rerun.submitted).toEqual([]);
 
     // A node following this chain records each batch and judges it wanted
-    // at the block before it landed (I1-fix F5). The protocol contracts
+    // at the block before it landed. The protocol contracts
     // only shape the follower; the sweep touches none of their addresses.
     const sweeps = expectReplayedFamilies(
       await replayJournaledOnFollower({

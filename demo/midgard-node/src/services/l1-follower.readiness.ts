@@ -1,5 +1,5 @@
 /**
- * What the node's L1 follower contributes to `/readyz` (N1): every named
+ * What the node's L1 follower contributes to `/readyz`: every named
  * reason the shared follow loop reports (`FollowStatus.readiness`: the
  * interventions R1 to R5 and `origin_mismatch`, `l1_follower_catching_up`,
  * `l1_follower_waiting`, `l1_follower_apply_stuck`,
@@ -153,7 +153,7 @@ export type L1FollowerHandle = Readonly<{
   holds: () => readonly DriverHold[];
   /** Reads the event projection at the follower's current view. */
   planCurrent: () => Promise<FollowerPlanRead>;
-  /** Where `confirmed_ledger` stands, with its merge's level (P10); null before the first run. */
+  /** Where `confirmed_ledger` stands, with its merge's level; null before the first run. */
   confirmedLedger?: () => ConfirmedLedgerPosition | null;
   /** The undecodable events the driver's last applied view left out. */
   refused?: () => readonly EventRefusal[];

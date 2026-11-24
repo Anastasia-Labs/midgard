@@ -18,7 +18,7 @@ import type { TrackedSet } from "./types.js";
  * tables, migrations and derivations join the store (`projectionStoreOptions`);
  * in the fork simulator its D-t tables join the after-every-event comparison
  * with a fresh replay, its `traffic` joins the filler and `check` adds the
- * projection's own §5.5 cases. Role tickets (C1, W1, N1, ...) add one.
+ * projection's own cases.
  */
 export type FollowerProjection = Readonly<{
   name: string;

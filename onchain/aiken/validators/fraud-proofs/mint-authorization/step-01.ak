@@ -1,4 +1,4 @@
-//// ## Mint-Authorization Fault Proof — Step 01 (W-C14)
+//// ## Mint-Authorization Fault Proof — Step 01
 ////
 //// Binds the disputed transaction through the block's counted
 //// `transactions_root` and forwards the §2.5 anchors the later steps need:
@@ -7,7 +7,7 @@
 //// the body compact alone, so any later restatement would be the prover's
 //// assertion rather than a reading of the block-committed structure.
 ////
-//// **Acceptance binding (§2.4.3(d)).** The thread convicts only
+//// **Acceptance binding.** The thread convicts only
 //// operator-ACCEPTED transactions: the committed leaf's embedded validity
 //// scalar must be 0. The read is sound here and only here — the compact
 //// bytes this step sees are the `transactions_root` leaf's exact bytes,
@@ -70,7 +70,7 @@ validator main(
           tx,
         )
 
-        // 2. §2.4.3(d): only an operator-ACCEPTED transaction is in this
+        // 2. Only an operator-ACCEPTED transaction is in this
         //    family's domain. The scalar is the root-committed leaf's own
         //    (see the module header for why this read is sound at this step
         //    and at no later one).
@@ -133,7 +133,7 @@ test mint_authorization_step_01_binds_an_accepted_transaction() {
   run_step_01(fixture.valid_native_tx_v1())
 }
 
-/// §2.4.3(d) guard: an invalid transaction honestly recorded as a no-op
+/// Acceptance guard: an invalid transaction honestly recorded as a no-op
 /// (validity scalar 1) never enters the thread — an operator that correctly
 /// recorded a rejection cannot be convicted of authorizing its mint.
 test mint_authorization_step_01_rejects_an_honestly_rejected_tx() fail {

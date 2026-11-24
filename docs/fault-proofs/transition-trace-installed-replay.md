@@ -23,27 +23,18 @@ keys. Replay derives membership, nonmembership, deletion and insertion proofs
 from that trie. It stops at the first false transition because later claimed
 pre-roots no longer describe the honest ledger.
 
-Normal and forced operator acceptance claims open the exact retained endpoint
-states, validation context and terminal work witness against the operator's
-counted validation trace. Honest replay never constructs operator membership.
-The retained chronological states use the coordinates documented in
-[retained-validation-trace.md](retained-validation-trace.md).
-
 ## Durable transitions and publications
 
 `runOrResumeManifestBoundTransitionTraceWorkflow` reopens the history and raw
-L1 authority on every invocation. The journal retains current and predecessor
-payload envelopes, exact selected proof, selected event out-ref and raw L1
-snapshot. These bytes support recovery and audit; fresh admission supplies the
-replay authority. A different selected proof, source, event or header refuses
-resume.
+L1 authority on every invocation and reads its progress from the chain and the
+node mempool; fresh admission supplies the replay authority.
 
 The route selects one of eight finals. Accepted and deposit finals retain their
 thread NFT while scanning; the cursor admits only the registered successor or
 the permanent proof token. Proof/output byte publications use fixed 4,096-byte
 chunks. Typed datum evidence uses the shared structured Data carrier, preserving
-original map order. Each publication has its own signed intent and authenticated
-L1 recovery before the consuming step can proceed. Funding excludes datum-bearing
+original map order. A publication is found on L1 by content before the
+consuming step proceeds. Funding excludes datum-bearing
 outputs, script references and tokens so later evidence cannot be spent as fees.
 
 After removal, the live header observation remains unavailable. Recovery uses
@@ -56,8 +47,8 @@ terminal verifier still checks the permanent proof and removal economics.
 
 Run the installed lifecycle, direct final, and forced-source subvariant scenarios
 against the current normal testnet blueprint. The installed test recreates the
-constructor and directory journal after pending boundaries and advances an
-emulator block before reconciliation. Positive journeys must reach permanent
+constructor and the process at every boundary and advances an emulator block
+before resuming. Positive journeys must reach permanent
 proof and removal; honest/substituted evidence must refuse.
 
 - [Installed lifecycles](../../demo/midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts)

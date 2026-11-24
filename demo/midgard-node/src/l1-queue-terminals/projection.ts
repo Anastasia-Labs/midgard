@@ -1,6 +1,6 @@
 /**
- * The queue-terminal projection as the follower plugs it in (plan §5.5 P8,
- * N4): the state queue's tracked set, the D-t table, its migrations and the
+ * The queue-terminal projection as the follower plugs it in: the state
+ * queue's tracked set, the D-t table, its migrations and the
  * derivation.
  */
 import type { FollowerProjection } from "@al-ft/midgard-l1-follower";

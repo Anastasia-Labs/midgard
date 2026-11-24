@@ -2,14 +2,14 @@
 
 Status: Active
 
-Last reviewed: 2026-09-07 (catalogue and installation wiring).
-
-Builder and fixture boundary reviewed: 2026-09-19.
+Last reviewed: 2026-11-23 (catalogue ID source, watcher installation, node
+correction); builder and fixture boundary reviewed 2026-09-19.
 
 ## SDK and catalogue
 
-[`catalogue.ts`](../../demo/midgard-sdk/src/fraud-proof/catalogue.ts) owns
-explicit category IDs and presentation order. See [catalogue status](catalogue-status.md)
+[`catalogue.ts`](../../demo/midgard-sdk/src/fraud-proof/catalogue.ts)
+re-exports the explicit category IDs and presentation order owned by core
+`deployment-manifest-identity/catalogue-roles.protocol-categories.ts`. See [catalogue status](catalogue-status.md)
 for the checked source inventory; array position is not category identity.
 
 `demo/midgard-sdk/src/common.ts` and
@@ -46,11 +46,11 @@ family, rather than a manually maintained "newest families" list.
 [`workflow/runtime.ts`](../../demo/midgard-fault-proofs/src/workflow/runtime.ts)
 provides manifest-bound runner factories, one per record of the
 [family application registry](../../demo/midgard-fault-proofs/src/workflow/family-application-registry.ts),
-whose keys are the installed set. The
-[watcher application](../../demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts)
-installs every registered family through one loop and derives
-`WATCHER_INSTALLED_WORKFLOW_CATEGORIES` and `WATCHER_MISSING_WORKFLOW_CATEGORIES`
-from the registry's keys; the latter is currently empty.
+whose keys are the installed set. The watcher's
+[production dependencies](../../demo/midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts)
+derive `WATCHER_INSTALLED_WORKFLOW_CATEGORIES` and
+`WATCHER_MISSING_WORKFLOW_CATEGORIES` from the registry's keys; the latter is
+empty.
 
 The static adapter registry remains unready until an application supplies an
 admitted runner. Runtime startup checks proof readiness, durable recovery,
@@ -117,8 +117,8 @@ and cannot establish completion.
 - `demo/da-committee-node` serves and attests retained `DaPayload` data.
 - `demo/midgard-fault-proofs/src/remove-fraudulent-block.ts` derives and
   submits structural correction.
-- Node correction services re-include removed transactions and L1 events after
-  confirmation.
+- The node's landed-block rebase reopens a removed block's transactions and L1
+  events once the removal lands.
 
 ## Operational boundary
 

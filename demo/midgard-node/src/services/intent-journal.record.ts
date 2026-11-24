@@ -1,5 +1,5 @@
 /**
- * The intent journal's record (S5, §8.1) and its send decision (S6), in one
+ * The intent journal's record and its send decision (S6), in one
  * node database transaction: the record under the family's plan
  * (`recordAtPlanIn`), and for a role's own send the decision taken with the
  * view check (`decideSendIn`). `openIntentPlan` opens a family's plan.
@@ -83,7 +83,7 @@ const heldBy = (
   });
 
 /**
- * S6's decision for a role's own send (§8.1), in the record's transaction:
+ * S6's decision for a role's own send, in the record's transaction:
  * held while the follower's view (its cursor) is more than `nodeBehindMs`
  * behind wall-clock time, since the cursor is never past the node tip, so a
  * node behind by more holds it too; otherwise `decideSubmitIn` (the journal
@@ -143,8 +143,8 @@ const recordAtPlanIn = async (
 };
 
 /**
- * Records `signedTxCbor` in the caller's database, refusing what §8.2
- * refuses (S5: under the intent's plan, `recordAtPlanIn`). `isOwnOutput`
+ * Records `signedTxCbor` in the caller's database, refusing what the
+ * journal refuses (under the intent's plan, `recordAtPlanIn`). `isOwnOutput`
  * marks the predicted change the wallet view reads. With `send`, the send
  * decision (S6, `decideSendIn`) is taken in the same transaction and
  * returned as `held` when it holds.
@@ -167,7 +167,7 @@ export const recordSignedIntent = (
       return yield* refusal(
         INTENT_CONTENT_REF_MISSING,
         txHash,
-        `tx ${txHash} not submitted: a ${intent.family} intent must name its content (§8.2), and ${intent.workflowKey} names none`,
+        `tx ${txHash} not submitted: a ${intent.family} intent must name its content, and ${intent.workflowKey} names none`,
       );
     if (BOUNDED_FAMILIES.has(intent.family) && unbounded(signedTxCbor))
       return yield* refusal(
@@ -258,7 +258,7 @@ export const recordSignedIntent = (
     return yield* refusalOf(result, txHash);
   });
 
-/** A family's plan at the follower's cursor now (S5). */
+/** A family's plan at the follower's cursor now. */
 export const openIntentPlan = (
   sql: SqlClient.SqlClient,
 ): Effect.Effect<IntentPlan> =>

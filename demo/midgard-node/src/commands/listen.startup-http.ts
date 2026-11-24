@@ -100,7 +100,7 @@ const failure = (current: StartupState) => ({
  *
  * When `run` fails, `/readyz` answers `startup_failed` (with the failed
  * stage, step and reason) and the outcome follows the failure's class (owner
- * ruling 2026-10-09; plan §7.5): a transient failure that outlived its
+ * ruling 2026-10-09): a transient failure that outlived its
  * budget (`StartupStepFailedError.exhausted`, `TransientBudgetExhaustedError`)
  * fails the effect, so the process exits non-zero and its supervisor's
  * restart is the backoff. So does a failure its step marks terminal

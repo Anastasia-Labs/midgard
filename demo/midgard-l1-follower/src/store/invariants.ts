@@ -162,7 +162,7 @@ const fullChecks = (dialect: Dialect, registry: TemporalRegistry): Check[] => [
 ];
 
 /**
- * The scoped check after a rewind (§7.1, §7.5 R5). A rewind only deletes
+ * The scoped check after a rewind (R5). A rewind only deletes
  * rows above its target and clears spends above it, so the rows it can
  * have left wrong are the ones above the new cursor and the cursor's own
  * linkage. Every probe is index-backed, so the check costs O(1) in the

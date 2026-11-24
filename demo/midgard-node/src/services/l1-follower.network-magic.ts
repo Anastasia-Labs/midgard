@@ -1,5 +1,5 @@
 /**
- * The local node's network magic for the node's follower (F1 finding 4): read
+ * The local node's network magic for the node's follower: read
  * from the node's config and Shelley genesis files only, never its socket, so
  * a node that is still starting does not stop the follower from starting.
  * While the files are not there yet, the follower state is the named

@@ -66,7 +66,7 @@ const randomAddress = (rng: Rng, universe: Universe): Buffer => {
   const roll = rng.int(5);
   if (roll === 0 || roll === 1) return rng.pick(universe.trackedAddresses);
   if (roll === 2)
-    // The tracked payment credential with an arbitrary stake part (§5.2 item 13).
+    // The tracked payment credential with an arbitrary stake part.
     return Buffer.concat([
       Buffer.from([0x00]),
       universe.trackedCredential,

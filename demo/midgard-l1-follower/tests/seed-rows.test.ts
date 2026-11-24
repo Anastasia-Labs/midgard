@@ -30,7 +30,7 @@ afterAll(async () => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-/** Seed rows in the fact store (§5.3 step 4, INV6). */
+/** Seed rows in the fact store (INV6). */
 describe.each(storeAdapters(databases, scratch))(
   "seed rows ($name)",
   (adapter) => {

@@ -16,7 +16,7 @@ import {
 } from "./support/workload.js";
 
 /**
- * B3 (plan §16.2): rewind plus recompute, MPF excluded, on Postgres at
+ * B3: rewind plus recompute, MPF excluded, on Postgres at
  * N = 10^6 tracked live outputs. "Recompute" at the follower is the
  * registered D-t truncation the rewind runs; the bench projections are a
  * versioned per-address live count and an append-only spend log.

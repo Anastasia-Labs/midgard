@@ -7,8 +7,8 @@
 //// violation variants are already constructors of the shared
 //// `transitionTrace` family — `OmittedDueL1EventWitness` and
 //// `OutOfWindowSourceEventWitness` in
-//// `lib/midgard/fraud-proofs/transition-trace/proof.ak`. §9.1 requires that a
-//// structural N/A be discharged by an *adversarial executable* proof of that
+//// `lib/midgard/fraud-proofs/transition-trace/proof.ak`. A structural N/A must
+//// be discharged by an *adversarial executable* proof of that
 //// fact, never by prose.
 ////
 //// `proof.test.ak` (Q21-owned, not edited here) already covers the

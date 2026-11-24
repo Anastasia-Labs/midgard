@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last reviewed: 2026-09-12 (source and documentation reconciliation).
+Last reviewed: 2026-11-23 (document map, readiness boundary and maintenance rule).
 
 ## Implementation and identity
 
@@ -22,8 +22,8 @@ development deployment.
 
 Release completion still requires reproducible acceptance of publication and
 maximum-shape lifecycles, independent retained proof-data retrieval, durable
-recovery, economics, real-node execution, and preprod challenges. The availability
-challenge publication work is tracked in its [size plan](size-plans/availability-challenge.md).
+recovery, economics, real-node execution, and preprod challenges, including live
+acceptance of the [availability challenge](availability-challenge-operations.md).
 [Public-testnet readiness](../public_testnet_readiness.md) owns the launch decision.
 
 ## Document map
@@ -32,7 +32,6 @@ challenge publication work is tracked in its [size plan](size-plans/availability
 | ---------------------------------------------------------- | --------------------------------------------------------------------------- |
 | [`catalogue-status.md`](catalogue-status.md)               | Source category/installation inventory and acceptance boundaries            |
 | [`remaining-gaps.md`](remaining-gaps.md)                   | Open non-interactive protocol/category gaps and required fixes              |
-| [`event-history-design.md`](event-history-design.md)       | Proposed NIFP-01–03 architecture, lifecycle, alternatives, and acceptance   |
 | [`coverage-matrix.md`](coverage-matrix.md)                 | Ledger-rule coverage and remaining proof/release gaps                       |
 | [`architecture.md`](architecture.md)                       | Catalogue, computation-thread, token, removal, DA, and watcher architecture |
 | [`onchain-reference.md`](onchain-reference.md)             | Aiken module map and compiled identity                                      |
@@ -42,15 +41,15 @@ challenge publication work is tracked in its [size plan](size-plans/availability
 | [`challenger-runbook.md`](challenger-runbook.md)           | Supported autonomous challenger procedure and fail-closed boundaries        |
 | [`manual-recovery-runbook.md`](manual-recovery-runbook.md) | Recovery, rollback, and escalation procedure                                |
 
-Delivered family and size plans have been consolidated into the
-[family semantics reference](family-reference.md), [architecture decisions](decisions/README.md),
-and [fit evidence index](size-plans/README.md). Only unfinished acceptance and
-availability work remains a plan.
+Family semantics live in the [family reference](family-reference.md), lasting
+rationale in the [architecture decisions](decisions/README.md), and size
+budgets in the [size plans](size-plans/README.md).
 
 ## Maintenance rule
 
 Update the catalogue status, coverage matrix, testing status, execution plan,
 and public-testnet readiness checklist in the same change whenever a category,
-runner installation, emulator lifecycle, or release gate changes. Derive
+runner installation, emulator lifecycle, or release gate changes. Only the
+catalogue status states category counts; the others link to it. Derive
 counts, IDs, blueprint identity, and catalogue root from code and generated
 artifacts; never carry them forward from older documentation.

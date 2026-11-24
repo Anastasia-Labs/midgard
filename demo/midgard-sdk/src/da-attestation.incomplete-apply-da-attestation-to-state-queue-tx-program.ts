@@ -122,7 +122,7 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
         `valid_to=${config.validityRange.validTo.toString()},deadline=${attestationDeadline.toString()}`,
       );
     }
-    // Decision row D-DA4: committee rotation is retroactive, so apply now reads
+    // Committee rotation is retroactive, so apply now reads
     // the current governed params on-chain and requires the attestation's
     // frozen pair to still equal them. Refusing to build the transaction here
     // is not the enforcement — the validator is — but it turns a rotation into

@@ -1,5 +1,5 @@
 /**
- * The node's startup preparation (N1): what the node needs once, before its
+ * The node's startup preparation: what the node needs once, before its
  * first published follower view, run by the follower-change driver's first
  * recompute under the driver's write capability (`makeDriverRecompute`).
  *

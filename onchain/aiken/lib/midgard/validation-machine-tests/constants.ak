@@ -37,7 +37,7 @@ pub const target_snapshot_min_fee_b = 155_381
 /// literal onto the production pin. `env.coins_per_utxo_byte` is the compiled
 /// deployment constant the ValueAndMint output-descriptor step actually
 /// convicts with, held identical in `env/default.ak` and `env/testnet.ak` and
-/// mirrored by `MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte`. Reading it here
+/// mirrored by `MIDGARD_CONSENSUS_LIMITS.coinsPerUtxoByte`. Reading it here
 /// means these vectors cannot pass against a rate the validators do not use;
 /// `min_ada_target_snapshot_rate_is_the_production_pin` below still pins the
 /// absolute 4_310 so the C70 snapshot value itself cannot drift unnoticed.

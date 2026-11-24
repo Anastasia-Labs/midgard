@@ -21,7 +21,7 @@ export type SettlementAttempt = {
   fee_inputs: string[];
   /**
    * `pending`: signed and journaled; its L1 outcome is the intent journal's
-   * derived status (plan §8.2), never stored. `final`: it landed more than k
+   * derived status, never stored. `final`: it landed more than k
    * blocks deep, written by the follower's prune step in the step that prunes
    * its journal entry (`settlement.final-hook.ts`). `expired`: proven never
    * to land (`expireAttempt`).
@@ -74,7 +74,7 @@ export const boundWalletAddress = (deploymentId: string) =>
 /**
  * Fences every journal write and submit against worker takeover and the
  * follower-change driver's recompute: the settlement lease is live, and the
- * follower write gate (plan §8.1) holds an applied view with no recompute
+ * follower write gate holds an applied view with no recompute
  * pending. Returns the gate's epoch.
  */
 export const assertOwner = (owner: SettlementOwner) =>

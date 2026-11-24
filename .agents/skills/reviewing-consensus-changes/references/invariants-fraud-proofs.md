@@ -5,7 +5,7 @@ Scope: `onchain/aiken/validators/fraud-proofs/`,
 fraud-proof policies, `demo/midgard-sdk/src/fraud-proof/`, and
 `demo/midgard-fault-proofs/`.
 
-Status, recurrence and line conventions are as in
+Status, recurrence and citation conventions are as in
 [invariants-state-queue.md](invariants-state-queue.md): **VERIFIED** means
 code, a refusing test and provenance were all read; **PARTIAL** names what is
 missing.
@@ -19,10 +19,10 @@ whose length differs from the blueprint's declaration. Under Plutus V3 an
 under-applied script is a different script that can succeed on anything.
 
 Enforced: `applyBlueprintParams`
-(`demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts:211-227`)
+(`demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts`)
 `[runtime: applyBlueprintParams]`; every strict prefix of the parameter list
 must hash differently from the deployed script
-(`demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts:149-165`);
+(`demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts`);
 `demo/midgard-fault-proofs/tests/emulator-blueprint-boundary.test.ts`.
 
 Provenance: #605 found ten semantic resolvers deployed with two of their three
@@ -40,7 +40,7 @@ Rule: a validator does not re-check the shape of its own deployment
 parameters; the SDK checks them once at application.
 
 Enforced: `assertParameterShapes`
-(`demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts:364`)
+(`demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts`)
 `[runtime: assertParameterShapes]`; policy in
 [contracts.md](../../../../docs/agents/contracts.md).
 
@@ -59,13 +59,12 @@ reference scripts, hash-checked against the script the transaction executes.
 A missing entry fails; there is no inline fallback.
 
 Enforced: `requireWitnessReferenceScriptUtxo`
-(`demo/midgard-fault-proofs/src/witness-reference-scripts.ts:47`, throws at
-`:96`) and `requireLinearFaultReferenceScript`
-(`demo/midgard-fault-proofs/src/linear-fault-family.ts:69`)
+(`demo/midgard-fault-proofs/src/witness-reference-scripts.ts`) and `requireLinearFaultReferenceScript`
+(`demo/midgard-fault-proofs/src/linear-fault-family.ts`)
 `[runtime: requireWitnessReferenceScriptUtxo]`.
 
 Provenance: the file header records the owner ruling of 2026-08-26
-(`witness-reference-scripts.ts:7-8`); `d3df3323e` (2026-08-29) removed the
+(`witness-reference-scripts.ts`); `d3df3323e` (2026-08-29) removed the
 inline fallback.
 
 Blind spot: the lint (`midgard/fault-proof-reference-scripts-only`) bans
@@ -102,13 +101,12 @@ transaction id. The transaction id does not cover the witness set
 ([midgard-tx.md](../../../../docs/spec/midgard-tx.md) §3, lines 159-170).
 
 Enforced: `expect verified.tx_compact.witness_set_hash == witness_set_hash`
-(`lib/midgard/fraud-proofs/field-opening-v1.ak:307`)
+(`lib/midgard/fraud-proofs/field-opening-v1.ak`)
 `[aiken-test: midgard/fraud-proofs/field-opening-v1.test/]`:
-`forged_witness_set_hash_re_derives_the_same_tx_id` (`:308`, the premise),
-`forged_witness_set_and_compact_is_refused_under_the_anchor` (`:326`, fail),
-`tier_three_certificate_over_a_witness_field_binds_to_nothing_committed`
-(`:488`), `certified_carriage_opens_the_address_witness_field_with_the_welded_hash`
-(`:653`).
+`forged_witness_set_hash_re_derives_the_same_tx_id` (the premise),
+`forged_witness_set_and_compact_is_refused_under_the_anchor` (fail),
+`tier_three_certificate_over_a_witness_field_binds_to_nothing_committed`,
+`certified_carriage_opens_the_address_witness_field_with_the_welded_hash`.
 
 Provenance: the #575 review found the first rebind "re-derived the
 witness-set hash but dropped the MPF anchoring", reproduced end to end;
@@ -129,8 +127,8 @@ native" and "empty native payload" in the frozen engine, so an adversary
 cannot make a coordinate both unprovable as a fault and unprovable as valid.
 
 Enforced: `bind_machine_v1`
-(`lib/midgard/fraud-proofs/native-script-decoding/engine.ak:344-367`,
-`payload_length == 0` refused at `:355`), called from the
+(`lib/midgard/fraud-proofs/native-script-decoding/engine.ak`,
+`payload_length == 0` refused), called from the
 execution-source, output-reference and witness-script decoding rules and
 native-script-decoding step-03
 `[aiken-test: midgard/fraud-proofs/native-script-decoding/engine.test/]`.
@@ -154,19 +152,19 @@ against the item commitment, whatever stage (frame or token) the segment
 starts on. Authenticating only on some stages either admits an unauthenticated
 chunk or leaves honest segments unsubmittable.
 
-Enforced: `witness-script-decoding/step-03.ak:83-106`,
-`output-reference-script-decoding/step-05.ak:69-91` (under
+Enforced: `witness-script-decoding/step-03.ak`,
+`output-reference-script-decoding/step-05.ak` (under
 `onchain/aiken/validators/fraud-proofs/`)
 `[aiken-test: midgard/fraud-proofs/witness-script-decoding/rule.test/]`
-(`refuses_a_substituted_item_chunk` `:148`),
+(`refuses_a_substituted_item_chunk`),
 `[aiken-test: midgard/fraud-proofs/output-reference-script-decoding/rule.test/]`
-(`window_refuses_substituted_chunk_coordinate` `:315`).
+(`window_refuses_substituted_chunk_coordinate`).
 
 Provenance: `0c4001d77`, `8f62cb506`, `0023bba3c` — the same wave as FP6.
 Before it, the window was checked only on token stages, so a segment that
 opened on a frame step and ran into token steps could not be submitted,
 stalling any proof over a container with eight or more children (comment at
-`validators/fraud-proofs/witness-script-decoding/step-03.ak:83-89`).
+`validators/fraud-proofs/witness-script-decoding/step-03.ak`).
 
 Recurrence: 3.
 
@@ -176,7 +174,7 @@ Status: VERIFIED.
 
 Rule: a focused Aiken selector that collects zero tests fails the gate.
 
-Enforced: `onchain/aiken/scripts/guard-focused-selector.mjs:83-90`
+Enforced: `onchain/aiken/scripts/guard-focused-selector.mjs`
 `[script: onchain/aiken/scripts/guard-focused-selector.mjs]`.
 
 Provenance: #519 found 24 gates that could not fail; #523 and `8a4b87707`
@@ -195,10 +193,10 @@ operator's verdict; accepted and rejected leaves share the source and differ
 only in the enclosing adjudicated value.
 
 Enforced: `[aiken-test: midgard/forced-submission.test/]`
-(`forced_source_verdict_independence` `:83`,
-`forced_source_rejects_obsolete_envelope` `:38`, fail) and
+(`forced_source_verdict_independence`,
+`forced_source_rejects_obsolete_envelope`, fail) and
 `[aiken-test: midgard/forced-source-bindings.test/]`
-(`forced_source_binds_both_verdicts` `:93`).
+(`forced_source_binds_both_verdicts`).
 
 Provenance: #640 (`165db5ca6`, `11c5bf548`) bound forced disputes to the
 committed leaf verdict; `742df026e` (2026-09-12) made forced submissions
@@ -216,8 +214,8 @@ Enforced:
 the field-access channel only.
 
 Provenance: #633 (OPEN) — tag-0 native reference-script bytes are opaque on
-chain (`parse_script_ref`, `lib/midgard/ledger-output-v1.ak:334`) but structurally parsed off
-chain (`demo/midgard-core/src/codec/versioned-script.ts:93-94`). #635 (OPEN) — the
+chain (`parse_script_ref`, `lib/midgard/ledger-output-v1.ak`) but structurally parsed off
+chain (`demo/midgard-core/src/codec/versioned-script.ts`). #635 (OPEN) — the
 reference challenger cannot prove any fraud in a transaction carrying an
 output its codec refuses.
 

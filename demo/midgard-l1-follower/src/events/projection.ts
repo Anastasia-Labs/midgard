@@ -1,6 +1,6 @@
 /**
- * The node event projection as the follower plugs it in (plan §4.4, §15
- * N1): tracked set, D-t tables, migrations and the derivation. The fork
+ * The node event projection as the follower plugs it in: tracked set, D-t
+ * tables, migrations and the derivation. The fork
  * simulator adds its own traffic and checks to this (tests only).
  */
 import type { FollowerProjection } from "../projection.js";

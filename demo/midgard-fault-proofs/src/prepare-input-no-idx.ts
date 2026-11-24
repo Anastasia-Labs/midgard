@@ -6,8 +6,7 @@
  * retired direct/fold split. See
  * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  *
- * `input-no-idx` (`nonExistentInputNoIndex`) evidence builder (Goal task `Q13`,
- * §9.1 outputs 6-8).
+ * `input-no-idx` (`nonExistentInputNoIndex`) evidence builder.
  *
  * **Canonical evidence.** One committed block, authenticated end to end:
  *

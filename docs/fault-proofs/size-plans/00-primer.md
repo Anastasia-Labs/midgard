@@ -2,7 +2,8 @@
 
 The [resolver decomposition decision](../decisions/0003-publishable-semantic-resolvers.md)
 records the design choices from delivered size work. The
-[availability-challenge plan](availability-challenge.md) is still active.
+[availability-challenge plan](availability-challenge.md) records that contract's
+split.
 
 ## Limits and evidence
 

@@ -5,7 +5,7 @@
 //// single-party conversion of the validation machine's InputSets rule
 //// (`DuplicateInput`, validation-machine-v1.ak).
 ////
-//// The bound leaf must be an **acceptance**: §2.4.3(d), a leaf of the counted
+//// The bound leaf must be an **acceptance**: a leaf of the counted
 //// `transactions_root` is an acceptance verdict only when its own embedded
 //// validity scalar claims `TxIsValid`. An invalid transaction the operator
 //// honestly recorded as a no-op therefore never enters this thread, whatever
@@ -77,7 +77,7 @@ validator main(
 
         expect None = m_input_state_data
 
-        // 2. §2.4.3(d): a leaf of the counted `transactions_root` is an
+        // 2. A leaf of the counted `transactions_root` is an
         //    acceptance verdict only when its own embedded validity scalar
         //    claims `TxIsValid`. The scalar is read off the exact compact
         //    bytes the counted root committed — the leaf this callback just
@@ -191,7 +191,7 @@ test input_set_uniqueness_step_01_binds_an_accepted_duplicate_input_tx() {
   run_step_01(fixture.native_block_fixture_v1(duplicate_spend_bad_tx()))
 }
 
-/// §2.4.3(d) edge — the family's acceptance guard: a committed leaf whose own
+/// The family's acceptance guard: a committed leaf whose own
 /// validity scalar claims `TxIsInvalid` was honestly recorded as a no-op, and
 /// never convicts here no matter how degenerate its input sets are.
 test input_set_uniqueness_step_01_rejects_an_honestly_rejected_leaf() fail {

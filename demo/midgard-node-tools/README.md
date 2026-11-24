@@ -161,8 +161,8 @@ before the drill. It runs from source through
 shares with the drill imports the watcher's test support, which exists only as
 source and is not in any build.
 
-The stack fault drill now funds its ledger owner itself, before any family's
-timer starts, so nobody needs to fund the owner by hand.
+The stack fault drill funds its ledger owner itself, before any family's
+timer starts.
 
 ## Devnet wallet fee runway
 
@@ -201,21 +201,13 @@ planning fee with the same 5× margin. Users reserve 432,000 ADA for fees at
 24 transactions/day plus their original 50,000 ADA journey holdings; transfers
 and deposits consume holdings separately from fees.
 
-Read-only evidence assessed on 2026-10-02: lc1 reference-publication logs from
-2026-09-30 contain 339 and 397 submitted transactions in two deployment runs;
-the largest observed signed transaction is 16,265 bytes. At the pinned 44
-lovelace/byte plus 155,381 fixed fee, that size alone contributes 871,041
-lovelace. Maximum pinned execution charges add 1,730,750 lovelace; reference
-script surcharges are additional. The 20 ADA planning fee leaves a large
-allowance for them and is not claimed as a protocol maximum. The public
-bootstrap and reserve-float signed transactions paid 308,061 and 170,473
-lovelace respectively; these are controller fees, **not measurements of role
-burn**. No representative steady-state role fee series was available in the
-logs, and the watcher availability database checkpoint contained no intents.
-Re-measure actual daily burn after the final fresh run; usage exceeding the
-planning envelope or protocol-cost changes shorten this conditional runway.
+The 20 ADA planning fee is an allowance well above the largest observed
+signed transaction's size and execution charges; it is not a protocol maximum.
+No steady-state role fee series has been measured. Re-measure actual daily
+burn after the final fresh run; usage exceeding the planning envelope or
+protocol-cost changes shorten this conditional runway.
 
-The legacy seven-wallet `phase4-process/scripts/fund-wallets.sh` bootstrap
+The seven-wallet `devnet/phase4-process/scripts/fund-wallets.sh` bootstrap
 uses the same policy: 78 million ADA plus 50 ADA collateral per wallet,
 546,000,350 ADA total. It is a separate bootstrap flow, not an additional
 allocation in the fourteen-wallet stack. Both fund once; neither schedules
@@ -263,10 +255,6 @@ do not substitute committee credentials or recreate retained tables. Request
 and an explanation of that correction. The same code, deployment and service
 set guards apply; switching the port or credentials requires the normal
 controller/deployment procedure, not an old queued recovery request.
-
-History archive/tunnel/recorder roles still remain held after an exit 78 until
-an authenticated service-specific readiness check is supported.
-A plain HTTP response or TLS connection is insufficient.
 
 Known watcher refusals require correcting runtime configuration, restoring the
 verified deployment authority/rule bundle for the same deployment, or matching

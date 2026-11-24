@@ -217,8 +217,8 @@ export type FollowChainOptions = Readonly<{
 }>;
 
 /**
- * How the loop tells that the node's tip is behind wall-clock time (plan §9
- * Time: the wall clock may hold, never decide). Checked after every applied
+ * How the loop tells that the node's tip is behind wall-clock time (the
+ * wall clock may hold, never decide). Checked after every applied
  * event and every `checkEveryMs` while none arrive.
  */
 export type NodeBehindOptions = Readonly<{

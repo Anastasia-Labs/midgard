@@ -78,7 +78,7 @@ const refuse = (message: string, cause: string) =>
   );
 
 /**
- * The end-time recheck against the commit anchor (plan §8.1), inside the
+ * The end-time recheck against the commit anchor, inside the
  * gated journal transaction. The anchor was read at the permit's view when
  * the end time was planned (`commitEventHorizon`); the gate has just checked
  * that view is still on the follower's chain, so its ancestor at the anchor

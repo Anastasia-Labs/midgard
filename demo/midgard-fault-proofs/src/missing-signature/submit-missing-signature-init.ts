@@ -1,5 +1,5 @@
 /**
- * `missing-signature` thread init (offchain plan §4.2, plan §2.2 D1).
+ * `missing-signature` thread init.
  *
  * Delegates to the shared `buildResolvedInit` in `src/submit-init.ts` with
  * the family's explicit contracts record and catalogue category: the

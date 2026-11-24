@@ -104,7 +104,7 @@ export type TakeoverPlanning = {
   readonly nowMs: bigint;
   readonly snapshot: SDKOperators.OperatorDirectorySnapshot;
   readonly plan: SDKOperators.InactivityTakeoverPlan;
-  /** The intent plan (S5) opened before `snapshot` was read. */
+  /** The intent plan opened before `snapshot` was read. */
   readonly intentPlan: IntentPlan;
   /** The timing parameters `plan` was made under; the defaults when unset. */
   readonly params?: SDKOperators.InactivityTimingParameters;
@@ -157,7 +157,7 @@ export const planTakeoverProgram = (
   IntentJournal
 > =>
   Effect.gen(function* () {
-    // S5: the plan opens before the directory read.
+    // The plan opens before the directory read.
     const intentPlan = yield* openPlan;
     const snapshot = yield* SDKOperators.fetchOperatorDirectorySnapshotProgram(
       lucid,

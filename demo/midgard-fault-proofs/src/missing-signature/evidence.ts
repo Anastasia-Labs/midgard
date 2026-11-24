@@ -1,5 +1,5 @@
 /**
- * `missing-signature` evidence assembly (offchain plan §4.2, §5).
+ * `missing-signature` evidence assembly.
  *
  * The family's two openings both ride the §8.8 door builders in
  * `src/field-opening.ts` — nothing here re-implements the door, the tier
@@ -34,7 +34,7 @@ import { type FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-pro
 import { MISSING_SIGNATURE_CATEGORY_LABEL } from "./contracts.js";
 import { missingSignatureSubmitError } from "./submit-common.js";
 
-// ## Accused-ordinal selection (§3.4)
+// ## Accused-ordinal selection
 
 // ## Field-4 opening plan (step-02, BodyAnchor)
 

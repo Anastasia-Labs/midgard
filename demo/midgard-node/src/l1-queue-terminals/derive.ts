@@ -1,5 +1,5 @@
 /**
- * The queue-terminal projection's S3 derivation (plan §5.5 P8, §7.4, N4).
+ * The queue-terminal projection's S3 derivation.
  *
  * Per valid qualifying tx, in block order: every state-queue node it spends
  * whose header it does not put back as a node is terminal. The header is

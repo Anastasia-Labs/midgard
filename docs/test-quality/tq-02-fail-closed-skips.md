@@ -1,9 +1,9 @@
 # TQ-02 — Make required execution fail closed and optional lanes visible
 
-Status: Proposed; obsolete helper commentary removed
-Last reviewed: 2026-09-07 (runner and prerequisite review)
+Status: Proposed
+Last reviewed: 2026-11-23 (cited files and package commands)
 
-Audit: §8, §11. Rule: R7. Related: all tasks relying on suite execution.
+Rule: R7. Related: all tasks relying on suite execution.
 
 ## Problem and current evidence
 
@@ -11,25 +11,16 @@ Required coverage can disappear when a suite skips after a prerequisite check
 or when its runner is never invoked. An explicit optional integration lane is
 not itself a false green: the report must distinguish skipped from executed.
 
-For example, `missing-redeemer-publication-fit.test.ts` reads the blueprint at
-module scope before `describe.runIf(hasFamily)`. A missing file therefore
-fails collection; a present blueprint missing the family can skip the suite.
-Do not describe both situations as a silent fresh-checkout skip.
-
 Tests under `scripts/` and `devnet/` may run through explicit `node --test`
 package commands. Their location outside Vitest's `tests/` glob does not prove
-that CI omits them. Inspect the complete workflow-to-package-command chain.
-The current node package registers Architecture G corpus, configuration, soak
-and closure tests; node-tools registers Phase 4 asset and summary tests.
-
-The historical KNOWN RED changelog in
-`tests/support/emulator/blueprints.ts` has already been removed. That
-documentation portion is closed; runtime loader behavior was not changed.
+that CI omits them. Inspect the complete workflow-to-package-command chain: node-tools
+registers its Phase 4 asset and summary-verifier tests as `node --test`
+package commands.
 
 ## Proposed work
 
 1. Inventory actual required and optional lanes, prerequisite tokens, package
-   commands, workflow invocations and skip reports. Treat old site counts as
+   commands, workflow invocations and skip reports. Treat site counts as
    discovery notes rather than a verified current inventory.
 2. For required family coverage, fail on a missing family or prerequisite.
    Optional platform, database or costly measurement lanes need a runnable

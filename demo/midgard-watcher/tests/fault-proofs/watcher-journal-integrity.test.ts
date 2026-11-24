@@ -130,7 +130,7 @@ const expectHeldUnready = async (
   await supervisor.close();
 };
 
-describe("watcher journal integrity (W2-E2)", () => {
+describe("watcher journal integrity", () => {
   it("holds the watcher live and unready on a journal file that is not a database", async () => {
     const journalRoot = await journalDirectory("midgard-journal-integrity");
     writeFileSync(

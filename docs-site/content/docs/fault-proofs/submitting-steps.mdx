@@ -14,7 +14,7 @@ used for [structural correction](/docs/fault-proofs/removing-blocks).
 requires an admitted concrete runner; category presence does not prove a
 particular deployment is ready.
 
-`run-workflow` and `resume-workflow` require the same identity and infrastructure
+`run-workflow` and `resume-workflow` take the same identity and infrastructure
 inputs:
 
 ```text
@@ -25,9 +25,11 @@ midgard-fault-proofs run-workflow \
   --workflow-runtime-config <infrastructure-config.json>
 ```
 
-Use `resume-workflow` with the same identity after an interruption: the
-workflow keeps no local record and reads its progress from the chain. The runtime configuration must supply the accepted deployment,
-public retained-DA/L1 authority, funding and signer infrastructure. Follow the
+Both refuse from the command line: a run needs an admitted decision, its
+actuation permit and the objective wallet, which only the watcher's supervisor
+supplies. The workflow keeps no local record and reads its progress from the
+chain. The runtime configuration must supply the accepted deployment, public
+retained-DA/L1 authority, funding and signer infrastructure. Follow the
 [challenger runbook](https://github.com/Anastasia-Labs/midgard/blob/main/docs/fault-proofs/challenger-runbook.md)
 for the full versioned configuration and readiness checks.
 
@@ -40,9 +42,8 @@ category and for the categories listed in that boundary. The stable error is
 `RF-043_LEGACY_SUBMISSION_RETIRED`, raised before provider or wallet access.
 
 A name in CLI help or a historical JSON artifact is not evidence that the route
-can submit. Other low-level routes, including transition-trace and validation
-dispute operations, have their own authenticated inputs and category-specific
-steps. Use their current help/schema together with the installed runner.
+can submit. Other low-level routes, including transition-trace, have their own
+authenticated inputs and category-specific steps. Use their current help/schema together with the installed runner.
 
 ## Thread and proof lifecycle
 

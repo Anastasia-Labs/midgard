@@ -28,7 +28,7 @@ import { readWatcherQueueView, type WatcherQueueHeader } from "./view.js";
 
 /**
  * The authenticated state-queue observation, read from the watcher
- * projection at one confirmation depth (ticket W1). Every value is a pure
+ * projection at one confirmation depth. Every value is a pure
  * read of the follower store in one read transaction: there is no cursor
  * chain to persist, restore or rewind, so a rollback of any depth below k
  * changes the next read and nothing else.

@@ -1,6 +1,6 @@
 /**
- * A settlement attempt's confirmation, derived from the intent journal (plan
- * §8.2, §15 N6 and L7, D-N4), over a real Postgres follower store in the
+ * A settlement attempt's confirmation, derived from the intent journal,
+ * over a real Postgres follower store in the
  * node's database, with the node's settlement and journal projections:
  *
  * - Landed at depth >= cd, the attempt's job takes the next phase; a

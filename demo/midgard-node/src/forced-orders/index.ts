@@ -1,6 +1,6 @@
 /**
- * The node's forced orders as a projection over L1 follower facts (N10,
- * plan §12): the carriage each order's block resolved, and the driver hook
+ * The node's forced orders as a projection over L1 follower facts: the
+ * carriage each order's block resolved, and the driver hook
  * that resolves the rest and ingests the orders.
  */
 export {

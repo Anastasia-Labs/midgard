@@ -1,5 +1,5 @@
 /**
- * The intent journal's refusals (§8.2): each reason a record is refused
+ * The intent journal's refusals: each reason a record is refused
  * for, the refusal itself, and how a follower result or a failed write
  * becomes one. A refusal is held for its family and fails `/readyz` under
  * its reason (`intent-journal.holds.ts`).
@@ -11,13 +11,13 @@ import { Data } from "effect";
 
 /** The follower store has no cursor: there is no view to journal under. */
 export const INTENT_JOURNAL_NO_VIEW = "intent_journal_no_view";
-/** §8.2: an input, reference input or collateral is not a tracked fact. */
+/** An input, reference input or collateral is not a tracked fact. */
 export const INTENT_INPUT_UNTRACKED = "intent_input_untracked";
 /** The same transaction was journaled with other bytes; only those are sent. */
 export const INTENT_BYTES_MISMATCH = "intent_bytes_mismatch";
 /** The signed bytes do not decode, or hash to another transaction. */
 export const INTENT_UNDECODABLE = "intent_undecodable";
-/** A family that names its content (§8.2) journaled no content reference. */
+/** A family that names its content journaled no content reference. */
 export const INTENT_CONTENT_REF_MISSING = "intent_content_ref_missing";
 /**
  * A dispute defense with no upper validity bound: it could land at any
@@ -34,7 +34,7 @@ export const INTENT_JOURNAL_UNAVAILABLE = "intent_journal_unavailable";
 export const INTENT_GATE_UNJOURNALED = "intent_gate_unjournaled";
 
 /**
- * S6 held a send (§8.1): the journal recorded the transaction, but the
+ * S6 held a send: the journal recorded the transaction, but the
  * decision taken with the view check, in the record's transaction, was not
  * to send it now. The reasons:
  *
@@ -118,7 +118,7 @@ export const refusalOf = (
           .map((o) => `${o.txHash.toString("hex")}#${o.index.toString()}`)
           .join(
             ", ",
-          )} not a tracked fact or an output of a journaled intent (§8.2); the follower may be behind`,
+          )} not a tracked fact or an output of a journaled intent; the follower may be behind`,
       );
     case "undecodable":
       return refusal(

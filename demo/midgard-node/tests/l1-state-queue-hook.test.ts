@@ -1,5 +1,5 @@
 /**
- * The driver's state-queue hook (plan §4.1, §5.5 P1, N2) over a simulated
+ * The driver's state-queue hook over a simulated
  * chain on a SQLite and a Postgres follower store: it runs first on every
  * driver run, publishes the landed queue it read at the applied view, and
  * holds `/readyz` on `state_queue_unhealthy` exactly while the queue is

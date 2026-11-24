@@ -232,7 +232,7 @@ export const queryPhasMembershipRewardAccountRegisteredProgram = (
           }),
   });
 
-/** Builds the registration from the selected wallet's view (§8.5). */
+/** Builds the registration from the selected wallet's view. */
 const defaultBuildRegistrationTx = (
   lucid: LucidEvolution,
   config: { readonly script: Script },
@@ -307,7 +307,7 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
       );
     }
     const identity = SDK.phasMembershipIdentity(network, script);
-    // S5: the plan opens before the registration read it is built on.
+    // The plan opens before the registration read it is built on.
     const plan = yield* openPlan;
     const registered = yield* (
       options.queryRegistration ??

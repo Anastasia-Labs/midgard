@@ -1,12 +1,12 @@
 /**
  * The expectations a real flow's replayed intents meet
- * (`replayJournaledOnFollower`, I1-fix F5):
+ * (`replayJournaledOnFollower`):
  *
  * - every intent is recorded: each input, reference input and collateral
  *   is a tracked fact or a journaled parent's output, at the tip before it
  *   landed; a commit through its production pre-broadcast gate, which writes
  *   its pending block's signed intent in the journal's transaction;
- * - every family's §8.4 predicate reads the follower's facts, and judges
+ * - every family's predicate reads the follower's facts, and judges
  *   the intent wanted there (`resubmit`), unless it is chained on a parent
  *   landing in the same block, when S6 waits on its inputs;
  * - once its block applies, it is landed (`follow`).

@@ -2,7 +2,7 @@
 
 Status: Active
 
-Documentation disposition reviewed: 2026-09-12.
+Last reviewed: 2026-11-23 (rule rows against the catalogue).
 
 The rule mapping below is a partial explanatory matrix, not an exhaustive
 category roster or a fresh test receipt. [Catalogue status](catalogue-status.md)
@@ -65,41 +65,15 @@ These are intentionally not additional catalogue entries:
 | Valid forced transaction made a no-op or wrong forced verdict | Typed deterministic fault family or interactive execution dispute, plus transition-trace effect binding             |
 | Shared large-field verification                               | `mpf-chunked-proof` support machinery, not a category                                                               |
 | Unattested commitment timeout                                 | Separate no-slash suffix correction at any pending queue position                                                   |
-| Post-attestation data withholding                             | DA remedy/recovery problem, not a transaction fault category                                                        |
+| Post-attestation data withholding                             | Availability challenge: timeout removal with a DA bond-pool slash, not a transaction fault category                 |
 
-## Cross-cutting gaps
+## Open release gaps
 
-1. **Emulator catalogue closure:** verify every enabled family and maximum
-   supported shape on the release blueprint. Use [testing status](testing-status.md)
-   for executable verification surfaces and evidence requirements. The
-   [gate scheduling change](testing-status.md#emulator-gate-performance) preserves
-   the exercised scenarios, assertions and protocol limits.
-2. **Autonomous application acceptance:** the watcher installs the source
-   catalogue; release acceptance must verify admitted runners and complete
-   correction on the intended deployment, not merely topology or classification.
-
-3. **Data lifetime:** every proof input must remain authentic and
-   retrievable through the complete challenge window, including after event
-   NFT consumption or settlement. The unresolved on-chain event-history route
-   is tracked as [NIFP-03](remaining-gaps.md#nifp-03--event-proof-lifetime-is-not-closed).
-4. **Transaction fit:** every maximum-shape lifecycle must pass with the shared
-   Van Rossem 16,384-byte, 16.5M-memory, and 10B-CPU emulator limits. Tests may
-   not raise these limits to establish completion.
-5. **Soundness:** every family needs a valid-block negative at the same
-   evidence frontier as its positive.
-6. **Correction integration:** local structural pruning and re-inclusion exist;
-   concurrent real-node and preprod correction remain unaccepted.
-7. **Economics:** exact routing and non-zero compiled profiles exist;
-   concurrent-claim acceptance and live balance conservation remain open.
-8. **DA and liveness:** post-attestation withholding and the independent user
-   escape hatch remain system-level launch blockers.
-
-## Security judgement
-
-The earlier “missing verifier family” gap for minimum Ada, missing predecessor
-native-script material, and invalid native scripts is closed in source. Known
-remaining protocol/category gaps are tracked in
-[remaining gaps](remaining-gaps.md). Operational and evidentiary risks also
-remain: a family that is not installed, cannot obtain retained evidence, exceeds
-an L1 limit, or has not been accepted against a real deployment can still fail
-to protect the optimistic reserve before maturity.
+Release acceptance (emulator catalogue closure under the shared Van Rossem
+limits, valid-block negatives, correction, economics, and data lifetime) is
+tracked in the [release acceptance plan](execution-plan.md); protocol statements
+that are impossible or only partially provable are tracked in
+[remaining gaps](remaining-gaps.md), including forced-order evidence lifetime
+([NIFP-03](remaining-gaps.md#nifp-03--event-proof-lifetime)). The user escape
+hatch is not implemented; [public-testnet readiness](../public_testnet_readiness.md)
+marks it unsupported scope.

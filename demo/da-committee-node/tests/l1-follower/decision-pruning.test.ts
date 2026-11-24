@@ -33,7 +33,7 @@ import type { QueueChainNode } from "./queue-chain.js";
 import { SIM_DEPTHS, SIM_SLOT_TIME } from "./queue-sim.js";
 
 /**
- * Plan §11, class B: the member's signed decision for a header, and every
+ * The member's signed decision for a header, and every
  * row keyed by the header's hash, is deleted once `obligations()` reads the
  * decision deletable and the header has left every queue the committee
  * reads: its exit is final (depth > k), or it never landed and a final

@@ -78,8 +78,7 @@ const describeFailure = (
 /**
  * Proves the deployment's recorded origin T on the node's chain: the scan
  * from T must find the `prepare-hub-oracle-one-shot-nonce` tx, so T is on
- * the chain and precedes the block holding it (`find-origin --recorded`,
- * plan §5.3). Returns T with that block; refuses otherwise.
+ * the chain and precedes the block holding it (`find-origin --recorded`). Returns T with that block; refuses otherwise.
  */
 export const deriveL1Origin = async (input: {
   readonly node: L1NodeConnection;

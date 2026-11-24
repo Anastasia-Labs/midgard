@@ -27,7 +27,7 @@ afterAll(async () => {
  * A node-shaped chain: the protocol-init tx spends the one-shot nonce and
  * mints under the hub policy; a merge then spends its state-queue output,
  * so once that spend is k deep (k = 2 in the reset fixtures) the init tx's
- * row is pruned (R1b keeps a tx only while an output it created is live).
+ * row is pruned (a tx is kept only while an output it created is live).
  */
 const HUB_POLICY = fill(0x44, 28);
 const HUB_ADDRESS = Buffer.concat([Buffer.from([0x70]), HUB_POLICY]);

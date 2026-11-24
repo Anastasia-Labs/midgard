@@ -1,5 +1,5 @@
 /**
- * The L1 follower's schema in the node database (plan §5.4, N1). The node's
+ * The L1 follower's schema in the node database. The node's
  * event rows bind to the follower's admission identity (`l1_event_keys`), and
  * the node's own SQL joins it, so the follower's tables are part of the
  * node's schema: `migrate` installs them, in its transaction, with the
@@ -29,7 +29,7 @@ import { splitSqlStatements } from "./migrations/runner.split-sql-statements.js"
 
 /**
  * The follower's own sets plus the node event, forced-order, queue-terminal
- * (N4) and intent journal (§8.2, I1) projections'.
+ * and intent journal projections'.
  */
 export const NODE_FOLLOWER_SCHEMA: readonly MigrationSet[] = [
   followerMigrations("postgres"),
@@ -77,7 +77,7 @@ export const followerSqlTx = Effect.gen(function* () {
 });
 
 /**
- * `viewValid(view)` (§8.1) in the caller's SQL transaction, through the
+ * `viewValid(view)` in the caller's SQL transaction, through the
  * follower's `viewValidIn`: on Postgres it takes the cursor row `FOR SHARE`,
  * so no rewind commits between the check and the write it guards until that
  * transaction ends. The node's one view check.

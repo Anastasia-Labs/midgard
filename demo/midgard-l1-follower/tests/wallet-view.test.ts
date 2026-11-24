@@ -34,7 +34,7 @@ const keys = (outRefs: readonly OutRef[]): string[] =>
 /** The facts come in the store's order: compare them as a set. */
 const sorted = (outRefs: readonly OutRef[]): string[] => keys(outRefs).sort();
 
-describe("walletView (§8.5), the pure formula", () => {
+describe("walletView, the pure formula", () => {
   it("keeps the own facts no live intent holds and adds the live intents' own outputs", () => {
     const view = walletView(
       [

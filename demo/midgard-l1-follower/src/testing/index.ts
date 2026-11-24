@@ -1,5 +1,5 @@
 /**
- * Test tooling of the L1 follower (plan §15 F8, §16.1): the fork
+ * Test tooling of the L1 follower: the fork
  * simulator, its scenario runner and corpus, and the fresh-replay
  * comparison. Never imported by production code.
  */

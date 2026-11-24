@@ -1,5 +1,5 @@
 /**
- * The foreign replayer bench's block windows (N3): a block's window placed
+ * The foreign replayer bench's block windows: a block's window placed
  * by its earliest admission slot `T(B)`, the view's clock moved so its
  * horizon reaches the block's end, and a replay at the store's view. The
  * bench's slot configuration maps slot `s` to `s * 1000` ms.

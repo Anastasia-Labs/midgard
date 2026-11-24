@@ -447,7 +447,7 @@ validator da_attestation(
           own_policy_id,
         )
 
-        // Decision row D-DA4. This branch used to decide quorum entirely from
+        // This branch used to decide quorum entirely from
         // the attestation datum's own frozen `da_threshold`, never reading the
         // DA params at all, so committee rotation was not retroactive: a quorum
         // gathered under a rotated-out committee stayed applicable forever.
@@ -547,8 +547,7 @@ validator da_attestation(
           da_params_ref_input_index,
         )
 
-        // Decision row D-DA5 clause (c), and deliberately the whole of the
-        // authorization: no deadline, no quorum of its own, no new governed
+        // Deliberately the whole of the authorization: no deadline, no quorum of its own, no new governed
         // value to configure or get wrong. The state condition *is* the proof
         // of strandedness.
         //
@@ -563,7 +562,7 @@ validator da_attestation(
         // matches) and never be rescued (the committee hash still matches),
         // while `AddSignatures` kept accepting signatures that could never
         // amount to anything. Its ADA would be locked for good, which is the
-        // exact failure D-DA5 clause (c) exists to rule out.
+        // exact failure this condition exists to rule out.
         //
         // Widening to the complement cannot take value from an attestation
         // still in flight: whenever this condition holds, the apply gate above
@@ -628,8 +627,8 @@ validator da_attestation(
 // build params — sit outside that count.
 
 // ---------------------------------------------------------------------------
-// Fixtures — Q62 (decision row D-DA4, non-retroactive committee rotation) and
-// Q63 acceptance clause (c) (decision row D-DA5, partial-attestation rescue).
+// Fixtures — Q62 (non-retroactive committee rotation) and
+// Q63 acceptance clause (c) (partial-attestation rescue).
 //
 // Every transaction below is built from one base builder and mutated in
 // exactly one field per negative, so a rejection can only be attributed to the
@@ -1126,7 +1125,7 @@ test da_attestation_rescue_rejects_replayed_mint_binding() fail {
 }
 
 /// Rescue completeness control, and the regression test for the second strand
-/// condition D-DA4 introduced. This is the *same* attestation and the *same*
+/// condition. This is the *same* attestation and the *same*
 /// governed params as `da_attestation_apply_rejects_governed_threshold_change`:
 /// a full quorum whose frozen `da_threshold` no longer matches the governed one
 /// over an unchanged committee. Apply refuses it; rescue must therefore accept
@@ -1243,7 +1242,7 @@ test da_attestation_rescue_rejects_redirected_beneficiary() fail {
 }
 
 // ---------------------------------------------------------------------------
-// ## Q62 / decision row D-DA4 — non-retroactive committee rotation
+// ## Q62 — non-retroactive committee rotation
 //
 // Before this change `ApplyToStateQueue` read no DA params at all: it decided
 // quorum from the attestation datum's own frozen `da_threshold` and burnt the
@@ -1470,7 +1469,7 @@ test da_attestation_apply_control_unchanged_committee_applies() {
   )
 }
 
-/// Rotation rejection — the D-DA4 headline. The single mutated field is the
+/// Rotation rejection — the headline case. The single mutated field is the
 /// governed committee, rotated from A to B with its hash honestly re-derived.
 /// The attestation still holds a full quorum under its frozen threshold, which
 /// is exactly what used to be sufficient.

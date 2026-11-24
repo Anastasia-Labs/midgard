@@ -2,7 +2,7 @@ import type { MigrationSet } from "../schema/migrate.js";
 import type { DialectName } from "../sql/backend.js";
 
 /**
- * The §8.2 intent journal: a role's own signed transactions (class B). The
+ * The intent journal: a role's own signed transactions (class B). The
  * exact signed bytes are recorded before the first submission and never
  * change; a resubmission sends them again. Status is never stored: it is
  * derived from the facts (`deriveIntentStatusesIn`), so a rollback that
@@ -14,7 +14,7 @@ import type { DialectName } from "../sql/backend.js";
  */
 export const INTENT_MIGRATION_NAMESPACE = "l1-intents";
 
-/** The journal's event kinds (§8.2). */
+/** The journal's event kinds. */
 export const INTENT_EVENT_KINDS = [
   "signed",
   "stale_at_write",

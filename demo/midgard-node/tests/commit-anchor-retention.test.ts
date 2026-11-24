@@ -1,5 +1,5 @@
 /**
- * The commit anchor against the follower's real prune (plan §8.1, §11): a
+ * The commit anchor against the follower's real prune: a
  * Postgres follower store opened with the node's retained depth
  * (`followerRetainedDepth`) keeps the anchor block of a commit planned at
  * view P while the cursor runs up to k blocks past P, at d = k, where the

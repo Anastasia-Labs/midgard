@@ -49,7 +49,7 @@ const FACT_QUERIES: Readonly<Record<string, string>> = {
   l1_tx_mint_policies: "SELECT * FROM l1_tx_mint_policies",
   l1_outputs: "SELECT * FROM l1_outputs",
   l1_output_assets: "SELECT * FROM l1_output_assets",
-  // Class C is not rewound (§5.1): compare only what retained rows reference.
+  // Class C is not rewound: compare only what retained rows reference.
   l1_scripts:
     "SELECT * FROM l1_scripts s WHERE EXISTS (SELECT 1 FROM l1_outputs o WHERE o.script_ref_hash = s.script_hash)",
   l1_event_keys: "SELECT * FROM l1_event_keys",

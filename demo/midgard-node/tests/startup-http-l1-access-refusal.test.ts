@@ -1,6 +1,6 @@
 /**
  * `listen` started with a non-follower L1 setting, or with no local node,
- * is a deterministic startup failure no restart repairs (plan §7.5): the
+ * is a deterministic startup failure no restart repairs: the
  * registered command holds up and unready, and both `/readyz` and the log
  * name the `l1_access` step and its reason. The refusal comes before any
  * L1 open: the local node configured never sees a handshake. The process

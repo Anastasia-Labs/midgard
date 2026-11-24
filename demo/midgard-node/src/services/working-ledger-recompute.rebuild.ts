@@ -1,5 +1,5 @@
 /**
- * The working-ledger recompute (plan §7.3, P4): `mempool_ledger` rebuilt
+ * The working-ledger recompute: `mempool_ledger` rebuilt
  * from a base ledger, in this order:
  *
  * 1. the base: the processed landed tip's ledger and this node's live own

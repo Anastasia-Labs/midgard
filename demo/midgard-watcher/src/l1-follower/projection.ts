@@ -47,10 +47,9 @@ import {
 } from "./tables.js";
 
 /**
- * The watcher's state-queue projection over the L1 follower's facts
- * (l1-architecture-plan §7.3, ticket W1). One versioned D-t table holds
- * every state-queue and CorrectionLock output the canonical chain created,
- * open while it is unspent. A view at a point is a pure read of the rows
+ * The watcher's state-queue projection over the L1 follower's facts. One
+ * versioned D-t table holds every state-queue and CorrectionLock output the
+ * canonical chain created, open while it is unspent. A view at a point is a pure read of the rows
  * live there, so a rollback is the follower's generated rewind and nothing
  * here knows about forks.
  *
@@ -90,7 +89,7 @@ export type WatcherProjectionDeployment = Readonly<{
   /** The DA attestation (DAAT) policy: Apply burns the header's DAAT the commitment is read from. */
   daAttestationMint: string;
   /**
-   * Every other script the watcher follows (l1-architecture-plan §4.4):
+   * Every other script the watcher follows:
    * the deployment's manifest contracts and the computation-thread policy.
    * Each is tracked as a payment credential and as a policy, and every
    * unit it mints has its history recorded, so the fault-proof families'

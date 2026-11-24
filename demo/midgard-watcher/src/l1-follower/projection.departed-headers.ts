@@ -22,7 +22,7 @@ import {
 } from "./tables.js";
 
 /**
- * Headers that left the state queue (ticket W1). A header leaves when a
+ * Headers that left the state queue. A header leaves when a
  * valid tx spends its node without re-outputting it: a merge into confirmed
  * state, a removal, or a transition the watcher does not prove. Each
  * departure keeps two facts the queue rows lose once they are pruned:

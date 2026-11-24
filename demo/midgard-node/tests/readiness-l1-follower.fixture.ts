@@ -53,8 +53,8 @@ export const runningFollower = (
 /**
  * What a serving node holds once its L1 follower is at the tip with no
  * driver hold and its follower-change driver has applied a view, with no
- * recompute pending. `/readyz` names every other follower and gate state
- * (N1), so a route fixture that models a healthy node seeds this.
+ * recompute pending. `/readyz` names every other follower and gate state,
+ * so a route fixture that models a healthy node seeds this.
  */
 export const seedCaughtUpL1Follower = (
   globals: Globals,

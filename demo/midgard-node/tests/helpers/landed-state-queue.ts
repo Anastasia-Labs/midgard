@@ -1,5 +1,5 @@
 /**
- * The follower facts the node's landed state queue (P1, N2) reads, written
+ * The follower facts the node's landed state queue (P1) reads, written
  * directly for tests without a followed chain: the follower's cursor at a
  * tip and the live outputs at the state-queue address as seed rows. P1 reads
  * them exactly as it reads a followed chain's, so the node's code under

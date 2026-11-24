@@ -1,5 +1,5 @@
 /**
- * Event statuses on the rebase target (plan §7.3, N3, ruling E-N3-1):
+ * Event statuses on the rebase target:
  *
  * - an event a removed block or a disposed-of own journal held, or one
  *   projected to a header no processed landed block holds, goes back to

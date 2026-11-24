@@ -382,9 +382,10 @@ pnpm listen
 - `pnpm stress:valid`: run the high-throughput valid-transaction submitter.
 
 The ledger MPF is always the Architecture G native owner, and the node
-refuses to start unless `MPF_NATIVE_OWNER_BINARY_PATH`,
-`MPF_NATIVE_OWNER_BINARY_SHA256` (lowercase 64-hex) and
-`MPF_NATIVE_OWNER_SIDECAR_PATH` are all set; see
+refuses to start unless `MPF_NATIVE_OWNER_BINARY_SHA256` pins the binary at
+`MPF_NATIVE_OWNER_BINARY_PATH` as 64 lowercase hex characters.
+`MPF_NATIVE_OWNER_SIDECAR_PATH` defaults to
+`<LEDGER_MPF_DB_PATH>.architecture-g.sidecar`; see
 [Architecture G is the only MPF engine](../../docs/midgard/decisions/architecture-g-sole-mpf-engine.md).
 
 ## Reconciliation Commands
@@ -637,7 +638,7 @@ Notes:
 - The command derives the sender address from `USER_WALLET` by default.
 - Override the default with `--wallet-seed-phrase-env <ENV_VAR>` or pass
   `--wallet-seed-phrase` directly for one-off manual testing.
-- The CLI now rejects wallets that collide with the node's operational
+- The CLI rejects wallets that collide with the node's operational
   operator, merge, or reference-script wallets. Use a distinct user wallet for
   deposit and L2 transfer flows.
 - The command queries `/utxos`, builds a balanced Midgard-native transaction
@@ -734,8 +735,7 @@ stack on preprod, an `L1_ORIGIN` in the stack env file must equal the recorded
 origin.
 
 Upgrading a node to a release that adds protocol validators to its follower's
-tracked set (the release that tracks the validation-trace dispute's holders is
-one) resets the follower's store at the first start and replays it from the
+tracked set resets the follower's store at the first start and replays it from the
 origin (see [the tracked-set record](../midgard-l1-follower/README.md#the-tracked-set-record)).
 Until the replay is back at the tip the node is unready with
 `tracked_set_changed` and performs no duties: it commits no blocks and submits
@@ -835,7 +835,7 @@ Each entry has the shape:
 }
 ```
 
-Reference scripts are currently published to `L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS`,
+Reference scripts are published to `L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS`,
 which defaults to the separate reference-script wallet address
 `L1_REFERENCE_SCRIPT_ADDRESS` so stale test deployments can reclaim ADA. Before
 production, set `L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS` to the intended
@@ -871,7 +871,7 @@ protocol deployment status. If a present manifest disagrees with configured
 network, one-shot outref, or reference-script deploy address, startup refuses to
 attach until config is corrected or a fresh redeploy is explicit.
 
-`init` now always writes the manifest. By default it goes to the node working directory
+`init` always writes the manifest. By default it goes to the node working directory
 at `deploymentInfo/contract-deployment-info.json`. If you want to override that
 path, pass:
 
@@ -883,7 +883,7 @@ node dist/index.js init \
 ## Parallel Fanout Stress Wallets
 
 Stress-wallet creation, funding, fan-out, and the bounded
-`e2e-stress-l2-throughput` harness moved to `midgard-node-tools`; see
+`e2e-stress-l2-throughput` harness are `midgard-node-tools` commands; see
 [`../midgard-node-tools/README.md`](../midgard-node-tools/README.md). They
 drive this node from the outside and are not part of its binary.
 
@@ -1018,10 +1018,12 @@ missing input and a double spend are well-formed txs that validation refuses.
   peer in `HTTP_TRUSTED_PROXY_PEERS`. The nginx edge overwrites that header,
   so through the edge use `--loopback-sources <n>` with the edge on the host
   network (Docker's userland port proxy hides source addresses).
-- **Limits.** The defaults cap `write` at 1/s per client and 4/s overall,
-  the edge at 10 r/s per address and 100 r/s overall, and the durable backlog
-  at 300,000 rows (`MAX_DURABLE_ADMISSION_BACKLOG`), of which `/submit` may
-  fill 80 %. A run measures those
+- **Limits.** The defaults (`DEFAULT_HTTP_RATE_LIMITS`) cap `write` at 20/s
+  per client and 200/s per IPv4 /24 or IPv6 /48, with no overall bucket; the
+  edge rate-limits only the liveness and operator routes (10 r/s per
+  address); the durable backlog holds 300,000 rows
+  (`MAX_DURABLE_ADMISSION_BACKLOG`), of which `/submit` may fill 80 %. A run
+  measures those
   limits unless they are raised; the report's outcome mix shows which one
   refused.
 - **Reruns.** Each run sends each request once. Against the same database a

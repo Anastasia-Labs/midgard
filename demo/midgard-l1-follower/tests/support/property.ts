@@ -109,7 +109,7 @@ const expectKind = <T extends { kind: string }>(
 };
 
 /**
- * The §7.2 property test. A random chain from the origin under random
+ * The property test. A random chain from the origin under random
  * `apply(block)` and `rollback(depth <= min(k, height))` steps; after every
  * step every fact table and every registered temporal table must equal a
  * fresh forward-only replay of the current canonical chain (an in-memory

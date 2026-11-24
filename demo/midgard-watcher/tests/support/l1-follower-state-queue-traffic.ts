@@ -1,5 +1,5 @@
 /**
- * State-queue traffic for the L1 follower's fork simulator (ticket W1): the
+ * State-queue traffic for the L1 follower's fork simulator: the
  * protocol-init tx (hub oracle, Idle CorrectionLock, queue root),
  * CommitBlockHeader appends shaped as the authenticated observation admits
  * them, DA attestations (a DAAT minted for the tail header, later burned by

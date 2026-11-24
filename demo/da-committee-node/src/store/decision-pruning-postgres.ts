@@ -11,7 +11,7 @@ import { readPostgresRetirementFloor } from "./retirement-postgres.js";
 
 /**
  * The rows a signed decision's header hash keys besides the decision itself
- * (plan §11, class B): every availability signature (the member's own and
+ * (class B): every availability signature (the member's own and
  * its peers'), the decision outbox, the peer broadcasts and the L1
  * submissions. Conflict evidence and peer nonces are kept by their own rules.
  */

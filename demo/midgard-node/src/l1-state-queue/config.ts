@@ -1,5 +1,5 @@
 /**
- * What the node's landed state queue (plan §5.5 P1, N2) reads from the
+ * What the node's landed state queue reads from the
  * deployment: the state-queue address and its NFT policy.
  */
 import type { TrackedSet } from "@al-ft/midgard-l1-follower";

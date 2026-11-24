@@ -265,7 +265,7 @@ fn authenticated_source_witness_set(
         membership.key == membership.value.tx_id,
         membership.value.tx_id == tx_id,
         verified.version == 1,
-        // §2.4.3(d) Normal-source authoritativeness: a Normal leaf under
+        // Normal-source authoritativeness: a Normal leaf under
         // `transactions_root` IS an acceptance verdict — its embedded
         // validity scalar must claim `TxIsValid` (0).
         verified.tx_compact.validity_code == Some(0),

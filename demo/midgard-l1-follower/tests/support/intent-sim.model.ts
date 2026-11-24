@@ -1,5 +1,5 @@
 /**
- * The fork simulator's intent oracle: the §8.2 statuses a naive model
+ * The fork simulator's intent oracle: the statuses a naive model
  * expects, and the observed status reduced to the same shape.
  */
 import { outRefKey } from "../../src/codec.js";
@@ -34,7 +34,7 @@ export const observedOf = (status: IntentStatus): Expected =>
       : { kind: status.kind };
 
 /**
- * The §8.2 statuses computed naively from the model's whole current chain
+ * The statuses computed naively from the model's whole current chain
  * (every block since the origin, never pruned) and every intent ever
  * journaled: the oracle the follower's derivation is checked against.
  */

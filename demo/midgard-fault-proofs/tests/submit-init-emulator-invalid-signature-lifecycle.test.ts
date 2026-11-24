@@ -1,5 +1,5 @@
 /**
- * `invalid-signature` emulator lifecycle (Goal task `Q15`), both polarities.
+ * `invalid-signature` emulator lifecycle, both polarities.
  *
  * Three journeys against the real Aiken validators:
  *

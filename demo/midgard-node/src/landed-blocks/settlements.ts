@@ -1,5 +1,5 @@
 /**
- * The pending-table marks of landed blocks (plan §7.3, N3): every write that
+ * The pending-table marks of landed blocks: every write that
  * makes a landed row processed marks the rows it includes in its own
  * transaction (the processing insert, a reland, and the rebase that applies
  * the row), and a rollback that takes the block off the landed chain clears

@@ -33,7 +33,7 @@ import {
   SIM_WATCHER_DEPLOYMENT,
 } from "../support/l1-follower-state-queue-traffic.js";
 
-// W3/L3 acceptance (ticket W1): the watcher's decisions follow the
+// The watcher's decisions follow the
 // follower through rollbacks. A rollback of at most k, even past the
 // release depth, rewinds the store and the next pass recomputes every
 // decision in-process: nothing is quarantined and nothing restarts. A
@@ -277,7 +277,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-describe("decision driver over the follower: rollbacks (W3/L3)", () => {
+describe("decision driver over the follower: rollbacks", () => {
   it("recomputes every decision in-process after rollbacks of at most k, the deep ones past the release depth included", async () => {
     const { events, pauses } = nodeScript((chain, events, pause) => {
       events.push(chain.forward([initTx(D)]).event);

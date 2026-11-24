@@ -1,5 +1,5 @@
 /**
- * The node operator set under the fork simulator (plan §15 F8, NC14): its
+ * The node operator set under the fork simulator: its
  * traffic runs the operator lifecycle (registration, activation, strikes,
  * scheduler shifts, retirement, slash, bond recovery) across the corpus's
  * rollbacks and prunes. After every chain-sync event the set the mirror

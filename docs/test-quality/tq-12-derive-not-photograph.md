@@ -1,11 +1,9 @@
 # TQ-12 — Classify pins before deriving or changing them
 
 Status: Proposed
-Last reviewed: 2026-09-07 (semantic source review)
+Last reviewed: 2026-11-23 (cited sources)
 
-- **Audit sections**: §2 and §7.1
 - **Rules**: R5, R6, R9 in [principles](principles.md)
-- **Coordination**: TQ-01 handles provenance and TQ-15 handles shared fit checks.
 
 ## Problem and boundary
 
@@ -20,28 +18,14 @@ Do not derive both expected and actual from the same production definition
 when the purpose is to detect an unintended change to that definition.
 Catalogue identity comes from its explicit ID map, not array position.
 
-## Confirmed corrections to the original proposal
+## Confirmed source facts
 
-- Execution costs required exact recorded memory/CPU equality until a reviewed
-  acceptance change on 2026-10-16. They are now ceilings:
+- Execution costs are ceilings:
   [the script-budget judge](../../onchain/aiken/scripts/script-budgets.mjs)
   holds each fresh reading at or under its ceiling in
   [`script-budgets.json`](../../demo/midgard-core/src/script-budgets.json),
   and keeps the feasibility basis and the above-basis claims. Changing that
   contract again is outside routine cleanup.
-- <!-- doc-links:historical --> The historical
-  `lucid-midgard/tests/api-export-snapshot.test.ts`, now absent
-  from the tree, protected an intentional exported set. Listing names is not
-  itself a reason to remove that contract, and checking that a declaration
-  file exists does not provide equivalent coverage.
-- [Reference-script roster checks](../../demo/midgard-node/tests/reference-scripts.test.ts)
-  using `toContain` detect removal of each named target; they do not reject
-  unexpected extras. Use exact set equality only if excluding extras is the
-  intended contract, and retain the duplicate-name check where required.
-- A 14-KiB raw-script target need not be a ledger maximum to be useful: it
-  could reserve room for transaction overhead. Trace its rationale and full
-  signed-transaction consumer before changing it. A currently failing bound
-  is not sufficient reason to delete it.
 - Exact cost-model values, canonical vectors, and protocol-version checks
   remain independent expectations. Do not treat every compiler literal or
   duplicated cross-language constant as prohibited.

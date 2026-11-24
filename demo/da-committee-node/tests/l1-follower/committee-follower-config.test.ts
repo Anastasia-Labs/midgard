@@ -134,7 +134,7 @@ const stakedScriptAddress = (hash: string): string =>
 const addressBytes = (bech32: string): Buffer =>
   Buffer.from(getAddressDetails(bech32).address.hex, "hex");
 
-describe("the committee's tracked set (plan §4.4, committee column)", () => {
+describe("the committee's tracked set", () => {
   /**
    * The committee's addresses, credentials and policies, all distinct, so
    * each entry is the only one that can capture its fact.

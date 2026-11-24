@@ -10,7 +10,7 @@ import type { Rewound } from "./rewind.js";
 import { readCursor } from "./rows.js";
 
 /**
- * The protocol tracked set the stored facts were built under (§5.2, §5.3).
+ * The protocol tracked set the stored facts were built under.
  * The facts are complete from the origin only for the set they were applied
  * under, so the store records it (`l1_follower_tracked_set`, bookkeeping
  * that reset keeps) and compares it with the configured set at each start
@@ -35,7 +35,7 @@ import { readCursor } from "./rows.js";
  * available, once the cursor height is at least `replay_height`.
  *
  * Own wallets are never part of the record: they are seeded at the cursor
- * (§5.3 step 4) and never reset the store. The comparison is by item, as
+ * and never reset the store. The comparison is by item, as
  * configured: an address whose payment credential is also tracked still
  * counts as an item of its own (conservative: an item change resets).
  */

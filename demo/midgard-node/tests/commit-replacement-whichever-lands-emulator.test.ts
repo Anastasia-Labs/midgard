@@ -1,5 +1,5 @@
 /**
- * Whichever lands wins (plan §8.3, I3) for an own commit and its
+ * Whichever lands wins for an own commit and its
  * replacement on the same tail, on a Lucid emulator through the production
  * intent journal and S6 (`createNodeIntentStage`).
  *

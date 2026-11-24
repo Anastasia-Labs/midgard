@@ -1,6 +1,7 @@
 # 0002 — Bounded non-interactive proof threads
 
-- Status: Accepted; implemented in the current catalogue
+- Status: Accepted; implemented in the current catalogue. Persisting signed
+  submission intent is superseded by chain-derived progress (#798).
 - Scope: deterministic fault families and both applicable verdict directions
 - Recorded: 2026-09-07, extracted from delivered plans and checked against source;
   this date is not a new protocol acceptance or measurement receipt.

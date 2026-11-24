@@ -1,5 +1,5 @@
 /**
- * The heads module (plan §9): the one place in a process that knows k, cd,
+ * The heads module: the one place in a process that knows k, cd,
  * how depth is counted and what "now" means for an L1 validity decision.
  *
  * - `depth(tip, point) = tip.height − point.height + 1`, so the tip block has
@@ -25,7 +25,7 @@
  */
 import type { Point } from "./types.js";
 
-/** The level of a tx, block or L2 header (plan §9). */
+/** The level of a tx, block or L2 header. */
 export type HeadLevel = "local" | "landed" | "safe" | "final";
 
 /** The levels a point on the current chain can have. */
@@ -145,7 +145,7 @@ export type MonotonicClock = () => number;
 
 const monotonicNow: MonotonicClock = () => performance.now();
 
-/** `slotNow` from tip observations and a monotonic clock (plan §3.6, §9). */
+/** `slotNow` from tip observations and a monotonic clock. */
 export type SlotClock = Readonly<{
   /** Records the chain's latest block slot, as the follower sees it. */
   observeTipSlot(slot: number): void;

@@ -1,6 +1,5 @@
 /**
- * `native-script-decoding` abort, refusal and resume coverage (#635, #633;
- * offchain plan §8.2 suite 6).
+ * `native-script-decoding` abort, refusal and resume coverage (#635, #633).
  *
  * What this file pins:
  *

@@ -67,7 +67,7 @@ export const attestStateQueueOnceProgram = (
     const contracts = yield* MidgardContracts;
     const nodeConfig = yield* NodeConfig;
     const deploymentIdentity = yield* ContractDeploymentIdentity;
-    // S5: one plan for the round, opened before its first L1 read.
+    // One plan for the round, opened before its first L1 read.
     const plan = yield* openPlan;
     yield* lucidService.switchToOperatorsMainWallet;
     const lucid = lucidService.api;

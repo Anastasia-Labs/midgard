@@ -787,7 +787,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         join(evidenceDirectory, "watcher-installed-history-native-blocks.json"),
       );
     }
-    // W2-E2: a restart over journals that fail integrity binds the operations
+    // A restart over journals that fail integrity binds the operations
     // server and holds the watcher live and unready; it never fails startup.
     await watcher.close();
     watcher = undefined;

@@ -1,6 +1,6 @@
 /**
- * The follower adapter of the L1-access port (`l1-access.ts`; plan §4.4,
- * N1), for role processes only (`listen` and its workers): one
+ * The follower adapter of the L1-access port (`l1-access.ts`),
+ * for role processes only (`listen` and its workers): one
  * `L1FollowerProvider` over the node's follower store (its tables in the
  * node database, read only here) and the local node's transport (local
  * state query, LocalTxSubmission, LocalTxMonitor). Nothing reads Kupo or
@@ -255,7 +255,7 @@ export const nodeL1AccessOver = (
     ledgerTip,
     endpoint: input.endpoint,
     slotConfig: readSlotConfig,
-    // The clock's tip is the follower's covered tip (N1), the same tip
+    // The clock's tip is the follower's covered tip, the same tip
     // `depth()` counts from.
     tipSlot: async () => (await viewPoint()).slot,
     submitSlotSnapshot: async () => {

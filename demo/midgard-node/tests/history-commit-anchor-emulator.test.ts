@@ -81,7 +81,7 @@ const followNextBlock = async (h: Lifecycle) => {
 };
 
 /**
- * The commit anchor (plan §8.1) through the production owner and the node's
+ * The commit anchor through the production owner and the node's
  * follower store (`follower-emulator.host.ts`, one follower block per
  * emulator block). A commit planned at a view P is capped at
  * time(A) + event_wait - 1, A the follower block d below P: an event whose

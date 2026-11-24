@@ -1,6 +1,6 @@
 /**
  * Shared emulator fixtures for the `native-script-decoding` family (#635,
- * #633), offchain plan §8.2 suites 4–7.
+ * #633).
  *
  * Three things every decoding emulator scenario needs and none of the
  * existing helpers produce:

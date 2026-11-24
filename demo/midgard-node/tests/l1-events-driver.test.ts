@@ -1,5 +1,5 @@
 /**
- * The node's follower-change driver (`createFollowerDriver`, N1, plan §7.3)
+ * The node's follower-change driver (`createFollowerDriver`)
  * over a simulated chain on a SQLite and a Postgres follower store: which
  * change each run applies, the ticket hooks' order, and the holds `/readyz`
  * names. The Postgres sink it drives is covered by

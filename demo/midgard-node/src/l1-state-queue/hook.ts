@@ -1,5 +1,5 @@
 /**
- * The follower-change driver's state-queue hook (plan §4.1, §5.5 P1, N2).
+ * The follower-change driver's state-queue hook.
  * It runs first on every driver run, reads the landed queue at the view the
  * driver is applying, hands the read to the node (queue length and the head
  * signal that triggers the planner fibers) and holds `/readyz` on

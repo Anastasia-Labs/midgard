@@ -1,5 +1,5 @@
 /**
- * The follower-change driver's recompute (plan §7.3, §8.1, N1, N3): the
+ * The follower-change driver's recompute: the
  * one path that rebuilds the node's derived state from the follower's view,
  * run by the driver itself (its sink on a first view or a rewind, its
  * landed-block hook when a rebase is due, the own-commit disposition after

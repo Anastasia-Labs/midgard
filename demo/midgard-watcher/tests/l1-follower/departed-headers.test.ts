@@ -1,5 +1,5 @@
 /**
- * Departed headers on the fork simulator (ticket W1): the predecessor of
+ * Departed headers on the fork simulator: the predecessor of
  * every queued header and the newest merged header stay resolvable at their
  * newest attested node after the queue rows are pruned, and the release
  * proofs of an older observation's headers name exactly the merges the

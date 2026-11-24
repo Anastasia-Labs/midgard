@@ -1,9 +1,8 @@
 /**
- * `native-script-decoding` forced-source emulator lifecycles (#635, #633;
- * offchain plan §8.2 suite 5).
+ * `native-script-decoding` forced-source emulator lifecycles (#635, #633).
  *
- * Three forced-leaf threads, all driven through the §4.3 proving core off a
- * §3.4 finding record:
+ * Three forced-leaf threads, all driven through the proving core off a
+ * finding record:
  *
  * 1. **Direction B, machine route.** The operator committed
  *    `ForcedTxInvalid { ResolvedReferenceScriptMalformed }` over a payload
@@ -54,7 +53,7 @@ const FORCED_ORDER_KEY: SDK.OutputReference = {
   outputIndex: 0n,
 };
 
-/** The §2.4.3(e) rejection this family disputes, accusing (reference, 0). */
+/** The rejection this family disputes, accusing (reference, 0). */
 const MALFORMED_REJECTION_VERDICT: SDK.OperatorVerdict = {
   ForcedTxInvalid: {
     reason: {

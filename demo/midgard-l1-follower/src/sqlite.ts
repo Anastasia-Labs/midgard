@@ -6,7 +6,7 @@ import {
 } from "./store/fact-store.js";
 
 /**
- * The SQLite fact store, for the watcher only (§18.1 Q1). `path` is a file
+ * The SQLite fact store, for the watcher only. `path` is a file
  * on a local disk, or `":memory:"` for tests.
  */
 export const openSqliteFactStore = (

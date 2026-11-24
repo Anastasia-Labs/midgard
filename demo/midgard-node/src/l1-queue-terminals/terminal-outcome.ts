@@ -1,5 +1,5 @@
 /**
- * A header's newest queue terminal (N4), as a SQL fragment with no service
+ * A header's newest queue terminal, as a SQL fragment with no service
  * behind it, so a pure derivation (the own-block status,
  * `pendingBlockFinalizations.status-sql.ts`) can read it.
  */

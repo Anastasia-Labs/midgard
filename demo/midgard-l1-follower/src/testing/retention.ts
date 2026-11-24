@@ -5,7 +5,7 @@ import { dumpStore, FACT_QUERIES, type StoreDump } from "./replay.js";
 
 /**
  * Whether a registered temporal row (alias `alias`) is retained once the
- * store pruned through slot `s`, from the plan §11 rules: a `closed_k_deep`
+ * store pruned through slot `s`: a `closed_k_deep`
  * versioned row while it is open or closed after `s`, a `created_k_deep`
  * append-only row while it was created after `s`, every other row (`owner`,
  * or a rule the shape never meets) forever, and any row while a retained
@@ -42,7 +42,7 @@ const OUTPUT_RETAINED = (alias: string, s: number): string =>
 
 /**
  * The rows of every fact table and registered temporal table that a store
- * pruned through slot `s` must still hold (plan §11), selected from an
+ * pruned through slot `s` must still hold, selected from an
  * unpruned store with the same facts:
  *
  * - outputs: live, or spent after `s`; their assets with them;

@@ -1,5 +1,5 @@
 /**
- * `input-no-idx` step-02 submitter (Goal task `Q13`, §9.1 output 8).
+ * `input-no-idx` step-02 submitter.
  *
  * Opens §2.5 field 0 of the transaction carried by step-01 and forwards the
  * challenged `(tx_id, output_index)` to step-03.

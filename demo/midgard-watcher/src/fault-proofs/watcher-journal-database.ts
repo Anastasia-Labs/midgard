@@ -31,8 +31,8 @@ export {
 } from "./watcher-journal-database.types.js";
 
 /**
- * The watcher's fault-proof journals as per-row SQLite tables (plan §3.4 WC1,
- * WC4; ticket W2). A commit writes only the rows it changes, so a persist is
+ * The watcher's fault-proof journals as per-row SQLite tables. A commit
+ * writes only the rows it changes, so a persist is
  * O(delta), never a rewrite or rescan of the journal.
  *
  * Integrity, against disk corruption SQLite does not catch (it checksums its

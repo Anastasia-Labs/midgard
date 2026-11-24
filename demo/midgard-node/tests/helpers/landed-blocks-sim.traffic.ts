@@ -1,5 +1,5 @@
 /**
- * State-queue traffic for the landed-block fork simulator (N3): the root is
+ * State-queue traffic for the landed-block fork simulator: the root is
  * initialized at the real genesis header and root; every appended node links
  * to the tail (hash, root, start time) and commits the universe's root for
  * its height and bit; a bad node (about one in ten) commits the other bit's

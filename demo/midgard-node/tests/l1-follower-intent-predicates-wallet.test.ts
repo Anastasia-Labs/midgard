@@ -1,6 +1,6 @@
 /**
- * The node's §8.4 predicates of the reference-script and stake-registration
- * families over the follower's facts (I1, E1/E2), each in both polarities,
+ * The node's predicates of the reference-script and stake-registration
+ * families over the follower's facts, each in both polarities,
  * on the node database:
  *
  * - stake registration (`script_reward_registration`, `phas_membership`):

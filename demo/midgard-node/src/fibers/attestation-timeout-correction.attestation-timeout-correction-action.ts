@@ -126,7 +126,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
                 // One step per tick: the next tick, on the next L1 head,
                 // reads the queue and the lock and builds the step after it.
                 awaitConfirmation: false,
-                // Funded from the operator wallet's view (§8.5) and signed
+                // Funded from the operator wallet's view and signed
                 // over it, like every other node transaction.
                 wallet: {
                   utxos: () =>

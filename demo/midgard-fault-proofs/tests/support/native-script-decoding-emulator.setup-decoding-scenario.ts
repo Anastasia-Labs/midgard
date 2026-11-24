@@ -254,7 +254,7 @@ export const setupDecodingScenario = async ({
 };
 
 // ---------------------------------------------------------------------------
-// The §4.3 proving core, wired to a scenario
+// The proving core, wired to a scenario
 // ---------------------------------------------------------------------------
 
 /** The emulator has no L1 depth or maturity to observe; both gates are off. */
@@ -267,7 +267,7 @@ export const DECODING_EMULATOR_PROVER_POLICY: NativeScriptDecodingProverPolicy =
   };
 
 /**
- * The proving core's dependencies for a scenario: every §4.3 evidence
+ * The proving core's dependencies for a scenario: every evidence
  * callback is answered from the fixture, so what the core drives on chain is
  * exactly the committed material.
  */

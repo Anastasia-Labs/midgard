@@ -1,5 +1,5 @@
 /**
- * `native-script-decoding` step-02 submitter (offchain plan §4.2).
+ * `native-script-decoding` step-02 submitter.
  *
  * Binds the thread to the committed claim. The disputed header rides the
  * redeemer (there are no reference inputs at all in this transaction), the

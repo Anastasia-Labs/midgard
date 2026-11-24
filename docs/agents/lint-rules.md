@@ -98,7 +98,7 @@ every stale site and adds none (`--check` only reports).
   `@lucid-evolution/uplc` wasm. Blind spot: a `require` or
   `createRequire(...)` call is not seen. [eslint: no-restricted-imports]
 - **Count L1 depth only in the heads module**
-  (`demo/midgard-l1-follower/src/heads.ts`, plan §9): the tip is depth 1,
+  (`demo/midgard-l1-follower/src/heads.ts`): the tip is depth 1,
   `safe` is depth ≥ cd (liveness only), `final` is depth > k. Use `depth`,
   `heightAtDepth`, `isSafe`, `isFinal` or `levelAtDepth` from
   `@al-ft/midgard-l1-follower/heads`. Flagged: a `<`, `<=`, `>` or `>=` that

@@ -316,7 +316,7 @@ export type RetentionSweeperOptions = {
   readonly nowMs?: () => number;
   /**
    * The L1 now (POSIX ms) every cutoff is computed from; by default the
-   * `slotNow` of the node's Lucid client (plan §3.6).
+   * `slotNow` of the node's Lucid client.
    */
   readonly l1NowMs?: Effect.Effect<
     number,
@@ -340,7 +340,7 @@ export type RetentionSweeperOptions = {
  * raises `retention_l1_view_stale` in readiness; it keeps reading L1, and the
  * first good view clears the reason and sweeps again. Never fails.
  *
- * Every cutoff is computed from the L1 `slotNow` (plan §3.6), never the wall
+ * Every cutoff is computed from the L1 `slotNow`, never the wall
  * clock: a clock that runs fast must not make a still-challengeable payload
  * look prunable. While the L1 slot is unknown the sweep is skipped.
  */

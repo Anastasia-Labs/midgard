@@ -363,7 +363,7 @@ fn authenticate_material_fields(
 /// measures 79,774 memory units more than at one item, for 32,758 more bytes.
 /// For the four variable-width fields (2, 5, 6, 8) it additionally pays
 /// `walk_to_end` at one item head per item — ≈21,062 memory units each, which
-/// reaches §3.3's basis near 537 items while the byte bound admits 16,382. On
+/// reaches the execution basis near 537 items while the byte bound admits 16,382. On
 /// those slots the item count is the operative bound, and the worst shape this
 /// function admits measures 26× the basis; recorded on #594 for #580's
 /// re-measurement, with the §8.11 erratum it needs.

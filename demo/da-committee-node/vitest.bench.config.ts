@@ -1,7 +1,7 @@
 import { midgardSourceEnvironments } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
 
-// Benchmarks (plan §16.2 B5). Not part of `test`: they preload a
+// Benchmarks (B5). Not part of `test`: they preload a
 // thousand-node state queue on both store dialects.
 export default defineConfig({
   test: {

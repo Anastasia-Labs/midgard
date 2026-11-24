@@ -1,5 +1,5 @@
 /**
- * `reference-input-no-idx` step-03 submitter (Goal task `Q31`).
+ * `reference-input-no-idx` step-03 submitter.
  *
  * Re-enters the block binding for the **producing** transaction of the
  * reference input step 02 forwarded. Nothing in the prepared file is trusted:

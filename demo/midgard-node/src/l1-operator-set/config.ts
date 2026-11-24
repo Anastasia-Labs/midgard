@@ -1,5 +1,5 @@
 /**
- * What the node's operator set (NC14) reads from the deployment: the three
+ * What the node's operator set reads from the deployment: the three
  * operator lists (registered, active, retired), the scheduler and the hub
  * oracle, each by its address and its authentication policy.
  */

@@ -1,5 +1,5 @@
 /**
- * The production foreign replayer's test bench (N3): a follower store with
+ * The production foreign replayer's test bench: a follower store with
  * the event and forced-order projections in the node's database, a
  * simulated chain that admits events and orders into it, real DA payloads
  * (an empty block, an honest deposit block, an honest forced-transaction

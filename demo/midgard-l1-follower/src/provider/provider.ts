@@ -73,7 +73,7 @@ export type L1FollowerProviderOptions = Readonly<{
 }>;
 
 /**
- * A Lucid provider over the L1 follower (plan §4.4): the node-ledger
+ * A Lucid provider over the L1 follower: the node-ledger
  * provider ({@link LedgerProvider}) with the role's fact store over it.
  * UTxO, datum and transaction reads in the tracked scope come from the
  * store; protocol parameters, slot configuration, outrefs outside the facts
@@ -220,7 +220,7 @@ export class L1FollowerProvider extends LedgerProvider {
 
   /**
    * Where a transaction stands: confirmed or failed once the follower
-   * applied its block (qualifying txs only, plan §5.2), pending while the
+   * applied its block (qualifying txs only), pending while the
    * node's mempool holds it, otherwise not found. `options.signal` ends the
    * read of the facts (`TransactionOptions`); the mempool read takes no
    * signal, and the transport bounds each step of it, not the whole.
@@ -271,7 +271,7 @@ export class L1FollowerProvider extends LedgerProvider {
   /**
    * Resolves true once the follower applied the transaction's block (valid
    * or phase-2-failed); throws {@link L1AwaitTxTimeoutError} after the
-   * configured bound. Only qualifying txs reach the facts (plan §5.2).
+   * configured bound. Only qualifying txs reach the facts.
    */
   override async awaitTx(
     txHash: TxHash,

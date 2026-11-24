@@ -1,6 +1,5 @@
 /**
- * Shared real-contract emulator fixtures for the `invalid-signature` family
- * (Goal task `Q15`).
+ * Shared real-contract emulator fixtures for the `invalid-signature` family.
  *
  * The family is a two-real-step chain — `init` → `step-01` (bind the committed
  * transaction against the block's counted `transactions_root` and forward

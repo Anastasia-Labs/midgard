@@ -365,7 +365,7 @@ describe("applied fresh-install schema", () => {
                ORDER BY relname`;
           expect(dropped.map((row) => row.relname)).toEqual([]);
 
-          // Version 9 drops the census and foreign-adoption tables (N3) and
+          // Version 9 drops the census and foreign-adoption tables and
           // adds the landed-block processing tables, with no working-ledger
           // basis table (nothing reads one).
           const landed = yield* sql<{

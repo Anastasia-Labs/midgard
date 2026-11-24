@@ -1,6 +1,6 @@
 /**
  * Operator wallets whose outputs carry a foreign token, for the funding rows:
- * coin selection over the whole operator wallet view (plan §8.5) must fund
+ * coin selection over the whole operator wallet view must fund
  * from them and return the tokens in change.
  */
 import {

@@ -1,6 +1,6 @@
 /**
- * A forced order's §8 carriage, read from its own creating transaction
- * (plan §12.2 to §12.4). Pure: no store, no network.
+ * A forced order's §8 carriage, read from its own creating transaction.
+ * Pure: no store, no network.
  *
  * The order's payload commits nine field hashes. Each non-empty one
  * consumes one entry of the mint redeemer's carriage vector, in field
@@ -13,7 +13,7 @@
  * Every field read here is hashed whole against its commitment, at every
  * tier: a source can cost an order its ingestion, never buy it one. A tier
  * 3 certificate is never read; the whole-preimage hash makes it redundant
- * for the node (§12.3).
+ * for the node.
  */
 import {
   buildMidgardWholeFieldView,

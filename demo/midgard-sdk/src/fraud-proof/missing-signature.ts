@@ -1,5 +1,5 @@
 /**
- * `missing-signature` fault-proof family (Goal task `Q16`) — off-chain wire
+ * `missing-signature` fault-proof family — off-chain wire
  * twins.
  *
  * **Rule.** Every required signer of every committed accepted transaction must

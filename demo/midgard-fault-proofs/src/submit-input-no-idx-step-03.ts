@@ -4,7 +4,7 @@
  * transaction's `outputs_hash`; step-04 opens its field 2 through the §8.8 door.
  * See `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  *
- * `input-no-idx` step-03 submitter (Goal task `Q13`, §9.1 output 8).
+ * `input-no-idx` step-03 submitter.
  *
  * Re-enters the block binding for the **producing** transaction of the input
  * step 02 forwarded. Nothing in the prepared file is trusted: the counted

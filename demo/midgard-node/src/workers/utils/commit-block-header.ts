@@ -303,7 +303,7 @@ export type CommitBuildAlarmNotice = {
 /**
  * Posted by the commit worker ahead of its output when its intent journal
  * refused a submission and the refusal hold's write to the node database
- * has not landed (I1-H1). The worker's journal ends with the thread, so the
+ * has not landed. The worker's journal ends with the thread, so the
  * parent's journal takes the holds over: `/readyz` names them, and its
  * refresh at every tip writes them until they land.
  */

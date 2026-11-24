@@ -1,6 +1,6 @@
 /**
  * The independent model of the landed state queue that the fork simulator
- * checks P1 against (N2): it decodes the queue outputs itself (the datum as
+ * checks P1 against: it decodes the queue outputs itself (the datum as
  * a linked-list datum, the asset name as root or node key) from the
  * canonical blocks and walks them, sharing nothing with P1's decode or walk.
  */

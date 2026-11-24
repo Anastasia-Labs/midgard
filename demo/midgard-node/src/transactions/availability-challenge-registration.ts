@@ -106,7 +106,7 @@ export const ensureAvailabilityChallengeRewardAccountsRegisteredProgram = (
             }),
         });
       let txHash: string | null = null;
-      // S5: the plan opens before the registration read it is built on.
+      // The plan opens before the registration read it is built on.
       const plan = yield* openPlan;
       if (!(yield* query()).registered) {
         // It follows protocol initialization, which has consumed the

@@ -1,5 +1,5 @@
 /**
- * This operator's membership (D-N7, plan §7.5 R7), from the operator set.
+ * This operator's membership, from the operator set.
  *
  * - `active`: its active node is live.
  * - `removed`: its retired node is live, or it is in no list after having
@@ -32,7 +32,7 @@ export type OperatorMembershipState =
   | "awaiting_activation"
   | "removed";
 
-/** The `/readyz` reason of a removed operator (plan §7.5 R7). */
+/** The `/readyz` reason of a removed operator. */
 export const OPERATOR_REMOVED = "operator_removed";
 
 export type OperatorMembership = Readonly<{

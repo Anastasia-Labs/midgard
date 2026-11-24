@@ -1,6 +1,6 @@
 /**
  * Shared real-contract emulator fixtures for the `reference-input-no-idx`
- * family (Goal task `Q31`).
+ * family.
  *
  * The fault is the reference-input mirror of `input-no-idx`: a committed
  * transaction *reads* `(producing_tx_id, N)` where `producing_tx_id` is itself

@@ -1,6 +1,6 @@
 /**
- * Real operator-lifecycle transactions on the node intent journal (I1-fix
- * F5): the registration and deregistration a real emulator flow journals,
+ * Real operator-lifecycle transactions on the node intent journal:
+ * the registration and deregistration a real emulator flow journals,
  * replayed onto a production follower of the same chain
  * (`replayJournaledOnFollower`), are recorded, wanted at the block before
  * each landed, and landed by it. The deposit-to-payout journey

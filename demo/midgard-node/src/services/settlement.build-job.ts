@@ -70,7 +70,7 @@ const buildJob = (
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const journal = yield* IntentJournal;
-    // S5: the job's plan opens before its first L1 read.
+    // The job's plan opens before its first L1 read.
     const plan = yield* journal.openPlan;
     let phase = job.phase;
     if (phase === "complete") return;
@@ -111,7 +111,7 @@ const buildJob = (
       Effect.provideService(ReservePayoutTransport, {
         prepare: (tx, required) =>
           Effect.gen(function* () {
-            // Signed over the settlement wallet's view (§8.5), so a step that
+            // Signed over the settlement wallet's view, so a step that
             // spends the predicted change of a live own intent gets its
             // witness; the fee inputs are the body inputs that view holds.
             const witnessed = yield* signOverWalletView(lucid, tx);
@@ -355,7 +355,7 @@ export const settlementProgram = (
     const config = yield* NodeConfig;
     const journal = yield* IntentJournal;
     // Each report hands the node the refusal holds this worker's journal
-    // could not write; the node's journal takes them over (I1-H1).
+    // could not write; the node's journal takes them over.
     const report = (health: SettlementHealth) => {
       const holds = journal.handOff();
       post(

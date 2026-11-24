@@ -1,6 +1,6 @@
 /**
  * The node intent stage while the follower store replays a tracked-set
- * reset (plan §8.3 S6 over §5's reset), on a SQLite and a Postgres store:
+ * reset, on a SQLite and a Postgres store:
  *
  * - a reset rewinds the facts to the origin and replays them; until the
  *   replay reaches the node tip the facts are a prefix of the chain, and an

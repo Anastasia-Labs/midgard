@@ -1,5 +1,5 @@
 /**
- * `reference-input-no-idx` step-02 submitter (Goal task `Q31`).
+ * `reference-input-no-idx` step-02 submitter.
  *
  * Opens §2.5 field **1** of the transaction carried by step 01 and forwards the
  * challenged reference input to step 03.

@@ -1,9 +1,9 @@
 /**
- * The node event projection's S3 derivation (plan §5.4, §5.5 P2, §7.2).
+ * The node event projection's S3 derivation.
  *
  * Per qualifying valid tx, in block order, for each event list:
  * - a burn of one list token whose key is a live event retires it (the
- *   reason comes from the retirement observer's redeemer only, §5.4);
+ *   reason comes from the retirement observer's redeemer only);
  * - an Order output at the list address whose key is not a live event is
  *   an admission: a key already in `l1_event_keys` is refused (never
  *   reused), any other is admitted and its key enters `l1_event_keys`.
@@ -459,7 +459,7 @@ export const eventDerivation = (
 ): DerivationHook => ({
   name: "node_l1_events",
   // It also inserts into the follower's class A `l1_event_keys`, whose
-  // rewind is the follower's own (§5.4); only D-t tables are listed here.
+  // rewind is the follower's own; only D-t tables are listed here.
   writes: [EVENTS_TABLE, RETIREMENTS_TABLE, REFUSALS_TABLE],
   apply: async (context) => {
     for (const { tx, created } of context.qualified) {

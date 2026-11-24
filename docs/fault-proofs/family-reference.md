@@ -295,8 +295,9 @@ output index belongs to `referenceInputNoIdx`.
 
 `mintItemNonCanonical` (`00000036`) proves that an accepted transaction's
 nonempty field-5 item violates §5.6. The accepted source can be either the
-transactions root or a `ForcedTxValid` leaf. It does not adjudicate wrongful
-rejection: the current machine has no typed malformed-mint rejection reason.
+transactions root or a `ForcedTxValid` leaf. No machine step emits
+`MintItemMalformed`, so a forced rejection carrying it is an unreachable claim
+that step 01 hands to step 04, which contradicts it.
 
 Its statement owns incorrect item shape, policy IDs other than 28 bytes
 (including the empty ADA policy), empty asset maps, asset names over 32 bytes,

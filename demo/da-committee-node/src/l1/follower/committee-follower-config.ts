@@ -95,14 +95,14 @@ export const addressBytes = (bech32: string): Buffer =>
   Buffer.from(getAddressDetails(bech32).address.hex, "hex");
 
 /**
- * Everything the committee reads on L1 beside the state queue (plan §4.4,
- * committee column): the hub oracle, the DA params governor, the DA
+ * Everything the committee reads on L1 beside the state queue: the hub
+ * oracle, the DA params governor, the DA
  * attestation, the pooled DA bond, the availability challenge, the
  * correction lock and the reference-script auth policy. Script outputs are
  * tracked by their spending script's payment credential, so a staked
  * variant of the address is tracked too. The hub oracle output sits at the
  * hub policy's own script address and is never spent: tracking it keeps the
- * protocol-init tx that created it stored (R1b), which is the follower's
+ * protocol-init tx that created it stored, which is the follower's
  * evidence that it started before protocol init (R3).
  */
 export const committeeTracked = (

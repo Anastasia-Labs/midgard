@@ -40,7 +40,7 @@ export type SeedCursorMoved = Readonly<{
 }>;
 
 /**
- * Inserts wallet UTxOs read from the ledger as seed rows (§5.3 step 4)
+ * Inserts wallet UTxOs read from the ledger as seed rows
  * through the class A writer: `created_slot NULL`, `seed_slot = at.slot`.
  * The UTxOs must be the ledger's at `at`, which must still be the cursor: a
  * seed row carries no spend, so a spend applied after `at` would be lost.
@@ -155,7 +155,7 @@ export const initializeIn = async (
   return { kind: "initialized", cursor };
 };
 
-/** Keyset-paged load of every live outref (the tracked-outref set, §6 item 5). */
+/** Keyset-paged load of every live outref (the tracked-outref set). */
 export const loadLiveOutRefs = async (
   page: (after: OutRef | null) => Promise<Record<string, unknown>[]>,
   add: (outRef: OutRef) => void,

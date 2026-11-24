@@ -1,6 +1,6 @@
 /**
- * Unit coverage for the `native-script-decoding` evidence module (offchain
- * plan §4.2): the cheap deterministic pieces — outpoint trie key, wire
+ * Unit coverage for the `native-script-decoding` evidence module: the cheap
+ * deterministic pieces — outpoint trie key, wire
  * converters, planner-window proof selection, the §7.2 out-of-domain face
  * classifier, and the injected ledger-trie handle in both polarities. The
  * heavier compositions (step-02 committed-claim openings against a real

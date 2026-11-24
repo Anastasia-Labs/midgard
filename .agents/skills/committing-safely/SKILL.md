@@ -73,7 +73,7 @@ deliberately left hunks uncommitted.
 3. **`onchain/aiken/plutus.json` is never committed.** It is a build output
    of whichever compiler and deployment profile last ran, and it is not
    gitignored, so a sweep picks it up. The hook refuses it when staged
-   (`.githooks/pre-commit` lines 49–60); `commit-paths` refuses it. Blind
+   (`.githooks/pre-commit`); `commit-paths` refuses it. Blind
    spots: `MIDGARD_SKIP_HOOKS=1` and `--no-verify` bypass the hook, a clone
    without `bash .githooks/install` has no hook, and no CI step checks for a
    tracked blueprint. [hook: pre-commit]
@@ -112,8 +112,8 @@ deliberately left hunks uncommitted.
    characters; a body that says why the change exists and what was wrong
    before; issue links as a `(#NNN)` subject suffix or `Closes #NNN` /
    `Refs #NNN` in the body. [review]
-10. **Do not push unless told to, and never push to `main`.** As of
-    2026-09-25 `main` has no branch protection on GitHub
+10. **Do not push unless told to, and never push to `main`.** On
+    2026-11-23 `main` had no branch protection on GitHub
     (`gh api repos/Anastasia-Labs/midgard/branches/main` reports
     `"protected": false`), so nothing but you stops it. [review]
 

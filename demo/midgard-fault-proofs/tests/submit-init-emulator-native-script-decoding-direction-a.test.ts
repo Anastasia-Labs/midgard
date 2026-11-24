@@ -1,6 +1,5 @@
 /**
- * `native-script-decoding` direction-A emulator lifecycle (#635, #633;
- * offchain plan §8.2 suite 4).
+ * `native-script-decoding` direction-A emulator lifecycle (#635, #633).
  *
  * Direction A is wrongful ACCEPTANCE: the operator committed a transaction
  * that resolves a reference-script item the canonical decoder refuses. The
@@ -9,9 +8,9 @@
  * chunk-plus-next window on both the segment and the verdict — the smallest
  * payload that still exercises every windowed opening.
  *
- * Both step-01 carriages are driven (design §10 Q4): the redeemer-carried
+ * Both step-01 carriages are driven: the redeemer-carried
  * inclusion proof, and the #545 published-chunk transport. One of the two
- * threads is driven end-to-end through the §4.3 proving core off a §3.4
+ * threads is driven end-to-end through the proving core off a
  * finding record; the other drives the per-step submitters directly, so the
  * two planes are pinned against each other. The proving-core journey then
  * continues through block removal: the minted fraud-proof token stands as

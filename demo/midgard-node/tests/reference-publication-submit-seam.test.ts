@@ -1,6 +1,6 @@
 /**
  * Reference publication sends every chained publication tx through the
- * node's one submit seam (I1-fix F7): the seam journals the exact signed
+ * node's one submit seam: the seam journals the exact signed
  * bytes as a `reference_publication` intent before the provider sees them,
  * and a journal refusal stops the publication with nothing sent.
  */

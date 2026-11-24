@@ -37,8 +37,8 @@ import {
 export { WatcherFaultProofL1RefusedError } from "./fault-proof-l1-source.chain.js";
 
 /**
- * The fault-proof families' L1 source over the watcher's chain follower
- * (ticket W1): raw snapshots pinned at a depth under the release policy,
+ * The fault-proof families' L1 source over the watcher's chain follower:
+ * raw snapshots pinned at a depth under the release policy,
  * each with the node's mempool read at the same tip (`pending-read.ts`).
  *
  * Depth is counted from the follower's cursor; a lagging cursor only

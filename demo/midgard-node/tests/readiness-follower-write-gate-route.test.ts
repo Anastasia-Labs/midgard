@@ -1,6 +1,6 @@
 /**
- * `/readyz` names this process's side of the follower write gate (plan
- * §8.1): unready until its follower-change driver applied a view, and while
+ * `/readyz` names this process's side of the follower write gate:
+ * unready until its follower-change driver applied a view, and while
  * a recompute of that driver is under way or held. The follower's own
  * readiness (catching up, lagging) is its reasons, read from the follower.
  */

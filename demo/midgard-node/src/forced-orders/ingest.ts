@@ -1,6 +1,6 @@
 /**
- * The forced-order ingestion hook of the follower-change driver (plan §12.3
- * steps 2 to 4, §7.3). On every driver run it reads the live forced orders
+ * The forced-order ingestion hook of the follower-change driver. On every
+ * driver run it reads the live forced orders
  * at the follower's view, and the spent ones a processed landed block names
  * (a foreign block may include an order this node never saw live), and for
  * each one the node has no `forced_transaction_utxos` row yet:
@@ -109,9 +109,9 @@ export type ForcedOrderIngestionOptions = Readonly<{
   store: FactStore;
   config: ForcedOrderConfig;
   consensusProfile: MidgardConsensusProfile;
-  /** §12.3 steps 2 and 3; absent leaves only the content sources. */
+  /** Ledger reads; absent leaves only the content sources. */
   ledger?: LedgerOutputs;
-  /** §12.3 step 4, in order. */
+  /** By-id content sources, in order. */
   sources?: readonly TxContentSource[];
   /**
    * Whether `sources` includes a configured remote content source

@@ -1,5 +1,5 @@
 /**
- * Corrections in the fork simulator (N4, plan §7.4): counting the admitted
+ * Corrections in the fork simulator: counting the admitted
  * corrections, their rollbacks and their relandings the node recomputed,
  * and a rollback deeper than k the follower refuses.
  */

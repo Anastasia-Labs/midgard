@@ -30,7 +30,7 @@ const openPostgres: ForkRunOptions["open"] = async (optionsFor) => {
   });
 };
 
-/** The SQLite suite's §15 I1 and I5 checks over the Postgres store (the node's). */
+/** The SQLite suite's checks over the Postgres store (the node's). */
 describe("intent journal in the fork simulator (Postgres)", () => {
   it("holds over the corpus and random scenarios", async () => {
     const all: IntentSimStats[] = [];

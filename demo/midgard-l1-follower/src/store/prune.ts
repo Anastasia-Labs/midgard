@@ -3,9 +3,9 @@ import { asNumber, type SqlTx } from "../sql/backend.js";
 import type { RetentionPin, StoreContext } from "./context.js";
 import { readCursor } from "./rows.js";
 
-/** Every 1,000th height is kept as an intersection checkpoint (§11). */
+/** Every 1,000th height is kept as an intersection checkpoint. */
 export const CHECKPOINT_INTERVAL = 1000;
-/** `l1_rollbacks` keeps its last 1,000 rows (§11). */
+/** `l1_rollbacks` keeps its last 1,000 rows. */
 export const ROLLBACK_LOG_ROWS = 1000;
 
 /** A role's prune floor holding the boundary back, named by the floor. */
@@ -61,7 +61,7 @@ const pinClauses = (
     .join("");
 
 /**
- * One budgeted retention step (§11), in the caller's write transaction. The
+ * One budgeted retention step, in the caller's write transaction. The
  * boundary is the block the retained depth below the cursor (k unless the
  * role keeps more, never less): a rewind of depth k lands at or above it,
  * so nothing at or above it is touched. Order: spent outputs whose spend is

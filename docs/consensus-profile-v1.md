@@ -29,10 +29,7 @@ The canonical deployment uses one indivisible version tuple:
 | validation-trace descriptor version |                              `1` |
 | validation-dispute version          |                              `1` |
 | DA inner payload schema             |                              `1` |
-| CEK program envelope                |                              `1` |
 | CEK constant-value schema           |                              `1` |
-| CEK program-material schema         |                              `1` |
-| CEK material sidecar                |                              `1` |
 | proof submission envelope           |                              `1` |
 | deployment manifest schema          | `midgard-deployment-manifest-v1` |
 | protocol-info API                   |                              `1` |
@@ -64,11 +61,11 @@ state hashes, padded by repeating the terminal state to the next power of two.
 The descriptor commits both endpoints, the exact count, and the operator's
 verdict. The counted map prevents empty-root/count ambiguity.
 
-The DA payload contains canonical full transactions and all ledger/script
-preimages needed to reconstruct the deterministic trace. It does not contain
-the complete state-hash trace. A challenged operator must reveal requested
-bisection children from the committed tree. Failure to answer before the
-compiled response deadline proves the block faulty.
+The DA payload contains the canonical full transactions. It carries neither
+the UTxO set nor the state-hash trace; the prior ledger comes from replaying
+earlier blocks. A challenged operator must reveal requested bisection children
+from the committed tree. Failure to move before its side clock runs out
+(`validation-dispute-v1.ak`) proves the block faulty.
 
 ## 4. Canonical transaction and forced-order data
 
@@ -94,8 +91,7 @@ MidgardTransactionWitnessSet {
 Each field preimage uses the canonical definite-array/byte-envelope grammar in
 [MidgardTx §5](spec/midgard-tx.md#5-the-uniform-enveloped-preimage-grammar).
 Nested datum/redeemer Plutus Data follows §6.2, including its required
-indefinite list and long-byte-string forms. CEK program material is a separate
-DA/material-publication concern, not a fourth witness-set field.
+indefinite list and long-byte-string forms.
 The compact transaction commits each field hash and the full witness-set hash.
 The transaction id remains the domain-separated hash of the canonical compact
 body and version.
@@ -173,33 +169,8 @@ vector. The implementation is in
 [`tx-order-v1.ak`](../onchain/aiken/validators/user-events/tx-order-v1.ak) and its
 [material verification library](../onchain/aiken/lib/midgard/user-events/tx-order-v1.ak).
 
-This flow replaces the staged field-receipt protocol. Its old receipt execution
-measurements do not demonstrate fit for the current mint. The variable-width
-field walk still has the execution-budget limitation documented in §8.11;
+The variable-width field walk still has the execution-budget limitation documented in §8.11;
 release acceptance must resolve that limitation for the required capability floor.
-
-Non-native program material uses a separate permissionless, append-only L1
-publication address:
-
-```text
-CekProgramMaterialDatumV1 {
-  kind,
-  root,
-  preimage,
-}
-```
-
-Each output carries one independently bounded content node. The compiled
-validator has no successful spending path, so an operator cannot erase a
-forced submitter's material before inclusion or challenge. The typed root is
-recomputed from `(kind, preimage)`; a wrong root, kind, encoding, or oversized
-preimage is ignored and cannot satisfy a program envelope. The compact
-transaction already commits each program's term root, node count, and material
-byte count, so the order datum does not contain an unbounded list of material
-references. A node discovers the graph from those roots, persists exact
-content-addressed nodes, and refuses to build a due proof-profile block while
-a required graph is incomplete. Material may be published across multiple L1
-transactions before the order; each node remains independently revealable.
 
 ## 5. Validation machine
 
@@ -245,13 +216,14 @@ transactions. Source authentication differs; transaction semantics do not.
 
 ## 6. Script programs and CEK
 
-V1 script witnesses use a canonical Merkleized UPLC program representation.
-The credential commits `(language, program_version, term_root)`. Raw Flat/CBOR
-bytes are an SDK input format, not the consensus identity: the SDK decodes
-them and emits the canonical term DAG. This removes an otherwise separate
-untrusted bytes-to-term interpretation from L1 consensus.
+Script witnesses and reference scripts carry their Cardano bytes and are
+identified by `H = blake2b_224(language ‖ bytes)`. A dispute takes a script's
+term graph from the permissionless script-decode record for `H`
+([`script-decode-v1.ak`](../onchain/aiken/validators/script-decode-v1.ak)),
+which holds `Decoded` (term root and program version) or `Refused` (class and
+bit offset).
 
-The authoring decoder reads the raw Flat exactly as the Cardano ledger reads a
+The decoder reads the raw Flat exactly as the Cardano ledger reads a
 Plutus V3 script at protocol version 11: it refuses every program Cardano
 refuses and accepts every spelling Cardano accepts, such as padded Flat words
 and non-minimal Data constant encodings. The graph commits each constant's
@@ -303,8 +275,8 @@ Dispute version 1 allows at most 32 bisection rounds. A case opens by the
 challenged block's end time plus half maturity (`case_can_open`), and lasts at
 most D_case = 2 C + 2 (2 rounds + 3) L_d + R, from the profile's side clock C,
 dispute validity range L_d and resolution allowance R
-(`validation-dispute-v1.ak`): `210,480,000` ms on public timing. The exact V1
-block maturity is seven days (`604,800,000` ms). A profile that installs the
+(`validation-dispute-v1.ak`): `210,480,000` ms on public timing. Public block
+maturity is seven days (`604,800,000` ms). A profile that installs the
 execution dispute needs maturity of at least 2 D_case + 1
 (`minValidationDisputeMaturityMs`, `420,960,001` ms on public timing); one that
 excludes it is not held to this floor. A differently versioned response
@@ -386,16 +358,16 @@ move.
 Aggregate fields and full ledger-output preimages can exceed one proof
 transaction's available witness budget. Their bounds therefore require
 incremental authentication and consumption, with real transaction framing
-included in each step's measurement. CEK programs use a compact envelope and
-content-addressed material nodes; raw Flat is an authoring format. Exact encoded
-DA size, including tuple framing and all material, remains the aggregate gate.
+included in each step's measurement. Plutus scripts are carried as their
+Cardano bytes. Exact encoded DA size, including tuple framing, remains the
+aggregate gate.
 
 Measured bytes and execution units are evidence tied to a compiler, blueprint,
 parameters, and fixture; they are not additional consensus constants. Use the
 [component-spec carriage measurements](spec/midgard-tx.md#810-cost-claims--the-carriage-exit-measurements)
 and [fault-proof testing status](fault-proofs/testing-status.md) to locate
-measurement commands and limitations. Historical receipt-protocol measurements
-and unsigned CML framing estimates do not activate the current profile.
+measurement commands and limitations. Unsigned CML framing estimates do not
+activate the current profile.
 Release evidence must measure the actual applied publication, resolution, and
 settlement transactions against the deployment's Cardano parameter snapshot.
 
@@ -447,7 +419,9 @@ that evidence is present for the deployed validator hashes.
 
 ## Appendix A — Exact compiled profile
 
-This block is generated from the compiled canonical profile. CI checks it
+This block is generated from the compiled canonical profile of the checkout's
+selected deployment (`preprod-testing`), so its maturity and
+`coinsPerUtxoByte` values are that profile's. CI checks it
 byte-for-byte so documented limits, features, schema identities, proof
 families, and the profile digest cannot drift from source.
 

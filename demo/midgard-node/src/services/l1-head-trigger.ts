@@ -1,5 +1,5 @@
 /**
- * Head-change triggering of the node's planner fibers (plan §4.1, N2). The
+ * Head-change triggering of the node's planner fibers. The
  * follower driver bumps `Globals.L1_HEAD_SEQUENCE` each time it applies a new
  * view at the node's tip; a fiber on `onL1HeadChange` runs its next tick
  * when that happens, instead of polling L1 on a timer.

@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last reviewed: 2026-09-07 (remaining acceptance scope).
+Last reviewed: 2026-11-23 (remaining acceptance scope).
 
 Boundary: complete publication and independent-challenger acceptance for the
 current catalogue. Existing split/yield implementations and runner installation
@@ -16,20 +16,19 @@ authentic proof inputs, construct and submit the complete proof within L1 limits
 resume after interruption, remove the fraudulent commitment, and verify the
 result before block maturity.
 
-## P0 — Publication closure
+## P0 — Publication on the release identity
 
-Complete the [availability-challenge publication work](size-plans/availability-challenge.md).
-Closure requires a current pinned build, applied scripts, complete signed
-publication transactions, and matching lifecycle scenarios under L1 limits.
-
-For the split validation/transition resolvers, use the
-[installed validation-dispute workflow](validation-trace-dispute-installed-workflow.md)
-and [transition replay](transition-trace-installed-replay.md). Run their publication and lifecycle gates on the release identity.
+Run the publication and lifecycle gates on the release identity for the split
+resolvers ([installed validation-dispute workflow](validation-trace-dispute-installed-workflow.md),
+[transition replay](transition-trace-installed-replay.md)) and the
+[availability challenge](availability-challenge-operations.md): a current pinned
+build, applied scripts, complete signed publication transactions, and matching
+lifecycle scenarios under L1 limits.
 
 ## P1 — Preserve complete watcher coverage
 
-The watcher source currently installs the complete catalogue. Keep that invariant
-as categories change, and verify deployment-bound admission, public retained-DA/L1
+The watcher installs the complete catalogue. Keep that invariant as categories
+change, and verify deployment-bound admission, public retained-DA/L1
 authorities, action-specific funding, durable recovery, and reconciliation in
 acceptance. A source installation count is not evidence of a live deployment.
 
@@ -56,10 +55,8 @@ descriptor/MPF, native signer/evaluator, and CEK/ScriptSources/ResolveInputs
 continuation frontiers. Publication-only and atomic maximum rows do not replace
 registered provenance through mint/removal. Cancellation and recovery must cover
 each reachable continuation, including union folds and same-block-created inputs.
-The [fit evidence index](size-plans/README.md) identifies family-specific producers
-and verifiers; retain their required shape sets when regenerating evidence.
-Use the [measured emulator gate](testing-status.md#emulator-gate-performance)
-without narrowing those shapes; faster scheduling does not close this release-bound work.
+Run the [emulator gate](testing-status.md#verification-commands) without
+narrowing those shapes.
 
 Completion: all catalogue lifecycle tests pass with the shared Van Rossem
 limits and no category-specific size or ExUnit override. Complete the frozen-tree classification sweep and independent review below.
@@ -85,9 +82,8 @@ prover exactly once, and leaves the node and L1 views reconciled.
 
 - Expose stable retained payload, proof artifact, membership witness, field
   opening, and verifier-version schemas to an unprivileged challenger.
-- Accept the remedy for data withheld after attestation, including publication
-  of the availability-challenge scripts and matching deployed manifest roles.
-  Use P0 for publication acceptance.
+- Accept the availability-challenge remedy for data withheld after attestation
+  live, with its scripts published and manifest roles deployed (P0).
 
 - Keep all proof evidence available for at least maturity plus execution/retry
   margin.

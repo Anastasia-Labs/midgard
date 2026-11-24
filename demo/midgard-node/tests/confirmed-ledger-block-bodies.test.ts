@@ -1,10 +1,10 @@
 /**
- * An own block's merge is folded by landed-block processing alone (plan
- * §5.5 P10): the merge confirming on L1 writes no local ledger, so a driver
+ * An own block's merge is folded by landed-block processing alone:
+ * the merge confirming on L1 writes no local ledger, so a driver
  * run at the pre-merge view that follows it never moves the ledger back.
  *
  * Its bodies (its `blocks` rows over the `immutable` payloads) live until
- * its fold is final (plan §10.5, N5-R1 item 2). The fold releases nothing: a
+ * its fold is final. The fold releases nothing: a
  * rollback of the merge unfolds it and the block has to merge again, and
  * that merge reads the bodies. They are released (`releaseFinalFolds`) in
  * the prune transaction that makes the fold final, and nothing of the block

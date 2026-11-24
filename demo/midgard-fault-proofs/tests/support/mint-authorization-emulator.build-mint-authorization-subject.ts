@@ -42,7 +42,7 @@ import {
 
 /**
  * Materialises the committed native transaction from its four door preimages.
- * `validity: "TxIsInvalid"` builds the §2.4.3(d) negative — an honestly
+ * `validity: "TxIsInvalid"` builds the negative — an honestly
  * recorded no-op the family must never convict.
  */
 export const buildMintAuthorizationSubject = ({

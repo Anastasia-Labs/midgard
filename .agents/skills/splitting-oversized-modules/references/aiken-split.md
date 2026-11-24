@@ -50,12 +50,12 @@ time and 1.35 GB of memory, and built 1,162 validators.
 ## Why not `deployment:build`
 
 `pnpm --dir demo deployment:build <profile>` runs
-`node scripts/deployment-profiles.mjs build <profile>` (`demo/package.json:7`).
+`node scripts/deployment-profiles.mjs build <profile>` (`demo/package.json`).
 That command rewrites `onchain/aiken/env/*.ak` and
 `demo/midgard-core/src/generated-deployment-profiles.ts`, then runs
 `aiken build --env <profile with - replaced by _>` inside the checkout's
 `onchain/aiken` and writes `plutus.json` and `plutus.json.deployment.json`
-there (`demo/scripts/deployment-profiles.mjs:186-293`). It builds one tree in
+there (`demo/scripts/deployment-profiles.mjs`). It builds one tree in
 place; it cannot give you a before and an after, and in a shared checkout it
 overwrites files other sessions use. Use it for deployments only.
 

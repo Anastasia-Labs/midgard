@@ -1,5 +1,5 @@
 /**
- * The committee's L1 clock (plan §3.6): the only "now" for an L1 validity or
+ * The committee's L1 clock: the only "now" for an L1 validity or
  * deadline decision the availability responder takes. It is the newest
  * follower tip slot plus the slots elapsed since that tip was observed,
  * never decreasing (`createSlotClock`, `@al-ft/midgard-l1-follower/heads`),

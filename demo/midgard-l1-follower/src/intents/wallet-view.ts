@@ -1,5 +1,5 @@
 /**
- * The wallet view (§8.5): what one own address may spend now.
+ * The wallet view: what one own address may spend now.
  *
  *   available = live own outputs at the tip (facts)
  *             − inputs and collaterals of live intents
@@ -62,7 +62,7 @@ export const isLiveStatus = (status: IntentStatus): boolean =>
   (LIVE_INTENT_STATUSES as readonly string[]).includes(status.kind);
 
 /**
- * §8.5 over `facts` (the live outputs at the head, any address) and the
+ * The wallet view over `facts` (the live outputs at the head, any address) and the
  * live intents: the outputs at `ownAddress` no live intent spends or uses
  * as collateral, plus the live intents' outputs at `ownAddress` no other
  * live intent spends.

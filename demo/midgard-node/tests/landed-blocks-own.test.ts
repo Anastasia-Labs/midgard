@@ -1,5 +1,5 @@
 /**
- * This node's own landed blocks (plan §7.3, §15 N3), processed against stub
+ * This node's own landed blocks, processed against stub
  * ports on the node database: an own block is adopted from its journal and
  * never replayed, exactly once across runs, unapplied, as a foreign block
  * is, and the rebase is asked to apply it (the rebase applies own and
@@ -7,7 +7,7 @@
  * rebase, with nothing held after it); a journal that does not describe the
  * landed block, or whose delta misses its header's root, holds the local
  * fault by name and records nothing; a merged own block folds into
- * `confirmed_ledger` once the rebase applied it (N5), once, whether the
+ * `confirmed_ledger` once the rebase applied it, once, whether the
  * merge fiber folded it first or not, and waits for that rebase until then;
  * a foreign block after it replays on the journal's post-state, and one
  * that misses its header's root is never adopted.

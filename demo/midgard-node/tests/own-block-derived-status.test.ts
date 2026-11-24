@@ -1,6 +1,6 @@
 /**
- * An own block's status derived from the facts (plan §8.2, §8.3,
- * `pendingBlockFinalizations.derived-status.ts`), never stored:
+ * An own block's status derived from the facts
+ * (`pendingBlockFinalizations.derived-status.ts`), never stored:
  *
  * - unlanded with no landed row, landed with a processed row the working
  *   ledger has not taken in, applied once it has, folded at the frontier or

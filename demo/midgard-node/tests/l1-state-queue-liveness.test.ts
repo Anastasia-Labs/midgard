@@ -1,5 +1,5 @@
 /**
- * Liveness of the node's landed state queue (plan §5.5 P1, §15 N2), read
+ * Liveness of the node's landed state queue, read
  * from the node database: an unhealthy queue stops every proposal with its
  * named reason while reads keep serving its walk, and startup waits on it
  * without failing or exiting, naming what it waits on, until it is healthy.

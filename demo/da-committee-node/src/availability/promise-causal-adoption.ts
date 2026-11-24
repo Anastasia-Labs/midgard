@@ -34,7 +34,7 @@ const record = (value: unknown, label: string): Record<string, unknown> => {
 /**
  * What the adopted profile reads from the committee's own node: the protocol
  * parameters and slot configuration by local state query, and whether a view
- * of the committee's L1 follower is still current (plan §8.1).
+ * of the committee's L1 follower is still current.
  */
 export type CommitteePromiseLedger = Readonly<{
   protocolParameters: () => Promise<ProtocolParameters>;
@@ -215,7 +215,7 @@ export const loadCommitteePromiseCausalAdoption = async (input: {
     monotonicMs: () => performance.now(),
   });
   // The artifact's follower view stays current while no rollback undid its
-  // point (§8.1). Every source fence re-reads it; the policy's synchronous
+  // point. Every source fence re-reads it; the policy's synchronous
   // epoch check reads the last answer.
   const pinnedView = record(
     record(artifact.sourceBinding, "Causal policy source binding").view,

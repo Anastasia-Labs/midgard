@@ -1,8 +1,8 @@
 /**
  * The adapter seam. Shared follower SQL is written once with `?`
  * placeholders in the subset Postgres and SQLite both support; each backend
- * runs it, and the dialect encodes the few column types that differ (§18.1
- * Q1: booleans, JSON, outref arrays, the row-lock clause).
+ * runs it, and the dialect encodes the few column types that differ
+ * (booleans, JSON, outref arrays, the row-lock clause).
  */
 
 export type SqlValue =

@@ -176,7 +176,7 @@ const acquirePostgresLease = async (
 
 /**
  * The Postgres backend. Write transactions are plain `BEGIN`: the follower
- * serialises writers on the cursor row (`SELECT … FOR UPDATE`, §7.1). Read
+ * serialises writers on the cursor row (`SELECT … FOR UPDATE`). Read
  * transactions are `REPEATABLE READ READ ONLY` snapshots.
  */
 export const openPostgresBackend = (

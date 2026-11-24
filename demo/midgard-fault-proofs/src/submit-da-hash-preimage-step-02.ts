@@ -1,5 +1,5 @@
 /**
- * `da-hash-preimage` step-02 submitter (Goal task `Q44`, §9.1 output 8).
+ * `da-hash-preimage` step-02 submitter.
  *
  * Finalizes the proof: burns the computation thread, mints the permanent
  * fraud-proof token and locks it at the always-fails fraud-proof address. The

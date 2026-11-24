@@ -146,7 +146,7 @@ semantic validation and corroborates the exact current native head. Full replay
 remains an explicit recovery operation.
 
 The fault decision, proof queue and proof objective journals are tables in
-`watcher-journals.sqlite` inside the workflow journal directory. Each record is
+`watcher-journals.sqlite` inside `decisionJournalDirectory`. Each record is
 one row, and a persist writes only the rows it changes. Each row carries a MAC
 under the rollback key, because SQLite checksums its WAL frames but not the
 records in its pages: a row the disk corrupted is refused, not acted on.
@@ -176,8 +176,7 @@ running or awaiting a retry in this process. A final completion is cleaned up
 once an observation no longer queues its header. An objective no admitted
 fault names any more is driven by nothing; once its header leaves the queue
 it is released, and a thread of ours it leaves standing is reclaimed by the
-own-thread sweep. A transaction this process sent for it keeps its wallet
-coins held in memory until its validity bound passes. Queue rows a previous
+own-thread sweep. Queue rows a previous
 process left queued or active do not defer the cleanup. A removal that fails
 keeps the rows, is retried by every admission, and is listed in
 `supervisor.objectiveCleanupFailures` in `/v1/status`, and `/readyz` reports
@@ -197,10 +196,9 @@ never read again.
 The watcher keeps no record of the transactions it sends: on every pass it
 reads each proof's progress from the chain with the L1 node's mempool
 applied, so a transaction still in the mempool counts as sent and the next
-step is built on its outputs, after a restart as before it. The
-`watcher.sqlite` file at the configured
-storage path, which held the workflow record and the funding reservations of
-earlier releases, is no longer opened: it is unused and may be deleted.
+step is built on its outputs, after a restart as before it. The watcher
+never opens a `watcher.sqlite` file at the configured storage path; one left
+there by an earlier release is unused and may be deleted.
 
 Every watcher SQLite file, the journals included, must sit on a local disk,
 never a network filesystem (NFS, SMB and the like): those break SQLite's file
@@ -211,10 +209,7 @@ The launch deployment starts with a fresh data directory; before reusing an olde
 this release needs a fresh watcher journal. When `/v1/status` shows no
 queued or active proof, stop the watcher, move `watcher-journals.sqlite` and
 its `-wal` and `-shm` files aside, and start it; otherwise start it on a fresh
-data directory. Evidence remains pinned by event, recovery, and
-proof dependencies; this change does not delete archives. See the
-[persistence record inventory](../../docs/midgard/decisions/watcher-persistence.md)
-for consumers and retention rules.
+data directory.
 
 ## Configuration and trust boundaries
 
@@ -450,9 +445,9 @@ installed process launcher.
 
 Startup verifies the deployment manifest against the canonical V1 consensus
 profile exactly, including `forcedTransactionSourceEncoding`
-(`midgard-forced-submission-v1`, added by the forced-submission redesign). A
-manifest published before that field existed fails closed with
-`canonical_manifest_invalid`; the deployment must be republished, not patched.
+(`midgard-forced-submission-v1`). A manifest without that field fails closed
+with `canonical_manifest_invalid`; the deployment must be republished, not
+patched.
 Forced submissions are adjudicated per
 [the forced-submission decision](../../docs/midgard/decisions/forced-inclusion-submission-verdict.md):
 the L1 order authenticates the immutable submission and the operator's
@@ -556,19 +551,10 @@ measurement does not establish a public-network deadline guarantee. See the
   the real-devnet acceptance harness in
   `demo/midgard-node-tools/devnet/watcher-journeys/`. It launches this package's
   built `dist/cli.js` against a fresh Cardano devnet and drives each
-  non-interactive family from committed header to healthy successor. As of
-  2026-09-13 ten families have completed that journey on the
-  forced-submission-merged code against its 55-family deployment:
-  `transitionTrace`, `zeroInput`, `invalidRange`, `invalidSignature`,
-  `mintAuthorization`, `minFee`, `spendInputSignerMissing`,
-  `protectedOutputSignerMissing`, `observersForbiddenOnUntaggedNetwork`, and
-  `inputSetUniqueness`. Those retained passes used per-step finality waits;
-  subsequent inclusion-policy passes require their own recorded provenance.
-  The other non-interactive families are verified
-  locally, in progress on that harness, or still blocked, not live-accepted.
-  The interactive `validationTraceDispute` family is installed and covered by
-  emulator tests, not by a live journey; the trace-relative families have no
-  off-chain workflow in this release.
+  non-interactive family from committed header to healthy successor; that
+  document describes the run. The interactive
+  `validationTraceDispute` family is installed and covered by emulator tests,
+  not by a live journey.
 - `pnpm run typecheck`, `pnpm run lint`, and `pnpm test` check this package.
   The tests drive a scripted fake node transport; the sidecar itself is tested
   in `demo/l1-node-transport`.

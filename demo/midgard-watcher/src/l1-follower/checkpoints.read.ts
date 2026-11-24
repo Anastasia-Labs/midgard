@@ -6,7 +6,7 @@ import type { WatcherQueueTransition } from "./checkpoints.js";
 import { WATCHER_QUEUE_CHECKPOINTS_TABLE } from "./tables.js";
 
 /**
- * Read-time access to the watcher's transition checkpoints (ticket W1): the
+ * Read-time access to the watcher's transition checkpoints: the
  * rows the checkpoint derivation wrote, turned into SDK checkpoints at a
  * finality depth, with refusals where pruning may have removed rows.
  */

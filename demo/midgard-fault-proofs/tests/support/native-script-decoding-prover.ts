@@ -1,6 +1,6 @@
 /**
- * The `native-script-decoding` proving core (offchain plan §4.3, ruled
- * 2026-08-25): a consumer-agnostic driver over the per-step submitters,
+ * The `native-script-decoding` proving core: a consumer-agnostic driver over
+ * the per-step submitters,
  * consumable by the watcher (autonomous) and the CLI (manual) alike.
  *
  * The core drives Init → step-01 → step-02 → OpenSubject → BindDescriptor →
@@ -16,7 +16,7 @@
  *   boundary search against the re-derived plan), and continues.
  * - **Policy as data.** The core enforces whatever
  *   `NativeScriptDecodingProverPolicy` it is handed and hard-codes none
- *   of it. Only the §3.2/3.3 provability classification is non-negotiable:
+ *   of it. Only the provability classification is non-negotiable:
  *   unprovable corners are refused at the API boundary regardless of
  *   policy.
  * - **Outcome as data:** proven, refused (classification/policy, with the

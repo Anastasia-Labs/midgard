@@ -37,7 +37,7 @@ const aikenMaxIndexedSignerCount = (): number => {
 
 const MAX_INDEXED_SIGNER_COUNT = aikenMaxIndexedSignerCount();
 
-// Q63 / decision row D-DA5.
+// Q63.
 //
 // Every number here is the F04 governed floor from
 // `docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md` §4,

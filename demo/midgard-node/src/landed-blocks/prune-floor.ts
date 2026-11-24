@@ -1,5 +1,5 @@
 /**
- * The landed frontier's floor on the follower prune (plan §7.3, §11, N3).
+ * The landed frontier's floor on the follower prune.
  *
  * - Lagging (the merged root passed the frontier, or a live block waits
  *   unprocessed), the follower keeps every fact from the slot the frontier's

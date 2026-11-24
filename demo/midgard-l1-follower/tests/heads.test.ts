@@ -47,7 +47,7 @@ describe("depth()", () => {
     expect(heightAtDepth(53, depth(53, 40))).toBe(40);
   });
 
-  it("is the one definition behind the three variants of plan §3.5", () => {
+  it("is the one definition behind the three depth variants", () => {
     const tip = 1_000;
     const block = 990;
     // Inclusive (settlement): head − block + 1.
@@ -260,7 +260,7 @@ describe("slotNow", () => {
 });
 
 /**
- * A minimal fork driver until F8's simulator replaces it: a seeded walk that
+ * A minimal fork driver: a seeded walk that
  * extends the chain or forks it (rewind, then a new branch), with one watched
  * own tx that lands, rolls back, and re-lands or never re-lands. After every
  * step the level read from the store through the heads module must equal the

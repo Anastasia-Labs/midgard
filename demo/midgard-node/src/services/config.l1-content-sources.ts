@@ -2,8 +2,8 @@ import { Config } from "effect";
 
 /**
  * Where the node may fetch an L1 transaction by id when the local node's
- * ledger no longer holds a forced order's carriage output (plan §12.3 step
- * 4). `L1_TX_CONTENT_SOURCES` is a comma-separated list of URL templates,
+ * ledger no longer holds a forced order's carriage output.
+ * `L1_TX_CONTENT_SOURCES` is a comma-separated list of URL templates,
  * each with `{txId}` where the transaction id goes, answering with the
  * transaction's CBOR (raw, hex text, or JSON `{ "cbor": hex }`). Every answer is accepted only if its body hashes to the
  * id asked for, so a source can delay an order's ingestion, never change it.

@@ -1,6 +1,6 @@
 //// Canonical ScriptSources frames authenticated by the prepared one-step
 //// evidence. Copied fields inherit the canonical predecessor encoding; every
-//// changed field is encoded afresh. See the non-output size plan §4.1.
+//// changed field is encoded afresh.
 
 use aiken/builtin
 use aiken/cbor

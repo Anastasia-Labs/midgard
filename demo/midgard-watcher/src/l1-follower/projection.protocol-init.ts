@@ -9,7 +9,7 @@ import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { WATCHER_PROTOCOL_INIT_FAULTS_TABLE } from "./tables.js";
 
 /**
- * Deployment-shape checks on the state-queue root (ticket W1). The queue's
+ * Deployment-shape checks on the state-queue root. The queue's
  * root output must sit at the state-queue address: the watcher reads the
  * queue only there. A canonical tx that creates an output holding the root
  * unit anywhere else opens a row here, and the view reports the queue as

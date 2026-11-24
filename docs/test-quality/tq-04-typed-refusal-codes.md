@@ -1,9 +1,9 @@
 # TQ-04 — Prefer structured refusal codes for structured error contracts
 
 Status: Proposed
-Last reviewed: 2026-09-07 (error API review)
+Last reviewed: 2026-11-23 (error API and task links)
 
-Audit: §4. Rules: R3, R4. Related: TQ-05, TQ-06.
+Rules: R3, R4. Related: TQ-05, TQ-06.
 
 ## Problem and current evidence
 
@@ -19,7 +19,7 @@ TypeScript enum and does not need to become one. Phase A tests already assert
 rejection codes. Importing the vocabulary constant is not the only valid way
 to test the public code values.
 
-Candidate searches in the older audit count textual matches, not adjudicated
+Candidate searches count textual matches, not adjudicated
 weak assertions. Recheck current source before quoting a package total or
 rewriting an alternation whose accepted outcomes may be intentional.
 
@@ -48,5 +48,5 @@ rewriting an alternation whose accepted outcomes may be intentional.
 - Each changed matcher detects the failure its test names without accepting
   unrelated setup failures.
 - Intentional diagnostic and allowed-set assertions remain covered.
-- Any TQ-19 automation detects demonstrated weak patterns with documented
+- Any lint rule added for this detects demonstrated weak patterns with documented
   exceptions; it does not ban all regexes or mandate enums/cardinality rules.

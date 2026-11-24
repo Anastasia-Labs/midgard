@@ -155,7 +155,7 @@ pub type ScanThreadStateV1 {
   refusal_class: Int,
 }
 
-/// The canonical byte encoding of the thread state (§3.3): definite-length
+/// The canonical byte encoding of the thread state: definite-length
 /// CBOR array of the fields in declaration order, integers in canonical NIB
 /// form, byte strings definite.
 pub fn encode_scan_thread_state_v1(state: ScanThreadStateV1) -> ByteArray {

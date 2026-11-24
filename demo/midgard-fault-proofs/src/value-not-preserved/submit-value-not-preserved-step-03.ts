@@ -1,5 +1,5 @@
 /**
- * `value-not-preserved` step-03 submitter (offchain plan §4): outputs, mint
+ * `value-not-preserved` step-03 submitter: outputs, mint
  * and fee.
  *
  * Takes the challenged transaction's STRUCTURED outputs and mint items and
@@ -9,7 +9,7 @@
  * validator runs: every output's claimed quantity is outflow; a token claim
  * adds the mint field's claimed entries; an ADA claim subtracts the
  * committed fee and must carry NO mint carriage (ADA is structurally
- * unmintable, plan §1.2).
+ * unmintable).
  *
  * Both carriages go through the §8.8 door's planner
  * (`planFaultProofFieldOpening`), which pre-validates every check the door

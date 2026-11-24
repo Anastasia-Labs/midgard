@@ -29,7 +29,7 @@ import { promiseSignatureResourceReserve } from "./promise-signature-resource-re
 /**
  * Production source construction, shared by the configured factory and probes.
  * The boundary is the committee follower's view and its `rollbackGeneration`
- * is that view's generation (plan §8.1); canonical points are follower reads.
+ * is that view's generation; canonical points are follower reads.
  */
 export const createCommitteePromiseAdmissionSource = (args: {
   config: CommitteeL1ClientConfig;

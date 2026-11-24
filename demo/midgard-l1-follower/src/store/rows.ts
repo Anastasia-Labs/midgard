@@ -47,7 +47,7 @@ export const cursorFromRow = (row: SqlRow): Cursor => ({
   prunedThroughSlot: asNumber(row.pruned_through_slot),
 });
 
-/** The cursor row, optionally row-locked (§7.1 step 1, §8.1). */
+/** The cursor row, optionally row-locked. */
 export const readCursor = async (
   tx: SqlTx,
   dialect: Dialect,

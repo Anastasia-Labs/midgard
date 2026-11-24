@@ -245,8 +245,7 @@ export const DaAttestationSpendRedeemer =
   asDataType<DaAttestationSpendRedeemer>(DaAttestationSpendRedeemerSchema);
 
 /**
- * The rescue path's entire authorization condition, mirrored off-chain
- * (decision row D-DA5 clause c).
+ * The rescue path's entire authorization condition, mirrored off-chain.
  *
  * An attestation freezes both governed values at Init, and `ApplyToStateQueue`
  * requires both to still match. So it is stranded exactly when *either* has

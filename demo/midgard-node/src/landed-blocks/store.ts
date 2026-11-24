@@ -1,5 +1,5 @@
 /**
- * The node's landed-block rows (plan §5.5 P3, N3): one per landed
+ * The node's landed-block rows: one per landed
  * state-queue block the node processed, with its net ledger delta against
  * its parent's ledger and the events it included, and the confirmed-ledger
  * frontier (the landed header whose post-state `confirmed_ledger` holds).

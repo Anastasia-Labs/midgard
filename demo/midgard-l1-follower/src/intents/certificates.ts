@@ -1,6 +1,5 @@
 /**
- * Stake-credential registration reads over transaction bodies (§8.4 read
- * helpers): which credentials a body's certificates (key 4) register or
+ * Stake-credential registration reads over transaction bodies: which credentials a body's certificates (key 4) register or
  * deregister, and the latest such change among the canonical landed
  * transactions the store holds.
  *

@@ -1,5 +1,5 @@
 /**
- * The landed linked queue (plan §5.5 P1), shared by every role that reads a
+ * The landed linked queue, shared by every role that reads a
  * state queue from follower facts. A role decodes its live queue outputs
  * into entries (a root, a node keyed by its linked-list key, or an output
  * under the queue policy it cannot read) and this walk turns them into one

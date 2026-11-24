@@ -100,7 +100,7 @@ const acquireSqliteLease = (path: string): WriterLease | null => {
 };
 
 /**
- * The SQLite backend (watcher only, §18.1 Q1). One connection in WAL mode
+ * The SQLite backend (watcher only). One connection in WAL mode
  * with `synchronous = FULL` and foreign keys on. Writers take
  * `BEGIN IMMEDIATE`, which is the SQLite form of the cursor row lock.
  * The file must sit on a local disk: network filesystems break its locking.

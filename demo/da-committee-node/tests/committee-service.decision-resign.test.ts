@@ -17,7 +17,7 @@ import { openTestCommitteeStore } from "./helpers/committee-store.js";
 import { fakeL1Source } from "./helpers/fake-l1-source.js";
 
 /**
- * Plan §8.4, §11: a deleted signed decision is never re-signed with
+ * A deleted signed decision is never re-signed with
  * different content. Signing is deterministic in the header, the payload
  * bytes and the deployment's commitment authority (Ed25519 over the
  * availability commitment), and a payload decodes only from its canonical

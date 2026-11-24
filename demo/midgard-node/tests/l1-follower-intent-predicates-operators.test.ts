@@ -1,5 +1,5 @@
 /**
- * The node's §8.4 operator-set predicates (I1), each in both polarities:
+ * The node's operator-set predicates, each in both polarities:
  * an operator transition's intent is wanted while the operator-set
  * projection still allows the transition, and is `false` once the facts
  * rule it out. The key names the operator (`<verb>:...:<key>`); a node

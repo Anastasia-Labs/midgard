@@ -4,7 +4,7 @@
  * that transaction's `spend_inputs_hash`; step-02 re-opens field 0 through the
  * §8.8 door from it. See `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  *
- * `input-no-idx` step-01 submitter (Goal task `Q13`, §9.1 output 8).
+ * `input-no-idx` step-01 submitter.
  *
  * Nothing in the prepared JSON is trusted. Before a transaction is built this
  * module re-derives, from the **on-chain** state-queue block header, the

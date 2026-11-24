@@ -1,5 +1,5 @@
 /**
- * In-order landed-block processing (plan §7.3, §15 N3) under the fork
+ * In-order landed-block processing under the fork
  * simulator, on SQLite and Postgres follower stores with prune on. After
  * every chain-sync event the node processes the landed queue and runs the
  * working-ledger rebase it asks for, then equals a fresh derivation from
@@ -14,9 +14,9 @@
  * ledger too); a block whose replay misses its header's root is never
  * adopted and holds `landed_block_invalid` with the process up; late DA
  * and transient replay faults each hold by name and clear; a merge a
- * rollback undid is unfolded back to the root's lineage by header identity
- * (N5), its retained folds pruned once no rollback reaches them.
- * Corrections (N4, plan §7.4): a
+ * rollback undid is unfolded back to the root's lineage by header identity,
+ * its retained folds pruned once no rollback reaches them.
+ * Corrections: a
  * queue tail removal that lands is admitted at once (the processed rows it
  * took out are reverted), a rollback of it gives the rows back, and the same
  * rows removed again are admitted again, the node equal to the model through
@@ -25,7 +25,7 @@
  * cursor changed. The queue-terminal projection's rows (`removed` for a
  * landed correction, `merged` for a merge) equal a fresh derivation from
  * the canonical chain after every event, rollbacks and prunes included.
- * Own blocks (§8.2, §8.3): each journal's derived status equals a fresh
+ * Own blocks: each journal's derived status equals a fresh
  * derivation at every settled check (a fold the prune deleted by its merged
  * queue terminal), and its row is never written after
  * its commit, rollbacks included; an applied own block a rollback took out

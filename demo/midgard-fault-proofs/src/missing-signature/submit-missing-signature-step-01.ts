@@ -1,5 +1,5 @@
 /**
- * `missing-signature` step-01 submitter (offchain plan §4.2, §5 frontier 1).
+ * `missing-signature` step-01 submitter.
  *
  * Binds the accused transaction to the disputed block's counted
  * `transactions_root` (`verify_native_tx_in_state_queue_node` on-chain — the

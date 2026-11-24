@@ -1,5 +1,5 @@
 /**
- * The node event projection's D-t tables (plan §5.5 P2, §7.2, §11). The
+ * The node event projection's D-t tables. The
  * follower's registry generates their rewind and pruning; the projection
  * has no rollback code of its own. The never-reuse key set is the
  * follower's class A `l1_event_keys`, which the derivation also writes.

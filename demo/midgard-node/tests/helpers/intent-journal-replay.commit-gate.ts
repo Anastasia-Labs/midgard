@@ -1,6 +1,6 @@
 /**
  * A replayed commit's record through its production pre-broadcast gate
- * (`replayJournaledOnFollower`, I1-fix2 B2): the commit worker's
+ * (`replayJournaledOnFollower`): the commit worker's
  * `submitWithDurableIntent` seam, whose gate's history write owns the
  * transaction the journal's insert runs in.
  */

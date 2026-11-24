@@ -212,7 +212,7 @@ describe("the availability responder reconciles on the follower's facts, with no
   });
 
   it("returns its confirmed step to the mempool when a rollback deeper than the finality depth removes its block", async () => {
-    // D-N8: confirming at the finality depth (cd) retires the step's
+    // Confirming at the finality depth (cd) retires the step's
     // workflow, but cd is not finality: a deeper rollback reverts it, with
     // the same signed bytes and the inputs still reserved.
     const f = await fixture("prepare");

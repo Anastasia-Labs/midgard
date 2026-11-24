@@ -1,5 +1,5 @@
 /**
- * What the node reads from the queue-terminal projection (N4), as SQL
+ * What the node reads from the queue-terminal projection, as SQL
  * fragments for the statements that act on it: retention, DA delivery and
  * the operator's reports. Each is re-read inside the statement that acts, so
  * a rollback between a caller's L1 view and its write cannot release a row

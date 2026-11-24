@@ -27,7 +27,7 @@ Chapters 4 and 7 of the specification:
   participant L1 as L1 validators
   W->>L1: submit-init (mint computation-thread token)
   loop each step
-    W->>L1: submit-step-0N (advance computation thread)
+    W->>L1: submit-<category>-step-0N (advance computation thread)
   end
   L1-->>W: final step mints fraud_proof token, burns thread
   W->>L1: remove-fraudulent-block`}

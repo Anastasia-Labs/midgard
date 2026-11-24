@@ -20,7 +20,7 @@ import {
 } from "../tests/peer-coordinator.signature-record.js";
 
 /**
- * B5 (plan §16.2), the mutation and readiness halves (C2, CC4): one store
+ * B5, the mutation and readiness halves: one store
  * mutation and one readiness probe at 10^3 and 10^5 records. Mutation cost
  * and readiness cost must not depend on store size: each ratio (median at
  * 10^5 over median at 10^3) ≤ 1.2.

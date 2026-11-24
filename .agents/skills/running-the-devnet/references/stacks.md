@@ -129,8 +129,8 @@ stop the services with the phase4 `up.sh` / `down.sh` above.
 The journeys themselves run as a vitest suite over
 `devnet/watcher-journeys/**/*.test.ts` with
 `vitest.watcher-journeys.config.ts` (one fork, one-hour test timeout); they
-skip unless `MIDGARD_WATCHER_JOURNEY_RUN_DIR` is set. Status, retained runs and
-their logs are recorded in
+skip unless `MIDGARD_WATCHER_JOURNEY_RUN_DIR` is set. The harness and its run
+artifacts are described in
 [`docs/fault-proofs/automatic-watcher-journeys.md`](../../../../docs/fault-proofs/automatic-watcher-journeys.md).
 
 ## Demo-node Docker stack

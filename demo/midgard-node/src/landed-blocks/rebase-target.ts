@@ -1,5 +1,5 @@
 /**
- * What the working ledger and the native MPF must hold (plan §7.3, N3): the
+ * What the working ledger and the native MPF must hold: the
  * processed landed chain from the confirmed-ledger frontier to its tip `T`,
  * then this node's live own block, its live journal built on `T`. Own
  * journals whose block can no longer land are disposed of by the same rebase

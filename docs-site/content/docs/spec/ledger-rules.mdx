@@ -18,9 +18,9 @@ prohibit minting or burning non-Ada assets.
 ## Custom Midgard ledger rules
 
 <Callout type="info" title="Canonical V1 is indivisible">
-  `technical-spec/5-ledger-rules/2-custom-midgard-ledger-rules.tex` now records
-  the canonical rules, while `demo/midgard-core/src/consensus-profile.ts` is
-  their machine-readable identity. Protocol version `1` enables mint/burn,
+  `technical-spec/5-ledger-rules/2-custom-midgard-ledger-rules.tex` records the
+  canonical rules, while `demo/midgard-core/src/consensus-profile.ts` is their
+  machine-readable identity. Protocol version `1` enables mint/burn,
   native/PlutusV3/MidgardV1 scripts, redeemers, reference inputs/scripts,
   observers, script payment credentials, and protected outputs as one fixed V1
   surface. A deployment either binds that complete tuple and its L1-disputable
@@ -39,7 +39,7 @@ L1-disputable validation machine:
 | No auxiliary data           | Enforced at canonical V1 admission. `auxiliaryDataHash` must equal `EMPTY_NULL_ROOT`.                                                                                                                                                                 | `E_AUX_DATA_FORBIDDEN`                            |
 | Certificates empty          | Holds by construction. The native transaction format has no certificate field.                                                                                                                                                                        | Not applicable                                    |
 | Only zero withdrawals       | Holds by construction. Native transactions carry required observers, not withdrawals. When a native transaction is converted to a Cardano transaction, each observer becomes a reward-account withdrawal of exactly `0` lovelace (`codec/native.ts`). | Not applicable                                    |
-| Mint and burn authorization | Phase B runs each native, PlutusV3, or MidgardV1 non-Ada minting policy and checks `inputs + mint − fee − outputs = 0`; Ada mint remains forbidden.                                                                                                   | script-verdict failure or `E_VALUE_NOT_PRESERVED` |
+| Mint and burn authorization | Phase B runs each native, PlutusV3, or MidgardV1 non-Ada minting policy and checks `inputs + mint − fee − outputs = 0`; Ada mint is forbidden.                                                                                                        | script-verdict failure or `E_VALUE_NOT_PRESERVED` |
 
 <Callout type="warn" title="No feature-gate fallback">
   `lucid-midgard` exposes `mintAssets` and `mint` because mint/burn is part of
@@ -47,9 +47,8 @@ L1-disputable validation machine:
   builder state; they are not rejected merely because the mint preimage is
   non-empty. Canonical completion and validation enforce exact profile bounds,
   policy authorization, the zero-Ada rule, and `inputs + mint − fee − outputs =
-  0`. Release activation stays closed until the exact deployment-bound proof
-  paths cover that fixed surface; an operator or manifest cannot disable mint,
-  scripts, or another normative V1 feature to bypass the gate.
+  0`. No operator or manifest setting disables mint, scripts, or another
+  normative V1 feature.
 </Callout>
 
 Section 5.1 also states rules a fraud proof can demonstrate a block violated,

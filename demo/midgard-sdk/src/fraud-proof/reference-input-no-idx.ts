@@ -1,5 +1,5 @@
 /**
- * `reference-input-no-idx` fault-proof family (Goal task `Q31`) — the
+ * `reference-input-no-idx` fault-proof family — the
  * reference-input mirror of `input-no-idx`.
  *
  * **Rule.** Every *reference* input of a committed transaction must name an

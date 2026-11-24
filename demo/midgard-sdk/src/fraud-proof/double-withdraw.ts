@@ -1,5 +1,5 @@
 /**
- * `double-withdraw` family (work item W-C3) — off-chain codec and rule twin.
+ * `double-withdraw` family — off-chain codec and rule twin.
  *
  * Proves a block header's counted `withdrawals_root` commits two **distinct**
  * withdrawal leaves that both drain the same L2 UTxO (`body.l2_outref`) and

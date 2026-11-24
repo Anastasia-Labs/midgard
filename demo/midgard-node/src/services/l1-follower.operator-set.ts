@@ -1,5 +1,5 @@
 /**
- * The follower's operator-set wiring (NC14, D-N7): the driver hook that
+ * The follower's operator-set wiring: the driver hook that
  * keeps the operator set from the facts (only the rows that changed since
  * its last read) and publishes it, with the landed queue's tail, for the
  * watchdog, and this operator's membership as the liveness reason

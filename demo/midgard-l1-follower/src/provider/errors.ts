@@ -105,8 +105,8 @@ export class L1SubmitRejectedError extends L1ProviderError {
 }
 
 /**
- * By-hash content (a datum preimage) the facts do not hold yet. The §12
- * resolution may supply it later; it is never answered as empty.
+ * By-hash content (a datum preimage) the facts do not hold yet. A later
+ * resolution may supply it; it is never answered as empty.
  */
 export class L1CarriagePendingError extends L1ProviderError {
   override readonly name = "L1CarriagePendingError";

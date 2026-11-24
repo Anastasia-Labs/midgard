@@ -25,7 +25,7 @@ export type SettlementSupervision = {
   readonly watchdogMs: number;
   /**
    * Takes over the refusal holds a worker run reports it could not write
-   * (the node journal's `adopt`, I1-H1).
+   * (the node journal's `adopt`).
    */
   readonly adoptRefusalHolds?: (holds: readonly UnwrittenHold[]) => void;
 };

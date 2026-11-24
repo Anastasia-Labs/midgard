@@ -350,7 +350,7 @@ fn burn_node(header_hash: ByteArray) -> assets.Value {
   assets.from_asset(state_queue_policy, node_asset_name(header_hash), -1)
 }
 
-/// W-C9 regression: after an earlier child was pruned, the faulty anchor can
+/// Regression: after an earlier child was pruned, the faulty anchor can
 /// point directly at a later descendant.  The descendant retains its original
 /// predecessor hash and may have been committed by a rotated operator; neither
 /// fact weakens the authenticated linked-list descendant relation.

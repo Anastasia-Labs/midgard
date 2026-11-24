@@ -6,7 +6,7 @@
  * inputs are bound by the store's writer once it has them:
  *
  * - the operator's activity record, once its key is resolved (after the
- *   store opens): the prune step keeps it too (N6-R5);
+ *   store opens): the prune step keeps it too;
  * - the landed frontier's reads (the node database and the slot clock):
  *   until bound, its prune floor keeps every fact.
  */
@@ -70,7 +70,7 @@ export const nodeFollowerProjections = (
     operatorSetProjection(plan.operatorSet, () => activity.record),
     forcedOrderProjection(plan.forcedOrders),
     // Stores a settlement attempt's `final` in the prune step that prunes
-    // its journal entry (D-N4).
+    // its journal entry.
     settlementProjection,
     intentJournalProjection,
   ];

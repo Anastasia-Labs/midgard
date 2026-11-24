@@ -45,7 +45,7 @@ import { resolveStoredInputIn } from "./tx-inputs.js";
 
 /**
  * The fraud-proof raw L1 reads, answered from the follower's facts and the
- * watcher projection (ticket W1). Each read returns the value in the raw
+ * watcher projection. Each read returns the value in the raw
  * source's shape, or a refusal naming why the follower cannot answer it.
  *
  * Retention: a fact pruning may have removed is `beyond_retention`, never

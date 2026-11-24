@@ -5,7 +5,7 @@
  *
  * 1. Rejected committed leaf (`TxIsInvalid`): no acceptance claim, and
  *    l2TxMistag's to convict, not this family's. The honest step-01
- *    submitter's §1.4 acceptance-gate twin refuses locally, and the raw bind
+ *    submitter's acceptance-gate twin refuses locally, and the raw bind
  *    builder (no local twin) reaches the validator's own
  *    `expect bad_tx_view.tx_compact.validity_code == 0` refusal. The thread
  *    never leaves step-01.
@@ -125,7 +125,7 @@ describe("value-not-preserved negative scenarios", () => {
     const claimedAsset = {
       TokenAsset: { policy_id: POLICY_ID_HEX, asset_name: ASSET_NAME_HEX },
     } as const;
-    // The honest submitter's §1.4 acceptance-gate twin refuses locally.
+    // The honest submitter's acceptance-gate twin refuses locally.
     await expect(
       buildAndSubmit(buildValueNotPreservedStep01, {
         lucid: proverLucid,

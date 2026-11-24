@@ -1,5 +1,5 @@
 /**
- * Forced-order carriage from a real ledger (N10, plan §12.3), both
+ * Forced-order carriage from a real ledger, both
  * polarities. The publication and the order are built by the SDK and
  * submitted on the Lucid emulator, and their signed bytes become the blocks
  * the follower applies, so the follower decodes a real order transaction:
@@ -273,7 +273,7 @@ const publishAndOrder = async (h: Harness, tamper: boolean) => {
   return { submitted, publication, order };
 };
 
-describe("forced-order carriage from a real emulator chain (§12.3)", () => {
+describe("forced-order carriage from a real emulator chain", () => {
   it("admits a real forced order once a source supplies its carriage's creating transaction", async () => {
     const h = await harness();
     const f = await publishAndOrder(h, false);

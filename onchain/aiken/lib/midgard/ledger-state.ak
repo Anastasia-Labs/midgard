@@ -457,8 +457,8 @@ pub type MidgardTxCompactWithoutValidity {
 }
 
 /// The compact leaf's two-valued validity scalar (wire code 0 = valid,
-/// 1 = invalid). The five rejection arms retired in the #640 format wave
-/// (catalogue C-3, design note 3): the forced leaf's `OperatorVerdictV1`
+/// 1 = invalid). The five rejection arms retired in the #640 format wave:
+/// the forced leaf's `OperatorVerdictV1`
 /// carries the full `RejectionReasonV1`, so a coarse arm choice has no surface
 /// left.
 pub type MidgardTxValidity {

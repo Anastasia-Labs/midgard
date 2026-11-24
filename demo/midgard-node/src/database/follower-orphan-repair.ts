@@ -1,6 +1,6 @@
 /**
- * The orphan repair of the follower-change driver's recompute (plan §7.3,
- * N1, N3): event rows whose follower admission left the chain (orphans,
+ * The orphan repair of the follower-change driver's recompute: event rows
+ * whose follower admission left the chain (orphans,
  * `l1-admission-identity.ts`) are removed when nothing published holds
  * them, and the working-ledger recompute that runs after it rejects every
  * pending transaction that spent one ("direct") and their dependents.

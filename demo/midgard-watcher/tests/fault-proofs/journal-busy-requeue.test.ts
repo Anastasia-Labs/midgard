@@ -32,7 +32,7 @@ import {
 } from "../support/watcher-journal-lock.js";
 
 /**
- * W2b-R3: SQLITE_BUSY or SQLITE_LOCKED that reaches the supervisor holds it
+ * SQLITE_BUSY or SQLITE_LOCKED that reaches the supervisor holds it
  * unready (`journal_busy`) and never ends the process. After the backoff the
  * work is requeued in process from durable state, and ends exactly as a
  * restart from the same durable state does. Every busy here is real: a

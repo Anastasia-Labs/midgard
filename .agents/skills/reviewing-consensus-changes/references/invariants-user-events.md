@@ -5,12 +5,8 @@ Scope: `onchain/aiken/validators/payout.ak`, `reserve.ak`,
 withdrawal and deposit fraud-proof families, the operator-slash economics in
 `lib/midgard/operator-directory.ak`, and their SDK builders.
 
-Status, recurrence and line conventions are as in
-[invariants-state-queue.md](invariants-state-queue.md). This subtree is being
-rewritten around authenticated event history (`090436fc3`, 2026-09-23, "in
-progress"); where the old `validators/user-events/` path and the
-event-history path disagree, review against the event-history path and flag
-the old one.
+Status, recurrence and citation conventions are as in
+[invariants-state-queue.md](invariants-state-queue.md).
 
 ## UE1. A payout's datum cannot change while it is being funded
 
@@ -19,8 +15,8 @@ Status: VERIFIED.
 Rule: `AddFunds` spends a payout and reproduces it with the identical datum;
 only value may grow.
 
-Enforced: `validators/payout.ak:180` (input datum) and `:243` (output datum)
-`[aiken-test: payout/]` (`payout_add_funds_rejects_datum_mutation` `:903`,
+Enforced: `validators/payout.ak` (input and output datum)
+`[aiken-test: payout/]` (`payout_add_funds_rejects_datum_mutation`,
 fail).
 
 Provenance: #420 ("Reserve and Payout — Large Datum attack — Locking
@@ -37,17 +33,16 @@ finalized member of the settlement's withdrawals tree with validity
 `WithdrawalIsValid`; an order the operator marked invalid can only be
 refunded, whole, to its refund address.
 
-Enforced: `lib/midgard/event-history/retirement.ak:179-195` (refund) and
-`:197-238` (payout start); the payout mint delegates to the retirement
-observer (`validators/payout.ak:406-471`)
+Enforced: `lib/midgard/event-history/retirement.ak` (refund and payout start); the payout mint delegates to the retirement
+observer (`validators/payout.ak`)
 `[aiken-test: midgard/event-history/retirement.test/]`
-(`settlement_membership_does_not_replace_finality` `:370`,
-`valid_withdrawal_cannot_use_invalid_refund_path` `:500`,
-`finalized_valid_withdrawal_starts_exact_payout` `:505`,
-`payout_cannot_skip_its_authentication_token` `:512`,
-`payout_cannot_exceed_withdrawal_target` `:523`) and `[aiken-test: payout/]`
-(`payout_mint_requires_retirement_withdrawal` `:1459`,
-`payout_mint_binds_retiring_order_input` `:1491`).
+(`settlement_membership_does_not_replace_finality`,
+`valid_withdrawal_cannot_use_invalid_refund_path`,
+`finalized_valid_withdrawal_starts_exact_payout`,
+`payout_cannot_skip_its_authentication_token`,
+`payout_cannot_exceed_withdrawal_target`) and `[aiken-test: payout/]`
+(`payout_mint_requires_retirement_withdrawal`,
+`payout_mint_binds_retiring_order_input`).
 
 Provenance: #418 ("Reserve and Payout Incomplete Specification — No
 Initialization"); first prototype `b2691d77d`; rewritten in `090436fc3`.
@@ -62,12 +57,11 @@ Rule: reserve top-ups move the payout toward its `l2_value` target and never
 past it; the concluding payment pays exactly the target, with no surplus left
 in the accumulator and no continuing payout output.
 
-Enforced: `validators/payout.ak:277-287` (non-negative remaining need,
-positive contribution, exact change), `:329-354` (conclude: the payout input equals the target and the L1 output
+Enforced: `validators/payout.ak` (non-negative remaining need,
+positive contribution, exact change; conclude: the payout input equals the target and the L1 output
 pays exactly the target to the datum's address and datum)
-`[aiken-test: payout/]` (`:1040` no positive contribution, `:1064`
-overfunding, `:1101` second reserve input, `:1263` underfunded target, `:1278`
-surplus, `:1293` continuing output; all fail).
+`[aiken-test: payout/]` (no positive contribution, overfunding, second
+reserve input, underfunded target, surplus, continuing output; all fail).
 
 Provenance: #418 found no binding between the payout and the withdrawal's
 value, datum or address: one 1 ADA withdrawal could draw any amount from the
@@ -82,9 +76,9 @@ signature check use the body exactly as Aiken's `cbor.serialise` renders it:
 definite-length maps in their original order, never re-encoded by Lucid.
 
 Enforced: `withdrawal_signature_is_valid_v1`
-(`lib/midgard/fraud-proofs/withdrawal-mistag/step-03.ak:190-193`) and its twin
+(`lib/midgard/fraud-proofs/withdrawal-mistag/step-03.ak`) and its twin
 `withdrawalSigningMessageCbor`
-(`demo/midgard-sdk/src/withdrawal-signature.ts:27-44`) `[review]`.
+(`demo/midgard-sdk/src/withdrawal-signature.ts`) `[review]`.
 
 Provenance: `019c4eea2` and `deda00a64` (2026-09-05, admit Aiken asset-map
 encoding; preserve map order in commitments and signatures), `81cf04e14`
@@ -102,11 +96,10 @@ Rule: a "fabricated" family compares only the content the L1 order fixes
 depends on L2 state the order cannot know.
 
 Enforced: `WithdrawalContentV1`
-(`lib/midgard/fraud-proofs/fabricated-withdrawal/step-01.ak:255-276`)
+(`lib/midgard/fraud-proofs/fabricated-withdrawal/step-01.ak`)
 `[aiken-test: fraud-proofs/fabricated-withdrawal/step-03/]` and
 `[aiken-test: fraud-proofs/fabricated-withdrawal/step-04/]`
-(`rejects_validity_only_difference`, `step-03.ak:256`, `step-04.ak:258`,
-fail). Decision:
+(`rejects_validity_only_difference` in each, fail). Decision:
 [0007-operator-owned-event-validity.md](../../../../docs/fault-proofs/decisions/0007-operator-owned-event-validity.md).
 
 Provenance: `a97604c86` (2026-09-12, exclude the operator-owned verdict),
@@ -124,9 +117,9 @@ target's ADA, and enough for both the refund output and the payout output at
 minimum-UTxO; the full target also meets minimum-UTxO.
 
 Enforced: `withdrawal_is_funded`
-(`lib/midgard/event-history/funding.ak:48-72`)
+(`lib/midgard/event-history/funding.ak`)
 `[aiken-test: midgard/event-history/funding.test/]`
-(`withdrawal_funding_checks_initial_payout_refund_and_target`, `:60`).
+(`withdrawal_funding_checks_initial_payout_refund_and_target`).
 
 Provenance: the #627 ruling on the on-chain source of `coins_per_utxo_byte`.
 
@@ -149,12 +142,11 @@ transaction is refused. Node-preserving paths keep `lovelace_change >= 0`;
 the tolerant slash makes an equality there redundant.
 
 Enforced: `fraudulent_operator_slash_economics_are_exact_v1`
-(`lib/midgard/operator-directory.ak:167-180`, called at `:455`)
+(`lib/midgard/operator-directory.ak`)
 `[aiken-test: midgard/operator-directory/]`
-(`q53_fraud_slash_fee_is_the_held_tranche_penalty_up_to_the_full_penalty`,
-`:567`); through the whole handler in
+(`q53_fraud_slash_fee_is_the_held_tranche_penalty_up_to_the_full_penalty`); through the whole handler in
 `validators/operator-slash-bounty.test.ak` ("Slashed node holding more than
-its tranche", `:1439`: active and retired, bad-state and bad-settlement,
+its tranche": active and retired, bad-state and bad-settlement,
 padded nodes accepted at the capped fee and refused one lovelace either side
 of it or below the smaller tranche); built transaction in
 `demo/midgard-fault-proofs/tests/submit-init-emulator-held-bond-slash.test.ts`
@@ -162,8 +154,7 @@ of it or below the smaller tranche); built transaction in
 it and the directory anchor keeps the excess); off-chain twin
 `fraudSlashFeeLovelace` in
 `demo/midgard-fault-proofs/src/remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.ts`.
-One operator slash per transaction (`other_directory_is_untouched_v1`,
-`:257`, called by the active-operators slash for the registered and retired
+One operator slash per transaction (`other_directory_is_untouched_v1`, called by the active-operators slash for the registered and retired
 policies and by the duplicate-registration slash for the retired policy; the
 bundles are refused in `validators/operator-slash-bounty.test.ak`); SDK
 exact-fee completion for operator exit in
@@ -174,7 +165,9 @@ file header explains why a change output makes the fee inexact. The capped
 fee replaced an exact equality on the node's lovelace on 2026-10-15.
 
 Open recurrence (from reading; not executed): the bad-settlement slash
-builder in `demo/midgard-sdk/src/settlement.ts:744` still uses a bare
+builder, `incompleteResolveSettlementProgram` in
+`demo/midgard-sdk/src/settlement.incomplete-resolve-settlement-program.ts`,
+still uses a bare
 `.setMinFee(params.slashingPenaltyLovelace)` with Lucid-managed change, has
 no caller in `demo/`, and has no emulator test.
 

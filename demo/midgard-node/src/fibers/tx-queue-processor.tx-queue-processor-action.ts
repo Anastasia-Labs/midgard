@@ -109,7 +109,7 @@ export const txQueueProcessorAction = (
       nodeConfig.VALIDATION_MIN_BATCH,
     );
 
-    // Validity intervals are judged at the L1 `slotNow` (plan §3.6), read
+    // Validity intervals are judged at the L1 `slotNow`, read
     // before any row is claimed: while no L1 tip has been read the tick claims
     // nothing and the next tick retries.
     const nowSlot = yield* Effect.either(l1SlotNow(lucid));

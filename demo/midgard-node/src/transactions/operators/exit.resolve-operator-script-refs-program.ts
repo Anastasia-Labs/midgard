@@ -238,11 +238,11 @@ export const deriveWitnesses = <A>(derive: () => A): Effect.Effect<A, Error> =>
   });
 
 // ---------------------------------------------------------------------------
-// Planning (S5)
+// Planning
 // ---------------------------------------------------------------------------
 
 /**
- * Where an exit's directory snapshot comes from (S5, §8.1): the caller's,
+ * Where an exit's directory snapshot comes from: the caller's,
  * with the plan opened before the caller read it, or none, and the program
  * opens a plan and then reads its own.
  */

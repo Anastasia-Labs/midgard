@@ -1,59 +1,30 @@
-//// The Q1X-F6 measurement seam — issue #551, re-measured under the flat
-//// scheme by the #575 Q1x rebind lane.
+//// Execution cost against field cardinality (#551) for the steps that read an
+//// item of a variable-length field: `no-input` step-02 and `double-spend`
+//// step-04 at one spend input and at the admissible 296
+//// (`maximum_cardano_spend_redeemer_count`), and `missing-signature` step-04
+//// at one address witness and at the widest field 7 the format admits.
 ////
-//// **What #551 recorded.** The admissible spend-input cardinality is 296 (the
-//// Cardano script-spend shape bound, `maximum_cardano_spend_redeemer_count`).
-//// Under the retired counted idiom, `double-spend` step-04 and `no-input`
-//// step-02 each reproduced the whole authenticated spend-input collection
-//// inside the step in order to re-hash it, so execution **memory** grew with
-//// the disputed transaction's input count: measured through the real pipeline,
-//// Q10 step-04 fit the 20% reserve only to 39 inputs and Q11 step-02 to 40, and
-//// at 296 neither proof could be evaluated at all. The axis was free to the
-//// adversary — build the bad transaction with ≥ 41 inputs and its proof becomes
-//// unevaluatable — and carriage could not remediate it, because the cost was
-//// execution and not carriage.
-////
-//// **What this module measures.** The same two steps, rebound onto the §8.8
-//// door, at both ends of that range. Under the door a step hashes the field
-//// preimage exactly once (§7.1) and reaches item `n` by one multiplication and
-//// one slice at §5.3's fixed 40-byte width (§10.5), so the *step's* cost should
-//// be flat in the input count. That is the claim, and these four readings are
-//// what makes it falsifiable: each cardinality has a control row that builds
-//// the fixture and the L1 transaction but never enters the validator, and a
-//// measured row that does exactly the same work and then enters it. The
-//// difference is the step; the difference between the two differences is
+//// A step hashes the field preimage once and reaches item `n` by one
+//// multiplication and one slice at the field's fixed stride, so the spend-input
+//// steps' cost should be flat in the input count. The field-7 walk visits
+//// every item, because its rule is an absence claim, so what it must show is
+//// fit, not flatness. Each cardinality has a control row that builds the
+//// fixture and the L1 transaction but never enters the validator, and a
+//// measured row that does the same work and then enters it: the difference is
+//// the step, and the difference between two cardinalities' differences is
 //// whatever cost still scales with cardinality.
 ////
 //// The readings are held to ceilings in
-//// `demo/midgard-core/src/script-budgets.json` and judged by
-//// `scripts/script-budgets.mjs` at the declared execution basis of
-//// 13,200,000 memory units. Aiken cannot assert its own
-//// execution units, so the pin has to live one level up; this module's job is
-//// to be a *stable and honest subject* for it.
+//// `demo/midgard-core/src/script-budgets.json`, judged by
+//// `onchain/aiken/scripts/script-budgets.mjs` at the execution basis
+//// (`SCRIPT_BUDGET_BASIS`). The neutralisation tests at the end show that the
+//// fixtures are at the cardinality claimed and that the step still refuses a
+//// preimage the transaction never committed.
 ////
-//// **This is the provisional signal, not the closure.** #565 §"Sequencing"
-//// puts formal closure of #551 on the Phase-7 number taken against the Phase-6
-//// blueprint. What is established here is the shape of the fix — that the
-//// defect's mechanism is gone — not the evidence-grade lifecycle margin.
-////
-//// Nothing in this module is a fixture convenience shared with the family
-//// suites: each family's own selectors live beside its validator, and this
-//// module deliberately rebuilds what it needs so that a change to a family's
-//// test helpers cannot silently move a published number.
-////
-//// **On the file name.** It says `spend-input-cardinality` because #551 was a
-//// spend-input defect and the first two pairs of rows are still that
-//// measurement. It has since grown an address-witness cardinality pair (field
-//// 7, Q16 step-04), because that is a walk the rebind made linear and
-//// measuring only the flat ones would not be a measurement of the rebind. The
-//// name is therefore narrower than the contents. Renaming it would move the
-//// test name of every entry for it in `demo/midgard-core/src/script-budgets.json`
-//// and add a second entry to the drift the F05 manifest already carries for
-//// this wave's deleted `input-witness.ak`, so it is noted here and left to
-//// [#579](https://github.com/Anastasia-Labs/midgard/issues/579)'s identity
-//// re-derivation batch, which is where that manifest is reconciled. What the
-//// module measures is *cardinality of whatever field a rebound step reads*;
-//// read the section headers, not the file name.
+//// The module rebuilds its own fixtures rather than share the family suites'
+//// helpers, so a change to those helpers cannot move a reading. The file name
+//// is narrower than its contents; renaming it would rename every
+//// `script-budgets.json` entry for it.
 
 use aiken/cbor
 use aiken/collection/list

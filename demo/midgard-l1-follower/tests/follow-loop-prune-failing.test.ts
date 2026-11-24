@@ -2,7 +2,7 @@
  * A prune pass that keeps failing (a prune hook that throws rolls the whole
  * store prune step back, so every fact past retention stays) is a named
  * `/readyz` reason once `PRUNE_FAILING_AFTER` passes in a row failed; one
- * failure alone is not, and the next successful pass clears it (I1-fix F8f).
+ * failure alone is not, and the next successful pass clears it.
  */
 import type { ChainSyncEvent } from "@al-ft/l1-node-transport";
 import { expect, it } from "vitest";

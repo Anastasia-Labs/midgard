@@ -1,6 +1,6 @@
 /**
- * A settlement attempt's L1 outcome, derived from the intent journal (plan
- * §8.2; §15 N6, D-N4), never stored before it is final:
+ * A settlement attempt's L1 outcome, derived from the intent journal,
+ * never stored before it is final:
  *
  * - landed more than k blocks deep: `final`, terminal. The follower's prune
  *   step stores it (`settlement.final-hook.ts`) in the step that prunes the

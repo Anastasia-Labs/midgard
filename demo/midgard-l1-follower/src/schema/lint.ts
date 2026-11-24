@@ -1,7 +1,7 @@
 import type { TemporalRegistry } from "../registry.js";
 import type { MigrationSet } from "./migrate.js";
 
-/** Persistent table classes (§5.1); D-v and D-c are never tables. */
+/** Persistent table classes; D-v and D-c are never tables. */
 export const TABLE_CLASSES = ["A", "B", "C", "D-t", "D-x"] as const;
 export type TableClass = (typeof TABLE_CLASSES)[number];
 
@@ -140,7 +140,7 @@ export const migrationTables = (
 };
 
 /**
- * The schema lint (§5.1, §7.2, §11): every table in every migration declares
+ * The schema lint: every table in every migration declares
  * a class and a retention rule on the line above its `CREATE TABLE`, and
  * every D-t table is in the temporal registry (and every registered table is
  * a declared D-t or D-x table, and every table a registered row pin names is

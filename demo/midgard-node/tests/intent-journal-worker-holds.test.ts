@@ -1,5 +1,5 @@
 /**
- * I1-H1: a refusal the intent journal raises in a worker thread (the commit
+ * A refusal the intent journal raises in a worker thread (the commit
  * and settlement workers each run their own journal) reaches the main
  * process's `/readyz` under its named reason. The worker is a real
  * `worker_threads` thread running the workers' journal stack, bundled from

@@ -15,7 +15,7 @@ import type { MidgardForcedTxAdmissionInput } from "./consensus-validation.scree
 import { SCRIPT_BUDGET_BASIS, scriptBudget } from "./script-budgets.js";
 
 /**
- * The tx-order mint's memory budget for one order: the §3.3 reliability basis
+ * The tx-order mint's memory budget for one order: the reliability basis
  * (20% under the supported L1 floor of 16,500,000).
  */
 export const MIDGARD_FORCED_TX_ORDER_MINT_MEMORY_BASIS =

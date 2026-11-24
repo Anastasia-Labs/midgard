@@ -1,6 +1,6 @@
 /**
- * The forced-order projection under the fork simulator (plan §15 F8, §12,
- * N10): after every chain-sync event its table equals a fresh replay's (the
+ * The forced-order projection under the fork simulator:
+ * after every chain-sync event its table equals a fresh replay's (the
  * runner's check), and its rows equal an independent model of the canonical
  * chain: same-block carriage resolves, earlier carriage is pending, tampered
  * carriage is malformed, failed order txs open nothing, spends close rows,

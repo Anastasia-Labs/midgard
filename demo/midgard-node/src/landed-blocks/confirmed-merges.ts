@@ -1,5 +1,5 @@
 /**
- * `confirmed_ledger` is temporal (plan §10.5, §5.5 P10, N5): every landed
+ * `confirmed_ledger` is temporal: every landed
  * block folded into it keeps a stored delta keyed by its header
  * (`node_confirmed_merges` and `node_confirmed_ledger_spent`, migration
  * 0014), so the fold of a merge a rollback undid is unfolded in O(delta),

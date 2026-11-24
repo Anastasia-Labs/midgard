@@ -1,5 +1,5 @@
 /**
- * The forced-order projection's D-t table (plan §5.5, §11, §12): one row
+ * The forced-order projection's D-t table: one row
  * per authenticated tx order, with the carriage the order's own block
  * resolved. The follower's registry generates its rewind and pruning; a
  * rewind past the order's block deletes the row.
@@ -31,10 +31,10 @@ export const FORCED_ORDER_UNREADABLE = "unreadable";
 
 /**
  * `status`:
- * - `resolved`: every carried field was read in the order's block (§12.3
- *   step 1, or tier 1 inline), and `field_preimages` holds all nine;
+ * - `resolved`: every carried field was read in the order's block (or
+ *   tier 1 inline), and `field_preimages` holds all nine;
  * - `carriage_pending`: some carriage outref was created before the block;
- *   the driver hook resolves it (steps 2 to 4);
+ *   the driver hook resolves it;
  * - `malformed`: the order authenticates but its mint redeemer or in-block
  *   carriage does not open (`detail` says why). The real tx-order mint
  *   admits no such order;

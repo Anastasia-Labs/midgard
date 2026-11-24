@@ -1,5 +1,5 @@
 /**
- * The node §8.4 predicate of the list-insert family (`list_insert`): a
+ * The node predicate of the list-insert family (`list_insert`): a
  * transaction that inserts into a protocol list from the node process, by
  * workflow-key verb. Each is wanted while the follower's facts show the
  * insert's target unreached:

@@ -1,11 +1,11 @@
 /**
- * The node's wallet view (plan §8.5, I2) on a Lucid emulator, over the
+ * The node's wallet view on a Lucid emulator, over the
  * node's follower store and intent journal:
  *
- * - a dead intent's inputs are offered again on the next head (§15 I2 a);
+ * - a dead intent's inputs are offered again on the next head;
  * - after a fork drops an own transaction, the next build spends its
  *   predicted change and is signed over the view, so it submits with no
- *   "Missing vkey witness" and no "Could not spend UTxO" (§15 I2 b); the
+ *   "Missing vkey witness" and no "Could not spend UTxO"; the
  *   wallet's own signer, which looks inputs up at the provider, misses the
  *   witness on the same build;
  * - a build made while an own intent is live chains on its predicted
@@ -68,7 +68,7 @@ const open = async () => {
 };
 
 /** A payout funding step's intent (content: the settled event's id), under
- * `plan`, opened before the wallet-view reads its build rests on (S5). */
+ * `plan`, opened before the wallet-view reads its build rests on. */
 const intent = (label: string, plan: IntentPlan) =>
   journaledIntent(
     "reserve_payout",
@@ -142,7 +142,7 @@ const statusOf = (env: IntentEmulator, hash: string) =>
   env.stage.lastReport()!.entry(Buffer.from(hash, "hex"))?.status;
 
 describe("the node wallet view on the emulator", () => {
-  it("offers a dead intent's inputs again on the next head (§15 I2 a)", async () => {
+  it("offers a dead intent's inputs again on the next head", async () => {
     const env = await open();
     const lucid = await env.wallet();
     const plan = await env.plan();
@@ -215,7 +215,7 @@ describe("the node wallet view on the emulator", () => {
     expect(statusOf(env, hash)).toMatchObject({ kind: "landed" });
   });
 
-  it("after a fork drops an own transaction, the next build spends its predicted change and submits with no missing witness (§15 I2 b)", async () => {
+  it("after a fork drops an own transaction, the next build spends its predicted change and submits with no missing witness", async () => {
     const env = await open();
     const lucid = await env.wallet();
     const plan = await env.plan();
@@ -247,7 +247,7 @@ describe("the node wallet view on the emulator", () => {
     // The fork drops it: tx1 is live again, its change predicted, and S6
     // sends its exact bytes to the mempool.
     await env.rewindTo(0);
-    // S5: the rewind moved the generation; the next build's plan opens
+    // The rewind moved the generation; the next build's plan opens
     // after it, before the reads that build rests on.
     const replanned = await env.plan();
     expect(await env.stage.run()).toEqual([]);
@@ -262,7 +262,7 @@ describe("the node wallet view on the emulator", () => {
     // The provider sees only its ledger: the change is not there yet.
     expect((await lucid.utxosAt(env.own.address)).map(refOf)).toEqual([]);
 
-    // Control (the wallet's own signer, as the node signed before I2): it
+    // Control (the wallet's own signer, as the node signed before the wallet view): it
     // looks the input up at the provider, finds no own key, and the
     // emulator refuses the transaction.
     const control = await (await buildFromView(env, lucid, 1_000_000n)).sign
@@ -398,7 +398,7 @@ describe("the node wallet view on the emulator", () => {
     const view = await viewOf(env, lucid);
     expect([...view.held].sort()).toEqual([refOf(seed), refOf(funded)].sort());
     expect(view.utxos.map(refOf)).toEqual([`${signed.toHash()}#1`]);
-    // The provider's wallet, which builders read before I2, still offers it.
+    // The provider's wallet, which builders read before the wallet view, still offers it.
     expect((await lucid.wallet().getUtxos()).map(refOf)).toContain(
       refOf(funded),
     );

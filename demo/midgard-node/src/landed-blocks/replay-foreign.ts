@@ -1,5 +1,5 @@
 /**
- * Replay of a foreign landed block (plan §7.3, N3): its DA payload, from
+ * Replay of a foreign landed block: its DA payload, from
  * the node's retained copy or the public DA transport
  * (`replay-foreign.payload.ts`), replayed on its
  * parent's ledger against the events the follower projects at the view and

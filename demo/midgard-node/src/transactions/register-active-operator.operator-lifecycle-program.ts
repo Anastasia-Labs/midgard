@@ -133,7 +133,7 @@ const operatorLifecycleAttempt = (
         }),
       );
     }
-    // S5: one plan for the lifecycle, opened before its first L1 read: the
+    // One plan for the lifecycle, opened before its first L1 read: the
     // hub oracle read here feeds every step.
     const plan = yield* openPlan;
     const operatorKeyHash =
@@ -557,7 +557,7 @@ const operatorLifecycleAttempt = (
         lockedLovelace: requiredBondLovelace,
         feeHeadroomLovelace: ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
       });
-      // Coin selection funds the bond and fee from the wallet view (§8.5);
+      // Coin selection funds the bond and fee from the wallet view;
       // the builder collects no wallet input of its own.
       const walletInputsForRegister = yield* presetOperatorWalletInputs(
         "register-operator",
@@ -821,7 +821,7 @@ const operatorLifecycleAttempt = (
       lockedLovelace: 0n,
       feeHeadroomLovelace: ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
     });
-    // Coin selection funds the fee from the wallet view (§8.5); the builder
+    // Coin selection funds the fee from the wallet view; the builder
     // collects no wallet input of its own.
     const walletInputsForActivation = yield* presetOperatorWalletInputs(
       "activate-operator",

@@ -5,7 +5,7 @@
  * that must hold a known amount, that amount. Both are labelled by role
  * only, never by address.
  *
- * A balance is read from the role wallet's view (plan §8.5) through the
+ * A balance is read from the role wallet's view through the
  * intent journal, the view every node builder selects its inputs from. Under
  * `listen` the journal is the follower's, so the view is a read of the node
  * database: sampling it adds no L1 provider read.

@@ -1,6 +1,6 @@
 /**
- * Building and signing over the wallet view (plan §8.5,
- * `services/intent-journal.wallet-view.ts`).
+ * Building and signing over the wallet view
+ * (`services/intent-journal.wallet-view.ts`).
  *
  * - A builder reads the view of its wallet (`readSelectedWalletView`) and
  *   hands its UTxOs to coin selection explicitly (`presetWalletInputs`,
@@ -101,7 +101,7 @@ export const selectNodeWallet = (
   signers.set(wallet, { addresses, keys });
 };
 
-/** The wallet view (§8.5) of `address` under the journal in scope. */
+/** The wallet view of `address` under the journal in scope. */
 export const readWalletView = (
   lucid: LucidEvolution,
   address: string,

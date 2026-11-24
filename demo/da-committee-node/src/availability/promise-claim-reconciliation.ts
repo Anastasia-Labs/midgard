@@ -3,7 +3,7 @@ import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 
 import { promiseAdmissionActorMetadata } from "./promise-actor-metadata.js";
 
-/** The follower view a receipt was read under (plan §8.1). */
+/** The follower view a receipt was read under. */
 type Boundary = Readonly<{
   pointId: string;
   blockNo: number;

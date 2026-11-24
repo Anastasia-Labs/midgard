@@ -28,7 +28,7 @@ import {
 } from "./watcher-runtime.decision-readiness.js";
 
 /**
- * The watcher's decision driver (ticket W1, with W3's rollback handling):
+ * The watcher's decision driver, rollbacks included:
  * every fault decision and availability action is a pure function of the
  * follower's facts at the tip and at the release depth.
  *

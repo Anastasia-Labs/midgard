@@ -2,16 +2,16 @@ import type { DialectName } from "../sql/backend.js";
 import type { MigrationSet } from "./migrate.js";
 
 /**
- * The §5.2 fact schema. Every table carries the
- * `-- class: <class>; retention: <rule>` header the schema lint requires
- * (§5.1, §11). The SQLite form mirrors the Postgres form logically: `bytea[]`
+ * The fact schema. Every table carries the
+ * `-- class: <class>; retention: <rule>` header the schema lint requires.
+ * The SQLite form mirrors the Postgres form logically: `bytea[]`
  * becomes a JSON array of hex `TEXT`, `jsonb` and `numeric` become `TEXT`,
  * `boolean` becomes a 0/1 `INTEGER`.
  *
- * Deltas from the §5.2 draft, all additive: `l1_outputs_script_ref` (the
+ * It also has `l1_outputs_script_ref` (the
  * `l1_scripts` retention check and its foreign key) and
- * `l1_event_keys_slot` (the rewind deletes keys above the target, §5.4),
- * `l1_protocol_init` (the §5.3 step 3 fact that the tx spending the
+ * `l1_event_keys_slot` (the rewind deletes keys above the target),
+ * `l1_protocol_init` (the fact that the tx spending the
  * manifest's `hubOracleOneShot` outref landed; it outlives the pruned tx),
  * and `l1_follower_cursor.pruned_through_slot`: the highest slot at or below
  * which pruning may have removed spent outputs, closed temporal rows or
@@ -301,7 +301,7 @@ ALTER TABLE l1_follower_tracked_set ADD COLUMN replay_height INTEGER;
 `;
 
 /**
- * The point each own wallet was seeded at (§5.3 step 4): the wallet seeder
+ * The point each own wallet was seeded at: the wallet seeder
  * reads a wallet's UTxOs from the node's ledger once, and a restart does not
  * read it again while its row stands. The row is written with the wallet's
  * seed rows, in the same transaction, so a wallet with no UTxOs is recorded

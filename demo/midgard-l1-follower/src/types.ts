@@ -1,5 +1,5 @@
 /**
- * Public value types of the L1 follower (plan §4.3, §5.2).
+ * Public value types of the L1 follower.
  *
  * Byte fields are `Buffer`s holding the exact on-chain bytes. Slots, heights
  * and indexes are JavaScript numbers (safe for every Cardano slot); token
@@ -102,7 +102,7 @@ export type BlockSummary = Readonly<{
 }>;
 
 /**
- * The static part of the tracked set (§5.2), derived per role from the
+ * The static part of the tracked set, derived per role from the
  * finalized manifest. Keys are lowercase hex.
  */
 export type TrackedSet = Readonly<{
@@ -125,7 +125,7 @@ export type Cursor = Readonly<{
   prunedThroughSlot: number;
 }>;
 
-/** A view V = (g, P_b) (§8.1). */
+/** A view V = (g, P_b). */
 export type View = Readonly<{
   generation: number;
   point: Point;
@@ -163,7 +163,7 @@ export type StoredTx = Readonly<{
   auxCbor: Buffer | null;
 }>;
 
-/** Intervention reasons this package can raise (§7.5). */
+/** Intervention reasons this package can raise. */
 export type InterventionReason =
   | "rollback_beyond_k"
   | "intersection_outside_history"

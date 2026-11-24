@@ -13,7 +13,7 @@ import {
 } from "./watcher-journal-schema.js";
 
 /**
- * The fault-proof queue journal (ticket W2): one row per scheduled job
+ * The fault-proof queue journal: one row per scheduled job
  * identity, updated in place as the job moves through queued, active and
  * finished. A newer identity of the same objective replaces the older row,
  * so retries never grow the table. Registering a job also records its

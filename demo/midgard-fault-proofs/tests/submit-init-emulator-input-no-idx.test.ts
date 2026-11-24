@@ -1,5 +1,5 @@
 /**
- * `input-no-idx` emulator lifecycle (Goal task `Q13`, §9.1 output 9).
+ * `input-no-idx` emulator lifecycle.
  *
  * Drives the real Aiken step validators through a Lucid emulator with the
  * production submitters: init -> step-01 -> step-02 -> step-03 -> step-04 ->

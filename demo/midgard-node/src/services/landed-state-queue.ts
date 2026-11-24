@@ -1,5 +1,5 @@
 /**
- * The node's reads of its landed state queue (plan §5.5 P1, N2). Every
+ * The node's reads of its landed state queue. Every
  * state-queue read in the node goes through here: the follower's facts at
  * its view, in the node database, never an L1 provider.
  *

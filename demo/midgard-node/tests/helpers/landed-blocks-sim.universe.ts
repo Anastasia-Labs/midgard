@@ -1,5 +1,5 @@
 /**
- * The ledger universe of the landed-block fork simulator (N3). Every landed
+ * The ledger universe of the landed-block fork simulator. Every landed
  * block at queue height `h` (genesis is 0) spends its parent's `X` output
  * and produces `Y_h`, `X_{h,b}` (`b` is the block's parity bit) and, every
  * third height, the deposit `D_h`'s ledger output; past height

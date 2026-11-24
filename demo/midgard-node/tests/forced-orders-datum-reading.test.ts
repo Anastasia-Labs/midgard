@@ -1,5 +1,5 @@
 /**
- * Forced orders read exactly as the chain admits them (N10, N3), on the
+ * Forced orders read exactly as the chain admits them, on the
  * follower store in the node database. The chain reads an order datum as
  * decoded Data, whatever its encoding, and keys and values it re-serialised,
  * so an order whose datum the SDK would encode otherwise is derived, read,

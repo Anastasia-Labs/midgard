@@ -1,10 +1,10 @@
 /**
- * The driver's landed-block hook (plan §7.3, N3, N5): at the view each
+ * The driver's landed-block hook: at the view each
  * driver run applies, the landed state queue (P1) is processed in order,
  * and what it cannot do yet is the hold it returns. An unhealthy queue is
  * P1's own hold (`state_queue_unhealthy`), so this hook waits for it
  * quietly. The run passes the follower's prune boundary to the fold prune,
- * then publishes where `confirmed_ledger` stands, with its level (P10).
+ * then publishes where `confirmed_ledger` stands, with its level.
  */
 import type { DepthParameters, FactStore } from "@al-ft/midgard-l1-follower";
 import { Effect } from "effect";

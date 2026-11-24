@@ -1,9 +1,8 @@
 # TQ-18 — Separate readiness fixtures from ambient status pins
 
 Status: Proposed
-Last reviewed: 2026-09-07 (semantic source review)
+Last reviewed: 2026-11-23 (cited tests)
 
-- **Audit sections**: §13 and §14
 - **Rules**: R1, R3, R5, R7 in [principles](principles.md)
 
 ## Problem and boundary
@@ -16,23 +15,12 @@ readiness changes, but it is not automatically an inverted oracle.
 
 A name should match what the body establishes. Before renaming or expanding a
 test, trace its setup, production calls, assertions, and current consumers.
-The original audit's counts and line references are not a current inventory.
 
 ## Confirmed source distinctions
 
 - [State-correction acceptance tests](../../demo/midgard-node-tools/tests/e2e-state-correction-acceptance.test.ts)
   keep the aggregate-evidence case blocked pending independent provenance; a
   complete-looking aggregate is not authority. Preserve that fail-closed check.
-  The former local workflow/availability readiness gates and their
-  ambient-registry test were removed; executable coverage is enforced by the
-  watcher's startup launch-scope refusal and by the per-family journal
-  requirement in the aggregate.
-- [Consensus-profile tests](../../demo/midgard-core/tests/consensus-profile.test.ts)
-  assert the currently absent release-evidence digest and that activation
-  refuses. That is an explicit current-release gate. Do not make it
-  conditionally pass for arbitrary present evidence or remove the refusal
-  test to accommodate implementation progress. Activation requires the
-  repository's validator-bound evidence verification contract.
 - Lifecycle coverage checks that deliberately demonstrate missing reason
   arms should remain negative tests. If they instead pin accidental omissions
   in the live installed surface, record that distinction and the required

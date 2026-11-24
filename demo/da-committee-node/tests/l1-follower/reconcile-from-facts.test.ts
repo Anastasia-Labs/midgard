@@ -13,7 +13,7 @@ import {
 import { SIM_DEPTHS } from "./queue-sim.js";
 
 /**
- * Plan §8.2: whether a live header is owed an L1 reconciliation is read
+ * Whether a live header is owed an L1 reconciliation is read
  * from the tick's landed-queue facts, never from the stored `l1_reconcile`
  * outbox record. The member posts while its follower reads the header's
  * output unattested at a safe depth, whatever that record says; it posts

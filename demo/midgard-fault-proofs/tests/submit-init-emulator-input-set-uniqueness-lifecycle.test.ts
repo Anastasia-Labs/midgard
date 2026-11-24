@@ -2,7 +2,7 @@
  * `input-set-uniqueness` emulator lifecycle: real faults succeed.
  *
  * Three journeys, one per sub-variant of the intra-transaction input-set rule
- * (the W-C14 single-party conversion of the validation machine's InputSets
+ * (the single-party conversion of the validation machine's InputSets
  * `reject_duplicate_input`):
  *
  * - duplicate SPEND inputs, end to end — init → step-01 bind → step-02

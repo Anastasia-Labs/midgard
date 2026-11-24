@@ -1,6 +1,5 @@
 /**
- * `fabricated-withdrawal` DA-first evidence builder (Goal task `Q40`, §9.1
- * output 7).
+ * `fabricated-withdrawal` DA-first evidence builder.
  *
  * The fault this family proves is a committed `withdrawals_root` leaf that is not
  * the authentic L1 withdrawal event pair: either no withdrawal event with the

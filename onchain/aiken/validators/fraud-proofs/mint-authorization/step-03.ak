@@ -1,4 +1,4 @@
-//// ## Mint-Authorization Fault Proof — Step 03 (W-C14)
+//// ## Mint-Authorization Fault Proof — Step 03
 ////
 //// The direction dispatch. Both arms read a committed witness-set field
 //// through the §8.8 door anchored to the *thread-carried*

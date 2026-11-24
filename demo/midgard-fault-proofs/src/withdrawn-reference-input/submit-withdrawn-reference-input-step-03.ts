@@ -1,5 +1,5 @@
 /**
- * `withdrawn-reference-input` step-03 submitter (offchain plan §4.2): the
+ * `withdrawn-reference-input` step-03 submitter: the
  * proven verdict finalizes — the computation-thread NFT burns and the
  * permanent fraud-proof token mints to the fraud-proof address under the
  * generic finalization validations.

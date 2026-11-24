@@ -41,7 +41,7 @@ export const RETIREMENT_FLOOR_BREACHED = "retirement_floor_breached";
 /**
  * The record of a header in the landed queue, as the committee stores and
  * decides on it. `finalized` means signable: the queue is healthy and the
- * node's output is safe (depth ≥ cd, plan §9). Null for a node whose datum
+ * node's output is safe (depth ≥ cd). Null for a node whose datum
  * does not decode, which the queue derivation never lands as a node.
  */
 export const headerRecordOf = (
@@ -111,7 +111,7 @@ export const terminalRecordOf = (
 
 /**
  * Where a live header's L1 reconciliation stands, read from this tick's
- * record of its landed output (plan §8.2), never from the stored
+ * record of its landed output, never from the stored
  * `l1_reconcile` outbox record: that record only caches what was last
  * submitted.
  *

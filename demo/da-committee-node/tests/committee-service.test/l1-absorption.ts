@@ -94,7 +94,7 @@ export const registerL1AbsorptionTests = () => {
         signedHeaders: 1,
       });
       // The replaced header's commit is on no chain and the latest final
-      // block is past its end time: `cannot_land`, its decision deleted (§11).
+      // block is past its end time: `cannot_land`, its decision deleted.
       const endTimeMs = Number(first.header.endTime);
       const view = h.service.latestL1View();
       expect(view?.finalBlockTimeMs).toBeGreaterThan(endTimeMs);

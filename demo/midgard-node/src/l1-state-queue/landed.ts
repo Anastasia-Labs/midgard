@@ -1,5 +1,5 @@
 /**
- * The node's landed state queue (plan §5.5 P1, N2): the live state-queue
+ * The node's landed state queue: the live state-queue
  * outputs at a follower view, walked from the root to the tail with the
  * follower package's shared walk, and `{healthy, reason}`.
  *

@@ -1,6 +1,6 @@
 /**
  * Operator-wallet funding by coin selection over the whole operator wallet
- * view (plan §8.5), on the real compiled validators in the emulator:
+ * view, on the real compiled validators in the emulator:
  *
  * - a wallet whose every output carries a foreign token funds registration,
  *   activation and deregistration, and gets its tokens back in change;

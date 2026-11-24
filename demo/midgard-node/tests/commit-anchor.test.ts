@@ -1,5 +1,5 @@
 /**
- * The commit anchor (plan §8.1) on Postgres: the anchor block a view reads,
+ * The commit anchor on Postgres: the anchor block a view reads,
  * the journal that stores it, the signing step that keeps the commit only
  * while the anchor is on the follower's chain, and the anchor rule across
  * the follower's prune boundary.

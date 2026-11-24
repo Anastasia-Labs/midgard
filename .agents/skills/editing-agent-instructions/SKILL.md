@@ -32,7 +32,7 @@ Rung 4 is the last resort, not the default. `[review]`
   [.githooks/pre-commit](../../../.githooks/pre-commit) prints numbered steps.
 - **A hook rung needs a CI twin.** `[review]` The hook is opt-in
   (`bash .githooks/install`) and `MIDGARD_SKIP_HOOKS=1` skips it
-  (`.githooks/pre-commit:28`), so a rule enforced only there is enforced only
+  (the hook's escape hatch), so a rule enforced only there is enforced only
   for whoever installed it. Its current CI twins are the lint, format and Aiken
   formatter steps named at `.githooks/pre-commit:3-6`.
 - **A rule that stays `[review]` is a candidate for rung 1.** That visibility is
@@ -55,8 +55,8 @@ it is written down. Read it top to bottom and take the first match.
 
 - **Knowledge another contributor needs lands in the repository.** `[review]`
   Private agent memory, chat and `.claude/agents/*.md` reach nobody else:
-  `.gitignore:16` ignores everything under `.claude/` except the
-  `.claude/skills` link. If a lesson came from memory, verify it against the
+  `.gitignore` ignores everything under `.claude/` except the
+  `.claude/skills` link and `.claude/settings.json`. If a lesson came from memory, verify it against the
   tree before moving it; memory goes stale in both directions.
 - **Decision records.** `[review]` [docs/agents/domain.md](../../../docs/agents/domain.md)
   is the router: protocol decisions go in `docs/midgard/decisions/` (no index
@@ -65,7 +65,7 @@ it is written down. Read it top to bottom and take the first match.
   table needs a new row. Each record states context, decision, consequences,
   status and links. A superseded decision keeps its rationale and links to its
   replacement.
-- **Nested `AGENTS.md` wins locally.** Four exist as of 2026-09-25:
+- **Nested `AGENTS.md` wins locally.** Four exist as of 2026-11-23:
   `demo/`, `demo/midgard-node/`, `demo/midgard-node-tools/devnet/`,
   `onchain/aiken/`. Move a directory-specific rule down, never up. [review]
 - **One meaning, one place.** Never state a rule in two files; point at the
@@ -128,10 +128,11 @@ context bloat, skill leakage, conflicting instructions, init fossilization and
 blind references. Read [references/smells.md](references/smells.md) when you
 need the definition of a smell or the verified Midgard instance of it.
 
-Read [references/size-budgets.md](references/size-budgets.md) when a file
-grows, when you add to a file every session loads, or when deciding whether content
-should move into a reference. The budgets there are proposals, not checks;
-enforcing them is task W2.3 of the hardening plan.
+Every `AGENTS.md`, `docs/agents/*.md` and skill `SKILL.md` has a line budget,
+`LINE_BUDGETS` in `scripts/agents/check-enforcement-tags.mjs` (120 lines for
+a file it does not list). A file over its budget fails the check: split or
+trim it. [script: scripts/agents/check-enforcement-tags.mjs] Blind spot:
+`CLAUDE.md` and `references/` files have no budget.
 
 ## Done when
 

@@ -1,11 +1,10 @@
 /**
- * Zero L1 reads in the planner fibers' state-queue reads (plan §15 N2). Each
+ * Zero L1 reads in the planner fibers' state-queue reads. Each
  * fiber tick's read of the queue runs against a seeded landed queue (P1)
  * with a Lucid client whose provider records every call, and with `fetch`
  * (Kupo, Ogmios HTTP) and `WebSocket` (Ogmios) recording every use. The
  * reads must answer from P1 alone: any provider, Kupo or Ogmios touch fails
- * the test, naming the call. The source-level half of the gate is the grep
- * in the N2 report; this is its runtime half.
+ * the test, naming the call.
  *
  * Covered ticks: block commitment (the preflight snapshot, the tail, the
  * base revalidation and both append-fence reads), merge

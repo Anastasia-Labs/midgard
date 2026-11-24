@@ -1,5 +1,5 @@
 /**
- * The landed frontier's prune floor (N3) against the production foreign
+ * The landed frontier's prune floor against the production foreign
  * replayer on a real follower store. Caught up or lagging, the floor keeps
  * every fact after `T` of a block starting at the frontier's end, less one
  * slot, so a forced order the next block names and the facts lack is the

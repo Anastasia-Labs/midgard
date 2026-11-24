@@ -31,8 +31,8 @@ flowchart LR
 </ActorCard>
 
 <ActorCard actor="operator">
-  Reconciles visible L1 deposits and projects due events into the local ledger
-  and processes withdrawal payouts from the reserve.
+  Projects due L1 deposits into the local ledger, absorbs settled deposits into
+  the reserve and pays settled withdrawals from it.
 </ActorCard>
 
 ## Deposits
@@ -71,7 +71,8 @@ so a transaction cannot spend that block's newly introduced deposit.
 
 A withdrawal order is classified before it is paid. An order can be found invalid, for
 example `NonExistentWithdrawalUtxo` or `IncorrectWithdrawalOwner`. Payment happens
-separately, through [reserve and payout](/docs/operators/node/reserve-payout).
+separately: the node's settlement fiber pays a settled valid withdrawal through
+[reserve and payout](/docs/operators/node/reserve-payout).
 
 Deposit and withdrawal discovery and deposit projection are not background
 fibers. The node's L1 follower and its follower-change driver write L1 deposit
@@ -113,7 +114,7 @@ classification precedes settlement, reserve funding and the final payout.
 Report an invalid classification as such; an L1 order submission is not a
 withdrawal payment. Check `payout-status` and the confirmed payout transaction
 before showing a completed withdrawal. A stalled phase follows the
-[settlement runbook](/docs/operators/node/operational-runbooks#stuck-settlements).
+[settlement alert runbook](https://github.com/Anastasia-Labs/midgard/blob/main/docs/operations/alerts.md#midgardsettlementjobsstuck).
 
 For ordinary L2 transfers, use the
 [transaction status lifecycle](/docs/sdk/lucid-midgard/submission-observability).

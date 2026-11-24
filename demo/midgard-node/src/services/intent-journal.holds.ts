@@ -216,7 +216,7 @@ export type UnwrittenHold = Readonly<{
 /**
  * One journal's view of the holds: the last read of the table, its own
  * writes, and refusals whose hold write has not landed yet. An unwritten
- * hold is never left only in a worker's memory (I1-H1): it is written again
+ * hold is never left only in a worker's memory: it is written again
  * on every record (`flush`) and every refresh until it lands, and until then
  * it is named in `holds()`. A worker thread, whose journal ends with it,
  * hands its unwritten holds to the main process (`handOff`), whose journal

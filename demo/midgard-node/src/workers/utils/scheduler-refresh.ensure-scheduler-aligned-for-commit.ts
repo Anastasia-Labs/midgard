@@ -61,7 +61,7 @@ export const ensureSchedulerAlignedForCommit = (
   registeredOperatorUtxos: readonly UTxO[],
   alignedEndTime: number,
   schedulerWitnessUnit: string,
-  /** S5: the caller's plan, opened before it read the scheduler and lists. */
+  /** The caller's plan, opened before it read the scheduler and lists. */
   plan: IntentPlan,
   schedulerSpendingScriptRef?: UTxO,
   submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,

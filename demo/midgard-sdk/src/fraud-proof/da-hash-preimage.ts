@@ -1,5 +1,5 @@
 /**
- * `da-hash-preimage` fault-proof family (Goal task `Q44`).
+ * `da-hash-preimage` fault-proof family.
  *
  * A `transactions_root` leaf is `(key, Data(L2TransactionSource))`. This
  * module is the total TypeScript twin of

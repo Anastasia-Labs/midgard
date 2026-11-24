@@ -1,6 +1,7 @@
 /**
- * The deployment's L1 origin (l1-architecture-plan §5.3), where the L1
- * follower starts its replay, so every Midgard output lies after it.
+ * The deployment's L1 origin (`demo/midgard-l1-follower/README.md`,
+ * Origin), where the L1 follower starts its replay, so every Midgard output
+ * lies after it.
  *
  * The finalized manifest records it as `l1Origin`: the local node tip T the
  * deployer read before it signed the first deployment step,

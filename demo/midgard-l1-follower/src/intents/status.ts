@@ -18,7 +18,7 @@ import {
 } from "./journal.js";
 
 /**
- * An intent's derived status (§8.2): a read over the facts, never a stored
+ * An intent's derived status: a read over the facts, never a stored
  * column, so a rollback that un-lands an intent makes it live again with no
  * write. The facts win: an intent that lands is `landed` even after an
  * `abandoned` event.
@@ -55,7 +55,7 @@ export type IntentStatus =
       inputsAvailable: boolean;
     }>;
 
-/** Dead: conflicted, expired, dependency_dead, abandoned or failed_landed (§8.2, §8.3). */
+/** Dead: conflicted, expired, dependency_dead, abandoned or failed_landed. */
 export const isDeadStatus = (status: IntentStatus): boolean =>
   status.kind === "conflicted" ||
   status.kind === "expired" ||

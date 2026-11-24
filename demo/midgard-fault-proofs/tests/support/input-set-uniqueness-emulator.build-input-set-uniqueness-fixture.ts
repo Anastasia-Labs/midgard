@@ -83,7 +83,7 @@ export type InputSetUniquenessFixture = {
  * transactions MPF trie beside one honest decoy leaf, and returns the full
  * step-01 inclusion material.
  *
- * `validity: "TxIsInvalid"` builds the §2.4.3(d) negative — a normal leaf
+ * `validity: "TxIsInvalid"` builds the negative — a normal leaf
  * with a non-zero validity code, which is no acceptance claim: l2TxMistag
  * convicts it, and this family must never, however degenerate its input
  * sets are.

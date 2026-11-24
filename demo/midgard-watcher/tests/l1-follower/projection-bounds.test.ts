@@ -1,5 +1,5 @@
 /**
- * Two bounds of the watcher projection on the fork simulator (ticket W1):
+ * Two bounds of the watcher projection on the fork simulator:
  * a DA attestation for a header that was never queued opens no row (so
  * nothing pins its tx past k), and a protocol-init root away from the
  * state-queue address keeps the view unhealthy with a named reason for as

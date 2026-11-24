@@ -1,78 +1,9 @@
 # Availability challenge operations
 
-Status: implemented, with local verification recorded below. Live release
-acceptance remains outstanding. The publication evidence in
-[the size plan](size-plans/availability-challenge.md) establishes the contracts
-and registered emulator lifecycle. This plan closes the operational boundary;
-it does not change the protocol, bonds, deadlines, or reference roles.
-
-## Execution design
-
-1. Add reusable SDK builders for open, ordered chunk publication, tranche
-   settlement, answered close, and timeout with unavailable queue removal.
-   Timeout must also prune descendants and finish removal under the existing
-   correction lock. Builders authenticate script units, datums, reference roles,
-   exact carrier outrefs and frozen commitments. Explicit reserved funding and
-   collateral replace test-wallet selection. Evaluate locally, enforce deployed
-   fee ceilings, and retain production validity backoff.
-2. Share an intent-first operation executor between CLI, watcher and responder.
-   A durable SQLite journal binds deployment, actor, action and exact inputs to
-   immutable signed CBOR before submission. Atomic resource reservations and
-   fenced leases prevent conflicting work. Restart reconciles the same tx hash,
-   inputs and canonical inclusion; ambiguous submission never creates a new
-   transaction. Reservations are released only once the signed transaction's
-   validity has passed: an unlanded intent then expires on evidence that it
-   cannot land (one normal input spent and another still unspent, a normal
-   input spent by a valid transaction of another hash, verified from its raw
-   bytes, or every input back unspent), and a confirmed one frees its inputs
-   once the canonical tip is past that validity. Otherwise a record keeps them
-   until it is pruned beyond `automaticRecoveryMaxDepth` (2160). Confirmation
-   depth never releases them. Absence of our transaction is never proof.
-   Rollback reopens reconciliation and holds that intent while canonical
-   evidence is uncertain.
-3. Wire the accountable responder into the committee process. Discover live
-   challenges, load retained payloads and verify the entire frozen commitment
-   before publishing the next required chunk. Rotation changes neither the
-   pooled DA bond nor the challenge record, and a Close refunds the challenger
-   the record names. Publication is permissionless; a responding wallet need not be
-   the original signer. Resume from authenticated tranche/carrier state, then
-   settle and close fully answered challenges. Missing or mismatched payloads
-   remain visible failures and never produce invented bytes.
-4. Wire independent watcher actuation before fault classification. An attested
-   header whose public retrieval fails becomes an availability challenge
-   candidate, not a healthy header or a fabricated fault proof. Reconcile live
-   challenge state and durable intents, reserve the full configured challenge
-   funding, open, settle completed or expired tranches, close answered challenges
-   or remove an unavailable header. Preserve native chain provenance and revoke
-   observations on rollback.
-5. Expose operational CLI actions and status/recovery with an explicitly isolated
-   actor wallet and durable journal path. Commands and process actors invoke the
-   same builders and executor. Readiness checks authenticate the release manifest,
-   live reference scripts and registered withdrawals.
-6. Separate deployed capability from retention authority. A manifest with the
-   required contracts is no longer reported as missing. It is not evidence that
-   a particular header has no active challenge. Retention requires authenticated
-   finalized per-header terminal state and revokes that authority on rollback;
-   absent or uncertain observations retain data.
-
-## Acceptance
-
-- Run real signed SDK-builder emulator flows using the existing protocol-11
-  mainnet limits: full response, no response after attestation, partial response,
-  answered close, timeout and descendant removal. Keep existing publication and
-  failure-polarity scenarios passing.
-- Exercise persistent restart before submit, ambiguous submit, already-included
-  transaction, repeated requests, concurrent actors, expired intent and rollback.
-- Verify insufficient funding, overlapping collateral, missing references,
-  corrupted retained bytes and premature timeout refuse before submission.
-- Prove watcher public-fetch failure actuates a challenge and committee retained
-  payload service answers through the shared production builders/executor.
-- Run narrow package tests, typechecks, formatting and lint for touched paths;
-  record exact results and remaining release acceptance limits here.
-
-Ownership: SDK builders and emulator integration; watcher intake and actuation;
-committee responder integration; shared operation journal/executor, node commands,
-capability and retention authority. Preserve unrelated work in the dirty tree.
+Status: implemented; live release acceptance is open. The
+[size plan](size-plans/availability-challenge.md) records the contract
+decomposition. This page describes the operational boundary; it does not change
+the protocol, bonds, deadlines, or reference roles.
 
 ## Delivered behavior
 
@@ -194,57 +125,7 @@ and aggregate execution units with a 20% execution reserve. The separate
 512-byte publication reserve remains enforced on reference-script publication;
 it is not subtracted again from a fully signed response transaction.
 
-## Verification record
-
-This record predates the pooled DA bond (#685), which replaced the bond each
-attestation used to lock; its responder-lifecycle refund wording describes that
-earlier design.
-
-Checks ran with Node 22.22.2 and the declared pnpm 9.15.4 toolchain. The unchanged
-testnet blueprint SHA-256 is
-`eaf17c21a8fe433f80815a588f73ca39c29f39e40af16649ef897ec0c632b375`.
-No live Cardano transaction was submitted.
-
-- Core journal: four tests, including a killed writer, independent SQLite
-  connections, immutable intent, cross-deployment reservations, workflow capital
-  ownership and persistent incident halt.
-- Signed operation recovery: six tests, including ambiguous submission/restart,
-  canonical inclusion, expiry, rollback generation, orphan chains, ancestor
-  recovery, finalized-anchor audit and signed-envelope refusal.
-- Production SDK lifecycle: five passed. Happy response and close, zero-response timeout,
-  two-descendant pruning and final removal, partial-carrier settlement and timeout.
-  Negative cases include wrong references, insufficient fees/funding, premature
-  deadline and mismatched carrier. The bounded maximum case opens 64 MiB across
-  16 tranches and 19 outputs, then publishes two chunks through the shared executor.
-  Its 15,923-byte signed response crosses the former overly strict reserve check
-  while satisfying the ledger cap and 20% execution reserve. Ambiguous submission
-  and journal restart recover the same transaction without rebuilding or
-  rebroadcasting; authenticated progress resumes at byte offset 28,040.
-- Committee signed responder lifecycle: a real attestation and challenge followed
-  by permissionless publication, SQLite reopen between chunks, settlement and
-  exact refund of the frozen original bond beneficiary.
-- Existing four real contract lifecycles: all passed, including 16-tranche opening
-  and settlement and all 301 chunks of a complete two-tranche payload. Together
-  with the six recovery, four SDK and one responder tests, the initial combined
-  run passed 15 tests.
-- Publication/readiness, mainnet parameters, atomic initialization and full
-  reference roster: 13 tests passed across five files, including all eight
-  initialization tests and signed submission of all 513 runtime targets.
-- Committee responder/config/reference checks: 47 passed. Native retention,
-  provider, scanner, replay and watcher regression: 92 passed, one existing
-  unrelated opt-in signature-republication test skipped.
-- Node retention: 23 passed against isolated databases using
-  `MIDGARD_TEST_DATABASE_PREFIX=midgard_availability_retention_20260908`,
-  `MIDGARD_NODE_TEST_FORKS=1`, and `MIDGARD_SKIP_NATIVE_BUILD=1`. Shared development
-  databases were not reset. Initial-schema changes are applied in place for this
-  undeployed version.
-- Watcher integration: 66 focused tests and 13 raw-source tests passed, covering
-  failed public retrieval, native observation and rollback, retained payload
-  fallback and actuation.
-- CLI command/source funding checks: eight passed. Watcher action/funding checks:
-  eight passed. Package typechecks and scoped ESLint/Prettier checks passed.
-- Final core and SDK builds, complete node bundle and worker declaration builds,
-  and bundled `availability-challenge --help` / `open --help` all passed.
+## Verification
 
 Primary emulator checks, from the repository root with the declared toolchain:
 
@@ -263,7 +144,7 @@ MIDGARD_SKIP_DB_TESTS=1 NODE_ENV=emulator pnpm --dir demo/midgard-node exec vite
   tests/reference-script-publication-fit.test.ts
 ```
 
-These local results establish implementation behavior, not acceptance of a live
+These local checks establish implementation behavior, not acceptance of a live
 deployment. Release acceptance still needs independent live actors and retained
 payload service, actual publication/registration, withholding and partial-response
 timeout exercises, and recovery under the target deployment's chain/finality

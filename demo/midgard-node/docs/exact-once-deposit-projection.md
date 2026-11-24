@@ -130,8 +130,8 @@ On startup:
 - reconcile any active pending-finalization journal
 - rebuild missing trie state from SQL-backed current state
 
-`LATEST_LOCAL_BLOCK_END_TIME_MS` is no longer a correctness primitive for
-deposit projection.
+`LATEST_LOCAL_BLOCK_END_TIME_MS` is not a correctness primitive for deposit
+projection.
 
 ## Safety Invariants
 
@@ -145,15 +145,9 @@ deposit projection.
 
 ## Observability
 
-Expose and alert on:
-
-- awaiting deposit count
-- projected-without-header count
-- oldest awaiting deposit age
-- oldest projected-without-header age
-- replay-prevention violations
-- dead own-block journals
-- SQL/trie divergence
+`/pipeline-status` counts own-block journals by derived status. No metric
+reports awaiting or projected-without-header deposit counts or ages,
+replay-prevention violations or SQL/trie divergence.
 
 ## Implementation and checks
 

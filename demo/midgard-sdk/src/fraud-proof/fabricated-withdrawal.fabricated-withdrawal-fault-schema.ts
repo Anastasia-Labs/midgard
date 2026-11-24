@@ -23,7 +23,7 @@ import {
   faultProofStepRedeemerSchema,
 } from "./native.js";
 
-/** Normative violation identifier (§9.1 output 1). */
+/** Normative violation identifier. */
 export const FABRICATED_WITHDRAWAL_VIOLATION_ID =
   "fabricated-withdrawal" as const;
 

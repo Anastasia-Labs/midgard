@@ -1,7 +1,7 @@
 /**
  * The schema of the watcher's fault-proof journals: one SQLite table per
  * journal, one row per record. Every table declares its retention class
- * (plan §5.1, §11) on the line above its `CREATE TABLE`, so the follower's
+ * on the line above its `CREATE TABLE`, so the follower's
  * schema lint checks it like any role schema.
  */
 

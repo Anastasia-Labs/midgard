@@ -1,5 +1,5 @@
 /**
- * One live journal at a time under a concurrent prepare (plan §8.3). With
+ * One live journal at a time under a concurrent prepare. With
  * the single-active index gone, two prepares under one lease are kept
  * apart by row locks taken before the live-journal check: under a
  * producer's permit, the follower write gate row (`FOR UPDATE` in

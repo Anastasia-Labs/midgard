@@ -1,9 +1,9 @@
 /**
- * The node event projection under the fork simulator (plan §15 F8, N1):
+ * The node event projection under the fork simulator:
  * after every chain-sync event its tables equal a fresh replay's (the
  * runner's check), INV1-INV6 hold, and its events, retired-key refusals and
  * spendable deposits equal an independent model of the canonical chain.
- * Each suite also proves its corpus exercised every §5.5 case it claims.
+ * Each suite also proves its corpus exercised every case it claims.
  */
 import {
   type FactStore,

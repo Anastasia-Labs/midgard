@@ -1,4 +1,4 @@
-//// ## Double-Withdraw Fraud Proof — step-02 (work item W-C3)
+//// ## Double-Withdraw Fraud Proof — step-02
 ////
 //// Finalizes the thread into a permanent fraud-proof token, and is therefore
 //// the last place the family can refuse. It re-authenticates the challenged

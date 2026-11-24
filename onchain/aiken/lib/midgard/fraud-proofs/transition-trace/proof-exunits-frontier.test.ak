@@ -3,7 +3,7 @@
 //// Two questions the `#628` evidence left open, both answered here by
 //// measurement rather than by interpolation:
 ////
-////   1. Where does the deposit arm cross the §3.3 basis? The pinned reading
+////   1. Where does the deposit arm cross the execution basis? The pinned reading
 ////      for `accepts_valid_deposit_transition_fault` sits just under the
 ////      memory basis with an empty `l2_datum`. This module sweeps the
 ////      `l2_datum` width, which is the one deposit field a user controls, and

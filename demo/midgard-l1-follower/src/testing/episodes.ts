@@ -6,7 +6,7 @@ import { type SimOutput, type SimTx, simTxHash } from "./block-cbor.js";
 import type { Rng } from "./rng.js";
 import type { SimChain, SimUtxo } from "./sim-chain.js";
 
-/** The fork shapes the simulator covers (plan §15 F8, §16.1). */
+/** The fork shapes the simulator covers. */
 export const FORK_SHAPES = [
   "reland",
   "never_reland",

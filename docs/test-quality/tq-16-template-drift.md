@@ -1,18 +1,15 @@
 # TQ-16 — Consolidate repeated setup while preserving scenario coverage
 
 Status: Proposed
-Last reviewed: 2026-09-07 (semantic source review)
+Last reviewed: 2026-11-23 (cited tests)
 
-- **Audit section**: §7
 - **Rules**: R8, R9 in [principles](principles.md)
-- **Coordination**: TQ-15 (done) does not authorize deleting live
-  measurements.
 
 ## Problem and boundary
 
 Copied family setup can drift and increase maintenance cost. Similar-looking
 cases can also intentionally test different validators, entry points, fixture
-controls, or resource limits. Treat the original file counts and similarity
+controls, or resource limits. Treat file counts and similarity
 estimates as leads to recheck, not proof that the suites are duplicates.
 
 A shared assertion helper does not make omission a compile error: callers can
@@ -27,7 +24,7 @@ runtime.
   share a step-03 submission pattern but intentionally use different evidence.
   A named shared driver may remove setup duplication while retaining both
   scenario names, refusal oracles, and surviving-thread checks.
-- The five `submit-init-emulator-*-tier2.test.ts` family suites: enumerate each
+- The four `submit-init-emulator-*-tier2.test.ts` family suites: enumerate each
   family's required carriage and negative-control cases before aligning them.
   A missing shared property needs a scenario-coverage check, not merely a
   helper function that suites may omit.

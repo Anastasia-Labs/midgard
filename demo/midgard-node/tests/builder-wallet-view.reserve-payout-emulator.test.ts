@@ -1,6 +1,6 @@
 /**
- * The reserve payout steps funded from the node's wallet view (plan §8.5,
- * I2b) on the real compiled validators in the emulator, with the node's
+ * The reserve payout steps funded from the node's wallet view on
+ * the real compiled validators in the emulator, with the node's
  * follower store and intent journal attached to the settling wallet:
  *
  * - absorb, initialize, add funds and conclude each select their fee input,
@@ -113,8 +113,8 @@ const lastAccepted = (env: IntentEmulator): string =>
   [...env.accepted.values()].at(-1)!.toString("hex");
 
 /**
- * Runs one step under a plan opened before the step's first L1 read (S5,
- * as the payout commands open theirs); it must land, never touching `held`,
+ * Runs one step under a plan opened before the step's first L1 read (as
+ * the payout commands open theirs); it must land, never touching `held`,
  * its block followed.
  */
 const step = async (

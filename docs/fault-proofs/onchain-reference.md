@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last reviewed: 2026-09-07 (source map).
+Last reviewed: 2026-11-23 (source map paths and family step layout).
 
 ## Compiled identity
 
@@ -28,7 +28,7 @@ hashes from older builds do not identify the current deployment.
 
 ## Catalogue validator directories
 
-Family validators live under `onchain/aiken/validators/fraud-proofs/`. The SDK
+Family validators live under `onchain/aiken/validators/fraud-proofs/`. The
 catalogue's explicit ID map determines category identity; filesystem order and
 shared-helper directories do not. See [catalogue status](catalogue-status.md)
 for the complete inventory.

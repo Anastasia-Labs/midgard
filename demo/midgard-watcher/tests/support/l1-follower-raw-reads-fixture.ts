@@ -47,7 +47,7 @@ import {
 } from "./l1-follower-state-queue-traffic.js";
 
 /**
- * The hand-built simulator chain the follower raw-read tests (ticket W1)
+ * The hand-built simulator chain the follower raw-read tests
  * read, and their oracle: the simulator's own transaction specs. The exact
  * bytes an output must read back as come from the spec's encoding, never
  * from the store.

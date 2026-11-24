@@ -40,10 +40,10 @@ Decide before writing code. The authority is decision
 | A deterministic fault with its own authenticated subject shape, decisive predicate, resumable state shape or evidence frontier (0002, "Decision") | New family. Follow every step below.                                                                                                                                                                                                          |
 | An existing `RejectionReason` arm that no family serves yet, whose predicate an existing family already proves                                    | Extend that family: its rule and scan. Skip steps 2 and 3. Several arms may share one family (the witness-script arms all route to `witnessScriptDecoding`).                                                                                  |
 | A registered family missing a record, tests or docs                                                                                               | Completion. Run the script and fill each `GAP`.                                                                                                                                                                                               |
-| Reordering, renumbering or removing a catalogue category                                                                                          | Stop. The order and IDs are append-only; deployment identity and thread asset names derive from them (core `catalogue-roles.protocol-categories.ts`, `classification.ts:341`). Ask the owner.                                                                             |
+| Reordering, renumbering or removing a catalogue category                                                                                          | Stop. The order and IDs are append-only; deployment identity and thread asset names derive from them (core `catalogue-roles.protocol-categories.ts`). Ask the owner.                                                                          |
 | A second direct family for a reason and source kind that already has one                                                                          | Stop. At most one direct category per source kind (0002). Ask the owner.                                                                                                                                                                      |
 | A new `RejectionReason` constructor                                                                                                               | Stop. It changes the forced-verdict ABI owned by `rejection-reason-v1.ak`, `midgard-sdk/src/rejection-reason.ts` and `docs/spec/midgard-tx.md` §13 ([catalogue](../../../docs/fault-proofs/rejection-reason-catalogue-v1.md)). Ask the owner. |
-| A fourth family requirement flag beyond `replayContext`, `validationChallenge`, `retainedDaSources`                                               | Stop. Issue #668 capped the set; growing it "needs a new design discussion".                                                                                                                                                                  |
+| A new `FamilyApplicationRequirement` value beside `replayContext`                                                                                 | Stop. Issue #668 capped the set; growing it "needs a new design discussion".                                                                                                                                                                  |
 | A family that only fits with raised transaction limits or inline scripts                                                                          | Stop. Split the family instead (0002, "Alternatives and consequences"). The hard rules below apply.                                                                                                                                           |
 
 ## Hard rules
@@ -54,19 +54,20 @@ is stated next to it.
 1. **Reference scripts only.** A fault-proof transaction never attaches a
    script inline; every script resolves from a published reference script
    (owner ruling 2026-08-26, cited in
-   `demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts:694`). Call
+   `demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts`). Call
    `requireReferenceOnlyScriptWitnesses` on every transaction your adapter
    builds. [runtime: requireReferenceOnlyScriptWitnesses]
    Blind spot: it only runs where an adapter calls it
-   (`transaction-boundary.ts:104`). As of 2026-09-25, eight fault-proofs
-   modules call it; the `mint-item-non-canonical` central journal does not.
-   Nothing lints for inline attachment (plan item W4.4 is open).
+   (`workflow/transaction-boundary.ts`). The lint
+   `midgard/fault-proof-reference-scripts-only` sees only `attach` calls in
+   the fault-proof source trees ([lint-rules.md](../../../docs/agents/lint-rules.md)).
 2. **Every fraud-proof validator is published with a reference-script token.**
    Each contract the family deploys needs a `reference: { role, token }` in
    its core deployment member.
    [ci: Midgard Node CI/Build and test Midgard core DA transport]
-   The test is `demo/midgard-core/tests/deployment-manifest-identity.test.ts:429`:
-   only seven named core validators may lack a role.
+   The test is
+   `demo/midgard-core/tests/deployment-manifest-identity.deployment-manifest-v1-shared-identity.ts`:
+   only five named core validators may lack a role.
 3. **Emulator tests in both polarities, refused in the validator.** The real
    fault is proved to completion, and an adversary against an honest
    commitment is refused by the validator at the check that guards it, not by
@@ -87,21 +88,21 @@ is stated next to it.
    that trace. Local preflight's `traced-refusals` check runs the pin files a
    changed validator reaches.
    `assertCompleteLifecycleCoverage`
-   (`src/testing/complete-lifecycle.ts:35`) fails a lifecycle missing any of
+   (`src/testing/complete-lifecycle.ts`) fails a lifecycle missing any of
    the seven `COMPLETE_LIFECYCLE_BASE_SCENARIOS`, but only in tests that opt in
-   through `createLifecycleCoverageRecorder`: 16 lifecycle test files as of
-   2026-09-25. No test maps each validator to its passing and failing
-   scenarios (plan item W4.9 is open).
+   through `createLifecycleCoverageRecorder`: 13 test files as of
+   2026-11-23. No test maps each validator to its passing and failing
+   scenarios.
 4. **Validators trust deployment parameters.** A validator never re-checks a
    `validator main(...)` parameter's width, cardinality or domain. Apply
    parameters only through `applyBlueprintParams`
-   (`demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts:211`), which
+   (`demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts`), which
    refuses a wrong arity (under-application compiles to an always-succeeds
-   script, #609) and a wrong shape (`assertParameterShapes`, line 364).
+   script, #609) and a wrong shape (`assertParameterShapes`).
    [runtime: applyBlueprintParams]
-   Blind spot: nothing stops a direct `applyParamsToScript` call elsewhere
-   (plan item W4.5 is open), and nothing flags a redundant on-chain parameter
-   check.
+   Blind spot: the lint `midgard/apply-params-through-blueprint` misses a
+   call through a namespace re-export or a computed name, and nothing flags a
+   redundant on-chain parameter check.
 5. **Compile and test Aiken only with the pinned fork.** Stock v1.1.22 has an
    unsound expect-decoder. Run the compiler as `scripts/aiken`, which builds
    the commit `demo/flake.lock` pins; never a bare `aiken` from `PATH`. Build
@@ -109,7 +110,7 @@ is stated next to it.
    [aiken-contract-build](../aiken-contract-build/SKILL.md).
    [script: scripts/lib/aiken.mjs]
 6. **Never hand-edit generated Aiken.** Files headed "Generated by ... Do not
-   edit" (10 under `onchain/aiken` as of 2026-09-25, for example
+   edit" (for example
    `lib/midgard/fraud-proofs/canonical-decodability/rule-golden.test.ak`) are
    rewritten by their generator; change the generator and rerun it.
    [ci: Midgard Node CI/Check canonical-decodability golden vectors]
@@ -128,8 +129,7 @@ is stated next to it.
 ## Steps
 
 Use the newest family of the same shape as your template. Find its full
-footprint with one grep. For `mintItemNonCanonical` it matched 82 files as of
-2026-09-25, 50 of them outside the family's own directories:
+footprint with one grep, for example for `mintItemNonCanonical`:
 
 ```bash
 git grep -l -e mintItemNonCanonical -e MintItemNonCanonical \
@@ -199,7 +199,7 @@ by package with what enforces it. Read it before step 2, and again whenever a
    the catalogue status, coverage matrix, testing status, execution plan and
    [public testnet readiness](../../../docs/public_testnet_readiness.md). Add
    a `family-reference.md` section. Done when `catalogue-status-row` is `OK`
-   and each named doc states the new count.
+   and the catalogue status states the new count.
 10. **Verify.** Run the script until it exits 0, then the suites in
     [references/verification.md](references/verification.md). Report which
     ran and their counts.
@@ -239,7 +239,8 @@ you checked it by reading.
       (opt-in; `assertCompleteLifecycleCoverage` checks only recorded tests)
 - [ ] Only reference scripts; adapter calls
       `requireReferenceOnlyScriptWitnesses`. [review]
-- [ ] Parameters applied through `applyBlueprintParams` only. [review]
+- [ ] Parameters applied through `applyBlueprintParams` only.
+      [eslint: midgard/apply-params-through-blueprint]
 - [ ] Aiken compiled and tested under the pinned fork, formatted.
       [ci: Aiken CI/Compile and run the Aiken test suite with the pinned fork]
 - [ ] No generated Aiken edited by hand. [review]
@@ -249,6 +250,6 @@ you checked it by reading.
       [ci: Midgard Node CI/Typecheck, build, and test Midgard node tools]
       (the typecheck enforces the owner entry)
 - [ ] Status docs updated in the same change. [review]
-      (`catalogue-status.md` says it "is not machine-checked"; plan item W5.6)
+      (`catalogue-status.md` says it "is not machine-checked")
 - [ ] `family-checklist.mjs <category>` exits 0.
       [script: .agents/skills/adding-fault-proof-families/scripts/family-checklist.mjs]

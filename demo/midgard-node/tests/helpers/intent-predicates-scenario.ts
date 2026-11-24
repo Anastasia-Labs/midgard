@@ -1,5 +1,5 @@
 /**
- * The node's §8.4 family predicates (`nodeFamilyPredicate`) over a follower
+ * The node's family predicates (`nodeFamilyPredicate`) over a follower
  * store in the node's own test database, so a predicate reads the node
  * tables (block journal, event rows) beside the follower's facts:
  *

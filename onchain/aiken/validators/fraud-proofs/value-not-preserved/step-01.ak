@@ -5,7 +5,7 @@
 //// (`common.pass_native_tx_to_next_step`), applies the **acceptance gate**,
 //// checks the claim's domain, and freezes everything downstream steps consume
 //// into thread state. See `midgard/fraud_proofs/value_not_preserved/step_01`
-//// for the family doctrine and the D-C1 single-asset-claim resolution.
+//// for the family doctrine and the single-asset-claim resolution.
 
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}

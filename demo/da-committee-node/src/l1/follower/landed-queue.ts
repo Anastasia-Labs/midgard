@@ -231,12 +231,12 @@ export type AwaitingHeader = Readonly<{
   outRef: string;
   endTimeMs: bigint;
   blockTimeMs: bigint | null;
-  /** Of the node's current output (plan §9: the tip block has depth 1). */
+  /** Of the node's current output (the tip block has depth 1). */
   depth: number;
   level: ChainLevel | null;
   /**
    * The queue is healthy and the node's output is `safe` (depth ≥ cd).
-   * Liveness only: signing is truthful on any fork (C4), so a signature
+   * Liveness only: signing is truthful on any fork, so a signature
    * needs no durability, only a reason to believe the header is worth it.
    */
   signable: boolean;

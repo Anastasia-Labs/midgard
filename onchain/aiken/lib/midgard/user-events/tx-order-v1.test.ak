@@ -1254,7 +1254,7 @@ const minimal_variable_width_preimage: ByteArray = #"814100"
 const aggregate_bound_spend_input_count: Int = 813
 
 /// The two cardinalities the variable-width rows are read at. Both are inside
-/// the §3.3 basis and the pair is what makes the per-item cost falsifiable: a
+/// the execution basis and the pair is what makes the per-item cost falsifiable: a
 /// walk that got dearer per item moves the two rows apart, and the ledger's
 /// note carries the rate they imply.
 const lower_variable_width_item_count: Int = 250
@@ -1562,7 +1562,7 @@ test tx_order_mint_material_at_two_hundred_fifty_variable_width_items() {
 /// **Measured row.** The upper cardinality. Read together with the row above it
 /// prices `walk_to_end` per item, which is the term §8.11's byte bound does not
 /// carry; the ledger's note states the rate and the cardinality at which it
-/// reaches the §3.3 basis.
+/// reaches the execution basis.
 test tx_order_mint_material_at_five_hundred_variable_width_items() {
   open_all_nine(variable_width_shape(upper_variable_width_item_count))
 }

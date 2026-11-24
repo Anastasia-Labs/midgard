@@ -8,8 +8,8 @@ See [SECURITY.md](../SECURITY.md) for private vulnerability reporting.
 ## System, assets and deployment boundary
 
 Midgard is an optimistic rollup on Cardano. P1 is the stage-0 Preprod deployment
-in Plan rev 4 Part A, with curated operators and permissionless fraud provers
-and DA challengers. The proposed release profile is
+of the [P1 model](public_testnet_readiness.md#the-p1-model), with curated
+operators and permissionless fraud provers and DA challengers. The proposed release profile is
 `preprod-public`; an emulator or testing profile cannot establish public release
 readiness. An instance is identified by its approved genesis, authenticated
 manifest, profile digest, pinned blueprint and deployed script/reference UTxOs.
@@ -73,7 +73,7 @@ establish custody, access policy, backup/recovery and incident ownership.
 ## Runtime, APIs and operational DoS
 
 Public HTTP includes transaction submission and evaluation, transaction/UTxO and
-address history reads, block/protocol/status endpoints and deposit construction.
+address history reads and block/protocol/status endpoints.
 Admin/operational interfaces and committee/watcher diagnostic APIs form distinct
 boundaries. Required public deployment controls are TLS ingress, protected
 internal infrastructure, bounded bodies/queries/pages, request and byte quotas,
@@ -85,9 +85,9 @@ Submission currently reserves count and byte-weighted ingress permits and checks
 bounded bodies, envelope/media type and durable backlog. `/tx/evaluate` shares
 the bounded body reader and limits concurrency relative to the validation pool;
 it returns advisory budgets and must not consume the capacity needed for
-admission. Each route class has a per-client and a global request-rate limit
-(health and admin routes have per-client limits only), and a public profile
-refuses to start with rate limits disabled. These bounds do not establish proxy
+admission. Every route class has a per-client request-rate limit; reads, batch
+status and evaluation also have a global limit and submission a per-/24 or /48
+limit, and a public profile refuses to start with rate limits disabled. These bounds do not establish proxy
 limits, slow-client handling or load-test throughput.
 
 Read amplification can arise from address scans, large outref batches, repeated

@@ -44,7 +44,7 @@ import {
 } from "../support/l1-follower-raw-source-fixture.js";
 
 /**
- * The watcher's fault-proof L1 source over the follower (ticket W1), on the
+ * The watcher's fault-proof L1 source over the follower, on the
  * raw-read simulator chain (k = 3). The oracle is the simulator: boundary
  * points are the points the chain served at each height, never the store's
  * answer.

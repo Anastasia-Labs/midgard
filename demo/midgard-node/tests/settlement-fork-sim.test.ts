@@ -1,5 +1,5 @@
 /**
- * Settlement confirmation (plan §15 N6 and L7, D-N4) under the fork
+ * Settlement confirmation under the fork
  * simulator, on the node's Postgres follower store with prune on, with the
  * node's settlement and journal projections. The own wallet plans
  * settlement bodies; each is journaled, with its settlement attempt, just

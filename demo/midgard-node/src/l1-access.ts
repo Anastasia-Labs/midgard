@@ -180,7 +180,7 @@ export const openL1Access = <A extends L1AccessAdapter>(
     return clock;
   });
   // The newest tip slot + the slots elapsed since it arrived, on a monotonic
-  // clock and never decreasing (`createSlotClock`, plan §3.6). The tip is read
+  // clock and never decreasing (`createSlotClock`). The tip is read
   // again when the last read is older than `L1_TIP_REFRESH_MS`; a failed read
   // keeps the estimate from the last good one. Unknown only while no tip has
   // ever been read.

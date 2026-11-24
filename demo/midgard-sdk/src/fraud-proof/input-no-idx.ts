@@ -1,6 +1,5 @@
 /**
- * `input-no-idx` (`nonExistentInputNoIndex`) fault-proof family (Goal task
- * `Q13`).
+ * `input-no-idx` (`nonExistentInputNoIndex`) fault-proof family.
  *
  * **Rule.** Every spend input of a committed transaction must name an output
  * that its producing transaction actually created: for an input

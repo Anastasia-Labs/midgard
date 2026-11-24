@@ -1,7 +1,7 @@
 /**
  * The journal row and the workflow's pre-broadcast gate
  * (`BeforeSignedTransactionSubmission.persist`) commit in one SQL
- * transaction (plan §8.2, I1-fix F1), on a Lucid emulator with the node's
+ * transaction, on a Lucid emulator with the node's
  * follower-backed journal. The gate owns that transaction and runs the
  * journal's insert inside it (I1FIX-R2):
  *

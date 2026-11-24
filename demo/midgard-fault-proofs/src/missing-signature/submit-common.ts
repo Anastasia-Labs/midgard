@@ -1,6 +1,5 @@
 /**
- * Shared plumbing for the `missing-signature` step submitters (offchain plan
- * §4.2).
+ * Shared plumbing for the `missing-signature` step submitters.
  *
  * The family predates catalogue registration, so every submitter takes the
  * explicit `MissingSignatureContracts` record plus the category id the

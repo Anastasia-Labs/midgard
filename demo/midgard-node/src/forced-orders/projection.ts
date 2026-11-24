@@ -1,5 +1,5 @@
 /**
- * The forced-order projection as the follower plugs it in (plan §12, N10):
+ * The forced-order projection as the follower plugs it in:
  * tracked set, D-t table, migrations and the derivation.
  */
 import type { FollowerProjection } from "@al-ft/midgard-l1-follower";

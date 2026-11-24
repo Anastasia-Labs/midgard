@@ -1,5 +1,5 @@
 /**
- * `withdrawn-reference-input` step-02 submitter (Q19 offchain plan §4.2).
+ * `withdrawn-reference-input` step-02 submitter.
  *
  * Structural mirror of the `non-existent-input` chain's step 02
  * (`non-existent-input/submit-step-02.ts`): opens a field of the transaction carried by step 01

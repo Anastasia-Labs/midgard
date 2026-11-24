@@ -1,5 +1,5 @@
 /**
- * The landed-block fork simulator's mempool (N3): pending transactions
+ * The landed-block fork simulator's mempool: pending transactions
  * admitted the way the node's admission leaves them (mempool row, delta,
  * working-ledger outputs), and the model of what a working-ledger rebuild
  * makes of them.

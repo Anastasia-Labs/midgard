@@ -5,9 +5,6 @@
 \section{Transaction order (L1)}
 \label{h:transaction-order}
 
-\paragraph{Implementation conformance.} The current mint entry point consumes \code{MintRedeemer\{event, material\_carriage\}}, including an empty carriage vector for burns. The spending entry point currently attempts to decode the selected policy redeemer directly as the inner \code{BurnEventNFT} event; \code{get\_redeemer\_at} returns the selected data without unwrapping it. This source-level ABI discrepancy requires reconciliation and a successful settlement-spend scenario before the lifecycle below can be claimed to conform.
-
-
 A user who wants to mitigate the risk of censorship by the current operator can submit an L2 transaction as an L1 transaction order.
 A transaction order is created by an L1 transaction that performs the following:
 \begin{enumerate}

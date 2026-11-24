@@ -12,10 +12,13 @@ notice together with `docs/public_testnet_readiness.md`, the proof-coverage audi
 
 ## Directory overview
 
-- `0-frontmatter`: cover page, abstract, table of contents, and introduction.
+- `0-frontmatter`: cover page, abstract, table of contents, introduction, and
+  the specification status and conformance notice.
 - `1-ledger-state` through `7-phase-two-validation`: main protocol chapters.
-- `A-general-data-structures` and `C-considerations`: appendices and supporting
-  material.
+- `A-general-data-structures`, `B-l1-transactions` and `C-considerations`:
+  appendices and supporting material.
+- `Lean4Midgard`: a git submodule (`input-output-hk/rnd-midgard`); the PDF
+  build does not read it.
 - `images/`: diagrams, transaction figures, and rendered assets used by the
   spec.
 - `midgard.sty` and related `.sty` files: shared LaTeX macros and formatting.

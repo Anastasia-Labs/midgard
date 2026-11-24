@@ -98,9 +98,10 @@ file that failed to load with its first message line, the log and the receipt)
 and a compact JSON summary on stdout; `--output FILE` keeps the full receipt,
 and the run directory holds the logs and Vitest's JSON report.
 
-Place watcher test checkouts on the project filesystem outside `/tmp`: its
-funding recovery suites exercise the production guard against temporary durable
-stores. Keep that guard intact when choosing a worktree location.
+Place watcher test checkouts on the project filesystem outside `/tmp`: the
+watcher refuses a durable path under `/tmp` (`prepareWatcherJournalDirectory`
+and the process-config loader). Keep that guard intact when choosing a
+worktree location.
 
 `--source-only` explicitly omits compiled prerequisites. Use it for a suite
 whose entire execution stays inside the source resolver; it cannot establish
@@ -242,8 +243,7 @@ first, then the least recently used files until it fits 512 MiB.
 The import graph is probed once per distinct content and stored. When only
 scripts changed since the last graph, outside every configuration and Vitest
 config input, and no file was added or removed, only the changed scripts are
-regraphed. Otherwise the graph is probed in full, which takes about 25 s for
-the watcher and 50 s for fault-proofs. A run whose files have no recorded pass,
+regraphed. Otherwise the graph is probed in full. A run whose files have no recorded pass,
 or whose recorded passes have no difference from the checkout, needs no graph.
 
 ## Mutation checks

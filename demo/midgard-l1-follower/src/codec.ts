@@ -16,7 +16,7 @@ export const blake2b224 = (bytes: Uint8Array): Buffer =>
 
 export const OUT_REF_BYTES = 34;
 
-/** The 34-byte outref encoding of §5.2: tx hash || u16 big-endian index. */
+/** The 34-byte outref encoding: tx hash || u16 big-endian index. */
 export const encodeOutRef = (outRef: OutRef): Buffer => {
   if (outRef.txHash.length !== 32)
     throw new Error("outref tx hash must be 32 bytes");

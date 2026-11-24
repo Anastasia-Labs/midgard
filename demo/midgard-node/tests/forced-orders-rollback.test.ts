@@ -7,7 +7,7 @@
  * block journal holds. A journal that includes the order is built at a
  * commit anchor above it (the follower block it was built at, with every
  * event it includes below it), so the rollback takes the anchor too and the
- * journal is dead (I3) at once, with no operator step: the hook deletes the
+ * journal is dead at once, with no operator step: the hook deletes the
  * row in place. An order that lands again ends as exactly one row, the
  * same row.
  */

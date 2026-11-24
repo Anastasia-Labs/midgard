@@ -1,5 +1,5 @@
 /**
- * How the node holds on a failure of a follower-change run (plan §7.5): the
+ * How the node holds on a failure of a follower-change run: the
  * classification that tells an L1 node outage from a database transient and
  * from a failure that is not transient. It names the L1 node transport's
  * error classes and the provider retry policy (which jitters its backoff),
@@ -40,7 +40,7 @@ export const isTransientDriverFailure = (error: unknown): boolean =>
 /**
  * Whether a failure comes from the L1 node: its transport or sidecar, or
  * the follower provider's node or follower path (not its store). Waiting on
- * the node has no bound (plan §7.5).
+ * the node has no bound.
  */
 export const isL1NodeOutage = (error: unknown): boolean => {
   let current: unknown = error;

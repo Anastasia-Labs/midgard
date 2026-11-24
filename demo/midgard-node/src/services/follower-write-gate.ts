@@ -1,5 +1,5 @@
 /**
- * The node's write gate (plan §8.1): every write that derives from the L1
+ * The node's write gate: every write that derives from the L1
  * view runs `viewValid(V)` in its own transaction, under `FOR SHARE` on the
  * follower cursor (`followerViewValid`, the node's one view check), then
  * takes the gate row (`node_follower_write_gate`, migration 0021) `FOR

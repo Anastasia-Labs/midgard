@@ -64,11 +64,10 @@ export const watcherComputationThreadPolicyId = (
 };
 
 /**
- * Every script the watcher follows beyond the projection's named ones
- * (l1-architecture-plan §4.4): each manifest contract's script hash, and
- * the computation-thread policy (`watcherComputationThreadPolicyId`). The
- * fault-proof families' snapshot scopes and unit histories are all among
- * them.
+ * Every script the watcher follows beyond the projection's named ones: each
+ * manifest contract's script hash, and the computation-thread policy
+ * (`watcherComputationThreadPolicyId`). The fault-proof families' snapshot
+ * scopes and unit histories are all among them.
  */
 export const watcherFollowedScripts = (
   input: Parameters<typeof watcherComputationThreadPolicyId>[0],

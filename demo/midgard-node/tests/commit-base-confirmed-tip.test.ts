@@ -1,5 +1,5 @@
 /**
- * The commit base on a confirmed-state tip (plan §7.3, N3, N5) the
+ * The commit base on a confirmed-state tip the
  * confirmed-ledger frontier lags: while the fold of the merge has not taken
  * `confirmed_ledger` to the confirmed state, the commit waits
  * (`LANDED_COMMIT_BASE_PENDING`); once landed-block processing has folded

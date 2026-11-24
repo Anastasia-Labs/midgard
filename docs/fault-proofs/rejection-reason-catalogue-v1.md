@@ -1,8 +1,8 @@
 # RejectionReasonV1 — current protocol reference
 
 `RejectionReason` is the typed operator-rejection reason carried only by a
-forced-inclusion verdict. The authoritative constructor order, fields, and
-legacy-code bridge are implemented in:
+forced-inclusion verdict. The authoritative constructor order and fields are
+implemented in:
 
 - `onchain/aiken/lib/midgard/rejection-reason-v1.ak`
 - `demo/midgard-sdk/src/rejection-reason.ts`
@@ -28,7 +28,7 @@ leaf is covered by `l2TxMistag`.
 
 ## 2. Reason space
 
-`RejectionReason` currently has 47 constructors. They name the smallest
+`RejectionReason` has 49 constructors. They name the smallest
 authenticated subject needed to adjudicate the fault, covering:
 
 - field size/type and transaction structure;
@@ -55,13 +55,12 @@ transaction-global; accepted-invalid proofs can select an authenticated unbalanc
 wrongful rejection requires the registered `valueNotPreserved` family to prove
 universal conservation across the complete authenticated asset domain.
 
-## 4. Legacy-code bridge
+## 4. Rejection hash
 
-`rejection_code_of` is a total, intentionally non-injective map from the 47
-typed reasons to the 19 frozen `E_*` descriptor codes. The typed constructor is
-the protocol reason; the coarse code exists for descriptor compatibility and
-observability. Consumers must not infer a unique typed reason from a coarse
-code.
+The reason itself is the rejection preimage: the machine's terminal rejection
+binds `hash_rejection_code(reason)` in
+`onchain/aiken/lib/midgard/validation-trace-v1.ak`, the domain-separated
+blake2b-256 of the reason's Plutus Data CBOR. There is no coarse code.
 
 ## 5. Interaction boundary
 
@@ -98,7 +97,6 @@ or the item well-formed.
 ## 6. Verification obligations
 
 - TypeScript and Aiken encodings must remain byte-identical.
-- Every constructor must map through `rejection_code_of`.
 - Subject indices and source/purpose kinds must be range-checked before use.
 - A reason against an honest accepted/rejected transaction must fail at the
   decisive on-chain predicate.

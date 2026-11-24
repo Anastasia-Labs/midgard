@@ -44,8 +44,8 @@ verification. The chain read includes the L1 node's mempool, so a
 transaction the previous process sent that is still pending counts as sent,
 and the next action is built on its outputs.
 
-The manual `resume-workflow` CLI is diagnostic unless invoked through the
-application owner that supplies the admitted permits and runtime registry.
+The `resume-workflow` CLI command refuses: only the watcher's application
+supervisor supplies the admitted decision, permit and objective wallet.
 Submission stays automatic after the restart: the resumed watcher signs and
 submits the next action itself. Use `workflow-readiness` (see the
 [challenger runbook](challenger-runbook.md#3-detect-and-prosecute)) to

@@ -16,11 +16,11 @@ import type {
 } from "./types.js";
 
 /**
- * The origin point O and its two assertions (l1-architecture-plan §5.3,
- * §7.5): R4 `origin_not_on_chain` on a fresh start whose `FindIntersect([O])`
- * fails, and R3 `origin_after_protocol_init` once the cursor reaches the tip
- * without the tx that spent the manifest's `hubOracleOneShot` outref, or as
- * soon as the store's origin is after the deployment's recorded origin.
+ * The origin point O and its two assertions (README, Origin): R4
+ * `origin_not_on_chain` on a fresh start whose `FindIntersect([O])` fails,
+ * and R3 `origin_after_protocol_init` once the cursor reaches the tip without
+ * the tx that spent the manifest's `hubOracleOneShot` outref, or as soon as
+ * the store's origin is after the deployment's recorded origin.
  *
  * Every function here returns an `Intervention` instead of throwing, so the
  * role keeps its process up and fails `/readyz` with the reason.
@@ -119,7 +119,7 @@ export type OriginStartOptions = Readonly<{
 }>;
 
 /**
- * The fresh start of §5.3 step 2 on a store with no cursor: `FindIntersect`
+ * The fresh start on a store with no cursor: `FindIntersect`
  * at O alone, then the first block after O fixes O's height and initializes
  * the store. A store that already has a cursor is not touched; the caller
  * resumes from its own points (and checks the origin with `originMatches`).
@@ -233,7 +233,7 @@ export type ProtocolInitStatus =
   | StoreError;
 
 /**
- * The completeness assertion of §5.3 step 3. `seen` once the store holds the
+ * The completeness assertion. `seen` once the store holds the
  * protocol-init fact: a valid tx spent the `hubOracleOneShot` outref in an
  * applied block (`FactStore.watchProtocolInit`). Until the cursor reaches
  * the node tip the answer is `pending`; at the tip without the fact it is

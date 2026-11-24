@@ -231,7 +231,7 @@ export const buildOnVerifiedCommitBaseProgram = (
         );
       }
     }
-    // The event horizon (plan §8.1): min(the commit anchor's cap, the
+    // The event horizon: min(the commit anchor's cap, the
     // earliest forced order not yet rebuilt), the anchor being the follower
     // block d (the profile's commit-event depth) below the permit's view.
     // No view yet, or no anchor block: no end time is safe; the commit holds.

@@ -1,7 +1,7 @@
 /**
- * B2 (plan §16.2): per-block apply at tip, including every projection, at
- * N = 10^4, 10^5 and 10^6 live events on Postgres. The node's projection in
- * N1 is the event projection, so a block is decoded and applied by the
+ * B2: per-block apply at tip, including every projection, at
+ * N = 10^4, 10^5 and 10^6 live events on Postgres. The node's event
+ * projection is the one measured: a block is decoded and applied by the
  * follower with it plugged in, exactly as the soak and the node apply one.
  *
  * Workload: N live list Orders preloaded through the ordinary chain-sync

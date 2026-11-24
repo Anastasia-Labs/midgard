@@ -1,5 +1,5 @@
 /**
- * The follower-change driver's Postgres sink (plan §7.3, N1): it writes the
+ * The follower-change driver's Postgres sink: it writes the
  * node's event rows (`deposits_utxos`, `withdrawal_utxos`) from the event
  * projection at a follower view, in the caller's node transaction.
  *

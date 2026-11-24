@@ -26,13 +26,10 @@ release provenance and the validator-classification file, TLS-only public HTTP
 and public diagnostic redaction. The profile tests compare it field by field
 against both source profiles, so a change to either one must be carried into it.
 
-The public profiles retain the existing testnet timing values, including
-seven-day block maturity and a one-hour operator shift. `preprod-public`
-activates a registered operator after 30 seconds; `mainnet` still carries the
-earlier 30 millisecond registration interval.
-Mainnet's former 30 millisecond operator shift is replaced by the one-hour shift
-used off chain. Testing economics remain explicit; selecting a test network does
-not select them. [Public-testnet parameters](../../docs/public-testnet-parameters.md)
+The public profiles use seven-day block maturity and a one-hour operator
+shift. `preprod-public` activates a registered operator after 30 seconds;
+`mainnet` carries a 30 millisecond registration interval. Testing economics are
+explicit; selecting a test network does not select them. [Public-testnet parameters](../../docs/public-testnet-parameters.md)
 lists every `preprod-public` value with its unit, profile line and rationale.
 
 Every profile allows twenty minutes for a deposit, withdrawal or transaction
@@ -52,7 +49,7 @@ validity range before its header end time, so when the commit that includes a
 due event lands, the event is at least 3k/f slots old, k blocks deep under the
 guaranteed chain-growth bound. `preprod-public` waits 30 minutes (N = 30), which
 leaves 22 blocks after the eight-minute validity range. Both live testing
-profiles use a fixed five minutes and `preprod-emulator-testing` ten.
+profiles use a fixed five minutes and the emulator profiles ten.
 Validation requires each public profile's event wait to be at least the maximum
 validity range plus confirmation-depth blocks at twice the 20-second mean block
 time: 28 minutes for `mainnet` and `preprod-public`. Every event a block must
@@ -182,8 +179,8 @@ with `MIDGARD_DEPLOYMENT_PROFILE=local-devnet-dispute-testing` and
 ### Interactive emulator tests
 
 `preprod-emulator-testing` is selected only by the interactive Vitest projects
-in `midgard-fault-proofs` and `midgard-watcher`. It uses 72-hour block maturity,
-one-minute dispute responses and bounded testing economics. Its event wait,
+in `midgard-fault-proofs` and `midgard-watcher`. It uses 72-hour block maturity
+and bounded testing economics. Its event wait,
 DA challenge window and bond withdrawal delay satisfy the full profile checks.
 Emulator tests advance the ledger clock directly; 72 hours of protocol time
 adds no wall-clock wait.
@@ -249,8 +246,8 @@ the retention poll runs every quarter timeout (150 seconds) and the L1 view
 deadline, `L1_VIEW_FATAL_MS`, is the timeout itself (ten minutes).
 
 `l1_finality.confirmation_depth` selects the L1 confirmation count. The two live
-testing profiles use 10 (owner ruling, 2026-10-01) and `preprod-emulator-testing`
-uses 3; `mainnet` and `preprod-public` use 30. Raising the testing profiles to
+testing profiles use 10 (owner ruling, 2026-10-01) and the emulator profiles
+use 3; `mainnet` and `preprod-public` use 30. Raising the testing profiles to
 30 also requires longer response and maturity windows. The count is included in
 the profile digest and finalized manifest, and runtime services must match it.
 The testing counts are a testing policy, not a production security guarantee.
@@ -313,8 +310,8 @@ comment and the [economics record](../../docs/midgard/decisions/0002-canonical-v
 block's end time plus the challenge window. The withdrawal delay separates the
 two steps of a committee withdrawal, and the timeout slash has the slash grace
 to land. The owner set the public challenge window to 24 hours (2026-10-15) and
-approved the public bond, slash penalty and minimum top-up (2026-10-22); the
-slash grace and pool floor await owner confirmation.
+approved the public bond, slash penalty and minimum top-up (2026-10-22), and
+confirmed the slash grace and pool floor for the public testnet (2026-10-28).
 
 Validation requires:
 
@@ -337,8 +334,7 @@ Validation requires:
   of slack and are exempt;
 - on public and interactive emulator profiles, the challenge window, the maximum validity range
   and the full response window fit before block maturity, so fraud stays
-  provable after the latest DA response. This rule used to count from the
-  attestation timeout;
+  provable after the latest DA response;
 - on every profile that installs the execution dispute (`validationTraceDispute`
   not in `excluded_fraud_proof_categories`), that same sum ends strictly before
   half maturity, because a case opens by block end plus M / 2 (`case_can_open`),
@@ -363,14 +359,12 @@ checks the relations against each environment, and Aiken CI runs it under every
 profile. The availability `ParametersV1` amounts in a finalized manifest must
 equal the selected profile's `da_bond` section, so the node takes them from the
 profile rather than from an environment variable. The challenger bond stays a
-deploy-time manifest value (`MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`);
-it no longer has to equal the DA bond, and it alone must cover the maximum
-publication, settlement and terminal fees.
+deploy-time manifest value (`MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`)
+that must cover the maximum publication, settlement and terminal fees.
 
 ## Build
 
-From the repository root, with the compiler pinned in
-`.github/workflows/aiken-ci.yml` on `PATH`:
+From the repository root, with nix installed:
 
 ```sh
 pnpm --dir demo deployment:build preprod-testing
@@ -379,11 +373,11 @@ pnpm --dir demo build
 
 The first command validates the selected profile and the other checked-in
 profiles, generates the Aiken environments and typed off-chain configuration,
-then runs `aiken build --env preprod_testing`. Hyphens in profile filenames become
+then runs `aiken build --env preprod_testing` with the compiler locked in
+`demo/flake.lock` (`scripts/lib/aiken.mjs`). Hyphens in profile filenames become
 underscores in Aiken environment names. It records the resolved profile, its
 SHA-256 digest, and the blueprint hash in `onchain/aiken/plutus.json.deployment.json`.
-It rejects an unpinned compiler and invalidates the previous build record before
-compiling. The second command checks generated files and builds the TypeScript
+It invalidates the previous build record before compiling. The second command checks generated files and builds the TypeScript
 workspace. Rebuild off-chain packages whenever the selected profile changes.
 
 Deploy the blueprint and its adjacent build record together. Node blueprint
@@ -418,7 +412,7 @@ key-sorted JSON, independent of YAML formatting and key order.
 
 ## Runtime and manifests
 
-Replace `MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE` with:
+Select the profile at runtime:
 
 ```dotenv
 MIDGARD_DEPLOYMENT_PROFILE=preprod-testing
@@ -432,6 +426,5 @@ equal the generated values; they cannot override a profile.
 Finalized manifests include `deploymentProfile` and `deploymentProfileDigest` in
 their authenticated identity, alongside the actual blueprint and script hashes.
 Readers reject missing, changed, or mismatched profiles, networks, economics,
-and timing. This changes the unlaunched manifest format in place. It does not
-migrate or reset deployed state. Validators receive compiled constants and never
+and timing. Validators receive compiled constants and never
 read YAML.

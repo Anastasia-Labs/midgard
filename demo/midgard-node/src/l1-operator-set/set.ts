@@ -1,5 +1,5 @@
 /**
- * The node's operator set (NC14): the active and registered operator lists,
+ * The node's operator set: the active and registered operator lists,
  * the scheduler, the hub oracle, this operator's own retired node and its own
  * active-node history, kept in memory from the follower facts.
  *

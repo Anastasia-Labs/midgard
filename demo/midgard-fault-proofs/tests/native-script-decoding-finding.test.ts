@@ -1,5 +1,5 @@
 /**
- * Unit coverage for the §3.4 finding record's boundary gate: the §3.2/3.3
+ * Unit coverage for the finding record's boundary gate: the
  * provability classification is non-negotiable — unprovable corners are
  * refused at the proving core's API boundary regardless of policy, and a
  * structurally incoherent record never reaches a submitter.

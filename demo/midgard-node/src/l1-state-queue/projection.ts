@@ -1,6 +1,6 @@
 /**
- * The node's state-queue projection as the follower plugs it in (plan §5.5
- * P1, N2): only its tracked set. P1 keeps no tables: it is read from the
+ * The node's state-queue projection as the follower plugs it in: only its
+ * tracked set. It keeps no tables: it is read from the
  * follower facts at a view (`landedStateQueueIn`), so it equals a fresh
  * replay whenever the facts do. The fork simulator adds traffic and checks
  * to this (tests only).

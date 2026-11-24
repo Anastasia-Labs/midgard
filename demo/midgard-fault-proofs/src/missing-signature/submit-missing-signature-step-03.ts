@@ -1,5 +1,5 @@
 /**
- * `missing-signature` step-03 submitter (offchain plan §4.2).
+ * `missing-signature` step-03 submitter.
  *
  * The lift: hands the validator the verification-key preimage of the accused
  * signer hash (`get_verification_key_hash(vkey) == hash`, blake2b-224 on raw
@@ -81,7 +81,7 @@ export const buildMissingSignatureStep03 = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  /** The §3.3-resolved 32-byte verification key, hex. */
+  /** The resolved 32-byte verification key, hex. */
   readonly missingRequiredSignerVkey: string;
   /** §2.3: the published step-03 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;

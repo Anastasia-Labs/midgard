@@ -1,6 +1,6 @@
 /**
- * The reads of this node's block journals' derived status (plan §8.2, §8.3,
- * #753; the status itself is `pendingBlockFinalizations.status-sql.ts`).
+ * The reads of this node's block journals' derived status (#753; the status
+ * itself is `pendingBlockFinalizations.status-sql.ts`).
  *
  * An unlanded journal is dead when its block can no longer land
  * (`deadJournals`); the node's live journal is its newest unlanded journal

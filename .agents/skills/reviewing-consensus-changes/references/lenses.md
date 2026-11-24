@@ -86,13 +86,13 @@ lambda value, and the ledger reads "no error" as success. Ten validation-trace
 semantic resolvers shipped that way after #592 added a parameter that the SDK
 did not apply: a challenger could defeat any honest block (#605, found by the
 symmetric-soundness emulator test; fixed in #609, commit `ac54d01a1`).
-`applyBlueprintParams` now refuses too few and too many parameters
-`[runtime: applyBlueprintParams, demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts:211]`.
+`applyBlueprintParams` refuses too few and too many parameters
+`[runtime: applyBlueprintParams]`.
 
 Blind spot: a site that deploys `compiledCode` bare never reaches that guard.
 #610 (open) tracks that class; `f26292930` and `9d84bf552` closed the known
-bare loaders, and as of 2026-09-25 there are 36 other `compiledCode` reads in
-`demo/*/src`.
+bare loaders, and on 2026-11-23 `demo/*/src` held 43 `compiledCode`
+reads.
 
 Ask:
 
@@ -142,10 +142,9 @@ The fraud-prover reward is paid to the prover's enterprise address, ADA only,
 with no datum or reference script, and over- and under-payment are refused
 alike
 `[aiken-test: state-queue/]` (predicate `bounty_routing_is_exact_v1`,
-`onchain/aiken/lib/midgard/operator-directory.ak:226`). The duplicate-registration
+`onchain/aiken/lib/midgard/operator-directory.ak`). The duplicate-registration
 and bad-settlement slashes pay their bounty through the same predicate. A
-transaction carries one operator slash (`other_directory_is_untouched_v1`,
-`:257`), so one pinned fee and one bounty account for one bond.
+transaction carries one operator slash (`other_directory_is_untouched_v1`), so one pinned fee and one bounty account for one bond.
 
 Ask:
 
@@ -158,7 +157,9 @@ Ask:
   Lucid charges a change output's own fee on top of `setMinFee`, so an exact
   fee needs a builder with no Lucid-managed change
   (`demo/midgard-sdk/src/operator-lifecycle/exact-fee.ts`). The bad-settlement
-  slash builder at `demo/midgard-sdk/src/settlement.ts:744` still uses a bare
+  slash builder, `incompleteResolveSettlementProgram` in
+  `demo/midgard-sdk/src/settlement.incomplete-resolve-settlement-program.ts`,
+  still uses a bare
   `setMinFee` (see
   [invariants-user-events.md](invariants-user-events.md) UE7).
 - Mint and burn: is each minted token's quantity, name and destination
@@ -203,14 +204,14 @@ Ask:
 Fault proofs and their supporting witness scripts deploy as published
 reference scripts, never attached inline, whatever their size. The in-tree
 record of this owner ruling (2026-08-26) is the header of
-`demo/midgard-fault-proofs/src/witness-reference-scripts.ts:7-12`; `d3df3323e`
+`demo/midgard-fault-proofs/src/witness-reference-scripts.ts`; `d3df3323e`
 (2026-08-29, "require published reference scripts") removed the inline
 fallback. Submitters hash-check each reference script against the script the
 transaction executes, and a missing entry fails closed
 `[runtime: requireWitnessReferenceScriptUtxo]`
-(`witness-reference-scripts.ts:47`, throw at `:96`; linear families use
+(`witness-reference-scripts.ts`; linear families use
 `requireLinearFaultReferenceScript`,
-`demo/midgard-fault-proofs/src/linear-fault-family.ts:69`). Older families
+`demo/midgard-fault-proofs/src/linear-fault-family.ts`). Older families
 that still attach inline are not a precedent for new work.
 
 Blind spot: the runtime check covers only the builders that call it, and
@@ -305,16 +306,14 @@ and in Aiken, tied by generated golden channels: a TypeScript generator emits
 a JSON fixture and an Aiken test module, and `:check` fails when either
 differs from what the generator produces
 `[ci: midgard-node-ci.yml/Check native V1 field-access golden vectors]` and
-the sibling `Check ... golden vectors` steps. Blind spots as of 2026-09-25:
-`fixtures:transaction-root-v1:check` and `fixtures:native-compact:check` are
-not run by any workflow, and editing a producer then regenerating re-greens
-both suites, so the channel shows drift only when the goldens are not
-regenerated.
+the sibling `Check ... golden vectors` steps. Blind spot: editing a producer
+then regenerating re-greens both suites, so the channel shows drift only when
+the goldens are not regenerated.
 
 History: on-chain `parse_script_ref`
-(`onchain/aiken/lib/midgard/ledger-output-v1.ak:334`) accepts tag-0
+(`onchain/aiken/lib/midgard/ledger-output-v1.ak`) accepts tag-0
 reference-script bytes as opaque, while the TypeScript codec parses them and
-throws on malformed bytes (`demo/midgard-core/src/codec/versioned-script.ts:94`),
+throws on malformed bytes (`demo/midgard-core/src/codec/versioned-script.ts`),
 so the two sides disagree about the honest post-state root for a transaction
 only one side can decode (#633, open). The general form is worse for
 liveness: the reference challenger declines a whole transaction when its codec

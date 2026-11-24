@@ -1,11 +1,11 @@
 /**
- * The node follower's intent stage (plan §8.3 S6, §8.4, I1) over a
+ * The node follower's intent stage over a
  * simulated chain on a SQLite and a Postgres follower store carrying the
  * landed state queue (P1) and the intent journal:
  *
  * - a live, wanted intent the mempool lacks gets its exact journaled bytes,
  *   at most once per tip; one in the mempool is left alone;
- * - an intent whose §8.4 predicate fails (a merge of a header P1 does not
+ * - an intent whose family predicate fails (a merge of a header P1 does not
  *   hold at its head) is abandoned; one whose predicate holds (an
  *   attestation of a landed header, a payout funding step over live
  *   inputs) is sent; each predicate's polarities are in

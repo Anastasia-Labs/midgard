@@ -14,7 +14,7 @@ import {
 export type { PostgresConnection } from "./sql/postgres-backend.js";
 
 /**
- * The Postgres fact store, for the node and the committee (§18.1 Q1). It
+ * The Postgres fact store, for the node and the committee. It
  * takes the writer lease on a session of its own, unless `writerLease` hands
  * it one the caller holds: the committee holds it on its instance lock's
  * session, so its store and its follower are held and lost together. That
@@ -37,8 +37,8 @@ export const openPostgresFactStore = (
 };
 
 /**
- * The channel a committed rewind notifies with its new generation (§7.1
- * step 7), and a reset with the next generation.
+ * The channel a committed rewind notifies with its new generation,
+ * and a reset with the next generation.
  */
 export const GENERATION_CHANNEL = "l1_generation";
 

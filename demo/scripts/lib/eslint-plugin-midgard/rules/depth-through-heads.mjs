@@ -1,10 +1,10 @@
-// F7: depth decisions go through the heads module.
+// Depth decisions go through the heads module.
 //
-// Plan §9 (docs/exec-plans/l1-architecture-plan.md): one module per process
-// knows k and cd and how depth is counted. Before it existed, three
-// incompatible depth formulas compared against `confirmationDepth` (head −
-// block + 1, head − block, and head − cd) and each disagreed with the others
-// by one block. A role takes its levels from
+// The heads module (demo/midgard-l1-follower/README.md) is the one module
+// per process that knows k and cd and how depth is counted. Before it
+// existed, three incompatible depth formulas compared against
+// `confirmationDepth` (head − block + 1, head − block, and head − cd) and each
+// disagreed with the others by one block. A role takes its levels from
 // `@al-ft/midgard-l1-follower` (`depth`, `heightAtDepth`, `levelAtDepth`,
 // `isSafe`, `isFinal`, `createHeads`) instead.
 //
@@ -136,7 +136,7 @@ export default defineRule({
     schema: [],
     messages: {
       directDepthComparison:
-        "This compares against cd (`confirmationDepth`) or k (`automaticRecoveryMaxDepth`) directly. Depth is counted one way only, in the heads module (plan §9): the tip is depth 1, `safe` is depth ≥ cd (liveness only) and `final` is depth > k. Fix: compute the depth with `depth(tipHeight, pointHeight)` from `@al-ft/midgard-l1-follower` and decide with `isSafe`, `isFinal`, `levelAtDepth` or `heightAtDepth` (or a `Heads` instance), never with your own formula (docs/agents/lint-rules.md).",
+        "This compares against cd (`confirmationDepth`) or k (`automaticRecoveryMaxDepth`) directly. Depth is counted one way only, in the heads module: the tip is depth 1, `safe` is depth ≥ cd (liveness only) and `final` is depth > k. Fix: compute the depth with `depth(tipHeight, pointHeight)` from `@al-ft/midgard-l1-follower` and decide with `isSafe`, `isFinal`, `levelAtDepth` or `heightAtDepth` (or a `Heads` instance), never with your own formula (docs/agents/lint-rules.md).",
     },
   },
   create: (context, report, file) =>

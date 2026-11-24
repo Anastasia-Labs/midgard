@@ -22,7 +22,7 @@ const missingTitles = MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES.filter(
 
 describe("mintDeclaredAssetLimit signed publication fit", () => {
   /**
-   * Discovery gate (§14). This file used to hang off `describe.runIf`, so a
+   * Discovery gate. This file used to hang off `describe.runIf`, so a
    * blueprint that no longer carried the family reported a clean pass instead
    * of an unpublishable deployment. The family's presence is now a required
    * result of its own.

@@ -4,7 +4,7 @@
  * Binds the operator-ACCEPTED committed transaction through the header's
  * counted `transactions_root` via the shared inclusion machinery, on either
  * carriage (redeemer-carried proof, or the #545 published chunks for a proof
- * the 16,384-byte envelope cannot hold). The §2.4.3(d) predicate is re-checked
+ * the 16,384-byte envelope cannot hold). The acceptance predicate is re-checked
  * locally before anything is paid for: a leaf whose embedded validity scalar
  * does not claim acceptance can never bind on-chain, whatever its input sets
  * look like; l2TxMistag convicts such a leaf.
@@ -166,7 +166,7 @@ export const buildInputSetUniquenessStep01 = async ({
   }
 
   requireNativeTxMatchesCompactCbor(txInclusion);
-  // §2.4.3(d): a leaf IS an acceptance verdict only when its own embedded
+  // A leaf IS an acceptance verdict only when its own embedded
   // validity scalar claims `TxIsValid`. A leaf with any other code is
   // l2TxMistag's to convict, never this family's on input-set grounds.
   if (txInclusion.nativeTx.validity_code !== 0n) {

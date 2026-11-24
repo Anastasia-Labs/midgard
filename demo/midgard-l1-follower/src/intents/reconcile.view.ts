@@ -1,5 +1,5 @@
 /**
- * S6's view of the derived intent statuses (§8.3), kept between passes so a
+ * S6's view of the derived intent statuses, kept between passes so a
  * pass reads what changed since the last one instead of the whole journal
  * (bounded per-block work). Each pass re-derives, from the facts at the
  * cursor and in one read transaction:

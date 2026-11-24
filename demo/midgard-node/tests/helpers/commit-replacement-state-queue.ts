@@ -78,7 +78,7 @@ export const openNodeServices = async (life: Lifecycle) => {
   };
   /**
    * The follower store at the emulator's tip: what the commit spends or
-   * references are its facts (§8.2 journals only over tracked facts).
+   * references are its facts (the journal records only over tracked facts).
    */
   const followTip = () =>
     runtime.runPromise(syncEmulatorChain(fixture.operatorLucid));
@@ -179,7 +179,7 @@ export const openNodeServices = async (life: Lifecycle) => {
       )[0],
     /**
      * One S6 reconcile pass, as the node's intent stage runs it
-     * (`createNodeIntentStage`) with the §8.4 family predicates, over a
+     * (`createNodeIntentStage`) with the family predicates, over a
      * transport that sees the emulator's mempool and records sends.
      */
     reconcileIntents: async () => {

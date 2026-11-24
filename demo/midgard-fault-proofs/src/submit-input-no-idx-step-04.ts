@@ -1,5 +1,5 @@
 /**
- * `input-no-idx` step-04 submitter (Goal task `Q13`, §9.1 output 8).
+ * `input-no-idx` step-04 submitter.
  *
  * Finalizes the proof: burns the computation thread, mints the permanent
  * fraud-proof token and locks it at the always-fails fraud-proof address.

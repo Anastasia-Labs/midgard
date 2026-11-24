@@ -1,5 +1,5 @@
 /**
- * The node's landed state queue (plan §5.5 P1, §15 N2) under the fork
+ * The node's landed state queue under the fork
  * simulator, on SQLite and Postgres with prune on: after every chain-sync
  * event P1 at the tip equals an independent model replayed from the
  * canonical blocks (its health, reason, walk and policy-output count), and

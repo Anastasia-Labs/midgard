@@ -1,5 +1,5 @@
 /**
- * The facts an own block's derived status is read from (plan §8.2, §8.3),
+ * The facts an own block's derived status is read from,
  * written directly: the commit intent the intent journal holds for a
  * signed journal, the landed row of its block, its retained fold, and the
  * derived statuses read back.

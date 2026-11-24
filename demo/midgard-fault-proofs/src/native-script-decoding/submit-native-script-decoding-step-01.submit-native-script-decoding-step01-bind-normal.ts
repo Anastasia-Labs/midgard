@@ -127,7 +127,7 @@ export const buildNativeScriptDecodingStep01BindNormal = async ({
   }
 
   requireNativeTxMatchesCompactCbor(txInclusion);
-  // §2.4.3(d): a normal leaf IS an acceptance verdict only when its own
+  // A normal leaf IS an acceptance verdict only when its own
   // embedded validity scalar claims `TxIsValid`.
   if (txInclusion.nativeTx.validity_code !== 0n) {
     throw nativeScriptDecodingSubmitError(
