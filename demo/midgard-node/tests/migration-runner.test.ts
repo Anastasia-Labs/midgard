@@ -112,9 +112,8 @@ describe("splitSqlStatements", () => {
       [35, "admission_terminal_retention", true],
       [36, "own_landed_blocks_unapplied", true],
       [37, "own_block_derived_status", true],
-      [38, "confirmed_ledger_generation", true],
-      [39, "landed_produced_outref_index", true],
-      [40, "confirmed_ledger_spent_outref_index", true],
+      [38, "landed_produced_outref_index", true],
+      [39, "confirmed_ledger_spent_outref_index", true],
     ]);
   });
 

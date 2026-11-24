@@ -92,7 +92,6 @@
     "tests/commit-worker.verifier-readiness.test.ts": 6.1,
     "tests/confirmed-ledger-behind-recovery.test.ts": 2.7,
     "tests/confirmed-ledger-block-bodies.test.ts": 3.5,
-    "tests/confirmed-ledger-generation.test.ts": 9.8,
     "tests/confirmed-ledger-snapshot.test.ts": 1.7,
     "tests/confirmed-ledger-temporal.test.ts": 4.9,
     "tests/contract-deployment-info.cli-run-state.test.ts": 6.4,
