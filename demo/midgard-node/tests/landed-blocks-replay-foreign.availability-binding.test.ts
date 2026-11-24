@@ -13,7 +13,7 @@ import type { FactStore } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
-import { Clock, Effect, Option } from "effect";
+import { Clock, Effect, Option, Ref } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FOREIGN_DA_RETRY_MAX_MS } from "../src/da/foreign-retained-da.js";
@@ -23,6 +23,7 @@ import { nodeLandedBlockPorts } from "../src/landed-blocks/node-ports.js";
 import type { LandedBlockPorts } from "../src/landed-blocks/ports.js";
 import { foreignBlockReplayer } from "../src/landed-blocks/replay-foreign.js";
 import { insertRow, retrieveRows } from "../src/landed-blocks/store.js";
+import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/index.js";
 import {
   FORCED_CONFIG,
   nativeTransactionCbor,
@@ -34,7 +35,6 @@ import {
   EVENTS_CONFIG,
 } from "./helpers/l1-events-chain.js";
 import { SIM_QUEUE_CONFIG } from "./helpers/state-queue-sim.fixtures.js";
-import { noVerification } from "./helpers/verified-frontier.js";
 import {
   attested,
   AVAILABILITY,
@@ -390,7 +390,11 @@ describe("the node's binding pass in the driver run", () => {
       },
       () => Effect.succeed(undefined),
       () => AVAILABILITY,
-      noVerification(),
+      {
+        NATIVE_MPF_OWNER: Ref.unsafeMake<NativeMpfOwnerService | undefined>(
+          undefined,
+        ),
+      },
     );
     serveDa((peer) => (peer === 0 ? recompressed(honest) : honest), 2);
     expect(

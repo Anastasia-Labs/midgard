@@ -22,7 +22,6 @@ import {
   refreshAdmissionBacklogGaugeOnStartup,
 } from "../fibers/admission-backlog-gauge.js";
 import { requestTxQueueProcessorWakeup } from "../fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
-import { exportLedgerDivergenceSeries } from "../mpf/local-ledger-divergence.js";
 import { rebuildAdmissionInputClaimsOnStartup } from "../services/admission-input-claims.rebuild.js";
 import { AdmissionWriter } from "../services/admission-writer.validate-options.js";
 import {
@@ -258,7 +257,6 @@ export const runNode = (
     );
 
     yield* refreshAdmissionBacklogGaugeOnStartup(refreshAdmissionBacklogGauge);
-    yield* exportLedgerDivergenceSeries;
     // Before the node serves or validates: a backlog tx's inputs stay
     // claimed across the restart (design D6).
     yield* rebuildAdmissionInputClaimsOnStartup();

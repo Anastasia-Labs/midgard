@@ -5,20 +5,23 @@
  * Otherwise it waits (`LANDED_COMMIT_BASE_PENDING`), whichever of those is
  * missing; built on, the base is the ledger store's ledger at that root,
  * its outputs read by out-ref. It also waits while this node's own block is
- * in flight, even one that leaves the tail's root unchanged. It builds from
- * the frontier the main thread verified `confirmed_ledger` at, and waits
- * (`CommitBaseUnverifiedError`) while the frontier is another or none was
- * verified.
+ * in flight, even one that leaves the tail's root unchanged. A tail that
+ * is the confirmed-ledger frontier is built on at once, the moment a fold
+ * makes it the frontier included: the node's own stores are not checked
+ * again.
  */
-import { Effect, Either } from "effect";
+import { SqlClient } from "@effect/sql";
+import { Effect, Either, Option } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
+import { foldMerge } from "../src/landed-blocks/confirmed-merges.js";
+import { Frontier, retrieveRows } from "../src/landed-blocks/store.js";
+import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import {
   E0,
   E1,
   expectPending,
-  expectUnverified,
   fixture,
   FRONTIER_HASH,
   hexEntries,
@@ -71,21 +74,11 @@ describe("commit base on a foreign queue tail", { concurrent: false }, () => {
   });
 
   it("waits while the landed ledger at the tail misses its header's root", async () => {
-    const { tail, headerHash, r0, r1 } = await fixture({
+    const { tail, headerHash, r1 } = await fixture({
       frontier: true,
       row: { utxosRoot: "ab".repeat(32) },
     });
-    // A verification run now would diverge at this tail; the commit sees
-    // the frontier the last one passed at, before the row landed.
-    expectPending(
-      await resolve(tail, r1, {
-        verified: {
-          headerHash: FRONTIER_HASH,
-          utxosRoot: r0,
-        },
-      }),
-      headerHash,
-    );
+    expectPending(await resolve(tail, r1), headerHash);
   });
 
   it("waits while the native root is not the tail's root", async () => {
@@ -139,64 +132,42 @@ describe("commit base on a foreign queue tail", { concurrent: false }, () => {
 });
 
 describe("commit base on a frontier tail", { concurrent: false }, () => {
-  it("waits on a frontier tail whose confirmed_ledger no verification passed at, and builds once one does", async () => {
+  it("builds at once on a frontier tail at the native root, its confirmed_ledger never verified", async () => {
     const r0 = await rootOf([E0]);
     const { tail, headerHash } = await tailOf({
       ...simHeader(5, FRONTIER_HASH),
       utxosRoot: r0,
     });
-    // The frontier is the tail at r0, but `confirmed_ledger` holds a row
-    // that root does not: the verification diverges and records none.
-    await seed([E0, E1], { headerHash, utxosRoot: r0 });
-    expectUnverified(await resolve(tail, r0), headerHash);
-
     await seed([E0], { headerHash, utxosRoot: r0 });
     const outcome = await resolve(tail, r0);
-    expect(Either.isRight(outcome)).toBe(true);
+    expect(Either.getLeft(outcome)).toEqual(Option.none());
     const base = Either.getOrThrow(outcome);
     expect(base.source).toBe(`landed:${headerHash}`);
+    expect(base.root).toBe(r0);
     expect(base.entries).toEqual(hexEntries([E0]));
   });
-});
 
-describe(
-  "commit base on a tail built from the verified frontier",
-  { concurrent: false },
-  () => {
-    it("waits while no verification has passed, and while the last one was at another frontier", async () => {
-      const { tail, headerHash, r0, r1 } = await fixture({
-        frontier: true,
-        row: {},
-      });
-      expectUnverified(
-        await resolve(tail, r1, { verified: "none" }),
-        headerHash,
-      );
-      expectUnverified(
-        await resolve(tail, r1, {
-          verified: {
-            headerHash: "e0".repeat(28),
-            utxosRoot: r0,
-          },
-        }),
-        headerHash,
-      );
-      expectUnverified(
-        await resolve(tail, r1, {
-          verified: {
-            headerHash: FRONTIER_HASH,
-            utxosRoot: r1,
-          },
-        }),
-        headerHash,
-      );
-      const outcome = await resolve(tail, r1, {
-        verified: {
-          headerHash: FRONTIER_HASH,
-          utxosRoot: r0,
-        },
-      });
-      expect(Either.getOrThrow(outcome).source).toBe(`landed:${headerHash}`);
+  it("builds at once on a tail the fold just made the frontier", async () => {
+    const { tail, headerHash, r1 } = await fixture({
+      frontier: true,
+      row: {},
     });
-  },
-);
+    // The merge fiber folds the processed tail: the frontier moves to it.
+    await run(
+      withFollowerWrite(
+        Effect.gen(function* () {
+          const [row] = yield* retrieveRows;
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql.withTransaction(foldMerge(row!, null));
+        }),
+      ),
+    );
+    expect((await run(Frontier.retrieve))?.headerHash).toBe(headerHash);
+    const outcome = await resolve(tail, r1);
+    expect(Either.getLeft(outcome)).toEqual(Option.none());
+    const base = Either.getOrThrow(outcome);
+    expect(base.source).toBe(`landed:${headerHash}`);
+    expect(base.root).toBe(r1);
+    expect(base.entries).toEqual(hexEntries([E1]));
+  });
+});

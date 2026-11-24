@@ -9,7 +9,7 @@ import {
   UTxO,
   utxoToCore,
 } from "@lucid-evolution/lucid";
-import { Data, Effect } from "effect";
+import { Effect } from "effect";
 
 import type { CommitSubmitRefusalCode } from "../../fibers/block-commitment.worker-readiness.js";
 import type { SlotAwareDueWork } from "../../fibers/slot-aware-due-work.js";
@@ -17,15 +17,6 @@ import type { UnwrittenHold } from "../../services/intent-journal.holds.js";
 
 export type WorkerInput = {
   readonly history?: import("../../services/follower-write-gate.js").FollowerWritePermit;
-  /**
-   * The frontier the main thread last verified `confirmed_ledger` derives
-   * the root of (`confirmed-ledger-verification.ts`), at the generation it
-   * read, or the frontier a clean fold advanced that verification to
-   * (`confirmed-ledger-advance.ts`); built by `verifiedFrontierWorkerInput`
-   * and read by `parseVerifiedFrontier`. Absent until a verification
-   * passes, and after one finds a divergence.
-   */
-  readonly verifiedFrontier?: VerifiedFrontier;
   readonly nativeMpf?: {
     readonly port: MessagePort;
     readonly durableRoot: string;
@@ -51,80 +42,6 @@ export type WorkerInput = {
     baseSnapshotId?: string;
     stateQueueHasUnmergedTail?: boolean;
   };
-};
-
-/**
- * A frontier header (56 hex), the root of its post-state (64 hex) and the
- * frontier generation it was verified at (a positive `bigint`, in decimal
- * with no leading zero; migration 0038). The generation names the ledger
- * verified: a frontier unfolded and folded back to the same header and
- * root, or `confirmed_ledger` written outside a fold, carries another.
- */
-export type VerifiedFrontier = Readonly<{
-  headerHash: string;
-  utxosRoot: string;
-  generation: string;
-}>;
-
-/** `WorkerInput.verifiedFrontier` is not a frontier the parent could send. */
-export class MalformedVerifiedFrontierError extends Data.TaggedError(
-  "MalformedVerifiedFrontierError",
-)<{ readonly detail: string }> {}
-
-const HEADER_HASH_HEX = /^[0-9a-f]{56}$/u;
-const ROOT_HEX = /^[0-9a-f]{64}$/u;
-const GENERATION = /^[1-9][0-9]{0,18}$/u;
-const GENERATION_MAX = 9_223_372_036_854_775_807n;
-
-const isGeneration = (value: unknown): value is string =>
-  typeof value === "string" &&
-  GENERATION.test(value) &&
-  BigInt(value) <= GENERATION_MAX;
-
-/** The `WorkerInput` field the parent sends for `verified`: none while no
- * verification has passed. Only the frontier and its generation cross. */
-export const verifiedFrontierWorkerInput = (
-  verified: VerifiedFrontier | undefined,
-): Pick<WorkerInput, "verifiedFrontier"> =>
-  verified === undefined
-    ? {}
-    : {
-        verifiedFrontier: {
-          headerHash: verified.headerHash,
-          utxosRoot: verified.utxosRoot,
-          generation: verified.generation,
-        },
-      };
-
-/** The verified frontier the worker received, `undefined` if none was sent.
- * Anything else fails: a payload the parent cannot produce is a broken
- * contract, not a frontier still awaiting verification. */
-export const parseVerifiedFrontier = (
-  value: unknown,
-): Effect.Effect<
-  VerifiedFrontier | undefined,
-  MalformedVerifiedFrontierError
-> => {
-  if (value === undefined) return Effect.succeed(undefined);
-  const pair = value as Partial<Record<keyof VerifiedFrontier, unknown>>;
-  return typeof value === "object" &&
-    value !== null &&
-    Object.keys(value).sort().join() === "generation,headerHash,utxosRoot" &&
-    typeof pair.headerHash === "string" &&
-    HEADER_HASH_HEX.test(pair.headerHash) &&
-    typeof pair.utxosRoot === "string" &&
-    ROOT_HEX.test(pair.utxosRoot) &&
-    isGeneration(pair.generation)
-    ? Effect.succeed({
-        headerHash: pair.headerHash,
-        utxosRoot: pair.utxosRoot,
-        generation: pair.generation,
-      })
-    : Effect.fail(
-        new MalformedVerifiedFrontierError({
-          detail: `verifiedFrontier is not exactly a 56-hex header hash, a 64-hex root and a decimal generation: ${JSON.stringify(value)}`,
-        }),
-      );
 };
 
 export type NativeMpfPromotion = {
@@ -233,14 +150,11 @@ export type RegisteredDueWorkOutput = {
 
 /** The commit waits for its base: a tail landed-block processing has not
  * applied to the working ledger yet, or this node's own block still in
- * flight. With `unverified`, the base is a landed
- * tail and the frontier it builds from is not the verified frontier the
- * worker received: it waits for the main thread's verification. */
+ * flight. */
 export type AwaitingCommitBaseOutput = {
   readonly type: "AwaitingCommitBaseOutput";
   readonly baseHeaderHash: string;
   readonly detail: string;
-  readonly unverified?: true;
 };
 
 /** The commit waits for the next scheduler window: a dead journal whose

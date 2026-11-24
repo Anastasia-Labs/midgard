@@ -20,26 +20,19 @@ import type * as Ledger from "../src/database/utils/ledger.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
 import {
   Frontier,
-  type HeaderRoot,
   insertRow,
   type LandedBlockRow,
 } from "../src/landed-blocks/store.js";
-import { deriveConfirmedLedgerRoots } from "../src/mpf/confirmed-ledger-roots.js";
-import { verifyConfirmedLedger } from "../src/mpf/confirmed-ledger-run.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import { ForeignBlockVerificationError } from "../src/mpf/verified-block-import.js";
 import { NodeConfig } from "../src/services/config.make-config.js";
 import type { Database } from "../src/services/database.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
-import { CommitBaseUnverifiedError } from "../src/workers/commit-block-header.landed-commit-base.js";
 import {
   LANDED_COMMIT_BASE_PENDING,
   resolveCommitBase,
 } from "../src/workers/commit-block-header.resolve-commit-base.js";
-import {
-  serializeStateQueueUTxO,
-  type VerifiedFrontier,
-} from "../src/workers/utils/commit-block-header.js";
+import { serializeStateQueueUTxO } from "../src/workers/utils/commit-block-header.js";
 import { simDigest, simOutput } from "./helpers/landed-blocks-sim.universe.js";
 import { simHeader } from "./helpers/state-queue-sim.fixtures.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
@@ -186,49 +179,18 @@ export const fixture = async (setup: Setup) => {
   return { headerHash, tail, r0, r1 };
 };
 
-/**
- * The frontier a verification of the stored `confirmed_ledger` records, as
- * the main thread's does (`verifyConfirmedLedger`), at the frontier
- * generation it read, its roots derived in this thread: none unless it
- * passes.
- */
-export const verifiedNow = () =>
-  run(verifyConfirmedLedger(deriveConfirmedLedgerRoots)).then(
-    (outcome): VerifiedFrontier | undefined =>
-      outcome.kind === "verified"
-        ? { ...outcome.frontier, generation: outcome.generation }
-        : undefined,
-  );
-
-/** The resolver's outcome on `tail`, as a commit worker that received
- * `verified` (by default, what a verification now records) resolves it, its
+/** The resolver's outcome on `tail`, as a commit worker resolves it, its
  * ledgers from a store holding `E0`'s and `E1`'s (or `ledgers`'), with the
- * base ledger's entries as `ledgerHex` gives them; a
- * `verified` frontier with no generation is taken at the frontier
- * generation stored now. */
+ * base ledger's entries as `ledgerHex` gives them. */
 export const resolve = async (
   tail: Awaited<ReturnType<typeof tailOf>>["tail"],
   nativeMpfRoot: string,
   {
     ledgers = [[E0], [E1]],
-    verified = "verify",
   }: Readonly<{
     ledgers?: readonly (readonly Ledger.MinimalEntry[])[];
-    verified?: HeaderRoot | VerifiedFrontier | "none" | "verify";
   }> = {},
 ) => {
-  const verifiedFrontier =
-    verified === "verify"
-      ? await verifiedNow()
-      : verified === "none"
-        ? undefined
-        : "generation" in verified
-          ? verified
-          : {
-              ...verified,
-              generation:
-                (await run(Frontier.retrieveWithGeneration))?.generation ?? "1",
-            };
   // The base's entries are read while the database the resolver read from
   // is still open, as a commit reads its base inside the worker's program.
   const resolved = Effect.either(
@@ -236,7 +198,6 @@ export const resolve = async (
       availableConfirmedBlock: tail,
       nativeMpfRoot,
       openLedger: await ledgerStoreOf(ledgers),
-      verifiedFrontier,
     }).pipe(
       Effect.flatMap((base) =>
         Effect.promise(() => ledgerHex(base.ledger)).pipe(
@@ -260,17 +221,6 @@ export const expectPending = (
     reason: "missing",
     detail: LANDED_COMMIT_BASE_PENDING,
   });
-};
-
-/** The resolver waits for the verification of the frontier it builds from. */
-export const expectUnverified = (
-  outcome: Awaited<ReturnType<typeof resolve>>,
-  headerHash: string,
-) => {
-  expect(Either.isLeft(outcome)).toBe(true);
-  const error = (outcome as Either.Left<unknown, unknown>).left;
-  expect(error).toBeInstanceOf(CommitBaseUnverifiedError);
-  expect(error).toMatchObject({ headerHash });
 };
 
 export const hexEntries = (entries: readonly Ledger.MinimalEntry[]) =>

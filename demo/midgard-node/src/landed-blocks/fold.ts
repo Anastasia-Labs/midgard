@@ -163,9 +163,6 @@ export type FoldOutcome =
 /**
  * Folds every processed block up to the merged root `root`, in order;
  * `mergePoint` names the root output that made a header the queue root.
- * Each fold, once committed, goes to the `folded` port with the frontier
- * generations it read and left: the one place the node's confirmed-ledger
- * verification advances (`advanceVerifiedConfirmedLedger`).
  */
 export const foldToRoot = <R>(
   ports: LandedBlockPorts<R>,
@@ -207,8 +204,6 @@ export const foldToRoot = <R>(
       const folded = yield* checkedFold(ports, view, foldMerge(next, point));
       if (Either.isLeft(folded))
         return { kind: "held", hold: folded.left } satisfies FoldOutcome;
-      if (ports.folded !== undefined)
-        yield* ports.folded({ row: next, ...folded.right });
     }
   });
 

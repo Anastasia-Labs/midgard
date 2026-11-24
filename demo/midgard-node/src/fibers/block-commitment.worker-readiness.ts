@@ -47,34 +47,6 @@ export const COMMIT_BASE_SOURCE = "commit_base";
  * worker's next output that is not this wait.
  */
 export const COMMIT_BASE_PENDING = "commit_base_pending";
-/**
- * The landed ledger commits build on does not derive the root this node
- * stores for it, named `commit_base_ledger_divergence:<check>` by the check
- * that found it (`LEDGER_DIVERGENCE_CHECKS`; a divergence any of them finds
- * holds commits). The verification of `confirmed_ledger` raises it under
- * `confirmed_ledger_verification` (`confirmed-ledger-verification.ts`).
- */
-export const COMMIT_BASE_LEDGER_DIVERGENCE = "commit_base_ledger_divergence";
-/**
- * The commit waits for the main thread's verification of `confirmed_ledger`
- * (`confirmed-ledger-verification.ts`): its base is a landed tail, built
- * from the landed frontier, and no verification has passed at that
- * frontier yet: none since startup, none since a fold moved the frontier,
- * or the last one found a divergence. Raised under `commit_base` in place
- * of `commit_base_pending`; it clears on the worker's next output that is
- * not this wait, and never on a timeout.
- */
-export const COMMIT_BASE_LEDGER_UNVERIFIED = "commit_base_ledger_unverified";
-/**
- * The last run of the main thread's verification of `confirmed_ledger`
- * failed before it could pass or find a divergence: its snapshot could
- * not be read, or its worker thread failed (out of its heap, for one).
- * Raised under `confirmed_ledger_verification`; commits on a landed tail
- * keep waiting as `commit_base_ledger_unverified` while no run passes at
- * the frontier. It clears on the next run that completes.
- */
-export const CONFIRMED_LEDGER_VERIFICATION_FAILED =
-  "confirmed_ledger_verification_failed";
 /** The liveness source `commit_window_pending` is raised under. */
 export const COMMIT_WINDOW_SOURCE = "commit_window";
 /**
@@ -154,9 +126,7 @@ export const COMMIT_SCHEDULER_ALIGNMENT_FAILED =
  * under `commit_submit`, cleared with this reason.
  *
  * A commit waiting for its base raises `commit_base_pending` under
- * `commit_base`, or `commit_base_ledger_unverified` where it waits for the
- * verification of the frontier it builds from, and one waiting for the
- * next window raises
+ * `commit_base`, and one waiting for the next window raises
  * `commit_window_pending` under `commit_window`; any other output clears
  * each. */
 export const applyCommitWorkerReadiness = (
@@ -170,9 +140,7 @@ export const applyCommitWorkerReadiness = (
         raiseLivenessIncident(
           globals,
           COMMIT_BASE_SOURCE,
-          output.unverified === true
-            ? COMMIT_BASE_LEDGER_UNVERIFIED
-            : COMMIT_BASE_PENDING,
+          COMMIT_BASE_PENDING,
           `commit base ${output.baseHeaderHash}: ${output.detail}`,
         ),
       ],

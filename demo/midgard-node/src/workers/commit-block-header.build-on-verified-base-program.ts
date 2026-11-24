@@ -62,7 +62,6 @@ import { COMMIT_PLANNING_STARTED_NOTICE } from "./commit-planning-notice.js";
 import {
   type CommitCandidateRoots,
   deserializeStateQueueUTxO,
-  parseVerifiedFrontier,
   WorkerInput,
   WorkerOutput,
 } from "./utils/commit-block-header.js";
@@ -440,9 +439,6 @@ export const buildOnVerifiedCommitBaseProgram = (
     const commitBase = yield* resolveCommitBase({
       availableConfirmedBlock,
       nativeMpfRoot: workerInput.nativeMpf.durableRoot,
-      verifiedFrontier: yield* parseVerifiedFrontier(
-        workerInput.verifiedFrontier,
-      ),
       openLedger: (root, outputs) =>
         workerLedger(nativeMpfClient, root, outputs),
     });

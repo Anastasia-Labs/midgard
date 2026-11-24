@@ -2,10 +2,9 @@
  * Every rule in `demo/midgard-node/alert-rules.yml` selects a metric family
  * the node really exports under `listen --with-monitoring`: the production
  * alert-signal sampler, the role-wallet balance sampler, the
- * forced-admission counter, the local ledger divergence counter, the
- * merge failure counter and the transaction expiry counter, scraped through
- * the real Prometheus exporter. A rule over a family the node never exports
- * would never fire.
+ * forced-admission counter, the merge failure counter and the transaction
+ * expiry counter, scraped through the real Prometheus exporter. A rule over
+ * a family the node never exports would never fire.
  */
 
 import { readFile } from "node:fs/promises";
@@ -27,7 +26,6 @@ import {
   forcedAdmissionDivergenceCounter,
   SCREEN_FAILED,
 } from "../src/forced-orders/admission-divergence.js";
-import { localLedgerDivergenceCounter } from "../src/mpf/local-ledger-divergence.js";
 import { Globals } from "../src/services/globals.globals.js";
 import { livenessReasonAgeGauge } from "../src/services/globals.liveness-reasons.js";
 import {
@@ -108,13 +106,6 @@ const exportedFamilies = () =>
             forcedAdmissionDivergenceCounter,
             "refusal_code",
             SCREEN_FAILED,
-          ),
-        );
-        yield* Metric.value(
-          Metric.tagged(
-            localLedgerDivergenceCounter,
-            "check",
-            "confirmed_ledger",
           ),
         );
         yield* Metric.value(mergeFailureCounter);
