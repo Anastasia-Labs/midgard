@@ -20,9 +20,9 @@ import { Effect } from "effect";
 
 import { foreignRetainedDaInsert } from "../../src/da/foreign-retained-da.js";
 import { DaPayloadsDB } from "../../src/database/index.js";
-import { ledgerMap } from "../../src/landed-blocks/ledger.js";
 import { Frontier, insertRow } from "../../src/landed-blocks/store.js";
 import type { DefenseLedgers } from "../../src/validation-trace-defense/material.js";
+import { ledgerMap } from "./ledger-map.js";
 
 type Entry = Readonly<{ outRef: Buffer; output: Buffer }>;
 const minimal = (entries: readonly Entry[]) =>

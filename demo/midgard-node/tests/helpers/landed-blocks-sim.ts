@@ -60,7 +60,6 @@ import {
   LANDED_BLOCK_AWAITING_DA,
   LANDED_BLOCK_INVALID,
 } from "../../src/landed-blocks/holds.js";
-import { ledgerMap } from "../../src/landed-blocks/ledger.js";
 import {
   landedFrontierNeeds,
   landedFrontierPruneFloor,
@@ -99,6 +98,7 @@ import {
 } from "./landed-blocks-sim.terminals.js";
 import { landedBlocksTraffic } from "./landed-blocks-sim.traffic.js";
 import { H_MAX, hasDeposit } from "./landed-blocks-sim.universe.js";
+import { ledgerMap } from "./ledger-map.js";
 import { SIM_QUEUE_CONFIG } from "./state-queue-sim.fixtures.js";
 import { isQueueOutput } from "./state-queue-sim.model.js";
 
