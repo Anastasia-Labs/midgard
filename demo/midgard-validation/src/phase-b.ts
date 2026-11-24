@@ -14,6 +14,7 @@ export {
 export {
   applyUTxOStatePatch,
   type PhaseBResultWithPatch,
+  type UTxOLookup,
   type UTxOStatePatch,
 } from "./phase-b/utxo-state.js";
 export { runPhaseBValidationWithPatch } from "./phase-b/validate-batch.js";
