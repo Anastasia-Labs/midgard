@@ -1,24 +1,34 @@
 /**
  * A defending operator's material for a case on one of its landed blocks:
  * the block's evidence from the node's retained DA payload, checked
- * against the header the landed queue names, and its predecessor ledger
- * from the landed ledger at the block's parent, checked against the
- * parent's root; then the defense material the fault-proofs package builds
- * from them (our trace of the case's event at the case's step count).
+ * against the header the landed queue names, and its predecessor ledger,
+ * the node's store ledger at the parent's root (retained, or rebuilt by
+ * the processed deltas from the newest retained root before it,
+ * `landed-blocks/parent-ledger.ts`); then the defense material the
+ * fault-proofs package builds from them (our trace of the case's event at
+ * the case's step count). The payload is looked up first, so a block
+ * without one costs no ledger work.
+ *
  * The build runs in a worker thread: its replay runs the event's scripts to
  * the end, which at the largest admitted script holds a thread for seconds,
- * and the node's main thread keeps committing meanwhile.
+ * and the node's main thread keeps committing meanwhile. The ledger stays
+ * on the main thread; the worker reads the trie nodes and outputs the
+ * replay touches over a read channel of its own (`ledger-port.ts`).
  *
- * Every transient lack (no retained payload, a parent off the landed
- * ledger, a ledger that does not open its root, a build that throws, a
- * worker that fails or outruns its bound) is
- * `unavailable` with its detail; the tick retries it. A deterministic
- * outcome (our own fault, or a trace that disagrees) is final for the case.
+ * Every transient lack (no retained payload, a parent ledger the store
+ * cannot give, a store that cannot be read, a build that throws, a read
+ * that fails, a worker that fails or outruns its bound) is `unavailable`
+ * with its detail; the tick retries it. A deterministic outcome (our own
+ * fault, or a trace that disagrees) is final for the case.
  */
-import { Worker } from "node:worker_threads";
+import { MessageChannel, Worker } from "node:worker_threads";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import {
+  type Ledger,
+  ledgerReads,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import {
   validationTraceDefenseFromPortable,
   type ValidationTraceDefenseMaterial,
@@ -28,13 +38,10 @@ import { Effect, Option } from "effect";
 
 import { DaPayloadsDB } from "../database/index.js";
 import { resolveWorkerEntry } from "../fibers/resolve-worker-entry.js";
-import {
-  applyDelta,
-  type LandedLedger,
-  ledgerMap,
-} from "../landed-blocks/ledger.js";
+import { ledgerAt } from "../landed-blocks/parent-ledger.js";
 import type { LandedBlockRow } from "../landed-blocks/store.js";
 import { BUNDLED_WORKER_EXEC_ARGV } from "../services/validation-pool.bundled-worker-exec-argv.js";
+import { serveLedgerReads } from "./ledger-port.js";
 import type {
   DefenseMaterialJob,
   PortableDefenseOutcome,
@@ -51,6 +58,14 @@ export type ValidationTraceDefenseOutcome =
 
 /** Where the node observed the landed block: the follower's cursor. */
 export type DefenseObservationPoint = Readonly<{ slot: number; hash: string }>;
+
+/**
+ * The ledgers the node's store retains: the ledger with `root`, failing
+ * with `LedgerNotRetained` when the store does not retain it.
+ */
+export type DefenseLedgers = Readonly<{
+  retainedLedger: (root: string) => Effect.Effect<Ledger, unknown>;
+}>;
 
 const unavailable = (
   detail: string,
@@ -81,23 +96,33 @@ export const nodeDefenseMaterialWorker = (): DefenseMaterialWorker => ({
 });
 
 /** `job`'s outcome, built in its own worker thread (`using`, the node's own
- * by default); the thread is ended when the outcome arrives, when it fails,
- * when it outruns its bound, and when the build is interrupted. */
+ * by default) that reads `predecessor` over a read channel; the thread is
+ * ended and the channel closed when the outcome arrives, when the thread
+ * fails, when it outruns its bound, and when the build is interrupted. */
 const buildInWorker = (
-  job: DefenseMaterialJob,
+  job: Omit<DefenseMaterialJob, "ledgerPort">,
+  predecessor: Ledger,
   using: DefenseMaterialWorker | undefined,
 ) =>
   Effect.async<PortableDefenseOutcome>((resume) => {
+    const channel = new MessageChannel();
     let worker: Worker;
     let timeoutMs: number;
     try {
+      serveLedgerReads(channel.port1, ledgerReads(predecessor));
       const { entry, timeoutMs: bound } = using ?? nodeDefenseMaterialWorker();
       timeoutMs = bound;
       worker = new Worker(entry, {
         execArgv: [...BUNDLED_WORKER_EXEC_ARGV],
-        workerData: job,
+        workerData: {
+          ...job,
+          ledgerPort: channel.port2,
+        } satisfies DefenseMaterialJob,
+        transferList: [channel.port2],
       });
     } catch (cause) {
+      channel.port1.close();
+      channel.port2.close();
       resume(Effect.succeed(unavailable(formatUnknownError(cause))));
       return;
     }
@@ -105,6 +130,7 @@ const buildInWorker = (
     const end = () => {
       settled = true;
       clearTimeout(timer);
+      channel.port1.close();
       void worker.terminate();
     };
     const settle = (outcome: PortableDefenseOutcome) => {
@@ -140,30 +166,17 @@ const buildInWorker = (
   });
 
 /**
- * The whole ledger after `headerHash` on the landed ledger, if it is on it:
- * the frontier's `confirmed_ledger` with the processed deltas to it. The
- * fault-proofs defender builds its predecessor ledger from whole entries, so
- * this read stays until the defender takes a ledger store `Ledger`.
- */
-const ledgerAt = (landed: LandedLedger, headerHash: string) => {
-  const ledger = ledgerMap(landed.confirmed);
-  if (landed.frontier.headerHash === headerHash) return ledger;
-  for (const row of landed.chain) {
-    applyDelta(ledger, row);
-    if (row.headerHash === headerHash) return ledger;
-  }
-  return undefined;
-};
-
-/**
  * The defense material for a case on landed block `target`, on the case's
- * event at its step count, given `landed` (the landed ledger, which holds
- * `target`'s parent while `target` is unmerged).
+ * event at its step count. `lineage` is the processed chain from the
+ * confirmed frontier through `target`'s parent (empty when the parent is
+ * the frontier), which a rebuild of the parent's ledger replays when the
+ * store does not retain its root.
  */
 export const validationTraceDefenseOutcome = (
   input: Readonly<{
     target: LandedBlockRow;
-    landed: LandedLedger;
+    lineage: readonly LandedBlockRow[];
+    ledgers: DefenseLedgers;
     caseDatum: SDK.Case;
     point: DefenseObservationPoint;
     l1SlotConfig: L1SlotConfig;
@@ -180,27 +193,36 @@ export const validationTraceDefenseOutcome = (
       return unavailable(
         `no retained DA payload of block ${target.headerHash}`,
       );
-    const parent = ledgerAt(input.landed, target.parentHeaderHash);
-    if (parent === undefined)
+    const parent = yield* Effect.either(
+      ledgerAt(
+        input.ledgers,
+        target.parentUtxosRoot,
+        Effect.succeed(input.lineage),
+      ),
+    );
+    if (parent._tag === "Left")
       return unavailable(
-        `the parent ${target.parentHeaderHash} of block ${target.headerHash} is not on the landed ledger`,
+        `the ledger store cannot give the parent ledger of block ${target.headerHash}: ${formatUnknownError(parent.left)}`,
       );
-    const job: DefenseMaterialJob = {
-      payloadEnvelopeCbor: stored.value[DaPayloadsDB.Columns.PAYLOAD_CBOR],
-      schemaVersion: stored.value[DaPayloadsDB.Columns.VERSION],
-      point: input.point,
-      headerHash: target.headerHash,
-      parentHeaderHash: target.parentHeaderHash,
-      parentUtxosRoot: target.parentUtxosRoot,
-      parentEntries: [...parent].map(([outRef, output]) => ({
-        outRef: Buffer.from(outRef, "hex"),
-        output,
-      })),
-      eventKey: caseDatum.event_key,
-      stepCount: Number(caseDatum.step_count),
-      l1SlotConfig: input.l1SlotConfig,
-    };
-    const outcome = yield* buildInWorker(job, input.worker);
+    if (parent.right.kind === "unavailable")
+      return unavailable(
+        `the parent ledger of block ${target.headerHash}: ${parent.right.detail}`,
+      );
+    const outcome = yield* buildInWorker(
+      {
+        payloadEnvelopeCbor: stored.value[DaPayloadsDB.Columns.PAYLOAD_CBOR],
+        schemaVersion: stored.value[DaPayloadsDB.Columns.VERSION],
+        point: input.point,
+        headerHash: target.headerHash,
+        parentHeaderHash: target.parentHeaderHash,
+        parentUtxosRoot: target.parentUtxosRoot,
+        eventKey: caseDatum.event_key,
+        stepCount: Number(caseDatum.step_count),
+        l1SlotConfig: input.l1SlotConfig,
+      },
+      parent.right.ledger,
+      input.worker,
+    );
     if (outcome.kind !== "defend") return outcome;
     try {
       return {

@@ -8,9 +8,9 @@
  *   frontier: a case on any other header (merged, foreign to our chain, or
  *   never landed) is not ours to answer and is left out.
  * - Material is built for a case we have not defended yet and for a case
- *   whose thread of ours is live (its reveals need it); a deterministic
- *   outcome is kept in `cache` by case, and an unavailable one is retried
- *   at the next survey.
+ *   whose thread of ours is live (its reveals need it), on the node's store
+ *   ledger at the target's parent; a deterministic outcome is kept in
+ *   `cache` by case, and an unavailable one is retried at the next survey.
  */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { recordedValidationTraceDefenders } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
@@ -19,11 +19,7 @@ import { SqlClient } from "@effect/sql";
 import { Data, Effect } from "effect";
 
 import { followerSqlTx } from "../database/follower-schema.js";
-import {
-  landedChain,
-  type LandedLedger,
-  landedLedger,
-} from "../landed-blocks/ledger.js";
+import { landedChain } from "../landed-blocks/ledger.js";
 import { type LandedBlockRow, retrieveRows } from "../landed-blocks/store.js";
 import {
   type DiscoveredCase,
@@ -33,6 +29,7 @@ import {
   type ValidationTraceDefenseChain,
 } from "./discovery.js";
 import {
+  type DefenseLedgers,
   type DefenseMaterialWorker,
   type ValidationTraceDefenseOutcome,
   validationTraceDefenseOutcome,
@@ -85,6 +82,8 @@ export const surveyValidationTraceDefense = (
     ourVkh: string;
     l1SlotConfig: L1SlotConfig;
     cache: DefenseMaterialCache;
+    /** The ledgers the node's store retains, which material is built on. */
+    ledgers: DefenseLedgers;
     /** The worker material is built in; the node's own by default. */
     materialWorker?: DefenseMaterialWorker | undefined;
   }>,
@@ -102,20 +101,20 @@ export const surveyValidationTraceDefense = (
       ),
     );
     const rows = yield* retrieveRows;
-    const chain = yield* landedChain(rows);
+    const chain = (yield* landedChain(rows))?.chain ?? [];
     const targets = new Map(
-      (chain?.chain ?? []).map((row) => [row.headerHash, row] as const),
+      chain.map((row, index) => [row.headerHash, { row, index }] as const),
     );
     const threads = new Map(
       facts.threads.map((thread) => [thread.unit, thread] as const),
     );
-    let landed: LandedLedger | undefined;
     const cases: DefenseCase[] = [];
     const caseIds = new Set<string>();
     for (const found of facts.cases) {
       caseIds.add(found.caseId);
-      const target = targets.get(found.datum.block_header_hash);
-      if (target === undefined) continue;
+      const onChain = targets.get(found.datum.block_header_hash);
+      if (onChain === undefined) continue;
+      const target = onChain.row;
       const thread = [...threads.values()].find(
         ({ caseId }) => caseId === found.caseId,
       )?.facts ?? { kind: "none" as const };
@@ -129,21 +128,16 @@ export const surveyValidationTraceDefense = (
       const defended = priorDefenders?.includes(input.ourVkh);
       let outcome = input.cache.get(found.caseUnit);
       if (outcome === undefined && needsMaterial(thread, defended)) {
-        landed ??= yield* landedLedger(rows);
-        outcome =
-          landed === undefined
-            ? {
-                kind: "unavailable",
-                detail: "the node holds no landed ledger",
-              }
-            : yield* validationTraceDefenseOutcome({
-                target,
-                landed,
-                caseDatum: found.datum,
-                point: facts.point,
-                l1SlotConfig: input.l1SlotConfig,
-                worker: input.materialWorker,
-              });
+        outcome = yield* validationTraceDefenseOutcome({
+          target,
+          // The chain through the target's parent: every row before it.
+          lineage: chain.slice(0, onChain.index),
+          ledgers: input.ledgers,
+          caseDatum: found.datum,
+          point: facts.point,
+          l1SlotConfig: input.l1SlotConfig,
+          worker: input.materialWorker,
+        });
         if (outcome.kind !== "unavailable")
           input.cache.set(found.caseUnit, outcome);
       }

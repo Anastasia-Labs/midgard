@@ -1,19 +1,19 @@
 /**
  * The defense material build itself, as the material worker runs it: the
  * block's evidence from its retained DA payload, checked against the header
- * the landed queue names; its predecessor ledger, checked against the
- * parent's root; then our trace of the case's event at the case's step
+ * the landed queue names; its predecessor ledger, read from the node's store
+ * ledger at the parent's root over the job's read channel
+ * (`ledger-port.ts`); then our trace of the case's event at the case's step
  * count. Its replay runs the event's scripts to the end, so it runs off the
- * node's main thread: a job and its outcome are plain bytes and numbers,
- * which cross the thread boundary intact.
+ * node's main thread: a job is plain bytes and numbers with its read
+ * channel's port, and its outcome is plain bytes and numbers, which cross
+ * the thread boundary intact.
  */
+import type { MessagePort } from "node:worker_threads";
+
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "@al-ft/midgard-fault-proofs/evidence";
-import {
-  createLedgerStore,
-  createMemoryLedgerStorage,
-} from "@al-ft/midgard-fault-proofs/ledger-store";
 import {
   buildPortableValidationTraceDefenseMaterial,
   type PortableValidationTraceDefense,
@@ -22,8 +22,11 @@ import type * as SDKCore from "@al-ft/midgard-sdk/core";
 import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import { decodeStoredPayload } from "../da/stored-payload.js";
+import { workerLedger } from "../services/mpf-native-owner/worker-ledger.js";
+import { ledgerReadClient } from "./ledger-port.js";
 
-/** One build: the landed block, its parent's ledger and the case. */
+/** One build: the landed block, the read channel to its parent's ledger,
+ * and the case. */
 export type DefenseMaterialJob = Readonly<{
   payloadEnvelopeCbor: Uint8Array;
   schemaVersion: number;
@@ -32,10 +35,11 @@ export type DefenseMaterialJob = Readonly<{
   headerHash: string;
   parentHeaderHash: string;
   parentUtxosRoot: string;
-  parentEntries: readonly Readonly<{
-    outRef: Uint8Array;
-    output: Uint8Array;
-  }>[];
+  /**
+   * The read channel to the ledger at `parentUtxosRoot` (`serveLedgerReads`
+   * on the other end); transferred with the job, closed when the build ends.
+   */
+  ledgerPort: MessagePort;
   eventKey: SDKCore.EventKey;
   stepCount: number;
   l1SlotConfig: L1SlotConfig;
@@ -54,6 +58,7 @@ const bytes = (view: Uint8Array): Buffer =>
 export const buildPortableDefenseOutcome = async (
   job: DefenseMaterialJob,
 ): Promise<PortableDefenseOutcome> => {
+  const reads = ledgerReadClient(job.ledgerPort);
   try {
     const payloadEnvelopeCbor = bytes(job.payloadEnvelopeCbor);
     const payload = await decodeStoredPayload({
@@ -84,18 +89,9 @@ export const buildPortableDefenseOutcome = async (
         grade: "security",
       },
     });
-    const predecessor = await createLedgerStore(
-      createMemoryLedgerStorage(),
-    ).admit(
-      job.parentEntries.map(({ outRef, output }) => ({
-        outRef: bytes(outRef),
-        output: bytes(output),
-      })),
-      job.parentUtxosRoot,
-    );
     const material = await buildPortableValidationTraceDefenseMaterial({
       evidence,
-      predecessor,
+      predecessor: workerLedger(reads, job.parentUtxosRoot, reads.outputs),
       eventKey: job.eventKey,
       stepCount: job.stepCount,
       l1SlotConfig: job.l1SlotConfig,
@@ -113,5 +109,7 @@ export const buildPortableDefenseOutcome = async (
     }
   } catch (cause) {
     return { kind: "unavailable", detail: formatUnknownError(cause) };
+  } finally {
+    reads.close();
   }
 };

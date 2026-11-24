@@ -28,6 +28,30 @@ import { heldReplays } from "./replay-held.js";
 
 const confirmView = followerViewValid;
 
+/** The started native MPF owner, which holds the ledger store; fails while
+ * the owner is not started. */
+const startedOwner = (owner: Globals["NATIVE_MPF_OWNER"]) =>
+  Effect.flatMap(Ref.get(owner), (started) =>
+    started === undefined
+      ? Effect.fail(
+          new Error(
+            "The native MPF owner, which holds the ledger store, is not started",
+          ),
+        )
+      : Effect.succeed(started),
+  );
+
+/** The ledger with `root` in `owner`'s store; fails while the owner is not
+ * started and when its store does not retain the root. */
+export const ownerRetainedLedger =
+  (owner: Globals["NATIVE_MPF_OWNER"]) => (root: string) =>
+    Effect.flatMap(startedOwner(owner), (started) =>
+      Effect.tryPromise({
+        try: () => started.ledger(root),
+        catch: (cause) => cause,
+      }),
+    );
+
 /**
  * The node's landed-block ports over `store`, with the follower plan's
  * configs (with its origin's `hubOracleOneShot`, which the protocol-init tx
@@ -57,17 +81,7 @@ export const nodeLandedBlockPorts = (
   });
   const queueHistory = (view: View) =>
     readQueueHistory(store, plan.stateQueue, view);
-  const ledgerOwner = Effect.flatMap(
-    Ref.get(globals.NATIVE_MPF_OWNER),
-    (owner) =>
-      owner === undefined
-        ? Effect.fail(
-            new Error(
-              "The native MPF owner, which holds the ledger store, is not started",
-            ),
-          )
-        : Effect.succeed(owner),
-  );
+  const ledgerOwner = startedOwner(globals.NATIVE_MPF_OWNER);
   return {
     confirmView,
     queueHistory,
@@ -78,13 +92,7 @@ export const nodeLandedBlockPorts = (
       queueHistory,
       Ref.get(globals.NATIVE_MPF_OWNER),
     ),
-    retainedLedger: (root: string) =>
-      Effect.flatMap(ledgerOwner, (owner) =>
-        Effect.tryPromise({
-          try: () => owner.ledger(root),
-          catch: (cause) => cause,
-        }),
-      ),
+    retainedLedger: ownerRetainedLedger(globals.NATIVE_MPF_OWNER),
     persistLedger: (ledger) =>
       Effect.flatMap(ledgerOwner, (owner) =>
         Effect.tryPromise({

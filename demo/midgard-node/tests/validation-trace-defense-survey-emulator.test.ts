@@ -11,12 +11,22 @@
  * - a case opened on the failing block reports the operator's own fault, a
  *   named detail that never fails readiness;
  * - a retained payload that is missing makes the material unavailable, and
- *   the next survey after it is back answers;
+ *   the next survey after it is back answers; with no payload the survey
+ *   looks up no ledger and reads no ledger row;
+ * - a parent ledger the node's store cannot give (not retained, or the store
+ *   not started) makes the material unavailable and keeps nothing, and the
+ *   next survey with it held answers; a store retaining only the frontier's
+ *   ledger answers with the same material, by the processed deltas;
  * - a case whose history is past the follower's retention is named as such,
  *   a detail that never fails readiness, even at its deadline;
  * - a case on a block past the confirmed frontier is not answered.
  */
 import { MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS } from "@al-ft/midgard-core";
+import {
+  createMemoryLedgerStorage,
+  LedgerNotRetained,
+  type LedgerStorage,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
 import {
   completeCanonicalReplayPredecessorStoreLedger,
   failingClaim,
@@ -34,9 +44,10 @@ import {
 import { buildValidationTraceDefenseMaterial } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
 import type { SqlClient } from "@effect/sql";
 import { generateEmulatorAccount, type UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Metric } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { fullScanCounter } from "../src/database/confirmedLedger.js";
 import { DaPayloadsDB } from "../src/database/index.js";
 import { Frontier } from "../src/landed-blocks/store.js";
 import { decideValidationTraceDefense } from "../src/validation-trace-defense/decide.js";
@@ -45,6 +56,7 @@ import {
   initialValidationTraceDefenseHealth,
   validationTraceDefenseReadiness,
 } from "../src/validation-trace-defense/health.js";
+import type { DefenseLedgers } from "../src/validation-trace-defense/material.js";
 import {
   type DefenseMaterialCache,
   type DefenseSurvey,
@@ -57,7 +69,9 @@ import {
 import { testDatabases } from "./helpers/l1-events-store.js";
 import {
   frontierAtStart,
+  ledgersOf,
   retain,
+  sceneLedgerStore,
   seedLanded,
 } from "./helpers/validation-trace-defense-scene.js";
 
@@ -66,12 +80,15 @@ let env: IntentEmulator;
 let scene: Scene;
 let falseClaim: FalseClaim;
 let faultCase: UTxO;
+/** The node's ledger store, holding every ledger of the scene's blocks. */
+let ledgers: DefenseLedgers;
 
 const inNode = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   env.runtime.runPromise(effect);
 
 const survey = async (
   cache: DefenseMaterialCache = new Map(),
+  withLedgers: DefenseLedgers = ledgers,
 ): Promise<DefenseSurvey> => {
   await env.follow();
   return await inNode(
@@ -80,8 +97,76 @@ const survey = async (
       ourVkh: scene.operator.vkey,
       l1SlotConfig,
       cache,
+      ledgers: withLedgers,
     }),
   );
+};
+
+const fullScans = Metric.value(fullScanCounter).pipe(
+  Effect.map(({ count }) => count),
+);
+
+/** The material the fault-proofs package builds directly from the passing
+ * block, at the false claim's step count. */
+const directPassingMaterial = async () => {
+  const direct = await buildValidationTraceDefenseMaterial({
+    evidence: scene.passing.evidence,
+    predecessor: completeCanonicalReplayPredecessorStoreLedger(scene.passing),
+    eventKey: scene.passing.eventKey,
+    stepCount: falseClaim.stepCount,
+    l1SlotConfig,
+  });
+  if (direct.kind !== "defend") throw new Error("expected defense material");
+  return direct;
+};
+
+/** Expects `found` to answer the false claim with `direct`'s material. */
+const expectAnswered = (
+  found: DefenseSurvey,
+  direct: Awaited<ReturnType<typeof directPassingMaterial>>,
+) => {
+  const outcome = caseOn(found, falseClaim.caseUnit)?.outcome;
+  if (outcome?.kind !== "defend")
+    throw new Error(
+      `expected defense material, got ${JSON.stringify(outcome, (_, value: unknown) => (typeof value === "bigint" ? value.toString() : value))}`,
+    );
+  expect(outcome.material.root).toBe(direct.root);
+  expect(outcome.material.stateAtS).toStrictEqual(direct.stateAtS);
+  expect(outcome.material.proofAtS).toStrictEqual(direct.proofAtS);
+};
+
+/** `storage` with its node and output reads counted. */
+const countingStorage = (storage: LedgerStorage) => {
+  const count = { reads: 0 };
+  return {
+    count,
+    storage: {
+      ...storage,
+      readNodes: async (hashes) => {
+        count.reads += hashes.length;
+        return await storage.readNodes(hashes);
+      },
+      readOutputs: async (outRefs) => {
+        count.reads += outRefs.length;
+        return await storage.readOutputs(outRefs);
+      },
+    } satisfies LedgerStorage,
+  };
+};
+
+/** `inner` with its lookups counted. */
+const countingLedgers = (inner: DefenseLedgers) => {
+  const count = { lookups: 0 };
+  return {
+    count,
+    ledgers: {
+      retainedLedger: (root) =>
+        Effect.suspend(() => {
+          count.lookups += 1;
+          return inner.retainedLedger(root);
+        }),
+    } satisfies DefenseLedgers,
+  };
 };
 
 const caseOn = (found: DefenseSurvey, caseUnit: string) =>
@@ -123,6 +208,7 @@ beforeAll(async () => {
     protocol: { contracts: scene.h.contracts, referenceScriptAddresses: [] },
   });
   await inNode(seedLanded(scene));
+  ledgers = ledgersOf(await sceneLedgerStore(scene));
   falseClaim = await openFalseClaim(scene, await falseClaimMaterial(scene), 40);
   faultCase = await openFaultCase();
   // A look-alike: the false claim's case datum at the case address, with
@@ -245,6 +331,83 @@ describe("the validation-trace defense survey", () => {
     await inNode(retain(scene.passing));
     const back = await survey(cache);
     expect(caseOn(back, falseClaim.caseUnit)!.outcome?.kind).toBe("defend");
+  });
+
+  it("looks up no ledger and reads no ledger row for a case whose block has no retained payload", async () => {
+    const counting = countingStorage(createMemoryLedgerStorage());
+    const store = await sceneLedgerStore(scene, { storage: counting.storage });
+    const lookups = countingLedgers(ledgersOf(store));
+    const blocks = [scene.passing, scene.failing];
+    for (const { evidence } of blocks)
+      await inNode(
+        DaPayloadsDB.removeByHeaderHash(
+          Buffer.from(evidence.headerHash, "hex"),
+        ),
+      );
+    try {
+      const scansBefore = await inNode(fullScans);
+      const readsBefore = counting.count.reads;
+      const found = await survey(new Map(), lookups.ledgers);
+      expect(found.cases.map(({ outcome }) => outcome?.kind)).toStrictEqual([
+        "unavailable",
+        "unavailable",
+      ]);
+      expect(lookups.count.lookups).toBe(0);
+      expect(counting.count.reads - readsBefore).toBe(0);
+      expect((await inNode(fullScans)) - scansBefore).toBe(0);
+    } finally {
+      for (const block of blocks) await inNode(retain(block));
+    }
+    // With the payloads back, the same port is looked up and read.
+    const scansBefore = await inNode(fullScans);
+    const back = await survey(new Map(), lookups.ledgers);
+    expectAnswered(back, await directPassingMaterial());
+    expect(lookups.count.lookups).toBeGreaterThan(0);
+    expect(counting.count.reads).toBeGreaterThan(0);
+    expect((await inNode(fullScans)) - scansBefore).toBe(0);
+  });
+
+  it("makes the material unavailable and keeps nothing while the store cannot give the parent ledger, and answers once it can", async () => {
+    const direct = await directPassingMaterial();
+    for (const refusing of [
+      (root: string) => Effect.fail(new LedgerNotRetained(root)),
+      () =>
+        Effect.fail(
+          new Error(
+            "The native MPF owner, which holds the ledger store, is not started",
+          ),
+        ),
+    ]) {
+      const cache: DefenseMaterialCache = new Map();
+      const found = await survey(cache, { retainedLedger: refusing });
+      for (const { outcome } of found.cases)
+        expect(outcome).toMatchObject({
+          kind: "unavailable",
+          detail: expect.stringMatching(/parent ledger of block/u),
+        });
+      expect(cache.size).toBe(0);
+      const state = decideValidationTraceDefense(found, Date.now()).states.find(
+        ({ subject }) => subject === falseClaim.caseUnit,
+      );
+      expect(state?.state).toBe(
+        "validation-trace-defense-material-unavailable",
+      );
+      expectAnswered(await survey(cache), direct);
+    }
+  });
+
+  it("answers with the same material from a store that retains only the frontier's ledger", async () => {
+    const frontierRoot = scene.failing.evidence.header.prevUtxosRoot;
+    const store = await sceneLedgerStore(scene, { roots: [frontierRoot] });
+    await expect(
+      store.at(scene.passing.evidence.header.prevUtxosRoot),
+    ).rejects.toBeInstanceOf(LedgerNotRetained);
+    const found = await survey(new Map(), ledgersOf(store));
+    expectAnswered(found, await directPassingMaterial());
+    const faulted = found.cases.find(
+      ({ target }) => target.headerHash === scene.failing.evidence.headerHash,
+    )!;
+    expect(faulted.outcome?.kind).toBe("operator_fault");
   });
 
   it("names a case whose history is past the follower's retention a detail that never fails readiness, even at its deadline", async () => {

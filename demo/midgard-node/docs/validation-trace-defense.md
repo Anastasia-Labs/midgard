@@ -3,10 +3,21 @@
 The node defends the blocks it accepted against validation-trace dispute
 cases. When a case opens against an unmerged block the node accepted (its own
 blocks and every ancestor it built on), the node replays the disputed event
-from its retained DA payload and its landed ledger. If the replay accepts the
-event, the node defends the case and plays its side of the bisection game
-until the case's duration ends. If the replay rejects the event, the block is
-at fault: the node names that and does not defend.
+from its retained DA payload and the ledger at the block's parent. If the
+replay accepts the event, the node defends the case and plays its side of the
+bisection game until the case's duration ends. If the replay rejects the
+event, the block is at fault: the node names that and does not defend.
+
+The ledger at the block's parent comes from the node's ledger store, by the
+parent's UTxO root. When the store no longer holds that root, the node
+rebuilds it from the newest ledger it holds on the chain to the parent, by
+the landed blocks between.
+The replay runs in a worker thread that reads the ledger over a message
+channel of its own: it asks only for the outputs the event reads and the trie
+nodes on their paths, so a defense does not load the whole ledger. The node
+looks the ledger up only once the block's DA payload is retained. While the
+store cannot give the parent ledger, the case is
+`validation-trace-defense-material-unavailable` and is retried every tick.
 
 The defender runs as the `validationTraceDefense` fiber in the node process.
 It needs the L1 follower (see the [node README](../README.md)); without a
@@ -69,21 +80,21 @@ Each tick records the defender's named states. `/readyz` lists each as
 `<state>:<case or thread unit>:<deadline|none>[:<shortfall lovelace>]`, under
 its reasons when the state fails readiness and under its details otherwise.
 
-| State                                            | Meaning                                                                                                     | `/readyz`                                                |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `validation-trace-defense-awaiting`              | Our thread waits for the challenger's move.                                                                 | detail                                                   |
-| `validation-trace-defense-one-step`              | Our thread reached the one-step resolution.                                                                 | detail                                                   |
-| `validation-trace-defense-won-pending-expiry`    | The challenger ran out of clock; our thread waits for its expiry.                                           | detail                                                   |
-| `validation-trace-defense-thread-lost`           | Our thread ran out of clock or lost its resolution. No operator step changes it.                            | detail                                                   |
-| `validation-trace-defense-operator-fault`        | The replay rejects the event the block accepted: the block is at fault, and the node does not defend it.    | detail                                                   |
-| `validation-trace-defense-history-pruned`        | The case was already defended and its history is past the follower's retention, so the node cannot join it. | detail                                                   |
-| `validation-trace-defense-funding-pending`       | Another live defense transaction of ours holds what funds this move, until it lands or dies.                | detail                                                   |
-| `validation-trace-defense-material-unavailable`  | The node cannot build its defense yet (for example, a retained payload is missing); it retries every tick.  | fails within a quarter of the side clock of its deadline |
-| `validation-trace-defense-trace-disagrees`       | Our replay does not reproduce an accepted run. Investigate the node's replay.                               | fails within a quarter of the side clock of its deadline |
-| `validation-trace-defense-references-unresolved` | A published reference script the move needs cannot be read.                                                 | fails within a quarter of the side clock of its deadline |
-| `validation-trace-defense-underfunded`           | The wallet and the pocket lack the shortfall for the move. Fund the operator wallet.                        | fails                                                    |
-| `validation-trace-defense-not-active`            | A Defend is due but the operator has no active node. Activate the operator.                                 | fails                                                    |
-| `validation-trace-defense-late`                  | A Defend is due within a quarter of the side clock and has not landed.                                      | fails                                                    |
+| State                                            | Meaning                                                                                                            | `/readyz`                                                |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| `validation-trace-defense-awaiting`              | Our thread waits for the challenger's move.                                                                        | detail                                                   |
+| `validation-trace-defense-one-step`              | Our thread reached the one-step resolution.                                                                        | detail                                                   |
+| `validation-trace-defense-won-pending-expiry`    | The challenger ran out of clock; our thread waits for its expiry.                                                  | detail                                                   |
+| `validation-trace-defense-thread-lost`           | Our thread ran out of clock or lost its resolution. No operator step changes it.                                   | detail                                                   |
+| `validation-trace-defense-operator-fault`        | The replay rejects the event the block accepted: the block is at fault, and the node does not defend it.           | detail                                                   |
+| `validation-trace-defense-history-pruned`        | The case was already defended and its history is past the follower's retention, so the node cannot join it.        | detail                                                   |
+| `validation-trace-defense-funding-pending`       | Another live defense transaction of ours holds what funds this move, until it lands or dies.                       | detail                                                   |
+| `validation-trace-defense-material-unavailable`  | The node cannot build its defense yet (a retained payload or the parent ledger is missing); it retries every tick. | fails within a quarter of the side clock of its deadline |
+| `validation-trace-defense-trace-disagrees`       | Our replay does not reproduce an accepted run. Investigate the node's replay.                                      | fails within a quarter of the side clock of its deadline |
+| `validation-trace-defense-references-unresolved` | A published reference script the move needs cannot be read.                                                        | fails within a quarter of the side clock of its deadline |
+| `validation-trace-defense-underfunded`           | The wallet and the pocket lack the shortfall for the move. Fund the operator wallet.                               | fails                                                    |
+| `validation-trace-defense-not-active`            | A Defend is due but the operator has no active node. Activate the operator.                                        | fails                                                    |
+| `validation-trace-defense-late`                  | A Defend is due within a quarter of the side clock and has not landed.                                             | fails                                                    |
 
 A fiber whose ticks keep failing for more than ten dispute validity ranges
 adds `validation-trace-defense-stalled:<consecutive failures>` to the reasons.
