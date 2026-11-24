@@ -222,6 +222,79 @@ describe("canonical history cache retirement", () => {
     );
   });
 
+  it("a keyed recovery reads again the keys of a patch whose persistence committed while the retirement stopped its promotion", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const globals = yield* Globals;
+        const spent = outRefFromByte(0xc1);
+        const produced = outRefFromByte(0xc2);
+        const repaired = outRefFromByte(0xc3);
+        const output = makeOutput(10n);
+        let rows = [row(spent, output)];
+        const reads = keyedReadsOver(() => rows);
+        const service = yield* makeMempoolLedgerCacheService(
+          globals,
+          Effect.sync(() => rows),
+          reads.spendableAt,
+        );
+        yield* service.withPhaseBLock(service.currentState);
+        const sequence = yield* service.withClaimLock(
+          service.registerPhaseBSequence,
+        );
+        yield* sequence.runDecision(
+          service.applySpeculativePatch(sequence.sequence, {
+            deletedOutRefs: [spent.toString("hex")],
+            upsertedOutRefs: [[produced.toString("hex"), output]],
+          }),
+        );
+        const entered = yield* Deferred.make<void>();
+        const finish = yield* Deferred.make<void>();
+        const writer = yield* Effect.fork(
+          Effect.either(
+            sequence
+              .runPersistence(
+                Effect.gen(function* () {
+                  yield* Deferred.succeed(entered, undefined);
+                  yield* Deferred.await(finish);
+                  rows = [row(produced, output)];
+                }),
+              )
+              .pipe(Effect.ensuring(sequence.cancel)),
+          ),
+        );
+        yield* Deferred.await(entered);
+        const recovery = yield* service.retireCanonicalEpoch;
+        const keys = new Set([repaired.toString("hex")]);
+        const repair = yield* Effect.fork(
+          recovery.runRecovery(
+            Effect.sync(() => {
+              rows = [...rows, row(repaired, output)];
+            }),
+            Effect.void,
+            () => ({ keys, spendable: new Map([[[...keys][0]!, output]]) }),
+          ),
+        );
+        yield* Effect.yieldNow();
+        const reloadsBefore = yield* fullReloads;
+        yield* Deferred.succeed(finish, undefined);
+        yield* Fiber.join(repair);
+        expect((yield* Fiber.join(writer))._tag).toBe("Left");
+        expect(yield* fullReloads).toBe(reloadsBefore);
+        const state = yield* service.withPhaseBLock(
+          service.currentState.pipe(
+            Effect.map(snapshot([spent, produced, repaired])),
+          ),
+        );
+        expect([...state.keys()]).toEqual(
+          [produced, repaired].map((key) => key.toString("hex")),
+        );
+        expect(reads.asked).toStrictEqual([
+          [spent, produced].map((key) => key.toString("hex")).sort(),
+        ]);
+      }).pipe(Effect.provide(Globals.Default)),
+    );
+  });
+
   it("a second retirement during reload prevents the older recovery publishing ready", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
