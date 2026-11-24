@@ -54,7 +54,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let badInputIndex: string | undefined;
   let prevHeaderHash: string | undefined;
   let prevUtxosRoot: string | undefined;
-  let prevLedgerPath: string | undefined;
   let inputsPreimagePath: string | undefined;
   let depositInclusionPath: string | undefined;
   let withdrawalInclusionPath: string | undefined;
@@ -212,9 +211,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--prev-utxos-root":
         prevUtxosRoot = rest[++index];
         break;
-      case "--prev-ledger-file":
-        prevLedgerPath = rest[++index];
-        break;
       case "--inputs-preimage":
         inputsPreimagePath = rest[++index];
         break;
@@ -322,7 +318,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     badInputIndex,
     prevHeaderHash,
     prevUtxosRoot,
-    prevLedgerPath,
     inputsPreimagePath,
     depositInclusionPath,
     withdrawalInclusionPath,
