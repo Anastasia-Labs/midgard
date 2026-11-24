@@ -4,7 +4,12 @@ import { PhaseBResult } from "../types.js";
 
 type UTxOState = Map<string, Buffer>;
 
-export type PreState = readonly LedgerEntry[] | UTxOState;
+/** A point lookup of the output at a hex outref; a `Map` is one. */
+export type UTxOLookup = {
+  readonly get: (outRefHex: string) => Buffer | undefined;
+};
+
+export type PreState = readonly LedgerEntry[] | UTxOLookup;
 
 export type UTxOStatePatch = {
   readonly deletedOutRefs: readonly string[];
@@ -20,8 +25,8 @@ type MutableStatePatch = {
   readonly upsertedOutRefs: Map<string, Buffer>;
 };
 
-export const buildState = (entries: PreState): UTxOState => {
-  if (entries instanceof Map) {
+export const buildState = (entries: PreState): UTxOLookup => {
+  if ("get" in entries) {
     return entries;
   }
   const state: UTxOState = new Map();
@@ -37,7 +42,7 @@ export const makeEmptyStatePatch = (): MutableStatePatch => ({
 });
 
 export const getStateValue = (
-  baseState: UTxOState,
+  baseState: UTxOLookup,
   patch: MutableStatePatch,
   outRefHex: string,
 ): Buffer | undefined => {

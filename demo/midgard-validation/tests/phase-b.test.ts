@@ -598,6 +598,51 @@ describe("phase B validation", () => {
     );
   });
 
+  it("decides a batch over a point lookup exactly as over a Map", async () => {
+    const [a, b, c, missing, parentInput] = [0x90, 0x91, 0x92, 0x93, 0x94].map(
+      (byte) => outRefFromByte(byte),
+    );
+    const producer = makePhaseBCandidate({ arrivalSeq: 0n, spent: [a] });
+    const referencer = makePhaseBCandidate({
+      arrivalSeq: 1n,
+      spent: [b],
+      referenceInputs: [producer.graph.produced[0][LedgerColumns.OUTREF]],
+    });
+    const doubleSpend = [2n, 3n].map((arrivalSeq) =>
+      makePhaseBCandidate({ arrivalSeq, spent: [c] }),
+    );
+    const unbalanced = makePhaseBCandidate({
+      arrivalSeq: 4n,
+      spent: [parentInput],
+      outputLovelace: FUNDED_OUTPUT_LOVELACE - 1n,
+    });
+    const candidates = [
+      producer,
+      referencer,
+      ...doubleSpend,
+      makePhaseBCandidate({ arrivalSeq: 5n, spent: [missing] }),
+      unbalanced,
+      makePhaseBCandidate({
+        arrivalSeq: 6n,
+        spent: [unbalanced.graph.produced[0][LedgerColumns.OUTREF]],
+      }),
+    ];
+    const state = preState(
+      [a, b, c, parentInput].map(
+        (outRef) => [outRef, makeOutput(FUNDED_OUTPUT_LOVELACE)] as const,
+      ),
+    );
+
+    const overMap = await runPhaseB(candidates, state);
+    const overLookup = await runPhaseB(candidates, {
+      get: (outRefHex) => state.get(outRefHex),
+    });
+
+    expect(overMap.accepted).toHaveLength(3);
+    expect(overMap.rejected).toHaveLength(4);
+    expect(overLookup).toStrictEqual(overMap);
+  });
+
   it("rejects defensive dependency cycles in the Phase A candidate graph", async () => {
     const first = makePhaseBCandidate({
       arrivalSeq: 0n,
