@@ -86,7 +86,6 @@ import { Lucid } from "../../src/services/lucid.js";
 import { makeMempoolLedgerCacheService } from "../../src/services/mempool-ledger-cache.make-mempool-ledger-cache-service.js";
 import {
   MempoolLedgerCache,
-  validationLedgerCacheDeltaApplyCounter,
   validationLedgerCacheFullReloadCounter,
 } from "../../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
 import {
@@ -732,9 +731,6 @@ const drainReplica = async (
         : writeBehind;
       const writeBehindFiber = yield* Effect.forkScoped(writeBehind.run);
       yield* cache.withPhaseBLock(cache.currentState);
-      const cacheDeltaBefore = yield* Metric.value(
-        validationLedgerCacheDeltaApplyCounter,
-      );
       const cacheFullReloadBefore = yield* Metric.value(
         validationLedgerCacheFullReloadCounter,
       );
@@ -836,9 +832,6 @@ const drainReplica = async (
       yield* Fiber.interrupt(writeBehindFiber);
       const durationMs = performance.now() - startedAt;
       const metricAfter = yield* Metric.value(validationBatchDurationTimer);
-      const cacheDeltaAfter = yield* Metric.value(
-        validationLedgerCacheDeltaApplyCounter,
-      );
       const cacheFullReloadAfter = yield* Metric.value(
         validationLedgerCacheFullReloadCounter,
       );
@@ -917,9 +910,6 @@ const drainReplica = async (
         depositIngestionIntervalMs,
         depositIngestionActiveDurationMs,
         depositIngestions,
-        ledgerCacheDeltaApplies: Number(
-          cacheDeltaAfter.count - cacheDeltaBefore.count,
-        ),
         ledgerCacheFullReloads: Number(
           cacheFullReloadAfter.count - cacheFullReloadBefore.count,
         ),

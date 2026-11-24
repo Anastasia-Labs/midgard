@@ -277,7 +277,3 @@ export type NotifyCommitWorkerParent = (
     | IntentRefusalHoldsNotice
     | CommitBuildAlarmNotice,
 ) => Effect.Effect<void>;
-
-export const MEMPOOL_LEDGER_REVERTED_NOTICE: MempoolLedgerRevertedNotice = {
-  type: "MempoolLedgerRevertedNotice",
-};

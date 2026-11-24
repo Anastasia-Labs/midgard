@@ -128,7 +128,7 @@ describe("commit DA frame readiness", () => {
             new Map([...reasons, ["commit_worker", "commit_worker_failed"]]),
         ),
       );
-      if (outcome !== "fits") takeCommitWorkerOutput(globals, refused(), 0);
+      if (outcome !== "fits") takeCommitWorkerOutput(globals, refused());
       const heldReasons = reasonsOf(globals);
       const notice = commitDaFrameNoticeForOutcome({
         outcome,
@@ -140,7 +140,7 @@ describe("commit DA frame readiness", () => {
           rejectedTxIds: [],
         },
       })!;
-      takeCommitWorkerOutput(globals, notice, 0);
+      takeCommitWorkerOutput(globals, notice);
       const pressure = Effect.runSync(
         Ref.get(globals.COMMIT_DA_FRAME_PRESSURE),
       );
@@ -157,7 +157,7 @@ describe("commit DA frame readiness", () => {
         ),
       ).toMatchObject({ value: stage });
       expect(reasonsOf(globals)).toEqual(heldReasons);
-      takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_FITS_NOTICE, 0);
+      takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_FITS_NOTICE);
       expect(Effect.runSync(Ref.get(globals.COMMIT_DA_FRAME_PRESSURE))).toBe(
         pressure,
       );
@@ -172,11 +172,11 @@ describe("commit DA frame readiness", () => {
         { source: "commit_worker", reason: "commit_worker_failed" },
       ]);
       // Only the idle notice of a no-work tick clears the diagnostics.
-      takeCommitWorkerOutput(globals, { type: "NothingToCommitOutput" }, 0);
+      takeCommitWorkerOutput(globals, { type: "NothingToCommitOutput" });
       expect(Effect.runSync(Ref.get(globals.COMMIT_DA_FRAME_PRESSURE))).toBe(
         pressure,
       );
-      takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_IDLE_NOTICE, 0);
+      takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_IDLE_NOTICE);
       expect(
         Effect.runSync(Ref.get(globals.COMMIT_DA_FRAME_PRESSURE)),
       ).toBeNull();
@@ -205,7 +205,7 @@ describe("commit DA frame readiness", () => {
         rejectedTxIds: [],
       },
     })!;
-    takeCommitWorkerOutput(globals, notice, 0);
+    takeCommitWorkerOutput(globals, notice);
     expect(
       Effect.runSync(Ref.get(globals.COMMIT_DA_FRAME_PRESSURE)),
     ).toMatchObject({
@@ -231,7 +231,7 @@ describe("commit DA frame readiness", () => {
       const notifications: unknown[] = [];
       const afterDaFrameAccepted = Effect.sync(() => {
         notifications.push(COMMIT_DA_FRAME_FITS_NOTICE);
-        takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_FITS_NOTICE, 0);
+        takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_FITS_NOTICE);
       });
       const content = blockContentFor(
         source === "transactions" ? [mkCandidate(1)] : [],
@@ -314,7 +314,7 @@ describe("commit DA frame readiness", () => {
           rejectedTxIds: [],
         },
       })!;
-      takeCommitWorkerOutput(globals, measuredRefusal, 0);
+      takeCommitWorkerOutput(globals, measuredRefusal);
       const measuredPressure = Effect.runSync(
         Ref.get(globals.COMMIT_DA_FRAME_PRESSURE),
       );
@@ -339,7 +339,7 @@ describe("commit DA frame readiness", () => {
       ).toMatchObject({ value: 90 });
       expect(reasonsOf(globals)).toEqual([]);
 
-      takeCommitWorkerOutput(globals, refused(), 0);
+      takeCommitWorkerOutput(globals, refused());
       notifications.length = 0;
       const refusedExactly = await attempt(true);
       expect(Either.isLeft(refusedExactly)).toBe(true);
@@ -361,15 +361,15 @@ describe("commit DA frame readiness", () => {
       const notice = refused();
       expect(notice.status).toBe(status);
       // The notice is consumed, not handed on as the worker's output.
-      expect(takeCommitWorkerOutput(globals, notice, 0)).toBeUndefined();
+      expect(takeCommitWorkerOutput(globals, notice)).toBeUndefined();
       expect(reasonsOf(globals)).toEqual([
         { source: COMMIT_DA_FRAME_SOURCE, reason },
       ]);
       // Every tick that refuses again keeps the one reason.
-      takeCommitWorkerOutput(globals, notice, 0);
+      takeCommitWorkerOutput(globals, notice);
       expect(reasonsOf(globals)).toHaveLength(1);
       expect(
-        takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_FITS_NOTICE, 0),
+        takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_FITS_NOTICE),
       ).toBeUndefined();
       expect(reasonsOf(globals)).toEqual([]);
     },
@@ -380,9 +380,9 @@ describe("commit DA frame readiness", () => {
     // The step-down dropped every transaction, the remaining block still
     // overflows, and the worker commits nothing. The output is handed on and the
     // transactions stay pending, so the reason must stay too.
-    takeCommitWorkerOutput(globals, refused(), 0);
+    takeCommitWorkerOutput(globals, refused());
     const nothing = { type: "NothingToCommitOutput" } as const;
-    expect(takeCommitWorkerOutput(globals, nothing, 0)).toBe(nothing);
+    expect(takeCommitWorkerOutput(globals, nothing)).toBe(nothing);
     expect(reasonsOf(globals)).toEqual([
       {
         source: COMMIT_DA_FRAME_SOURCE,
@@ -391,8 +391,8 @@ describe("commit DA frame readiness", () => {
     ]);
     // A tick with no work posts the idle notice ahead of its output, which
     // clears the reason and the frame diagnostics.
-    takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_IDLE_NOTICE, 0);
-    expect(takeCommitWorkerOutput(globals, nothing, 0)).toBe(nothing);
+    takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_IDLE_NOTICE);
+    expect(takeCommitWorkerOutput(globals, nothing)).toBe(nothing);
     expect(reasonsOf(globals)).toEqual([]);
     expect(Effect.runSync(Ref.get(globals.COMMIT_DA_FRAME_PRESSURE))).toBe(
       null,

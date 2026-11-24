@@ -14,7 +14,7 @@ import {
   forgetLoggedState,
   logOnStateChange,
 } from "../services/globals.liveness-reasons.js";
-import { publishMempoolLedgerDelta } from "../services/globals.with-l1-control-plane-held.js";
+import { markMempoolLedgerStale } from "../services/globals.with-l1-control-plane-held.js";
 import { HISTORY_COMMIT_LANDING_MARGIN_MS } from "../services/history-commit-window.js";
 import { Database } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
@@ -34,7 +34,6 @@ import {
 import {
   BLOCK_COMMITMENT_DUE_WORK_KEY,
   BLOCK_COMMITMENT_DUE_WORK_KIND,
-  publishFullMempoolLedgerReload,
 } from "./block-commitment.promote-or-recover-native-mpf.js";
 import { clearCommitWorkerFailure } from "./block-commitment.worker-readiness.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
@@ -47,31 +46,13 @@ import {
 export const publishCommitMempoolLedgerMutation = (
   globals: Globals,
   workerOutput: WorkerOutput,
-  deltaLogMax: number,
-): Effect.Effect<void> => {
-  // Only outputs that mutate the mempool ledger require work here.
-  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
-  switch (workerOutput.type) {
-    case "SuccessfulSubmissionOutput":
-      return workerOutput.mempoolLedgerDeletedOutRefHexes.length === 0
-        ? Effect.void
-        : publishMempoolLedgerDelta(
-            globals,
-            {
-              full: false,
-              upserts: [],
-              deletes: workerOutput.mempoolLedgerDeletedOutRefHexes,
-            },
-            deltaLogMax,
-          ).pipe(Effect.asVoid);
-    // A failed attempt may have committed a commit-stage rejection's
-    // mempool_ledger revert without its notice reaching the parent.
-    case "FailureOutput":
-      return publishFullMempoolLedgerReload(globals, deltaLogMax);
-    default:
-      return Effect.void;
-  }
-};
+): Effect.Effect<void> =>
+  // A failed attempt may have committed a commit-stage rejection's
+  // mempool_ledger revert without its notice reaching the parent, and which
+  // rows it changed is unknown.
+  workerOutput.type === "FailureOutput"
+    ? markMempoolLedgerStale(globals, "all")
+    : Effect.void;
 
 const stateQueueEvidenceFromSnapshot = (
   snapshot: StateQueueSnapshot,

@@ -192,7 +192,7 @@ describe("a commit worker run's wait for its Ed25519 verifier", () => {
         const { output } = await runOnTestClock(0);
         expect(output).toMatchObject(FAULT);
         expect(await exhausted()).toBe(false);
-        takeCommitWorkerOutput(globals, output, 16);
+        takeCommitWorkerOutput(globals, output);
         expect(await exhausted()).toBe(index === LOCAL_FAULT_RUN_LIMIT);
       }
       const { exit, messages } = await servingExit(globals);

@@ -255,7 +255,6 @@ describe("commit block worker output handling", () => {
         mempoolTxsCount: 1,
         sizeOfBlocksTxs: 1,
         blockEndTimeMs: 1,
-        mempoolLedgerDeletedOutRefHexes: [],
       },
       preserve: true,
     },

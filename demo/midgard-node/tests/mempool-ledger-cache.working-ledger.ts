@@ -13,7 +13,7 @@ import {
   outRefFromByte,
 } from "../../midgard-validation/tests/validation-fixtures.js";
 import { Globals } from "../src/services/globals.globals.js";
-import { publishMempoolLedgerDelta } from "../src/services/globals.with-l1-control-plane-held.js";
+import { markMempoolLedgerStale } from "../src/services/globals.with-l1-control-plane-held.js";
 import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.make-mempool-ledger-cache-service.js";
 import {
   type MempoolLedgerCacheService,
@@ -67,6 +67,16 @@ const freshOver = (
         asked.push([...keys].sort());
         return spendableIn(rows, keys);
       }),
+  );
+
+/**
+ * A cache over `rows` with its own Globals: stale marks are taken by the
+ * cache that reads them, so a reference must not share the tested cache's.
+ */
+const referenceOver = (rows: ReadonlyMap<string, Buffer>) =>
+  Globals.pipe(
+    Effect.flatMap((own) => freshOver(own, rows)),
+    Effect.provide(Globals.Default),
   );
 
 describe("validation cache working ledger", () => {
@@ -128,7 +138,7 @@ describe("validation cache working ledger", () => {
         const universe = Array.from({ length: loaded + 2 }, (_, index) =>
           outRefAt(index),
         );
-        const reference = yield* freshOver(globals, rows);
+        const reference = yield* referenceOver(rows);
         expect(
           yield* service.withPhaseBLock(
             service.currentState.pipe(Effect.map(snapshot(universe))),
@@ -142,7 +152,7 @@ describe("validation cache working ledger", () => {
     );
   });
 
-  it("answers every key as a cache loaded from scratch would, across patches, promotions, abandoned sequences, deltas and recoveries", async () => {
+  it("answers every key as a cache loaded from scratch would, across patches, promotions, abandoned sequences, stale marks and recoveries", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const globals = yield* Globals;
@@ -173,7 +183,7 @@ describe("validation cache working ledger", () => {
           );
         const expectMatches = (live: readonly [bigint, UTxOStatePatch][]) =>
           Effect.gen(function* () {
-            const reference = yield* freshOver(globals, rows);
+            const reference = yield* referenceOver(rows);
             yield* reference.withPhaseBLock(reference.currentState);
             for (const [sequence, patch] of live)
               yield* reference.withPhaseBLock(
@@ -212,19 +222,10 @@ describe("validation cache working ledger", () => {
         for (let step = 0; step < 80; step += 1) {
           const operation = next(6);
           if (operation === 0) {
-            // A journal delta from another mutator.
+            // Another writer changes a row and marks it stale.
             const key = hexAt(next(universe.length));
             flipRow(key);
-            const output = rows.get(key);
-            yield* publishMempoolLedgerDelta(
-              globals,
-              {
-                full: false,
-                upserts: output === undefined ? [] : [[key, output]],
-                deletes: output === undefined ? [key] : [],
-              },
-              64,
-            );
+            yield* markMempoolLedgerStale(globals, [key]);
             yield* expectMatches([]);
           } else if (operation === 1 || operation === 2) {
             // Two accepted sequences; the first is promoted.
@@ -351,7 +352,7 @@ describe("validation cache working ledger", () => {
         expect(yield* fullReloads).toBe(reloadsBefore);
         expect(asked).toStrictEqual([[produced, spent].sort()]);
         const universe = [1, 2, 3].map(outRefAt);
-        const reference = yield* freshOver(globals, rows);
+        const reference = yield* referenceOver(rows);
         expect(
           yield* service.withPhaseBLock(
             service.currentState.pipe(Effect.map(snapshot(universe))),

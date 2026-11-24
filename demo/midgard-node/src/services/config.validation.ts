@@ -77,10 +77,6 @@ export const validationConfig = Config.all({
     "VALIDATION_DRAIN_LOOPS",
     4,
   ),
-  VALIDATION_LEDGER_DELTA_LOG_MAX: positiveSafeIntegerConfig(
-    "VALIDATION_LEDGER_DELTA_LOG_MAX",
-    64,
-  ),
   TX_QUEUE_POLL_INTERVAL_MS: positiveSafeIntegerConfig(
     "TX_QUEUE_POLL_INTERVAL_MS",
     250,

@@ -118,7 +118,6 @@ vi.mock(
 
 const config = makeTestNodeConfig({
   MPF_NATIVE_OWNER_BINARY_SHA256: "",
-  VALIDATION_LEDGER_DELTA_LOG_MAX: 1,
 });
 
 /** Runs `site` with fresh globals holding an open native owner, and every

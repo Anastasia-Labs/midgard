@@ -59,7 +59,6 @@ export type SuccessfulSubmissionOutput = {
   mempoolTxsCount: number;
   sizeOfBlocksTxs: number;
   blockEndTimeMs: number;
-  mempoolLedgerDeletedOutRefHexes: readonly string[];
   nativeMpfPromotion?: NativeMpfPromotion;
 };
 
@@ -192,11 +191,39 @@ export type WorkerOutput =
 
 /**
  * Posted by the commit worker ahead of its output, as soon as a commit-stage
- * rejection's mempool_ledger revert has committed: the parent reloads its
- * ledger cache without waiting for the block submission to finish.
+ * rejection's mempool_ledger revert has committed: the parent marks the rows
+ * it changed stale in its ledger cache without waiting for the block
+ * submission to finish.
  */
 export type MempoolLedgerRevertedNotice = {
   readonly type: "MempoolLedgerRevertedNotice";
+  /** Hex outrefs of the rows the revert deleted or inserted. */
+  readonly outRefs: readonly string[];
+};
+
+export const mempoolLedgerRevertedNotice = (
+  outRefs: readonly string[],
+): MempoolLedgerRevertedNotice => ({
+  type: "MempoolLedgerRevertedNotice",
+  outRefs: [...outRefs],
+});
+
+const OUT_REF_HEX = /^(?:[0-9a-f]{2})+$/;
+
+/**
+ * The outrefs a received revert notice names, as the cache keys them
+ * (lower-case hex); `undefined` when its payload names none it can trust.
+ */
+export const revertedOutRefs = (notice: {
+  readonly outRefs?: unknown;
+}): readonly string[] | undefined => {
+  const { outRefs } = notice;
+  return Array.isArray(outRefs) &&
+    outRefs.every(
+      (outRef) => typeof outRef === "string" && OUT_REF_HEX.test(outRef),
+    )
+    ? (outRefs as readonly string[])
+    : undefined;
 };
 
 /**

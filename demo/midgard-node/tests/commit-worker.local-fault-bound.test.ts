@@ -166,7 +166,7 @@ const attempt = async (
       ),
     ),
   );
-  return { output: takeCommitWorkerOutput(globals, output, 16), validities };
+  return { output: takeCommitWorkerOutput(globals, output), validities };
 };
 
 const attempts = async (
@@ -182,7 +182,7 @@ const attempts = async (
 
 /** The parent takes `output` from the worker. */
 const take = (globals: Globals, output: WorkerOutput) =>
-  takeCommitWorkerOutput(globals, output, 16);
+  takeCommitWorkerOutput(globals, output);
 
 /** A failed attempt that is not a local fault (an L1 submission failure). */
 const NOT_LOCAL: WorkerOutput = {
@@ -203,7 +203,6 @@ const SUCCESSES: readonly WorkerOutput[] = [
   {
     type: "SuccessfulSubmissionOutput",
     ...submitted,
-    mempoolLedgerDeletedOutRefHexes: [],
   },
   {
     type: "SubmittedAwaitingConfirmationOutput",

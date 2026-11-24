@@ -9,7 +9,6 @@ import type {
 
 export {
   type CommitWorkerMessage,
-  publishFullMempoolLedgerReload,
   takeCommitWorkerOutput,
 } from "../workers/commit-worker-message.js";
 import { Database } from "../services/index.js";

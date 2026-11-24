@@ -92,6 +92,7 @@ describe(
   () => {
     it("rejects the transaction and its dependent, reverts their ledger effects and leaves the rest pending", async () => {
       const { globals, a, b, c } = await threePending();
+      const heldBefore = await workingOutRefs(globals);
       const outcome = await run(
         globals,
         persistCommitStageRejectedTransactions({
@@ -99,7 +100,14 @@ describe(
           resolveInputPostState: () => Effect.succeed(new Map()),
         }),
       );
-      expect(outcome).toMatchObject({ _tag: "Persisted", ledgerChanged: true });
+      // The outcome names the rows the revert deleted.
+      const heldAfter = await workingOutRefs(globals);
+      expect(
+        outcome._tag === "Persisted"
+          ? [...outcome.ledgerReverted].sort()
+          : outcome,
+      ).toEqual(heldBefore.filter((key) => !heldAfter.includes(key)));
+      expect(outcome).toMatchObject({ _tag: "Persisted" });
       expect(await rejections(globals)).toEqual(
         sorted([
           [b.id, COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT],

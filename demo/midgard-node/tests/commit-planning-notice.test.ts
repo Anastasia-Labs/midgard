@@ -245,7 +245,7 @@ it("real driver epochs cross the compiled planning notifier and dispatcher lossl
         if (parsed?.status !== "selected")
           throw new Error("compiled notifier emitted no selected plan");
         expect(
-          dispatcher.takeCommitWorkerOutput(globals, parsed, 10),
+          dispatcher.takeCommitWorkerOutput(globals, parsed),
         ).toBeUndefined();
         const snapshot = yield* Ref.get(globals.COMMIT_PLANNING);
         expect(snapshot?.selection.authority.epoch).toBe(epoch);

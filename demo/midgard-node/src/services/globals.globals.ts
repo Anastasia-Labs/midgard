@@ -33,7 +33,7 @@ import {
   type AttestationTimeoutCorrectionHealth,
   type CommitPipelinePhase,
   type L1ProviderHealthEvidence,
-  type MempoolLedgerDeltaLog,
+  type MempoolLedgerStale,
 } from "./globals.next-l1-provider-health-evidence.js";
 import {
   L1_FOLLOWER_NOT_STARTED,
@@ -147,11 +147,12 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // advanced optimistically on successful submissions).
     const LATEST_LOCAL_BLOCK_END_TIME_MS = yield* Ref.make<number>(0);
 
-    // Every direct writer of mempool_ledger must publish an exact delta or a
-    // full marker. A missing/gapped delta forces the cache service to reload.
-    const MEMPOOL_LEDGER_DELTA_LOG = yield* Ref.make<MempoolLedgerDeltaLog>({
-      version: 0,
-      entries: [],
+    // Every writer of mempool_ledger outside the validation cache marks the
+    // keys it changed, once its write has committed, or every key when it
+    // cannot name them.
+    const MEMPOOL_LEDGER_STALE = yield* Ref.make<MempoolLedgerStale>({
+      all: false,
+      keys: new Set(),
     });
 
     // Coordinates event-driven tx queue wakeups without allowing overlapping
@@ -300,7 +301,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
       UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
       LATEST_LOCAL_BLOCK_END_TIME_MS,
-      MEMPOOL_LEDGER_DELTA_LOG,
+      MEMPOOL_LEDGER_STALE,
       TX_QUEUE_PROCESSOR_ACTIVE,
       TX_QUEUE_WAKE_GENERATION,
       NATIVE_MPF_OWNER,

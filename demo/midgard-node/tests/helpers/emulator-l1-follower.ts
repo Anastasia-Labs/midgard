@@ -26,13 +26,12 @@ import { Duration, Effect, Ref, Schedule } from "effect";
 
 import { MempoolLedgerDB } from "../../src/database/index.js";
 import { DatabaseError } from "../../src/database/utils/common.js";
-import { NodeConfig } from "../../src/services/config.make-config.js";
 import {
   FollowerWriteFixture,
   withFollowerWrite,
 } from "../../src/services/follower-write-gate.js";
 import { Globals } from "../../src/services/globals.globals.js";
-import { publishMempoolLedgerDelta } from "../../src/services/globals.with-l1-control-plane-held.js";
+import { markMempoolLedgerStale } from "../../src/services/globals.with-l1-control-plane-held.js";
 import { planCurrentView } from "../../src/services/l1-follower.readiness.js";
 import {
   landedStateQueueSnapshot,
@@ -186,21 +185,15 @@ export const ingestEmulatorEventsUnowned = (
     if (outcome.kind === "stale")
       return yield* failed("The emulator follower view moved");
     const globals = options.globals;
-    const { projected, spendableUpserts } = outcome.ingestion;
-    if (globals !== undefined && (projected > 0 || spendableUpserts.length > 0))
-      yield* publishMempoolLedgerDelta(
+    // Newly projected deposits stay hidden until a header is assigned;
+    // restored header-assigned rows are spendable at once.
+    const { spendableUpserts } = outcome.ingestion;
+    if (globals !== undefined && spendableUpserts.length > 0)
+      yield* markMempoolLedgerStale(
         globals,
-        {
-          full: false,
-          // Newly projected deposits stay hidden until a header is assigned;
-          // restored header-assigned rows are spendable at once.
-          upserts: spendableUpserts.map((entry) => [
-            entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
-            entry[MempoolLedgerDB.Columns.OUTPUT],
-          ]),
-          deletes: [],
-        },
-        (yield* NodeConfig).VALIDATION_LEDGER_DELTA_LOG_MAX,
+        spendableUpserts.map((entry) =>
+          entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
+        ),
       );
     return outcome.ingestion;
   });

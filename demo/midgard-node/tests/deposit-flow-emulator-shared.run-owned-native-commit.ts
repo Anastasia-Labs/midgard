@@ -62,11 +62,7 @@ export const runOwnedNativeCommit = (
           handle: output.nativeMpfPromotion.handle,
         });
       }
-      yield* publishCommitMempoolLedgerMutation(
-        production.globals,
-        output,
-        production.nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
-      );
+      yield* publishCommitMempoolLedgerMutation(production.globals, output);
       yield* Effect.sync(() =>
         production.onCommitAttempt?.({
           permit,

@@ -85,7 +85,6 @@ vi.mock("../src/lucid-time.js", async (importOriginal) => ({
 
 const config = makeTestNodeConfig({
   MPF_NATIVE_OWNER_BINARY_SHA256: "",
-  VALIDATION_LEDGER_DELTA_LOG_MAX: 1,
 });
 
 /** The tick's own lease, taken after its predecessor's ended. */

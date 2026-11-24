@@ -200,7 +200,7 @@ it("a worker's refusal hold whose write fails is handed to the main process, nam
           planCurrent: () => Promise.resolve({ kind: "none", detail: "" }),
         };
         expect(
-          takeCommitWorkerOutput({} as Globals, notices[0]!, 0, main.adopt),
+          takeCommitWorkerOutput({} as Globals, notices[0]!, main.adopt),
         ).toBeUndefined();
         // Named at once, and still named while its write (and the table's
         // read) keeps failing.

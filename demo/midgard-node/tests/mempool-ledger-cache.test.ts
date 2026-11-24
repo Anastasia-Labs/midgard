@@ -13,4 +13,5 @@ import "../src/services/mempool-ledger-cache.working-ledger.js";
 import "./mempool-ledger-cache.row.js";
 import "./mempool-ledger-cache.canonical-history-cache-retirement.js";
 import "./mempool-ledger-cache.mempool-ledger-cache.js";
+import "./mempool-ledger-cache.stale-marks.js";
 import "./mempool-ledger-cache.working-ledger.js";

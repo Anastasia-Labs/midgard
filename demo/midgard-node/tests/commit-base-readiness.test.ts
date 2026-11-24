@@ -297,7 +297,6 @@ describe("commit submit refusal readiness", () => {
         mempoolTxsCount: 0,
         sizeOfBlocksTxs: 0,
         blockEndTimeMs: 0,
-        mempoolLedgerDeletedOutRefHexes: [],
       }),
     ).toEqual([]);
   });

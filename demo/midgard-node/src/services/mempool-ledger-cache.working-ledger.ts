@@ -1,7 +1,6 @@
 import type { UTxOStatePatch } from "@al-ft/midgard-validation/phase-b";
 
 import { MempoolLedgerDB } from "../database/index.js";
-import type { MempoolLedgerDelta } from "./globals.next-l1-provider-health-evidence.js";
 import type { MempoolLedgerState } from "./mempool-ledger-cache.mempool-ledger-cache-service.js";
 
 type LivePatch = {
@@ -48,13 +47,6 @@ export const makeWorkingLedger = () => {
         );
       }
       return entries.length;
-    },
-
-    applyDelta: (delta: MempoolLedgerDelta) => {
-      for (const outRefHex of delta.deletes) durable.delete(outRefHex);
-      for (const [outRefHex, output] of delta.upserts)
-        durable.set(outRefHex, Buffer.from(output));
-      return delta.deletes.length + delta.upserts.length;
     },
 
     /** Sets each of `keys` to its output in `spendable`, or removes it. */

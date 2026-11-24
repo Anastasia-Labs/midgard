@@ -3,24 +3,18 @@ import { Deferred, Duration, Effect, Metric, Ref } from "effect";
 import { MempoolLedgerDB } from "../database/index.js";
 import type { DatabaseError } from "../database/utils/common.js";
 import { Globals } from "./globals.globals.js";
-import type {
-  MempoolLedgerDelta,
-  MempoolLedgerDeltaLog,
-} from "./globals.next-l1-provider-health-evidence.js";
+import type { MempoolLedgerStale } from "./globals.next-l1-provider-health-evidence.js";
+import { markMempoolLedgerStale } from "./globals.with-l1-control-plane-held.js";
 import {
   type CanonicalCacheRecovery,
   type MempoolLedgerCacheService,
   type PhaseBSequence,
-  validationLedgerCacheDeltaApplyCounter,
   validationLedgerCacheEntryWriteCounter,
   validationLedgerCacheFullReloadCounter,
   validationPhaseBLockWaitTimer,
   ValidationPipelineEpochError,
 } from "./mempool-ledger-cache.mempool-ledger-cache-service.js";
-import {
-  contiguousEntriesAfter,
-  makeSpendableView,
-} from "./mempool-ledger-cache.spendable-view.js";
+import { makeSpendableView } from "./mempool-ledger-cache.spendable-view.js";
 import { makeWorkingLedger } from "./mempool-ledger-cache.working-ledger.js";
 
 export const makeMempoolLedgerCacheService = (
@@ -54,8 +48,10 @@ export const makeMempoolLedgerCacheService = (
       readonly canonicalSuspended: boolean;
     }>({ epoch: 0, poison: undefined, canonicalSuspended: false });
     const ledger = makeWorkingLedger();
-    // The delta-log version the durable entries reflect; -1 until first loaded.
-    let cachedVersion = -1;
+    const NOTHING: MempoolLedgerStale = { all: false, keys: new Set() };
+    let loaded = false;
+    // The marks being read again: the spendable view cannot tell at them.
+    let inFlight = NOTHING;
 
     const countWrites = (written: number) =>
       Metric.incrementBy(
@@ -63,68 +59,63 @@ export const makeMempoolLedgerCacheService = (
         BigInt(written),
       );
 
-    const contiguousIncrementalEntries = (journal: MempoolLedgerDeltaLog) =>
-      contiguousEntriesAfter(journal, cachedVersion);
-
-    /** Applies journal entries to the durable ledger; the entries written. */
-    const applyIncrementalEntries = (
-      entries: readonly MempoolLedgerDelta[],
-    ): number => {
-      let written = 0;
-      for (const entry of entries) {
-        written += ledger.applyDelta(entry);
-        cachedVersion = entry.version;
-      }
-      return written;
-    };
-
-    const fullReload: Effect.Effect<void, DatabaseError> = Effect.gen(
-      function* () {
-        while (true) {
-          // Bracket the DB snapshot with journal reads. A mutator commits its
-          // DB change before publishing its delta, so replaying entries newer
-          // than `before` closes the load/publish race without ever skipping a
-          // committed change. A full marker or ring gap forces another load.
-          const before = yield* Ref.get(globals.MEMPOOL_LEDGER_DELTA_LOG);
-          const written = ledger.loadAll(yield* loadSpendable);
-          cachedVersion = before.version;
-          yield* Metric.increment(validationLedgerCacheFullReloadCounter);
-          yield* countWrites(written);
-
-          const after = yield* Ref.get(globals.MEMPOOL_LEDGER_DELTA_LOG);
-          if (after.version === cachedVersion) return;
-          const replay = contiguousIncrementalEntries(after);
-          if (replay !== undefined) {
-            yield* countWrites(applyIncrementalEntries(replay));
-            yield* Metric.incrementBy(
-              validationLedgerCacheDeltaApplyCounter,
-              BigInt(replay.length),
+    /**
+     * Reads `inFlight` again from `mempool_ledger`: in full when `all` is set,
+     * at its keys otherwise. A failed read marks them stale again.
+     */
+    const readInFlight: Effect.Effect<void, DatabaseError> = Effect.suspend(
+      () => {
+        const marks = inFlight;
+        return Effect.gen(function* () {
+          if (marks.all) {
+            const written = ledger.loadAll(yield* loadSpendable);
+            loaded = true;
+            inFlight = NOTHING;
+            yield* Metric.increment(validationLedgerCacheFullReloadCounter);
+            yield* countWrites(written);
+          } else if (marks.keys.size > 0) {
+            const written = ledger.repair(
+              marks.keys,
+              yield* spendableAt(marks.keys),
             );
-            return;
-          }
-        }
+            inFlight = NOTHING;
+            yield* countWrites(written);
+          } else inFlight = NOTHING;
+        }).pipe(
+          Effect.onError(() =>
+            markMempoolLedgerStale(
+              globals,
+              marks.all ? "all" : marks.keys,
+            ).pipe(
+              Effect.zipRight(
+                Effect.sync(() => {
+                  inFlight = NOTHING;
+                }),
+              ),
+            ),
+          ),
+        );
       },
     );
 
+    // A writer marks its keys once its write has committed, so a read that
+    // starts after the marks were taken sees every write they name. Marks
+    // that arrive during a read are taken by the next turn of the loop.
     const synchronize: Effect.Effect<void, DatabaseError> = Effect.gen(
       function* () {
-        const journal = yield* Ref.get(globals.MEMPOOL_LEDGER_DELTA_LOG);
-        if (cachedVersion === journal.version) return;
-
-        if (cachedVersion < 0) {
-          yield* fullReload;
-          return;
+        while (true) {
+          // Taken into `inFlight` in the same step, so the view never sees a
+          // taken mark as settled.
+          const marks = yield* Ref.modify(
+            globals.MEMPOOL_LEDGER_STALE,
+            (marked) => {
+              inFlight = loaded ? marked : { all: true, keys: marked.keys };
+              return [inFlight, NOTHING] as const;
+            },
+          );
+          if (!marks.all && marks.keys.size === 0) return;
+          yield* readInFlight;
         }
-        const needed = contiguousIncrementalEntries(journal);
-        if (needed === undefined) {
-          yield* fullReload;
-          return;
-        }
-        yield* countWrites(applyIncrementalEntries(needed));
-        yield* Metric.incrementBy(
-          validationLedgerCacheDeltaApplyCounter,
-          BigInt(needed.length),
-        );
       },
     );
 
@@ -224,11 +215,8 @@ export const makeMempoolLedgerCacheService = (
                 // transaction, at keys its patch names. So the durable
                 // entries can differ from the table only at the keys of the
                 // patches never promoted.
-                const unknown = ledger.dropPatches();
-                yield* synchronize;
-                yield* countWrites(
-                  ledger.repair(unknown, yield* spendableAt(unknown)),
-                );
+                inFlight = { all: false, keys: ledger.dropPatches() };
+                yield* readInFlight;
                 // Canonical retirement can arrive while the reads await SQL.
                 // An older poisoned recovery must never clear that suspension.
                 yield* Ref.update(pipeline, (latest) =>
@@ -290,21 +278,18 @@ export const makeMempoolLedgerCacheService = (
                   yield* requireCurrent;
                   const dropped = ledger.dropPatches();
                   const changes = durableChanges?.(result);
-                  if (changes === undefined) yield* fullReload;
-                  else {
-                    // The repair publishes no delta: the journal brings the
-                    // state to the repair's start, then its changed keys
-                    // are read again.
+                  if (changes === undefined) {
+                    yield* markMempoolLedgerStale(globals, "all");
                     yield* synchronize;
+                  } else {
                     yield* countWrites(
                       ledger.repair(changes.keys, changes.spendable),
                     );
                     // A dropped patch's persistence may have committed
                     // while this retirement stopped its promotion, so its
                     // keys are read again as well.
-                    yield* countWrites(
-                      ledger.repair(dropped, yield* spendableAt(dropped)),
-                    );
+                    inFlight = { all: false, keys: dropped };
+                    yield* readInFlight;
                   }
                   yield* requireCurrent;
                   // Parked retired Phase-A jobs retain old ordering tails.
@@ -338,9 +323,8 @@ export const makeMempoolLedgerCacheService = (
 
     const spendableView = makeSpendableView({
       pipeline: Ref.get(pipeline),
-      journal: Ref.get(globals.MEMPOOL_LEDGER_DELTA_LOG),
-      synced: () => ({ state: ledger.lookup, version: cachedVersion }),
-      entriesAfter: contiguousEntriesAfter,
+      stale: Ref.get(globals.MEMPOOL_LEDGER_STALE),
+      current: () => ({ state: ledger.lookup, loaded, inFlight }),
     });
 
     const service: MempoolLedgerCacheService = {

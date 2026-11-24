@@ -37,7 +37,6 @@ const COMMITTED: CommitWorkerMessage = {
   mempoolTxsCount: 1,
   sizeOfBlocksTxs: 1,
   blockEndTimeMs: 1,
-  mempoolLedgerDeletedOutRefHexes: [],
 };
 
 /** `/readyz` after the worker posts `messages`, then `after` runs:
@@ -51,7 +50,7 @@ const readyzAfterThen = async (
     journal: Effect.flatMap(Globals, (globals) =>
       Effect.sync(() => {
         for (const message of messages)
-          takeCommitWorkerOutput(globals, message, 16);
+          takeCommitWorkerOutput(globals, message);
       }),
     ).pipe(Effect.zipRight(after)) as unknown as Effect.Effect<
       void,

@@ -47,7 +47,6 @@ export type StageBReplicaReport = {
   readonly depositIngestionIntervalMs: number;
   readonly depositIngestionActiveDurationMs: number;
   readonly depositIngestions: number;
-  readonly ledgerCacheDeltaApplies: number;
   readonly ledgerCacheFullReloads: number;
   readonly averageBatchMs: number;
   readonly depositWindowAverageBatchMs: readonly number[];

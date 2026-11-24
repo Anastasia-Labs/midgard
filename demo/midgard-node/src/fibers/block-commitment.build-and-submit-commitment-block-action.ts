@@ -7,6 +7,7 @@ import {
   runAtFollowerView,
 } from "../services/follower-write-gate.js";
 import { Globals } from "../services/globals.globals.js";
+import { markMempoolLedgerStale } from "../services/globals.with-l1-control-plane-held.js";
 import { Database, NodeConfig } from "../services/index.js";
 import { IntentJournal } from "../services/intent-journal.js";
 import {
@@ -30,7 +31,6 @@ import {
   commitBlockTxSizeGauge,
   commitWorkerDurationTimer,
   type CommitWorkerMessage,
-  publishFullMempoolLedgerReload,
   recoverNativeMpfFromLiveJournalAfterWorkerFailure,
   takeCommitWorkerOutput,
   totalTxSizeGauge,
@@ -127,12 +127,7 @@ export const buildAndSubmitCommitmentBlockAction = (
         transferList: [nativeMpfInput.port],
       },
       takeOutput: (message: CommitWorkerMessage): WorkerOutput | undefined =>
-        takeCommitWorkerOutput(
-          globals,
-          message,
-          nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
-          intentJournal.adopt,
-        ),
+        takeCommitWorkerOutput(globals, message, intentJournal.adopt),
       releaseLedgerLease: releaseTerminatedWorkerLedgerLease,
     });
 
@@ -145,13 +140,9 @@ export const buildAndSubmitCommitmentBlockAction = (
         ),
       ),
       // A failed attempt may already have committed a commit-stage rejection
-      // whose mempool_ledger revert the cache has not seen.
-      Effect.tapError(() =>
-        publishFullMempoolLedgerReload(
-          globals,
-          nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
-        ),
-      ),
+      // whose mempool_ledger revert the cache has not seen, at rows nothing
+      // names.
+      Effect.tapError(() => markMempoolLedgerStale(globals, "all")),
       Effect.catchAll((workerError) =>
         recoverNativeMpfFromLiveJournalAfterWorkerFailure(nativeMpfOwner).pipe(
           Effect.tap((recovered) =>
@@ -180,11 +171,7 @@ export const buildAndSubmitCommitmentBlockAction = (
     yield* commitWorkerDurationTimer(
       Effect.succeed(Duration.millis(Date.now() - workerStartedAt)),
     );
-    yield* publishCommitMempoolLedgerMutation(
-      globals,
-      workerOutput,
-      nodeConfig.VALIDATION_LEDGER_DELTA_LOG_MAX,
-    );
+    yield* publishCommitMempoolLedgerMutation(globals, workerOutput);
 
     switch (workerOutput.type) {
       case "SuccessfulSubmissionOutput": {

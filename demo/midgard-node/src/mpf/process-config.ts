@@ -37,8 +37,11 @@ export type ProcessMpfsConfig = {
   readonly txOrderVisibilityBarrierTime?: Date;
   readonly withdrawalVisibilityBarrierTime?: Date;
   readonly recordCorpusPath?: string;
-  /** Runs once a commit-stage rejection's mempool_ledger revert commits. */
-  readonly onMempoolLedgerReverted?: Effect.Effect<void>;
+  /** Runs once a commit-stage rejection's mempool_ledger revert commits,
+   * with the hex outrefs of the rows it deleted or inserted. */
+  readonly onMempoolLedgerReverted?: (
+    outRefs: readonly string[],
+  ) => Effect.Effect<void>;
   /** Runs when a commit stage holds the build, and once per commit stage
    * whose rejections reach the build's limit. */
   readonly onCommitBuildAlarm?: (

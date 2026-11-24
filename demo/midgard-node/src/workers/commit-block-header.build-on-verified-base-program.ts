@@ -33,7 +33,6 @@ import { NativeMpfWorkerPortClient } from "../services/mpf-native-owner/client.j
 import { workerLedger } from "../services/mpf-native-owner/worker-ledger.js";
 import { outRefLabel } from "../tx-context.js";
 import {
-  MEMPOOL_LEDGER_REVERTED_NOTICE,
   type NotifyCommitWorkerParent,
   resetTransactionsMpf,
   shouldShortCircuitIdleCommitAttempt,
@@ -62,6 +61,7 @@ import { COMMIT_PLANNING_STARTED_NOTICE } from "./commit-planning-notice.js";
 import {
   type CommitCandidateRoots,
   deserializeStateQueueUTxO,
+  mempoolLedgerRevertedNotice,
   WorkerInput,
   WorkerOutput,
 } from "./utils/commit-block-header.js";
@@ -577,7 +577,10 @@ export const buildOnVerifiedCommitBaseProgram = (
           l1SlotConfig: proofValidationSlotConfig,
         },
         recordCorpusPath: nodeConfig.MPF_RECORD_CORPUS,
-        onMempoolLedgerReverted: notifyParent?.(MEMPOOL_LEDGER_REVERTED_NOTICE),
+        onMempoolLedgerReverted:
+          notifyParent === undefined
+            ? undefined
+            : (outRefs) => notifyParent(mempoolLedgerRevertedNotice(outRefs)),
         onCommitBuildAlarm: (alarm, stage) =>
           notifyParent?.({ type: "CommitBuildAlarmNotice", alarm, stage }) ??
           Effect.void,

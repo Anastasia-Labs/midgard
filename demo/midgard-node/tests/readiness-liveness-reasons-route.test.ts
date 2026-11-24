@@ -179,7 +179,6 @@ describe("GET /readyz liveness reasons", () => {
                 rejectedTxIds: [],
               },
             })!,
-            0,
           );
           return yield* readyz;
         }),
@@ -198,35 +197,27 @@ describe("GET /readyz liveness reasons", () => {
   it("reports failed commit workers while ticks stay fresh, until actual worker success", async () => {
     const [failed, noOp, cleared] = await onNode(({ globals, readyz }) =>
       Effect.gen(function* () {
-        takeCommitWorkerOutput(
-          globals,
-          {
-            type: "FailureOutput",
-            error:
-              "Commit worker requires a unique parent-generated ledger MPF lease owner",
-          },
-          0,
-        );
+        takeCommitWorkerOutput(globals, {
+          type: "FailureOutput",
+          error:
+            "Commit worker requires a unique parent-generated ledger MPF lease owner",
+        });
         yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
         const failed = yield* readyz;
         // A no-op can exclude events beyond a source-owned end time, so it
         // alone cannot clear a failed worker.
-        takeCommitWorkerOutput(globals, { type: "NothingToCommitOutput" }, 0);
+        takeCommitWorkerOutput(globals, { type: "NothingToCommitOutput" });
         const noOp = yield* readyz;
-        takeCommitWorkerOutput(
-          globals,
-          {
-            type: "SubmittedAwaitingConfirmationOutput",
-            submittedTxHash: "cd".repeat(32),
-            txSize: 0,
-            mempoolTxsCount: 0,
-            sizeOfBlocksTxs: 0,
-            blockEndTimeMs: 0,
-            submittedHeaderHash: "ab".repeat(28),
-            submittedUtxosRoot: "ef".repeat(32),
-          },
-          0,
-        );
+        takeCommitWorkerOutput(globals, {
+          type: "SubmittedAwaitingConfirmationOutput",
+          submittedTxHash: "cd".repeat(32),
+          txSize: 0,
+          mempoolTxsCount: 0,
+          sizeOfBlocksTxs: 0,
+          blockEndTimeMs: 0,
+          submittedHeaderHash: "ab".repeat(28),
+          submittedUtxosRoot: "ef".repeat(32),
+        });
         return [failed, noOp, yield* readyz] as const;
       }),
     );
@@ -257,10 +248,10 @@ describe("GET /readyz liveness reasons", () => {
             passes: 3,
             maxInnerBytes: 100_000,
           })!;
-          expect(takeCommitWorkerOutput(globals, notice, 0)).toBeUndefined();
+          expect(takeCommitWorkerOutput(globals, notice)).toBeUndefined();
           const raised = yield* readyz;
           // A subsequent measured block supplies the evidence that clears it.
-          takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_FITS_NOTICE, 0);
+          takeCommitWorkerOutput(globals, COMMIT_DA_FRAME_FITS_NOTICE);
           return [before, raised, yield* readyz] as const;
         }),
       );
@@ -280,19 +271,15 @@ describe("GET /readyz liveness reasons", () => {
   it("serves a commit submission refused before broadcast as a detail until its run escalates", async () => {
     const [detail, escalated] = await onNode(({ globals, readyz }) =>
       Effect.gen(function* () {
-        takeCommitWorkerOutput(
-          globals,
-          {
-            type: "SkippedSubmissionOutput",
-            mempoolTxsCount: 0,
-            sizeOfProcessedTxs: 0,
-            submitRefusal: {
-              code: "COMMIT_ANCHOR_NOT_CANONICAL",
-              detail: "the commit anchor is not canonical",
-            },
+        takeCommitWorkerOutput(globals, {
+          type: "SkippedSubmissionOutput",
+          mempoolTxsCount: 0,
+          sizeOfProcessedTxs: 0,
+          submitRefusal: {
+            code: "COMMIT_ANCHOR_NOT_CANONICAL",
+            detail: "the commit anchor is not canonical",
           },
-          0,
-        );
+        });
         const detail = yield* readyz;
         yield* raiseLivenessIncident(
           globals,
