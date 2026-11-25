@@ -165,8 +165,10 @@ establish alert delivery, incident ownership and drills.
 - Strikes are permissionless and rotate operator shifts. They can still rotate
   shifts during catch-up and slow its progress. The public ejection threshold
   is set out of reach, so strikes do not provide an operator ejection mechanism.
-- No authenticated bootstrap snapshot is supplied. New parties must replay
-  from genesis and join while the required payload history is available. The
+- A new node or watcher takes the ledger at the confirmed state from a node
+  of the deployment, checked against the UTxO root on L1, and replays the
+  blocks above it from retained payloads. It needs one node of the deployment
+  to serve that ledger and the payload history above it to be available. The
   public profile configures 120-day payload retention; its authenticated
   manifest and release acceptance establish the actual instance's
   configuration and retrieval behavior.

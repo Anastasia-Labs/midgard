@@ -58,8 +58,11 @@ each one:
   [`preprod-public.yaml`](../config/deployments/preprod-public.yaml) is empty.
   The Plutus execution dispute (`validationTraceDispute`) is in the catalogue
   too (owner, 2026-10-21); `mainnet` excludes it.
-- Every party derives ledger state by replaying blocks from genesis. Payloads
-  are retained for 120 days, and there is no state snapshot.
+- A node or watcher that joins takes the ledger at the confirmed state from a
+  node of the deployment, checked against the UTxO root on L1, and replays the
+  blocks above it from retained payloads (retained for 120 days). Only nodes
+  serve that ledger, so a deployment with one node cannot rebuild that node's
+  lost database.
 - Inactivity strikes skip an operator's shift but never eject the operator.
 - Every watcher submits the proofs it finds with its own key.
 - The operator allow-list is fixed for this testnet's life. A new operator, or
@@ -370,11 +373,6 @@ These requirements have no owner yet. Status: Open.
 ## After launch
 
 These are planned after launch and are not release gates for the first public testnet:
-
-- Late join (#868). A node with an empty database builds its ledger only from
-  genesis, so an operator joins a deployment before its first block, and a
-  lost node database cannot be rebuilt. Rebuilding the ledger from retained
-  DA history lifts both limits.
 
 - SIGTERM drain that releases leases and leaves durable jobs recoverable.
 - Versioned proof bundles that do not depend on node internals.

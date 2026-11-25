@@ -108,9 +108,11 @@ manifest.
     resolves.
   - [NIFP-08](fault-proofs/remaining-gaps.md#nifp-08--malformed-raw-leaves-outside-transactions_root): a
     malformed leaf under any header root other than `transactions_root`.
-- No authenticated bootstrap state snapshot is supplied. New verifiers replay
-  from genesis and must join while the required retained payload history is
-  available. The public profile configures 120-day payload retention.
+- A new verifier takes the ledger at the confirmed state from a node of the
+  deployment, checked against the UTxO root on L1, and replays the blocks
+  above it. It does not replay the history below the confirmed state, and it
+  needs one node to serve that ledger and the retained payloads above it. The
+  public profile configures 120-day payload retention.
 - Escape hatch and settlement claims are unsupported.
 
 This is a testnet. A later protocol phase requires a separately announced

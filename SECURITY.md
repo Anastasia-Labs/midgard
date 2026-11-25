@@ -163,9 +163,11 @@ testnet operation.
 A forced exit cannot execute Plutus or satisfy a native script's expiry branch,
 and its L1 order carries a closed validity range of at most ten minutes. A
 withdrawal request waits for seven-day block maturity.
-Escape hatch and settlement claims are unsupported. There is no bootstrap state
-snapshot; joining parties replay from genesis using payloads retained for 120
-days and must join while that history is available. An unclassified withdrawal
+Escape hatch and settlement claims are unsupported. A joining node or watcher
+takes the ledger at the confirmed state from a node of the deployment, checks
+it against the UTxO root on L1, and replays the blocks above it from payloads
+retained for 120 days; it needs one node of the deployment to serve that
+ledger. An unclassified withdrawal
 order, even an unsigned one, blocks L2 spends of the output reference it names
 (issue #819).
 

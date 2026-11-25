@@ -208,8 +208,9 @@ grace = L.
   172,800,000 ms. It covers the latest possible slash of any block the pool
   still backs.
 - `retention_days` (120 days): how long the committee retains DA payloads.
-  Participants bootstrap by replaying retained payloads from genesis, with no
-  state snapshot on this testnet (owner, 2026-10-12). It exceeds both maturity and the
+  A joining node or watcher takes the confirmed ledger from a node and replays
+  only the blocks above it from retained payloads (owner, 2026-11-23, in place
+  of the 2026-10-12 replay from genesis). It exceeds both maturity and the
   withdrawal delay, and the 15-day minimum the node enforces. Node
   housekeeping takes its retention from the manifest (owner, 2026-10-01).
 

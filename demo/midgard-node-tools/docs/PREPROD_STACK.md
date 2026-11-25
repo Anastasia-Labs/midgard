@@ -221,11 +221,13 @@ directory. To get one without deleting existing volumes, run from a separate
 linked worktree: the Compose wrapper gives it its own project, volumes, host
 ports and node directory.
 
-A second operator's node attaches to a running stack before the stack commits
-its first block. A node with an empty database builds its ledger only from the
-deployment's genesis, so it cannot join after the first block, or rejoin after
-losing its database (#868). Run the stack with `--setup-only`, attach the second
-instance, then run the stack again for its wallet journeys. The stack's committee accepts payloads only
+This flow attaches a second operator's node to a running stack before the stack
+commits its first block, where the node starts from the empty ledger. A node
+that joins after a block has merged, or rejoins after losing its database, takes
+the confirmed ledger from the nodes in its `LEDGER_SNAPSHOT_PEERS`
+([a node's first ledger](../../../docs-site/content/docs/operators/node/database.mdx));
+that has not been run through this harness. Run the stack with `--setup-only`,
+attach the second instance, then run the stack again for its wallet journeys. The stack's committee accepts payloads only
 from the producers it admits: list each further producer in the stack
 configuration's `da.admittedProducers`, by the multiaddr it listens on, ending
 in its peer id (never its key). Copy

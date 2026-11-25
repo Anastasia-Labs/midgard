@@ -144,8 +144,9 @@ the rehearsal's `.env`. Run `e2e-stack --check` with this configuration: it
 names the address the rehearsal's committee must admit. Put that address in
 the rehearsal configuration's `da.admittedProducers`, run the rehearsal's
 `e2e-stack --setup-only` until its release is signed, then run `e2e-stack` with
-operator-2's configuration, before the rehearsal's first journey: a node with an
-empty database cannot join after the first block (#868). It registers and activates operator-2 and runs its
+operator-2's configuration, before the rehearsal's first journey: this flow
+starts the node from the empty ledger, and joining after a merged block (with
+`LEDGER_SNAPSHOT_PEERS`) has not been run through it. It registers and activates operator-2 and runs its
 node from the rehearsal's node image on loopback only, serving the
 rehearsal's TLS certificate, reading its signed release, and starting no
 ingress. For the fault drills, copy operator-2's
@@ -194,8 +195,9 @@ ports, with a configuration copied from
 
 1. **Setup.** Run `e2e-stack --setup-only` with the twin configuration until it
    passes. No block commits yet.
-2. **Operator-2's node.** Before any journey: a node with an empty database
-   cannot join after the first block (#868). From a third linked worktree built for
+2. **Operator-2's node.** Before any journey: this flow starts the node from
+   the empty ledger, and joining after a merged block (with
+   `LEDGER_SNAPSHOT_PEERS`) has not been run through it. From a third linked worktree built for
    `preprod-testing`, copy
    `demo/midgard-node-tools/config/preprod-testing-twin-operator2.example.json`,
    pointing `attachTo` at the twin configuration. In that worktree's `.env`, set
