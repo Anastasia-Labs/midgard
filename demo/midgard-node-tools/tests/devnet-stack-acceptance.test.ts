@@ -20,11 +20,14 @@ import {
   runDrills,
   selectDrills,
 } from "../src/devnet-stack/chaos.js";
+import type { CliRunner } from "../src/devnet-stack/journey-cli.js";
 import type { HubOracleOneShot } from "../src/devnet-stack/node-env.js";
 import { SERVICE_MARKER_ENV } from "../src/devnet-stack/supervisor.js";
 import {
+  exited,
   fakeContext,
   removeFakeContexts,
+  scriptedCli,
 } from "./devnet-stack-journey.fixtures.js";
 
 afterEach(removeFakeContexts);
@@ -44,6 +47,7 @@ const fixture = (
     preflight?: Promise<void>;
     wrongOwner?: boolean;
     triggerTimeoutMs?: number;
+    runCli?: CliRunner;
   } = {},
 ) => {
   const context = fakeContext();
@@ -115,6 +119,7 @@ const fixture = (
       sleep: async () => {
         assertAcceptanceActive(abort.signal);
       },
+      ...(options.runCli === undefined ? {} : { runCli: options.runCli }),
     },
   );
   return {
@@ -423,6 +428,26 @@ describe("finite acceptance phase gates", () => {
           : [{ ...record, ...overrides[invalid as keyof typeof overrides] }],
       ),
     ).toThrow(/acceptance/);
+  });
+});
+
+describe("acceptance submissions", () => {
+  it("deposits through the user's own tool, as the plain journey does", async () => {
+    const cli = scriptedCli(() =>
+      exited(0, {
+        kind: "Deposit",
+        submissionId: "run1-A1",
+        eventId: "e1",
+        admissionTxHash: "d1",
+        slot: 7,
+        attempts: 1,
+      }),
+    );
+    const f = fixture({ runCli: cli.runCli });
+    await f.journey.deposit("A1", "userA", { lovelace: 5_000_000n });
+    expect(cli.calls.map((call) => [call.tool, call.args[0]])).toEqual([
+      ["user", "deposit"],
+    ]);
   });
 });
 

@@ -12,7 +12,6 @@ import {
 } from "./chaos.js";
 import type { DeployContext } from "./deploy.js";
 import type { TestAsset } from "./funding.js";
-import type { UserRole } from "./identities.js";
 import { Journey, type JourneyOptions } from "./journey.js";
 import type { HubOracleOneShot } from "./node-env.js";
 
@@ -81,15 +80,10 @@ export class AcceptanceJourney extends Journey {
     super(context, oneShot, assets, options);
   }
 
-  protected override async attempt(
-    user: UserRole | undefined,
-    args: readonly string[],
-    label: string,
-    submissionId?: string,
-  ) {
+  protected override async attempt(...request: Parameters<Journey["attempt"]>) {
     assertAcceptanceActive(this.gate.abort.signal);
     try {
-      return await super.attempt(user, args, label, submissionId);
+      return await super.attempt(...request);
     } finally {
       assertAcceptanceActive(this.gate.abort.signal);
     }
